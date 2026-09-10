@@ -1,0 +1,20 @@
+version: v2
+clean: true
+plugins:
+  # TypeScript for the sidecar. JavaScript plus declarations rather than target=ts,
+  # because Node's type stripping cannot run the TypeScript enums protoc-gen-es emits.
+  - local: protoc-gen-es
+    out: sidecar/src/gen
+    opt:
+      - target=js+dts
+      - import_extension=js
+  # Kotlin for Android: protobuf-lite messages and Connect-Kotlin clients. The Android
+  # runtime libraries must match these versions (see docs/development/toolchain.md).
+  - remote: buf.build/protocolbuffers/java:v36.1
+    out: android/app/src/main/generated
+    opt: lite
+  - remote: buf.build/protocolbuffers/kotlin:v36.1
+    out: android/app/src/main/generated
+    opt: lite
+  - remote: buf.build/connectrpc/kotlin:v0.9.0
+    out: android/app/src/main/generated

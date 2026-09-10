@@ -1,0 +1,33 @@
+# Dependencies and build outputs
+node_modules/
+dist/
+build/
+.gradle/
+.kotlin/
+*.apk
+*.aab
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+local.properties
+*.jks
+*.keystore
+keystore.properties
+*.p12
+*.pem
+*.key
+
+# Local databases
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# IDE and OS files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+captures/

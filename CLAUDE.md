@@ -1,6 +1,7 @@
 ## Codebase Navigation
 
 - Before exploring the filesystem, read `CODEBASE.md` first.
+- Follow `AGENTS.md` for stage boundaries, stock UI, testing, and documentation rules.
 - Only explore files directly if `CODEBASE.md` doesn't cover what you need.
 - If you explored files not covered by `CODEBASE.md` during a task, append them to the relevant section.
 - After completing any task that adds, removes, or moves files or changes architecture, update `CODEBASE.md` to reflect the changes.
@@ -32,7 +33,7 @@ Every completed task **except pure bug fixes** must generate or update relevant 
 | ---------------------------------- | ------------------------------------------------------- |
 | New feature / major change         | Create or update `docs/wiki/<feature>.md`              |
 | Integration (APIs, SDKs, webhooks) | Create or update `docs/guide/<integration>.md`         |
-| Dev process (CI, tooling, conventions) | Update `docs/dev/<topic>.md`                       |
+| Dev process (CI, tooling, conventions) | Update `docs/development/<topic>.md`               |
 | Any shipped change                 | Append entry to `docs/changelog/<version-or-date>.md`  |
 
 Bug fixes only need a changelog entry when significant enough for release notes.
