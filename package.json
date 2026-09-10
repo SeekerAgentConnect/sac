@@ -1,0 +1,29 @@
+{
+  "name": "seeker-vault",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": "^24.21.0"
+  },
+  "scripts": {
+    "build": "pnpm --recursive run build",
+    "check": "prettier --check . && eslint . && pnpm --recursive run typecheck && pnpm --recursive run test",
+    "check:android": "android/gradlew -p android spotlessCheck :app:testDebugUnitTest :app:lintDebug :app:assembleDebug",
+    "dev:sidecar": "pnpm --filter @seeker-vault/sidecar run dev",
+    "format": "prettier --write .",
+    "format:android": "android/gradlew -p android spotlessApply",
+    "generate": "buf generate",
+    "agent": "node -e \"console.error('pnpm agent is not implemented yet: the MCP test-agent CLI lands in SAW-005.'); process.exit(1)\"",
+    "test:hello": "node -e \"console.error('pnpm test:hello is not implemented yet: live-bridge integration tests land in SAW-008.'); process.exit(1)\""
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "1.72.0",
+    "@bufbuild/protoc-gen-es": "2.14.1",
+    "@eslint/js": "10.0.1",
+    "eslint": "10.10.0",
+    "prettier": "3.9.6",
+    "typescript": "catalog:",
+    "typescript-eslint": "8.70.0"
+  }
+}

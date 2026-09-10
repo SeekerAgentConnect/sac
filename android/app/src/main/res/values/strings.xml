@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Seeker Vault</string>
+    <string name="bootstrap_status">Stage 1 bootstrap build. The live command screen is not implemented yet.</string>
+</resources>

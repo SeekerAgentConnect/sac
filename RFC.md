@@ -1,7 +1,7 @@
 # seeker-vault — MVP Implementation Plan
 
 **Working name:** `seeker-vault`  
-**Revision:** September 10, 2026  
+**Revision:** September 11, 2026. Stage 1 is now a wallet-free hello world, and the stages follow the implementation backlog.  
 **Purpose:** a master plan to be broken down into implementation tasks.
 
 > Agents propose actions. The user reviews them on Seeker and approves them through the wallet.
@@ -15,6 +15,8 @@ We provide the app and self-hosted server software. The user deploys the server 
 **Included in the first version:** connections, a request queue, manual approval, transfers, Jupiter swaps, a policy builder, activity history, Docker packaging, and a test agent.
 
 **Outside the first version:** a separate agent key, automatic signing, a separate biometric authentication flow in our app, a mandatory foreground service, a persistent bidirectional stream, push notifications, and SKR staking.
+
+**First milestone:** before any wallet work, Stage 1 proves the transport end to end with display-only text. A real agent sends a message over MCP, and the Seeker displays it while the app is open. The user taps OK, and the agent receives the acknowledgement. Stage 1 uses no wallet, keys, queue, persistence, policies, QR pairing, OAuth, Docker deployment, or background service.
 
 ## 2. Components and Repository
 
@@ -31,7 +33,7 @@ docs/          Architecture, protocol, policies, setup, and integrations
 
 **Sidecar:** TypeScript, Node.js, `@connectrpc/connect-node`, `@modelcontextprotocol/sdk`, a Solana SDK, Jupiter API, and a persistent local queue. The sidecar does not store wallet private keys or sign transactions.
 
-**Communication:** the agent uses MCP; the phone uses a separate Connect API. The MVP uses unary RPCs and fetches pending requests when the app opens or the user refreshes the screen.
+**Communication:** the agent uses MCP; the phone uses a separate Connect API. The MVP uses unary RPCs and fetches pending requests when the app opens or the user refreshes the screen. Stage 1 adds one diagnostic exception: a server stream that exists only while the live-test screen is in the foreground. It isn't a persistent session, and the durable request workflow from Stage 2 onward doesn't depend on it.
 
 ## 3. Core Workflow
 
@@ -51,7 +53,7 @@ User: Reject or Approve → MWA → Seed Vault Wallet
 Wallet: sign and send → transaction status → result returned to the agent
 ```
 
-MWA is invoked from an Activity through `ActivityResultSender`; a dedicated Activity is not an architectural requirement. For transactions, we use `signAndSendTransactions`: the wallet handles both signing and sending. The first end-to-end test uses message signing. [MWA documentation][mwa]
+MWA is invoked from an Activity through `ActivityResultSender`; a dedicated Activity is not an architectural requirement. For transactions, we use `signAndSendTransactions`: the wallet handles both signing and sending. The first wallet end-to-end test uses message signing (Stage 3). Before that, Stage 1 exercises the same agent → phone → agent path with display-only text and no wallet. [MWA documentation][mwa]
 
 The queue stores an **action request**, not a prebuilt transaction. The sidecar builds the transaction when the user reviews the request, because a recent blockhash has a limited validity period. If the transaction needs to be refreshed, the phone checks it again and displays the updated parameters before approval. [Transaction confirmation and expiration][confirmation]
 
@@ -83,9 +85,10 @@ Names are provisional; detailed fields will be defined when the plan is broken d
 
 | Tool | Purpose |
 |---|---|
+| `vault_display_command` | Stage 1 diagnostic: show display-only text on the phone and wait for the user's OK; no wallet involved |
 | `vault_get_address` | Get the connected wallet address and network |
 | `vault_get_capabilities` | Get supported actions and the manual approval mode |
-| `vault_sign_message` | Request manual message signing; the first end-to-end test |
+| `vault_sign_message` | Request manual message signing; the first wallet end-to-end test |
 | `vault_transfer` | Request a transfer |
 | `vault_swap` | Request a swap through Jupiter |
 | `vault_get_request` | Get a request's state and result |
@@ -111,14 +114,23 @@ Main screens: **Connections → Connection details → Policy builder → Pendin
 
 ## 6. Implementation Stages
 
+This table was revised on September 11, 2026:
+
+- Stage 1 is now a wallet-free hello world.
+- The earlier end-to-end stage is split into persistent requests (Stage 2) and wallet message signing (Stage 3).
+- Policies are now a stage of their own (Stage 5).
+- Reliability work is built into every stage, with a final regression pass in Stage 8.
+
 | Stage | Scope | Outcome |
 |---|---|---|
-| **1. Foundation and contract** | Monorepo, Buf, code generation, basic CI, connection and request models | Components build and use a shared contract |
-| **2. End-to-end workflow** | Pairing, persistent queue, test MCP client, fetching pending requests, message signing through MWA, returning the result | The agent receives the result of an actual manual approval on Seeker |
-| **3. Transfers and policies** | Fresh transaction building, on-phone parsing, Policy Builder, MWA sign-and-send, activity history, multiple connections | A transfer completes the full workflow with an `ALLOWED` or `UNDER_RESTRICTIONS` assessment |
-| **4. Jupiter** | `/build`, swap parameter checks, output amount and slippage display, refreshing expired transactions | Swaps use the same review and approval workflow |
-| **5. Reliability** | Retries, rejections, expiration, restarts, wallet changes, connection loss after submission | Retries do not cause duplicate execution; uncertain outcomes are clearly reported |
-| **6. Packaging and submission** | Docker, gateway, test agent, real-agent integration, documentation, APK, demo, and presentation | The project can be deployed, installed, and tested by following the instructions |
+| **1. Hello world (no wallet)** | Monorepo, toolchains, and CI; a minimal live-command protocol with Buf; the MCP command bridge; a stock Android hello screen; the MCP test client; the MacBook → Seeker guide; a real Hermes connection | A real agent's text appears on a physical Seeker, the user taps OK, and the agent receives the acknowledgement |
+| **2. Persistent requests and connections** | Durable request contract and lifecycle; a persistent sidecar queue with async MCP results; secure pairing with separate agent and phone roles; multiple connections; a pending inbox | Requests survive restarts and are fetched when the app opens; several self-hosted servers can be connected |
+| **3. Wallet connection and message signing** | MWA integration bound to a wallet and network; async message signing; wallet lifecycle and reliable result delivery | The agent receives the result of an actual manual signature on Seeker |
+| **4. Transfers** | Fresh transaction preparation; independent on-phone parsing; MWA sign-and-send; on-chain confirmation and recovery of uncertain outcomes; activity history | A transfer completes the full workflow, and its outcome is confirmed on chain |
+| **5. Policies** | Policy model and evaluation semantics; daily counters; the Policy Builder; policy results in request review | A transfer shows an `ALLOWED` or `UNDER_RESTRICTIONS` assessment with its reasons |
+| **6. Jupiter** | `/build`; swap parameter checks; output amount and slippage display; refreshing expired transactions | Swaps use the same review and approval workflow |
+| **7. Packaging and integrations** | Docker Compose; a TLS gateway; an OAuth gateway for hosted MCP clients; the test-agent CLI; real Hermes integration; a self-hosting guide | The project can be deployed and connected by following the instructions |
+| **8. Release and submission** | Cross-component reliability and security regression checks; a signed release APK; verified guides; the demo and presentation | Retries don't cause duplicate execution; uncertain outcomes are clearly reported; the release can be installed and reproduced |
 
 A successful submission response from MWA is not a substitute for on-chain confirmation. After a timeout, first determine the outcome of the previous operation instead of automatically building and sending a new one. [Solana documentation][confirmation]
 
