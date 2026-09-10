@@ -1,0 +1,129 @@
+## Codebase Navigation
+
+- Before exploring the filesystem, read `CODEBASE.md` first.
+- Only explore files directly if `CODEBASE.md` doesn't cover what you need.
+- If you explored files not covered by `CODEBASE.md` during a task, append them to the relevant section.
+- After completing any task that adds, removes, or moves files or changes architecture, update `CODEBASE.md` to reflect the changes.
+
+## Project Commands
+
+### Package Manager Detection (ALWAYS do this first)
+
+Detect the package manager by lock file before running ANY command:
+
+| Lock file           | Package manager | Run scripts with    |
+| ------------------- | --------------- | ------------------- |
+| `pnpm-lock.yaml`    | pnpm            | `pnpm run <script>` |
+| `yarn.lock`         | yarn            | `yarn <script>`     |
+| `package-lock.json` | npm             | `npm run <script>`  |
+
+**Never default to npm** — always check the lock file first.
+
+- **Build**: `<pm> run build` (or relevant build script from package.json)
+- **Lint**: `<pm> run lint` — use `<pm> run lint -- --fix` for autofixing
+- **Test**: `<pm> run test` — **only when user explicitly asks**
+- **Always check package.json** for available scripts before guessing commands
+
+## Documentation
+
+Every completed task **except pure bug fixes** must generate or update relevant docs:
+
+| Change type                        | Action                                                  |
+| ---------------------------------- | ------------------------------------------------------- |
+| New feature / major change         | Create or update `docs/wiki/<feature>.md`              |
+| Integration (APIs, SDKs, webhooks) | Create or update `docs/guide/<integration>.md`         |
+| Dev process (CI, tooling, conventions) | Update `docs/dev/<topic>.md`                       |
+| Any shipped change                 | Append entry to `docs/changelog/<version-or-date>.md`  |
+
+Bug fixes only need a changelog entry when significant enough for release notes.
+
+## Workflow Orchestration
+
+### 1. Plan First
+
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- Write plan to `.claude/plans/<task-name>.md` with checkable items
+- If something goes sideways, STOP and re-plan — don't keep pushing
+- Check in with user before starting implementation on complex tasks
+
+### 2. Subagent Strategy
+
+- Use subagents liberally to keep main context window clean
+- Offload research, exploration, and parallel analysis to subagents
+- One task per subagent for focused execution
+- For complex problems, throw more compute at it via parallel subagents
+
+### 3. Verification Before Done
+
+- Run build to verify nothing is broken
+- Ask yourself: "Would a staff engineer approve this?"
+- Diff behavior between main and your changes when relevant
+
+### 4. Self-Improvement Loop
+
+- After ANY correction from the user: update `.claude/tasks/lessons.md` with the pattern
+- Write rules that prevent the same mistake class
+- Review lessons at session start for the relevant project
+
+## Code Standards
+
+### Simplicity & Minimal Impact
+
+- Make every change as simple as possible — touch only what's necessary
+- Find root causes. No temporary fixes. Senior developer standards
+- For non-trivial changes: pause and ask "is there a more elegant way?"
+- If a fix feels hacky, step back and implement the clean solution
+- Skip elegance overthinking for simple, obvious fixes
+
+### Respect User's Code
+
+- **Do NOT remove console.logs** from uncommitted changes unless user explicitly asks
+- **Do NOT remove comments**, TODO markers, or debugging helpers unless asked
+- **Do NOT refactor** adjacent code that isn't part of the current task
+- **Do NOT change formatting/style** of untouched code (respect existing patterns)
+- Preserve import order conventions, naming patterns, and file structure
+
+### Dependencies & Libraries
+
+- Always check `package.json` if `node` or `frontend` is in the selected languages for current dependency versions before using any API
+- Use Context7 MCP to look up documentation for the **exact version** in use
+- Never assume API signatures — verify against the installed version
+- When adding dependencies, prefer what's already in the project ecosystem
+
+### Autonomous Bug Fixing
+
+- When given a bug report: just fix it — don't ask for hand-holding
+- Point at logs, errors, failing tests — then resolve them
+- Go fix failing CI tests without being told how
+- Zero context switching required from the user
+
+## Task Management
+
+All session metadata lives in the `.claude/` folder and should be tracked in Git.
+
+| File / Folder                  | Purpose                                            |
+| ------------------------------ | -------------------------------------------------- |
+| `.claude/plans/*.md`           | Plans with checkable items + review section        |
+| `.claude/tasks/lessons.md`     | Patterns learned from corrections                  |
+| `.claude/tasks/decisions.md`   | Architectural decisions and reasoning (optional)   |
+
+### Workflow
+
+1. **Plan** -> Write to `.claude/plans/<task-name>.md`
+2. **Confirm** -> Check in before starting (for complex tasks)
+3. **Execute** -> Mark items complete as you go, explain changes at each step
+4. **Verify** -> Lint, build, test
+5. **Document** -> Add review section to the plan file, update `.claude/tasks/lessons.md` if needed.
+
+## Communication
+
+- Give high-level summaries, not line-by-line narration
+- When presenting options, give a clear recommendation with reasoning
+- If blocked or unsure, say so immediately — don't guess and break things
+- When a task is done, summarize: what changed, what was tested, any caveats
+
+## PR Code Review
+
+Use `/review <PR#>` to run a self-review on any pull request. It auto-detects languages and applies the right rulesets (Node.js, Frontend, iOS).
+
+Use `/commit-push` to lint, build, commit with conventional format, and push.
