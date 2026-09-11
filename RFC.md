@@ -71,6 +71,8 @@ Pairing uses a QR code containing the server address and a one-time token, and r
 
 | Entity / Operation | Purpose |
 |---|---|
+| `WatchCommands` / `AcknowledgeCommand` | Stage 1 diagnostic: stream display-only commands to the open live-test screen and return the user's OK (see `docs/protocol.md`) |
+| `LiveCommand` / `CommandAcknowledgement` | Stage 1 display-only text with an ID and a deadline, and the user's OK |
 | `Pair` | Pair the phone with the server |
 | `ListPending` / `GetRequest` | Retrieve the queue or an individual request |
 | `PrepareRequest` | Prepare a transaction for the current review |

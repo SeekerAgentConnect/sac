@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package seekervault.live.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// LiveCommandService is the Stage 1 diagnostic channel between the sidecar and the
+// Android live-test screen: the phone displays an agent's text and returns the user's OK.
+//
+// It is foreground-only and in memory. The phone watches only while the live-test
+// screen is active, the sidecar holds at most one in-flight command, and nothing is
+// queued, persisted, or replayed. Stage 2 adds a separate durable request workflow
+// rather than building on this stream. See docs/protocol.md.
+//
+// Both RPCs require the phone token (`Authorization: Bearer <PHONE_TOKEN>`).
+service LiveCommandService {
+  // WatchCommands makes the caller the sidecar's only watcher and streams live commands
+  // to it. The first message on every stream is `ready`. A newer watcher replaces this
+  // one: the older stream ends with `canceled`, and its in-flight command is cancelled.
+  rpc WatchCommands(WatchCommandsRequest) returns (stream WatchCommandsResponse);
+
+  // AcknowledgeCommand reports that the user tapped OK on a delivered command.
+  rpc AcknowledgeCommand(AcknowledgeCommandRequest) returns (AcknowledgeCommandResponse);
+}
+
+// LiveCommand is text for the phone to display verbatim. It is never code, markup, or
+// an instruction for the phone to execute.
+message LiveCommand {
+  // Identifier assigned by the sidecar (a UUID). Acknowledgements echo it.
+  string id = 1;
+  // Plain text to display: valid Unicode, 1 to 4096 UTF-8 bytes, not only whitespace.
+  string text = 2;
+  // The command is live strictly before this instant and timed out from it on.
+  // The sidecar sets it to the send time plus LIVE_COMMAND_TIMEOUT_SECONDS.
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// CommandAcknowledgement is the phone's answer to a live command. The sidecar returns
+// it to the agent as the result of the MCP call.
+message CommandAcknowledgement {
+  // The acknowledged LiveCommand.id.
+  string id = 1;
+  AcknowledgementResult result = 2;
+}
+
+// AcknowledgementResult is the user's response to a live command.
+enum AcknowledgementResult {
+  ACKNOWLEDGEMENT_RESULT_UNSPECIFIED = 0;
+  // The user tapped OK.
+  ACKNOWLEDGEMENT_RESULT_OK = 1;
+}
+
+// LiveCommandError says why a live command did not complete. The sidecar returns it as
+// the MCP tool error and maps it to a Connect code on this service; see docs/protocol.md.
+enum LiveCommandError {
+  LIVE_COMMAND_ERROR_UNSPECIFIED = 0;
+  // No phone is watching. The command fails at once and is not stored.
+  LIVE_COMMAND_ERROR_OFFLINE = 1;
+  // Another command is in flight.
+  LIVE_COMMAND_ERROR_BUSY = 2;
+  // The command reached expires_at without an acknowledgement.
+  LIVE_COMMAND_ERROR_TIMEOUT = 3;
+  // The command ended early: the agent cancelled, the phone disconnected or was
+  // replaced by a newer watcher, or the sidecar shut down.
+  LIVE_COMMAND_ERROR_CANCELLED = 4;
+  // The request did not carry the right token for its endpoint.
+  LIVE_COMMAND_ERROR_UNAUTHENTICATED = 5;
+  // The acknowledgement names neither the in-flight command nor the most recent one.
+  LIVE_COMMAND_ERROR_UNKNOWN_COMMAND = 6;
+  // The text is empty, only whitespace, over 4096 UTF-8 bytes, or not valid Unicode.
+  LIVE_COMMAND_ERROR_INVALID_TEXT = 7;
+}
+
+message WatchCommandsRequest {}
+
+message WatchCommandsResponse {
+  // Ready confirms that the stream is registered as the active watcher.
+  message Ready {}
+
+  oneof event {
+    // Always the first message on a stream.
+    Ready ready = 1;
+    // A command to display.
+    LiveCommand command = 2;
+  }
+}
+
+message AcknowledgeCommandRequest {
+  CommandAcknowledgement acknowledgement = 1;
+}
+
+message AcknowledgeCommandResponse {}

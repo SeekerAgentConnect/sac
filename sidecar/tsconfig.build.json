@@ -3,7 +3,9 @@
   "compilerOptions": {
     "noEmit": false,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    // Emits the generated JavaScript in src/gen alongside the compiled sources.
+    "allowJs": true
   },
   "exclude": ["src/**/*.test.ts"]
 }

@@ -9,7 +9,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | Task | Status |
 | --- | --- |
 | SAW-001: Repository, toolchains, basic CI | Done. The empty Android app and the sidecar skeleton build and pass the checks. |
-| SAW-002: Live-command protocol and generated clients | Not started |
+| SAW-002: Live-command protocol and generated clients | Done. `LiveCommandService`, generated TypeScript and Kotlin code, and cross-runtime fixtures; see [`docs/protocol.md`](docs/protocol.md). |
 | SAW-003: Live MCP command bridge | Not started |
 | SAW-004: Android hello-world screen | Not started |
 | SAW-005: MCP test client | Not started |
@@ -22,8 +22,9 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | Path | Contents |
 | --- | --- |
 | `android/` | Kotlin/Compose/Material 3 app with one `app` module, plus the Gradle wrapper and version catalog |
-| `sidecar/` | TypeScript/Node sidecar. It currently loads and validates the Stage 1 configuration; the Connect API and the MCP endpoint land in SAW-003. |
-| `proto/` | Protobuf contract, a Buf module. Empty until SAW-002. |
+| `sidecar/` | TypeScript/Node sidecar. It validates the Stage 1 configuration and holds the live-command rules (`src/live`) and the generated protocol code (`src/gen`). The Connect API and the MCP endpoint land in SAW-003. |
+| `proto/` | Protobuf contract (a Buf module) and cross-runtime fixtures in `proto/fixtures`; see [`docs/protocol.md`](docs/protocol.md) |
+| `scripts/` | `generate.mjs`, which backs `pnpm generate` and `pnpm check:generated` |
 | `test-agent/` | Minimal MCP test client, landing in SAW-005 |
 | `gateway/` | Docker Compose, TLS, and OAuth gateway configuration, landing in Stage 7 |
 | `docs/` | Development docs, guides, testing notes, and the changelog |
@@ -56,14 +57,15 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | Command | What it does | Status |
 | --- | --- | --- |
 | `pnpm install --frozen-lockfile` | Installs exactly what the committed lockfile specifies | Works |
-| `pnpm check` | Runs Prettier, ESLint, TypeScript type checks, and the sidecar tests without changing any files | Works. Protocol checks are added in SAW-002. |
+| `pnpm check` | Runs Prettier, `buf format`, ESLint, `buf lint`, TypeScript type checks, and the sidecar tests without changing any files | Works |
 | `pnpm check:android` | Runs Spotless (ktfmt), Android unit tests, Android lint, and a debug APK build | Works |
 | `pnpm build` | Compiles the sidecar to `sidecar/dist` | Works |
 | `pnpm dev:sidecar` | Loads `.env`, validates the Stage 1 configuration, and reports the result | Works for configuration only. Endpoints land in SAW-003. |
-| `pnpm generate` | Runs `buf generate` with the pinned generators | Fails with `Module "proto" had no .proto files` until SAW-002 |
+| `pnpm generate` | Regenerates the TypeScript and Kotlin protocol code and the binary fixtures from `proto/`; needs network access | Works |
+| `pnpm check:generated` | Fails if the committed generated code or fixtures differ from a fresh generation; changes no files | Works |
 | `pnpm agent ...` | Runs the MCP test-agent CLI | Not implemented until SAW-005; exits with an error |
 | `pnpm test:hello` | Runs the live-bridge integration tests | Not implemented until SAW-008; exits with an error |
-| `pnpm format`, `pnpm format:android` | Apply Prettier and ktfmt formatting | Works |
+| `pnpm format`, `pnpm format:android` | Apply Prettier and `buf format`, and ktfmt for Kotlin | Works |
 
 ## Development configuration
 
@@ -81,7 +83,7 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 
 `.github/workflows/ci.yml` runs on pull requests and on pushes to `master` and `develop`:
 
-- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check`, then `pnpm build`
+- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check`, `pnpm check:generated`, and `pnpm build`
 - **Android:** `pnpm check:android` on Temurin 21
 
 The workflow has read-only repository permissions and never commits.

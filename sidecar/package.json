@@ -9,6 +9,9 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@bufbuild/protobuf": "catalog:"
+  },
   "devDependencies": {
     "@types/node": "24.13.4",
     "typescript": "catalog:"
