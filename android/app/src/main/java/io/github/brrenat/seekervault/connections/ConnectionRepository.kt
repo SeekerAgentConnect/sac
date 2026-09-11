@@ -171,6 +171,8 @@ class ConnectionRepository(
                     pages++
                 } while (token.isNotEmpty() && pages < MAX_PAGES)
                 val current = locked {
+                    // The connection may have been removed while the pages were on their way.
+                    if (store.get(id) == null) return@locked emptyList<ActionRequest>()
                     // An answer that settled while the pages were on their way took its request
                     // off the sidecar's list, so pages read earlier mustn't bring it back.
                     val settled =

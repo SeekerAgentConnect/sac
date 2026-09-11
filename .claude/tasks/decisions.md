@@ -217,6 +217,7 @@
 - **Fetches of one connection are serialized in the repository,** with one lock per connection. A guard in each ViewModel can't see the others.
   - A second fetch waits, then reads again, so the newest page wins.
   - The list is published under the repository's lock, without requests whose answers have settled. A page read before an answer can't bring its request back.
+  - A fetch that finishes after its connection was removed publishes nothing. `remove` doesn't wait for fetches, so the fetch checks under the same lock.
 - **A request ID must be a UUID before it enters the inbox,** because it names the file its answer is stored in. A request whose ID isn't one is left out, like another connection's request.
 - **Retention counts from `settledAt`.**
   - Answers stored before this change have no `settledAt`, and count from `answeredAt` as before.

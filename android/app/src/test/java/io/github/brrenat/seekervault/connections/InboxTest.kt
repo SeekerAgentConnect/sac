@@ -288,6 +288,25 @@ class InboxTest {
     }
 
     @Test
+    fun aFetchThatFinishesAfterItsConnectionWasRemovedPublishesNothing() = runBlocking {
+        val connection = repository.pair(serverA.issue(URL_A))
+        serverA.addPending(connection.id)
+        val read = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.afterList = {
+            read.complete(Unit)
+            release.await()
+        }
+        val fetching = async { repository.refresh(connection.id) }
+        read.await()
+        repository.remove(connection.id)
+        release.complete(Unit)
+        fetching.await()
+        assertFalse(connection.id in repository.inbox.value.pending)
+        assertNull(repository.connection(connection.id))
+    }
+
+    @Test
     fun leavesOutARequestWhoseIdCantNameAStoredAnswer() = runBlocking {
         val connection = repository.pair(serverA.issue(URL_A))
         val good = serverA.addPending(connection.id)

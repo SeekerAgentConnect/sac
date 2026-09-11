@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.connections.PairingCode
 import io.github.brrenat.seekervault.connections.softwareKey
 import java.io.File
 import java.net.URLEncoder
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -47,6 +48,9 @@ class ConnectionsActivityTest {
     fun useFakes() {
         app.connectionGateway = { gateway }
         app.credentialKey = { key }
+        // The repository's work runs on the main thread, where the Compose rule waits for it. On
+        // Dispatchers.IO, an assertion could run before a disconnect had reached the screen.
+        app.connectionIo = Dispatchers.Unconfined
     }
 
     @After fun close() = scenario?.close() ?: Unit
