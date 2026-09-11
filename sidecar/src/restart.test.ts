@@ -14,10 +14,12 @@ import {
   display,
   errorCode,
 } from "./testing/clients.ts";
+import { temporaryDatabasePath } from "./testing/process.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
+const DATABASE_PATH = temporaryDatabasePath();
 
 async function freePort(): Promise<number> {
   const server = createServer().listen(0, "127.0.0.1");
@@ -40,6 +42,8 @@ async function startProcess(
       MCP_TOKEN,
       PHONE_TOKEN,
       LIVE_COMMAND_TIMEOUT_SECONDS: "30",
+      // A throwaway database, never the developer's.
+      DATABASE_PATH: DATABASE_PATH,
     },
   });
   let output = "";

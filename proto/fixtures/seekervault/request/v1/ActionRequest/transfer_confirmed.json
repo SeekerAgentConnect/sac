@@ -1,0 +1,29 @@
+{
+  "ref": {
+    "connectionId": "5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f",
+    "requestId": "f7e6d5c4-b3a2-4918-8a7f-6e5d4c3b2a19"
+  },
+  "action": {
+    "transfer": {
+      "wallet": "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW",
+      "network": "NETWORK_MAINNET",
+      "recipient": "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh",
+      "asset": {
+        "tokenMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+      },
+      "amount": "1500000"
+    }
+  },
+  "agentNote": "Invoice 2026-042",
+  "state": "REQUEST_STATE_CONFIRMED",
+  "createdAt": "2026-09-11T12:00:00Z",
+  "expiresAt": "2026-09-11T13:00:00Z",
+  "updatedAt": "2026-09-11T12:03:07.250Z",
+  "outcome": {
+    "approval": {
+      "preparedVersion": 2,
+      "contentHash": "Ayvh9s1mGdYwt7jUOtauxSIiheOxOS3fQY3ruYkPdoI="
+    },
+    "signature": "yZ1sTYjILaMRLXxssKRlwCwu8+u7k+5TLYEsifXX09LsGTcQuwLUAYO/AZi0vgqil4r4TfByoxEeJqwG0+4Ukw=="
+  }
+}

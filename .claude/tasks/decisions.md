@@ -115,3 +115,120 @@
 - **`sdkmanager "platforms;android-37.0"` stays.** The review suggested `platforms;android-37`. The installed platform's own `package.xml`, however, declares `path="platforms;android-37.0"` (API level 37.0). Since API 36.1, platform packages carry a minor version.
 - **An overdue command is settled before the next one starts.** `LiveCommandSlot.start()` already expired it, but the bridge's waiter wasn't answered, so the first MCP call hung. `display()` now settles it as `TIMEOUT` first.
 - **The owner's device and Hermes pass is recorded with attribution:** "run and reported by the owner on 2026-09-11". The Seeker's details come from adb. The owner's Hermes version wasn't reported.
+
+## 2026-09-11 — SAW-009 durable request contract (SEE-16)
+
+- **A new package, `seekervault.request.v1`, sits beside the live one.** The live diagnostic stays as it was, and neither package imports the other. The live stream holds one command in flight and stores nothing, which is the opposite of a durable queue, so building on it would have changed Stage 1's behavior.
+- **A connection is one phone paired with one sidecar, and every reference carries both IDs.** A request ID is unique only within its connection, because another sidecar can issue the same one. A reference to another connection gets NOT_FOUND, the same as a request that doesn't exist.
+- **Idempotency keys are scoped to the agent, meaning the whole sidecar, not to the connection.** A retry after the phone re-paired must still find the original request. Scoped per connection, the retry would create a second request, and possibly a second payment.
+- **The fingerprint is the SHA-256 of the action's deterministic Protobuf encoding.** protobuf-es writes fields in number order, the action has no maps, and unknown fields are dropped, so equal actions give equal bytes. The agent's note and the request's lifetime are left out, so an LLM that rewords its retry gets the original request instead of an error.
+- **Approval is a step of its own, and it's the commit point (PENDING → PROCESSING).** The phone reports the approval before it invokes the wallet, so a cancellation and an approval can't both win. The step also records that the wallet may have been invoked, which is what makes an UNKNOWN outcome reportable.
+- **No state moves backward.** A retry is a new request with a new key.
+  - UNKNOWN isn't terminal: a late report or a chain lookup can settle it.
+  - SUBMITTED never becomes UNKNOWN: once the signature is known, the chain can always answer.
+- **Each financial action names its wallet and network, and the agent must supply them.** A mismatch is refused at creation. That makes the agent's intent explicit, and the phone never signs with a wallet the agent didn't name.
+- **The asset is explicit: `native_sol` or a `token_mint`.** If an empty mint meant SOL, a dropped field would silently become a SOL transfer.
+- **Amounts are u64 decimal strings, and slippage runs from 1 to 10000.** A slippage of 0 counts as missing, so proto3's zero default stays unambiguous without `optional`.
+- **One `RequestError` enum serves both MCP text and Connect details.** A Connect code alone can't tell a superseded version from an expired request, so each RPC error carries a `RequestErrorDetail` with the request as it is now. Both runtimes can read it: connect-kotlin 0.9.0 has `unpackedDetails` and a javalite parser (checked in the jar), and connect-es has `findDetails` (checked in the types).
+- **`PolicyEvaluation` is defined, but nothing sends it.** The RFC keeps policies on the phone. The message fixes the shape and makes the separation from `RequestState` explicit. Stage 5 decides where the phone keeps it.
+- **The rules are pure code in `sidecar/src/requests/`, as SAW-002's were.** SAW-010 adds storage, duplicate submissions, and transactions around them. The Stage 1 boundary guards stay unchanged, because nothing here stores anything.
+
+## 2026-09-11 — SAW-010 persistent sidecar queue (SEE-17)
+
+- **SQLite through Node's built-in `node:sqlite`.** Node 24.21 ships it without a flag or a warning, so there's no native build, no new dependency, and no difference between the Mac and CI. The ticket rules out Redis and external databases.
+- **WAL with `synchronous = FULL`, and one IMMEDIATE transaction per operation that commits before the answer.**
+  - WAL with NORMAL could lose the last commits in a power cut, which would break "persist before acknowledging".
+  - The store's API is synchronous, so Node's single thread never interleaves two operations.
+  - The write lock also covers a second process.
+- **Expiry runs first in every operation, not on a timer.** A timer would add a background component, and a window in which a PENDING request is already past its deadline. Applying expiry inside each transaction gives the contract's exact boundary.
+- **Repeated results are recognized by their bytes.** Every accepted result is kept in `results`, and an identical submission returns the request unchanged. That's simpler and stricter than comparing states, because a different result that leads to the same state is still a conflict.
+- **Until pairing, the sidecar has one connection, created with the database, and `PHONE_TOKEN` authenticates as it.** Requests need a connection now, and pairing is SAW-011. The connection's ID survives restarts, and the startup log prints it.
+- **Wallet actions are refused with `WALLET_MISMATCH`.** Until a wallet connects in Stage 3, only the ack can be created. That matches the contract: no wallet binding matches when there's no wallet.
+- **The database defaults to `sidecar/data/sidecar.db`, resolved from the sidecar package rather than the working directory.** That way, `pnpm dev:sidecar` and `node sidecar/dist/main.js` use the same file. Test harnesses always pass a throwaway path, so tests never touch the developer's requests.
+- **`/mcp` bodies are limited to 64 KiB.** The MCP SDK reads a body of any size. The endpoint now reads the body itself and passes it on parsed:
+  - A declared length over the limit is refused at once.
+  - A larger chunked body is drained without being kept.
+- **The stage guard changed on purpose.** It now allows the file system and SQLite only in `src/storage/`, and still forbids key generation and wallet packages.
+- **The v1 fixture is SQL, not a binary database.** It's reviewable and diffable, and the test proves it's a real v1 database by comparing its schema with migration 1's.
+- **The CI emulator job runs without the Gradle cache.**
+  - The emulator needs 7.2 GB of free disk for its data partition. After the Android job saved an 886 MB Gradle cache, restoring it left 6.1 GB, so from run 34593182239 on, the emulator never booted.
+  - Passing and failing runs had the same runner image and the same emulator build (37.1.11.0).
+  - `disk-size: 4096M` didn't lower the 7.2 GB, so it's removed.
+  - The job builds the app without the cache, as the passing runs did.
+
+## 2026-09-11 — SAW-011 secure pairing and separate roles (SEE-18)
+
+- **Four credentials, each accepted in exactly one place.** `MCP_TOKEN` opens `/mcp`, the pairing token opens `Pair`, the phone credential opens `RequestService` and `RevokeConnection`, and `PHONE_TOKEN` opens only the Stage 1 `LiveCommandService`. Keeping `PHONE_TOKEN` for the live diagnostic leaves Stage 1 and its device test unchanged, and gives the operator's `.env` no approval authority.
+- **The sidecar creates the phone credential and returns it once.** It keeps only the SHA-256, so the database, its backups, and the log can't reveal it. The secret is 32 random bytes, so a plain hash is enough. A slow password hash protects guessable secrets, which these aren't.
+- **`pnpm pair` writes the pairing token straight into the database,** instead of asking the running sidecar over an admin endpoint. An admin endpoint would be one more credential to protect. SQLite's locking makes a short-lived second process safe, and the operator can pair or revoke whether or not the sidecar is running.
+- **The pairing token is bound to the URL in its code.** A `Pair` for another URL is refused, and the token stays usable. The URL is normalized first, so a trailing slash or the host's case doesn't matter.
+- **Pairing always creates a new connection, and never changes an existing one.** So a code can't redirect an existing connection to another host. The phone must treat every code as a new pairing too. The lasting `server_id` lets the phone recognize a sidecar it knows, without trusting a code's URL for an old connection.
+- **One active phone per sidecar, enforced at pairing.** Pairing revokes every active connection. A phone with several sidecars (SAW-012) has one connection to each.
+- **Refusals don't say which check failed.** Unknown, expired, used, and missing pairing tokens all get one UNAUTHENTICATED message. A URL mismatch is answered differently: only a holder of a valid token can reach that check, and telling them lets them retry at the right URL.
+- **Revocation cancels PENDING requests in the same transaction, and leaves overdue ones to expire.** Expiry comes first everywhere else, so a request past its deadline must never become CANCELLED.
+- **Migration 2 revokes SAW-010's stand-in connection.** It has no credential, so no phone could ever use it. Its PENDING requests are cancelled the way a revocation cancels them, and the frozen v1 fixture checks that.
+- **TLS ends at a trusted endpoint in front of the loopback sidecar,** such as Tailscale Serve or Caddy, and not in the sidecar. The sidecar never listens beyond loopback, the phone keeps Android's normal certificate checks, and Stage 7's gateway can take over later. The server URL must be HTTPS, apart from the loopback development URL. One function, `invalidServerUrlReason`, holds that rule for the configuration, the CLI, and `Pair`.
+- **uqr 0.1.3 draws the QR code.** It has no dependencies, and it renders to the terminal in block characters.
+
+## 2026-09-11 — SAW-012 Android pairing and connections (SEE-19)
+
+- **Files for connections, not a database.** Each connection has one JSON file (`AtomicFile`) and one credential file. That keeps each connection's data physically separate, so removing one can't touch another, and it needs no Room, DataStore, or KSP. SAW-013 can add a database for the inbox if it needs one.
+- **The Android Keystore directly, not EncryptedSharedPreferences.** Jetpack Security's crypto library is deprecated. An AES-256-GCM key in the Keystore does the same job with platform code. The connection ID as associated data binds each ciphertext to its connection.
+- **No user authentication on the key.** The app reads a credential only in the foreground, when the owner acts. A biometric prompt for every refresh would add friction and protect no approval: from Stage 3 on, the wallet confirms those itself.
+- **Nothing is backed up.** A restored credential would be useless anyway, because the Keystore key doesn't travel. Recovery is pairing again, and the one-phone model makes that safe: the new pairing revokes the old connection.
+- **The connection ID from the sidecar names local files, so it's checked as a lowercase UUID first.** A hostile sidecar can't write outside the app's directories. The credential must also have the right format, and the server ID must match the code's.
+- **A code never updates a connection.** Even with a known server ID, it pairs anew, and the app then refreshes the old connection, which the sidecar has revoked. A hostile code that claims a known server ID can't take over a connection or its credential. It can't make the app delete one either: only the old connection's own sidecar can revoke it.
+- **Plain HTTP follows the platform's policy.** The parser accepts loopback HTTP only where `NetworkSecurityPolicy` permits cleartext to that host: loopback in debug builds, and nothing in release builds. The rule can't drift from the network security config.
+- **CameraX and ZXing for scanning.** ZXing's core decoder has no dependencies and needs no Google Play services. Google's code scanner would have needed Play services and brings its own UI, which runs outside the app's permission.
+- **Navigation is a saved list of route strings,** not a navigation library. Four screens don't need one, and nothing secret goes into saved state. The code being entered stays in the ViewModel's memory.
+- **The error classifier reads suppressed exceptions.** When `localhost` resolves to both `::1` and `127.0.0.1`, OkHttp throws the first route's failure and suppresses the rest. A refused IPv6 connection hid the certificate failure on IPv4, and the TLS test caught it.
+
+## 2026-09-11 — SAW-013 pending inbox and queued acknowledgements (SEE-20)
+
+- **The repository that holds the credentials also does the fetching and answering.** Every call needs a connection's credential, and keeping those calls in `ConnectionRepository` keeps one rule in one place: a credential goes only to its own URL. A separate inbox class would have needed the credential handed to it.
+- **Answers are stored first; pending lists aren't stored at all.** The sidecar holds the requests, so the phone fetches them fresh. Only the owner's decision must survive a crash or a dead network, so only answers are written, one file per answer under its connection's directory, which keeps identical request IDs on two servers apart.
+- **A failed send is retried by resending, never by asking first.** `SubmitResult` already returns the request unchanged for a repeat of an accepted result. So after a lost response, sending again is the whole recovery. `INVALID_STATE` with its `RequestErrorDetail` tells the phone the request moved on (cancelled or expired), and the answer is marked superseded, not retried.
+- **Retries happen only when the owner acts:** on opening the app, opening a connection, refreshing, or **Send again**. That keeps the no-background-service rule. Resending the owner's own answer isn't automatic execution: nothing is answered that the owner didn't answer.
+- **One send per answer at a time,** guarded in the repository. A refresh that overlaps a tap skips the answer being sent, and the ViewModel ignores taps while a send runs or after an answer exists.
+- **Settled answers are kept for a week,** so reopening a request shows its outcome, and then pruned at start-up. Waiting answers are kept until they settle.
+- **The test agent gained `ack`, `get`, and `cancel`.** Hermes is limited to the Stage 1 tool until SAW-014, and the owner-run Stage 2 check needs an agent that can queue a request and read it back.
+
+## 2026-09-11 — SAW-014 Stage 2 acceptance gate (SEE-21)
+
+- **The demo tool is opt-in, with `MCP_DEMO_TOOLS=true`.** `vault_request_ack` isn't a financial action, but it exists only to exercise the workflow without a wallet.
+  - A sidecar that nobody configured serves only the tools that later stages keep: `vault_display_command`, `vault_get_request`, and `vault_cancel_request`.
+  - `.env.example` is a development configuration, so it sets the flag.
+  - A value other than `true` or `false` is a configuration error, so a typo can't turn the tool off without a word.
+- **Hermes gets `vault_cancel_request` too.** Withdrawing its own request costs the owner nothing, and the wallet tools of later stages need the same way out. As before, no tool pairs, answers, or revokes.
+- **Two acceptance suites, one per side.** Each side's real code runs only in its own runtime: the CLI, the sidecar processes, and `pnpm pair` in Node, and the app's repository and files on the JVM.
+  - `pnpm test:queue` runs in the Node job in seconds.
+  - `Stage2AcceptanceTest` runs in `pnpm check:android`, against the same real sidecars.
+- **Time passes while a sidecar is down through a preload, not a setting.** Expiry across a restart needs the sidecar's clock to jump, and a configuration variable for the clock would ship a way to change the time.
+  - Test harnesses start the process with `--import sidecar/src/testing/clock.ts`, which moves `Date.now()` ahead by a fixed amount. The stores already read the time through `Date.now()`.
+  - In-process tests get a fake clock through `SidecarOptions.now`, which moves only when the test moves it.
+  - A harness never restarts a sidecar with its clock behind where it was, so no request is created in the future.
+- **Stage 2 isn't declared accepted yet.** Every automated check passes. But Stage 1 was accepted only after the owner's run on the Seeker, and Stage 2 follows the same rule. `docs/testing/stage-2.md` holds the owner-run steps.
+
+## 2026-09-11 — PR #3 review
+
+- **Coming back to the foreground counts as opening the app.** An owner who switches back expects what opening the app would show.
+  - The fetch runs from the activity's `onStart`, and only after an `onStop` that wasn't a rotation, so a rotation still fetches nothing.
+  - It's a foreground action, and nothing runs in the background.
+- **Fetches of one connection are serialized in the repository,** with one lock per connection. A guard in each ViewModel can't see the others.
+  - A second fetch waits, then reads again, so the newest page wins.
+  - The list is published under the repository's lock, without requests whose answers have settled. A page read before an answer can't bring its request back.
+  - A fetch that finishes after its connection was removed publishes nothing. `remove` doesn't wait for fetches, so the fetch checks under the same lock.
+- **A request ID must be a UUID before it enters the inbox,** because it names the file its answer is stored in. A request whose ID isn't one is left out, like another connection's request.
+- **Retention counts from `settledAt`.**
+  - Answers stored before this change have no `settledAt`, and count from `answeredAt` as before.
+  - The file format stays at version 1, because the field is optional.
+- **Device names are escaped when printed, not refused at pairing.**
+  - Escaping covers names already stored, and needs no change to the contract.
+  - Control, format, and line separator characters print as `\u{…}`, and backslashes are doubled, so the output can't be mistaken for an escape.
+- **The stores moved into `storage/`, and the guard now checks for SQL.**
+  - `AGENTS.md` and `docs/development/sidecar.md` said only `storage/` touches SQLite. The test checked imports only, while `RequestStore` and `PairingStore` ran SQL through the database handle.
+  - Moving the two stores was a file move, with no change in behavior.
+  - The pure rules stay in `requests/` and `pairing/`. `RequestFailure` moved to `requests/failure.ts`, so the workflow's error type doesn't live in storage.
+- **A removal is final, for replies too.** The fetch guard didn't cover `SubmitResult` replies. `settle` and the retry handler wrote back the answer they had captured before the send, so a reply that came back after `remove` recreated the connection's answers.
+  - Every write of a delivery outcome now rereads the connection and the stored answer under the repository's lock, the lock `remove` holds, and writes nothing if either is gone.
+  - It writes from the stored answer, not the captured one. A retryable failure leaves an answer that something else settled meanwhile, such as a revocation, as it is.

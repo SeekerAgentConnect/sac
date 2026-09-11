@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package seekervault.request.v1;
+
+import "seekervault/request/v1/request.proto";
+
+// PairingService connects a phone to this sidecar and disconnects it. A sidecar has one active
+// phone connection at a time. The operator shows a one-use pairing code (`pnpm pair`), a URI
+// with the sidecar's URL, its ID, and a pairing token; see docs/security.md.
+service PairingService {
+  // Pair exchanges a one-time pairing token (`Authorization: Bearer <pairing token>`) for a new
+  // connection and its phone token.
+  rpc Pair(PairRequest) returns (PairResponse);
+  // RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The
+  // token stops working at once, and the connection's PENDING requests become CANCELLED.
+  // Requests already approved are still resolved, and agents can still read every request.
+  rpc RevokeConnection(RevokeConnectionRequest) returns (RevokeConnectionResponse);
+}
+
+// RequestService is the phone's side of the durable workflow. Every RPC is unary and needs the
+// connection's phone token (`Authorization: Bearer <phone token>`). There is no stream and no
+// push: the phone fetches when the app opens or the user refreshes. Every connection_id and
+// RequestRef must name the caller's own connection.
+service RequestService {
+  // ListPending returns the connection's PENDING requests, oldest first.
+  rpc ListPending(ListPendingRequest) returns (ListPendingResponse);
+  // GetRequest returns one request, in any state.
+  rpc GetRequest(GetRequestRequest) returns (GetRequestResponse);
+  // PrepareRequest builds a fresh unsigned transaction for a PENDING transfer or swap, as a new
+  // version.
+  rpc PrepareRequest(PrepareRequestRequest) returns (PrepareRequestResponse);
+  // SubmitResult reports the user's decision or the wallet's result, and returns the request as
+  // it is afterwards. Repeating an accepted submission has no further effect.
+  rpc SubmitResult(SubmitResultRequest) returns (SubmitResultResponse);
+}
+
+message PairRequest {
+  // A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
+  string device_name = 1;
+  // The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+  // token presented for any other URL.
+  string server_url = 2;
+}
+
+message PairResponse {
+  // The new connection. Pairing always creates one, and never changes an existing connection.
+  string connection_id = 1;
+  // The phone's credential for this connection. The sidecar returns it only this once. The
+  // phone keeps it in platform-backed secure storage, and never shows or logs it.
+  string phone_token = 2;
+  // The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+  // restarts. The phone refuses a response whose server_id isn't its pairing code's.
+  string server_id = 3;
+}
+
+message RevokeConnectionRequest {
+  string connection_id = 1;
+}
+
+message RevokeConnectionResponse {}
+
+message ListPendingRequest {
+  string connection_id = 1;
+  // The most requests to return: 1 to 100, or 0 for the default of 50.
+  uint32 page_size = 2;
+  // next_page_token from the previous page; empty for the first page.
+  string page_token = 3;
+}
+
+message ListPendingResponse {
+  // Ordered by created_at, then request_id. Paging never repeats a request, and never skips
+  // one that stays PENDING throughout.
+  repeated ActionRequest requests = 1;
+  // Empty on the last page.
+  string next_page_token = 2;
+}
+
+message GetRequestRequest {
+  RequestRef ref = 1;
+}
+
+message GetRequestResponse {
+  ActionRequest request = 1;
+}
+
+message PrepareRequestRequest {
+  RequestRef ref = 1;
+}
+
+message PrepareRequestResponse {
+  PreparedTransaction prepared = 1;
+}
+
+// SubmitResultRequest carries one result. Which results apply in which state is listed in
+// docs/protocol.md.
+message SubmitResultRequest {
+  RequestRef ref = 1;
+  oneof result {
+    // The user acknowledged an ack request: PENDING to COMPLETED.
+    Acknowledgement acknowledgement = 2;
+    // The user rejected the request in the app (from PENDING) or declined in the wallet (from
+    // PROCESSING or UNKNOWN): to REJECTED.
+    Rejection rejection = 3;
+    // The user approved a wallet action: PENDING to PROCESSING. The phone sends it before
+    // invoking the wallet, and invokes the wallet only if it's accepted.
+    Approval approval = 4;
+    // The wallet signed the message: PROCESSING or UNKNOWN to COMPLETED.
+    MessageSignature message_signature = 5;
+    // The wallet sent the transaction: PROCESSING or UNKNOWN to SUBMITTED.
+    TransactionSubmission transaction_submission = 6;
+    // The wallet failed before signing or sending anything: PROCESSING or UNKNOWN to FAILED.
+    ExecutionFailure execution_failure = 7;
+    // The phone can't tell whether the wallet signed or sent: PROCESSING to UNKNOWN.
+    UnknownOutcome unknown_outcome = 8;
+  }
+}
+
+message SubmitResultResponse {
+  ActionRequest request = 1;
+}
+
+// Acknowledgement is the user's OK on an ack request.
+message Acknowledgement {}
+
+// Rejection is the user's refusal, in the app or in the wallet.
+message Rejection {}
+
+// MessageSignature is the wallet's signature of a sign_message request's bytes.
+message MessageSignature {
+  // The 64-byte Ed25519 signature. The sidecar verifies it against the request's wallet.
+  bytes signature = 1;
+}
+
+// TransactionSubmission is the wallet's report that it sent the approved transaction.
+message TransactionSubmission {
+  // The transaction's first signature (64 bytes), which is its ID on chain.
+  bytes signature = 1;
+}
+
+// ExecutionFailure is a wallet error that left nothing signed or sent.
+message ExecutionFailure {
+  // What the wallet reported. Display text; at most 1024 UTF-8 bytes.
+  string detail = 1;
+}
+
+// UnknownOutcome says the phone lost track of the wallet after the approval.
+message UnknownOutcome {
+  // What happened, as far as the phone knows. Display text; at most 1024 UTF-8 bytes.
+  string detail = 1;
+}

@@ -15,6 +15,9 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 export const DISPLAY_COMMAND_TOOL = "vault_display_command";
+export const REQUEST_ACK_TOOL = "vault_request_ack";
+export const GET_REQUEST_TOOL = "vault_get_request";
+export const CANCEL_REQUEST_TOOL = "vault_cancel_request";
 
 /** Process exit codes (test-agent/README.md). */
 export const ExitCode = {
@@ -27,6 +30,7 @@ export const ExitCode = {
   TIMEOUT: 6,
   CANCELLED: 7,
   INVALID_TEXT: 8,
+  REFUSED: 9,
 } as const;
 export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
 
@@ -90,6 +94,23 @@ export async function listTools(client: Client): Promise<Tool[]> {
 }
 
 /**
+ * Fails with exit code 3 unless the MCP server offers the tool `name`. `why` tells the reader what
+ * to do about it. Listing the tools also lets the SDK validate results against their schemas.
+ */
+export async function requireTool(
+  client: Client,
+  name: string,
+  why?: string,
+): Promise<void> {
+  if (!(await listTools(client)).some((tool) => tool.name === name)) {
+    throw new AgentFailure(
+      ExitCode.CONNECTION,
+      `the MCP server does not offer ${name}${why === undefined ? "" : `; ${why}`}`,
+    );
+  }
+}
+
+/**
  * Discovers vault_display_command, calls it with `text`, and returns the acknowledgement once the
  * user taps OK. Throws AgentFailure for tool errors (OFFLINE, BUSY, ...) and for the client timeout.
  */
@@ -98,16 +119,7 @@ export async function displayCommand(
   text: string,
   timeoutMs: number,
 ): Promise<Acknowledgement> {
-  if (
-    !(await listTools(client)).some(
-      (tool) => tool.name === DISPLAY_COMMAND_TOOL,
-    )
-  ) {
-    throw new AgentFailure(
-      ExitCode.CONNECTION,
-      `the MCP server does not offer ${DISPLAY_COMMAND_TOOL}`,
-    );
-  }
+  await requireTool(client, DISPLAY_COMMAND_TOOL);
 
   let result: CallToolResult;
   // Without resumable streams, the SDK reports a dropped response stream only through onerror and
@@ -174,6 +186,46 @@ export async function displayCommand(
     );
   }
   return { id: content.id, result: "OK" };
+}
+
+/** A durable request as the sidecar's tools return it (docs/protocol.md#agent-api-mcp). */
+export interface RequestView {
+  readonly request_id: string;
+  readonly action: string;
+  readonly status: string;
+  readonly terminal: boolean;
+  readonly created_at: string;
+  readonly expires_at: string;
+  readonly updated_at: string;
+  readonly signature?: string;
+  readonly detail?: string;
+}
+
+/**
+ * Calls one of the durable request tools, which answer at once, and returns the request. A tool
+ * error, such as NOT_PAIRED or NOT_FOUND, becomes AgentFailure with exit code 9 and the sidecar's
+ * "<CODE>: <message>".
+ */
+export async function requestTool(
+  client: Client,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<RequestView> {
+  const result = (await client.callTool({ name, arguments: args }, undefined, {
+    timeout: 30_000,
+  })) as CallToolResult;
+  if (result.isError === true) {
+    const first = result.content[0];
+    throw new AgentFailure(
+      ExitCode.REFUSED,
+      first?.type === "text" ? first.text : `${name} reported an error`,
+    );
+  }
+  const view = result.structuredContent;
+  if (typeof view?.request_id !== "string" || typeof view.status !== "string") {
+    throw new AgentFailure(ExitCode.FAILURE, `${name} returned no request`);
+  }
+  return view as unknown as RequestView;
 }
 
 function connectionFailure(url: URL, error: unknown): AgentFailure {

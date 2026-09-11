@@ -133,7 +133,7 @@ If a step fails, look it up in [`troubleshooting.md`](troubleshooting.md).
     adb shell am start -n io.github.brrenat.seekervault/.MainActivity
     ```
 
-    The **Live test** screen opens. The Server URL is `http://127.0.0.1:8080`, the phone token is empty, and the status reads "Disconnected".
+    The app opens on **Connections**. Tap **Live test** at the top: the live-test screen opens. The Server URL is `http://127.0.0.1:8080`, the phone token is empty, and the status reads "Disconnected". (Pairing the phone with a sidecar, for the requests that later stages bring, is in [`pairing.md`](pairing.md). The hello world doesn't need it.)
 
 18. **Know where the logs are.** The app writes no log messages of its own, so the sidecar's terminal is the first place to look. For crashes and system messages about the app:
 

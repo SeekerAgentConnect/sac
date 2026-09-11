@@ -1,0 +1,46 @@
+{
+  "requests": [
+    {
+      "ref": {
+        "connectionId": "5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f",
+        "requestId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+      },
+      "action": {
+        "ack": {
+          "text": "Deploy finished. Привет 👋🏽\nTap OK if you saw this."
+        }
+      },
+      "agentNote": "Checking that queued requests reach the phone",
+      "state": "REQUEST_STATE_PENDING",
+      "createdAt": "2026-09-11T12:00:00Z",
+      "expiresAt": "2026-09-12T12:00:00Z",
+      "updatedAt": "2026-09-11T12:00:00Z"
+    },
+    {
+      "ref": {
+        "connectionId": "5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f",
+        "requestId": "e6d5c4b3-a291-4807-8f6e-d5c4b3a29180"
+      },
+      "action": {
+        "swap": {
+          "wallet": "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW",
+          "network": "NETWORK_MAINNET",
+          "inputAsset": {
+            "tokenMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+          },
+          "outputAsset": {
+            "nativeSol": {}
+          },
+          "inputAmount": "9007199254740993",
+          "slippageBps": 50
+        }
+      },
+      "agentNote": "Rebalance: move idle USDC into SOL",
+      "state": "REQUEST_STATE_PENDING",
+      "createdAt": "2026-09-11T12:00:00.001Z",
+      "expiresAt": "2026-09-11T12:15:00.001Z",
+      "updatedAt": "2026-09-11T12:00:00.001Z"
+    }
+  ],
+  "nextPageToken": "cGFnZS0y"
+}

@@ -1,0 +1,278 @@
+syntax = "proto3";
+
+// The durable request workflow, from Stage 2 on. An agent proposes an action over MCP; the
+// sidecar stores it as an ActionRequest and answers at once with its ID and PENDING. The phone
+// fetches it over RequestService (service.proto), the user decides, and the phone reports the
+// result, which the agent reads with vault_get_request.
+//
+// Unlike the Stage 1 live diagnostic (seekervault.live.v1), requests are stored and survive
+// restarts, and the app doesn't need to be open when one is created. The lifecycle, the allowed
+// transitions, and the MCP tools are in docs/protocol.md.
+package seekervault.request.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// RequestRef names one request. A request ID is unique only within its connection, and two
+// servers can issue the same one, so every reference carries both IDs. The phone keys its
+// records by both, and the sidecar answers a reference to another connection's request with
+// NOT_FOUND.
+message RequestRef {
+  // The connection, one phone paired with one sidecar. The sidecar assigns it at pairing (a UUID).
+  string connection_id = 1;
+  // The request. The sidecar assigns it at creation (a UUID).
+  string request_id = 2;
+}
+
+// ActionRequest is one proposed action and where it stands. Everything except state,
+// updated_at, and outcome is fixed when the sidecar stores it, and never changes.
+message ActionRequest {
+  RequestRef ref = 1;
+  // What the agent asks for, including the wallet and network it's bound to.
+  Action action = 2;
+  // The agent's own description of the request. It's unverified, so the phone shows it apart
+  // from the verified parameters. Optional; at most 1024 UTF-8 bytes.
+  string agent_note = 3;
+  RequestState state = 4;
+  // When the sidecar stored the request.
+  google.protobuf.Timestamp created_at = 5;
+  // The deadline for the user's decision: the request is PENDING strictly before this instant
+  // and EXPIRED from it on. It no longer applies once the user approved, and it isn't the
+  // prepared transaction's blockhash expiry (PreparedTransaction.last_valid_block_height).
+  google.protobuf.Timestamp expires_at = 6;
+  // When state last changed; created_at until then.
+  google.protobuf.Timestamp updated_at = 7;
+  // What execution has produced so far.
+  Outcome outcome = 8;
+}
+
+// RequestState is the request's execution state and nothing else: the phone's policy
+// assessment (PolicyEvaluation) is separate and never moves a request. States change only along
+// the transitions in docs/protocol.md, never backward. REQUEST_STATE_UNKNOWN is a real state,
+// an uncertain outcome, not an unrecognized enum value.
+enum RequestState {
+  REQUEST_STATE_UNSPECIFIED = 0;
+  // Stored, and waiting for the user's decision until expires_at.
+  REQUEST_STATE_PENDING = 1;
+  // The user approved, and the phone is having the wallet sign (and, for a transaction, send).
+  // No second approval is accepted. Wallet actions only.
+  REQUEST_STATE_PROCESSING = 2;
+  // The wallet sent the transaction, and the sidecar is waiting for on-chain confirmation.
+  // Transfers and swaps only.
+  REQUEST_STATE_SUBMITTED = 3;
+  // Terminal. The transaction succeeded on chain: success for transfers and swaps.
+  REQUEST_STATE_CONFIRMED = 4;
+  // Terminal. The user acknowledged (ack) or the wallet signed the message (sign_message):
+  // success for actions without a transaction. Never used for transfers and swaps.
+  REQUEST_STATE_COMPLETED = 5;
+  // Terminal. The user rejected the request, in the app or in the wallet. Nothing was signed.
+  REQUEST_STATE_REJECTED = 6;
+  // Terminal. Withdrawn before approval: the agent cancelled it, or its connection was revoked.
+  REQUEST_STATE_CANCELLED = 7;
+  // Terminal. expires_at passed while the request was PENDING. Nothing was signed.
+  REQUEST_STATE_EXPIRED = 8;
+  // Terminal. It didn't succeed: the wallet failed before signing or sending, the transaction
+  // failed on chain, or it never landed before its blockhash expired.
+  REQUEST_STATE_FAILED = 9;
+  // Not terminal. Whether the wallet signed or sent isn't known yet: the phone lost track of
+  // the wallet, or no report arrived in time. The sidecar keeps resolving it, and a late report
+  // can still settle it. Agents must not treat it as a failure and retry.
+  REQUEST_STATE_UNKNOWN = 10;
+}
+
+// Outcome is what execution has produced. Fields are set as the request moves on, and never
+// cleared.
+message Outcome {
+  // The exact version the user approved. Set from PROCESSING on, for wallet actions.
+  Approval approval = 1;
+  // The wallet's 64-byte Ed25519 signature: of the message for sign_message (COMPLETED), or the
+  // transaction's first signature, its ID on chain, for transfers and swaps (from SUBMITTED on).
+  bytes signature = 2;
+  // Why the request ended as it did, or why its outcome is UNKNOWN. Display text, not for
+  // parsing; at most 1024 UTF-8 bytes.
+  string detail = 3;
+}
+
+// Approval is the user's approval of exactly what they reviewed. The phone sends it before it
+// invokes the wallet, and invokes the wallet only if the sidecar accepts it.
+message Approval {
+  // The approved PreparedTransaction.version for a transfer or swap; 0 for sign_message.
+  uint32 prepared_version = 1;
+  // SHA-256 (32 bytes) of what the wallet will sign: PreparedTransaction.content_hash for a
+  // transfer or swap, or the hash of the message bytes for sign_message.
+  bytes content_hash = 2;
+}
+
+// Action is what the agent asks for. Exactly one kind is set. The sidecar validates it before
+// storing the request, and never changes it afterwards.
+message Action {
+  oneof kind {
+    // Development and demo only: a queued acknowledgement, with no wallet.
+    AckAction ack = 1;
+    // Stage 3: sign a message with the wallet.
+    SignMessageAction sign_message = 2;
+    // Stage 4: send SOL or an SPL token.
+    TransferAction transfer = 3;
+    // Stage 6: swap through Jupiter.
+    SwapAction swap = 4;
+  }
+}
+
+// AckAction is the durable counterpart of the Stage 1 live command, for testing the queue: the
+// phone shows the text, and the user acknowledges or rejects it. It involves no wallet, isn't a
+// financial action, and succeeds as COMPLETED.
+message AckAction {
+  // Display-only text under the Stage 1 text rules: valid Unicode, 1 to 4096 UTF-8 bytes, and
+  // not only whitespace. Never code or an instruction for the phone.
+  string text = 1;
+}
+
+// SignMessageAction asks the wallet to sign exactly the given bytes. It succeeds as COMPLETED,
+// with the signature in Outcome.signature.
+message SignMessageAction {
+  // The wallet that must sign: its base58 address (an Ed25519 public key).
+  string wallet = 1;
+  // The message, 1 to 4096 bytes, kept exactly as the agent sent it: never trimmed,
+  // normalized, or re-encoded.
+  oneof content {
+    // Valid Unicode text. The signed bytes are its UTF-8 encoding.
+    string text = 2;
+    // Arbitrary bytes, signed as they are.
+    bytes data = 3;
+  }
+}
+
+// TransferAction sends an amount of one asset from the wallet to a recipient. It succeeds as
+// CONFIRMED.
+message TransferAction {
+  // The paying wallet's base58 address.
+  string wallet = 1;
+  // The network the wallet pays on.
+  Network network = 2;
+  // The recipient's base58 wallet address. For an SPL token, this is the owner, not a token
+  // account.
+  string recipient = 3;
+  Asset asset = 4;
+  // The amount in the asset's base units (lamports for SOL), as a decimal integer string: 1 to
+  // 18446744073709551615, with no sign, decimal point, exponent, or leading zeros.
+  string amount = 5;
+}
+
+// SwapAction swaps an exact input amount through Jupiter. It succeeds as CONFIRMED.
+message SwapAction {
+  // The wallet that pays the input and receives the output, as a base58 address.
+  string wallet = 1;
+  Network network = 2;
+  Asset input_asset = 3;
+  // Must differ from input_asset.
+  Asset output_asset = 4;
+  // The exact input amount in input_asset's base units, formatted like TransferAction.amount.
+  string input_amount = 5;
+  // The most the output may fall below the quote, in basis points: 1 to 10000.
+  uint32 slippage_bps = 6;
+}
+
+// Asset is native SOL or an SPL token. Exactly one kind is set.
+message Asset {
+  // NativeSol has no fields; its presence selects SOL.
+  message NativeSol {}
+
+  oneof kind {
+    // Native SOL. Amounts are in lamports.
+    NativeSol native_sol = 1;
+    // An SPL token, by its base58 mint address. Amounts are in the mint's base units.
+    string token_mint = 2;
+  }
+}
+
+// Network is the Solana network a financial action is bound to. The phone signs only with the
+// request's wallet, on the request's network.
+enum Network {
+  NETWORK_UNSPECIFIED = 0;
+  // Mobile Wallet Adapter chain solana:mainnet.
+  NETWORK_MAINNET = 1;
+  // solana:devnet.
+  NETWORK_DEVNET = 2;
+  // solana:testnet.
+  NETWORK_TESTNET = 3;
+}
+
+// PreparedTransaction is one fresh unsigned transaction for a PENDING transfer or swap, built
+// when the phone asks (PrepareRequest). Each preparation is a new version, and only the latest
+// can be approved. An approval names the version and its content hash, never just the request.
+message PreparedTransaction {
+  RequestRef ref = 1;
+  // 1 for the request's first preparation, then one more for each new one.
+  uint32 version = 2;
+  // The unsigned transaction in wire format, passed to the wallet as it is. The phone parses
+  // it to check it against the request, rather than trusting the sidecar.
+  bytes transaction = 3;
+  // SHA-256 of transaction: 32 bytes.
+  bytes content_hash = 4;
+  google.protobuf.Timestamp prepared_at = 5;
+  // The transaction can land only while the network's block height is at most this, which its
+  // recent blockhash sets. The sidecar stops accepting an approval as it nears. This is
+  // separate from ActionRequest.expires_at, which bounds the user's decision.
+  uint64 last_valid_block_height = 6;
+  // The sidecar's estimate of when last_valid_block_height passes, for display only.
+  google.protobuf.Timestamp estimated_expiry = 7;
+}
+
+// PolicyEvaluation is the phone's own assessment of a request against its connection's policy
+// (Stage 5). It isn't an execution state: it never changes RequestState, it stays on the phone,
+// and ALLOWED still needs the user's manual approval.
+message PolicyEvaluation {
+  PolicyAssessment assessment = 1;
+  // Why the request is UNDER_RESTRICTIONS, including anything the phone couldn't verify. Empty
+  // for ALLOWED.
+  repeated string reasons = 2;
+  // The prepared version it was computed from, since each new version is evaluated again; 0 for
+  // a request without a transaction.
+  uint32 prepared_version = 3;
+}
+
+// PolicyAssessment is the policy's verdict. There is no BLOCKED: the user always decides.
+enum PolicyAssessment {
+  POLICY_ASSESSMENT_UNSPECIFIED = 0;
+  // Every verified parameter matches the rules.
+  POLICY_ASSESSMENT_ALLOWED = 1;
+  // Some parameter is outside the rules or couldn't be verified. The phone shows the reasons.
+  POLICY_ASSESSMENT_UNDER_RESTRICTIONS = 2;
+}
+
+// RequestError says why an operation on a request failed. MCP tool errors start with its name
+// ("<NAME>: <message>"), and PairingService and RequestService errors carry it in a
+// RequestErrorDetail. See docs/protocol.md.
+enum RequestError {
+  REQUEST_ERROR_UNSPECIFIED = 0;
+  // A required field is missing, or a value is malformed or out of range.
+  REQUEST_ERROR_INVALID_PARAMETERS = 1;
+  // The idempotency key was already used with different parameters. Nothing was created.
+  REQUEST_ERROR_IDEMPOTENCY_CONFLICT = 2;
+  // There is no such request for the caller. Another connection's request is reported as not
+  // found too.
+  REQUEST_ERROR_NOT_FOUND = 3;
+  // No phone is paired, so a new request would have no connection. Nothing was created.
+  REQUEST_ERROR_NOT_PAIRED = 4;
+  // The wallet or network isn't the connection's current wallet. Nothing was created.
+  REQUEST_ERROR_WALLET_MISMATCH = 5;
+  // The connection already has the most PENDING requests allowed. Nothing was created.
+  REQUEST_ERROR_PENDING_LIMIT = 6;
+  // The request's state doesn't allow the operation: for example, a result for a request that
+  // has already ended another way. RequestErrorDetail.request carries it as it is now.
+  REQUEST_ERROR_INVALID_STATE = 7;
+  // The approval doesn't name the latest prepared transaction, its content hash differs, or
+  // that transaction's blockhash has expired or is about to. Prepare again, and have the user
+  // review the new version.
+  REQUEST_ERROR_STALE_PREPARATION = 8;
+  // The credential is missing, wrong, revoked, or for the other role; or the pairing token is
+  // unknown, expired, or already used.
+  REQUEST_ERROR_UNAUTHENTICATED = 9;
+}
+
+// RequestErrorDetail is the Connect error detail on every PairingService and RequestService
+// error.
+message RequestErrorDetail {
+  RequestError error = 1;
+  // The request as it is now, for INVALID_STATE and STALE_PREPARATION.
+  ActionRequest request = 2;
+}

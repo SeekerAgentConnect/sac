@@ -1,19 +1,33 @@
 /**
- * Runs the sidecar (`node src/main.ts`) as a real process, for the Stage 1 acceptance checks
- * (`pnpm test:hello`). The process gets only the settings passed here, never the developer's .env.
+ * Runs the sidecar (`node src/main.ts`) as a real process, for the acceptance checks
+ * (`pnpm test:hello`) and the restart tests. The process gets only the settings passed here, never
+ * the developer's .env, and a throwaway database unless the caller names one.
  */
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { mkdtempSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAIN = fileURLToPath(new URL("../main.ts", import.meta.url));
+const CLOCK = fileURLToPath(new URL("./clock.ts", import.meta.url));
 
 export interface SidecarProcessOptions {
   readonly port: number;
   readonly mcpToken: string;
   readonly phoneToken: string;
   readonly liveCommandTimeoutSeconds: number;
+  /** The SQLite file. Pass the same one to restart onto the same requests; a new one if omitted. */
+  readonly databasePath?: string;
+  /** Serves the demo tool vault_request_ack (MCP_DEMO_TOOLS). */
+  readonly demoTools?: boolean;
+  /**
+   * Runs the sidecar's clock this many milliseconds ahead of the real one (clock.ts). A restart
+   * with a larger value stands for time that passed while the sidecar was down.
+   */
+  readonly clockAheadMs?: number;
 }
 
 export interface SidecarProcess {
@@ -34,20 +48,36 @@ export async function freePort(): Promise<number> {
   return port;
 }
 
+/** A path for a new database, in a new temporary directory. */
+export function temporaryDatabasePath(): string {
+  return join(
+    mkdtempSync(join(tmpdir(), "seeker-vault-sidecar-")),
+    "sidecar.db",
+  );
+}
+
 /** Starts the sidecar and resolves once it listens. */
 export async function startSidecarProcess(
   options: SidecarProcessOptions,
 ): Promise<SidecarProcess> {
-  const child = spawn(process.execPath, [MAIN], {
-    env: {
-      PATH: process.env.PATH,
-      SIDECAR_HOST: "127.0.0.1",
-      SIDECAR_PORT: String(options.port),
-      MCP_TOKEN: options.mcpToken,
-      PHONE_TOKEN: options.phoneToken,
-      LIVE_COMMAND_TIMEOUT_SECONDS: String(options.liveCommandTimeoutSeconds),
+  const ahead = options.clockAheadMs ?? 0;
+  const child = spawn(
+    process.execPath,
+    [...(ahead === 0 ? [] : ["--import", CLOCK]), MAIN],
+    {
+      env: {
+        PATH: process.env.PATH,
+        SIDECAR_HOST: "127.0.0.1",
+        SIDECAR_PORT: String(options.port),
+        MCP_TOKEN: options.mcpToken,
+        PHONE_TOKEN: options.phoneToken,
+        LIVE_COMMAND_TIMEOUT_SECONDS: String(options.liveCommandTimeoutSeconds),
+        DATABASE_PATH: options.databasePath ?? temporaryDatabasePath(),
+        MCP_DEMO_TOOLS: String(options.demoTools === true),
+        SIDECAR_TEST_CLOCK_AHEAD_MS: String(ahead),
+      },
     },
-  });
+  );
   let output = "";
   const collect = (chunk: string): void => {
     output += chunk;

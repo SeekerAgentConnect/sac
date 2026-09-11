@@ -1,6 +1,53 @@
 # Android
 
-The Stage 1 app is one screen: the live-test screen. It connects to the sidecar's `LiveCommandService` ([`docs/protocol.md`](../protocol.md)), shows an agent's text, and sends the user's OK back. It uses stock Jetpack Compose and Material 3 components only, and no wallet.
+The app opens on **Connections**: the sidecars this phone is paired with (SAW-012). From there, **Pending requests** shows what agents asked (SAW-013), **Add connection** pairs with a new sidecar, a connection's details refresh, rename, or disconnect it, and **Live test** opens the Stage 1 live-test screen. That screen connects to the sidecar's `LiveCommandService` ([`docs/protocol.md`](../protocol.md)), shows an agent's text, and sends the user's OK back. The app uses stock Jetpack Compose and Material 3 components only, and no wallet.
+
+## Connections
+
+The owner's walkthrough is [`docs/guides/pairing.md`](../guides/pairing.md), and the security model, including what the phone stores, is [`docs/security.md`](../security.md#local-storage-and-recovery).
+
+| Screen | What it shows and does |
+| --- | --- |
+| **Connections** | The app's first screen. It shows each paired sidecar with its name, host, and status. **Add connection** pairs a new one, and **Live test** opens the Stage 1 screen. |
+| **Add connection** | **Scan QR code** asks for the camera permission, then scans with the back camera. The code can also be typed or pasted. A malformed code gets the reason. A valid one shows the server's URL and ID to confirm, and notes a server the phone already knows. **Pair** exchanges the code for a connection. |
+| **Connection details** | The status and the last refresh, the server URL and ID, the connection ID, when it paired, and the device name the sidecar saw. It offers **Refresh**, **Rename**, and **Disconnect**. A connection the sidecar no longer accepts offers **Remove from this phone** instead. |
+
+The code is in `connections/`:
+
+| File | Role |
+| --- | --- |
+| `PairingCode.kt` | Reads `seekervault://pair` codes by the sidecar's rules. Plain HTTP is accepted only where the platform's network security policy permits cleartext: loopback, in debug builds. |
+| `ConnectConnectionGateway.kt` | `Pair`, `ListPending`, and `RevokeConnection` over Connect-Kotlin and OkHttp, with the platform's certificate and host name checks. It classifies errors for the screens, including a certificate failure that OkHttp suppressed behind another address's failure. |
+| `ConnectionRepository.kt` | Pairs, refreshes, renames, disconnects, and removes. It checks each `PairResponse`, sends each credential only to its own URL, counts only the connection's own requests, and deletes a credential the sidecar rejects. |
+| `storage/ConnectionStore.kt`, `storage/CredentialVault.kt`, `storage/AndroidKeystoreKey.kt` | The app's only storage: one JSON file per connection in `filesDir/connections/`, and the credentials, AES-256-GCM under a Keystore key, in `noBackupFilesDir/credentials/` |
+| `ConnectionsViewModel.kt` | The screens' state: the pairing flow, refreshes, dialogs, and messages. The code being entered stays in memory, never in saved state. |
+| `ConnectionsScreen.kt`, `ConnectionDetailsScreen.kt`, `AddConnectionScreen.kt`, `ConnectionText.kt` | The stateless screens, the camera permission, and their texts |
+| `QrScanner.kt`, `QrDecoder.kt` | The CameraX preview and frame analysis, and ZXing's QR decoder |
+
+`SeekerVaultApp.kt` holds the navigation: a back stack of route strings in saved state, so a rotation or a process restart keeps the screen. No route carries a secret.
+
+- **The app fetches when it opens and when the owner opens a connection** ([`docs/protocol.md`](../protocol.md#phone-api)), and on **Refresh**. Nothing runs in the background.
+- **The camera is optional** (`android.hardware.camera.any`, not required). Without a camera, or with the permission denied, the owner enters the code. **Open settings** leads to the app's permission settings.
+- **Nothing is backed up.** The manifest sets `allowBackup="false"`, and `data_extraction_rules.xml` excludes every domain from cloud backup and device transfer.
+
+## Pending requests
+
+The owner's guide is [`docs/guides/pending-requests.md`](../guides/pending-requests.md), and the test procedure is [`docs/testing/stage-2.md`](../testing/stage-2.md).
+
+| Screen | What it shows and does |
+| --- | --- |
+| **Pending requests** | Opened from its row on Connections for every connection, or from a connection's details for that one only. It lists **Waiting for you**, **Waiting to be sent**, and **Answered**. Each request shows its source, action, age, and expiry. A connection whose fetch failed is named at the top, and there are empty and no-server states. **Refresh** fetches again. |
+| **Request details** | The source, action, message (plain text, never parsed), the agent's note (apart, marked as not verified), created, expires, and request ID. A pending acknowledgement offers **Acknowledge** and **Reject**, both disabled while the answer is sent. Once answered, it shows the stored outcome instead. A waiting answer offers **Send again**. |
+
+How the code works:
+
+- **`ConnectionRepository` does the fetching and answering,** because each call needs a connection's credential, which never leaves it:
+  - `refresh` first sends the answers still waiting, then reads every page of PENDING requests, up to 10 pages of 100, into an in-memory `Inbox`. It counts only the connection's own requests, and only those with a UUID request ID. One fetch per connection runs at a time, and a request whose answer settled meanwhile doesn't come back.
+  - `answer` writes a `LocalResult` through `ResultStore` before calling `SubmitResult`, and a request gets one answer.
+  - `deliver` sends a waiting answer, with at most one send per answer at a time. The sidecar's reply settles it: accepted, superseded (`INVALID_STATE`, with the request from the `RequestErrorDetail`), or undeliverable (revoked). A failure keeps it waiting. A reply is written only if the connection and the answer are still there, checked under the lock that removal holds, so a connection removed mid-send stays removed. A failure never turns an answer that a revocation settled back into a waiting one.
+- **Settled answers are kept for a week from when they settled,** so a reopened request still shows its outcome. Removing a connection deletes its answers.
+- **`InboxViewModel` guards the buttons:** a request that's being sent or already answered ignores further taps.
+- **Nothing runs in the background.** The app fetches when a connection is opened, on **Refresh**, and when it opens or comes back to the foreground (`ConnectionsViewModel`). `MainActivity` reports the return in `onStart`, after an `onStop` that wasn't a rotation. Loading the inbox sends no answer.
 
 ## The hello screen
 
@@ -14,7 +61,7 @@ The Stage 1 app is one screen: the live-test screen. It connects to the sidecar'
 | **OK** | Enabled only while the command waits for the user. The first tap disables it and sends `AcknowledgeCommand`. |
 | **Command status** | Tap OK, Sending OK…, OK sent, Timed out, or the reason an OK failed: cancelled by the agent, unknown to the sidecar, rejected token, or sidecar unreachable. |
 
-`MainActivity` hosts `LiveCommandScreen`, a stateless composable in `live/LiveCommandScreen.kt`, and gets its state from `LiveCommandViewModel`. The network sits behind `LiveCommandTransport`. The real implementation, `ConnectLiveCommandTransport`, uses the generated Connect-Kotlin client over OkHttp.
+**Live test** on Connections opens `LiveCommandScreen`, a stateless composable in `live/LiveCommandScreen.kt`, which gets its state from `LiveCommandViewModel`. The network sits behind `LiveCommandTransport`. The real implementation, `ConnectLiveCommandTransport`, uses the generated Connect-Kotlin client over OkHttp.
 
 ## Debug URL and USB connection
 
@@ -31,12 +78,14 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 - `src/debug/AndroidManifest.xml` points to `src/debug/res/xml/network_security_config.xml`, which permits cleartext to `127.0.0.1` and `localhost` only.
 - Every other host is still refused. The app then says to use `adb reverse` and `127.0.0.1`.
 - Release builds don't include this configuration, so Android's default applies: no cleartext traffic.
-- The only permission the app requests is `INTERNET`, and it requests no notification or biometric permissions. The manifest also carries `io.github.brrenat.seekervault.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which AndroidX Core declares for the app's own non-exported receivers. That one is private to the app, signature-level, and never shown to the user.
+- The app requests `INTERNET`, and `CAMERA` only when the owner taps **Scan QR code**. It requests no notification or biometric permissions. The manifest also carries `io.github.brrenat.seekervault.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which AndroidX Core declares for the app's own non-exported receivers. That one is private to the app, signature-level, and never shown to the user.
+- **Libraries add a few manifest entries of their own.** CameraX brings `MetadataHolderService`, which is disabled and not exported, and holds only its configuration. AndroidX Startup's `InitializationProvider` isn't exported. The profile installer's receiver answers only `adb`. Debug builds add the Compose preview and test activities. None of them runs in the background.
 - `NetworkSecurityPolicyTest` keeps it that way. It fails if the main source set sets `networkSecurityConfig` or `usesCleartextTraffic`, or if the debug exception covers anything but `127.0.0.1` and `localhost`.
 
 ## Lifecycle and its limits
 
 - **The stream exists only in the foreground.** When the app goes to the background (`onStop` without a configuration change), the screen closes `WatchCommands`. When the app returns, it reconnects on its own, but only if it was connected before.
+- **The stream exists only while the live-test screen is open.** Going back to Connections closes it; a rotation doesn't.
 - **Rotation keeps everything.** A rotation or any other configuration change recreates the activity but keeps the ViewModel. The stream, the received text, and the command status all survive, and no second stream or second OK is sent.
 - **One tap, one OK.** The ViewModel moves a command to Sending before the request leaves, so a rapid double tap sends one acknowledgement.
 - **A lost connection clears the received text,** and the screen says why. When the phone disconnects for any reason, the sidecar cancels the waiting command, and the agent gets `CANCELLED`. It never resends the command, and text sent while the phone is disconnected fails with `OFFLINE`. Commands aren't queued, and nothing reaches the phone in the background.
@@ -51,16 +100,32 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | --- | --- |
 | `LiveCommandViewModelTest` | The ViewModel against a fake transport, on virtual time: showing text and sending one OK, a rapid second tap, the deadline, a command that is already expired, the sidecar's answers to an OK, connection loss clearing the command, a wrong token, a replaced stream, reconnect, disconnect, background and foreground, and input validation |
 | `LiveCommandScreenTest` | Compose tests on Robolectric: exact plain-text display, the one-tap OK, the disabled states, the 4096-byte maximum text, and every status and error message |
-| `MainActivityTest` | The activity with a fake transport, on Robolectric: rotation during a command, a rapid double tap, and background then foreground |
+| `MainActivityTest` | The live-test screen in the activity, with a fake transport, on Robolectric: rotation during a command, a rapid double tap, background then foreground, and leaving the screen |
 | `ConnectLiveCommandTransportTest` | The real transport against the real sidecar (`node sidecar/src/main.ts`), with an MCP SDK client as the agent: text in, the same command's OK out. Also covers a wrong token, an unknown command, and a sidecar stop. It needs Node 24 and `pnpm install`. `ConnectLiveCommandTransportUnreachableTest` covers a closed port. |
 | `LiveProtocolFixturesTest`, `LiveCommandDeadlineTest` | Protocol fixtures and deadline boundaries (SAW-002) |
-| `StageOneBoundaryTest` | The Stage 1 boundary (SAW-008). The manifest declares only `MainActivity` and `INTERNET`. App code uses no storage, key, or background APIs. No wallet, storage, or background library is on the classpath. |
+| `RequestProtocolFixturesTest` | The durable request fixtures (SAW-009). Each message is built in Kotlin and must match buf's bytes in both directions. The cases cover exact message text, amounts as strings, and the uint32 and uint64 maximums, which Kotlin reads as a signed `Int` and `Long`. |
+| `PairingCodeTest` | Pairing codes: the sidecar's own example, loopback HTTP in debug builds only, normalization, every malformed case, and the token kept out of `toString` |
+| `CredentialVaultTest`, `ConnectionStoreTest` | Storage on Robolectric: round trips across a restart, no plaintext credential on disk, a fresh IV per write, isolation (deleting one connection keeps the other, and a credential copied under another connection's name doesn't decrypt), another key, damaged files, and file names that aren't connection IDs |
+| `ConnectionRepositoryTest` | Against two fake sidecars:<ul><li>connections kept apart, a restart, and a rename</li><li>revocation, and a known server at a new address</li><li>unusable `PairResponse`s</li><li>removal that neither touches the other connection nor gives it the removed one's requests</li><li>unreachable sidecars, an unreadable credential, orphaned credentials, and a Keystore failure</li><li>secrets kept out of the log and the metadata</li></ul> |
+| `ConnectionsViewModelTest` | The pairing flow (malformed codes, confirmation, a known server, a refused code, a retry), disconnect and removal, rename, and the refresh when the app opens or comes back to the foreground, but not on a rotation |
+| `ConnectionsScreenTest`, `ConnectionDetailsScreenTest`, `AddConnectionRouteTest` | Compose on Robolectric: the statuses, rename errors, and every dialog; camera denial and grant through the activity result registry, and a phone without a camera; malformed codes; and no token or credential on screen |
+| `ConnectionsActivityTest` | The activity with the app's own storage and a fake sidecar: pairing, rotation, rename, disconnect, and where the secrets are on disk |
+| `ConnectConnectionGatewayTest`, `TwoSidecarsTest` | The real client against the real sidecar, `node sidecar/src/main.ts`. A code printed by `pnpm pair` is read by the app's parser and paired. They also cover pending requests, a reused code, a code for another address, revocation by the phone and by `pnpm pair revoke`, a replaced phone, a stopped sidecar, and two sidecars at once. |
+| `ConnectConnectionGatewayTlsTest` | HTTPS with MockWebServer: an untrusted certificate and a certificate for another host name fail before anything is sent, and a trusted one pairs |
+| `QrDecoderTest` | QR codes drawn by ZXing, decoded from luminance planes with and without row padding |
+| `InboxTest`, `InboxRealSidecarTest` | The inbox against fake sidecars and the real one:<ul><li>a request made while the app was closed, fetched, answered, and read back by the agent</li><li>every page, and nothing answered by a fetch</li><li>one answer per request</li><li>an answer kept through an unreachable server and a restart</li><li>a lost response sent again and recognized</li><li>overlapping sends</li><li>identical request IDs on two servers</li><li>a request cancelled first, and a revoked connection</li><li>a removed connection's answers, and pruning</li><li>an older fetch that returns last, and a fetch that crosses an answer</li><li>a request ID that isn't a UUID</li><li>retention counted from when an answer settled</li><li>a fetch that finishes after its connection was removed</li><li>a reply, successful or failed, that arrives after its connection was removed, and a failure that arrives after a revocation</li></ul> |
+| `ResultStoreTest` | Stored answers: a restart, identical request IDs on two connections, damaged files, and file names that aren't UUIDs |
+| `InboxViewModelTest` | Rapid second taps, refreshing every connection, sending again, and requests that aren't pending |
+| `PendingRequestsScreenTest`, `RequestDetailsScreenTest` | Compose on Robolectric: source, action, age, and expiry; the empty, no-server, and offline states; disabled buttons while sending; the stored outcome; **Send again**; and expired and superseded requests |
+| `InboxActivityTest` | The activity with the app's own storage and a fake sidecar: a request fetched when the app opens, answered, and still answered after a rotation; a connection's own requests; and a request made while the app was in the background, fetched when it comes back but not on a rotation |
+| `Stage2AcceptanceTest` | The Stage 2 acceptance scenario (SAW-014), with the app's own repository and storage and two real sidecars, which `RealSidecar` restarts:<ul><li>requests queued while the app is closed survive both sidecars' restarts, and complete after the app reopens</li><li>an answer given while its sidecar is down goes out after the app and the sidecar restart</li><li>a request that expires while its sidecar is down is superseded</li><li>`pnpm pair revoke` shuts out only that connection</li></ul>See [`docs/testing/stage-2.md`](../testing/stage-2.md#the-acceptance-scenario-saw-014). |
+| `StageBoundaryTest` | The stage boundary. The manifest declares only `MainActivity`, `INTERNET`, and an optional camera. Storage and Keystore APIs appear only in `connections/storage/`, and background APIs nowhere. Nothing is backed up. No wallet, Room, DataStore, or WorkManager library is on the classpath. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
 
 ### On a device or emulator
 
-`src/androidTest/.../LiveCommandDeviceTest.kt` runs the round trip on real Android. It enters the phone token, taps **Connect**, waits for the agent's text, checks that the text is exact, and taps **OK** twice. It needs a running sidecar and an agent, so run it with `pnpm test:hello --device`. The script:
+`src/androidTest/.../LiveCommandDeviceTest.kt` runs the round trip on real Android. It opens **Live test**, enters the phone token, taps **Connect**, waits for the agent's text, checks that the text is exact, and taps **OK** twice. It needs a running sidecar and an agent, so run it with `pnpm test:hello --device`. The script:
 
 1. Picks the one attached device or emulator, or the one in `ANDROID_SERIAL`.
 2. Starts the sidecar on a free port with throwaway tokens, never your `.env`, and runs `adb reverse` for that port.
@@ -69,6 +134,8 @@ Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.pr
 5. Passes only if all of these hold: the UI test passes, the agent prints `{"id","result":"OK"}`, and the sidecar logged exactly one acknowledgement.
 
 Gradle installs the debug app and the test APK, then removes both after the run. To get the app back, reinstall it with `adb install`.
+
+`CredentialVaultDeviceTest` runs in the same pass, since the JVM tests have no Keystore. It stores a credential under the real Keystore key and reads it back. It checks that the file holds no plaintext, that the key can't be exported, and that a copy under another connection's name doesn't decrypt.
 
 `pnpm check:android` builds the test APK (`assembleDebugAndroidTest`) but doesn't run it. CI runs it on an API 36 emulator. The script names what it ran on: "the Seeker", identified by brand `solanamobile` and model `Seeker`; "an emulator"; or "a phone that isn't a Seeker". Only the Seeker counts as the physical Seeker check.
 
@@ -94,3 +161,43 @@ The deliberate breaks, and what caught each one:
 - **Removing the rotation guard** failed the rotation test.
 - **Keeping the command after a disconnect** failed three ViewModel tests.
 - **Moving the cleartext config into the main manifest** failed `NetworkSecurityPolicyTest`.
+
+## Verification record: SAW-012
+
+Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolchain.md`](toolchain.md).
+
+| Check | Result |
+| --- | --- |
+| `pnpm check:android` | PASS: Spotless, 142/142 unit tests (81 more than before), Android lint with no issues, and the debug and instrumentation APKs. Lint first caught `URLDecoder.decode(String, Charset)`, which needs API 33 while `minSdk` is 31; the parser now uses the charset-name overload. |
+| Two connections, rename, restart, revocation | PASS, in `ConnectionRepositoryTest` and `ConnectionsViewModelTest` against two fake sidecars, and in `TwoSidecarsTest` against two real ones. Each credential went only to its own server. A rename and both connections survived a new repository over the same files. A revoked credential was deleted and never sent again. |
+| Deleting connection A | PASS. B kept its metadata, its readable credential, and its pending count. A's request, even when a sidecar returned it for B, was never counted for B. On the real sidecar, A's connection was revoked there and B's sidecar never saw it. |
+| Changed server identity | PASS. A code for a known server at a new address made a new connection. The old one kept its URL, and its credential never went to the new address. The old connection then showed as revoked. |
+| Invalid certificates | PASS, in `ConnectConnectionGatewayTlsTest`. An untrusted certificate and a certificate for another host name both failed with `CertificateRejected`, before anything reached the server. A trusted one paired and sent the token only in its `Authorization` header. The test first found OkHttp hiding the certificate failure behind a refused IPv6 connection, and the classifier now reads suppressed exceptions. |
+| Camera denial and malformed pairing data | PASS, in `AddConnectionRouteTest`. The permission went through a fake activity result registry: refused, granted, and already granted. A phone without a camera, a scanned code that isn't a pairing code, and five malformed entered codes each showed their message. |
+| Secrets | PASS. No token or credential appeared in the log, in any screen's semantics tree, or in plain text in any file of the app's data directory. The credential file is under `noBackupFilesDir`, and `StageBoundaryTest` checks that nothing is backed up or transferred. |
+| Real sidecar | PASS, in `ConnectConnectionGatewayTest`. The app's parser read a code printed by `pnpm pair`, and the app paired with it. A reused code, a code sent from another address, revocation by the phone and by `pnpm pair revoke`, a replaced phone, and a stopped sidecar each got the right error. The sidecar's log held no secret. |
+| `pnpm check`, `pnpm test:hello`, `pnpm check:generated` | PASS: 235/235 sidecar and 15/15 test agent tests, the 9/9 Stage 1 acceptance cases, and current generated code |
+| Deliberate breaks | Each break failed its test class, and each file was restored byte for byte afterwards:<ul><li>a `PairResponse`'s connection ID used unchecked</li><li>another connection's requests counted</li><li>a rejected credential kept</li><li>credentials not bound to their connection</li><li>plain HTTP accepted like HTTPS</li><li>suppressed TLS failures ignored</li><li>backups turned on</li><li>the token shown on the confirmation</li><li>credentials stored outside `noBackupFilesDir`</li></ul> |
+| `CredentialVaultDeviceTest` and `LiveCommandDeviceTest` on an emulator | NOT RUN locally: no device or emulator was attached. CI's emulator job runs both through `pnpm test:hello --device`. |
+| Physical Seeker: scanning, pairing, and the Keystore | NOT RUN: no device was attached. The owner's steps are in [`docs/guides/pairing.md`](../guides/pairing.md). |
+
+## Verification record: SAW-013
+
+Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolchain.md`](toolchain.md).
+
+| Check | Result |
+| --- | --- |
+| `pnpm check:android` | PASS: Spotless, 181/181 unit tests (39 more than before), Android lint with no issues, and the debug and instrumentation APKs |
+| A request made while the app was closed | PASS, in `InboxRealSidecarTest` against the real sidecar. The agent's request was stored before the app's repository existed. The next start fetched it, and the agent still read PENDING. It was acknowledged, and the agent read COMPLETED. A repeat of the result returned COMPLETED again. |
+| Lost responses, retries, and restarts | PASS, in `InboxTest`. An answer that couldn't be sent waited through a restart, and went out on the next refresh. A lost response was sent again, and applied once. |
+| Duplicate taps and overlapping sends | PASS. A second tap while sending, or on an answered request, sent nothing (`InboxViewModelTest`). A refresh during a send didn't send it again (`InboxTest`). |
+| Identical request IDs on two servers | PASS: each answer went only to its own server, and was stored apart |
+| Nothing automatic | PASS. Fetching submitted nothing (`InboxTest`, `InboxActivityTest`). `StageBoundaryTest` found no background component and no push library. |
+| Screens | PASS:<ul><li>source, action, age, and expiry</li><li>the empty, no-server, and offline states</li><li>buttons disabled while sending</li><li>the stored outcome on reopening, and after a rotation</li></ul> |
+| `pnpm check`, `pnpm test:hello`, `pnpm check:generated` | PASS: 235/235 sidecar tests and 19/19 test agent tests, the 9/9 Stage 1 acceptance cases, and current generated code |
+| Deliberate breaks | NOT RUN (timed out): the run hung during its third break, in `InboxTest`, and was stopped before it reported. The file that break had changed was restored. |
+| Physical Seeker | NOT RUN: no device was attached. The owner-run check is in [`docs/testing/stage-2.md`](../testing/stage-2.md). |
+
+## Verification record: SAW-014
+
+The Stage 2 acceptance report, including the app's side of the scenario, is in [`docs/testing/stage-2.md`](../testing/stage-2.md#acceptance-report-saw-014).

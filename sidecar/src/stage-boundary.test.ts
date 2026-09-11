@@ -1,6 +1,8 @@
 /**
- * Stage 1 is a wallet-free hello world (AGENTS.md). These checks fail when the Node side gains a
- * wallet library, key generation, or storage for commands before the stage that adds it on purpose.
+ * Stage boundaries on the Node side (AGENTS.md). There's no wallet library, and nothing creates
+ * keys. The sidecar stores durable requests (SAW-010): only src/storage/ imports the file system
+ * or SQLite, and only it runs SQL. These checks fail when that changes before the stage that changes it on
+ * purpose.
  */
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -10,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const SRC = fileURLToPath(new URL("./", import.meta.url));
+const STORAGE_IMPORT = /from "(node:)?(fs|fs\/promises|sqlite)"/;
 
 /** The sidecar's shipped sources: no tests, test helpers, or generated code. */
 function shippedSources(): string[] {
@@ -19,7 +22,7 @@ function shippedSources(): string[] {
     .map((path) => join(SRC, path));
 }
 
-describe("Stage 1 boundary", () => {
+describe("stage boundary", () => {
   it("installs no wallet library", () => {
     const lockfile = readFileSync(join(ROOT, "pnpm-lock.yaml"), "utf8");
     assert.doesNotMatch(
@@ -28,9 +31,9 @@ describe("Stage 1 boundary", () => {
     );
   });
 
-  it("stores nothing and creates no keys in the sidecar", () => {
+  it("creates no keys in the sidecar", () => {
     const forbidden =
-      /from "(node:)?(fs|fs\/promises|sqlite)"|\b(generateKeyPair|generateKeyPairSync|createPrivateKey)\b/;
+      /\b(generateKeyPair|generateKeyPairSync|createPrivateKey)\b/;
     const sources = shippedSources();
     assert.ok(sources.length > 5, "found the sidecar's sources");
     const hits = sources.filter((file) =>
@@ -39,6 +42,44 @@ describe("Stage 1 boundary", () => {
     assert.deepEqual(
       hits.map((file) => relative(ROOT, file)),
       [],
+    );
+  });
+
+  it("imports the file system and SQLite only in src/storage", () => {
+    const sources = shippedSources();
+    const outside = sources.filter(
+      (file) =>
+        !relative(SRC, file).startsWith("storage/") &&
+        STORAGE_IMPORT.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      outside.map((file) => relative(ROOT, file)),
+      [],
+    );
+    assert.match(
+      readFileSync(join(SRC, "storage/database.ts"), "utf8"),
+      STORAGE_IMPORT,
+      "storage/database.ts is where the database is opened",
+    );
+  });
+
+  it("runs SQL only in src/storage", () => {
+    // Statements, queries, and transactions stay in storage's modules; the rest of the sidecar
+    // calls their APIs.
+    const sql = /\.prepare\(|\btransaction\(|\.exec\(\s*["'`]/;
+    const outside = shippedSources().filter(
+      (file) =>
+        !relative(SRC, file).startsWith("storage/") &&
+        sql.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      outside.map((file) => relative(ROOT, file)),
+      [],
+    );
+    assert.match(
+      readFileSync(join(SRC, "storage/request-store.ts"), "utf8"),
+      sql,
+      "the request store runs its SQL in storage",
     );
   });
 });

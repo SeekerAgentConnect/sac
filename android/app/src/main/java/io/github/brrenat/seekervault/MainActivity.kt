@@ -12,7 +12,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import io.github.brrenat.seekervault.live.LiveCommandRoute
+import io.github.brrenat.seekervault.connections.ConnectionsViewModel
+import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
 
 class MainActivity : ComponentActivity() {
@@ -24,21 +25,43 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val connections: ConnectionsViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val app = application as SeekerVaultApplication
+                ConnectionsViewModel(app.connectionRepository, app::isCleartextPermitted)
+            }
+        }
+    }
+
+    private val inbox: InboxViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                InboxViewModel((application as SeekerVaultApplication).connectionRepository)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { SeekerVaultTheme { LiveCommandRoute(viewModel) } }
+        setContent { SeekerVaultTheme { SeekerVaultApp(connections, inbox, viewModel) } }
     }
 
     override fun onStart() {
         super.onStart()
         viewModel.onAppVisible()
+        connections.onAppVisible()
     }
 
     override fun onStop() {
         super.onStop()
-        // A rotation recreates the activity but keeps the ViewModel and its open stream.
-        if (!isChangingConfigurations) viewModel.onAppHidden()
+        // A rotation recreates the activity but keeps the ViewModels, the open stream, and the
+        // fetched inbox.
+        if (!isChangingConfigurations) {
+            viewModel.onAppHidden()
+            connections.onAppHidden()
+        }
     }
 }
 

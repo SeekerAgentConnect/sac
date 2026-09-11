@@ -31,6 +31,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test:hello
+      # The Stage 2 acceptance scenario: two sidecar processes with throwaway databases.
+      - run: pnpm test:queue
       - run: pnpm check:generated
       - run: pnpm build
 
@@ -79,7 +81,9 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
-          cache-provider: basic
+          # No Gradle cache in this job: restoring the Android job's (about 900 MB) leaves less free
+          # disk than the emulator's data partition needs (7.2 GB), and the emulator never boots.
+          cache-disabled: true
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

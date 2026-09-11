@@ -51,6 +51,11 @@ class ConnectLiveCommandTransportTest {
                         "MCP_TOKEN" to MCP_TOKEN,
                         "PHONE_TOKEN" to PHONE_TOKEN,
                         "LIVE_COMMAND_TIMEOUT_SECONDS" to "30",
+                        // A throwaway database, never the developer's sidecar/data/sidecar.db.
+                        "DATABASE_PATH" to
+                            java.nio.file.Files.createTempDirectory("seeker-vault-sidecar")
+                                .resolve("sidecar.db")
+                                .toString(),
                     ),
                 mergeErrors = true,
             )

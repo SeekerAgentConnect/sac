@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The pending inbox and request details (SAW-013). -->
+<resources>
+    <string name="inbox_title">Pending requests</string>
+    <string name="inbox_from">From %1$s</string>
+    <string name="inbox_row">Pending requests</string>
+    <string name="inbox_row_waiting">Waiting for you: %1$d</string>
+    <string name="inbox_row_waiting_and_to_send">Waiting for you: %1$d. Answers waiting to be sent: %2$d.</string>
+    <string name="inbox_row_nothing">Nothing is waiting for you.</string>
+    <string name="pending_requests">Pending requests</string>
+    <string name="inbox_section_to_send">Waiting to be sent</string>
+    <string name="inbox_section_pending">Waiting for you</string>
+    <string name="inbox_section_answered">Answered</string>
+    <string name="inbox_empty">No pending requests. Agents\' requests appear here when the app opens, when you open a connection, or when you tap Refresh.</string>
+    <string name="inbox_no_connections">No server is paired yet. Pair one from Connections first.</string>
+    <string name="inbox_problem">%1$s: %2$s</string>
+    <string name="inbox_request_summary">%1$s · %2$s · expires %3$s</string>
+
+    <string name="action_ack">Acknowledge a message</string>
+    <string name="action_sign_message">Sign a message</string>
+    <string name="action_transfer">Transfer</string>
+    <string name="action_swap">Swap</string>
+    <string name="action_unknown">An action this app doesn\'t know</string>
+
+    <string name="request_title">Request</string>
+    <string name="request_field_from">From</string>
+    <string name="request_field_action">Action</string>
+    <string name="request_field_message">Message</string>
+    <string name="request_field_note">The agent\'s note (not verified)</string>
+    <string name="request_field_created">Created</string>
+    <string name="request_field_expires">Expires</string>
+    <string name="request_field_id">Request ID</string>
+    <string name="acknowledge">Acknowledge</string>
+    <string name="reject">Reject</string>
+    <string name="send_again">Send again</string>
+
+    <string name="status_waiting_for_you">Waiting for your answer.</string>
+    <string name="status_sending">Sending your answer…</string>
+    <string name="status_acknowledged">You acknowledged this. The agent can read your answer.</string>
+    <string name="status_rejected">You rejected this. The agent can read your answer.</string>
+    <string name="status_to_send_acknowledged">You acknowledged this. Your answer is saved on this phone, and is sent when the server can be reached.</string>
+    <string name="status_to_send_rejected">You rejected this. Your answer is saved on this phone, and is sent when the server can be reached.</string>
+    <string name="status_superseded_cancelled">The agent cancelled this request before your answer arrived.</string>
+    <string name="status_superseded_expired">This request expired before your answer arrived.</string>
+    <string name="status_superseded_other">This request had already moved on when your answer arrived.</string>
+    <string name="status_undeliverable">The server no longer accepts this phone, so your answer can\'t be sent.</string>
+    <string name="status_expired">This request has expired, so it can no longer be answered.</string>
+    <string name="status_unsupported">This app can\'t answer this kind of request yet.</string>
+    <string name="status_last_failure">Last attempt: %1$s</string>
+    <string name="status_gone">This request isn\'t pending on this phone. It may have been answered, cancelled, or not fetched yet.</string>
+
+    <string name="answer_acknowledged">Acknowledged</string>
+    <string name="answer_rejected">Rejected</string>
+    <string name="summary_waiting">%1$s, waiting to be sent</string>
+    <string name="summary_superseded">%1$s too late: the request had moved on</string>
+    <string name="summary_undeliverable">%1$s, can\'t be sent</string>
+</resources>

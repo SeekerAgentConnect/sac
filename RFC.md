@@ -73,15 +73,16 @@ Pairing uses a QR code containing the server address and a one-time token, and r
 |---|---|
 | `WatchCommands` / `AcknowledgeCommand` | Stage 1 diagnostic: stream display-only commands to the open live-test screen and return the user's OK (see `docs/protocol.md`) |
 | `LiveCommand` / `CommandAcknowledgement` | Stage 1 display-only text with an ID and a deadline, and the user's OK |
-| `Pair` | Pair the phone with the server |
+| `Pair` / `RevokeConnection` | Pair the phone with the server; end that connection |
 | `ListPending` / `GetRequest` | Retrieve the queue or an individual request |
 | `PrepareRequest` | Prepare a transaction for the current review |
 | `SubmitResult` | Submit the user's decision, a message signature, or the transaction submission result |
 | `ActionRequest` | ID, action type, parameters, target wallet address, network, expiration, and state |
+| `RequestState` | The execution state, from PENDING to CONFIRMED, COMPLETED, REJECTED, CANCELLED, EXPIRED, FAILED, or UNKNOWN |
 | `PreparedTransaction` | A specific version of an unsigned transaction and its validity parameters |
 | `PolicyEvaluation` | A local assessment and warning reasons; not an execution state |
 
-Names are provisional; detailed fields will be defined when the plan is broken down into tasks. Approval is bound to a specific transaction version, not just the request ID.
+SAW-009 defined the Stage 2 contract: the fields, the lifecycle, idempotency, and the errors are in `docs/protocol.md`. Approval is bound to a specific transaction version, not just the request ID.
 
 ### MCP Tools
 
@@ -94,8 +95,10 @@ Names are provisional; detailed fields will be defined when the plan is broken d
 | `vault_transfer` | Request a transfer |
 | `vault_swap` | Request a swap through Jupiter |
 | `vault_get_request` | Get a request's state and result |
+| `vault_cancel_request` | Withdraw a request the user hasn't approved yet |
+| `vault_request_ack` | Development and demo only: queue an acknowledgement, to test the durable workflow without a wallet |
 
-Creating a request returns a `request_id` without keeping the MCP call open until the user decides. Retrying the same request must not create a duplicate payment.
+Creating a request returns a `request_id` without keeping the MCP call open until the user decides. Retrying the same request must not create a duplicate payment, so every creation carries an idempotency key.
 
 ## 5. Policies and User Interface
 

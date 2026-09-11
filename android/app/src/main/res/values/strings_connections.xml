@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pairing and the connection screens (SAW-012). -->
+<resources>
+    <string name="connections_title">Connections</string>
+    <string name="live_test">Live test</string>
+    <string name="add_connection">Add connection</string>
+    <string name="connections_empty">No connections yet. To add one, run pnpm pair on the computer that runs the sidecar, then tap Add connection.</string>
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="working">Working…</string>
+
+    <string name="connection_status_not_checked">Not checked yet.</string>
+    <string name="connection_status_ok">Connected. Pending requests: %1$d.</string>
+    <string name="connection_status_ok_more">Connected. Pending requests: more than %1$d.</string>
+    <string name="connection_status_unreachable">Couldn\'t reach the server.</string>
+    <string name="connection_status_certificate">The server\'s certificate isn\'t trusted, or it\'s for another host name.</string>
+    <string name="connection_status_cleartext">This build allows plain HTTP only to 127.0.0.1.</string>
+    <string name="connection_status_failed">The last check failed.</string>
+    <string name="connection_status_revoked">The server no longer accepts this phone. Pair again to reconnect.</string>
+    <string name="connection_status_credential_missing">This phone no longer has the credential for this connection. Pair again to reconnect.</string>
+    <string name="checked_at">Checked %1$s</string>
+
+    <string name="field_server">Server</string>
+    <string name="field_server_id">Server ID</string>
+    <string name="field_connection_id">Connection ID</string>
+    <string name="field_paired">Paired</string>
+    <string name="field_device_name">This phone\'s name on the server</string>
+    <string name="refresh">Refresh</string>
+    <string name="rename">Rename</string>
+    <string name="connection_disconnect">Disconnect</string>
+    <string name="connection_remove">Remove from this phone</string>
+
+    <string name="rename_title">Rename connection</string>
+    <string name="rename_label">Name</string>
+    <string name="rename_blank">Enter a name.</string>
+    <string name="rename_too_long">Use at most 64 characters.</string>
+    <string name="save">Save</string>
+
+    <string name="disconnect_title">Disconnect from %1$s?</string>
+    <string name="disconnect_text">The server revokes this phone\'s credential and cancels its pending requests. To connect again, pair with a new code.</string>
+    <string name="not_reached_title">Couldn\'t tell the server</string>
+    <string name="not_reached_text">%1$s The server still accepts this phone\'s credential until its operator runs pnpm pair revoke. Remove the connection from this phone anyway?</string>
+    <string name="remove_anyway">Remove anyway</string>
+    <string name="remove_title">Remove %1$s from this phone?</string>
+    <string name="remove_text">The server no longer accepts this phone, so there\'s nothing left to revoke.</string>
+    <string name="remove">Remove</string>
+
+    <string name="message_paired">Paired with %1$s.</string>
+    <string name="message_disconnected">Disconnected from %1$s.</string>
+    <string name="message_removed">Removed %1$s from this phone.</string>
+    <string name="message_renamed">Renamed to %1$s.</string>
+
+    <string name="add_title">Add connection</string>
+    <string name="add_instructions">On the computer that runs the sidecar, run pnpm pair. Then scan the QR code it shows, or enter the code printed under it.</string>
+    <string name="scan_qr">Scan QR code</string>
+    <string name="scan_hint">Point the camera at the QR code.</string>
+    <string name="stop_scanning">Stop scanning</string>
+    <string name="camera_denied">Camera access is off, so the app can\'t scan. Enter the code instead, or allow camera access in the app\'s settings.</string>
+    <string name="open_settings">Open settings</string>
+    <string name="no_camera">This phone has no camera the app can use. Enter the code instead.</string>
+    <string name="code_label">Pairing code</string>
+    <string name="code_placeholder">seekervault://pair?…</string>
+    <string name="continue_pairing">Continue</string>
+
+    <string name="code_not_a_code">That isn\'t a pairing code. Enter the whole line that starts with seekervault://pair.</string>
+    <string name="code_not_seeker_vault">That isn\'t a seeker-vault pairing code. Those start with seekervault://pair.</string>
+    <string name="code_other_version">This pairing code is for another version of seeker-vault. Update the app or the sidecar.</string>
+    <string name="code_bad_server_url">The server URL in the code isn\'t valid.</string>
+    <string name="code_insecure_server_url">The code\'s server URL doesn\'t use HTTPS. Only a debug build accepts plain HTTP, and only to 127.0.0.1 over adb reverse.</string>
+    <string name="code_bad_server_id">The server ID in the code isn\'t valid.</string>
+    <string name="code_bad_token">The pairing token in the code is incomplete or damaged. Copy the whole line again.</string>
+
+    <string name="confirm_title">Pair with this server?</string>
+    <string name="confirm_trust">Pair only with a server you run. Whoever controls it can send this phone requests to review.</string>
+    <string name="confirm_development">This is a development address. It reaches the computer through adb reverse.</string>
+    <string name="confirm_same_server">You already have a connection to this server: %1$s. Pairing again makes a new connection, and the server revokes the old one.</string>
+    <string name="confirm_same_address">%1$s uses the same address, but it\'s a different server. This code makes a separate connection.</string>
+    <string name="pair">Pair</string>
+    <string name="pairing_in_progress">Pairing…</string>
+    <string name="try_again">Try again</string>
+
+    <string name="pair_failed_code">The server refused the code: it was already used, it expired, or a newer code replaced it. Run pnpm pair again.</string>
+    <string name="pair_failed_address">The server says this code was issued for a different address. Scan the code again, or check SIDECAR_PUBLIC_URL.</string>
+    <string name="pair_failed_certificate">The server\'s certificate isn\'t trusted, or it\'s for another host name. Use a trusted HTTPS endpoint (docs/security.md).</string>
+    <string name="pair_failed_cleartext">This build allows plain HTTP only to 127.0.0.1. Run adb reverse for the sidecar\'s port.</string>
+    <string name="pair_failed_unreachable">Couldn\'t reach %1$s. Is the sidecar running, and can this phone reach that address?</string>
+    <string name="pair_failed_response">The server\'s answer wasn\'t valid, so nothing was saved.</string>
+    <string name="pair_failed_storage">This phone couldn\'t store the credential securely, so nothing was saved.</string>
+    <string name="pair_failed_other">Pairing failed.</string>
+</resources>
