@@ -171,3 +171,8 @@ For problems on the phone or the Mac, see [`troubleshooting.md`](../guides/troub
 - The token belongs in `~/.hermes/.env` with mode 600, never in `config.yaml` or a chat.
 - Anyone with the MCP token can show text on your phone and wait for your OK. In later stages the same endpoint carries wallet requests, so treat it like a password.
 - Hermes redacts `Bearer …` values from MCP error messages, and the sidecar never logs tokens or command text.
+
+## Notes
+
+- confugured rules for 8081 port in tailscale
+- socat TCP-LISTEN:8081,fork,reuseaddr,bind=100.119.134.109 TCP:127.0.0.1:8080
