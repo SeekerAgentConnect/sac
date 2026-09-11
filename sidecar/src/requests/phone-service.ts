@@ -1,7 +1,7 @@
 /**
- * The phone's durable API: RequestService over Connect. Until pairing arrives (SAW-011),
- * PHONE_TOKEN authenticates the caller as the sidecar's one connection. Every RPC is unary, and
- * every error carries a RequestErrorDetail (docs/protocol.md).
+ * The phone's durable API: RequestService over Connect. Every call needs the credential the phone
+ * got from pairing (PairingService), and acts for that credential's connection. Every RPC is
+ * unary, and every error carries a RequestErrorDetail (docs/protocol.md).
  */
 import {
   Code,
@@ -10,13 +10,14 @@ import {
   type HandlerContext,
 } from "@connectrpc/connect";
 
-import { bearerTokenMatches } from "../auth.ts";
+import { bearerToken } from "../auth.ts";
 import {
   RequestError,
   RequestErrorDetailSchema,
   RequestState,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { RequestService } from "../gen/seekervault/request/v1/service_pb.js";
+import type { PairingStore } from "../pairing/store.ts";
 import { RequestFailure, type RequestStore } from "./store.ts";
 
 const CODES: ReadonlyMap<RequestError, Code> = new Map([
@@ -29,28 +30,33 @@ const CODES: ReadonlyMap<RequestError, Code> = new Map([
 
 export function requestRoutes(
   store: RequestStore,
-  phoneToken: string,
-  connectionId: string,
+  pairing: PairingStore,
   log: (message: string) => void,
 ): (router: ConnectRouter) => void {
-  /** Authenticates the phone, then runs `work`, turning a RequestFailure into a Connect error. */
-  function handle<T>(context: HandlerContext, work: () => T): T {
-    if (
-      !bearerTokenMatches(
-        context.requestHeader.get("authorization"),
-        phoneToken,
-      )
-    ) {
-      log(`rejected ${context.method.name}: missing or wrong phone token`);
+  /**
+   * Authenticates the paired phone, then runs `work` for its connection, turning a RequestFailure
+   * into a Connect error.
+   */
+  function handle<T>(
+    context: HandlerContext,
+    work: (connectionId: string) => T,
+  ): T {
+    const connectionId = pairing.authenticate(
+      bearerToken(context.requestHeader.get("authorization")),
+    );
+    if (connectionId === undefined) {
+      log(
+        `rejected ${context.method.name}: missing, wrong, or revoked phone credential`,
+      );
       throw connectError(
         new RequestFailure(
           RequestError.UNAUTHENTICATED,
-          "a valid phone token is required",
+          "a valid phone credential is required; pair the phone first",
         ),
       );
     }
     try {
-      return work();
+      return work(connectionId);
     } catch (error) {
       throw error instanceof RequestFailure ? connectError(error) : error;
     }
@@ -59,15 +65,17 @@ export function requestRoutes(
   return (router) =>
     router.service(RequestService, {
       listPending: (request, context) =>
-        handle(context, () => store.listPending(connectionId, request)),
+        handle(context, (connectionId) =>
+          store.listPending(connectionId, request),
+        ),
 
       getRequest: (request, context) =>
-        handle(context, () => ({
+        handle(context, (connectionId) => ({
           request: store.getForConnection(connectionId, request.ref),
         })),
 
       prepareRequest: (request, context) =>
-        handle(context, () => {
+        handle(context, (connectionId) => {
           const current = store.getForConnection(connectionId, request.ref);
           const kind = current.action?.kind.case;
           if (kind === "transfer" || kind === "swap") {
@@ -84,7 +92,7 @@ export function requestRoutes(
         }),
 
       submitResult: (request, context) =>
-        handle(context, () => {
+        handle(context, (connectionId) => {
           const { request: updated, duplicate } = store.submit(
             connectionId,
             request,
@@ -101,7 +109,8 @@ export function requestRoutes(
     });
 }
 
-function connectError(failure: RequestFailure): ConnectError {
+/** A RequestFailure as a Connect error, with its RequestErrorDetail. */
+export function connectError(failure: RequestFailure): ConnectError {
   return new ConnectError(
     failure.message,
     CODES.get(failure.error) ?? Code.Internal,

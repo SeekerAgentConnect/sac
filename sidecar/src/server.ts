@@ -1,7 +1,7 @@
 /**
  * The sidecar: GET /healthz, the MCP endpoint at /mcp, and the phone's Connect API, on one
- * loopback HTTP server. The Stage 1 live diagnostic stays in memory; durable requests live in the
- * SQLite database at DATABASE_PATH.
+ * loopback HTTP server. The Stage 1 live diagnostic stays in memory; durable requests and pairing
+ * live in the SQLite database at DATABASE_PATH.
  */
 import { once } from "node:events";
 import {
@@ -18,6 +18,8 @@ import type { SidecarConfig } from "./config.ts";
 import { LiveCommandService } from "./gen/seekervault/live/v1/live_pb.js";
 import { LiveCommandBridge } from "./live/bridge.ts";
 import { createMcpEndpoint } from "./mcp-endpoint.ts";
+import { pairingRoutes } from "./pairing/service.ts";
+import { PairingStore } from "./pairing/store.ts";
 import { phoneRoutes } from "./phone-api.ts";
 import { requestRoutes } from "./requests/phone-service.ts";
 import { RequestStore } from "./requests/store.ts";
@@ -30,8 +32,8 @@ import {
 export interface Sidecar {
   /** Base URL, for example http://127.0.0.1:8080. */
   readonly url: string;
-  /** The phone connection that durable requests belong to, until pairing arrives (SAW-011). */
-  readonly connectionId: string;
+  /** The sidecar's lasting ID, which pairing codes and PairResponse carry. */
+  readonly serverId: string;
   /**
    * Cancels the in-flight live command, ends every stream, stops listening, and closes the
    * database. Durable requests stay as they are.
@@ -77,9 +79,14 @@ async function serve(
     defaultTtlSeconds: config.requestTtlSeconds,
     pendingLimit: config.pendingLimit,
   });
-  const connectionId = requests.ensureConnection();
+  const pairing = new PairingStore(db);
+  const serverId = pairing.serverId();
+  const phone = pairing.activeConnection();
   log(
-    `requests are stored in ${config.databasePath} (schema version ${schemaVersion(db)}); phone connection ${connectionId}`,
+    `requests are stored in ${config.databasePath} (schema version ${schemaVersion(db)}); server ${serverId}; ` +
+      (phone === undefined
+        ? "no phone is paired: run pnpm pair"
+        : `paired phone: connection ${phone.connectionId}`),
   );
 
   const bridge = new LiveCommandBridge({
@@ -93,10 +100,12 @@ async function serve(
     log,
     config.mcpAllowedHosts,
   );
-  const phone = connectNodeAdapter({
+  const phoneApi = connectNodeAdapter({
     routes: (router) => {
+      // The Stage 1 diagnostic keeps its development token; the durable API needs a paired phone.
       phoneRoutes(bridge, config.phoneToken, log)(router);
-      requestRoutes(requests, config.phoneToken, connectionId, log)(router);
+      requestRoutes(requests, pairing, log)(router);
+      pairingRoutes(pairing, log)(router);
     },
     readMaxBytes: PHONE_API_MAX_MESSAGE_BYTES,
   });
@@ -121,7 +130,7 @@ async function serve(
         else res.writeHead(500).end();
       });
     } else {
-      phone(req, res);
+      phoneApi(req, res);
     }
   });
   server.listen(config.port, config.host);
@@ -136,7 +145,7 @@ async function serve(
   let closing: Promise<void> | undefined;
   return {
     url,
-    connectionId,
+    serverId,
     close() {
       closing ??= (async () => {
         bridge.shutdown();

@@ -70,4 +70,46 @@ export const MIGRATIONS: readonly Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: 2,
+    description:
+      "pairing: the sidecar's ID, phone credentials, and pairing tokens",
+    sql: `
+      -- The sidecar's lasting ID, created on first use and shown in every pairing code.
+      CREATE TABLE server (
+        singleton INTEGER PRIMARY KEY NOT NULL CHECK (singleton = 1),
+        server_id TEXT NOT NULL,
+        created_at_ms INTEGER NOT NULL
+      ) STRICT;
+
+      -- A paired phone's credential, as SHA-256, and the name the phone gave. SAW-010's stand-in
+      -- connection has neither.
+      ALTER TABLE connections ADD COLUMN credential_hash BLOB;
+      ALTER TABLE connections ADD COLUMN device_name TEXT NOT NULL DEFAULT '';
+      CREATE UNIQUE INDEX connections_by_credential ON connections (credential_hash)
+        WHERE credential_hash IS NOT NULL;
+
+      -- One-use pairing tokens, as SHA-256, each bound to the URL its pairing code shows.
+      CREATE TABLE pairing_tokens (
+        token_hash BLOB PRIMARY KEY NOT NULL,
+        server_url TEXT NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        expires_at_ms INTEGER NOT NULL,
+        used_at_ms INTEGER,
+        connection_id TEXT REFERENCES connections (connection_id)
+      ) STRICT;
+
+      -- Only a paired phone may act for a connection now. SAW-010's stand-in connection is revoked,
+      -- and its PENDING (1) requests become CANCELLED (7), as a revocation cancels them. The
+      -- outcome is the Outcome binary with detail "The phone's connection was revoked."
+      UPDATE connections SET revoked_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
+        WHERE credential_hash IS NULL AND revoked_at_ms IS NULL;
+      UPDATE requests
+        SET state = 7,
+          outcome = X'1A235468652070686F6E65277320636F6E6E656374696F6E20776173207265766F6B65642E',
+          updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
+        WHERE state = 1
+          AND connection_id IN (SELECT connection_id FROM connections WHERE revoked_at_ms IS NOT NULL);
+    `,
+  },
 ];

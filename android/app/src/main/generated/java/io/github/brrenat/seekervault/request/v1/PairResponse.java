@@ -17,12 +17,13 @@ public  final class PairResponse extends
   private PairResponse() {
     connectionId_ = "";
     phoneToken_ = "";
+    serverId_ = "";
   }
   public static final int CONNECTION_ID_FIELD_NUMBER = 1;
   private java.lang.String connectionId_;
   /**
    * <pre>
-   * The new connection.
+   * The new connection. Pairing always creates one, and never changes an existing connection.
    * </pre>
    *
    * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -34,7 +35,7 @@ public  final class PairResponse extends
   }
   /**
    * <pre>
-   * The new connection.
+   * The new connection. Pairing always creates one, and never changes an existing connection.
    * </pre>
    *
    * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -47,7 +48,7 @@ public  final class PairResponse extends
   }
   /**
    * <pre>
-   * The new connection.
+   * The new connection. Pairing always creates one, and never changes an existing connection.
    * </pre>
    *
    * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -61,7 +62,7 @@ public  final class PairResponse extends
   }
   /**
    * <pre>
-   * The new connection.
+   * The new connection. Pairing always creates one, and never changes an existing connection.
    * </pre>
    *
    * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -72,7 +73,7 @@ public  final class PairResponse extends
   }
   /**
    * <pre>
-   * The new connection.
+   * The new connection. Pairing always creates one, and never changes an existing connection.
    * </pre>
    *
    * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -154,6 +155,78 @@ public  final class PairResponse extends
       com.google.protobuf.ByteString value) {
     checkByteStringIsUtf8(value);
     phoneToken_ = value.toStringUtf8();
+
+  }
+
+  public static final int SERVER_ID_FIELD_NUMBER = 3;
+  private java.lang.String serverId_;
+  /**
+   * <pre>
+   * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+   * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+   * </pre>
+   *
+   * <code>string server_id = 3 [json_name = "serverId"];</code>
+   * @return The serverId.
+   */
+  @java.lang.Override
+  public java.lang.String getServerId() {
+    return serverId_;
+  }
+  /**
+   * <pre>
+   * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+   * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+   * </pre>
+   *
+   * <code>string server_id = 3 [json_name = "serverId"];</code>
+   * @return The bytes for serverId.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getServerIdBytes() {
+    return com.google.protobuf.ByteString.copyFromUtf8(serverId_);
+  }
+  /**
+   * <pre>
+   * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+   * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+   * </pre>
+   *
+   * <code>string server_id = 3 [json_name = "serverId"];</code>
+   * @param value The serverId to set.
+   */
+  private void setServerId(
+      java.lang.String value) {
+    java.util.Objects.requireNonNull(value);
+
+    serverId_ = value;
+  }
+  /**
+   * <pre>
+   * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+   * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+   * </pre>
+   *
+   * <code>string server_id = 3 [json_name = "serverId"];</code>
+   */
+  private void clearServerId() {
+
+    serverId_ = getDefaultInstance().getServerId();
+  }
+  /**
+   * <pre>
+   * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+   * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+   * </pre>
+   *
+   * <code>string server_id = 3 [json_name = "serverId"];</code>
+   * @param value The bytes for serverId to set.
+   */
+  private void setServerIdBytes(
+      com.google.protobuf.ByteString value) {
+    checkByteStringIsUtf8(value);
+    serverId_ = value.toStringUtf8();
 
   }
 
@@ -256,7 +329,7 @@ public  final class PairResponse extends
 
     /**
      * <pre>
-     * The new connection.
+     * The new connection. Pairing always creates one, and never changes an existing connection.
      * </pre>
      *
      * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -268,7 +341,7 @@ public  final class PairResponse extends
     }
     /**
      * <pre>
-     * The new connection.
+     * The new connection. Pairing always creates one, and never changes an existing connection.
      * </pre>
      *
      * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -281,7 +354,7 @@ public  final class PairResponse extends
     }
     /**
      * <pre>
-     * The new connection.
+     * The new connection. Pairing always creates one, and never changes an existing connection.
      * </pre>
      *
      * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -296,7 +369,7 @@ public  final class PairResponse extends
     }
     /**
      * <pre>
-     * The new connection.
+     * The new connection. Pairing always creates one, and never changes an existing connection.
      * </pre>
      *
      * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -309,7 +382,7 @@ public  final class PairResponse extends
     }
     /**
      * <pre>
-     * The new connection.
+     * The new connection. Pairing always creates one, and never changes an existing connection.
      * </pre>
      *
      * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -397,6 +470,80 @@ public  final class PairResponse extends
       return this;
     }
 
+    /**
+     * <pre>
+     * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+     * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+     * </pre>
+     *
+     * <code>string server_id = 3 [json_name = "serverId"];</code>
+     * @return The serverId.
+     */
+    @java.lang.Override
+    public java.lang.String getServerId() {
+      return instance.getServerId();
+    }
+    /**
+     * <pre>
+     * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+     * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+     * </pre>
+     *
+     * <code>string server_id = 3 [json_name = "serverId"];</code>
+     * @return The bytes for serverId.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getServerIdBytes() {
+      return instance.getServerIdBytes();
+    }
+    /**
+     * <pre>
+     * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+     * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+     * </pre>
+     *
+     * <code>string server_id = 3 [json_name = "serverId"];</code>
+     * @param value The serverId to set.
+     * @return This builder for chaining.
+     */
+    public Builder setServerId(
+        java.lang.String value) {
+      copyOnWrite();
+      instance.setServerId(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+     * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+     * </pre>
+     *
+     * <code>string server_id = 3 [json_name = "serverId"];</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearServerId() {
+      copyOnWrite();
+      instance.clearServerId();
+      return this;
+    }
+    /**
+     * <pre>
+     * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+     * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+     * </pre>
+     *
+     * <code>string server_id = 3 [json_name = "serverId"];</code>
+     * @param value The bytes for serverId to set.
+     * @return This builder for chaining.
+     */
+    public Builder setServerIdBytes(
+        com.google.protobuf.ByteString value) {
+      copyOnWrite();
+      instance.setServerIdBytes(value);
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.request.v1.PairResponse)
   }
   @java.lang.Override
@@ -415,10 +562,11 @@ public  final class PairResponse extends
           java.lang.Object[] objects = new java.lang.Object[] {
             "connectionId_",
             "phoneToken_",
+            "serverId_",
           };
           java.lang.String info =
-              "\u0000\u0002\u0000\u0000\u0001\u0002\u0002\u0000\u0000\u0000\u0001\u0208\u0002\u0208" +
-              "";
+              "\u0000\u0003\u0000\u0000\u0001\u0003\u0003\u0000\u0000\u0000\u0001\u0208\u0002\u0208" +
+              "\u0003\u0208";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

@@ -21,6 +21,7 @@
     "format": "prettier --write . && buf format --write",
     "format:android": "android/gradlew -p android spotlessApply",
     "generate": "node scripts/generate.mjs",
+    "pair": "node --env-file-if-exists=.env sidecar/src/pairing/cli.ts",
     "agent": "node --env-file-if-exists=.env test-agent/src/main.ts",
     "test:hello": "node scripts/test-hello.mjs"
   },

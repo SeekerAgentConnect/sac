@@ -155,3 +155,17 @@
   - Passing and failing runs had the same runner image and the same emulator build (37.1.11.0).
   - `disk-size: 4096M` didn't lower the 7.2 GB, so it's removed.
   - The job builds the app without the cache, as the passing runs did.
+
+## 2026-09-11 — SAW-011 secure pairing and separate roles (SEE-18)
+
+- **Four credentials, each accepted in exactly one place.** `MCP_TOKEN` opens `/mcp`, the pairing token opens `Pair`, the phone credential opens `RequestService` and `RevokeConnection`, and `PHONE_TOKEN` opens only the Stage 1 `LiveCommandService`. Keeping `PHONE_TOKEN` for the live diagnostic leaves Stage 1 and its device test unchanged, and gives the operator's `.env` no approval authority.
+- **The sidecar creates the phone credential and returns it once.** It keeps only the SHA-256, so the database, its backups, and the log can't reveal it. The secret is 32 random bytes, so a plain hash is enough. A slow password hash protects guessable secrets, which these aren't.
+- **`pnpm pair` writes the pairing token straight into the database,** instead of asking the running sidecar over an admin endpoint. An admin endpoint would be one more credential to protect. SQLite's locking makes a short-lived second process safe, and the operator can pair or revoke whether or not the sidecar is running.
+- **The pairing token is bound to the URL in its code.** A `Pair` for another URL is refused, and the token stays usable. The URL is normalized first, so a trailing slash or the host's case doesn't matter.
+- **Pairing always creates a new connection, and never changes an existing one.** So a code can't redirect an existing connection to another host. The phone must treat every code as a new pairing too. The lasting `server_id` lets the phone recognize a sidecar it knows, without trusting a code's URL for an old connection.
+- **One active phone per sidecar, enforced at pairing.** Pairing revokes every active connection. A phone with several sidecars (SAW-012) has one connection to each.
+- **Refusals don't say which check failed.** Unknown, expired, used, and missing pairing tokens all get one UNAUTHENTICATED message. A URL mismatch is answered differently: only a holder of a valid token can reach that check, and telling them lets them retry at the right URL.
+- **Revocation cancels PENDING requests in the same transaction, and leaves overdue ones to expire.** Expiry comes first everywhere else, so a request past its deadline must never become CANCELLED.
+- **Migration 2 revokes SAW-010's stand-in connection.** It has no credential, so no phone could ever use it. Its PENDING requests are cancelled the way a revocation cancels them, and the frozen v1 fixture checks that.
+- **TLS ends at a trusted endpoint in front of the loopback sidecar,** such as Tailscale Serve or Caddy, and not in the sidecar. The sidecar never listens beyond loopback, the phone keeps Android's normal certificate checks, and Stage 7's gateway can take over later. The server URL must be HTTPS, apart from the loopback development URL. One function, `invalidServerUrlReason`, holds that rule for the configuration, the CLI, and `Pair`.
+- **uqr 0.1.3 draws the QR code.** It has no dependencies, and it renders to the terminal in block characters.

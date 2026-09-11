@@ -42,6 +42,8 @@ describe("loadSidecarConfig", () => {
       databasePath: DEFAULT_DATABASE_PATH,
       requestTtlSeconds: 86_400,
       pendingLimit: 100,
+      publicUrl: "http://127.0.0.1:8080",
+      pairingTokenTtlSeconds: 600,
     });
     assert.match(
       DEFAULT_DATABASE_PATH,
@@ -185,6 +187,49 @@ describe("loadSidecarConfig", () => {
       assert.deepEqual(
         problemsFor({ ...validEnv, REQUEST_PENDING_LIMIT: limit }),
         ["REQUEST_PENDING_LIMIT must be a whole number from 1 to 10000."],
+      );
+    }
+  });
+
+  it("reads SIDECAR_PUBLIC_URL and PAIRING_TOKEN_TTL_SECONDS, with loopback and 10-minute defaults", () => {
+    assert.equal(
+      loadSidecarConfig({ ...validEnv, SIDECAR_HOST: "::1" }).publicUrl,
+      "http://[::1]:8080",
+    );
+    const config = loadSidecarConfig({
+      ...validEnv,
+      SIDECAR_PUBLIC_URL: " https://Vault.example.ts.net/seeker/ ",
+      PAIRING_TOKEN_TTL_SECONDS: "120",
+    });
+    assert.equal(config.publicUrl, "https://vault.example.ts.net/seeker");
+    assert.equal(config.pairingTokenTtlSeconds, 120);
+    assert.equal(
+      loadSidecarConfig({
+        ...validEnv,
+        SIDECAR_PUBLIC_URL: "http://localhost:8080",
+      }).publicUrl,
+      "http://localhost:8080",
+    );
+  });
+
+  it("refuses a public URL without HTTPS off loopback, and pairing codes outside 1 to 60 minutes", () => {
+    for (const url of [
+      "http://192.168.1.20:8080",
+      "ftp://vault.example.com",
+      "https://owner:secret@vault.example.com",
+      "https://vault.example.com/?code=1",
+      "not a URL",
+    ]) {
+      assert.match(
+        problemsFor({ ...validEnv, SIDECAR_PUBLIC_URL: url }).join("\n"),
+        /^SIDECAR_PUBLIC_URL: /,
+        url,
+      );
+    }
+    for (const ttl of ["59", "3601"]) {
+      assert.deepEqual(
+        problemsFor({ ...validEnv, PAIRING_TOKEN_TTL_SECONDS: ttl }),
+        ["PAIRING_TOKEN_TTL_SECONDS must be a whole number from 60 to 3600."],
       );
     }
   });

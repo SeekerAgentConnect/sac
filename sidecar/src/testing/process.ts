@@ -24,8 +24,6 @@ export interface SidecarProcessOptions {
 
 export interface SidecarProcess {
   readonly url: string;
-  /** The phone connection the sidecar logged at startup. */
-  readonly connectionId: string;
   /** Everything the process has printed so far. */
   output(): string;
   /** Sends `signal` (default SIGTERM) and waits until the process has exited. */
@@ -84,13 +82,8 @@ export async function startSidecarProcess(
     child.stdout.on("data", onData);
     child.once("exit", onExit);
   });
-  const connectionId = /phone connection ([0-9a-f-]{36})/.exec(output)?.[1];
-  if (connectionId === undefined) {
-    throw new Error(`the sidecar didn't log its phone connection: ${output}`);
-  }
   return {
     url: `http://127.0.0.1:${options.port}`,
-    connectionId,
     output: () => output,
     async stop(signal = "SIGTERM") {
       if (child.exitCode !== null || child.signalCode !== null) return;

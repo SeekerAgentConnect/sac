@@ -31,7 +31,7 @@ public object PairRequestKt {
 
     /**
      * ```
-     * A name for the phone, shown to the sidecar's operator. Optional.
+     * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
      * ```
      *
      * `string device_name = 1 [json_name = "deviceName"];`
@@ -45,13 +45,40 @@ public object PairRequestKt {
       }
     /**
      * ```
-     * A name for the phone, shown to the sidecar's operator. Optional.
+     * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
      * ```
      *
      * `string device_name = 1 [json_name = "deviceName"];`
      */
     public fun clearDeviceName() {
       _builder.clearDeviceName()
+    }
+
+    /**
+     * ```
+     * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+     * token presented for any other URL.
+     * ```
+     *
+     * `string server_url = 2 [json_name = "serverUrl"];`
+     */
+    public var serverUrl: kotlin.String
+      @kotlin.jvm.JvmName("getServerUrl")
+        get() = _builder.serverUrl
+      @kotlin.jvm.JvmName("setServerUrl")
+        set(value) {
+        _builder.serverUrl = value
+      }
+    /**
+     * ```
+     * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+     * token presented for any other URL.
+     * ```
+     *
+     * `string server_url = 2 [json_name = "serverUrl"];`
+     */
+    public fun clearServerUrl() {
+      _builder.clearServerUrl()
     }
   }
 }

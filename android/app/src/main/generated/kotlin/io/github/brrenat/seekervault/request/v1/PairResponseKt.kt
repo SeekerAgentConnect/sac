@@ -31,7 +31,7 @@ public object PairResponseKt {
 
     /**
      * ```
-     * The new connection.
+     * The new connection. Pairing always creates one, and never changes an existing connection.
      * ```
      *
      * `string connection_id = 1 [json_name = "connectionId"];`
@@ -45,7 +45,7 @@ public object PairResponseKt {
       }
     /**
      * ```
-     * The new connection.
+     * The new connection. Pairing always creates one, and never changes an existing connection.
      * ```
      *
      * `string connection_id = 1 [json_name = "connectionId"];`
@@ -79,6 +79,33 @@ public object PairResponseKt {
      */
     public fun clearPhoneToken() {
       _builder.clearPhoneToken()
+    }
+
+    /**
+     * ```
+     * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+     * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+     * ```
+     *
+     * `string server_id = 3 [json_name = "serverId"];`
+     */
+    public var serverId: kotlin.String
+      @kotlin.jvm.JvmName("getServerId")
+        get() = _builder.serverId
+      @kotlin.jvm.JvmName("setServerId")
+        set(value) {
+        _builder.serverId = value
+      }
+    /**
+     * ```
+     * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+     * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+     * ```
+     *
+     * `string server_id = 3 [json_name = "serverId"];`
+     */
+    public fun clearServerId() {
+      _builder.clearServerId()
     }
   }
 }

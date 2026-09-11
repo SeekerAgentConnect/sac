@@ -16,12 +16,13 @@ public  final class PairRequest extends
     PairRequestOrBuilder {
   private PairRequest() {
     deviceName_ = "";
+    serverUrl_ = "";
   }
   public static final int DEVICE_NAME_FIELD_NUMBER = 1;
   private java.lang.String deviceName_;
   /**
    * <pre>
-   * A name for the phone, shown to the sidecar's operator. Optional.
+   * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
    * </pre>
    *
    * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -33,7 +34,7 @@ public  final class PairRequest extends
   }
   /**
    * <pre>
-   * A name for the phone, shown to the sidecar's operator. Optional.
+   * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
    * </pre>
    *
    * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -46,7 +47,7 @@ public  final class PairRequest extends
   }
   /**
    * <pre>
-   * A name for the phone, shown to the sidecar's operator. Optional.
+   * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
    * </pre>
    *
    * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -60,7 +61,7 @@ public  final class PairRequest extends
   }
   /**
    * <pre>
-   * A name for the phone, shown to the sidecar's operator. Optional.
+   * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
    * </pre>
    *
    * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -71,7 +72,7 @@ public  final class PairRequest extends
   }
   /**
    * <pre>
-   * A name for the phone, shown to the sidecar's operator. Optional.
+   * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
    * </pre>
    *
    * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -81,6 +82,78 @@ public  final class PairRequest extends
       com.google.protobuf.ByteString value) {
     checkByteStringIsUtf8(value);
     deviceName_ = value.toStringUtf8();
+
+  }
+
+  public static final int SERVER_URL_FIELD_NUMBER = 2;
+  private java.lang.String serverUrl_;
+  /**
+   * <pre>
+   * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+   * token presented for any other URL.
+   * </pre>
+   *
+   * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+   * @return The serverUrl.
+   */
+  @java.lang.Override
+  public java.lang.String getServerUrl() {
+    return serverUrl_;
+  }
+  /**
+   * <pre>
+   * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+   * token presented for any other URL.
+   * </pre>
+   *
+   * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+   * @return The bytes for serverUrl.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getServerUrlBytes() {
+    return com.google.protobuf.ByteString.copyFromUtf8(serverUrl_);
+  }
+  /**
+   * <pre>
+   * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+   * token presented for any other URL.
+   * </pre>
+   *
+   * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+   * @param value The serverUrl to set.
+   */
+  private void setServerUrl(
+      java.lang.String value) {
+    java.util.Objects.requireNonNull(value);
+
+    serverUrl_ = value;
+  }
+  /**
+   * <pre>
+   * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+   * token presented for any other URL.
+   * </pre>
+   *
+   * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+   */
+  private void clearServerUrl() {
+
+    serverUrl_ = getDefaultInstance().getServerUrl();
+  }
+  /**
+   * <pre>
+   * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+   * token presented for any other URL.
+   * </pre>
+   *
+   * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+   * @param value The bytes for serverUrl to set.
+   */
+  private void setServerUrlBytes(
+      com.google.protobuf.ByteString value) {
+    checkByteStringIsUtf8(value);
+    serverUrl_ = value.toStringUtf8();
 
   }
 
@@ -183,7 +256,7 @@ public  final class PairRequest extends
 
     /**
      * <pre>
-     * A name for the phone, shown to the sidecar's operator. Optional.
+     * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
      * </pre>
      *
      * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -195,7 +268,7 @@ public  final class PairRequest extends
     }
     /**
      * <pre>
-     * A name for the phone, shown to the sidecar's operator. Optional.
+     * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
      * </pre>
      *
      * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -208,7 +281,7 @@ public  final class PairRequest extends
     }
     /**
      * <pre>
-     * A name for the phone, shown to the sidecar's operator. Optional.
+     * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
      * </pre>
      *
      * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -223,7 +296,7 @@ public  final class PairRequest extends
     }
     /**
      * <pre>
-     * A name for the phone, shown to the sidecar's operator. Optional.
+     * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
      * </pre>
      *
      * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -236,7 +309,7 @@ public  final class PairRequest extends
     }
     /**
      * <pre>
-     * A name for the phone, shown to the sidecar's operator. Optional.
+     * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
      * </pre>
      *
      * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -247,6 +320,80 @@ public  final class PairRequest extends
         com.google.protobuf.ByteString value) {
       copyOnWrite();
       instance.setDeviceNameBytes(value);
+      return this;
+    }
+
+    /**
+     * <pre>
+     * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+     * token presented for any other URL.
+     * </pre>
+     *
+     * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+     * @return The serverUrl.
+     */
+    @java.lang.Override
+    public java.lang.String getServerUrl() {
+      return instance.getServerUrl();
+    }
+    /**
+     * <pre>
+     * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+     * token presented for any other URL.
+     * </pre>
+     *
+     * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+     * @return The bytes for serverUrl.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getServerUrlBytes() {
+      return instance.getServerUrlBytes();
+    }
+    /**
+     * <pre>
+     * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+     * token presented for any other URL.
+     * </pre>
+     *
+     * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+     * @param value The serverUrl to set.
+     * @return This builder for chaining.
+     */
+    public Builder setServerUrl(
+        java.lang.String value) {
+      copyOnWrite();
+      instance.setServerUrl(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+     * token presented for any other URL.
+     * </pre>
+     *
+     * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearServerUrl() {
+      copyOnWrite();
+      instance.clearServerUrl();
+      return this;
+    }
+    /**
+     * <pre>
+     * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+     * token presented for any other URL.
+     * </pre>
+     *
+     * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+     * @param value The bytes for serverUrl to set.
+     * @return This builder for chaining.
+     */
+    public Builder setServerUrlBytes(
+        com.google.protobuf.ByteString value) {
+      copyOnWrite();
+      instance.setServerUrlBytes(value);
       return this;
     }
 
@@ -267,9 +414,11 @@ public  final class PairRequest extends
       case BUILD_MESSAGE_INFO: {
           java.lang.Object[] objects = new java.lang.Object[] {
             "deviceName_",
+            "serverUrl_",
           };
           java.lang.String info =
-              "\u0000\u0001\u0000\u0000\u0001\u0001\u0001\u0000\u0000\u0000\u0001\u0208";
+              "\u0000\u0002\u0000\u0000\u0001\u0002\u0002\u0000\u0000\u0000\u0001\u0208\u0002\u0208" +
+              "";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

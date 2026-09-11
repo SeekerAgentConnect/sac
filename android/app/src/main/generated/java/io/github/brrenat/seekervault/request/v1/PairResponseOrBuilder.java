@@ -12,7 +12,7 @@ public interface PairResponseOrBuilder extends
 
   /**
    * <pre>
-   * The new connection.
+   * The new connection. Pairing always creates one, and never changes an existing connection.
    * </pre>
    *
    * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -21,7 +21,7 @@ public interface PairResponseOrBuilder extends
   java.lang.String getConnectionId();
   /**
    * <pre>
-   * The new connection.
+   * The new connection. Pairing always creates one, and never changes an existing connection.
    * </pre>
    *
    * <code>string connection_id = 1 [json_name = "connectionId"];</code>
@@ -51,4 +51,26 @@ public interface PairResponseOrBuilder extends
    */
   com.google.protobuf.ByteString
       getPhoneTokenBytes();
+
+  /**
+   * <pre>
+   * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+   * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+   * </pre>
+   *
+   * <code>string server_id = 3 [json_name = "serverId"];</code>
+   * @return The serverId.
+   */
+  java.lang.String getServerId();
+  /**
+   * <pre>
+   * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+   * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+   * </pre>
+   *
+   * <code>string server_id = 3 [json_name = "serverId"];</code>
+   * @return The bytes for serverId.
+   */
+  com.google.protobuf.ByteString
+      getServerIdBytes();
 }

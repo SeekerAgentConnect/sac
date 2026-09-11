@@ -5,6 +5,7 @@ import { RequestState } from "../gen/seekervault/request/v1/request_pb.js";
 import {
   callTool,
   connectAgent,
+  pairPhone,
   requestClient,
   viewOf,
 } from "../testing/clients.ts";
@@ -34,7 +35,10 @@ describe("durable requests across sidecar restarts", () => {
     const ack = { text: "Survives a crash", idempotency_key: "restart-1" };
     let sidecar = await start();
     try {
-      const { connectionId } = sidecar;
+      const { connectionId, phoneToken } = await pairPhone(
+        sidecar.url,
+        databasePath,
+      );
       const agent = await connectAgent(sidecar.url, MCP_TOKEN);
       const created = viewOf(await callTool(agent, REQUEST_ACK_TOOL, ack));
       // Killed right after the tool answered: the request must already be on disk.
@@ -42,13 +46,17 @@ describe("durable requests across sidecar restarts", () => {
       await agent.close().catch(() => undefined);
 
       sidecar = await start();
-      assert.equal(sidecar.connectionId, connectionId);
+      assert.match(
+        sidecar.output(),
+        new RegExp(`paired phone: connection ${connectionId}`),
+      );
       assert.doesNotMatch(
         sidecar.output(),
         /request [0-9a-f-]{36}/,
         "nothing runs at startup",
       );
-      const phone = requestClient(sidecar.url, PHONE_TOKEN);
+      // The phone's credential survived the restart too.
+      const phone = requestClient(sidecar.url, phoneToken);
       const { requests } = await phone.listPending({ connectionId });
       assert.deepEqual(
         requests.map((request) => request.ref?.requestId),

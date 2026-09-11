@@ -16,11 +16,19 @@ export declare const file_seekervault_request_v1_service: GenFile;
  */
 export declare type PairRequest = Message<"seekervault.request.v1.PairRequest"> & {
   /**
-   * A name for the phone, shown to the sidecar's operator. Optional.
+   * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
    *
    * @generated from field: string device_name = 1;
    */
   deviceName: string;
+
+  /**
+   * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+   * token presented for any other URL.
+   *
+   * @generated from field: string server_url = 2;
+   */
+  serverUrl: string;
 };
 
 /**
@@ -34,7 +42,7 @@ export declare const PairRequestSchema: GenMessage<PairRequest>;
  */
 export declare type PairResponse = Message<"seekervault.request.v1.PairResponse"> & {
   /**
-   * The new connection.
+   * The new connection. Pairing always creates one, and never changes an existing connection.
    *
    * @generated from field: string connection_id = 1;
    */
@@ -47,6 +55,14 @@ export declare type PairResponse = Message<"seekervault.request.v1.PairResponse"
    * @generated from field: string phone_token = 2;
    */
   phoneToken: string;
+
+  /**
+   * The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
+   * restarts. The phone refuses a response whose server_id isn't its pairing code's.
+   *
+   * @generated from field: string server_id = 3;
+   */
+  serverId: string;
 };
 
 /**
@@ -411,7 +427,8 @@ export declare const UnknownOutcomeSchema: GenMessage<UnknownOutcome>;
 
 /**
  * PairingService connects a phone to this sidecar and disconnects it. A sidecar has one active
- * phone connection at a time. SAW-011 defines the pairing token, the QR code, and TLS.
+ * phone connection at a time. The operator shows a one-use pairing code (`pnpm pair`), a URI
+ * with the sidecar's URL, its ID, and a pairing token; see docs/security.md.
  *
  * @generated from service seekervault.request.v1.PairingService
  */

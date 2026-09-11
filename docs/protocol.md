@@ -81,6 +81,8 @@ Stage 1 uses two separate development bearer tokens from `.env`:
 
 Each is sent as `Authorization: Bearer <token>`, never in a URL, and never logged. The sidecar listens on loopback only, compares tokens in constant time, and checks the Host and Origin headers on `/mcp`; see [`docs/development/sidecar.md`](development/sidecar.md#endpoints).
 
+`PHONE_TOKEN` stays with the live diagnostic. From SAW-011 on, the durable workflow authenticates the phone with the credential it gets from [pairing](#pairing), and `MCP_TOKEN` opens `/mcp` only; see [roles](#roles).
+
 ## Why a stream, and what Stage 2 changes
 
 `WatchCommands` is a diagnostic stream that exists only while the live-test screen is open. It is not a background service, a persistent session, or a bidirectional channel.
@@ -99,7 +101,8 @@ SAW-010 serves the workflow:
 
 - **Storage:** the sidecar stores requests in SQLite; see [storage and lifecycle](development/sidecar.md#storage-and-lifecycle).
 - **Endpoints:** it serves `vault_request_ack`, `vault_get_request`, `vault_cancel_request`, and `RequestService`.
-- **Connection:** until pairing arrives in SAW-011, the sidecar has a single connection, created with its database. `PHONE_TOKEN` authenticates as that connection, and the startup log prints its ID.
+
+SAW-011 adds [pairing](#pairing) and [separate roles](#roles). The operator shows the phone a one-use pairing code, and the phone exchanges it for a connection and a credential. Only that credential opens `RequestService`. [`docs/security.md`](security.md) explains the model.
 
 SAW-013 adds the phone's inbox, and Stages 3, 4, and 6 add the wallet actions. Until then, creating a wallet action fails with `WALLET_MISMATCH`, and `PrepareRequest` for a transfer or swap answers `unimplemented`.
 
@@ -144,7 +147,7 @@ The queued acknowledgement (`ack`) takes a short path: `ListPending`, then `Subm
   - The phone keys its records by both.
   - Every phone RPC names both. The sidecar answers a reference to another connection with `NOT_FOUND`, the same as for a request that doesn't exist.
 - **Both IDs are lowercase UUIDs,** assigned by the sidecar.
-- **Revoking a connection stops its phone token at once, and cancels its PENDING requests.** The phone revokes with `RevokeConnection`, and SAW-011 adds the operator's way. Requests already approved are still resolved from the chain, and agents can still read every request. A new pairing is a new connection: it can't see or report the old connection's requests.
+- **Revoking a connection stops its phone credential at once, and cancels its PENDING requests.** The phone revokes with `RevokeConnection`, and the operator with `pnpm pair revoke`. Pairing a new phone revokes the previous one. Requests already approved are still resolved from the chain, and agents can still read every request. A new pairing is a new connection: it can't see or report the old connection's requests.
 
 ### Actions
 
@@ -274,16 +277,16 @@ The table is `TRANSITIONS` in `lifecycle.ts`, and its tests spell out each kind'
 
 ### Phone API
 
-| Service | RPC | Token | Purpose |
+| Service | RPC | Credential | Purpose |
 | --- | --- | --- | --- |
-| `PairingService` | `Pair` | Pairing token | Exchange a one-time pairing token for a new connection and its phone token |
-| `PairingService` | `RevokeConnection` | Phone token | End the caller's connection |
-| `RequestService` | `ListPending` | Phone token | The connection's PENDING requests, oldest first (by `created_at`, then `request_id`). Pages hold 50 by default, up to 100. Paging never repeats a request, and never skips one that stays PENDING. |
-| `RequestService` | `GetRequest` | Phone token | One request, in any state |
-| `RequestService` | `PrepareRequest` | Phone token | A new version of a PENDING transfer's or swap's transaction |
-| `RequestService` | `SubmitResult` | Phone token | A decision or a wallet result. It returns the request as it is afterwards. |
+| `PairingService` | `Pair` | Pairing token | Exchange a one-use pairing token for a new connection and its phone credential |
+| `PairingService` | `RevokeConnection` | Phone credential | End the caller's connection |
+| `RequestService` | `ListPending` | Phone credential | The connection's PENDING requests, oldest first (by `created_at`, then `request_id`). Pages hold 50 by default, up to 100. Paging never repeats a request, and never skips one that stays PENDING. |
+| `RequestService` | `GetRequest` | Phone credential | One request, in any state |
+| `RequestService` | `PrepareRequest` | Phone credential | A new version of a PENDING transfer's or swap's transaction |
+| `RequestService` | `SubmitResult` | Phone credential | A decision or a wallet result. It returns the request as it is afterwards. |
 
-Every RPC is unary. The phone fetches when the app opens, when the user selects a connection, or when the user refreshes. Nothing is pushed, and the Stage 1 stream isn't needed. Tokens travel only in `Authorization: Bearer <token>`. SAW-011 defines the pairing token, the QR code, and TLS.
+Every RPC is unary. The phone fetches when the app opens, when the user selects a connection, or when the user refreshes. Nothing is pushed, and the Stage 1 stream isn't needed. Credentials travel only in `Authorization: Bearer <token>`. [Pairing](#pairing) and [roles](#roles) define them, and [`docs/security.md`](security.md#transport-security) covers TLS.
 
 A `SubmitResult` carries one result:
 
@@ -369,6 +372,59 @@ IDEMPOTENCY_CONFLICT: idempotency_key "deploy-2026-09-11" was already used for r
 
 Every Connect error from `PairingService` and `RequestService` carries a `RequestErrorDetail`, which connect-es reads with `findDetails` and connect-kotlin with `unpackedDetails`. It holds the error and, for `INVALID_STATE` and `STALE_PREPARATION`, the request as it is now. The phone can then show what happened, rather than guess from the Connect code.
 
+### Pairing
+
+The operator shows the phone a pairing code, and the phone exchanges the code's token for a connection (SAW-011). [`docs/security.md`](security.md#pairing) explains the model. This section is the format.
+
+**The pairing code** is a URI. `pnpm pair` shows it as a QR code and as text:
+
+```text
+seekervault://pair?v=1&url=https%3A%2F%2Fmac.tailnet.ts.net&server=9fda5035-f3b4-4ec3-a68a-5e6caa02397a&token=Lq3v7Yk2Qm9XwTzR4bN8cJ1dH6fG0sA5eP-uV_iKoLw
+```
+
+| Parameter | Meaning | Rules |
+| --- | --- | --- |
+| `v` | The code's version | `1`. The phone refuses any other version. |
+| `url` | The server URL: where the phone pairs, and then calls | `https://`, or `http://` on `127.0.0.1`, `localhost`, or `[::1]` for development. No user name, password, query, or fragment. It's compared after normalization: a lowercase host, no default port, and no trailing slash. |
+| `server` | The sidecar's lasting ID | A lowercase UUID. It survives restarts and pairings. |
+| `token` | The one-use pairing token | 43 base64url characters (32 random bytes) |
+
+The phone reads the code by the same rules as `parsePairingUri` in [`sidecar/src/pairing/uri.ts`](../sidecar/src/pairing/uri.ts), and refuses a code that breaks one.
+
+**`Pair`** takes the pairing token as its bearer credential:
+
+| Field | Meaning |
+| --- | --- |
+| `PairRequest.server_url` | The code's `url`. It must match the URL the token was issued for. |
+| `PairRequest.device_name` | Optional. A name for the phone, which `pnpm pair status` shows. At most 128 UTF-8 bytes. |
+| `PairResponse.connection_id` | The new connection's ID |
+| `PairResponse.phone_token` | The phone's credential for this connection. The sidecar returns it this once, and keeps only its hash. |
+| `PairResponse.server_id` | The sidecar's lasting ID, the same as the code's `server` |
+
+- **An unknown, expired, already used, or missing pairing token gets `UNAUTHENTICATED`,** with the same message in each case.
+- **A `server_url` that isn't the code's URL, or a device name that's too long, gets `INVALID_PARAMETERS`,** and the token stays usable.
+- **A successful `Pair` always creates a new connection,** and revokes the sidecar's previous one, since one phone is active at a time.
+- **The phone never changes an existing connection because of a code.** Every code is a new pairing, even when its `server` ID is one the phone knows. The phone sends each credential only to the URL it paired with.
+
+**`RevokeConnection`** takes the phone's credential, and its `connection_id` must be the caller's own; another ID gets `NOT_FOUND`. It revokes the connection at once, and cancels the connection's PENDING requests; see [connections](#connections-and-request-identity).
+
+### Roles
+
+Each credential opens one role:
+
+| Operation | `MCP_TOKEN` | Pairing token | Phone credential | `PHONE_TOKEN` | None, wrong, or revoked |
+| --- | --- | --- | --- | --- | --- |
+| `/mcp`: every method and tool | Yes | 401 | 401 | 401 | 401 |
+| `PairingService.Pair` | `unauthenticated` | Yes, once | `unauthenticated` | `unauthenticated` | `unauthenticated` |
+| `PairingService.RevokeConnection` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
+| `RequestService`: `ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
+| `LiveCommandService`: `WatchCommands`, `AcknowledgeCommand` (Stage 1) | `unauthenticated` | `unauthenticated` | `unauthenticated` | Yes | `unauthenticated` |
+
+- **Only the paired phone can prepare, review, or answer a request,** and only for its own connection. No MCP tool pairs, prepares, submits a result, or revokes, so an agent can't act as the phone.
+- **`PHONE_TOKEN` is the Stage 1 development credential.** It opens the live diagnostic and nothing else.
+- **`GET /healthz` needs no credential.**
+- `sidecar/src/pairing/roles.test.ts` checks every cell, and every new RPC or tool joins that test.
+
 ### Compatibility with Stage 1
 
 The durable contract leaves the live diagnostic as it was.
@@ -379,7 +435,7 @@ The durable contract leaves the live diagnostic as it was.
 | **The phone** | A server stream while the live-test screen is open | Unary RPCs whenever the app fetches |
 | **Storage** | None: one in-flight command, and nothing replayed | Stored, and survives restarts (SAW-010) |
 | **Errors** | `LiveCommandError` | `RequestError` |
-| **Credentials** | `MCP_TOKEN` and `PHONE_TOKEN` from `.env` | The MCP token and a paired phone token (SAW-011) |
+| **Credentials** | `MCP_TOKEN` and `PHONE_TOKEN` from `.env` | `MCP_TOKEN`, and the phone credential from [pairing](#pairing) (SAW-011) |
 
 - **Neither package imports the other,** and the live service keeps its two RPCs. `sidecar/src/requests/live-compat.test.ts` checks both.
 - **`buf breaking` against the previous commit passes,** so no live message or field changed.

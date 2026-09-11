@@ -139,32 +139,19 @@ export class RequestStore {
     this.#newId = options.newId ?? randomUUID;
   }
 
-  /** The connection that new requests are bound to: the oldest one not revoked. */
+  /**
+   * The paired phone's connection, which new requests are bound to. There's at most one, because
+   * pairing a phone revokes the previous one (pairing/store.ts).
+   */
   activeConnection(): string | undefined {
     const row = this.#db
       .prepare(
-        "SELECT connection_id FROM connections WHERE revoked_at_ms IS NULL ORDER BY created_at_ms, connection_id LIMIT 1",
+        `SELECT connection_id FROM connections
+         WHERE revoked_at_ms IS NULL AND credential_hash IS NOT NULL
+         ORDER BY created_at_ms DESC LIMIT 1`,
       )
       .get();
     return row === undefined ? undefined : text(row.connection_id);
-  }
-
-  /**
-   * Returns the active connection, and creates one if there's none. Until pairing arrives
-   * (SAW-011), the sidecar has this one connection, and PHONE_TOKEN authenticates as it.
-   */
-  ensureConnection(): string {
-    return transaction(this.#db, () => {
-      const existing = this.activeConnection();
-      if (existing !== undefined) return existing;
-      const connectionId = this.#newId();
-      this.#db
-        .prepare(
-          "INSERT INTO connections (connection_id, created_at_ms) VALUES (?, ?)",
-        )
-        .run(connectionId, this.#now());
-      return connectionId;
-    });
   }
 
   /**

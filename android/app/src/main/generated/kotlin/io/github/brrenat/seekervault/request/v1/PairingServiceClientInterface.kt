@@ -9,7 +9,8 @@ import com.connectrpc.ResponseMessage
 
 /**
  *  PairingService connects a phone to this sidecar and disconnects it. A sidecar has one active
- *  phone connection at a time. SAW-011 defines the pairing token, the QR code, and TLS.
+ *  phone connection at a time. The operator shows a one-use pairing code (`pnpm pair`), a URI
+ *  with the sidecar's URL, its ID, and a pairing token; see docs/security.md.
  */
 public interface PairingServiceClientInterface {
   /**

@@ -5,26 +5,28 @@ The sidecar is the self-hosted TypeScript/Node server that sits between agents a
 - **The Stage 1 live diagnostic,** which stays in memory.
 - **The durable request workflow, from Stage 2 on.** It's stored in a local SQLite database; see [storage and lifecycle](#storage-and-lifecycle).
 
-The sidecar listens on loopback only.
+The sidecar listens on loopback only. A phone on another network reaches it through a trusted TLS endpoint; see [`docs/security.md`](../security.md#transport-security).
 
 ## Configuration
 
 `pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`.
 
-`MCP_ALLOWED_HOSTS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, and `REQUEST_PENDING_LIMIT` are optional, and an empty one counts as unset. The others are required.
+`MCP_ALLOWED_HOSTS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, and `PAIRING_TOKEN_TTL_SECONDS` are optional, and an empty one counts as unset. The others are required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
 | `SIDECAR_HOST` | Address to listen on | `127.0.0.1`, `::1`, or `localhost`. Stage 1 never listens beyond the machine. |
 | `SIDECAR_PORT` | Port to listen on | 1 to 65535; `.env.example` uses 8080 |
 | `MCP_TOKEN` | Bearer token that agents send to `/mcp` | At least 32 characters, only bearer-token characters (letters, digits, and `- . _ ~ + /`), and not the placeholder |
-| `PHONE_TOKEN` | Bearer token that the phone sends to the Connect API | The same rules as `MCP_TOKEN`, and a different value |
+| `PHONE_TOKEN` | Bearer token for the Stage 1 live-test screen, which only `LiveCommandService` accepts. The durable workflow uses the credential from [pairing](#pairing-a-phone) instead. | The same rules as `MCP_TOKEN`, and a different value |
 | `LIVE_COMMAND_TIMEOUT_SECONDS` | How long a live command waits for the user's OK | 1 to 3600 |
 | `MCP_URL` | Not read by the sidecar; the test agent (SAW-005) uses it | None |
 | `MCP_ALLOWED_HOSTS` | Optional. Host names or IP addresses, comma-separated, that `/mcp` accepts in the `Host` and `Origin` headers besides loopback. It's for an agent that reaches the sidecar through a VPN address; see [Hermes over a VPN](../integrations/hermes.md#over-a-vpn-you-already-use). | No scheme, port, or wildcard |
 | `DATABASE_PATH` | Optional. The SQLite file for durable requests | Defaults to `sidecar/data/sidecar.db`, whatever the working directory. A relative path is resolved from the directory the sidecar starts in, and a missing directory is created. |
 | `REQUEST_TTL_SECONDS` | Optional. How long a request waits for the owner's decision when its agent doesn't choose | 60 to 604800; defaults to 86400 (a day) |
 | `REQUEST_PENDING_LIMIT` | Optional. The most requests that can wait for the owner at once | 1 to 10000; defaults to 100 |
+| `SIDECAR_PUBLIC_URL` | Optional. The URL that pairing codes carry: where the phone reaches the sidecar | `https://`, or `http://` on `127.0.0.1`, `localhost`, or `[::1]`. No user name, password, query, or fragment. Defaults to `http://<SIDECAR_HOST>:<SIDECAR_PORT>`, the development URL over `adb reverse`. For a phone on another network, use a trusted TLS endpoint; see [transport security](../security.md#transport-security). |
+| `PAIRING_TOKEN_TTL_SECONDS` | Optional. How long a pairing code works | 60 to 3600; defaults to 600 (10 minutes) |
 
 Generate each token with `openssl rand -hex 32`. If the configuration is invalid, the sidecar names every problem and exits with status 1. It never prints a token value.
 
@@ -38,11 +40,11 @@ pnpm dev:sidecar
 The expected output is:
 
 ```text
-[sidecar] requests are stored in /path/to/SeekerAgentWallet/sidecar/data/sidecar.db (schema version 1); phone connection 5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f
+[sidecar] requests are stored in /path/to/SeekerAgentWallet/sidecar/data/sidecar.db (schema version 2); server 9fda5035-f3b4-4ec3-a68a-5e6caa02397a; no phone is paired: run pnpm pair
 [sidecar] listening on http://127.0.0.1:8080: MCP at http://127.0.0.1:8080/mcp, phone API at http://127.0.0.1:8080/seekervault.live.v1.LiveCommandService
 ```
 
-The phone connection is created along with the database and keeps its ID across restarts. The phone's `RequestService` calls name it, until pairing replaces it in SAW-011.
+The server ID is created with the database and never changes. Once a phone pairs, the first line ends with `paired phone: connection <ID>` instead. Until then, agents can't create requests, and get `NOT_PAIRED`; see [pairing a phone](#pairing-a-phone).
 
 To check that the sidecar is up, run `curl -s http://127.0.0.1:8080/healthz`, which prints `{"status":"ok"}`.
 
@@ -56,15 +58,61 @@ A restart loses the in-flight live command by design, and nothing is replayed af
 
 `pnpm build` compiles the sidecar to `sidecar/dist`. To run that build from the repository root, use `node --env-file-if-exists=.env sidecar/dist/main.js`.
 
+## Pairing a phone
+
+The durable workflow needs a paired phone. [`docs/security.md`](../security.md) explains the model, and [`docs/protocol.md`](../protocol.md#pairing) the format.
+
+| Command | What it does |
+| --- | --- |
+| `pnpm pair` | Issues a one-use pairing code for `SIDECAR_PUBLIC_URL`, and prints it as a QR code and as a `seekervault://pair?…` URI. The code works for `PAIRING_TOKEN_TTL_SECONDS`, until a newer code voids it, or until it pairs. |
+| `pnpm pair status` | Shows the paired phone: its connection ID, its device name, and when it paired |
+| `pnpm pair revoke` | Revokes the paired phone's connection, and cancels its PENDING requests |
+
+- **The commands read the same `.env` as the sidecar, and work on its database directly,** whether or not the sidecar is running.
+- **Pairing a new phone revokes the one paired now.** `pnpm pair` says which phone that is.
+- **The QR code is drawn in block characters, and scans on a dark terminal background.** On a light background, or if it doesn't scan, enter the URI printed under it.
+- **Only `pnpm pair` prints a secret,** the code's token. `status` and `revoke` print none, and the sidecar logs none.
+- **A usage or configuration error exits with status 2.** An invalid `SIDECAR_PUBLIC_URL` is reported, and no code is issued.
+- **The app's pairing screen arrives with its connections in SAW-012.** Until then, any Connect client can pair. For example, with the token from the code:
+
+  ```bash
+  curl -s -X POST http://127.0.0.1:8080/seekervault.request.v1.PairingService/Pair \
+      -H 'Content-Type: application/json' -H "Authorization: Bearer $PAIRING_TOKEN" \
+      -d '{"serverUrl":"http://127.0.0.1:8080","deviceName":"curl"}'
+  ```
+
+  The answer holds `connectionId`, `phoneToken`, and `serverId`.
+
+For example, with the token elided:
+
+```text
+$ pnpm pair
+Scan this with seeker-vault on the phone to pair it with https://mac.tailnet.ts.net.
+The code works once, until 15:19:50 (10 minutes).
+
+<the QR code>
+
+Or enter the code by hand:
+seekervault://pair?v=1&url=https%3A%2F%2Fmac.tailnet.ts.net&server=9fda5035-f3b4-4ec3-a68a-5e6caa02397a&token=…
+
+Keep the code private: whoever pairs with it first becomes the paired phone.
+$ pnpm pair status
+Paired phone: connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-09-11T13:09:50.437Z.
+$ pnpm pair revoke
+Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-09-11T13:09:50.437Z. Its credential no longer works, and 0 pending requests were cancelled.
+```
+
 ## Endpoints
 
 | Path | Caller | Authentication | Purpose |
 | --- | --- | --- | --- |
 | `GET /healthz` | Anything on the machine | None | Liveness check: `{"status":"ok"}` |
 | `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>` | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, and the durable tools `vault_request_ack`, `vault_get_request`, and `vault_cancel_request` |
-| `/seekervault.live.v1.LiveCommandService/WatchCommands` | The phone | `Authorization: Bearer <PHONE_TOKEN>` | Connect server stream of live commands |
-| `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The phone | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
-| `/seekervault.request.v1.RequestService/ListPending`, `GetRequest`, `PrepareRequest`, and `SubmitResult` | The phone | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary calls of the durable workflow |
+| `/seekervault.live.v1.LiveCommandService/WatchCommands` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect server stream of live commands |
+| `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
+| `/seekervault.request.v1.PairingService/Pair` | A phone that's pairing | `Authorization: Bearer <pairing token>`, from `pnpm pair` | Exchanges the pairing token for a connection and its credential |
+| `/seekervault.request.v1.PairingService/RevokeConnection` | The paired phone | `Authorization: Bearer <phone credential>` | Revokes the caller's own connection |
+| `/seekervault.request.v1.RequestService/ListPending`, `GetRequest`, `PrepareRequest`, and `SubmitResult` | The paired phone | `Authorization: Bearer <phone credential>` | Connect unary calls of the durable workflow |
 
 The sidecar checks requests to `/mcp` as follows, following the MCP transport specification's defense against DNS rebinding:
 
@@ -78,12 +126,12 @@ The sidecar checks requests to `/mcp` as follows, following the MCP transport sp
 
 On the phone API:
 
-- **Token:** a missing or wrong token fails with `unauthenticated`. The MCP token is refused here, and the phone token on `/mcp`.
+- **Token:** each service takes only its own credential, as the [role matrix](../protocol.md#roles) shows. Any other token, a revoked credential, or none fails with `unauthenticated`. The MCP token is refused on every phone RPC, and every phone-side token is refused on `/mcp`.
 - **Size:** each message is limited to 64 KiB, and a larger one fails with `resource_exhausted`.
-- **Connection:** until pairing arrives in SAW-011, `PHONE_TOKEN` authenticates as the sidecar's one connection. Every `RequestService` call must name that connection, in `connection_id` or `ref`. A call that names another connection gets `not_found`.
-- **Errors:** every `RequestService` error carries a `RequestErrorDetail`; see [request errors](../protocol.md#request-errors). `PairingService` arrives in SAW-011.
+- **Connection:** the phone credential authenticates as its own connection. Every `RequestService` call must name that connection, in `connection_id` or `ref`. A call that names another connection gets `not_found`.
+- **Errors:** every `PairingService` and `RequestService` error carries a `RequestErrorDetail`; see [request errors](../protocol.md#request-errors).
 
-**Tokens and logs:** tokens are read only from the `Authorization` header, compared in constant time, and never logged. Log lines carry command and request IDs, sizes, and states. They never carry command text, request text, or notes.
+**Tokens and logs:** tokens are read only from the `Authorization` header, and never logged. `MCP_TOKEN` and `PHONE_TOKEN` are compared in constant time. Pairing tokens and phone credentials are looked up by their SHA-256 hash, which is all the database keeps. Log lines carry command and request IDs, sizes, and states. They never carry command text, request text, or notes.
 
 ## The MCP tools
 
@@ -125,11 +173,13 @@ Durable requests live in one SQLite file, `DATABASE_PATH` (by default `sidecar/d
 - **Only `sidecar/src/storage/` touches SQLite or the file system.** `stage-boundary.test.ts` checks this.
 - **Run one sidecar per database file.**
 
-These are the tables at schema version 1:
+These are the tables at schema version 2:
 
 | Table | Holds |
 | --- | --- |
-| `connections` | The phone connection. Until pairing (SAW-011) there's one, created with the database. |
+| `server` | The sidecar's lasting ID, created with the database |
+| `connections` | Each phone that paired: its connection ID, the SHA-256 of its credential, its device name, and when it paired and was revoked. At most one isn't revoked. |
+| `pairing_tokens` | Each pairing token's SHA-256, its server URL, when it was issued, expires, and was used, and the connection it created |
 | `requests` | Each request: its connection, kind, action (as Protobuf binary), note, state, times, and outcome |
 | `idempotency_keys` | Each key's request and action fingerprint, across the whole sidecar |
 | `results` | Every result the phone submitted and the sidecar accepted, so that a repeat changes nothing |
@@ -143,6 +193,7 @@ To look inside, run `sqlite3 sidecar/data/sidecar.db "SELECT request_id, kind, s
 - **At startup, the sidecar applies the missing ones in order,** each in its own transaction, so a failure leaves the database at the last complete version.
 - **A database from a newer sidecar is refused,** and the sidecar exits rather than guess.
 - **A shipped migration is never edited;** a schema change is a new migration. `sidecar/src/storage/fixtures/schema-v1.sql` freezes a v1 database, and `database.test.ts` opens it with the current code.
+- **Migration 2 adds pairing (SAW-011):** the `server` and `pairing_tokens` tables, and the credential and device name columns on `connections`. SAW-010's stand-in connection has no credential, so the migration revokes it and cancels its PENDING requests. Pair the phone after upgrading.
 
 ### The lifecycle in the sidecar
 
@@ -160,9 +211,9 @@ To look inside, run `sqlite3 sidecar/data/sidecar.db "SELECT request_id, kind, s
 
 ### Restarts, backups, and a fresh start
 
-- **Nothing runs at startup.** No request is rebuilt, re-executed, replayed, or expired early. Requests wait in their states for the phone and the agent, and the connection keeps its ID. The live diagnostic still loses its in-flight command.
+- **Nothing runs at startup.** No request is rebuilt, re-executed, replayed, or expired early. Requests wait in their states for the phone and the agent, and the paired phone stays paired. The live diagnostic still loses its in-flight command.
 - **To back up,** stop the sidecar, then copy the database file together with its `-wal` file, if there is one.
-- **To start over,** stop the sidecar and delete `sidecar/data/sidecar.db*`. Every request, and the connection's ID, is gone, and the next start creates a new connection.
+- **To start over,** stop the sidecar and delete `sidecar/data/sidecar.db*`. Every request, the pairing, and the server ID are gone, and the phone must pair again.
 
 ## Examples
 
@@ -232,6 +283,10 @@ Typical log lines:
 [sidecar] request 3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c stored (ack)
 [sidecar] request 3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c: acknowledgement, now COMPLETED
 [sidecar] rejected POST /mcp: a valid MCP token is required
+[sidecar] phone paired: connection de03846e-d435-4705-b2e3-ec67da539f12; revoked connection 5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f
+[sidecar] rejected Pair: UNAUTHENTICATED
+[sidecar] rejected ListPending: missing, wrong, or revoked phone credential
+[sidecar] connection de03846e-d435-4705-b2e3-ec67da539f12 revoked by the phone; 2 pending requests cancelled
 ```
 
 ## Code and tests
@@ -249,9 +304,13 @@ Typical log lines:
 | `sidecar/src/requests/lifecycle.ts` | The durable lifecycle (SAW-009): the transition table, the phone's results, the approval binding, and expiry |
 | `sidecar/src/requests/store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions |
 | `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010) |
-| `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010) |
+| `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
 | `sidecar/src/storage/database.ts` | Opening the database, migrations, and transactions (SAW-010) |
-| `sidecar/src/storage/migrations.ts` | The numbered schema migrations (SAW-010) |
+| `sidecar/src/storage/migrations.ts` | The numbered schema migrations (SAW-010, SAW-011) |
+| `sidecar/src/pairing/uri.ts` | The pairing code's URI, and the server URL rule (SAW-011) |
+| `sidecar/src/pairing/store.ts` | `PairingStore` (SAW-011): pairing tokens, pairing, phone credentials, revocation, and the server ID |
+| `sidecar/src/pairing/service.ts` | The Connect `PairingService` (SAW-011) |
+| `sidecar/src/pairing/cli.ts` | `pnpm pair`, `pnpm pair status`, and `pnpm pair revoke` (SAW-011) |
 
 The SAW-009 modules are pure rules, which `store.ts` applies. The contract they implement is in [`docs/protocol.md`](../protocol.md#stage-2-durable-requests).
 
@@ -283,8 +342,14 @@ The SAW-009 modules are pure rules, which `store.ts` applies. The contract they 
   - repeated results and the pending limit
   - the size limits
   - the phone's authentication and scope
-- **`src/requests/restart.test.ts`** kills the sidecar with SIGKILL right after a tool answers and right after the phone's result is confirmed. It checks that both survived, and that nothing ran at startup.
-- **`src/storage/database.test.ts`** tests the schema, the pragmas, the frozen v1 fixture, a database from a newer sidecar, migration failures, and transaction rollback.
+- **`src/requests/restart.test.ts`** kills the sidecar with SIGKILL right after a tool answers and right after the phone's result is confirmed. It checks that both survived, along with the phone's pairing, and that nothing ran at startup.
+- **`src/pairing/`** tests pairing (SAW-011):
+  - `uri.test.ts`: the pairing URI and the server URL rule
+  - `store.test.ts`: expired, reused, unknown, and wrong-URL pairing tokens; one active phone; revocation; a new code never changing an existing connection; and only hashes in the database
+  - `roles.test.ts`: every RPC and MCP method against every credential, including a revoked one; results from the wrong credential; and no secret in the log
+  - `tls.test.ts`: pairing through a TLS endpoint, and refusals for an untrusted certificate and for another host's certificate
+  - `cli.test.ts`: `pnpm pair` and its `status` and `revoke` commands, with no credential in their output
+- **`src/storage/database.test.ts`** tests the schema, the pragmas, the frozen v1 fixture and its migration to v2, a database from a newer sidecar, migration failures, and transaction rollback.
 - **The SAW-009 rule tests** are `src/requests/action.test.ts`, `identity.test.ts`, `lifecycle.test.ts`, `fixtures.test.ts`, and `live-compat.test.ts`.
 - **`src/stage-boundary.test.ts`** checks that there's no wallet package, no key generation, and no file system or SQLite access outside `src/storage/`.
 
@@ -319,3 +384,24 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with Node 24.21.0 (its `node:
 | `pnpm check:generated` | PASS: the protocol didn't change |
 | Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>expiry one millisecond late</li><li>a changed retry reusing the original request</li><li>a repeated result not recognized</li><li>a page repeating its last request</li><li>one request accepted past the limit</li><li>an edit to the shipped migration</li><li>the database kept in memory</li><li>a 128 KiB body limit</li></ul> |
 | Physical Seeker | NOT RUN: SAW-010 has no phone-side code. The Android inbox arrives in SAW-013. |
+
+## Verification record: SAW-011
+
+Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, and the other versions in [`toolchain.md`](toolchain.md).
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, and `tsc`. 235/235 sidecar tests pass, 46 more than before, and the test agent's 15/15 pass too. |
+| Pairing tokens | PASS, in `store.test.ts`. An expired token (at exactly its expiry), a reused one, an unknown one, and a missing one all get the same UNAUTHENTICATED. A wrong URL gets INVALID_PARAMETERS and leaves the token usable. A newer code voids an older one. |
+| Roles | PASS, in `roles.test.ts`. The credentials were none, `MCP_TOKEN`, a pairing token, the paired phone's credential, a revoked credential, and `PHONE_TOKEN`. Each one was tried against every RPC of `PairingService`, `RequestService`, and `LiveCommandService`, and against `initialize`, `tools/list`, and every tool on `/mcp`. Each credential opened exactly its own role, and no MCP tool pairs, prepares, submits, or revokes. |
+| Revocation and re-pairing | PASS:<ul><li>A new pairing revokes the previous phone and cancels its PENDING requests, and overdue ones expire instead.</li><li>`RevokeConnection` and `pnpm pair revoke` stop the credential at once.</li><li>A new code for another URL creates a new connection, and never changes the old one.</li></ul> |
+| TLS | PASS, in `tls.test.ts`. Pairing works through an HTTPS endpoint in front of the loopback sidecar, with a certificate the client trusts. An untrusted certificate, and a certificate for another host name, fail before the token is sent, and the token still pairs afterwards. |
+| Migration | PASS. The frozen v1 fixture migrates to v2: its data stays, its stand-in connection is revoked, and its PENDING request is CANCELLED. |
+| Live `pnpm dev:sidecar` and `pnpm pair` | PASS:<ul><li>`pnpm pair` printed the QR code and the URI, and a Connect client paired with the printed token.</li><li>The same token was then refused.</li><li>The credential listed requests, and `PHONE_TOKEN` was refused.</li><li>`pnpm pair status` and `pnpm pair revoke` worked, and the revoked credential was refused.</li><li>No token appeared in the log, or in the status and revoke output.</li></ul> |
+| `pnpm test:hello` | PASS: the 9/9 Stage 1 acceptance cases, unchanged |
+| `pnpm check:android` | PASS. The regenerated `PairRequest`, `PairResponse`, and `PairingServiceClient` compile, and the unit tests, lint, and both APKs pass. |
+| `pnpm check:generated`, `buf breaking` | PASS. The generated code is current, and the proto change only adds fields. |
+| `pnpm build` | PASS: `sidecar/dist` includes `pairing/` |
+| Deliberate breaks | Each break failed the pairing tests, and each file was restored byte for byte afterwards:<ul><li>a pairing token that still works at its expiry</li><li>a used pairing token that works again</li><li>`Pair` ignoring the token's URL</li><li>a revoked credential that still authenticates</li><li>revocation that leaves PENDING requests</li><li>a new pairing that keeps the previous phone</li><li>`RequestService` accepting any bearer token once a phone is paired</li><li>plain HTTP allowed off loopback</li><li>`Pair` logging the bearer token</li></ul> |
+| Remote pairing through Tailscale Serve or Caddy | NOT RUN: it needs the owner's tailnet or domain. `tls.test.ts` covers the same path with a local TLS endpoint. |
+| Physical Seeker | NOT RUN: the app's pairing screen arrives in SAW-012. |

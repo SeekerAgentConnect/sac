@@ -8,6 +8,7 @@
  */
 import { fileURLToPath } from "node:url";
 
+import { invalidServerUrlReason, normalizeServerUrl } from "./pairing/uri.ts";
 import {
   MAX_EXPIRES_IN_SECONDS,
   MIN_EXPIRES_IN_SECONDS,
@@ -17,6 +18,7 @@ export interface SidecarConfig {
   readonly host: string;
   readonly port: number;
   readonly mcpToken: string;
+  /** The Stage 1 live diagnostic's development token; the durable phone API needs pairing. */
   readonly phoneToken: string;
   readonly liveCommandTimeoutSeconds: number;
   /** Host names besides loopback that /mcp accepts in Host and Origin (MCP_ALLOWED_HOSTS). */
@@ -27,6 +29,13 @@ export interface SidecarConfig {
   readonly requestTtlSeconds: number;
   /** The most PENDING requests the phone may have at once (REQUEST_PENDING_LIMIT). */
   readonly pendingLimit: number;
+  /**
+   * The URL the phone pairs with and calls (SIDECAR_PUBLIC_URL): HTTPS, or by default the loopback
+   * URL, for development over adb reverse. Only `pnpm pair` reads it.
+   */
+  readonly publicUrl?: string;
+  /** How long a pairing code works (PAIRING_TOKEN_TTL_SECONDS). Only `pnpm pair` reads it. */
+  readonly pairingTokenTtlSeconds?: number;
 }
 
 export class ConfigError extends Error {
@@ -64,8 +73,14 @@ const MAX_LIVE_COMMAND_TIMEOUT_SECONDS = 3600;
 const DEFAULT_REQUEST_TTL_SECONDS = 24 * 60 * 60;
 const DEFAULT_PENDING_LIMIT = 100;
 const MAX_PENDING_LIMIT = 10_000;
+const DEFAULT_PAIRING_TOKEN_TTL_SECONDS = 600;
+const MIN_PAIRING_TOKEN_TTL_SECONDS = 60;
+const MAX_PAIRING_TOKEN_TTL_SECONDS = 3600;
 
-export function loadSidecarConfig(env: Env): SidecarConfig {
+export function loadSidecarConfig(env: Env): SidecarConfig & {
+  readonly publicUrl: string;
+  readonly pairingTokenTtlSeconds: number;
+} {
   const problems: string[] = [];
 
   const host = required(env, "SIDECAR_HOST", problems);
@@ -105,6 +120,15 @@ export function loadSidecarConfig(env: Env): SidecarConfig {
     DEFAULT_PENDING_LIMIT,
     problems,
   );
+  const publicUrl = publicUrlOf(env, host, port, problems);
+  const pairingTokenTtlSeconds = optionalWholeNumber(
+    env,
+    "PAIRING_TOKEN_TTL_SECONDS",
+    MIN_PAIRING_TOKEN_TTL_SECONDS,
+    MAX_PAIRING_TOKEN_TTL_SECONDS,
+    DEFAULT_PAIRING_TOKEN_TTL_SECONDS,
+    problems,
+  );
 
   if (
     problems.length > 0 ||
@@ -114,7 +138,9 @@ export function loadSidecarConfig(env: Env): SidecarConfig {
     phoneToken === undefined ||
     liveCommandTimeoutSeconds === undefined ||
     requestTtlSeconds === undefined ||
-    pendingLimit === undefined
+    pendingLimit === undefined ||
+    publicUrl === undefined ||
+    pairingTokenTtlSeconds === undefined
   ) {
     throw new ConfigError(problems);
   }
@@ -128,7 +154,32 @@ export function loadSidecarConfig(env: Env): SidecarConfig {
     databasePath,
     requestTtlSeconds,
     pendingLimit,
+    publicUrl,
+    pairingTokenTtlSeconds,
   };
+}
+
+/**
+ * SIDECAR_PUBLIC_URL: the URL a pairing code gives the phone. Without it, the loopback URL the
+ * sidecar listens on, which reaches a phone only over adb reverse.
+ */
+function publicUrlOf(
+  env: Env,
+  host: string | undefined,
+  port: number | undefined,
+  problems: string[],
+): string | undefined {
+  const raw = env.SIDECAR_PUBLIC_URL?.trim();
+  if (!raw) {
+    if (host === undefined || port === undefined) return undefined;
+    return `http://${host.includes(":") ? `[${host}]` : host}:${port}`;
+  }
+  const reason = invalidServerUrlReason(raw);
+  if (reason !== undefined) {
+    problems.push(`SIDECAR_PUBLIC_URL: ${reason}.`);
+    return undefined;
+  }
+  return normalizeServerUrl(raw);
 }
 
 /**

@@ -7,7 +7,7 @@ seeker-vault has four parts: the agent, the sidecar, the Android app, and the wa
 ```mermaid
 flowchart LR
     Agent["Agent<br>(Hermes, test agent)"] -- "MCP over HTTP<br>(MCP token)" --> Sidecar
-    Phone["Seeker app<br>(Android)"] -- "Connect, unary<br>(phone token)" --> Sidecar
+    Phone["Seeker app<br>(Android)"] -- "Connect, unary<br>(phone credential)" --> Sidecar
     Phone -- "Mobile Wallet Adapter" --> Wallet["Seed Vault Wallet"]
     Wallet -- "signs and sends" --> Solana[("Solana")]
     Sidecar -- "reads: blockhash,<br>confirmation, Jupiter" --> Solana
@@ -22,7 +22,7 @@ flowchart LR
 
 ## Trust boundaries
 
-- **Two credentials, two roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's token can prepare them and submit results. Neither token works on the other's endpoints; Stage 1 already refuses swapped tokens.
+- **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
 - **The agent is untrusted input.** Its parameters are validated before they're stored. Its note is shown apart from the verified parameters, and the phone checks the actual transaction, not the agent's description of it.
 - **The sidecar is trusted to relay, not to sign.** The phone parses each prepared transaction itself, and the approval names that transaction's exact hash. A sidecar that swapped the transaction after the review couldn't get it approved.
 - **Policies stay on the phone.** The sidecar never receives the policy or its assessment, so an agent can't learn or change the rules through it.
@@ -33,7 +33,7 @@ flowchart LR
 | --- | --- | --- |
 | The live command | Sidecar memory: one in-flight command, and nothing else | SAW-003 |
 | Requests, prepared versions, results, and idempotency records | The sidecar's local SQLite database | SAW-010 |
-| Pairing | The sidecar | SAW-011 |
+| Pairing: the server ID, pairing tokens, and the hashes of phone credentials | The sidecar's SQLite database | SAW-011 |
 | Connections and phone credentials | The phone, with credentials in platform-backed secure storage | SAW-012 |
 | Results not yet acknowledged | The phone, until the sidecar acknowledges them | SAW-013 |
 | Policies, assessments, and daily counters | The phone | Stage 5 |

@@ -12,7 +12,7 @@ public interface PairRequestOrBuilder extends
 
   /**
    * <pre>
-   * A name for the phone, shown to the sidecar's operator. Optional.
+   * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
    * </pre>
    *
    * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -21,7 +21,7 @@ public interface PairRequestOrBuilder extends
   java.lang.String getDeviceName();
   /**
    * <pre>
-   * A name for the phone, shown to the sidecar's operator. Optional.
+   * A name for the phone, shown to the sidecar's operator. Optional; at most 128 UTF-8 bytes.
    * </pre>
    *
    * <code>string device_name = 1 [json_name = "deviceName"];</code>
@@ -29,4 +29,26 @@ public interface PairRequestOrBuilder extends
    */
   com.google.protobuf.ByteString
       getDeviceNameBytes();
+
+  /**
+   * <pre>
+   * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+   * token presented for any other URL.
+   * </pre>
+   *
+   * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+   * @return The serverUrl.
+   */
+  java.lang.String getServerUrl();
+  /**
+   * <pre>
+   * The URL the phone is pairing with, as the pairing code gave it. The sidecar refuses a pairing
+   * token presented for any other URL.
+   * </pre>
+   *
+   * <code>string server_url = 2 [json_name = "serverUrl"];</code>
+   * @return The bytes for serverUrl.
+   */
+  com.google.protobuf.ByteString
+      getServerUrlBytes();
 }

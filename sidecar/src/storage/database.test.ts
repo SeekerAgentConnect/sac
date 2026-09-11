@@ -10,6 +10,7 @@ import {
   RequestState,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { SubmitResultRequestSchema } from "../gen/seekervault/request/v1/service_pb.js";
+import { REVOKED_DETAIL } from "../pairing/store.ts";
 import { RequestStore } from "../requests/store.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
 import {
@@ -71,16 +72,18 @@ describe("the sidecar database", () => {
       assert.deepEqual(tables(db), [
         "connections",
         "idempotency_keys",
+        "pairing_tokens",
         "prepared_transactions",
         "requests",
         "results",
+        "server",
       ]);
     } finally {
       db.close();
     }
   });
 
-  it("opens the frozen v1 fixture and keeps its data", () => {
+  it("migrates the frozen v1 fixture: its data stays, and the stand-in connection is revoked", () => {
     const path = temporaryDatabasePath();
     const fixture = new DatabaseSync(path);
     fixture.exec(FIXTURE_V1);
@@ -103,9 +106,20 @@ describe("the sidecar database", () => {
         pendingLimit: 100,
         now: () => Date.UTC(2026, 8, 11, 12, 0, 2),
       });
-      assert.equal(store.activeConnection(), FIXTURE_CONNECTION);
+      // Migration 2 revokes SAW-010's stand-in connection, which has no credential, and cancels its
+      // PENDING request the way a revocation does.
+      assert.equal(store.activeConnection(), undefined);
+      assert.equal(
+        typeof db
+          .prepare(
+            "SELECT revoked_at_ms FROM connections WHERE connection_id = ?",
+          )
+          .get(FIXTURE_CONNECTION)?.revoked_at_ms,
+        "number",
+      );
       const pending = store.get(FIXTURE_PENDING);
-      assert.equal(pending.state, RequestState.PENDING);
+      assert.equal(pending.state, RequestState.CANCELLED);
+      assert.equal(pending.outcome?.detail, REVOKED_DETAIL);
       assert.equal(pending.agentNote, "Written by schema version 1");
       assert.equal(pending.action?.kind.case, "ack");
       assert.equal(pending.action.kind.value.text, "Deploy finished");

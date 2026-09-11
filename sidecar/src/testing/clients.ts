@@ -24,22 +24,20 @@ import {
   type LiveCommand,
   type WatchCommandsResponse,
 } from "../gen/seekervault/live/v1/live_pb.js";
-import { RequestService } from "../gen/seekervault/request/v1/service_pb.js";
+import {
+  PairingService,
+  RequestService,
+} from "../gen/seekervault/request/v1/service_pb.js";
 import { DISPLAY_COMMAND_TOOL } from "../mcp-endpoint.ts";
+import { PairingStore } from "../pairing/store.ts";
 import type { RequestView } from "../requests/mcp-tools.ts";
+import { openDatabase } from "../storage/database.ts";
 
 export function phoneClient(
   baseUrl: string,
   token?: string,
 ): ConnectClient<typeof LiveCommandService> {
-  return createClient(
-    LiveCommandService,
-    createConnectTransport({
-      baseUrl,
-      httpVersion: "1.1",
-      interceptors: [authorization(token)],
-    }),
-  );
+  return createClient(LiveCommandService, transport(baseUrl, token));
 }
 
 /** A Connect client for the durable RequestService, acting as the phone. */
@@ -47,14 +45,45 @@ export function requestClient(
   baseUrl: string,
   token?: string,
 ): ConnectClient<typeof RequestService> {
-  return createClient(
-    RequestService,
-    createConnectTransport({
-      baseUrl,
-      httpVersion: "1.1",
-      interceptors: [authorization(token)],
-    }),
-  );
+  return createClient(RequestService, transport(baseUrl, token));
+}
+
+/** A Connect client for PairingService, acting as the phone. */
+export function pairingClient(
+  baseUrl: string,
+  token?: string,
+): ConnectClient<typeof PairingService> {
+  return createClient(PairingService, transport(baseUrl, token));
+}
+
+/** A phone paired by pairPhone. */
+export interface TestPhone {
+  readonly connectionId: string;
+  readonly phoneToken: string;
+  readonly serverId: string;
+}
+
+/**
+ * Pairs a test phone the way the owner does. It issues a pairing code in the sidecar's database, as
+ * `pnpm pair` does, then calls Pair with its token and URL.
+ */
+export async function pairPhone(
+  baseUrl: string,
+  databasePath: string,
+  deviceName = "Test phone",
+): Promise<TestPhone> {
+  const db = openDatabase(databasePath);
+  let token: string;
+  try {
+    token = new PairingStore(db).issue(baseUrl, 600).token;
+  } finally {
+    db.close();
+  }
+  const { connectionId, phoneToken, serverId } = await pairingClient(
+    baseUrl,
+    token,
+  ).pair({ serverUrl: baseUrl, deviceName });
+  return { connectionId, phoneToken, serverId };
 }
 
 export interface Phone {
@@ -166,6 +195,14 @@ export async function waitFor(
       assert.fail(`timed out waiting for ${description}`);
     await delay(10);
   }
+}
+
+function transport(baseUrl: string, token: string | undefined) {
+  return createConnectTransport({
+    baseUrl,
+    httpVersion: "1.1",
+    interceptors: [authorization(token)],
+  });
 }
 
 function authorization(token: string | undefined): Interceptor {

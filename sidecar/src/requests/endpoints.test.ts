@@ -16,9 +16,12 @@ import {
   callTool,
   connectAgent,
   errorCode,
+  pairPhone,
   requestClient,
   viewOf,
+  type TestPhone,
 } from "../testing/clients.ts";
+import { temporaryDatabasePath } from "../testing/process.ts";
 import {
   CANCEL_REQUEST_TOOL,
   GET_REQUEST_TOOL,
@@ -33,24 +36,29 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const logs: string[] = [];
 let sidecar: Sidecar;
 let agent: Client;
+let paired: TestPhone;
 let keys = 0;
 
-function config(pendingLimit = 100) {
+function config(databasePath: string, pendingLimit = 100) {
   return {
     host: "127.0.0.1",
     port: 0,
     mcpToken: MCP_TOKEN,
     phoneToken: PHONE_TOKEN,
     liveCommandTimeoutSeconds: 1,
-    databasePath: ":memory:",
+    databasePath,
     requestTtlSeconds: 86_400,
     pendingLimit,
   };
 }
 
 before(async () => {
-  sidecar = await startSidecar(config(), { log: (line) => logs.push(line) });
+  const databasePath = temporaryDatabasePath();
+  sidecar = await startSidecar(config(databasePath), {
+    log: (line) => logs.push(line),
+  });
   agent = await connectAgent(sidecar.url, MCP_TOKEN);
+  paired = await pairPhone(sidecar.url, databasePath);
 });
 
 after(async () => {
@@ -78,11 +86,11 @@ async function read(requestId: string): Promise<RequestView> {
   );
 }
 
-function refOf(view: RequestView, connectionId = sidecar.connectionId) {
+function refOf(view: RequestView, connectionId = paired.connectionId) {
   return { connectionId, requestId: view.request_id };
 }
 
-function phone(token: string | undefined = PHONE_TOKEN, target = sidecar) {
+function phone(token: string = paired.phoneToken, target = sidecar) {
   return requestClient(target.url, token);
 }
 
@@ -178,7 +186,7 @@ describe("durable requests over MCP and Connect", () => {
     const note = "A note that must stay out of the logs too";
     const created = await queue(text, { note, expires_in_seconds: 600 });
     const listed = await phone().listPending({
-      connectionId: sidecar.connectionId,
+      connectionId: paired.connectionId,
     });
     const stored = listed.requests.find(
       (request) => request.ref?.requestId === created.request_id,
@@ -294,8 +302,12 @@ describe("durable requests over MCP and Connect", () => {
   });
 
   it("refuses a new request beyond the pending limit, until the owner answers one", async () => {
-    const limited = await startSidecar(config(2), { log: () => undefined });
+    const limitedPath = temporaryDatabasePath();
+    const limited = await startSidecar(config(limitedPath, 2), {
+      log: () => undefined,
+    });
     const limitedAgent = await connectAgent(limited.url, MCP_TOKEN);
+    const limitedPhone = await pairPhone(limited.url, limitedPath);
     try {
       const first = await queue("One", {}, limitedAgent);
       await queue("Two", {}, limitedAgent);
@@ -304,8 +316,8 @@ describe("durable requests over MCP and Connect", () => {
         idempotency_key: "limit-three",
       });
       assert.equal(errorCode(third), "PENDING_LIMIT");
-      await phone(PHONE_TOKEN, limited).submitResult({
-        ref: refOf(first, limited.connectionId),
+      await phone(limitedPhone.phoneToken, limited).submitResult({
+        ref: refOf(first, limitedPhone.connectionId),
         result: { case: "rejection", value: {} },
       });
       const retried = await callTool(limitedAgent, REQUEST_ACK_TOOL, {
@@ -350,7 +362,7 @@ describe("durable requests over MCP and Connect", () => {
     await assert.rejects(
       phone().submitResult({
         ref: {
-          connectionId: sidecar.connectionId,
+          connectionId: paired.connectionId,
           requestId: OTHER_CONNECTION,
         },
         result: {
@@ -366,10 +378,11 @@ describe("durable requests over MCP and Connect", () => {
 
   it("authenticates the phone, keeps it to its own connection, and prepares nothing for an ack", async () => {
     const created = await queue("Scoped to the connection");
-    for (const token of [undefined, MCP_TOKEN]) {
+    // The Stage 1 development token belongs to the live diagnostic, not to a paired phone.
+    for (const token of [undefined, MCP_TOKEN, PHONE_TOKEN]) {
       await assert.rejects(
         requestClient(sidecar.url, token).listPending({
-          connectionId: sidecar.connectionId,
+          connectionId: paired.connectionId,
         }),
         connectFailure(Code.Unauthenticated, RequestError.UNAUTHENTICATED),
       );
@@ -384,7 +397,7 @@ describe("durable requests over MCP and Connect", () => {
     );
     await assert.rejects(
       phone().getRequest({
-        ref: { connectionId: sidecar.connectionId, requestId: "abc" },
+        ref: { connectionId: paired.connectionId, requestId: "abc" },
       }),
       connectFailure(Code.InvalidArgument, RequestError.INVALID_PARAMETERS),
     );

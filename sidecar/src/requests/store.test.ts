@@ -18,12 +18,14 @@ import {
   openDatabase,
   type DatabaseSync,
 } from "../storage/database.ts";
+import { PairingStore } from "../pairing/store.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
 import { RequestFailure, RequestStore, type NewRequest } from "./store.ts";
 
 const NOON = Date.UTC(2026, 8, 11, 12); // 2026-09-11T12:00:00Z
 const DAY_SECONDS = 86_400;
 const OTHER_CONNECTION = "a7e9c1b3-4d5f-4a6b-8c7d-9e0f1a2b3c4d";
+const SERVER_URL = "http://127.0.0.1:8080";
 const { PENDING, COMPLETED, REJECTED, CANCELLED, EXPIRED } = RequestState;
 
 type Result = MessageInitShape<typeof SubmitResultRequestSchema>["result"];
@@ -51,7 +53,14 @@ function setup(
     newId: () =>
       `00000000-0000-4000-8000-${String(++issued).padStart(12, "0")}`,
   });
-  return { clock, db, store, connectionId: store.ensureConnection() };
+  return { clock, db, store, connectionId: pairTestPhone(db, clock) };
+}
+
+/** Pairs a phone the way PairingService does, so that new requests have a connection. */
+function pairTestPhone(db: DatabaseSync, clock: { now: number }): string {
+  const pairing = new PairingStore(db, { now: () => clock.now });
+  const { token } = pairing.issue(SERVER_URL, 600);
+  return pairing.pair(token, SERVER_URL, "Test phone").connectionId;
 }
 
 function ack(
@@ -534,7 +543,7 @@ describe("RequestStore: restarts", () => {
         pendingLimit: 100,
         now: () => NOON + 1000,
       });
-      assert.equal(store.ensureConnection(), before.connectionId);
+      assert.equal(store.activeConnection(), before.connectionId);
       assert.ok(equals(ActionRequestSchema, store.get(idOf(waiting)), waiting));
       assert.ok(equals(ActionRequestSchema, store.get(idOf(done)), answered));
       assert.equal(

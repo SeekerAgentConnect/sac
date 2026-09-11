@@ -4,17 +4,17 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
 
 ## Stage boundaries
 
-- **Current stage: Stage 2, persistent requests and connections.** Stage 1, the wallet-free hello world, is accepted. SAW-009 defined the durable request contract (`docs/protocol.md`), and SAW-010 added the sidecar's SQLite request queue. Pairing, and the phone's connections and inbox, arrive in SAW-011 to SAW-013. Until the task that adds each one lands, the limits below still hold.
+- **Current stage: Stage 2, persistent requests and connections.** Stage 1, the wallet-free hello world, is accepted. SAW-009 defined the durable request contract (`docs/protocol.md`), SAW-010 added the sidecar's SQLite request queue, and SAW-011 added pairing and separate roles (`docs/security.md`). The phone's connections and inbox arrive in SAW-012 and SAW-013. Until the task that adds each one lands, the limits below still hold.
 - **Out of scope until a later stage:**
   - wallet SDKs, keys, or signing
   - storage on the phone (SAW-012, SAW-013)
   - policies
-  - QR pairing (SAW-011)
   - OAuth
   - Docker deployment
   - background services
   - push notifications
 - **Storage stays in one place.** The sidecar stores durable requests in SQLite, and only through `sidecar/src/storage/`. The live diagnostic stays in memory, and nothing re-executes a request after a restart.
+- **Roles stay separate.** The agent's MCP token never opens a phone RPC, and no MCP tool pairs, prepares, submits a result, or revokes. Tokens and credentials never reach a log. Every new RPC or tool joins the matrix in `sidecar/src/pairing/roles.test.ts`.
 - **`StageOneBoundaryTest` (Android) and `sidecar/src/stage-boundary.test.ts` enforce these limits:**
   - no wallet library
   - no key generation
