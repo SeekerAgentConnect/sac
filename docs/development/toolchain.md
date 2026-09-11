@@ -17,7 +17,7 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | ESLint, @eslint/js, typescript-eslint | 10.10.0, 10.0.1, 8.70.0 | `package.json` |
 | Prettier | 3.9.6 | `package.json` |
 | Buf CLI (`@bufbuild/buf`) | 1.72.0 | `package.json` |
-| protoc-gen-es | 2.14.1 | `package.json`, used as a local plugin in `buf.gen.yaml` |
+| protoc-gen-es (generator), @bufbuild/protobuf (runtime) | 2.14.1 | `catalog` in `pnpm-workspace.yaml`; generator and runtime move together |
 
 **TypeScript stays on 6.0** because typescript-eslint 8.70 supports only `typescript <6.1`. TypeScript 7 can follow once typescript-eslint supports it.
 
@@ -35,6 +35,9 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | Kotlin (AGP built-in Kotlin and the Compose compiler plugin) | 2.4.20 | `android/gradle/libs.versions.toml` |
 | Compose BOM | 2026.09.00 | `android/gradle/libs.versions.toml` |
 | androidx.activity:activity-compose | 1.13.0 | `android/gradle/libs.versions.toml` |
+| Connect-Kotlin (`com.connectrpc:connect-kotlin`) | 0.9.0 | `android/gradle/libs.versions.toml` |
+| `com.google.protobuf:protobuf-kotlin-lite` | 4.36.1 | `android/gradle/libs.versions.toml` |
+| JUnit | 4.13.2 | `android/gradle/libs.versions.toml` |
 | Spotless, ktfmt (kotlinlang style) | 8.10.2, 0.64 | `android/gradle/libs.versions.toml` |
 | Foojay toolchain resolver | 1.0.0 | `android/settings.gradle.kts` |
 | Android SDK Platform | 37.0, used for `compileSdk` and `targetSdk` 37 with `minSdk` 31 | `android/app/build.gradle.kts` |
@@ -50,13 +53,15 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 
 | Generator in `buf.gen.yaml` | Output | Runtime library that must match |
 | --- | --- | --- |
-| `protoc-gen-es` 2.14.1 (local), `target=js+dts` | `sidecar/src/gen` | `@bufbuild/protobuf` 2.14.1, plus `@connectrpc/connect` 2.x for services |
-| `buf.build/protocolbuffers/java:v36.1` and `buf.build/protocolbuffers/kotlin:v36.1`, both `lite` | `android/app/src/main/generated` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
-| `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated` | `com.connectrpc:connect-kotlin*` 0.9.0 |
+| `protoc-gen-es` 2.14.1 (local), `target=js+dts` | `sidecar/src/gen` | `@bufbuild/protobuf` 2.14.1, plus `@connectrpc/connect` 2.x for the server in SAW-003 |
+| `buf.build/protocolbuffers/java:v36.1`, `lite` | `android/app/src/main/generated/java` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
+| `buf.build/protocolbuffers/kotlin:v36.1`, `lite` | `android/app/src/main/generated/kotlin` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
+| `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0. The OkHttp transport and the lite codec arrive with the Android client in SAW-004. |
 
-- **SAW-002 adds the rest:** the runtime libraries, the first `.proto`, and the protocol checks. Until then, every `buf` command fails with `Module "proto" had no .proto files`.
-- **The TypeScript output is JavaScript plus type declarations.** Node's type stripping can't run the TypeScript `enum`s that `target=ts` produces.
-- **`pnpm generate` needs network access,** because the Kotlin plugins run remotely on the Buf Schema Registry.
+- **Generation is covered in the protocol doc.** [`docs/protocol.md`](../protocol.md#generated-code) describes generation, the cross-runtime fixtures, and the stale-output check (`pnpm check:generated`).
+- **The TypeScript output is JavaScript plus type declarations.** Node's type stripping can't run the TypeScript `enum`s that `target=ts` produces. `sidecar/tsconfig.build.json` sets `allowJs`, so `pnpm build` also copies that JavaScript to `dist/`.
+- **Generation needs network access.** `pnpm generate` and `pnpm check:generated` call the Kotlin plugins, which run remotely on the Buf Schema Registry.
+- **Android compiles the generated code in place.** `android/app/build.gradle.kts` adds the generated directories to the `main` source set and adds `proto/fixtures` to the unit-test resources.
 
 ## MacBook setup
 

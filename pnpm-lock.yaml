@@ -107,6 +107,12 @@ settings:
 
 catalogs:
   default:
+    '@bufbuild/protobuf':
+      specifier: 2.14.1
+      version: 2.14.1
+    '@bufbuild/protoc-gen-es':
+      specifier: 2.14.1
+      version: 2.14.1
     typescript:
       specifier: 6.0.3
       version: 6.0.3
@@ -119,7 +125,7 @@ importers:
         specifier: 1.72.0
         version: 1.72.0
       '@bufbuild/protoc-gen-es':
-        specifier: 2.14.1
+        specifier: 'catalog:'
         version: 2.14.1(@bufbuild/protobuf@2.14.1)
       '@eslint/js':
         specifier: 10.0.1
@@ -138,6 +144,10 @@ importers:
         version: 8.70.0(eslint@10.10.0)(typescript@6.0.3)
 
   sidecar:
+    dependencies:
+      '@bufbuild/protobuf':
+        specifier: 'catalog:'
+        version: 2.14.1
     devDependencies:
       '@types/node':
         specifier: 24.13.4

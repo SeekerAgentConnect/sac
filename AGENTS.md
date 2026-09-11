@@ -29,7 +29,7 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
 - **Test every behavior change.** A deliberately broken test must make the relevant check fail.
 - **Report physical-device checks as PASS, FAIL, or NOT RUN.** Mocks, emulators, and a successful APK build never count as a device pass.
 - **Never commit secrets.** That covers credentials, tokens, `.env`, `local.properties`, keystores, real wallet keys, and machine-specific paths. Default checks must never spend mainnet funds.
-- **Generated protocol code comes only from `pnpm generate`.** Don't edit it by hand.
+- **Generated protocol code and fixtures come only from `pnpm generate`.** Don't edit them by hand. After changing `proto/`, run `pnpm generate` and commit the output. `pnpm check:generated`, which CI also runs, fails if the committed output is stale.
 
 ## Documentation
 
