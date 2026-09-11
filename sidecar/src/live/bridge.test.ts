@@ -125,6 +125,29 @@ describe("LiveCommandBridge", () => {
     await rejectsWith(result, LiveCommandError.TIMEOUT);
   });
 
+  it("times out an overdue command before starting the next one, even before its timer runs", async () => {
+    const live = bridge();
+    const watch = live.watch();
+    let firstError: unknown;
+    const first = live.display("first").catch((error: unknown) => {
+      firstError = error;
+    });
+    await nextCommand(watch);
+    mock.timers.setTime(NOON + TIMEOUT_SECONDS * 1000); // moves Date only
+    const second = live.display("second");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(
+      firstError instanceof LiveCommandFailure,
+      "the first call was left waiting",
+    );
+    assert.equal(firstError.code, LiveCommandError[LiveCommandError.TIMEOUT]);
+    const command = await nextCommand(watch);
+    assert.equal(command.text, "second");
+    live.acknowledge(command.id);
+    assert.deepEqual(await second, { id: command.id, result: "OK" });
+    await first;
+  });
+
   it("cancels when the agent aborts, and the phone's acknowledgement then fails", async () => {
     const live = bridge();
     const watch = live.watch();

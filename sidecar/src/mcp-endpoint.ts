@@ -28,8 +28,9 @@ const TOOL_DESCRIPTION =
   "waiting), INVALID_TEXT (empty or too long), TIMEOUT (nobody tapped OK in time), or " +
   "CANCELLED (the phone disconnected or the call was cancelled).";
 
-// Hostnames that pass the Host and Origin checks (a defense against DNS rebinding).
-const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]", '100.119.134.109']);
+// Hostnames that pass the Host and Origin checks (a defense against DNS rebinding). A deployment
+// that reaches /mcp through a VPN address adds it with MCP_ALLOWED_HOSTS, not here.
+const LOOPBACK_HOSTNAMES = ["127.0.0.1", "localhost", "[::1]"];
 
 export interface McpEndpoint {
   handle(req: IncomingMessage, res: ServerResponse): Promise<void>;
@@ -40,7 +41,12 @@ export function createMcpEndpoint(
   bridge: LiveCommandBridge,
   mcpToken: string,
   log: (message: string) => void,
+  allowedHosts: readonly string[] = [],
 ): McpEndpoint {
+  const hostnames: ReadonlySet<string> = new Set([
+    ...LOOPBACK_HOSTNAMES,
+    ...allowedHosts,
+  ]);
   const sessions = new Map<string, StreamableHTTPServerTransport>();
   // Aborts when the connection carrying a tool call closes before its response is sent.
   const connectionClosed = new AsyncLocalStorage<AbortSignal>();
@@ -104,7 +110,7 @@ export function createMcpEndpoint(
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
-    const rejection = rejectionFor(req, mcpToken);
+    const rejection = rejectionFor(req, mcpToken, hostnames);
     if (rejection !== undefined) {
       log(`rejected ${req.method ?? "?"} /mcp: ${rejection.reason}`);
       const headers: Record<string, string> =
@@ -163,15 +169,21 @@ export function createMcpEndpoint(
 function rejectionFor(
   req: IncomingMessage,
   mcpToken: string,
+  hostnames: ReadonlySet<string>,
 ): { readonly status: 401 | 403; readonly reason: string } | undefined {
-  if (!isLoopback(hostnameOf(`http://${req.headers.host ?? ""}`))) {
-    return { status: 403, reason: "the Host header is not a loopback address" };
-  }
-  const origin = req.headers.origin;
-  if (origin !== undefined && !isLoopback(hostnameOf(origin))) {
+  if (!isAllowed(hostnameOf(`http://${req.headers.host ?? ""}`), hostnames)) {
     return {
       status: 403,
-      reason: "the Origin header is not a loopback origin",
+      reason:
+        "the Host header is not a loopback address or an MCP_ALLOWED_HOSTS entry",
+    };
+  }
+  const origin = req.headers.origin;
+  if (origin !== undefined && !isAllowed(hostnameOf(origin), hostnames)) {
+    return {
+      status: 403,
+      reason:
+        "the Origin header is not a loopback origin or an MCP_ALLOWED_HOSTS entry",
     };
   }
   if (!bearerTokenMatches(req.headers.authorization, mcpToken)) {
@@ -188,8 +200,11 @@ function hostnameOf(url: string): string | undefined {
   }
 }
 
-function isLoopback(hostname: string | undefined): boolean {
-  return hostname !== undefined && LOOPBACK_HOSTNAMES.has(hostname);
+function isAllowed(
+  hostname: string | undefined,
+  hostnames: ReadonlySet<string>,
+): boolean {
+  return hostname !== undefined && hostnames.has(hostname);
 }
 
 function sendError(

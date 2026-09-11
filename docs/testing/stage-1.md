@@ -71,17 +71,14 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), against the sidecar at `5965a
 | The same path with the test agent (`MCP_URL=http://127.0.0.1:18080/mcp pnpm agent`) | PASS: discovery; OFFLINE with exit code 4; the exact text with a matching ID; exit code 3 with the tunnel stopped. On a mid-call drop, the sidecar cancelled the command at once, but the test agent reported it only at its own 75-second client timeout, as `TIMEOUT` with exit code 6. |
 | Tokens and command text in the logs | PASS: none in the sidecar log or the check transcripts |
 | `pnpm check`, `pnpm check:android`, `pnpm check:generated`, `pnpm build` | PASS |
-| The owner's real Hermes session: a model, the prompt above, and the physical Seeker | NOT RUN: no Hermes session with a model, and no Seeker, on the verification Mac |
-| Hermes on a real VPS through `ssh -R` | NOT RUN: no VPS or SSH server was available |
+| The owner's real Hermes session: a model, the prompt above, and the physical Seeker | PASS, run and reported by the owner on 2026-09-11. The owner used their own Hermes on a VPS, reaching the Mac [over Tailscale](../integrations/hermes.md#over-a-vpn-you-already-use), and their Seeker (Android 16). Not run during this verification. |
+| Hermes on a real VPS through `ssh -R` | NOT RUN. The owner's VPS reached the Mac over Tailscale instead. |
 
 ## Acceptance report: SAW-008
 
-**Stage 1 isn't accepted yet.** Every automated check passes, including the round trip on an emulator in CI. Two checks remain NOT RUN, and only the person who runs them can record them as passed:
+**Stage 1 is accepted.** Every automated check passes, including the round trip on an emulator in CI. On 2026-09-11, the owner ran the real Hermes → Seeker → OK → Hermes round trip on their Seeker and reported it passed. That is the device acceptance check, and a simulated device or an emulator never closes it.
 
-1. **The round trip on the physical Seeker.** Attach and authorize the Seeker, then run `pnpm test:hello --device`. The script must report "a device", not "an emulator". Gradle removes the app after the run, so reinstall it with `adb install` afterwards.
-2. **The real Hermes → Seeker → OK → Hermes run.** Follow the [owner-run Hermes check](#owner-run-hermes-check) above.
-
-A simulated device or an emulator never closes either check.
+One optional automated check is still NOT RUN: `pnpm test:hello --device` on the Seeker. To run it, attach and authorize the Seeker. The script must report "the Seeker". Gradle removes the app after the run, so reinstall it with `adb install` afterwards.
 
 ### What was tested
 
@@ -90,8 +87,8 @@ A simulated device or an emulator never closes either check.
 | Commit | `1962324` on `develop`, the acceptance gate. This report was added in the next commit. |
 | Mac | macOS 26.5.2 (Apple silicon), Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1 on Temurin 21, AGP 9.4.0 |
 | CI | GitHub Actions on `ubuntu-24.04`. The emulator runs Android 16 (API 36), `google_apis`, x86_64: [run 34560580432](https://github.com/BrRenat/SeekerAgentWallet/actions/runs/34560580432) |
-| Hermes | v0.21.1 (2026.9.7), from the SAW-007 client check above |
-| Seeker | NOT RUN, so no Android version is recorded |
+| Hermes | For the round trip, the owner's own Hermes on a VPS; its version wasn't reported. For the SAW-007 client check above, v0.21.1 (2026.9.7). |
+| Seeker | The owner's Solana Mobile Seeker, Android 16 (API 36), as read over adb |
 | Credentials | Every check uses fixed test tokens or throwaway random ones. None is printed or recorded, and no Hermes chat content is recorded. |
 
 ### Commands
@@ -110,14 +107,14 @@ pnpm test:hello --device   # with one device or emulator attached
 
 | Case | Simulated device (`pnpm test:hello`) | Emulator (`pnpm test:hello --device` in CI) | Physical Seeker |
 | --- | --- | --- | --- |
-| Happy path: the exact text, then one OK with the same ID | PASS | PASS | NOT RUN |
+| Happy path: the exact text, then one OK with the same ID | PASS | PASS | PASS, in the owner's Hermes run |
 | App offline: `OFFLINE` at once, and nothing replayed later | PASS | Not covered | NOT RUN |
 | A second simultaneous command: `BUSY`, and the first one still completes | PASS | Not covered | NOT RUN |
 | Timeout: `TIMEOUT` at the deadline, and a late OK is refused | PASS | Not covered | NOT RUN |
 | Double tap: one acknowledgement | PASS | PASS: the UI test tapped OK twice, and the sidecar logged one acknowledgement | NOT RUN |
 | Sidecar restart: `CANCELLED` on SIGTERM, and exit code 3 at once on SIGKILL; nothing replayed | PASS | Not covered | NOT RUN |
 | App restart: `CANCELLED`, and the reopened app receives nothing | PASS, simulated by closing the stream | Not covered | NOT RUN |
-| Real Hermes → Seeker → OK → Hermes | Not applicable | Not applicable | NOT RUN. In SAW-007, Hermes's own MCP client passed against the sidecar. |
+| Real Hermes → Seeker → OK → Hermes | Not applicable | Not applicable | PASS, run and reported by the owner on 2026-09-11 |
 
 On the app side, `pnpm check:android` also covers these with Robolectric: the double tap, rotation during a command, backgrounding, and every connection and command message.
 
@@ -131,6 +128,7 @@ On the app side, `pnpm check:android` also covers these with Robolectric: the do
 | `pnpm check:generated`, `pnpm build` | PASS |
 | Stage boundary | PASS. `StageOneBoundaryTest` and `sidecar/src/stage-boundary.test.ts` found no wallet library, key API, stored data, or background component. In the built release APK, the merged manifest holds `MainActivity`, the `INTERNET` permission, AndroidX's app-private receiver permission, and two AndroidX library components: `androidx.startup.InitializationProvider` and `androidx.profileinstaller.ProfileInstallReceiver`. Neither is a service, and neither runs app code in the background. The debug APK adds two debug-only tooling activities: `PreviewActivity` and the Compose test host. |
 | Deliberate breaks | Each one failed its check. See the list below. |
+| After the PR #2 review fixes | PASS: `pnpm check` (sidecar 73/73, test agent 15/15), `pnpm test:hello` 9/9, and `pnpm check:android` (45/45 unit tests, lint with no issues, both APKs). Each new test failed when its fix was removed: the overdue-command timeout, the 400 for a malformed request target, the bearer-token characters, `MCP_ALLOWED_HOSTS`, and the app's port range. |
 | CI on `1962324` | PASS on all three jobs. The emulator job built and ran `connectedDebugAndroidTest` in 7 minutes 12 seconds, and printed: `PASS on an emulator (sdk_gphone64_x86_64, Android 16, API 36): the app showed the exact text, the double tap sent one OK, and the agent printed {"id":"2a4bd0d6-fa7f-45bc-a998-62fba0083aba","result":"OK"}`, then `This was an emulator. It doesn't count as the physical Seeker check.` |
 
 The deliberate breaks:

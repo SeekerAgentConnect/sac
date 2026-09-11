@@ -13,6 +13,8 @@ export interface SidecarConfig {
   readonly mcpToken: string;
   readonly phoneToken: string;
   readonly liveCommandTimeoutSeconds: number;
+  /** Host names besides loopback that /mcp accepts in Host and Origin (MCP_ALLOWED_HOSTS). */
+  readonly mcpAllowedHosts?: readonly string[];
 }
 
 export class ConfigError extends Error {
@@ -36,6 +38,11 @@ type Env = Readonly<Record<string, string | undefined>>;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 const PLACEHOLDER_PREFIX = "REPLACE_WITH_";
 const MIN_TOKEN_LENGTH = 32;
+// RFC 6750 b64token: the characters a bearer token can carry in an Authorization header.
+const BEARER_TOKEN = /^[A-Za-z0-9\-._~+/]+=*$/;
+// A DNS name or an IPv4 address, or an IPv6 address in brackets; no scheme, port, or wildcard.
+const HOSTNAME =
+  /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$|^\[[0-9a-f:.]+\]$/;
 const MAX_LIVE_COMMAND_TIMEOUT_SECONDS = 3600;
 
 export function loadSidecarConfig(env: Env): SidecarConfig {
@@ -60,6 +67,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig {
     MAX_LIVE_COMMAND_TIMEOUT_SECONDS,
     problems,
   );
+  const mcpAllowedHosts = allowedHosts(env, problems);
 
   if (
     problems.length > 0 ||
@@ -71,7 +79,32 @@ export function loadSidecarConfig(env: Env): SidecarConfig {
   ) {
     throw new ConfigError(problems);
   }
-  return { host, port, mcpToken, phoneToken, liveCommandTimeoutSeconds };
+  return {
+    host,
+    port,
+    mcpToken,
+    phoneToken,
+    liveCommandTimeoutSeconds,
+    mcpAllowedHosts,
+  };
+}
+
+/**
+ * MCP_ALLOWED_HOSTS: optional, comma-separated host names that /mcp accepts besides loopback,
+ * for an agent that reaches the sidecar through a VPN address (docs/integrations/hermes.md).
+ */
+function allowedHosts(env: Env, problems: string[]): readonly string[] {
+  const entries = (env.MCP_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry !== "");
+  const invalid = entries.filter((entry) => !HOSTNAME.test(entry));
+  if (invalid.length > 0) {
+    problems.push(
+      `MCP_ALLOWED_HOSTS must list host names or IP addresses without a scheme, port, or wildcard, separated by commas (invalid: ${invalid.join(", ")}).`,
+    );
+  }
+  return entries;
 }
 
 function required(
@@ -110,6 +143,12 @@ function token(env: Env, name: string, problems: string[]): string | undefined {
   if (value.startsWith(PLACEHOLDER_PREFIX)) {
     problems.push(
       `${name} still has the .env.example placeholder; set a random value (for example \`openssl rand -hex 32\`).`,
+    );
+    return undefined;
+  }
+  if (!BEARER_TOKEN.test(value)) {
+    problems.push(
+      `${name} may contain only letters, digits, and - . _ ~ + /, like any bearer token; \`openssl rand -hex 32\` makes a valid one.`,
     );
     return undefined;
   }

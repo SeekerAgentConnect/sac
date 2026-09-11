@@ -133,7 +133,7 @@ This case wasn't reproduced.
 
 ```text
 Error: ERR_PNPM_BAD_RUNTIME_VERSION
-  × This project requires Node.js ^24.21.0. Your current Node.js is v24.20.0
+  × This project requires Node.js 24.21.0. Your current Node.js is v24.20.0
 ```
 
 Every pnpm command in the repository stops like this on any other Node.js version. Run `nvm install` in the repository root; it installs and selects the version in `.nvmrc`. pnpm's message also describes a way to skip the check. Don't use it: the tools are tested together at these versions.

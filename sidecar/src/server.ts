@@ -49,14 +49,26 @@ export async function startSidecar(
     timeoutSeconds: config.liveCommandTimeoutSeconds,
     log,
   });
-  const mcp = createMcpEndpoint(bridge, config.mcpToken, log);
+  const mcp = createMcpEndpoint(
+    bridge,
+    config.mcpToken,
+    log,
+    config.mcpAllowedHosts,
+  );
   const phone = connectNodeAdapter({
     routes: phoneRoutes(bridge, config.phoneToken, log),
     readMaxBytes: PHONE_API_MAX_MESSAGE_BYTES,
   });
 
   const server = createServer((req, res) => {
-    const path = new URL(req.url ?? "/", "http://sidecar").pathname;
+    let path: string;
+    try {
+      path = new URL(req.url ?? "/", "http://sidecar").pathname;
+    } catch {
+      // A request target that isn't a path, such as "//[", must not stop the sidecar.
+      res.writeHead(400).end();
+      return;
+    }
     if (path === "/healthz") {
       health(req, res);
     } else if (path === "/mcp") {

@@ -27,8 +27,11 @@ function isConnectError(code: Code): (error: unknown) => boolean {
 }
 
 /** A raw POST to /mcp, so tests control every header, including Host. */
-function postMcp(headers: Record<string, string>): Promise<number> {
-  const { hostname, port } = new URL(sidecar.url);
+function postMcp(
+  headers: Record<string, string>,
+  target: Sidecar = sidecar,
+): Promise<number> {
+  const { hostname, port } = new URL(target.url);
   return new Promise((resolve, reject) => {
     const req = request(
       { hostname, port, path: "/mcp", method: "POST", headers },
@@ -284,6 +287,64 @@ describe("sidecar", () => {
       403,
     );
   });
+
+  it("accepts an MCP_ALLOWED_HOSTS name in the Host and Origin headers", async () => {
+    const vpn = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        mcpToken: MCP_TOKEN,
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 1,
+        mcpAllowedHosts: ["100.64.0.1"],
+      },
+      { log: () => undefined },
+    );
+    try {
+      const headers = {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${MCP_TOKEN}`,
+        Host: "100.64.0.1:8081",
+      };
+      assert.notEqual(await postMcp(headers, vpn), 403);
+      assert.notEqual(
+        await postMcp({ ...headers, Origin: "http://100.64.0.1:8081" }, vpn),
+        403,
+      );
+      assert.equal(
+        await postMcp({ ...headers, Host: "evil.example" }, vpn),
+        403,
+      );
+      assert.equal(await postMcp(headers), 403); // not allowed without the setting
+    } finally {
+      await vpn.close();
+    }
+  });
+
+  // Without the fix the sidecar never answers, so fail fast instead of hanging.
+  it(
+    "answers 400 to a request target that isn't a path, and keeps serving",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const { hostname, port } = new URL(sidecar.url);
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = request(
+          { hostname, port, path: "//[", method: "GET" },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+          },
+        );
+        req.on("error", reject);
+        req.end();
+      });
+      assert.equal(status, 400);
+      assert.equal((await fetch(`${sidecar.url}/healthz`)).status, 200);
+    },
+  );
 
   it("serves /healthz", async () => {
     const response = await fetch(`${sidecar.url}/healthz`);

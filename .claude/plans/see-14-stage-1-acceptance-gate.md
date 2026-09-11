@@ -45,3 +45,20 @@ Linear: https://linear.app/seekeragentwallet/issue/SEE-14 Â· Branch: `develop` Â
 - **The physical Seeker round trip and the real Hermes round trip are NOT RUN.** Stage 1 stays unaccepted until the owner records them. The Linear item for it stays open.
 - **The emulator run covers only the happy path and the double tap.** The other cases run on the simulated device.
 - **Gradle's connected test removes the app from the device after the run.** The docs say to reinstall it.
+
+## PR #2 review
+
+The owner reported that the Seeker and Hermes round trip passed. Codex left seven review comments, and the owner added commit `e035411` (Tailscale access).
+
+- [x] Codex, bridge: settle an overdue command as `TIMEOUT` before starting the next one, with a mocked-clock test
+- [x] Codex, server: answer 400 to a malformed request target instead of crashing, with a test
+- [x] Codex, config: reject tokens with characters that aren't allowed in a bearer token, with a test
+- [x] Codex, app: reject ports outside 1 to 65535 as an invalid URL, with a test
+- [x] Codex, `package.json`: pin Node exactly (24.21.0), and update the quoted pnpm error
+- [x] Codex, `--device`: identify the Seeker by brand and model, from the owner's device's properties
+- [x] Codex, sdkmanager ID: keep `platforms;android-37.0`, backed by the installed `package.xml`
+- [x] `e035411`: move the hard-coded Tailscale address to `MCP_ALLOWED_HOSTS`, with tests; turn the notes into the Hermes guide's VPN section; fix Prettier
+- [x] Record the owner's pass in the report, README, quickstart, Hermes guide, and `CODEBASE.md`
+- [x] Verify locally, including deliberate breaks for the new tests: all five were caught
+- [ ] Commit, push, and confirm CI is green
+- [ ] Reply on each review thread, resolve the fixed ones, and tick the last SEE-14 item in Linear

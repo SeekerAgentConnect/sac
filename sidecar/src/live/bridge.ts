@@ -171,10 +171,13 @@ export class LiveCommandBridge {
         "no phone is watching; open the live-test screen and connect",
       );
     }
+    const now = Date.now();
+    // A deadline can pass before its timer runs; answer that caller before starting anew.
+    this.#expireOverdue(now);
     const started = this.#slot.start(
       this.#newId(),
       text,
-      Date.now(),
+      now,
       this.#timeoutSeconds,
     );
     if (!started.ok) return failed(started.error, started.message);
@@ -247,6 +250,14 @@ export class LiveCommandBridge {
     }
     pending.settle(this.#timeoutFailure());
     this.#log(`command ${id} timed out`);
+  }
+
+  /** Settles the pending command as TIMEOUT if its deadline passed before its timer ran. */
+  #expireOverdue(nowMs: number): void {
+    const pending = this.#pending;
+    if (pending === undefined || this.#slot.expire(nowMs) === undefined) return;
+    pending.settle(this.#timeoutFailure());
+    this.#log(`command ${pending.command.id} timed out`);
   }
 
   #cancel(id: string, why: string): void {
