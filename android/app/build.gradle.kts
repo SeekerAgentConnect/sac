@@ -56,6 +56,7 @@ dependencies {
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.zxing.core)
+    implementation(libs.solana.mwa.clientlib.ktx)
     implementation(libs.connect.kotlin)
     implementation(libs.connect.kotlin.javalite)
     implementation(libs.connect.kotlin.okhttp)

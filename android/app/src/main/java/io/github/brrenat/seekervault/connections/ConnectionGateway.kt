@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.connections
 
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
+import io.github.brrenat.seekervault.request.v1.WalletBinding
 
 /**
  * The phone's calls to a sidecar's `PairingService` and `RequestService` (docs/protocol.md),
@@ -29,6 +30,18 @@ interface ConnectionGateway {
         credential: String,
         submission: SubmitResultRequest,
     ): ActionRequest
+
+    /**
+     * Tells the connection's sidecar which wallet the owner selected, or, with a null [binding],
+     * that none is connected. Returns the request IDs the sidecar cancelled because the new binding
+     * no longer fits them.
+     */
+    suspend fun publishWallet(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+        binding: WalletBinding?,
+    ): List<String>
 
     /** Ends the connection at its sidecar: the credential stops working there at once. */
     suspend fun revoke(serverUrl: String, credential: String, connectionId: String)

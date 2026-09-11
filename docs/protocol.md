@@ -104,7 +104,9 @@ SAW-010 serves the workflow:
 
 SAW-011 adds [pairing](#pairing) and [separate roles](#roles). The operator shows the phone a one-use pairing code, and the phone exchanges it for a connection and a credential. Only that credential opens `RequestService`. [`docs/security.md`](security.md) explains the model.
 
-SAW-013 adds the phone's inbox, and SAW-014 validates the workflow end to end ([`docs/testing/stage-2.md`](testing/stage-2.md)). Stages 3, 4, and 6 add the wallet actions. Until then, creating a wallet action fails with `WALLET_MISMATCH`, and `PrepareRequest` for a transfer or swap answers `unimplemented`.
+SAW-013 adds the phone's inbox, and SAW-014 validates the workflow end to end ([`docs/testing/stage-2.md`](testing/stage-2.md)).
+
+SAW-015 opens Stage 3 with [the wallet binding](#the-wallet-binding): the phone publishes the wallet the owner selected, and agents read it with `vault_get_address`. Creating a wallet action now checks it: `WALLET_NOT_CONNECTED` when the owner has connected none, and `WALLET_MISMATCH` when the action names another wallet or network. The tools that create wallet actions, and `PrepareRequest` for a transfer or swap, still arrive with Stages 3, 4, and 6.
 
 ```mermaid
 sequenceDiagram
@@ -164,8 +166,20 @@ Every listed field is required, and `invalidActionReason` names the first one th
 - **Addresses** (`wallet`, `recipient`, a token mint) are base58 strings that decode to exactly 32 bytes.
 - **An asset is `native_sol` or a `token_mint`, and never implied.** A transfer without an asset is invalid, not treated as SOL.
 - **A message is signed exactly as sent.** Text is never trimmed, normalized, or re-encoded, and the wallet signs its UTF-8 bytes; data is signed as it is. Whitespace-only text is allowed, so the phone must show whitespace and invisible characters as they are (Stage 3).
-- **The wallet and network are part of the action.** An agent reads them with `vault_get_address` (Stage 3) and names them in every wallet request. Creation fails with `WALLET_MISMATCH` when they aren't the connection's current wallet. The phone signs only with the request's wallet on the request's network; otherwise it can only reject.
+- **The wallet and network are part of the action.** An agent reads them with `vault_get_address` and names them in every wallet request. Creation fails with `WALLET_NOT_CONNECTED` when no wallet is connected, and with `WALLET_MISMATCH` when the action names another one; see [the wallet binding](#the-wallet-binding). The phone signs only with the request's wallet on the request's network; otherwise it can only reject.
 - **The agent's note** (`agent_note`, MCP `note`) is optional display text, at most 1024 UTF-8 bytes. It's unverified, so the phone shows it apart from the verified parameters.
+
+### The wallet binding
+
+The sidecar holds no keys and makes no wallet. The owner connects the wallet they already have, in the app, and the phone tells each sidecar which one it is (SAW-015; [`docs/guides/wallet-setup.md`](guides/wallet-setup.md)).
+
+- **`WalletBinding` is a public address and a network:** `wallet` (base58), `network`, and `bound_at`. It carries no key and no wallet authorization token; the authorization stays on the phone.
+- **The phone publishes it with `RequestService.PublishWallet`,** for its own connection. An absent `binding` means no wallet is connected, which is what disconnecting publishes.
+- **The sidecar stamps `bound_at` with its own clock** and ignores a value the phone sends, as it does for every other timestamp.
+- **A connection has at most one binding,** and publishing replaces it. Publishing the same wallet and network again changes nothing.
+- **A new binding cancels the PENDING requests it no longer fits.** Those are the wallet actions whose `wallet`, or whose `network` for a transfer or swap, isn't the new one; the response lists them, and the phone takes them off its inbox. `ack` requests are never affected. A `sign_message` request names no network, so changing only the network leaves it.
+- **Each connection's binding is its own.** Pairing again makes a new connection, which starts with no wallet until the phone publishes one.
+- **Agents read it with `vault_get_address`,** which fails with `WALLET_NOT_CONNECTED` rather than inventing an address.
 
 ### Idempotency
 
@@ -285,6 +299,7 @@ The table is `TRANSITIONS` in `lifecycle.ts`, and its tests spell out each kind'
 | `RequestService` | `GetRequest` | Phone credential | One request, in any state |
 | `RequestService` | `PrepareRequest` | Phone credential | A new version of a PENDING transfer's or swap's transaction |
 | `RequestService` | `SubmitResult` | Phone credential | A decision or a wallet result. It returns the request as it is afterwards. |
+| `RequestService` | `PublishWallet` | Phone credential | The wallet the owner selected, or none. It returns the stored binding and the requests it cancelled (SAW-015). |
 
 Every RPC is unary. The phone fetches when the app opens or comes back to the foreground, when the user selects a connection, or when the user refreshes. Nothing is pushed, and the Stage 1 stream isn't needed. Credentials travel only in `Authorization: Bearer <token>`. [Pairing](#pairing) and [roles](#roles) define them, and [`docs/security.md`](security.md#transport-security) covers TLS.
 
@@ -314,11 +329,13 @@ A `SubmitResult` carries one result:
 | `vault_sign_message` | 3 | `wallet`, `message` (text) or `message_base64` (bytes), `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_transfer` | 4 | `wallet`, `network`, `recipient`, `asset`, `amount`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_swap` | 6 | `wallet`, `network`, `input_asset`, `output_asset`, `input_amount`, `slippage_bps`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
+| `vault_get_address` | SAW-015 | Nothing | The owner's wallet: `wallet`, `network`, `bound_at` |
 | `vault_get_request` | SAW-010 | `request_id` | The request as it is now |
 | `vault_cancel_request` | SAW-010 | `request_id` | The request, CANCELLED |
 
 - **A creation tool answers at once,** with the request ID and PENDING. Unlike `vault_display_command`, it never waits for the user. A stored request isn't an approved one.
 - **`vault_request_ack` is served only with `MCP_DEMO_TOOLS=true`.** Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The other tools are always served.
+- **`vault_get_address` is read-only and always served.** It fails with `NOT_PAIRED` when no phone is paired, and `WALLET_NOT_CONNECTED` when the owner has connected no wallet. There is no fallback address: the sidecar never makes one. The owner can change or disconnect the wallet at any time, so agents read it again rather than caching it. Its result is `{"wallet": "...", "network": "devnet", "bound_at": "2026-09-12T09:30:00.000Z"}`.
 - **`network`** is `"mainnet"`, `"devnet"`, or `"testnet"`.
 - **`asset`, `input_asset`, and `output_asset`** are `"SOL"` or a token's mint address.
 - **Amounts are strings.**
@@ -366,6 +383,7 @@ IDEMPOTENCY_CONFLICT: idempotency_key "deploy-2026-09-11" was already used for r
 | `NOT_FOUND` | No such request for the caller, including another connection's | Tool error | `not_found` |
 | `NOT_PAIRED` | No phone is paired to bind a new request to | Tool error | Not used |
 | `WALLET_MISMATCH` | The wallet or network isn't the connection's current one | Tool error | Not used |
+| `WALLET_NOT_CONNECTED` | The owner has no wallet connected on their phone (SAW-015) | Tool error | Not used |
 | `PENDING_LIMIT` | The connection already has the most PENDING requests allowed (SAW-010) | Tool error | Not used |
 | `INVALID_STATE` | The state doesn't allow the operation: for example, cancelling a PROCESSING request, or approving a CANCELLED one | Tool error | `failed_precondition` |
 | `STALE_PREPARATION` | The approval isn't for the latest version, its hash differs, or the version's blockhash has expired | Not used | `failed_precondition` |
@@ -418,10 +436,10 @@ Each credential opens one role:
 | `/mcp`: every method and tool | Yes | 401 | 401 | 401 | 401 |
 | `PairingService.Pair` | `unauthenticated` | Yes, once | `unauthenticated` | `unauthenticated` | `unauthenticated` |
 | `PairingService.RevokeConnection` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
-| `RequestService`: `ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
+| `RequestService`: `ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, `PublishWallet` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `LiveCommandService`: `WatchCommands`, `AcknowledgeCommand` (Stage 1) | `unauthenticated` | `unauthenticated` | `unauthenticated` | Yes | `unauthenticated` |
 
-- **Only the paired phone can prepare, review, or answer a request,** and only for its own connection. No MCP tool pairs, prepares, submits a result, or revokes, so an agent can't act as the phone.
+- **Only the paired phone can prepare, review, or answer a request, or publish a wallet,** and only for its own connection. No MCP tool pairs, prepares, submits a result, revokes, or changes the wallet, so an agent can't act as the phone. `vault_get_address` only reads what the phone published.
 - **`PHONE_TOKEN` is the Stage 1 development credential.** It opens the live diagnostic and nothing else.
 - **`GET /healthz` needs no credential.**
 - `sidecar/src/pairing/roles.test.ts` checks every cell, and every new RPC or tool joins that test.
@@ -467,7 +485,7 @@ Each fixture case is a Protobuf JSON file at `proto/fixtures/<package path>/<Mes
 | Package | Sidecar test | Android test | Cases |
 | --- | --- | --- | --- |
 | `seekervault/live/v1` | `sidecar/src/live/fixtures.test.ts` | `LiveProtocolFixturesTest` | ASCII text; Unicode text (a combining mark, an emoji with a skin-tone modifier, a ZWJ sequence, CJK, Arabic, and a newline); a 4096-byte text; nanosecond and maximum deadlines; an empty message; the `ready` event and a command event; acknowledgements |
-| `seekervault/request/v1` | `sidecar/src/requests/fixtures.test.ts` | `RequestProtocolFixturesTest` | A pending ack, and the same request ID under another connection; a transfer of the u64 maximum; a confirmed token transfer with its approval and signature; message text with CRLF, a decomposed and a precomposed accent, and a ZWJ emoji; message bytes with 0x00 and 0xFF; a swap above 2^53; an empty request; a prepared transaction whose hash is the SHA-256 of its bytes, and the uint32 and uint64 maximums; an approval, an empty rejection, and a transaction submission; a page of pending requests; an error detail |
+| `seekervault/request/v1` | `sidecar/src/requests/fixtures.test.ts` | `RequestProtocolFixturesTest` | A pending ack, and the same request ID under another connection; a transfer of the u64 maximum; a confirmed token transfer with its approval and signature; message text with CRLF, a decomposed and a precomposed accent, and a ZWJ emoji; message bytes with 0x00 and 0xFF; a swap above 2^53; an empty request; a prepared transaction whose hash is the SHA-256 of its bytes, and the uint32 and uint64 maximums; an approval, an empty rejection, and a transaction submission; a page of pending requests; an error detail; a wallet binding, and publishing a wallet and clearing one |
 
 To add a case, add the JSON file, run `pnpm generate`, and assert the case in both of its package's tests. The request tests fail when a fixture in their package isn't listed.
 

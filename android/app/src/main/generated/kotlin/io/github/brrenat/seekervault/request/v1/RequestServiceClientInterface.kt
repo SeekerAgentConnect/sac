@@ -35,4 +35,12 @@ public interface RequestServiceClientInterface {
    *  it is afterwards. Repeating an accepted submission has no further effect.
    */
   public suspend fun submitResult(request: SubmitResultRequest, headers: Headers = emptyMap()): ResponseMessage<SubmitResultResponse>
+
+  /**
+   *  PublishWallet tells the sidecar which wallet and network the owner selected in the app, so
+   *  that agents can read them (vault_get_address). An absent binding clears it, which is what a
+   *  disconnected wallet means. Publishing a different wallet or network cancels the PENDING
+   *  requests the new binding no longer fits.
+   */
+  public suspend fun publishWallet(request: PublishWalletRequest, headers: Headers = emptyMap()): ResponseMessage<PublishWalletResponse>
 }

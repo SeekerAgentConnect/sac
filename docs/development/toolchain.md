@@ -43,6 +43,7 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | `com.google.protobuf:protobuf-kotlin-lite` | 4.36.1 | `android/gradle/libs.versions.toml` |
 | CameraX (`camera-core`, `camera-camera2`, `camera-lifecycle`, `camera-compose`), for scanning pairing codes | 1.6.2 | `android/gradle/libs.versions.toml` |
 | ZXing `core`, the QR decoder (no dependencies, no Play services) | 3.5.4 | `android/gradle/libs.versions.toml` |
+| Mobile Wallet Adapter client (`mobile-wallet-adapter-clientlib-ktx`), which the app drives the owner's wallet with (SAW-015). It brings `mobile-wallet-adapter-clientlib` and `mobile-wallet-adapter-common` at the same version. | 2.2.0 | `android/gradle/libs.versions.toml` |
 | OkHttp `mockwebserver3` and `okhttp-tls`, test-only, on the OkHttp version that Connect-Kotlin brings | 5.4.0 | `android/gradle/libs.versions.toml` |
 | AndroidX Lifecycle (`lifecycle-viewmodel-compose`, `lifecycle-runtime-compose`) | 2.11.0 | `android/gradle/libs.versions.toml` |
 | JUnit | 4.13.2 | `android/gradle/libs.versions.toml` |

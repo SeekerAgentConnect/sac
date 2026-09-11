@@ -15,6 +15,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 export const DISPLAY_COMMAND_TOOL = "vault_display_command";
+export const GET_ADDRESS_TOOL = "vault_get_address";
 export const REQUEST_ACK_TOOL = "vault_request_ack";
 export const GET_REQUEST_TOOL = "vault_get_request";
 export const CANCEL_REQUEST_TOOL = "vault_cancel_request";
@@ -201,6 +202,28 @@ export interface RequestView {
   readonly detail?: string;
 }
 
+/** The owner's wallet as vault_get_address returns it (docs/protocol.md#agent-api-mcp). */
+export interface AddressView {
+  readonly wallet: string;
+  readonly network: string;
+  readonly bound_at: string;
+}
+
+/**
+ * Reads the wallet the owner selected on their phone. NOT_PAIRED and WALLET_NOT_CONNECTED become
+ * AgentFailure with exit code 9: there is no address to fall back on.
+ */
+export async function getAddress(client: Client): Promise<AddressView> {
+  const view = await callView(client, GET_ADDRESS_TOOL, {});
+  if (typeof view.wallet !== "string" || typeof view.network !== "string") {
+    throw new AgentFailure(
+      ExitCode.FAILURE,
+      `${GET_ADDRESS_TOOL} returned no address`,
+    );
+  }
+  return view as unknown as AddressView;
+}
+
 /**
  * Calls one of the durable request tools, which answer at once, and returns the request. A tool
  * error, such as NOT_PAIRED or NOT_FOUND, becomes AgentFailure with exit code 9 and the sidecar's
@@ -211,6 +234,19 @@ export async function requestTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<RequestView> {
+  const view = await callView(client, name, args);
+  if (typeof view.request_id !== "string" || typeof view.status !== "string") {
+    throw new AgentFailure(ExitCode.FAILURE, `${name} returned no request`);
+  }
+  return view as unknown as RequestView;
+}
+
+/** Calls a tool that answers at once, and returns its structuredContent. */
+async function callView(
+  client: Client,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   const result = (await client.callTool({ name, arguments: args }, undefined, {
     timeout: 30_000,
   })) as CallToolResult;
@@ -221,11 +257,7 @@ export async function requestTool(
       first?.type === "text" ? first.text : `${name} reported an error`,
     );
   }
-  const view = result.structuredContent;
-  if (typeof view?.request_id !== "string" || typeof view.status !== "string") {
-    throw new AgentFailure(ExitCode.FAILURE, `${name} returned no request`);
-  }
-  return view as unknown as RequestView;
+  return result.structuredContent ?? {};
 }
 
 function connectionFailure(url: URL, error: unknown): AgentFailure {

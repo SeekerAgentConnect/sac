@@ -14,22 +14,32 @@ import { timestampFromMs } from "@bufbuild/protobuf/wkt";
 import {
   ActionRequestSchema,
   ActionSchema,
+  Network,
   OutcomeSchema,
   PreparedTransactionSchema,
   RequestError,
+  RequestRefSchema,
   RequestState,
+  WalletBindingSchema,
   type Action,
   type ActionRequest,
   type Outcome,
   type PreparedTransaction,
   type RequestRef,
+  type WalletBinding,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import {
   SubmitResultRequestSchema,
   type SubmitResultRequest,
 } from "../gen/seekervault/request/v1/service_pb.js";
 import { transaction, type DatabaseSync, type Row } from "./database.ts";
-import { invalidActionReason, invalidNoteReason } from "../requests/action.ts";
+import {
+  actionBinding,
+  invalidActionReason,
+  invalidBindingReason,
+  invalidNoteReason,
+  type ActionBinding,
+} from "../requests/action.ts";
 import { RequestFailure } from "../requests/failure.ts";
 import {
   actionFingerprint,
@@ -60,6 +70,13 @@ const EXPIRED_OUTCOME = toBinary(
   }),
 );
 const PAGE_TOKEN = /^(\d{1,15}):(.+)$/;
+/** The detail a request gets when a new wallet binding no longer fits it. */
+export const WALLET_CHANGED_DETAIL =
+  "The owner's wallet or network changed, so the request no longer applies.";
+const WALLET_CHANGED_OUTCOME = toBinary(
+  OutcomeSchema,
+  create(OutcomeSchema, { detail: WALLET_CHANGED_DETAIL }),
+);
 
 export interface RequestStoreOptions {
   /** The lifetime of a request whose agent doesn't choose one (REQUEST_TTL_SECONDS). */
@@ -96,6 +113,13 @@ export interface PendingQuery {
   readonly connectionId: string;
   readonly pageSize: number;
   readonly pageToken: string;
+}
+
+/** What PublishWallet changed: the binding as stored, and the requests it cancelled. */
+export interface Published {
+  /** Absent when the phone cleared the binding. */
+  readonly binding: WalletBinding | undefined;
+  readonly cancelled: RequestRef[];
 }
 
 export interface PendingPage {
@@ -150,12 +174,9 @@ export class RequestStore {
       throw new RequestFailure(RequestError.INVALID_PARAMETERS, reason);
     }
     const kind = request.action.kind.case;
-    if (kind !== "ack") {
-      throw new RequestFailure(
-        RequestError.WALLET_MISMATCH,
-        `${snakeCase(kind ?? "")} requests need a connected wallet, and wallets connect from Stage 3`,
-      );
-    }
+    // invalidActionReason above refuses an action with no kind.
+    if (kind === undefined) throw new Error("a validated action has a kind");
+    const required = actionBinding(request.action);
     const fingerprint = actionFingerprint(request.action);
     return transaction(this.#db, () => {
       const now = this.#now();
@@ -190,6 +211,9 @@ export class RequestStore {
           "no phone is paired with this sidecar",
         );
       }
+      // A wallet action is only stored for the wallet the owner actually selected
+      // (docs/protocol.md#the-wallet-binding). The sidecar never makes a wallet of its own.
+      if (required !== undefined) this.#requireBinding(connectionId, required);
       const pending = integer(
         this.#db
           .prepare(
@@ -383,6 +407,138 @@ export class RequestStore {
     });
   }
 
+  /** The connection's wallet binding, or undefined when no wallet is connected. */
+  wallet(connectionId: string): WalletBinding | undefined {
+    requireUuid("connection_id", connectionId);
+    return this.#walletOf(connectionId);
+  }
+
+  /** The paired phone's wallet binding, for the agent (vault_get_address). */
+  activeWallet(): WalletBinding {
+    const connectionId = this.activeConnection();
+    if (connectionId === undefined) {
+      throw new RequestFailure(
+        RequestError.NOT_PAIRED,
+        "no phone is paired with this sidecar",
+      );
+    }
+    const binding = this.#walletOf(connectionId);
+    if (binding === undefined) {
+      throw new RequestFailure(
+        RequestError.WALLET_NOT_CONNECTED,
+        "the owner has no wallet connected on their phone; ask them to connect one in the app",
+      );
+    }
+    return binding;
+  }
+
+  /**
+   * Records the wallet and network the owner selected (PublishWallet), or clears them when
+   * `binding` is undefined. The sidecar stamps `bound_at` itself. Every PENDING request the new
+   * binding no longer fits becomes CANCELLED, so nothing can be approved for a wallet the owner
+   * has moved away from. Publishing the same binding again changes nothing.
+   */
+  publishWallet(
+    connectionId: string,
+    binding: WalletBinding | undefined,
+  ): Published {
+    requireUuid("connection_id", connectionId);
+    if (binding !== undefined) {
+      const reason = invalidBindingReason(binding.wallet, binding.network);
+      if (reason !== undefined) {
+        throw new RequestFailure(RequestError.INVALID_PARAMETERS, reason);
+      }
+    }
+    return transaction(this.#db, () => {
+      const now = this.#now();
+      this.#expireOverdue(now);
+      const current = this.#walletOf(connectionId);
+      const unchanged =
+        current !== undefined &&
+        binding !== undefined &&
+        current.wallet === binding.wallet &&
+        current.network === binding.network;
+      if (unchanged) return { binding: current, cancelled: [] };
+      const { changes } = this.#db
+        .prepare(
+          `UPDATE connections SET wallet_address = ?, wallet_network = ?, wallet_bound_at_ms = ?
+           WHERE connection_id = ?`,
+        )
+        .run(
+          binding?.wallet ?? null,
+          binding === undefined ? null : binding.network,
+          binding === undefined ? null : now,
+          connectionId,
+        );
+      if (Number(changes) !== 1) {
+        throw new RequestFailure(RequestError.NOT_FOUND, "no such connection");
+      }
+      const cancelled = this.#cancelUnfitting(connectionId, binding, now);
+      return { binding: this.#walletOf(connectionId), cancelled };
+    });
+  }
+
+  /** Cancels the connection's PENDING wallet requests that `binding` no longer covers. */
+  #cancelUnfitting(
+    connectionId: string,
+    binding: WalletBinding | undefined,
+    now: number,
+  ): RequestRef[] {
+    const cancelled: RequestRef[] = [];
+    for (const row of this.#db
+      .prepare(
+        "SELECT * FROM requests WHERE connection_id = ? AND state = ? AND kind != 'ack'",
+      )
+      .all(connectionId, PENDING)) {
+      const request = toRequest(row);
+      const required =
+        request.action === undefined
+          ? undefined
+          : actionBinding(request.action);
+      if (required === undefined || fits(required, binding)) continue;
+      const requestId = text(row.request_id);
+      this.#db
+        .prepare(
+          "UPDATE requests SET state = ?, outcome = ?, updated_at_ms = ? WHERE request_id = ?",
+        )
+        .run(CANCELLED, WALLET_CHANGED_OUTCOME, now, requestId);
+      cancelled.push(create(RequestRefSchema, { connectionId, requestId }));
+    }
+    return cancelled;
+  }
+
+  /** Refuses an action whose wallet or network isn't the connection's current binding. */
+  #requireBinding(connectionId: string, required: ActionBinding): void {
+    const binding = this.#walletOf(connectionId);
+    if (binding === undefined) {
+      throw new RequestFailure(
+        RequestError.WALLET_NOT_CONNECTED,
+        "the owner has no wallet connected on their phone; ask them to connect one in the app",
+      );
+    }
+    if (!fits(required, binding)) {
+      throw new RequestFailure(
+        RequestError.WALLET_MISMATCH,
+        `the owner's wallet is ${binding.wallet} on ${networkName(binding.network)}; read it with vault_get_address and use it`,
+      );
+    }
+  }
+
+  #walletOf(connectionId: string): WalletBinding | undefined {
+    const row = this.#db
+      .prepare(
+        `SELECT wallet_address, wallet_network, wallet_bound_at_ms FROM connections
+         WHERE connection_id = ?`,
+      )
+      .get(connectionId);
+    if (row === undefined || row.wallet_address === null) return undefined;
+    return create(WalletBindingSchema, {
+      wallet: text(row.wallet_address),
+      network: integer(row.wallet_network),
+      boundAt: timestampFromMs(integer(row.wallet_bound_at_ms)),
+    });
+  }
+
   /** Moves every PENDING request whose deadline has passed to EXPIRED. Every operation runs it first. */
   #expireOverdue(now: number): void {
     this.#db
@@ -569,8 +725,19 @@ function parsePageToken(token: string): {
   return { createdAtMs, requestId };
 }
 
-function snakeCase(name: string): string {
-  return name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+/** Whether `binding` covers what a wallet action requires. Nothing fits a cleared binding. */
+function fits(
+  required: ActionBinding,
+  binding: WalletBinding | undefined,
+): boolean {
+  if (binding === undefined || required.wallet !== binding.wallet) return false;
+  // sign_message names no network, so any network the owner selected carries it out.
+  return required.network === undefined || required.network === binding.network;
+}
+
+/** A network as agents and error messages name it: `mainnet`, `devnet`, or `testnet`. */
+export function networkName(network: Network): string {
+  return (Network[network] ?? "unspecified").toLowerCase();
 }
 
 function text(value: Row[string] | undefined): string {

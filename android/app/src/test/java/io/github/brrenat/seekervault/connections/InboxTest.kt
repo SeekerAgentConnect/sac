@@ -4,7 +4,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.request.v1.walletBinding
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
@@ -52,6 +54,11 @@ class InboxTest {
     private val repository by lazy { repository() }
 
     private fun ConnectionRepository.pending(id: String) = inbox.value.pending[id].orEmpty()
+
+    private fun binding(address: String) = walletBinding {
+        wallet = address
+        network = Network.NETWORK_DEVNET
+    }
 
     private fun ConnectionRepository.result(key: RequestKey) = inbox.value.result(key)
 
@@ -213,6 +220,40 @@ class InboxTest {
         assertEquals(Delivery.Undeliverable, repository.result(key)?.delivery)
         assertNotNull(repository.connection(key.connectionId)?.revokedAt)
         assertTrue(repository.pending(key.connectionId).isEmpty())
+    }
+
+    @Test
+    fun publishingAnotherWalletTakesTheRequestsItNoLongerFitsOffTheInbox() = runBlocking {
+        val connection = repository.pair(serverA.issue(URL_A))
+        val ack = serverA.addPending(connection.id, text = "Deploy finished")
+        val transfer = serverA.addPendingTransfer(connection.id, WALLET, Network.NETWORK_DEVNET)
+        repository.refresh(connection.id)
+        assertEquals(2, repository.pending(connection.id).size)
+
+        // The owner connects a different wallet: the sidecar cancels what no longer fits.
+        assertTrue(repository.publishWallet(connection.id, binding(OTHER_WALLET)))
+        assertEquals(
+            listOf(ack.ref.requestId),
+            repository.pending(connection.id).map { it.ref.requestId },
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_CANCELLED,
+            serverA.stateOf(connection.id, transfer.ref.requestId),
+        )
+        assertEquals(1, repository.connection(connection.id)?.lastCheck?.pending)
+    }
+
+    @Test
+    fun aWalletNeverGoesToAnotherConnectionsServerAndARevokedOneIsNoticed() = runBlocking {
+        val a = repository.pair(serverA.issue(URL_A))
+        val b = repository.pair(serverB.issue(URL_B))
+        assertTrue(repository.publishWallet(a.id, binding(WALLET)))
+        assertEquals(listOf(URL_A), gateway.published.map { it.first })
+        assertNull(serverB.wallet)
+
+        serverB.revoke(b.id)
+        assertFalse(repository.publishWallet(b.id, binding(WALLET)))
+        assertNotNull(repository.connection(b.id)?.revokedAt)
     }
 
     @Test
@@ -453,5 +494,7 @@ class InboxTest {
         const val URL_B = "https://b.example.com"
         const val SAME_REQUEST = "7c6b5a49-3827-4615-a0b9-c8d7e6f5a4b3"
         const val OTHER_REQUEST = "de03846e-d435-4705-b2e3-ec67da539f12"
+        const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
+        const val OTHER_WALLET = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
     }
 }

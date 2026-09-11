@@ -117,6 +117,8 @@ describe("the sidecar database", () => {
           .get(FIXTURE_CONNECTION)?.revoked_at_ms,
         "number",
       );
+      // Migration 3 adds the wallet columns; an upgraded connection has no wallet connected.
+      assert.equal(store.wallet(FIXTURE_CONNECTION), undefined);
       const pending = store.get(FIXTURE_PENDING);
       assert.equal(pending.state, RequestState.CANCELLED);
       assert.equal(pending.outcome?.detail, REVOKED_DETAIL);

@@ -12,6 +12,7 @@ import io.github.brrenat.seekervault.request.v1.ListPendingResponse
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.Outcome
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
+import io.github.brrenat.seekervault.request.v1.PublishWalletRequest
 import io.github.brrenat.seekervault.request.v1.Rejection
 import io.github.brrenat.seekervault.request.v1.RequestError
 import io.github.brrenat.seekervault.request.v1.RequestErrorDetail
@@ -19,6 +20,7 @@ import io.github.brrenat.seekervault.request.v1.RequestRef
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.TransactionSubmission
+import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.ackAction
 import io.github.brrenat.seekervault.request.v1.action
 import io.github.brrenat.seekervault.request.v1.actionRequest
@@ -27,12 +29,14 @@ import io.github.brrenat.seekervault.request.v1.asset
 import io.github.brrenat.seekervault.request.v1.listPendingResponse
 import io.github.brrenat.seekervault.request.v1.outcome
 import io.github.brrenat.seekervault.request.v1.preparedTransaction
+import io.github.brrenat.seekervault.request.v1.publishWalletRequest
 import io.github.brrenat.seekervault.request.v1.requestErrorDetail
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.signMessageAction
 import io.github.brrenat.seekervault.request.v1.submitResultRequest
 import io.github.brrenat.seekervault.request.v1.swapAction
 import io.github.brrenat.seekervault.request.v1.transferAction
+import io.github.brrenat.seekervault.request.v1.walletBinding
 import java.io.File
 import java.security.MessageDigest
 import java.text.Normalizer
@@ -263,6 +267,42 @@ class RequestProtocolFixturesTest {
         )
 
     @Test
+    fun walletBindingMainnet() =
+        check(
+            "WalletBinding/mainnet",
+            WalletBinding::parseFrom,
+            walletBinding {
+                wallet = WALLET
+                network = Network.NETWORK_MAINNET
+                boundAt = at("2026-09-12T09:30:00Z")
+            },
+        )
+
+    @Test
+    fun publishWalletDevnet() {
+        val request = publishWalletRequest {
+            connectionId = CONNECTION_A
+            binding = walletBinding {
+                wallet = RECIPIENT
+                network = Network.NETWORK_DEVNET
+            }
+        }
+        check("PublishWalletRequest/devnet", PublishWalletRequest::parseFrom, request)
+        // The phone doesn't set bound_at: the sidecar stamps it with its own clock.
+        assertFalse(request.binding.hasBoundAt())
+    }
+
+    @Test
+    fun publishWalletCleared() {
+        val cleared = publishWalletRequest { connectionId = CONNECTION_A }
+        check("PublishWalletRequest/cleared", PublishWalletRequest::parseFrom, cleared)
+        // An absent binding is how the phone says no wallet is connected; it isn't an empty one.
+        assertFalse(
+            PublishWalletRequest.parseFrom(bytes("PublishWalletRequest/cleared")).hasBinding()
+        )
+    }
+
+    @Test
     fun coversEveryFixture() {
         val dir = File(checkNotNull(javaClass.getResource("/$PACKAGE")) { "no fixtures" }.toURI())
         val names =
@@ -317,6 +357,9 @@ class RequestProtocolFixturesTest {
                 "SubmitResultRequest/transaction_submission",
                 "ListPendingResponse/page",
                 "RequestErrorDetail/invalid_state",
+                "WalletBinding/mainnet",
+                "PublishWalletRequest/devnet",
+                "PublishWalletRequest/cleared",
             )
 
         val SIGNATURE: ByteString =

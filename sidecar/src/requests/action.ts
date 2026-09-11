@@ -25,6 +25,13 @@ export const MAX_NOTE_BYTES = 1024;
 /** The largest slippage, in basis points: 100%. */
 export const MAX_SLIPPAGE_BPS = 10_000;
 
+/** What a wallet action must be signed with: a wallet, and a network when the action has one. */
+export interface ActionBinding {
+  readonly wallet: string;
+  /** Absent for sign_message, which isn't bound to a network. */
+  readonly network?: Network;
+}
+
 const DIGITS = /^(?:0|[1-9][0-9]*)$/;
 const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const NETWORKS: ReadonlySet<Network> = new Set([
@@ -173,7 +180,29 @@ function invalidSwapReason(action: SwapAction): string | undefined {
   return undefined;
 }
 
-function invalidBindingReason(
+/**
+ * The wallet and network a wallet action must be carried out with, or undefined for an action
+ * that needs no wallet. sign_message names only a wallet: a signature over bytes doesn't depend
+ * on a network.
+ */
+export function actionBinding(action: Action): ActionBinding | undefined {
+  const { kind } = action;
+  switch (kind.case) {
+    case "signMessage":
+      return { wallet: kind.value.wallet };
+    case "transfer":
+    case "swap":
+      return { wallet: kind.value.wallet, network: kind.value.network };
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Says why a wallet and network can't be used together, or returns undefined if they can. A
+ * WalletBinding the phone publishes goes through the same check as an action's own binding.
+ */
+export function invalidBindingReason(
   wallet: string,
   network: Network,
 ): string | undefined {

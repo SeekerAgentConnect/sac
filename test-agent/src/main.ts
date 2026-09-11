@@ -8,6 +8,7 @@ import {
   GET_REQUEST_TOOL,
   REQUEST_ACK_TOOL,
   displayCommand,
+  getAddress,
   listTools,
   requestTool,
   requireTool,
@@ -24,6 +25,8 @@ const USAGE = `Usage: pnpm agent <command> [options]
 Commands:
   hello [text]     Show text on the phone (default "Hello Seeker") and wait for OK.
                    Prints the acknowledgement {"id":"...","result":"OK"} on stdout.
+  address          Print the wallet the owner selected on their phone and its network
+                   (vault_get_address), as JSON. It fails if they've connected none.
   ack <text>       Queue text for the owner to acknowledge later (vault_request_ack, a demo
                    tool that the sidecar serves only with MCP_DEMO_TOOLS=true). Prints the
                    request, PENDING, as JSON; it doesn't wait for the owner.
@@ -47,6 +50,7 @@ Exit codes: 0 OK, 1 unexpected result, 2 usage or configuration, 3 connection,
 // How many positional arguments each command takes.
 const ARITY: Readonly<Record<string, readonly [number, number]>> = {
   hello: [0, 1],
+  address: [0, 0],
   ack: [1, 1],
   get: [1, 1],
   cancel: [1, 1],
@@ -149,6 +153,10 @@ async function main(argv: string[]): Promise<number> {
               2,
             ),
           );
+          return;
+        }
+        case "address": {
+          print(JSON.stringify(await getAddress(client)));
           return;
         }
         case "ack": {

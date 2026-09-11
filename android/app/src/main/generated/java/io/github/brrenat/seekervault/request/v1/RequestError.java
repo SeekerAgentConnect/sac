@@ -98,6 +98,15 @@ public enum RequestError
    * <code>REQUEST_ERROR_UNAUTHENTICATED = 9;</code>
    */
   REQUEST_ERROR_UNAUTHENTICATED(9),
+  /**
+   * <pre>
+   * The phone has no wallet connected, so there is nothing to sign with. The owner connects one
+   * in the app; the sidecar never makes a wallet of its own. Nothing was created.
+   * </pre>
+   *
+   * <code>REQUEST_ERROR_WALLET_NOT_CONNECTED = 10;</code>
+   */
+  REQUEST_ERROR_WALLET_NOT_CONNECTED(10),
   UNRECOGNIZED(-1),
   ;
 
@@ -182,6 +191,15 @@ public enum RequestError
    * <code>REQUEST_ERROR_UNAUTHENTICATED = 9;</code>
    */
   public static final int REQUEST_ERROR_UNAUTHENTICATED_VALUE = 9;
+  /**
+   * <pre>
+   * The phone has no wallet connected, so there is nothing to sign with. The owner connects one
+   * in the app; the sidecar never makes a wallet of its own. Nothing was created.
+   * </pre>
+   *
+   * <code>REQUEST_ERROR_WALLET_NOT_CONNECTED = 10;</code>
+   */
+  public static final int REQUEST_ERROR_WALLET_NOT_CONNECTED_VALUE = 10;
 
 
   @java.lang.Override
@@ -214,6 +232,7 @@ public enum RequestError
       case 7: return REQUEST_ERROR_INVALID_STATE;
       case 8: return REQUEST_ERROR_STALE_PREPARATION;
       case 9: return REQUEST_ERROR_UNAUTHENTICATED;
+      case 10: return REQUEST_ERROR_WALLET_NOT_CONNECTED;
       default: return null;
     }
   }

@@ -109,12 +109,12 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | Path | Caller | Authentication | Purpose |
 | --- | --- | --- | --- |
 | `GET /healthz` | Anything on the machine | None | Liveness check: `{"status":"ok"}` |
-| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>` | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, and the durable tools `vault_get_request` and `vault_cancel_request`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
+| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>` | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, the durable tools `vault_get_address`, `vault_get_request`, and `vault_cancel_request`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
 | `/seekervault.live.v1.LiveCommandService/WatchCommands` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect server stream of live commands |
 | `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
 | `/seekervault.request.v1.PairingService/Pair` | A phone that's pairing | `Authorization: Bearer <pairing token>`, from `pnpm pair` | Exchanges the pairing token for a connection and its credential |
 | `/seekervault.request.v1.PairingService/RevokeConnection` | The paired phone | `Authorization: Bearer <phone credential>` | Revokes the caller's own connection |
-| `/seekervault.request.v1.RequestService/ListPending`, `GetRequest`, `PrepareRequest`, and `SubmitResult` | The paired phone | `Authorization: Bearer <phone credential>` | Connect unary calls of the durable workflow |
+| `/seekervault.request.v1.RequestService/ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, and `PublishWallet` | The paired phone | `Authorization: Bearer <phone credential>` | Connect unary calls of the durable workflow, and the wallet the owner selected (SAW-015) |
 
 The sidecar checks requests to `/mcp` as follows, following the MCP transport specification's defense against DNS rebinding:
 
@@ -160,8 +160,16 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 
 - **Every call answers at once.** Creation stores the request and returns it as PENDING. At that point the owner hasn't seen it yet, let alone approved it. The agent reads the outcome later with `vault_get_request`.
 - **Retries are safe.** The same `idempotency_key` with the same text returns the original request, in whatever state it's in now. The same key with different text fails with `IDEMPOTENCY_CONFLICT`.
-- **Ack only, for now, and only in demo mode.** `vault_request_ack` involves no wallet, and it's a development and demo tool: the sidecar serves it only with `MCP_DEMO_TOOLS=true`. Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The startup log says which. Until wallets arrive in Stage 3, ack is the only kind of request that can be created.
-- **Hermes gets all four tools** from `examples/hermes.config.yaml`; see [queued requests](../integrations/hermes.md#4-queued-requests-create-now-read-the-result-later).
+- **Ack only, for now, and only in demo mode.** `vault_request_ack` involves no wallet, and it's a development and demo tool: the sidecar serves it only with `MCP_DEMO_TOOLS=true`. Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The startup log says which. The tools that create wallet actions arrive with the later tasks of Stages 3, 4, and 6, so ack is still the only kind an agent can create.
+- **Hermes gets every tool** from `examples/hermes.config.yaml`; see [queued requests](../integrations/hermes.md#4-queued-requests-create-now-read-the-result-later).
+
+### vault_get_address
+
+`vault_get_address` takes no input and returns the wallet the owner connected on their phone: `{"wallet": "<base58>", "network": "mainnet" | "devnet" | "testnet", "bound_at": "<RFC 3339>"}`. Run it with `pnpm agent address`.
+
+- **It's read-only and always served,** in demo mode or not.
+- **It never invents an address.** With no phone paired it fails with `NOT_PAIRED`, and with no wallet connected with `WALLET_NOT_CONNECTED`. The sidecar holds no keys and makes no wallet.
+- **The phone publishes the binding** with `RequestService.PublishWallet` (SAW-015); see [the wallet binding](../protocol.md#the-wallet-binding) and [`docs/guides/wallet-setup.md`](../guides/wallet-setup.md).
 
 ## Storage and lifecycle
 
@@ -175,12 +183,12 @@ Durable requests live in one SQLite file, `DATABASE_PATH` (by default `sidecar/d
 - **Only `sidecar/src/storage/` touches SQLite or the file system.** It alone imports them, and it alone runs SQL: `request-store.ts` and `pairing-store.ts` hold every query. `stage-boundary.test.ts` checks both.
 - **Run one sidecar per database file.**
 
-These are the tables at schema version 2:
+These are the tables at schema version 3:
 
 | Table | Holds |
 | --- | --- |
 | `server` | The sidecar's lasting ID, created with the database |
-| `connections` | Each phone that paired: its connection ID, the SHA-256 of its credential, its device name, and when it paired and was revoked. At most one isn't revoked. |
+| `connections` | Each phone that paired: its connection ID, the SHA-256 of its credential, its device name, when it paired and was revoked, and the wallet address and network it published. At most one isn't revoked. |
 | `pairing_tokens` | Each pairing token's SHA-256, its server URL, when it was issued, expires, and was used, and the connection it created |
 | `requests` | Each request: its connection, kind, action (as Protobuf binary), note, state, times, and outcome |
 | `idempotency_keys` | Each key's request and action fingerprint, across the whole sidecar |
@@ -196,6 +204,7 @@ To look inside, run `sqlite3 sidecar/data/sidecar.db "SELECT request_id, kind, s
 - **A database from a newer sidecar is refused,** and the sidecar exits rather than guess.
 - **A shipped migration is never edited;** a schema change is a new migration. `sidecar/src/storage/fixtures/schema-v1.sql` freezes a v1 database, and `database.test.ts` opens it with the current code.
 - **Migration 2 adds pairing (SAW-011):** the `server` and `pairing_tokens` tables, and the credential and device name columns on `connections`. SAW-010's stand-in connection has no credential, so the migration revokes it and cancels its PENDING requests. Pair the phone after upgrading.
+- **Migration 3 adds the wallet binding (SAW-015):** `wallet_address`, `wallet_network`, and `wallet_bound_at_ms` on `connections`. All three are set together or all NULL, which means no wallet is connected. No key material and no wallet authorization token is ever stored; `wallet_address` is a public key. An upgraded database starts with no binding, so connect the wallet in the app after upgrading.
 
 ### The lifecycle in the sidecar
 
@@ -305,8 +314,8 @@ Typical log lines:
 | `sidecar/src/requests/identity.ts` | Connection scope for references, idempotency keys, and action fingerprints (SAW-009) |
 | `sidecar/src/requests/lifecycle.ts` | The durable lifecycle (SAW-009): the transition table, the phone's results, the approval binding, and expiry |
 | `sidecar/src/requests/failure.ts` | `RequestFailure`, the error that every durable operation refuses with |
-| `sidecar/src/storage/request-store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions |
-| `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010) |
+| `sidecar/src/storage/request-store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions, and the wallet binding (SAW-015) |
+| `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010), and `vault_get_address` (SAW-015) |
 | `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
 | `sidecar/src/storage/database.ts` | Opening the database, migrations, and transactions (SAW-010) |
 | `sidecar/src/storage/migrations.ts` | The numbered schema migrations (SAW-010, SAW-011) |

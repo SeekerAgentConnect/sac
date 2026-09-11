@@ -101,6 +101,15 @@ const RPCS: ReadonlyArray<{
       }),
   },
   {
+    name: "RequestService.PublishWallet",
+    role: "phone",
+    // No binding: past authentication, this clears a wallet that was never connected.
+    call: (token) =>
+      requestClient(sidecar.url, token).publishWallet({
+        connectionId: phone.connectionId,
+      }),
+  },
+  {
     name: "PairingService.RevokeConnection",
     role: "phone",
     // Another connection's ID: past authentication, this gets NOT_FOUND and revokes nothing.
@@ -166,6 +175,7 @@ const MCP_METHODS: ReadonlyArray<{
   { name: "tools/list", body: { jsonrpc: "2.0", id: 2, method: "tools/list" } },
   ...[
     "vault_display_command",
+    "vault_get_address",
     "vault_request_ack",
     "vault_get_request",
     "vault_cancel_request",

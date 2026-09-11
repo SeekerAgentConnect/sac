@@ -18,7 +18,7 @@ import {
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { RequestService } from "../gen/seekervault/request/v1/service_pb.js";
 import type { PairingStore } from "../storage/pairing-store.ts";
-import type { RequestStore } from "../storage/request-store.ts";
+import { networkName, type RequestStore } from "../storage/request-store.ts";
 import { RequestFailure } from "./failure.ts";
 
 const CODES: ReadonlyMap<RequestError, Code> = new Map([
@@ -90,6 +90,32 @@ export function requestRoutes(
             `${kind === "signMessage" ? "sign_message" : "ack"} requests have nothing to prepare`,
             current,
           );
+        }),
+
+      publishWallet: (request, context) =>
+        handle(context, (connectionId) => {
+          if (request.connectionId !== connectionId) {
+            throw new RequestFailure(
+              RequestError.NOT_FOUND,
+              "no such connection",
+            );
+          }
+          const { binding, cancelled } = store.publishWallet(
+            connectionId,
+            request.binding,
+          );
+          log(
+            binding === undefined
+              ? `connection ${connectionId}: the phone has no wallet connected`
+              : // The address is a public key, so it belongs in the log; nothing secret does.
+                `connection ${connectionId}: wallet ${binding.wallet} on ${networkName(binding.network)}`,
+          );
+          if (cancelled.length > 0) {
+            log(
+              `${cancelled.length} pending request(s) cancelled: they no longer fit the owner's wallet`,
+            );
+          }
+          return { binding, cancelled };
         }),
 
       submitResult: (request, context) =>

@@ -2,12 +2,17 @@ package io.github.brrenat.seekervault.connections
 
 import com.google.protobuf.timestamp
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.request.v1.Asset
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
+import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.ackAction
 import io.github.brrenat.seekervault.request.v1.action
 import io.github.brrenat.seekervault.request.v1.actionRequest
+import io.github.brrenat.seekervault.request.v1.asset
 import io.github.brrenat.seekervault.request.v1.requestRef
+import io.github.brrenat.seekervault.request.v1.transferAction
 import java.security.SecureRandom
 import java.time.Instant
 import java.util.Base64
@@ -32,6 +37,10 @@ class FakeConnectionGateway : ConnectionGateway {
         val settled = mutableMapOf<String, MutableMap<String, ActionRequest>>()
         // The result the sidecar accepted for each settled request, to recognize a repeat.
         private val accepted = mutableMapOf<String, SubmitResultRequest.ResultCase>()
+        /** The wallet the phone published, or null when it published none (SAW-015). */
+        var wallet: WalletBinding? = null
+        /** How many times the phone published a binding to this server. */
+        var publications = 0
         /** When set, every call to this server fails this way. */
         var failure: GatewayException.Kind? = null
         /** The next SubmitResult takes effect, but its response is lost on the way back. */
@@ -56,6 +65,35 @@ class FakeConnectionGateway : ConnectionGateway {
             request(connectionId, requestId, text, expiresAt = expiresAt).also {
                 pending.getOrPut(connectionId) { mutableListOf() } += it
             }
+
+        /**
+         * Stores a PENDING transfer, which is bound to a wallet and a network (SAW-015). Only a
+         * matching binding covers it; publishing another one cancels it.
+         */
+        fun addPendingTransfer(
+            connectionId: String,
+            wallet: String,
+            network: Network,
+            requestId: String = UUID.randomUUID().toString(),
+        ): ActionRequest = actionRequest {
+            ref = requestRef {
+                this.connectionId = connectionId
+                this.requestId = requestId
+            }
+            action = action {
+                transfer = transferAction {
+                    this.wallet = wallet
+                    this.network = network
+                    recipient = wallet
+                    asset = asset { nativeSol = Asset.NativeSol.getDefaultInstance() }
+                    amount = "1"
+                }
+            }
+            state = RequestState.REQUEST_STATE_PENDING
+            createdAt = timestamp { seconds = Instant.now().epochSecond }
+            expiresAt = timestamp { seconds = Instant.now().plusSeconds(86_400).epochSecond }
+        }
+            .also { pending.getOrPut(connectionId) { mutableListOf() } += it }
 
         /** Cancels a PENDING request, as the agent does with `vault_cancel_request`. */
         fun cancel(connectionId: String, requestId: String) {
@@ -112,6 +150,9 @@ class FakeConnectionGateway : ConnectionGateway {
     }
 
     private val servers = mutableMapOf<String, Server>()
+
+    /** Every wallet binding a server was told, with its URL; null means "no wallet". */
+    val published = mutableListOf<Pair<String, WalletBinding?>>()
 
     /** Every call's (URL, secret): pairing tokens for Pair, credentials for the rest. */
     val sent = mutableListOf<Pair<String, String>>()
@@ -190,6 +231,26 @@ class FakeConnectionGateway : ConnectionGateway {
             throw GatewayException(GatewayException.Kind.Unreachable, "the response was lost")
         }
         return after
+    }
+
+    override suspend fun publishWallet(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+        binding: WalletBinding?,
+    ): List<String> {
+        val server = reach(serverUrl, credential)
+        val id = authenticated(server, credential, connectionId)
+        published += serverUrl to binding
+        server.publications++
+        if (binding == server.wallet) return emptyList()
+        server.wallet = binding
+        // The sidecar cancels the PENDING requests the new binding no longer fits. The fake queues
+        // only acks, which no binding covers, so nothing is cancelled unless a test says otherwise.
+        val unfitting =
+            server.pending[id].orEmpty().filter { !it.action.hasAck() }.map { it.ref.requestId }
+        unfitting.forEach { server.cancel(id, it) }
+        return unfitting
     }
 
     override suspend fun revoke(serverUrl: String, credential: String, connectionId: String) {

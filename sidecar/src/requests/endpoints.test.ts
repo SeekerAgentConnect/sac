@@ -4,7 +4,10 @@ import { after, before, describe, it } from "node:test";
 
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
+import { timestampDate } from "@bufbuild/protobuf/wkt";
+
 import {
+  Network,
   RequestError,
   RequestErrorDetailSchema,
   RequestState,
@@ -27,6 +30,7 @@ import {
 import { temporaryDatabasePath } from "../testing/process.ts";
 import {
   CANCEL_REQUEST_TOOL,
+  GET_ADDRESS_TOOL,
   GET_REQUEST_TOOL,
   REQUEST_ACK_TOOL,
   type RequestView,
@@ -35,6 +39,7 @@ import {
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);
 const OTHER_CONNECTION = "a7e9c1b3-4d5f-4a6b-8c7d-9e0f1a2b3c4d";
+const WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const logs: string[] = [];
 let sidecar: Sidecar;
@@ -156,6 +161,7 @@ describe("durable requests over MCP and Connect", () => {
       [
         CANCEL_REQUEST_TOOL,
         "vault_display_command",
+        GET_ADDRESS_TOOL,
         GET_REQUEST_TOOL,
         REQUEST_ACK_TOOL,
       ].sort(),
@@ -175,7 +181,12 @@ describe("durable requests over MCP and Connect", () => {
       const { tools } = await plainAgent.listTools();
       assert.deepEqual(
         tools.map((tool) => tool.name).sort(),
-        [CANCEL_REQUEST_TOOL, "vault_display_command", GET_REQUEST_TOOL].sort(),
+        [
+          CANCEL_REQUEST_TOOL,
+          "vault_display_command",
+          GET_ADDRESS_TOOL,
+          GET_REQUEST_TOOL,
+        ].sort(),
       );
       assert.doesNotMatch(
         plainAgent.getInstructions() ?? "",
@@ -450,6 +461,43 @@ describe("durable requests over MCP and Connect", () => {
     );
     const { request } = await phone().getRequest({ ref: refOf(created) });
     assert.equal(request?.state, RequestState.PENDING);
+  });
+
+  it("publishes the owner's wallet, and gives the agent the address but never a key", async () => {
+    const before = await callTool(agent, GET_ADDRESS_TOOL, {});
+    assert.equal(errorCode(before), "WALLET_NOT_CONNECTED");
+    const published = await phone().publishWallet({
+      connectionId: paired.connectionId,
+      binding: { wallet: WALLET, network: Network.DEVNET },
+    });
+    assert.equal(published.binding?.wallet, WALLET);
+    assert.deepEqual(published.cancelled, []);
+    const view = viewOf(await callTool(agent, GET_ADDRESS_TOOL, {})) as unknown;
+    assert.deepEqual(view, {
+      wallet: WALLET,
+      network: "devnet",
+      bound_at: timestampDate(published.binding.boundAt!).toISOString(),
+    });
+    // Disconnecting the wallet leaves the agent with no address at all.
+    await phone().publishWallet({ connectionId: paired.connectionId });
+    assert.equal(
+      errorCode(await callTool(agent, GET_ADDRESS_TOOL, {})),
+      "WALLET_NOT_CONNECTED",
+    );
+  });
+
+  it("keeps the phone to its own connection's wallet, and checks what it publishes", async () => {
+    await assert.rejects(
+      phone().publishWallet({ connectionId: OTHER_CONNECTION }),
+      connectFailure(Code.NotFound, RequestError.NOT_FOUND),
+    );
+    await assert.rejects(
+      phone().publishWallet({
+        connectionId: paired.connectionId,
+        binding: { wallet: "not-an-address", network: Network.DEVNET },
+      }),
+      connectFailure(Code.InvalidArgument, RequestError.INVALID_PARAMETERS),
+    );
   });
 
   it("reports unknown and malformed request IDs to the agent", async () => {

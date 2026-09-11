@@ -14,8 +14,10 @@ import io.github.brrenat.seekervault.request.v1.PairingServiceClient
 import io.github.brrenat.seekervault.request.v1.RequestErrorDetail
 import io.github.brrenat.seekervault.request.v1.RequestServiceClient
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
+import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.listPendingRequest
 import io.github.brrenat.seekervault.request.v1.pairRequest
+import io.github.brrenat.seekervault.request.v1.publishWalletRequest
 import io.github.brrenat.seekervault.request.v1.revokeConnectionRequest
 import java.io.IOException
 import java.net.UnknownServiceException
@@ -69,6 +71,24 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
         RequestServiceClient(protocolClient(serverUrl)).submitResult(submission, bearer(credential))
     }
         .request
+
+    override suspend fun publishWallet(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+        binding: WalletBinding?,
+    ): List<String> {
+        val request = publishWalletRequest {
+            this.connectionId = connectionId
+            // An absent binding is what "no wallet is connected" means on the wire.
+            if (binding != null) this.binding = binding
+        }
+        val response = call {
+            RequestServiceClient(protocolClient(serverUrl))
+                .publishWallet(request, bearer(credential))
+        }
+        return response.cancelledList.map { it.requestId }
+    }
 
     override suspend fun revoke(serverUrl: String, credential: String, connectionId: String) {
         val request = revokeConnectionRequest { this.connectionId = connectionId }

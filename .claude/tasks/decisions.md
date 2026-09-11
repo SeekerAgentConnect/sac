@@ -232,3 +232,23 @@
 - **A removal is final, for replies too.** The fetch guard didn't cover `SubmitResult` replies. `settle` and the retry handler wrote back the answer they had captured before the send, so a reply that came back after `remove` recreated the connection's answers.
   - Every write of a delivery outcome now rereads the connection and the stored answer under the repository's lock, the lock `remove` holds, and writes nothing if either is gone.
   - It writes from the stored answer, not the captured one. A retryable failure leaves an answer that something else settled meanwhile, such as a revocation, as it is.
+
+## 2026-09-12 — SAW-015, the wallet binding
+
+- **The app never becomes a wallet, so the boundary is one interface.** `wallet/WalletAdapter.kt` has `connect` and `disconnect` and six outcomes, and `MwaWalletAdapter` is the only file that imports the Mobile Wallet Adapter client.
+  - Every test drives `FakeWalletAdapter`, so success, no wallet, a refusal, an expired authorization, an unsupported network, and a changed address all run without a wallet app or an activity association.
+  - MWA needs an Activity, so `MainActivity` registers the `ActivityResultSender` in `onCreate` and clears it in `onDestroy`, and the Application hands it to the adapter. A dedicated activity or a foreground service would have been the alternative, and neither is needed.
+- **The wallet refusing a fresh request and refusing a stored authorization are the same MWA error.** `AUTHORIZATION_FAILED` covers both, so the adapter tells them apart by whether the phone offered an authorization: with one, the authorization expired; without one, the owner declined.
+- **The sidecar stamps `bound_at`.** Every other timestamp in the contract is the sidecar's, and a phone clock that's behind would otherwise show agents a binding older than the one it replaced. `PublishWalletRequest.binding.bound_at` is documented as ignored, and the fixture leaves it unset.
+- **`RequestStore.create` now applies the binding rule instead of refusing every wallet kind.** Stage 2 refused them all with `WALLET_MISMATCH` and the message "wallets connect from Stage 3", which stops being true here.
+  - A wallet action is refused with `WALLET_NOT_CONNECTED` or `WALLET_MISMATCH`, and stored otherwise.
+  - No MCP tool creates one yet, so nothing an agent can call changes. The tools arrive with the later tasks of Stages 3, 4, and 6.
+- **`sign_message` is bound to a wallet but not to a network.** A signature over bytes doesn't depend on a cluster, so `actionBinding` returns no network for it, and changing only the network leaves such a request pending.
+- **Publishing is per connection, and repeated rather than queued.** The repository remembers which connections have heard the current binding, in memory only.
+  - Connecting, disconnecting, opening the app, and pairing a new connection each publish what's missing. An unchanged binding is a no-op at the sidecar, so a repeat costs nothing.
+  - A connection that couldn't be reached is named on the screen, with **Tell them again**. There is no background retry, in keeping with the rest of the app.
+- **The owner picks the network, and the app reports what the wallet says.** It offers Mainnet, Devnet, and Testnet, and never assumes the installed wallet serves any of them.
+  - `CLUSTER_NOT_SUPPORTED` becomes "The wallet doesn't serve this network."
+  - When the wallet returns the account but doesn't list the chosen chain among its chains, the screen says the wallet didn't confirm it, rather than claiming it did. A wallet that lists no chains has contradicted nothing.
+  - What Seed Vault Wallet actually offers on the Seeker is step 9 of the owner's checks in `docs/testing/stage-3.md`, and is recorded as NOT RUN.
+- **`wallet/storage/` seals its own file rather than reusing `CredentialVault`.** The vault is keyed by connection ID, which the wallet's authorization has none of. Both use the same Keystore key and the same file format, with different associated data, and `StageBoundaryTest` now allows storage APIs in both packages.

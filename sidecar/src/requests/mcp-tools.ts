@@ -14,6 +14,7 @@ import {
   ActionSchema,
   RequestState,
   type ActionRequest,
+  type WalletBinding,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { MAX_COMMAND_TEXT_BYTES } from "../live/command.ts";
 import { MAX_NOTE_BYTES, encodeBase58 } from "./action.ts";
@@ -21,10 +22,12 @@ import { isTerminal } from "./lifecycle.ts";
 import {
   MAX_EXPIRES_IN_SECONDS,
   MIN_EXPIRES_IN_SECONDS,
+  networkName,
   type RequestStore,
 } from "../storage/request-store.ts";
 import { RequestFailure } from "./failure.ts";
 
+export const GET_ADDRESS_TOOL = "vault_get_address";
 export const REQUEST_ACK_TOOL = "vault_request_ack";
 export const GET_REQUEST_TOOL = "vault_get_request";
 export const CANCEL_REQUEST_TOOL = "vault_cancel_request";
@@ -80,6 +83,35 @@ const VIEW_SCHEMA = {
     .describe("Display text that explains how the request ended."),
 };
 
+const NETWORKS = ["mainnet", "devnet", "testnet"] as const;
+
+/** The owner's wallet as agents see it: a public address, never a key. */
+export interface AddressView {
+  readonly wallet: string;
+  readonly network: (typeof NETWORKS)[number];
+  readonly bound_at: string;
+}
+
+const ADDRESS_SCHEMA = {
+  wallet: z
+    .string()
+    .describe("The owner's wallet, as a base58 Solana address (a public key)."),
+  network: z
+    .enum(NETWORKS)
+    .describe("The network the owner selected: the chain is solana:<network>."),
+  bound_at: z
+    .string()
+    .describe("When the phone last published this wallet to the sidecar."),
+};
+
+const GET_ADDRESS_DESCRIPTION =
+  "Returns the wallet the owner selected on their Seeker, and the network they selected it for. " +
+  "Use it before any wallet action, and name exactly this wallet and network: a request for " +
+  "another one is refused with WALLET_MISMATCH. The sidecar holds no keys and makes no wallet of " +
+  "its own, so there is no address to fall back on: if the owner has connected none, this fails " +
+  "with WALLET_NOT_CONNECTED. The owner can change or disconnect the wallet at any time, so read " +
+  "it again rather than caching it. Errors start with a code: NOT_PAIRED or WALLET_NOT_CONNECTED.";
+
 const REQUEST_ACK_DESCRIPTION =
   "A development and demo tool, with no wallet involved. Queues display-only text for the owner " +
   "to acknowledge on their Seeker, and returns at once with the stored request: its request_id " +
@@ -117,6 +149,23 @@ export function registerRequestTools(
   if (options.demoTools === true) registerAckTool(server, store, log);
 
   server.registerTool(
+    GET_ADDRESS_TOOL,
+    {
+      title: "Read the owner's wallet",
+      description: GET_ADDRESS_DESCRIPTION,
+      inputSchema: {},
+      outputSchema: ADDRESS_SCHEMA,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    () => answer(() => addressView(store.activeWallet())),
+  );
+
+  server.registerTool(
     GET_REQUEST_TOOL,
     {
       title: "Read a request",
@@ -134,7 +183,7 @@ export function registerRequestTools(
         openWorldHint: false,
       },
     },
-    ({ request_id }) => answer(() => store.get(request_id)),
+    ({ request_id }) => answer(() => requestView(store.get(request_id))),
   );
 
   server.registerTool(
@@ -159,7 +208,7 @@ export function registerRequestTools(
       answer(() => {
         const request = store.cancel(request_id);
         log(`request ${idOf(request)} cancelled by the agent`);
-        return request;
+        return requestView(request);
       }),
   );
 }
@@ -222,7 +271,7 @@ function registerAckTool(
             ? `request ${idOf(request)} stored (ack)`
             : `request ${idOf(request)} returned again for its idempotency key`,
         );
-        return request;
+        return requestView(request);
       }),
   );
 }
@@ -248,10 +297,19 @@ export function requestView(request: ActionRequest): RequestView {
   };
 }
 
-/** Runs a store operation and turns its request, or its RequestFailure, into a tool result. */
-function answer(operation: () => ActionRequest): CallToolResult {
+/** The owner's wallet as agents see it, with the network lowercased and the time in RFC 3339. */
+export function addressView(binding: WalletBinding): AddressView {
+  return {
+    wallet: binding.wallet,
+    network: networkName(binding.network) as AddressView["network"],
+    bound_at: iso(binding.boundAt),
+  };
+}
+
+/** Runs a store operation and turns its view, or its RequestFailure, into a tool result. */
+function answer(operation: () => RequestView | AddressView): CallToolResult {
   try {
-    const view = requestView(operation());
+    const view = operation();
     return {
       content: [{ type: "text", text: JSON.stringify(view) }],
       structuredContent: { ...view },
