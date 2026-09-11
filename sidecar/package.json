@@ -10,7 +10,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bufbuild/protobuf": "catalog:"
+    "@bufbuild/protobuf": "catalog:",
+    "@connectrpc/connect": "2.2.0",
+    "@connectrpc/connect-node": "2.2.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.6.1"
   },
   "devDependencies": {
     "@types/node": "24.13.4",

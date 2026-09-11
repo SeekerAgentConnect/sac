@@ -7,5 +7,5 @@
     // Emits the generated JavaScript in src/gen alongside the compiled sources.
     "allowJs": true
   },
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/testing"]
 }

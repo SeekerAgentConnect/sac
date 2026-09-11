@@ -24,3 +24,17 @@
 - **The rules are pure code in `sidecar/src/live/command.ts`** (`LiveCommandSlot`). SAW-003 adds I/O around them: timers, streams, MCP, and watcher presence for `OFFLINE`.
 - **`buf convert` writes the fixtures from JSON.** Buf's Go runtime is a neutral third implementation, and both runtimes must match its bytes in both directions.
 - **Generated code is committed.** `pnpm check:generated` compares a fresh generation in a temporary directory, so it never touches the working tree. Kotlin output goes in its own `generated/java` and `generated/kotlin` directories, because `clean: true` owns them.
+
+## 2026-09-11 — SAW-003 live MCP command bridge (SEE-9)
+
+- **MCP runs in stateful sessions.** Cancellation arrives as `notifications/cancelled` in a separate POST, and only a session routes it to the waiting tool call. A restart drops every session, and clients re-initialize after getting 404.
+- **A dropped agent connection also cancels.** An AsyncLocalStorage-scoped signal fires when the tool call's HTTP response closes before it's answered. That way a crashed agent frees the phone at once, instead of holding it until the deadline.
+- **Tool errors are `isError` text `"<CODE>: <message>"` with no `structuredContent`.** The MCP SDK client validates `structuredContent` against the output schema even on errors, so a structured error would be rejected by the client.
+- **`/mcp` accepts only loopback Host and Origin names, on any port.** That blocks DNS rebinding and still allows SSH tunnels on another port. The phone API skips the Host check, because an emulator reaches the host as 10.0.2.2 and the bearer token protects that API anyway.
+- **Tokens are compared as SHA-256 digests with `timingSafeEqual`,** which is constant time for any input length. They are read only from `Authorization` and never logged.
+- **Shutdown order:**
+  1. Cancel the in-flight command, so the agent gets `CANCELLED`.
+  2. End the phone stream with `unavailable`.
+  3. Give in-flight responses up to 1 second to finish.
+  4. Close the MCP sessions and any remaining connections.
+- **Integration tests use the real MCP SDK client and a Connect client against an in-process server on port 0.** The restart test runs `node src/main.ts` as a child process, so the process boundary is real.
