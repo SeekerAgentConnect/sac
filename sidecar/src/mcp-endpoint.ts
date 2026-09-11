@@ -29,7 +29,7 @@ const TOOL_DESCRIPTION =
   "CANCELLED (the phone disconnected or the call was cancelled).";
 
 // Hostnames that pass the Host and Origin checks (a defense against DNS rebinding).
-const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]", '100.119.134.109']);
 
 export interface McpEndpoint {
   handle(req: IncomingMessage, res: ServerResponse): Promise<void>;
