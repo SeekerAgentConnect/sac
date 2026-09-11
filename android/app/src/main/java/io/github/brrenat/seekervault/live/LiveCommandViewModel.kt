@@ -53,6 +53,9 @@ sealed interface DisconnectReason {
 
     data object CleartextBlocked : DisconnectReason
 
+    /** The first connection attempt could not reach the sidecar at [serverUrl]. */
+    data class Unreachable(val serverUrl: String, val port: Int) : DisconnectReason
+
     /** The stream failed, or the sidecar ended it. */
     data class Lost(val detail: String?) : DisconnectReason
 }
@@ -217,12 +220,29 @@ class LiveCommandViewModel(
     }
 
     private fun reasonFor(error: LiveTransportException): DisconnectReason =
-        when (error.kind) {
-            LiveTransportException.Kind.Unauthenticated -> DisconnectReason.Unauthenticated
-            LiveTransportException.Kind.Cancelled -> DisconnectReason.Replaced
-            LiveTransportException.Kind.CleartextBlocked -> DisconnectReason.CleartextBlocked
+        when {
+            error.kind == LiveTransportException.Kind.Unauthenticated ->
+                DisconnectReason.Unauthenticated
+            error.kind == LiveTransportException.Kind.Cancelled -> DisconnectReason.Replaced
+            error.kind == LiveTransportException.Kind.CleartextBlocked ->
+                DisconnectReason.CleartextBlocked
+            // Never connected: usually the sidecar isn't running or `adb reverse` is missing.
+            error.kind == LiveTransportException.Kind.Unreachable &&
+                _state.value.connection == ConnectionState.Connecting -> unreachable()
             else -> DisconnectReason.Lost(error.message)
         }
+
+    private fun unreachable(): DisconnectReason.Unreachable {
+        val serverUrl = _state.value.serverUrl.trim()
+        val uri = URI(serverUrl)
+        val port =
+            when {
+                uri.port != -1 -> uri.port
+                uri.scheme == "https" -> 443
+                else -> 80
+            }
+        return DisconnectReason.Unreachable(serverUrl, port)
+    }
 
     private fun statusFor(error: LiveTransportException): CommandStatus =
         when (error.kind) {

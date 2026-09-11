@@ -16,6 +16,7 @@
     <string name="status_unauthenticated">The sidecar rejected the phone token. Check PHONE_TOKEN in the sidecar\'s .env.</string>
     <string name="status_replaced">Another connection to the sidecar replaced this one.</string>
     <string name="status_cleartext_blocked">This build allows plain HTTP only to 127.0.0.1. Run adb reverse tcp:8080 tcp:8080 and use http://127.0.0.1:8080.</string>
+    <string name="status_unreachable">Could not reach the sidecar at %1$s. Is it running (pnpm dev:sidecar), and did you run adb reverse tcp:%2$d tcp:%2$d?</string>
     <string name="status_lost">Connection lost.</string>
     <string name="status_lost_detail">Connection lost: %1$s</string>
     <string name="limitation_foreground_only">Text reaches the phone only while this screen is open and connected. The sidecar cancels a waiting command when the phone disconnects and never sends it again, so any received text was cleared.</string>

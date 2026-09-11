@@ -161,6 +161,8 @@ private fun connectionText(connection: ConnectionState): String =
                 DisconnectReason.Replaced -> stringResource(R.string.status_replaced)
                 DisconnectReason.CleartextBlocked ->
                     stringResource(R.string.status_cleartext_blocked)
+                is DisconnectReason.Unreachable ->
+                    stringResource(R.string.status_unreachable, reason.serverUrl, reason.port)
                 is DisconnectReason.Lost ->
                     reason.detail?.let { stringResource(R.string.status_lost_detail, it) }
                         ?: stringResource(R.string.status_lost)
