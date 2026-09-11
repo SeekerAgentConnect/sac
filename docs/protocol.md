@@ -20,7 +20,7 @@ sequenceDiagram
     Sidecar-->>Agent: {id, result: OK}
 ```
 
-The contract is `LiveCommandService` in [`proto/seekervault/live/v1/live.proto`](../proto/seekervault/live/v1/live.proto). SAW-003 implements the MCP tool `vault_display_command` and the Connect server, and SAW-004 implements the Android screen.
+The contract is `LiveCommandService` in [`proto/seekervault/live/v1/live.proto`](../proto/seekervault/live/v1/live.proto). The sidecar serves the MCP tool `vault_display_command` and the Connect service; see [`docs/development/sidecar.md`](development/sidecar.md). SAW-004 implements the Android screen.
 
 | RPC | Kind | Purpose |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ The contract is `LiveCommandService` in [`proto/seekervault/live/v1/live.proto`]
   - For any other ID, the result is `UNKNOWN_COMMAND`.
 - **Nothing is durable.** There is no backlog, replay, persistence, or pending-request API. A sidecar restart loses the in-flight command, and a reconnecting phone never receives a command sent before it connected.
 
-The rules are implemented without I/O in [`sidecar/src/live/command.ts`](../sidecar/src/live/command.ts) as `invalidTextReason`, `isExpired`, and `LiveCommandSlot`. On Android, the deadline check is `LiveCommand.isExpiredAt` in [`LiveCommandDeadline.kt`](../android/app/src/main/java/io/github/brrenat/seekervault/live/LiveCommandDeadline.kt).
+The rules are implemented without I/O in [`sidecar/src/live/command.ts`](../sidecar/src/live/command.ts) as `invalidTextReason`, `isExpired`, and `LiveCommandSlot`. [`sidecar/src/live/bridge.ts`](../sidecar/src/live/bridge.ts) adds the in-memory waiter around them: deadline timers, the watcher, and cancellation. On Android, the deadline check is `LiveCommand.isExpiredAt` in [`LiveCommandDeadline.kt`](../android/app/src/main/java/io/github/brrenat/seekervault/live/LiveCommandDeadline.kt).
 
 ## Errors
 
@@ -65,6 +65,13 @@ The rules are implemented without I/O in [`sidecar/src/live/command.ts`](../side
 
 The transport itself can also produce `deadline_exceeded`, `canceled`, and `unavailable`: for example, a client-side deadline, a cancellation, or an unreachable sidecar. The phone treats `unavailable` and a failed stream as disconnected.
 
+On the wire:
+
+- **MCP success:** the tool result carries `structuredContent: {"id", "result": "OK"}`.
+- **MCP failure:** the result has `isError: true`, and its text is `"<CODE>: <message>"`, for example `BUSY: another live command is in flight`. It carries no `structuredContent`, because MCP clients validate that field against the success schema.
+- **A replaced phone stream** ends with `canceled`.
+- **A sidecar shutdown** ends the stream with `unavailable`.
+
 ## Authentication
 
 Stage 1 uses two separate development bearer tokens from `.env`:
@@ -72,7 +79,7 @@ Stage 1 uses two separate development bearer tokens from `.env`:
 - `MCP_TOKEN` for the agent-facing `/mcp` endpoint
 - `PHONE_TOKEN` for `LiveCommandService`
 
-Each is sent as `Authorization: Bearer <token>`, never in a URL, and never logged. The sidecar listens on loopback only. The server that enforces all of this arrives in SAW-003.
+Each is sent as `Authorization: Bearer <token>`, never in a URL, and never logged. The sidecar listens on loopback only, compares tokens in constant time, and checks the Host and Origin headers on `/mcp`; see [`docs/development/sidecar.md`](development/sidecar.md#endpoints).
 
 ## Why a stream, and what Stage 2 changes
 

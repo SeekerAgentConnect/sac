@@ -1,0 +1,137 @@
+/**
+ * Real clients for the sidecar's two endpoints, used by the integration tests: a Connect
+ * client acting as the phone, and an MCP SDK client acting as the agent.
+ */
+import assert from "node:assert/strict";
+import { setTimeout as delay } from "node:timers/promises";
+
+import {
+  createClient,
+  type Client as ConnectClient,
+  type Interceptor,
+} from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-node";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+
+import {
+  AcknowledgementResult,
+  LiveCommandService,
+  type AcknowledgeCommandResponse,
+  type LiveCommand,
+  type WatchCommandsResponse,
+} from "../gen/seekervault/live/v1/live_pb.js";
+import { DISPLAY_COMMAND_TOOL } from "../mcp-endpoint.ts";
+
+export function phoneClient(
+  baseUrl: string,
+  token?: string,
+): ConnectClient<typeof LiveCommandService> {
+  const bearer: Interceptor = (next) => (request) => {
+    if (token !== undefined)
+      request.header.set("Authorization", `Bearer ${token}`);
+    return next(request);
+  };
+  return createClient(
+    LiveCommandService,
+    createConnectTransport({
+      baseUrl,
+      httpVersion: "1.1",
+      interceptors: [bearer],
+    }),
+  );
+}
+
+export interface Phone {
+  /** The next event must be a command; returns it. */
+  nextCommand(): Promise<LiveCommand>;
+  /** The next stream event; rejects with the error that ended the stream. */
+  next(): Promise<IteratorResult<WatchCommandsResponse>>;
+  acknowledge(id: string): Promise<AcknowledgeCommandResponse>;
+  disconnect(): void;
+}
+
+/** Opens WatchCommands like the live-test screen and waits for `ready`. */
+export async function connectPhone(
+  baseUrl: string,
+  token: string,
+): Promise<Phone> {
+  const client = phoneClient(baseUrl, token);
+  const abort = new AbortController();
+  const stream = client.watchCommands({}, { signal: abort.signal });
+  const events = stream[Symbol.asyncIterator]();
+  const first = await events.next();
+  assert.equal(first.done ? undefined : first.value.event.case, "ready");
+  return {
+    async nextCommand() {
+      const next = await events.next();
+      assert.ok(
+        !next.done && next.value.event.case === "command",
+        "expected a command event",
+      );
+      return next.value.event.value;
+    },
+    next: () => events.next(),
+    acknowledge: (id) =>
+      client.acknowledgeCommand({
+        acknowledgement: { id, result: AcknowledgementResult.OK },
+      }),
+    disconnect: () => {
+      abort.abort();
+    },
+  };
+}
+
+export async function connectAgent(
+  baseUrl: string,
+  token: string,
+): Promise<Client> {
+  const client = new Client({ name: "seeker-vault-tests", version: "0.0.0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL("/mcp", baseUrl), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    }),
+  );
+  return client;
+}
+
+/** Calls vault_display_command with a client timeout longer than the sidecar's deadline. */
+export async function display(
+  agent: Client,
+  text: string,
+  options: { readonly signal?: AbortSignal; readonly timeoutMs?: number } = {},
+): Promise<CallToolResult> {
+  const result = await agent.callTool(
+    { name: DISPLAY_COMMAND_TOOL, arguments: { text } },
+    undefined,
+    {
+      signal: options.signal,
+      timeout: options.timeoutMs ?? 10_000,
+    },
+  );
+  return result as CallToolResult;
+}
+
+/** The code of a failed tool result, such as `BUSY`, or undefined for a success. */
+export function errorCode(result: CallToolResult): string | undefined {
+  if (result.isError !== true) return undefined;
+  const first = result.content[0];
+  return first?.type === "text"
+    ? /^([A-Z_]+): /.exec(first.text)?.[1]
+    : undefined;
+}
+
+/** Polls `condition` every 10 ms until it holds, failing after `timeoutMs`. */
+export async function waitFor(
+  condition: () => boolean,
+  description: string,
+  timeoutMs = 3000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline)
+      assert.fail(`timed out waiting for ${description}`);
+    await delay(10);
+  }
+}

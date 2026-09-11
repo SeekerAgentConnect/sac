@@ -17,6 +17,9 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | ESLint, @eslint/js, typescript-eslint | 10.10.0, 10.0.1, 8.70.0 | `package.json` |
 | Prettier | 3.9.6 | `package.json` |
 | Buf CLI (`@bufbuild/buf`) | 1.72.0 | `package.json` |
+| MCP TypeScript SDK (`@modelcontextprotocol/sdk`) | 1.30.0 | `sidecar/package.json` |
+| Connect for Node (`@connectrpc/connect`, `@connectrpc/connect-node`) | 2.2.0 | `sidecar/package.json` |
+| zod, for the MCP tool schemas | 4.6.1 | `sidecar/package.json` |
 | protoc-gen-es (generator), @bufbuild/protobuf (runtime) | 2.14.1 | `catalog` in `pnpm-workspace.yaml`; generator and runtime move together |
 
 **TypeScript stays on 6.0** because typescript-eslint 8.70 supports only `typescript <6.1`. TypeScript 7 can follow once typescript-eslint supports it.
@@ -53,7 +56,7 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 
 | Generator in `buf.gen.yaml` | Output | Runtime library that must match |
 | --- | --- | --- |
-| `protoc-gen-es` 2.14.1 (local), `target=js+dts` | `sidecar/src/gen` | `@bufbuild/protobuf` 2.14.1, plus `@connectrpc/connect` 2.x for the server in SAW-003 |
+| `protoc-gen-es` 2.14.1 (local), `target=js+dts` | `sidecar/src/gen` | `@bufbuild/protobuf` 2.14.1, plus `@connectrpc/connect` 2.2.0 for the service |
 | `buf.build/protocolbuffers/java:v36.1`, `lite` | `android/app/src/main/generated/java` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/protocolbuffers/kotlin:v36.1`, `lite` | `android/app/src/main/generated/kotlin` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0. The OkHttp transport and the lite codec arrive with the Android client in SAW-004. |
