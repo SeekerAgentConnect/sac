@@ -229,3 +229,6 @@
   - `AGENTS.md` and `docs/development/sidecar.md` said only `storage/` touches SQLite. The test checked imports only, while `RequestStore` and `PairingStore` ran SQL through the database handle.
   - Moving the two stores was a file move, with no change in behavior.
   - The pure rules stay in `requests/` and `pairing/`. `RequestFailure` moved to `requests/failure.ts`, so the workflow's error type doesn't live in storage.
+- **A removal is final, for replies too.** The fetch guard didn't cover `SubmitResult` replies. `settle` and the retry handler wrote back the answer they had captured before the send, so a reply that came back after `remove` recreated the connection's answers.
+  - Every write of a delivery outcome now rereads the connection and the stored answer under the repository's lock, the lock `remove` holds, and writes nothing if either is gone.
+  - It writes from the stored answer, not the captured one. A retryable failure leaves an answer that something else settled meanwhile, such as a revocation, as it is.

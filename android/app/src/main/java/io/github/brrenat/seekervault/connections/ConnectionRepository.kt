@@ -224,9 +224,11 @@ class ConnectionRepository(
     }
 
     /**
-     * Sends a waiting answer now, and returns it as it stands afterwards, or null if there's none
-     * or it's being sent already. The sidecar recognizes a repeat, so sending again after a lost
-     * response is safe.
+     * Sends a waiting answer now, and returns it as it stands afterwards. It returns null if
+     * there's no answer, if the answer is being sent already, or if its connection was removed
+     * while it was sent. The sidecar recognizes a repeat, so sending again after a lost response is
+     * safe. A reply is written only if the connection and the answer are both still there, checked
+     * under the lock that removal holds, so a late reply can't undo a removal.
      */
     suspend fun deliver(key: RequestKey): LocalResult? {
         if (!synchronized(sending) { sending.add(key) }) return null
@@ -261,12 +263,15 @@ class ConnectionRepository(
                         settle(result, Delivery.Undeliverable, result.request)
                     GatewayException.Kind.Unauthenticated -> {
                         markRevoked(key.connectionId)
-                        locked { results.get(key.connectionId, key.requestId) } ?: result
+                        locked { results.get(key.connectionId, key.requestId) }
                     }
-                    // Unreachable, or another failure: keep it, and send it again on refresh.
+                    // Unreachable, or another failure: keep it, and send it again on refresh. If a
+                    // revocation settled the answer meanwhile, it stays settled.
                     else ->
-                        locked {
-                            result.copy(lastFailure = e.kind.toOutcome()).also {
+                        locked<LocalResult?> {
+                            val current = stillStored(result) ?: return@locked null
+                            if (current.delivery != Delivery.Waiting) return@locked current
+                            current.copy(lastFailure = e.kind.toOutcome()).also {
                                 results.put(it)
                                 publish()
                             }
@@ -337,14 +342,16 @@ class ConnectionRepository(
         publish()
     }
 
-    // Records how the sidecar settled an answer, and takes its request off the pending list.
+    // Records how the sidecar settled an answer, and takes its request off the pending list. If the
+    // connection or the answer was removed meanwhile, it writes nothing and returns null.
     private suspend fun settle(
         result: LocalResult,
         delivery: Delivery,
         request: ActionRequest,
-    ): LocalResult = locked {
+    ): LocalResult? = locked {
+        val current = stillStored(result) ?: return@locked null
         val settled =
-            result.copy(
+            current.copy(
                 delivery = delivery,
                 request = request,
                 lastFailure = null,
@@ -367,6 +374,12 @@ class ConnectionRepository(
         publish()
         settled
     }
+
+    // The answer as it's stored now, or null if it or its connection was removed while it was on
+    // its way. Call it under the lock, just before writing a delivery outcome. Removal holds the
+    // same lock, so a late reply can't recreate what removal deleted.
+    private fun stillStored(result: LocalResult): LocalResult? =
+        store.get(result.connectionId)?.let { results.get(result.connectionId, result.requestId) }
 
     private suspend fun update(id: String, change: (Connection) -> Connection) = locked {
         store.get(id)?.let { store.put(change(it)) }

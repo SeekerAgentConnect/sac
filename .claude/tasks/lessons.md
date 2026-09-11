@@ -17,4 +17,9 @@
   - Ten `yes > /dev/null` processes reproduced it in 2 of 6 runs.
   - A tree dump on failure, `printToString(Int.MAX_VALUE)`, showed the screen settling just after the assertion ran.
   - Activity tests now run the repository on `Dispatchers.Unconfined`. The fix passed 10 of 10 runs under the same load.
+- **Guard every writer, not only the one that was reported.**
+  - The PR #3 review's fetch-after-removal fix missed the `SubmitResult` replies, which wrote a captured answer back after `remove`.
+  - When one writer needs a guard against a removal, list every write of that state first: here `settle`, the retry handler, and `markRevoked`.
+  - Reread existence under the same lock right before each write.
+  - Write from the stored state, never from a copy captured before a suspension.
 - **Tool inputs turn `\uXXXX` into the character itself.** To keep an escape in a source file, write `\u{301}` in TypeScript or build the string from code points in Kotlin (`String(intArrayOf(...), 0, n)`), then check the code points with a script. That matters wherever NFC and NFD must differ.

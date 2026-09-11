@@ -10,6 +10,7 @@ import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -305,6 +306,98 @@ class InboxTest {
         assertFalse(connection.id in repository.inbox.value.pending)
         assertNull(repository.connection(connection.id))
     }
+
+    @Test
+    fun aSuccessfulReplyAfterItsConnectionWasRemovedWritesNothing() = runBlocking {
+        removeAWhileItsAnswerIsSent {}
+    }
+
+    @Test
+    fun aFailedReplyAfterItsConnectionWasRemovedWritesNothing() = runBlocking {
+        removeAWhileItsAnswerIsSent {
+            throw GatewayException(GatewayException.Kind.Unreachable, "the connection dropped")
+        }
+    }
+
+    @Test
+    fun aLateFailureDoesntUndoARevocationThatSettledTheAnswer() = runBlocking {
+        val key = oneRequest()
+        val sending = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.beforeSubmit = {
+            sending.complete(Unit)
+            release.await()
+            throw GatewayException(GatewayException.Kind.Unreachable, "the connection dropped")
+        }
+        val answering = async { repository.answer(key, Answer.Acknowledge) }
+        sending.await()
+        // Meanwhile the operator revokes the pairing, and a refresh finds out.
+        serverA.revoke(key.connectionId)
+        repository.refresh(key.connectionId)
+        val settled = checkNotNull(repository.result(key))
+        assertEquals(Delivery.Undeliverable, settled.delivery)
+        release.complete(Unit)
+        answering.await()
+        // The late failure changes nothing: not the delivery, and it adds no failure reason.
+        assertEquals(settled, repository.result(key))
+        val reopened = repository()
+        reopened.load()
+        assertEquals(settled, reopened.result(key))
+    }
+
+    /**
+     * Sets up B with one settled answer and one pending request. It then holds A's answer in
+     * SubmitResult, removes A, and lets the reply through: [reply] runs as the hold ends, and can
+     * throw to fail the send. Afterwards A stays removed, and B is as it was.
+     */
+    private suspend fun removeAWhileItsAnswerIsSent(reply: suspend () -> Unit) = coroutineScope {
+        val b = oneRequest(serverB, URL_B)
+        repository.answer(b, Answer.Acknowledge)
+        serverB.addPending(b.connectionId, text = "Still for B")
+        repository.refresh(b.connectionId)
+        val before = repository.snapshot(b.connectionId)
+        val a = oneRequest(serverA, URL_A)
+        val sending = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.beforeSubmit = {
+            sending.complete(Unit)
+            release.await()
+            reply()
+        }
+        val answering = async { repository.answer(a, Answer.Acknowledge) }
+        sending.await()
+        repository.remove(a.connectionId)
+        release.complete(Unit)
+        answering.await()
+
+        assertEquals(before, repository.snapshot(b.connectionId))
+        val id = a.connectionId
+        // Nothing of A is left on disk: its metadata, its credential, and its answers.
+        assertNull(ConnectionStore(File(folder.root, "files/connections")).get(id))
+        assertFalse(
+            CredentialVault(File(folder.root, "no_backup/credentials")) { key }.contains(id)
+        )
+        assertFalse(File(folder.root, "files/results/$id").exists())
+        // Nor in what the app shows, after refreshing and after a restart.
+        repository.refresh(id)
+        repository.refresh(b.connectionId)
+        val reopened = repository()
+        reopened.load()
+        for (app in listOf(repository, reopened)) {
+            assertNull(app.connection(id))
+            assertFalse(id in app.inbox.value.pending)
+            assertTrue(app.inbox.value.results.none { it.connectionId == id })
+        }
+        assertFalse(File(folder.root, "files/results/$id").exists())
+        assertEquals(
+            before.third,
+            reopened.inbox.value.results.filter { it.connectionId == b.connectionId },
+        )
+    }
+
+    // A connection's metadata, pending requests, and stored answers, as the app shows them.
+    private fun ConnectionRepository.snapshot(id: String) =
+        Triple(connection(id), pending(id), inbox.value.results.filter { it.connectionId == id })
 
     @Test
     fun leavesOutARequestWhoseIdCantNameAStoredAnswer() = runBlocking {
