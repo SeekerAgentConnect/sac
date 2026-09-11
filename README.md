@@ -63,13 +63,13 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | --- | --- | --- |
 | `pnpm install --frozen-lockfile` | Installs exactly what the committed lockfile specifies | Works |
 | `pnpm check` | Runs Prettier, `buf format`, ESLint, `buf lint`, TypeScript type checks, and the sidecar tests without changing any files | Works |
-| `pnpm check:android` | Runs Spotless (ktfmt), Android unit tests, Android lint, and a debug APK build | Works |
+| `pnpm check:android` | Runs Spotless (ktfmt), Android unit tests, and Android lint, and builds the debug APK and the instrumentation test APK | Works |
 | `pnpm build` | Compiles the sidecar to `sidecar/dist` | Works |
 | `pnpm dev:sidecar` | Starts the sidecar with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. | Works |
 | `pnpm generate` | Regenerates the TypeScript and Kotlin protocol code and the binary fixtures from `proto/`; needs network access | Works |
 | `pnpm check:generated` | Fails if the committed generated code or fixtures differ from a fresh generation; changes no files | Works |
 | `pnpm agent hello [text]` | Shows text on the phone through MCP and prints the acknowledgement. OFFLINE, BUSY, TIMEOUT, and connection errors each get their own exit code. | Works |
-| `pnpm test:hello` | Runs the live-bridge integration tests | Not implemented until SAW-008; exits with an error |
+| `pnpm test:hello` | Runs the Stage 1 acceptance suite on a simulated device: the real CLI, the sidecar as a separate process, and a test client as the phone. With `--device`, it runs the round trip on the attached device or emulator instead: the app's UI test taps OK while the CLI sends over MCP. See [`docs/testing/stage-1.md`](docs/testing/stage-1.md). | Works; `--device` needs a device or an emulator |
 | `pnpm format`, `pnpm format:android` | Apply Prettier and `buf format`, and ktfmt for Kotlin | Works |
 
 ## Development configuration
@@ -88,8 +88,9 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 
 `.github/workflows/ci.yml` runs on pull requests and on pushes to `master` and `develop`:
 
-- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check`, `pnpm check:generated`, and `pnpm build`
+- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check`, `pnpm test:hello`, `pnpm check:generated`, and `pnpm build`
 - **Android:** `pnpm check:android` on Temurin 21
+- **Emulator:** `pnpm test:hello --device` on an Android 16 (API 36) emulator. An emulator run never counts as the physical Seeker check.
 
 The workflow has read-only repository permissions and never commits.
 

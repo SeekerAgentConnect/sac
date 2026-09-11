@@ -43,7 +43,8 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | AndroidX Lifecycle (`lifecycle-viewmodel-compose`, `lifecycle-runtime-compose`) | 2.11.0 | `android/gradle/libs.versions.toml` |
 | JUnit | 4.13.2 | `android/gradle/libs.versions.toml` |
 | Robolectric, running the tests on SDK 36 | 4.16.1 | `android/gradle/libs.versions.toml`, `android/app/src/test/resources/robolectric.properties` |
-| AndroidX Test (`core`, `ext:junit`) | 1.7.0, 1.3.0 | `android/gradle/libs.versions.toml` |
+| AndroidX Test (`core`, `ext:junit`, `runner`) | 1.7.0, 1.3.0, 1.7.0 | `android/gradle/libs.versions.toml` |
+| Emulator for `pnpm test:hello --device` in CI | Android 16 (API 36) `google_apis` x86_64, through `reactivecircus/android-emulator-runner` v2.38.0 | `.github/workflows/ci.yml` |
 | kotlinx-coroutines-test | 1.11.0 | `android/gradle/libs.versions.toml` |
 | Spotless, ktfmt (kotlinlang style) | 8.10.2, 0.64 | `android/gradle/libs.versions.toml` |
 | Foojay toolchain resolver | 1.0.0 | `android/settings.gradle.kts` |

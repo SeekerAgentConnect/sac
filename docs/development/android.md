@@ -54,8 +54,23 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `MainActivityTest` | The activity with a fake transport, on Robolectric: rotation during a command, a rapid double tap, and background then foreground |
 | `ConnectLiveCommandTransportTest` | The real transport against the real sidecar (`node sidecar/src/main.ts`), with an MCP SDK client as the agent: text in, the same command's OK out. Also covers a wrong token, an unknown command, and a sidecar stop. It needs Node 24 and `pnpm install`. `ConnectLiveCommandTransportUnreachableTest` covers a closed port. |
 | `LiveProtocolFixturesTest`, `LiveCommandDeadlineTest` | Protocol fixtures and deadline boundaries (SAW-002) |
+| `StageOneBoundaryTest` | The Stage 1 boundary (SAW-008). The manifest declares only `MainActivity` and `INTERNET`. App code uses no storage, key, or background APIs. No wallet, storage, or background library is on the classpath. |
 
-Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37. Instrumentation tests on a device or emulator come in SAW-008.
+Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
+
+### On a device or emulator
+
+`src/androidTest/.../LiveCommandDeviceTest.kt` runs the round trip on real Android. It enters the phone token, taps **Connect**, waits for the agent's text, checks that the text is exact, and taps **OK** twice. It needs a running sidecar and an agent, so run it with `pnpm test:hello --device`. The script:
+
+1. Picks the one attached device or emulator, or the one in `ANDROID_SERIAL`.
+2. Starts the sidecar on a free port with throwaway tokens, never your `.env`, and runs `adb reverse` for that port.
+3. Runs `./gradlew :app:connectedDebugAndroidTest`, passing the URL, the phone token, and the text as instrumentation arguments.
+4. Once the app has connected, sends the text over MCP with the test agent.
+5. Passes only if all of these hold: the UI test passes, the agent prints `{"id","result":"OK"}`, and the sidecar logged exactly one acknowledgement.
+
+Gradle installs the debug app and the test APK, then removes both after the run. To get the app back, reinstall it with `adb install`.
+
+`pnpm check:android` builds the test APK (`assembleDebugAndroidTest`) but doesn't run it. CI runs it on an API 36 emulator. An emulator run never counts as the physical Seeker check.
 
 ## Verification record: SAW-004
 

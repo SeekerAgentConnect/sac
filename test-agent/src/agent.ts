@@ -110,6 +110,16 @@ export async function displayCommand(
   }
 
   let result: CallToolResult;
+  // Without resumable streams, the SDK reports a dropped response stream only through onerror and
+  // leaves the call waiting for its timeout. Fail the call at once instead: the sidecar treats a
+  // dropped connection as a cancellation, so no answer is coming.
+  const dropped = new AbortController();
+  const onerror = client.onerror;
+  client.onerror = (error) => {
+    onerror?.(error);
+    if (error.message.startsWith("SSE stream disconnected"))
+      dropped.abort(error);
+  };
   try {
     // The listTools() call above also lets the SDK validate the result against the tool's schema.
     result = (await client.callTool(
@@ -117,9 +127,17 @@ export async function displayCommand(
       undefined,
       {
         timeout: timeoutMs,
+        signal: dropped.signal,
       },
     )) as CallToolResult;
   } catch (error) {
+    if (dropped.signal.aborted) {
+      throw new AgentFailure(
+        ExitCode.CONNECTION,
+        "lost the connection to the sidecar before the phone answered",
+        { cause: error },
+      );
+    }
     if (
       error instanceof McpError &&
       error.code === Number(ErrorCode.RequestTimeout)
@@ -133,6 +151,8 @@ export async function displayCommand(
       );
     }
     throw error;
+  } finally {
+    client.onerror = onerror;
   }
 
   if (result.isError === true) {
