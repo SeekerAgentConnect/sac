@@ -91,6 +91,9 @@ jobs:
           api-level: 36
           target: google_apis
           arch: x86_64
+          # The image's default data partition doesn't fit on a runner with about 6 GB of free
+          # disk, and the emulator then never boots. The app and its tests need far less.
+          disk-size: 4096M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: pnpm test:hello --device
