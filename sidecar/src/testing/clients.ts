@@ -2,6 +2,8 @@
  * Real clients for the sidecar's two endpoints, used by the integration tests: a Connect
  * client acting as the phone, and an MCP SDK client acting as the agent.
  */
+// Re-exported so tests in other packages check errors against this module's Connect instance.
+export { Code, ConnectError } from "@connectrpc/connect";
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 

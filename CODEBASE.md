@@ -12,6 +12,7 @@
 - SAW-002, the live-command protocol: `LiveCommandService` contract, generated TypeScript and Kotlin code, sidecar protocol rules, and cross-runtime fixtures
 - SAW-003, the live MCP command bridge: `/mcp` with `vault_display_command`, the phone's Connect API, and `/healthz`
 - SAW-004, the Android live-test screen: stock Material 3 UI, a ViewModel, a Connect/OkHttp transport, and debug-only loopback cleartext
+- SAW-005, the MCP test client: `pnpm agent hello`, with exit codes for each outcome
 
 Commands and milestone status are in `README.md`, and agent rules in `AGENTS.md`.
 
@@ -38,10 +39,11 @@ Commands and milestone status are in `README.md`, and agent rules in `AGENTS.md`
 | `proto/` | Buf module; `seekervault/live/v1/live.proto` defines the Stage 1 `LiveCommandService` |
 | `proto/fixtures/` | Cross-runtime fixtures: `<package path>/<Message>/<case>.json` plus the `.binpb` written by `buf convert` |
 | `scripts/` | `generate.mjs`: `buf generate` and fixture conversion; `--check` compares a fresh generation in a temp dir |
-| `test-agent/` | Placeholder README; the MCP test client lands in SAW-005 |
+| `test-agent/` | `@seeker-vault/test-agent` (`pnpm agent`). `src/main.ts` is the CLI (`hello`, `tools`, exit codes, token redaction); `src/agent.ts` is the MCP client (discover, call, validate the acknowledgement); `src/config.ts` reads MCP_URL, MCP_TOKEN, and the client timeout. Tests: `cli.test.ts` (the real CLI process against the real sidecar and a Connect phone client), `config.test.ts`. |
 | `gateway/` | Placeholder README; Docker/TLS/OAuth gateway lands in Stage 7 |
 | `docs/` | Project documentation; `protocol.md` (live diagnostic flow, rules, errors, generated code, fixtures) |
 | `docs/development/` | Developer docs: `toolchain.md` (pinned versions, MacBook setup, Studio/terminal compatibility, verification record) and `sidecar.md` (configuration, start/stop, endpoints, error examples), and `android.md` (hello screen, debug URL, lifecycle limitations, tests) |
+| `docs/testing/` | Test procedures and records: `hello-world.md` (test agent: automated and physical-Seeker checks) |
 | `docs/changelog/` | Release notes and change logs |
 | `docs/wiki/` | Feature documentation |
 | `docs/guide/` | Integration guides (MWA, Jupiter, MCP clients, gateways) |
@@ -97,4 +99,5 @@ Later stages (see `RFC.md` §3–6):
 | `pnpm check:generated` | Fail if committed generated code or fixtures are stale (no file changes) |
 | `pnpm build` | Sidecar → `sidecar/dist` |
 | `pnpm dev:sidecar` | Run the sidecar on loopback with the `.env` configuration |
+| `pnpm agent hello [text]` | Call `vault_display_command` over MCP and print the acknowledgement (exit codes in `test-agent/README.md`) |
 | `pnpm generate` | Regenerate protocol code and `.binpb` fixtures (needs network) |

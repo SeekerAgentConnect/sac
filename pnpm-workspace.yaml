@@ -1,5 +1,6 @@
 packages:
   - sidecar
+  - test-agent
 
 # The postinstall only locates the platform binary that pnpm already installs as an
 # optional dependency; bin/buf finds it without running the script.
@@ -10,4 +11,8 @@ catalog:
   # The protoc-gen-es generator and the @bufbuild/protobuf runtime move in lockstep.
   "@bufbuild/protobuf": 2.14.1
   "@bufbuild/protoc-gen-es": 2.14.1
+  # The sidecar and the test agent speak MCP through the same SDK and zod.
+  "@modelcontextprotocol/sdk": 1.30.0
+  "@types/node": 24.13.4
   typescript: 6.0.3
+  zod: 4.6.1

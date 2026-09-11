@@ -12,7 +12,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | SAW-002: Live-command protocol and generated clients | Done. `LiveCommandService`, generated TypeScript and Kotlin code, and cross-runtime fixtures; see [`docs/protocol.md`](docs/protocol.md). |
 | SAW-003: Live MCP command bridge | Done. `/mcp` with `vault_display_command`, the phone's Connect API, and `/healthz`; see [`docs/development/sidecar.md`](docs/development/sidecar.md). |
 | SAW-004: Android hello-world screen | Done. A stock Material 3 live-test screen: connect, the received text, and a one-tap OK, with lifecycle handling; see [`docs/development/android.md`](docs/development/android.md). The physical Seeker check is NOT RUN. |
-| SAW-005: MCP test client | Not started |
+| SAW-005: MCP test client | Done. `pnpm agent hello "Hello Seeker"` calls the tool over MCP and prints the acknowledgement; see [`test-agent/README.md`](test-agent/README.md). The physical Seeker check is NOT RUN. |
 | SAW-006: MacBook → Seeker build and run guide | Not started |
 | SAW-007: Real Hermes connection | Not started |
 | SAW-008: Stage 1 acceptance gate | Not started |
@@ -25,7 +25,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | `sidecar/` | TypeScript/Node sidecar: the MCP endpoint `/mcp`, the phone's Connect API, and `/healthz`, on loopback, around an in-memory live-command bridge; see [`docs/development/sidecar.md`](docs/development/sidecar.md) |
 | `proto/` | Protobuf contract (a Buf module) and cross-runtime fixtures in `proto/fixtures`; see [`docs/protocol.md`](docs/protocol.md) |
 | `scripts/` | `generate.mjs`, which backs `pnpm generate` and `pnpm check:generated` |
-| `test-agent/` | Minimal MCP test client, landing in SAW-005 |
+| `test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`test-agent/README.md`](test-agent/README.md). |
 | `gateway/` | Docker Compose, TLS, and OAuth gateway configuration, landing in Stage 7 |
 | `docs/` | Development docs, guides, testing notes, and the changelog |
 | `.github/workflows/ci.yml` | CI for pull requests and pushes |
@@ -63,7 +63,7 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm dev:sidecar` | Starts the sidecar with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. | Works |
 | `pnpm generate` | Regenerates the TypeScript and Kotlin protocol code and the binary fixtures from `proto/`; needs network access | Works |
 | `pnpm check:generated` | Fails if the committed generated code or fixtures differ from a fresh generation; changes no files | Works |
-| `pnpm agent ...` | Runs the MCP test-agent CLI | Not implemented until SAW-005; exits with an error |
+| `pnpm agent hello [text]` | Shows text on the phone through MCP and prints the acknowledgement. OFFLINE, BUSY, TIMEOUT, and connection errors each get their own exit code. | Works |
 | `pnpm test:hello` | Runs the live-bridge integration tests | Not implemented until SAW-008; exits with an error |
 | `pnpm format`, `pnpm format:android` | Apply Prettier and `buf format`, and ktfmt for Kotlin | Works |
 

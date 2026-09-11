@@ -68,7 +68,7 @@ On the phone API:
 
 ## The MCP tool
 
-`vault_display_command` takes `{"text": string}`.
+`vault_display_command` takes `{"text": string}`. To call it from the command line, run `pnpm agent hello "Hello Seeker"`; see [`test-agent/README.md`](../../test-agent/README.md).
 
 - **When the phone acknowledges the command,** the result carries `structuredContent: {"id": "<command UUID>", "result": "OK"}`, plus the same JSON as text.
 - **When the command fails,** the result has `isError: true`, and its text starts with the error code:

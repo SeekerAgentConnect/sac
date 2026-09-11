@@ -17,7 +17,7 @@
     "format": "prettier --write . && buf format --write",
     "format:android": "android/gradlew -p android spotlessApply",
     "generate": "node scripts/generate.mjs",
-    "agent": "node -e \"console.error('pnpm agent is not implemented yet: the MCP test-agent CLI lands in SAW-005.'); process.exit(1)\"",
+    "agent": "node --env-file-if-exists=.env test-agent/src/main.ts",
     "test:hello": "node -e \"console.error('pnpm test:hello is not implemented yet: live-bridge integration tests land in SAW-008.'); process.exit(1)\""
   },
   "devDependencies": {
