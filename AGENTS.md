@@ -4,12 +4,12 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
 
 ## Stage boundaries
 
-- **Current stage: Stage 1, a wallet-free hello world.** Hermes or the test agent sends display-only text over MCP. The Seeker shows it while the app is open, the user taps OK, and the agent gets the acknowledgement.
+- **Current stage: Stage 2, persistent requests and connections.** Stage 1, the wallet-free hello world, is accepted. SAW-009 defined the durable request contract (`docs/protocol.md`) and its rules as pure code. Storage, pairing, and the phone's inbox arrive in SAW-010 to SAW-013. Until the task that adds each one lands, the limits below still hold.
 - **Out of scope until a later stage:**
   - wallet SDKs, keys, or signing
-  - request queues or any persistence
+  - request queues or any persistence (SAW-010)
   - policies
-  - QR pairing
+  - QR pairing (SAW-011)
   - OAuth
   - Docker deployment
   - background services

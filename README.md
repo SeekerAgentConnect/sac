@@ -4,6 +4,15 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 
 ## Current milestone
 
+**Stage 2: Persistent requests and connections.** The sidecar stores agents' requests, which survive restarts, and the phone fetches them when the app opens. Several self-hosted servers can be connected. There's still no wallet: a queued acknowledgement tests the workflow.
+
+| Task | Status |
+| --- | --- |
+| SAW-009: Durable request contract and lifecycle | Done. `seekervault.request.v1` defines the phone's `PairingService` and `RequestService`, the actions, the lifecycle and its transitions, idempotency, and the errors. [`docs/protocol.md`](docs/protocol.md#stage-2-durable-requests) specifies all of that plus the agent's MCP tools, and [`docs/architecture.md`](docs/architecture.md) shows how the parts fit together. The rules exist as tested pure code in `sidecar/src/requests/`, with fixtures checked in both runtimes. Nothing serves the workflow yet. |
+| SAW-010 to SAW-014: Queue, pairing, connections, inbox, validation | Not started |
+
+## Stage 1
+
 **Stage 1: Hello world (Hermes → Seeker → OK → Hermes).** A real agent sends display-only text over MCP, and the Seeker shows it while the app is open. The user taps OK, and the agent receives the acknowledgement. Stage 1 has no wallet, keys, queue, persistence, policies, QR pairing, OAuth, Docker, or background service.
 
 **Status:** Stage 1 is accepted. Every automated check passes, including the round trip on an emulator in CI. On 2026-09-11, the owner ran the real Hermes → Seeker → OK → Hermes round trip on the physical Seeker and reported it passed; see [`docs/testing/stage-1.md`](docs/testing/stage-1.md).
@@ -30,7 +39,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | `test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`test-agent/README.md`](test-agent/README.md). |
 | `gateway/` | Docker Compose, TLS, and OAuth gateway configuration, landing in Stage 7 |
 | `examples/` | Configuration to merge into other tools: `hermes.config.yaml`; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md) |
-| `docs/` | Development docs, guides, testing notes, and the changelog |
+| `docs/` | The architecture and the protocol, plus development docs, guides, testing notes, and the changelog |
 | `.github/workflows/ci.yml` | CI for pull requests and pushes |
 
 ## Quickstart

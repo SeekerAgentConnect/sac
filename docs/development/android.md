@@ -54,6 +54,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `MainActivityTest` | The activity with a fake transport, on Robolectric: rotation during a command, a rapid double tap, and background then foreground |
 | `ConnectLiveCommandTransportTest` | The real transport against the real sidecar (`node sidecar/src/main.ts`), with an MCP SDK client as the agent: text in, the same command's OK out. Also covers a wrong token, an unknown command, and a sidecar stop. It needs Node 24 and `pnpm install`. `ConnectLiveCommandTransportUnreachableTest` covers a closed port. |
 | `LiveProtocolFixturesTest`, `LiveCommandDeadlineTest` | Protocol fixtures and deadline boundaries (SAW-002) |
+| `RequestProtocolFixturesTest` | The durable request fixtures (SAW-009). Each message is built in Kotlin and must match buf's bytes in both directions. The cases cover exact message text, amounts as strings, and the uint32 and uint64 maximums, which Kotlin reads as a signed `Int` and `Long`. |
 | `StageOneBoundaryTest` | The Stage 1 boundary (SAW-008). The manifest declares only `MainActivity` and `INTERNET`. App code uses no storage, key, or background APIs. No wallet, storage, or background library is on the classpath. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.

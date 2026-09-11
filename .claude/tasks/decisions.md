@@ -115,3 +115,20 @@
 - **`sdkmanager "platforms;android-37.0"` stays.** The review suggested `platforms;android-37`. The installed platform's own `package.xml`, however, declares `path="platforms;android-37.0"` (API level 37.0). Since API 36.1, platform packages carry a minor version.
 - **An overdue command is settled before the next one starts.** `LiveCommandSlot.start()` already expired it, but the bridge's waiter wasn't answered, so the first MCP call hung. `display()` now settles it as `TIMEOUT` first.
 - **The owner's device and Hermes pass is recorded with attribution:** "run and reported by the owner on 2026-09-11". The Seeker's details come from adb. The owner's Hermes version wasn't reported.
+
+## 2026-09-11 — SAW-009 durable request contract (SEE-16)
+
+- **A new package, `seekervault.request.v1`, sits beside the live one.** The live diagnostic stays as it was, and neither package imports the other. The live stream holds one command in flight and stores nothing, which is the opposite of a durable queue, so building on it would have changed Stage 1's behavior.
+- **A connection is one phone paired with one sidecar, and every reference carries both IDs.** A request ID is unique only within its connection, because another sidecar can issue the same one. A reference to another connection gets NOT_FOUND, the same as a request that doesn't exist.
+- **Idempotency keys are scoped to the agent, meaning the whole sidecar, not to the connection.** A retry after the phone re-paired must still find the original request. Scoped per connection, the retry would create a second request, and possibly a second payment.
+- **The fingerprint is the SHA-256 of the action's deterministic Protobuf encoding.** protobuf-es writes fields in number order, the action has no maps, and unknown fields are dropped, so equal actions give equal bytes. The agent's note and the request's lifetime are left out, so an LLM that rewords its retry gets the original request instead of an error.
+- **Approval is a step of its own, and it's the commit point (PENDING → PROCESSING).** The phone reports the approval before it invokes the wallet, so a cancellation and an approval can't both win. The step also records that the wallet may have been invoked, which is what makes an UNKNOWN outcome reportable.
+- **No state moves backward.** A retry is a new request with a new key.
+  - UNKNOWN isn't terminal: a late report or a chain lookup can settle it.
+  - SUBMITTED never becomes UNKNOWN: once the signature is known, the chain can always answer.
+- **Each financial action names its wallet and network, and the agent must supply them.** A mismatch is refused at creation. That makes the agent's intent explicit, and the phone never signs with a wallet the agent didn't name.
+- **The asset is explicit: `native_sol` or a `token_mint`.** If an empty mint meant SOL, a dropped field would silently become a SOL transfer.
+- **Amounts are u64 decimal strings, and slippage runs from 1 to 10000.** A slippage of 0 counts as missing, so proto3's zero default stays unambiguous without `optional`.
+- **One `RequestError` enum serves both MCP text and Connect details.** A Connect code alone can't tell a superseded version from an expired request, so each RPC error carries a `RequestErrorDetail` with the request as it is now. Both runtimes can read it: connect-kotlin 0.9.0 has `unpackedDetails` and a javalite parser (checked in the jar), and connect-es has `findDetails` (checked in the types).
+- **`PolicyEvaluation` is defined, but nothing sends it.** The RFC keeps policies on the phone. The message fixes the shape and makes the separation from `RequestState` explicit. Stage 5 decides where the phone keeps it.
+- **The rules are pure code in `sidecar/src/requests/`, as SAW-002's were.** SAW-010 adds storage, duplicate submissions, and transactions around them. The Stage 1 boundary guards stay unchanged, because nothing here stores anything.

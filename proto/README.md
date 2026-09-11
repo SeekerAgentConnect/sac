@@ -5,6 +5,8 @@ The Protobuf contract between the sidecar and the Android app. It's the single s
 | Path | Contents |
 | --- | --- |
 | `seekervault/live/v1/live.proto` | Stage 1 `LiveCommandService`: the live diagnostic flow |
+| `seekervault/request/v1/request.proto` | The durable request model, from Stage 2 on: `ActionRequest` and its actions, `RequestState`, `PreparedTransaction`, `PolicyEvaluation`, and `RequestError` |
+| `seekervault/request/v1/service.proto` | The phone's durable API: `PairingService` and `RequestService` |
 | `fixtures/` | Cross-runtime fixtures: `<package path>/<Message>/<case>.json`, plus the `.binpb` that `buf convert` writes from it |
 
 After editing a `.proto` file or a fixture, run `pnpm generate` and commit the output. `pnpm check` runs `buf format` and `buf lint`, and `pnpm check:generated` fails if the committed output is stale.

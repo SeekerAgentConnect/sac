@@ -154,6 +154,11 @@ Typical log lines:
 | `sidecar/src/phone-api.ts` | The Connect `LiveCommandService` |
 | `sidecar/src/live/bridge.ts` | The in-memory waiter: one watcher, one in-flight command, deadline timers, and cancellation |
 | `sidecar/src/live/command.ts` | The protocol rules from SAW-002 |
+| `sidecar/src/requests/action.ts` | The durable request's parameters (SAW-009): each action kind's fields, base-unit amounts, base58 addresses, and exact message bytes |
+| `sidecar/src/requests/identity.ts` | Connection scope for references, idempotency keys, and action fingerprints (SAW-009) |
+| `sidecar/src/requests/lifecycle.ts` | The durable lifecycle (SAW-009): the transition table, the phone's results, the approval binding, and expiry |
+
+The `requests/` modules are pure rules, and nothing calls them yet. SAW-010 wires them to storage and the MCP tools; see [`docs/protocol.md`](../protocol.md#stage-2-durable-requests).
 
 `pnpm check` runs these tests:
 

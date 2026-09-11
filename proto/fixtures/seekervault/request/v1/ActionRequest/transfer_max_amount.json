@@ -1,0 +1,21 @@
+{
+  "ref": {
+    "connectionId": "5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f",
+    "requestId": "8e1d2c3b-4a5f-4e6d-9c8b-7a6f5e4d3c2b"
+  },
+  "action": {
+    "transfer": {
+      "wallet": "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW",
+      "network": "NETWORK_DEVNET",
+      "recipient": "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh",
+      "asset": {
+        "nativeSol": {}
+      },
+      "amount": "18446744073709551615"
+    }
+  },
+  "state": "REQUEST_STATE_PENDING",
+  "createdAt": "2026-09-11T12:00:00Z",
+  "expiresAt": "2026-09-11T12:10:00Z",
+  "updatedAt": "2026-09-11T12:00:00Z"
+}
