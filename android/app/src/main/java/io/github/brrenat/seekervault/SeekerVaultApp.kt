@@ -24,17 +24,20 @@ import io.github.brrenat.seekervault.inbox.RequestGoneScreen
 import io.github.brrenat.seekervault.inbox.inboxCounts
 import io.github.brrenat.seekervault.live.LiveCommandRoute
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
+import io.github.brrenat.seekervault.wallet.WalletScreen
+import io.github.brrenat.seekervault.wallet.WalletViewModel
 import java.time.Instant
 
 /**
  * The app's screens: Connections first, then a connection's details, Add connection, Pending
- * requests and Request details, and the Stage 1 live test. The back stack is a list of route
- * strings, so it survives rotation and process death; no route carries a secret.
+ * requests and Request details, Wallet, and the Stage 1 live test. The back stack is a list of
+ * route strings, so it survives rotation and process death; no route carries a secret.
  */
 @Composable
 fun SeekerVaultApp(
     connections: ConnectionsViewModel,
     inbox: InboxViewModel,
+    wallet: WalletViewModel,
     live: LiveCommandViewModel,
 ) {
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.CONNECTIONS)) }
@@ -43,6 +46,7 @@ fun SeekerVaultApp(
     BackHandler(enabled = stack.size > 1) { pop() }
     val state by connections.state.collectAsStateWithLifecycle()
     val inboxState by inbox.state.collectAsStateWithLifecycle()
+    val walletState by wallet.state.collectAsStateWithLifecycle()
     val route = stack.last()
     when {
         route == Routes.CONNECTIONS -> {
@@ -55,8 +59,19 @@ fun SeekerVaultApp(
                 onMessageShown = connections::messageShown,
                 inbox = InboxSummary(waitingForYou, toSend),
                 onInbox = { push(Routes.INBOX) },
+                wallet = walletState.wallet,
+                onWallet = { push(Routes.WALLET) },
             )
         }
+        route == Routes.WALLET ->
+            WalletScreen(
+                state = walletState,
+                onChooseNetwork = wallet::chooseNetwork,
+                onConnect = wallet::connect,
+                onDisconnect = wallet::disconnect,
+                onPublishAgain = wallet::publishAgain,
+                onBack = pop,
+            )
         route == Routes.ADD ->
             AddConnectionRoute(
                 viewModel = connections,
@@ -109,6 +124,7 @@ private object Routes {
     const val CONNECTIONS = "connections"
     const val ADD = "add"
     const val LIVE = "live"
+    const val WALLET = "wallet"
     const val DETAILS = "details/"
     const val INBOX = "inbox"
     const val INBOX_FOR = "inbox/"

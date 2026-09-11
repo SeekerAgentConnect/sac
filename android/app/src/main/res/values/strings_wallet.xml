@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Wallet screen (SAW-015): connecting the wallet the owner already has. -->
+<resources>
+    <string name="wallet_title">Wallet</string>
+    <string name="wallet_row">Wallet</string>
+    <string name="wallet_row_none">No wallet connected.</string>
+    <string name="wallet_row_connected">%1$s on %2$s</string>
+
+    <string name="wallet_none_title">No wallet connected</string>
+    <string name="wallet_none_text">Agents can\'t ask for anything that needs a wallet until you connect one. This app doesn\'t create a wallet and never sees your seed phrase or keys: it asks the wallet app you already use, and keeps only the address you pick.</string>
+    <string name="wallet_network_label">Network</string>
+    <string name="wallet_network_mainnet">Mainnet</string>
+    <string name="wallet_network_devnet">Devnet</string>
+    <string name="wallet_network_testnet">Testnet</string>
+    <string name="wallet_connect">Connect wallet</string>
+    <string name="wallet_connecting">Waiting for the wallet…</string>
+    <string name="wallet_disconnect">Disconnect wallet</string>
+    <string name="wallet_disconnecting">Disconnecting…</string>
+
+    <string name="wallet_field_address">Address</string>
+    <string name="wallet_field_network">Network</string>
+    <string name="wallet_field_label">Account name in the wallet</string>
+    <string name="wallet_field_connected_at">Connected</string>
+    <string name="wallet_network_unconfirmed">The wallet didn\'t list this network for the account. It may refuse to sign on it.</string>
+
+    <string name="wallet_published_none">No connections yet, so there\'s no sidecar to tell.</string>
+    <plurals name="wallet_published_all">
+        <item quantity="one">Told 1 connection.</item>
+        <item quantity="other">Told %1$d connections.</item>
+    </plurals>
+    <plurals name="wallet_published_failed">
+        <item quantity="one">Couldn\'t tell 1 connection: %2$s</item>
+        <item quantity="other">Couldn\'t tell %1$d connections: %2$s</item>
+    </plurals>
+    <string name="wallet_publish_again">Tell them again</string>
+
+    <string name="wallet_problem_no_wallet">No wallet app answered. Install or set up a wallet that supports Mobile Wallet Adapter, such as Seed Vault Wallet on the Seeker.</string>
+    <string name="wallet_problem_declined">The wallet didn\'t give an account. Nothing changed.</string>
+    <string name="wallet_problem_expired">The wallet no longer accepts this app\'s authorization. Connect again to approve it afresh.</string>
+    <string name="wallet_problem_network">The wallet doesn\'t serve this network. Pick another one.</string>
+    <string name="wallet_problem_storage">This phone couldn\'t store the wallet\'s authorization, so nothing was saved.</string>
+    <string name="wallet_problem_failed">The wallet couldn\'t complete the request.</string>
+</resources>

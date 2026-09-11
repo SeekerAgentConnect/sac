@@ -8,10 +8,13 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 /**
- * The stage boundary (AGENTS.md): no wallet SDK or keys, nothing that runs in the background, and
- * storage only where SAW-012 put it: connection metadata and Keystore-encrypted credentials, in
- * `connections/storage/`, never backed up. These checks fail when a limit is crossed early; the
- * stage that lifts one changes them on purpose.
+ * The stage boundary (AGENTS.md): no wallet keys, nothing that runs in the background, and storage
+ * only in the two storage packages: connection metadata and Keystore-encrypted credentials in
+ * `connections/storage/` (SAW-012), and the owner's wallet selection and its authorization in
+ * `wallet/storage/` (SAW-015). Nothing is backed up. SAW-015 lifted the "no wallet library" limit
+ * for the Mobile Wallet Adapter client, on purpose: the app drives the wallet the owner already
+ * has. It still holds no wallet key of its own, and Seed Vault's own SDK stays out. These checks
+ * fail when a limit is crossed early; the stage that lifts one changes them.
  */
 class StageBoundaryTest {
     private val main =
@@ -77,39 +80,66 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun storageAndKeysStayInTheStoragePackageAndNothingRunsInTheBackground() {
+    fun storageAndKeysStayInTheStoragePackagesAndNothingRunsInTheBackground() {
         // Substrings on purpose: getSharedPreferences, KeyStoreSpi, and the like must match too.
         val storage =
             Regex(
                 """SharedPreferences|DataStore|openFileOutput|FileOutputStream|SQLiteDatabase|""" +
                     """RoomDatabase|AtomicFile|KeyStore|KeyGenerator|KeyGenParameterSpec"""
             )
+        // No wallet key of the app's own, and nothing that runs in the background. SAW-015 drives
+        // the wallet the owner already has; a key never reaches this app.
         val forbidden =
             Regex(
-                """(KeyPairGenerator|WorkManager|JobScheduler|AlarmManager|""" +
-                    """startForegroundService|startService|BroadcastReceiver)|:\s*Service\("""
+                """(KeyPairGenerator|PrivateKey|SecretKeySpec|WorkManager|JobScheduler|""" +
+                    """AlarmManager|startForegroundService|startService|BroadcastReceiver)|""" +
+                    """:\s*Service\("""
             )
-        val storagePackage = File(main, "java/io/github/brrenat/seekervault/connections/storage")
+        val storagePackages =
+            listOf(
+                File(main, "java/io/github/brrenat/seekervault/connections/storage"),
+                File(main, "java/io/github/brrenat/seekervault/wallet/storage"),
+            )
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        fun inStorage(file: File) = storagePackages.any { file.startsWith(it) }
         fun hits(pattern: Regex, files: List<File>) = files.flatMap { file ->
             file.readLines().mapIndexedNotNull { index, line ->
                 "${file.name}:${index + 1}: ${line.trim()}".takeIf { pattern.containsMatchIn(line) }
             }
         }
+        assertEquals(emptyList<String>(), hits(storage, sources.filterNot(::inStorage)))
+        assertEquals(emptyList<String>(), hits(forbidden, sources))
+        // Both storage packages do use them, so the first check can't pass by finding nothing.
+        for (storagePackage in storagePackages) {
+            assertTrue(
+                storagePackage.name,
+                hits(storage, sources.filter { it.startsWith(storagePackage) }).isNotEmpty(),
+            )
+        }
+    }
+
+    @Test
+    fun theWalletClientIsOnTheClasspathFromSaw015() {
+        // The check below must fail for a library that is missing, so prove it finds one that is
+        // there: the Mobile Wallet Adapter client the app now drives the wallet with.
         assertEquals(
             emptyList<String>(),
-            hits(storage, sources.filterNot { it.startsWith(storagePackage) }),
+            listOf(
+                    "com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter",
+                    "com.solana.mobilewalletadapter.clientlib.ActivityResultSender",
+                )
+                .filterNot { name ->
+                    runCatching { Class.forName(name, false, javaClass.classLoader) }.isSuccess
+                },
         )
-        assertEquals(emptyList<String>(), hits(forbidden, sources))
-        // The storage package does use them, so the first check can't pass by finding nothing.
-        assertTrue(hits(storage, sources.filter { it.startsWith(storagePackage) }).isNotEmpty())
     }
 
     @Test
     fun noWalletDatabaseOrBackgroundLibraryIsOnTheClasspath() {
         val present =
             listOf(
-                    "com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter",
+                    // SAW-015 adds the MWA client on purpose; Seed Vault's own SDK is Stage 3's
+                    // signing task, not this one.
                     "com.solanamobile.seedvault.Wallet",
                     "androidx.room.RoomDatabase",
                     "androidx.datastore.core.DataStore",

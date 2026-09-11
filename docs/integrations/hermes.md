@@ -39,6 +39,7 @@ mcp_servers:
       include:
         [
           vault_display_command,
+          vault_get_address,
           vault_request_ack,
           vault_get_request,
           vault_cancel_request,
@@ -63,7 +64,7 @@ What each setting does:
 | `url` | The sidecar's MCP endpoint. It listens only on the Mac's loopback address. On a VPS, this is the tunnel's end instead; see [Hermes on a VPS](#5-hermes-on-a-vps). |
 | `Authorization` | Hermes fills in `${MCP_SEEKER_VAULT_API_KEY}` from `~/.hermes/.env`, or from the environment, when it loads the configuration. If the variable is missing, Hermes sends the literal text, and the sidecar refuses the connection. `hermes mcp add` uses the same variable name for a server called `seeker_vault`. |
 | `timeout` | How long Hermes waits for a tool call, in seconds; Hermes's default is 300. Only `vault_display_command` waits for you. Keep this above the sidecar's `LIVE_COMMAND_TIMEOUT_SECONDS` (60 by default), so that the sidecar's own `TIMEOUT` answer arrives first, and below 300, Hermes's fixed HTTP read limit. If you raise `LIVE_COMMAND_TIMEOUT_SECONDS`, raise this too. The durable tools answer at once. |
-| `tools` | The tools Hermes may call, each allowed on purpose:<ul><li>`vault_display_command`: the live diagnostic</li><li>`vault_request_ack`: queues an acknowledgement. It's a demo tool with no wallet involved, and the sidecar serves it only with `MCP_DEMO_TOOLS=true`.</li><li>`vault_get_request`: reads a request's status by its ID</li><li>`vault_cancel_request`: withdraws a request you haven't answered</li></ul>A tool listed here that the sidecar doesn't serve is missing from the session. The sidecar offers no resources or prompts. |
+| `tools` | The tools Hermes may call, each allowed on purpose:<ul><li>`vault_display_command`: the live diagnostic</li><li>`vault_get_address`: reads the wallet you connected on the phone, and its network (SAW-015). It's read-only, and fails with `WALLET_NOT_CONNECTED` rather than inventing an address.</li><li>`vault_request_ack`: queues an acknowledgement. It's a demo tool with no wallet involved, and the sidecar serves it only with `MCP_DEMO_TOOLS=true`.</li><li>`vault_get_request`: reads a request's status by its ID</li><li>`vault_cancel_request`: withdraws a request you haven't answered</li></ul>A tool listed here that the sidecar doesn't serve is missing from the session. The sidecar offers no resources or prompts. |
 
 Leave `trust` unset, which Hermes treats as `full`. With `trust: untrusted`, Hermes asks for approval before every call to a tool that isn't read-only.
 
@@ -101,7 +102,9 @@ hermes mcp test seeker_vault
 
 Hermes masks the header and shows only its first and last four characters; `xxxx` stands for your token's last four. For errors instead of `✓ Connected`, see [what failures look like](#6-what-failures-look-like).
 
-`hermes mcp list` counts the tools in `include`, not the ones the sidecar serves. A sidecar without `MCP_DEMO_TOOLS=true` still shows as `4 selected`, but `hermes mcp test` discovers 3: every tool but `vault_request_ack`.
+The output above is from the run on 2026-09-11, before `vault_get_address` existed; with the configuration as it is now, the counts are one higher and `vault_get_address` is listed too.
+
+`hermes mcp list` counts the tools in `include`, not the ones the sidecar serves. A sidecar without `MCP_DEMO_TOOLS=true` is still counted in full, but `hermes mcp test` discovers one fewer: every tool but `vault_request_ack`.
 
 Hermes connects to MCP servers when a session starts. After changing the configuration, type `/reload-mcp` in the running session, or start a new session. Do the same if the sidecar wasn't running when the session started: Hermes then tried three times, parked the server, and the session has none of its tools.
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { create, equals, type MessageInitShape } from "@bufbuild/protobuf";
-import { timestampMs } from "@bufbuild/protobuf/wkt";
+import { timestampFromMs, timestampMs } from "@bufbuild/protobuf/wkt";
 
 import {
   ActionRequestSchema,
@@ -10,19 +10,27 @@ import {
   Network,
   RequestError,
   RequestState,
+  WalletBindingSchema,
   type ActionRequest,
+  type WalletBinding,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { SubmitResultRequestSchema } from "../gen/seekervault/request/v1/service_pb.js";
 import { IN_MEMORY, openDatabase, type DatabaseSync } from "./database.ts";
 import { RequestFailure } from "../requests/failure.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
 import { PairingStore } from "./pairing-store.ts";
-import { RequestStore, type NewRequest } from "./request-store.ts";
+import {
+  RequestStore,
+  WALLET_CHANGED_DETAIL,
+  type NewRequest,
+} from "./request-store.ts";
 
 const NOON = Date.UTC(2026, 8, 11, 12); // 2026-09-11T12:00:00Z
 const DAY_SECONDS = 86_400;
 const OTHER_CONNECTION = "a7e9c1b3-4d5f-4a6b-8c7d-9e0f1a2b3c4d";
 const SERVER_URL = "http://127.0.0.1:8080";
+const WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW";
+const OTHER_WALLET = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh";
 const { PENDING, COMPLETED, REJECTED, CANCELLED, EXPIRED } = RequestState;
 
 type Result = MessageInitShape<typeof SubmitResultRequestSchema>["result"];
@@ -51,6 +59,30 @@ function setup(
       `00000000-0000-4000-8000-${String(++issued).padStart(12, "0")}`,
   });
   return { clock, db, store, connectionId: pairTestPhone(db, clock) };
+}
+
+/** A wallet binding as the phone publishes it; the sidecar stamps bound_at itself. */
+function binding(
+  wallet: string,
+  network: Network = Network.DEVNET,
+): WalletBinding {
+  return create(WalletBindingSchema, { wallet, network });
+}
+
+/** A transfer of 1 lamport, the smallest action bound to a wallet and a network. */
+function transfer(wallet: string, network: Network) {
+  return create(ActionSchema, {
+    kind: {
+      case: "transfer",
+      value: {
+        wallet,
+        network,
+        recipient: OTHER_WALLET,
+        asset: { kind: { case: "nativeSol", value: {} } },
+        amount: "1",
+      },
+    },
+  });
 }
 
 /** Pairs a phone the way PairingService does, so that new requests have a connection. */
@@ -178,28 +210,196 @@ describe("RequestStore: creation", () => {
 
   it("refuses wallet actions while no wallet is connected", () => {
     const s = setup();
-    const transfer = create(ActionSchema, {
-      kind: {
-        case: "transfer",
-        value: {
-          wallet: "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW",
-          network: Network.DEVNET,
-          recipient: "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh",
-          asset: { kind: { case: "nativeSol", value: {} } },
-          amount: "1",
-        },
-      },
-    });
     assert.throws(
       () =>
         s.store.create({
-          action: transfer,
+          action: transfer(WALLET, Network.DEVNET),
           agentNote: "",
           idempotencyKey: "transfer",
         }),
-      refused(RequestError.WALLET_MISMATCH),
+      refused(RequestError.WALLET_NOT_CONNECTED),
     );
     assert.equal(rows(s.db, "requests"), 0);
+    assert.equal(rows(s.db, "idempotency_keys"), 0);
+  });
+});
+
+describe("RequestStore: the wallet binding", () => {
+  it("has no binding until the phone publishes one, and clears it again", () => {
+    const s = setup();
+    assert.equal(s.store.wallet(s.connectionId), undefined);
+    const published = s.store.publishWallet(s.connectionId, binding(WALLET));
+    assert.equal(published.binding?.wallet, WALLET);
+    assert.equal(published.binding?.network, Network.DEVNET);
+    assert.equal(timestampMs(published.binding.boundAt!), NOON);
+    assert.deepEqual(published.cancelled, []);
+    assert.ok(
+      equals(
+        WalletBindingSchema,
+        s.store.wallet(s.connectionId)!,
+        published.binding,
+      ),
+    );
+    assert.equal(
+      s.store.publishWallet(s.connectionId, undefined).binding,
+      undefined,
+    );
+    assert.equal(s.store.wallet(s.connectionId), undefined);
+  });
+
+  it("stamps bound_at with its own clock, and ignores the phone's", () => {
+    const s = setup();
+    s.clock.now = NOON + 5_000;
+    const sent = create(WalletBindingSchema, {
+      wallet: WALLET,
+      network: Network.MAINNET,
+      boundAt: timestampFromMs(0),
+    });
+    const published = s.store.publishWallet(s.connectionId, sent);
+    assert.equal(timestampMs(published.binding!.boundAt!), NOON + 5_000);
+  });
+
+  it("refuses a malformed wallet or a missing network, and keeps the binding", () => {
+    const s = setup();
+    s.store.publishWallet(s.connectionId, binding(WALLET));
+    for (const [invalid, message] of [
+      [binding("not-base58!"), "wallet is not a base58 Solana address"],
+      [binding(WALLET, Network.UNSPECIFIED), "network is missing"],
+    ] as const) {
+      assert.throws(
+        () => s.store.publishWallet(s.connectionId, invalid),
+        (thrown) =>
+          refused(RequestError.INVALID_PARAMETERS)(thrown) &&
+          (thrown as RequestFailure).message === message,
+      );
+    }
+    assert.equal(s.store.wallet(s.connectionId)?.wallet, WALLET);
+  });
+
+  it("refuses to publish for a connection that does not exist", () => {
+    const s = setup();
+    assert.throws(
+      () => s.store.publishWallet(OTHER_CONNECTION, binding(WALLET)),
+      refused(RequestError.NOT_FOUND),
+    );
+  });
+
+  it("stores a wallet action for the published wallet, and refuses any other", () => {
+    const s = setup();
+    s.store.publishWallet(s.connectionId, binding(WALLET));
+    const stored = s.store.create({
+      action: transfer(WALLET, Network.DEVNET),
+      agentNote: "",
+      idempotencyKey: "fits",
+    });
+    assert.equal(stored.request.state, PENDING);
+    for (const [action, key] of [
+      [transfer(OTHER_WALLET, Network.DEVNET), "other-wallet"],
+      [transfer(WALLET, Network.MAINNET), "other-network"],
+    ] as const) {
+      assert.throws(
+        () => s.store.create({ action, agentNote: "", idempotencyKey: key }),
+        refused(RequestError.WALLET_MISMATCH),
+      );
+    }
+    assert.equal(rows(s.db, "requests"), 1);
+  });
+
+  it("carries a sign_message request on any network the owner selected", () => {
+    const s = setup();
+    s.store.publishWallet(s.connectionId, binding(WALLET, Network.MAINNET));
+    const signing = create(ActionSchema, {
+      kind: {
+        case: "signMessage",
+        value: { wallet: WALLET, content: { case: "text", value: "hi" } },
+      },
+    });
+    assert.equal(
+      s.store.create({ action: signing, agentNote: "", idempotencyKey: "sign" })
+        .request.state,
+      PENDING,
+    );
+    // Changing only the network keeps it: a signature over bytes has no network.
+    assert.deepEqual(
+      s.store.publishWallet(s.connectionId, binding(WALLET, Network.DEVNET))
+        .cancelled,
+      [],
+    );
+  });
+
+  it("cancels the pending requests a new wallet no longer fits, and keeps the acks", () => {
+    const s = setup();
+    s.store.publishWallet(s.connectionId, binding(WALLET));
+    const kept = s.store.create(ack("Deploy finished", "ack")).request;
+    const dropped = s.store.create({
+      action: transfer(WALLET, Network.DEVNET),
+      agentNote: "",
+      idempotencyKey: "transfer",
+    }).request;
+    s.clock.now = NOON + 1_000;
+    const published = s.store.publishWallet(
+      s.connectionId,
+      binding(OTHER_WALLET),
+    );
+    assert.deepEqual(
+      published.cancelled.map((ref) => ref.requestId),
+      [dropped.ref!.requestId],
+    );
+    const after = s.store.get(dropped.ref!.requestId);
+    assert.equal(after.state, CANCELLED);
+    assert.equal(after.outcome?.detail, WALLET_CHANGED_DETAIL);
+    assert.equal(timestampMs(after.updatedAt!), NOON + 1_000);
+    assert.equal(s.store.get(kept.ref!.requestId).state, PENDING);
+  });
+
+  it("cancels every pending wallet request when the wallet is disconnected", () => {
+    const s = setup();
+    s.store.publishWallet(s.connectionId, binding(WALLET));
+    const dropped = s.store.create({
+      action: transfer(WALLET, Network.DEVNET),
+      agentNote: "",
+      idempotencyKey: "transfer",
+    }).request;
+    assert.equal(
+      s.store.publishWallet(s.connectionId, undefined).cancelled.length,
+      1,
+    );
+    assert.equal(s.store.get(dropped.ref!.requestId).state, CANCELLED);
+  });
+
+  it("changes nothing when the same binding is published again", () => {
+    const s = setup();
+    const first = s.store.publishWallet(s.connectionId, binding(WALLET));
+    s.clock.now = NOON + 60_000;
+    const again = s.store.publishWallet(s.connectionId, binding(WALLET));
+    assert.equal(
+      timestampMs(again.binding!.boundAt!),
+      timestampMs(first.binding!.boundAt!),
+    );
+    assert.deepEqual(again.cancelled, []);
+  });
+
+  it("tells the agent the owner's wallet, or why there is none", () => {
+    const s = setup();
+    assert.throws(
+      () => s.store.activeWallet(),
+      refused(RequestError.WALLET_NOT_CONNECTED),
+    );
+    s.store.publishWallet(s.connectionId, binding(WALLET));
+    assert.equal(s.store.activeWallet().wallet, WALLET);
+  });
+
+  it("keeps each connection's binding to itself", () => {
+    const s = setup();
+    s.store.publishWallet(s.connectionId, binding(WALLET));
+    // Pairing again replaces the phone; the new connection starts without a wallet.
+    const next = pairTestPhone(s.db, s.clock);
+    assert.equal(s.store.wallet(next), undefined);
+    assert.equal(s.store.wallet(s.connectionId)?.wallet, WALLET);
+    assert.throws(
+      () => s.store.activeWallet(),
+      refused(RequestError.WALLET_NOT_CONNECTED),
+    );
   });
 });
 

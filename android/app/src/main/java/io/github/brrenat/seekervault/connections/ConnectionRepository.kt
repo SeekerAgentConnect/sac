@@ -6,6 +6,7 @@ import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Rejection
+import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.submitResultRequest
 import java.io.IOException
 import java.security.GeneralSecurityException
@@ -200,6 +201,45 @@ class ConnectionRepository(
     }
 
     fun connection(id: String): Connection? = find(id)
+
+    /**
+     * Tells one connection's sidecar which wallet the owner selected, or, with a null [binding],
+     * that none is (docs/protocol.md#the-wallet-binding). The sidecar cancels the PENDING requests
+     * the new binding no longer fits, and those come off the inbox here. Returns false if the
+     * sidecar couldn't be told; publishing again later is safe, since an unchanged binding changes
+     * nothing.
+     */
+    suspend fun publishWallet(id: String, binding: WalletBinding?): Boolean {
+        val connection = find(id) ?: return false
+        if (!connection.usable) return false
+        val credential = withContext(io) { vault.get(id) }
+        if (credential == null) {
+            forgetCredential(id)
+            return false
+        }
+        return try {
+            val cancelled = gateway.publishWallet(connection.serverUrl, credential, id, binding)
+            if (cancelled.isNotEmpty()) dropPending(id, cancelled.toSet())
+            true
+        } catch (e: GatewayException) {
+            if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(id)
+            false
+        }
+    }
+
+    // Takes requests the sidecar cancelled off the connection's pending list, and off its count.
+    private suspend fun dropPending(id: String, requestIds: Set<String>) = locked {
+        val remaining =
+            _inbox.value.pending[id]?.filterNot { it.ref.requestId in requestIds } ?: return@locked
+        _inbox.update { it.copy(pending = it.pending + (id to remaining)) }
+        store.get(id)?.let { connection ->
+            val check = connection.lastCheck
+            if (check?.outcome == CheckOutcome.Ok) {
+                store.put(connection.copy(lastCheck = check.copy(pending = remaining.size)))
+            }
+        }
+        publish()
+    }
 
     /**
      * The owner's answer to a pending acknowledgement: stored first, then sent. A request gets one

@@ -8,7 +8,7 @@ The owner's walkthrough is [`docs/guides/pairing.md`](../guides/pairing.md), and
 
 | Screen | What it shows and does |
 | --- | --- |
-| **Connections** | The app's first screen. It shows each paired sidecar with its name, host, and status. **Add connection** pairs a new one, and **Live test** opens the Stage 1 screen. |
+| **Connections** | The app's first screen. Its first row is **Wallet**, then **Pending requests**, then each paired sidecar with its name, host, and status. **Add connection** pairs a new one, and **Live test** opens the Stage 1 screen. |
 | **Add connection** | **Scan QR code** asks for the camera permission, then scans with the back camera. The code can also be typed or pasted. A malformed code gets the reason. A valid one shows the server's URL and ID to confirm, and notes a server the phone already knows. **Pair** exchanges the code for a connection. |
 | **Connection details** | The status and the last refresh, the server URL and ID, the connection ID, when it paired, and the device name the sidecar saw. It offers **Refresh**, **Rename**, and **Disconnect**. A connection the sidecar no longer accepts offers **Remove from this phone** instead. |
 
@@ -48,6 +48,31 @@ How the code works:
 - **Settled answers are kept for a week from when they settled,** so a reopened request still shows its outcome. Removing a connection deletes its answers.
 - **`InboxViewModel` guards the buttons:** a request that's being sent or already answered ignores further taps.
 - **Nothing runs in the background.** The app fetches when a connection is opened, on **Refresh**, and when it opens or comes back to the foreground (`ConnectionsViewModel`). `MainActivity` reports the return in `onStart`, after an `onStop` that wasn't a rotation. Loading the inbox sends no answer.
+
+## Wallet
+
+The owner's guide is [`docs/guides/wallet-setup.md`](../guides/wallet-setup.md), the boundary is in [`docs/architecture.md`](../architecture.md#the-wallet-adapter-boundary), and the contract in [`docs/protocol.md`](../protocol.md#the-wallet-binding).
+
+| Screen | What it shows and does |
+| --- | --- |
+| **Wallet** | Opened from the first row on Connections. With no wallet connected it explains what the app does and doesn't learn, offers **Mainnet**, **Devnet**, and **Testnet**, and **Connect wallet**. With one connected it shows the address, the network, the wallet's own name for the account, and when the owner connected it, plus **Disconnect wallet**. At the bottom it says how many connections were told, and offers **Tell them again** for the ones that couldn't be. |
+
+The code is in `wallet/`:
+
+| File | Role |
+| --- | --- |
+| `Wallet.kt` | `WalletNetwork` (its MWA chain and its protocol `Network`) and `SelectedWallet`: the address, network, label, when it was chosen, and whether the wallet confirmed the network |
+| `WalletAdapter.kt` | The boundary: `connect(network, authToken)`, `disconnect(authToken)`, and the outcomes (connected, no wallet, declined, authorization expired, network unsupported, failed) |
+| `MwaWalletAdapter.kt` | The only file that imports the Mobile Wallet Adapter client. It connects through the activity's `ActivityResultSender`, reads the account and authorization from `AuthorizationResult`, and maps the wallet's errors: `AUTHORIZATION_FAILED` is a refusal when the phone offered no authorization and an expiry when it did, and `CLUSTER_NOT_SUPPORTED` is the network. |
+| `Base58.kt` | Writes an address the way the sidecar's `requests/action.ts` does |
+| `storage/WalletStore.kt` | The selection as JSON in `filesDir/wallet/`, and the wallet's authorization, AES-256-GCM under the Keystore key with its own associated data, in `noBackupFilesDir/wallet/` |
+| `WalletRepository.kt` | Connects, keeps, and disconnects the wallet, and publishes the binding to each usable connection. It reuses the stored authorization, drops one the wallet refused, and tracks which connections have already been told, so a connection paired later is told on the next publication. |
+| `WalletViewModel.kt`, `WalletScreen.kt`, `WalletText.kt` | The screen's state, the stateless screen, and its texts |
+
+- **MWA runs the wallet from an Activity.** `MainActivity` registers an `ActivityResultSender` in `onCreate` and clears it in `onDestroy`, and `SeekerVaultApplication` hands it to `MwaWalletAdapter`. There is no dedicated wallet activity and no foreground service.
+- **The authorization never leaves the phone.** It goes to the wallet and to `WalletStore`, and nowhere else. `WalletRepositoryTest` and `WalletActivityTest` assert that it reaches no server.
+- **Publishing is idempotent and retried.** `ConnectionRepository.publishWallet` sends the binding to one connection, marks the connection revoked on `UNAUTHENTICATED`, and takes the requests the sidecar cancelled off the inbox. Opening the app again re-sends what a connection hasn't been told yet.
+- **The network is the owner's explicit choice,** and it's fixed while a wallet is connected. If the wallet lists chains for the account and the chosen one isn't among them, the screen says the wallet didn't confirm it rather than pretending it did.
 
 ## The hello screen
 
@@ -113,13 +138,19 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `ConnectConnectionGatewayTest`, `TwoSidecarsTest` | The real client against the real sidecar, `node sidecar/src/main.ts`. A code printed by `pnpm pair` is read by the app's parser and paired. They also cover pending requests, a reused code, a code for another address, revocation by the phone and by `pnpm pair revoke`, a replaced phone, a stopped sidecar, and two sidecars at once. |
 | `ConnectConnectionGatewayTlsTest` | HTTPS with MockWebServer: an untrusted certificate and a certificate for another host name fail before anything is sent, and a trusted one pairs |
 | `QrDecoderTest` | QR codes drawn by ZXing, decoded from luminance planes with and without row padding |
-| `InboxTest`, `InboxRealSidecarTest` | The inbox against fake sidecars and the real one:<ul><li>a request made while the app was closed, fetched, answered, and read back by the agent</li><li>every page, and nothing answered by a fetch</li><li>one answer per request</li><li>an answer kept through an unreachable server and a restart</li><li>a lost response sent again and recognized</li><li>overlapping sends</li><li>identical request IDs on two servers</li><li>a request cancelled first, and a revoked connection</li><li>a removed connection's answers, and pruning</li><li>an older fetch that returns last, and a fetch that crosses an answer</li><li>a request ID that isn't a UUID</li><li>retention counted from when an answer settled</li><li>a fetch that finishes after its connection was removed</li><li>a reply, successful or failed, that arrives after its connection was removed, and a failure that arrives after a revocation</li></ul> |
+| `InboxTest`, `InboxRealSidecarTest` | The inbox against fake sidecars and the real one:<ul><li>publishing another wallet takes the requests it no longer fits off the inbox, and a binding goes only to its own connection's server</li><li>a request made while the app was closed, fetched, answered, and read back by the agent</li><li>every page, and nothing answered by a fetch</li><li>one answer per request</li><li>an answer kept through an unreachable server and a restart</li><li>a lost response sent again and recognized</li><li>overlapping sends</li><li>identical request IDs on two servers</li><li>a request cancelled first, and a revoked connection</li><li>a removed connection's answers, and pruning</li><li>an older fetch that returns last, and a fetch that crosses an answer</li><li>a request ID that isn't a UUID</li><li>retention counted from when an answer settled</li><li>a fetch that finishes after its connection was removed</li><li>a reply, successful or failed, that arrives after its connection was removed, and a failure that arrives after a revocation</li></ul> |
 | `ResultStoreTest` | Stored answers: a restart, identical request IDs on two connections, damaged files, and file names that aren't UUIDs |
 | `InboxViewModelTest` | Rapid second taps, refreshing every connection, sending again, and requests that aren't pending |
 | `PendingRequestsScreenTest`, `RequestDetailsScreenTest` | Compose on Robolectric: source, action, age, and expiry; the empty, no-server, and offline states; disabled buttons while sending; the stored outcome; **Send again**; and expired and superseded requests |
 | `InboxActivityTest` | The activity with the app's own storage and a fake sidecar: a request fetched when the app opens, answered, and still answered after a rotation; a connection's own requests; and a request made while the app was in the background, fetched when it comes back but not on a rotation |
 | `Stage2AcceptanceTest` | The Stage 2 acceptance scenario (SAW-014), with the app's own repository and storage and two real sidecars, which `RealSidecar` restarts:<ul><li>requests queued while the app is closed survive both sidecars' restarts, and complete after the app reopens</li><li>an answer given while its sidecar is down goes out after the app and the sidecar restart</li><li>a request that expires while its sidecar is down is superseded</li><li>`pnpm pair revoke` shuts out only that connection</li></ul>See [`docs/testing/stage-2.md`](../testing/stage-2.md#the-acceptance-scenario-saw-014). |
-| `StageBoundaryTest` | The stage boundary. The manifest declares only `MainActivity`, `INTERNET`, and an optional camera. Storage and Keystore APIs appear only in `connections/storage/`, and background APIs nowhere. Nothing is backed up. No wallet, Room, DataStore, or WorkManager library is on the classpath. |
+| `Base58Test` | The address encoder: the fixtures' public keys, leading zero bytes, and bytes above 0x7F |
+| `WalletStoreTest` | The wallet on Robolectric: the selection read back, the authorization encrypted and absent from the plain file, another key that can't open it, damaged and truncated files, and clearing both files together |
+| `WalletRepositoryTest` | Against a fake wallet and a fake sidecar: the selection stored and published, the authorization kept off the wire and reused on the next connect, a decline that changes nothing, no wallet installed, an authorization the wallet refused, an unsupported network, a network the wallet didn't confirm, disconnecting, reading the wallet back after a restart, a selection whose authorization is gone, the connections that couldn't be told, and telling only the ones that haven't heard it |
+| `WalletViewModelTest` | The screen's state: the chosen network, every refusal the wallet can give, disconnecting, the connections that couldn't be told, and a connection paired later being told when the app comes back |
+| `WalletScreenTest` | Compose on Robolectric: the networks and **Connect wallet**, the address and network once connected, the unconfirmed-network warning, each problem message, the unpublished connections and **Tell them again**, and the disabled controls while the wallet is busy |
+| `WalletActivityTest` | The activity with the app's own storage, a fake wallet, and a fake sidecar: connecting from the Connections screen publishes the address and survives a restart, disconnecting tells the wallet and the sidecar, a connection paired afterwards is told when the app comes back, and no wallet installed is explained |
+| `StageBoundaryTest` | The stage boundary. The manifest declares only `MainActivity`, `INTERNET`, and an optional camera. Storage and Keystore APIs appear only in `connections/storage/` and `wallet/storage/`, and background APIs and wallet-key APIs nowhere. Nothing is backed up. The Mobile Wallet Adapter client is on the classpath on purpose (SAW-015); Seed Vault's own SDK, Room, DataStore, and WorkManager are not. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
 

@@ -112,4 +112,17 @@ export const MIGRATIONS: readonly Migration[] = [
           AND connection_id IN (SELECT connection_id FROM connections WHERE revoked_at_ms IS NOT NULL);
     `,
   },
+  {
+    version: 3,
+    description: "the wallet and network the phone's owner selected (SAW-015)",
+    sql: `
+      -- The connection's wallet binding, as the phone published it (RequestService.PublishWallet).
+      -- All three are set together, or all three are NULL: no wallet is connected. wallet_address
+      -- is a base58 public key, and wallet_network is a Network enum value. No key material and no
+      -- wallet authorization token is ever stored here.
+      ALTER TABLE connections ADD COLUMN wallet_address TEXT;
+      ALTER TABLE connections ADD COLUMN wallet_network INTEGER;
+      ALTER TABLE connections ADD COLUMN wallet_bound_at_ms INTEGER;
+    `,
+  },
 ];

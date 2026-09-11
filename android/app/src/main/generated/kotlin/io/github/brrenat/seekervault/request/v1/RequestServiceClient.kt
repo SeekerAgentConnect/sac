@@ -80,4 +80,22 @@ public class RequestServiceClient(
     ),
   )
 
+
+  /**
+   *  PublishWallet tells the sidecar which wallet and network the owner selected in the app, so
+   *  that agents can read them (vault_get_address). An absent binding clears it, which is what a
+   *  disconnected wallet means. Publishing a different wallet or network cancels the PENDING
+   *  requests the new binding no longer fits.
+   */
+  override suspend fun publishWallet(request: PublishWalletRequest, headers: Headers): ResponseMessage<PublishWalletResponse> = client.unary(
+    request,
+    headers,
+    MethodSpec(
+    "seekervault.request.v1.RequestService/PublishWallet",
+      io.github.brrenat.seekervault.request.v1.PublishWalletRequest::class,
+      io.github.brrenat.seekervault.request.v1.PublishWalletResponse::class,
+      StreamType.UNARY,
+    ),
+  )
+
 }

@@ -87,7 +87,12 @@ describe("sidecar", () => {
       // is off here (MCP_DEMO_TOOLS); requests/endpoints.test.ts turns it on.
       assert.deepEqual(
         tools.map((tool) => tool.name),
-        [DISPLAY_COMMAND_TOOL, "vault_get_request", "vault_cancel_request"],
+        [
+          DISPLAY_COMMAND_TOOL,
+          "vault_get_address",
+          "vault_get_request",
+          "vault_cancel_request",
+        ],
       );
       let settled = false;
       const call = display(agent, "Hello Seeker 👋").finally(() => {

@@ -14,18 +14,26 @@ import {
 
 import {
   ActionRequestSchema,
+  Network,
   PreparedTransactionSchema,
   RequestError,
   RequestErrorDetailSchema,
   RequestRefSchema,
   RequestState,
+  WalletBindingSchema,
   type ActionRequest,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import {
   ListPendingResponseSchema,
+  PublishWalletRequestSchema,
   SubmitResultRequestSchema,
 } from "../gen/seekervault/request/v1/service_pb.js";
-import { MAX_BASE_UNITS, invalidActionReason, messageBytes } from "./action.ts";
+import {
+  MAX_BASE_UNITS,
+  invalidActionReason,
+  invalidBindingReason,
+  messageBytes,
+} from "./action.ts";
 import { checkRef } from "./identity.ts";
 
 // `pnpm generate` writes each .binpb from the .json beside it with `buf convert`. The Android unit
@@ -52,6 +60,9 @@ const cases: ReadonlyArray<readonly [DescMessage, string]> = [
   [SubmitResultRequestSchema, "transaction_submission"],
   [ListPendingResponseSchema, "page"],
   [RequestErrorDetailSchema, "invalid_state"],
+  [WalletBindingSchema, "mainnet"],
+  [PublishWalletRequestSchema, "devnet"],
+  [PublishWalletRequestSchema, "cleared"],
 ];
 
 function binary(path: string): Uint8Array {
@@ -202,6 +213,31 @@ describe("cross-runtime request fixtures", () => {
         (first.seconds === second.seconds && first.nanos < second.nanos),
     );
     assert.notEqual(page.nextPageToken, "");
+  });
+
+  it("names the owner's wallet and network, and tells a cleared binding from a set one", () => {
+    const binding = fromBinary(
+      WalletBindingSchema,
+      binary("WalletBinding/mainnet"),
+    );
+    assert.equal(binding.network, Network.MAINNET);
+    assert.equal(
+      invalidBindingReason(binding.wallet, binding.network),
+      undefined,
+    );
+    const devnet = fromBinary(
+      PublishWalletRequestSchema,
+      binary("PublishWalletRequest/devnet"),
+    );
+    assert.equal(devnet.binding?.network, Network.DEVNET);
+    // The phone doesn't set bound_at: the sidecar stamps it.
+    assert.equal(devnet.binding.boundAt, undefined);
+    const cleared = fromBinary(
+      PublishWalletRequestSchema,
+      binary("PublishWalletRequest/cleared"),
+    );
+    assert.equal(cleared.connectionId, devnet.connectionId);
+    assert.equal(cleared.binding, undefined);
   });
 
   it("carries the request as it is now in an error detail", () => {

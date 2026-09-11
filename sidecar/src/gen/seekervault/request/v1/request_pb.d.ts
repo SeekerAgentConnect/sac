@@ -453,6 +453,45 @@ export declare type Asset_NativeSol = Message<"seekervault.request.v1.Asset.Nati
 export declare const Asset_NativeSolSchema: GenMessage<Asset_NativeSol>;
 
 /**
+ * WalletBinding is the wallet the owner selected on the phone, with the network they selected it
+ * for, as the phone published it to one sidecar (RequestService.PublishWallet). Agents read it
+ * with vault_get_address, and name the same wallet and network in every wallet action. It holds
+ * no secret: the address is a public key, and the wallet's authorization token stays on the
+ * phone. A connection has at most one binding, and publishing again replaces it.
+ *
+ * @generated from message seekervault.request.v1.WalletBinding
+ */
+export declare type WalletBinding = Message<"seekervault.request.v1.WalletBinding"> & {
+  /**
+   * The selected wallet's base58 address (an Ed25519 public key).
+   *
+   * @generated from field: string wallet = 1;
+   */
+  wallet: string;
+
+  /**
+   * The network the phone selected together with the wallet.
+   *
+   * @generated from field: seekervault.request.v1.Network network = 2;
+   */
+  network: Network;
+
+  /**
+   * When the sidecar stored this binding. The sidecar stamps it with its own clock, as it does
+   * every other timestamp, so a value a phone sends in PublishWalletRequest is ignored.
+   *
+   * @generated from field: google.protobuf.Timestamp bound_at = 3;
+   */
+  boundAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message seekervault.request.v1.WalletBinding.
+ * Use `create(WalletBindingSchema)` to create a new message.
+ */
+export declare const WalletBindingSchema: GenMessage<WalletBinding>;
+
+/**
  * PreparedTransaction is one fresh unsigned transaction for a PENDING transfer or swap, built
  * when the phone asks (PrepareRequest). Each preparation is a new version, and only the latest
  * can be approved. An approval names the version and its content hash, never just the request.
@@ -823,6 +862,14 @@ export enum RequestError {
    * @generated from enum value: REQUEST_ERROR_UNAUTHENTICATED = 9;
    */
   UNAUTHENTICATED = 9,
+
+  /**
+   * The phone has no wallet connected, so there is nothing to sign with. The owner connects one
+   * in the app; the sidecar never makes a wallet of its own. Nothing was created.
+   *
+   * @generated from enum value: REQUEST_ERROR_WALLET_NOT_CONNECTED = 10;
+   */
+  WALLET_NOT_CONNECTED = 10,
 }
 
 /**

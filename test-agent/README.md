@@ -1,6 +1,6 @@
 # test-agent
 
-A minimal MCP client for regression tests and demos. It calls the sidecar's tools through the same MCP Streamable HTTP interface that Hermes uses, with no LLM involved. `hello` sends Stage 1's `vault_display_command` and waits for the phone's acknowledgement. `ack`, `get`, and `cancel` drive Stage 2's durable requests, which answer at once; see [live commands and durable requests](#live-commands-and-durable-requests).
+A minimal MCP client for regression tests and demos. It calls the sidecar's tools through the same MCP Streamable HTTP interface that Hermes uses, with no LLM involved. `hello` sends Stage 1's `vault_display_command` and waits for the phone's acknowledgement. `ack`, `get`, and `cancel` drive Stage 2's durable requests, which answer at once; see [live commands and durable requests](#live-commands-and-durable-requests). `address` reads the wallet the owner connected.
 
 ## Usage
 
@@ -17,6 +17,7 @@ Showing the text on the phone; waiting up to 75 s for OK...
   - `--key <key>`: the idempotency key. Without it, the agent makes one and prints it on stderr, so that a retry with the same key returns the same request.
   - `--note <text>`: a note for the owner, which the phone shows apart from the text.
   - `--expires <seconds>`: the request's lifetime, from 60 to 604800.
+- **`address`:** prints the wallet the owner connected on their phone, and its network (`vault_get_address`): `{"wallet":"…","network":"devnet","bound_at":"…"}`. It exits 9 with `WALLET_NOT_CONNECTED` when they've connected none; there is no fallback address. See [`docs/guides/wallet-setup.md`](../docs/guides/wallet-setup.md).
 - **`get <id>`:** prints the request as it is now (`vault_get_request`). Once the owner has answered, its `status` is `COMPLETED` or `REJECTED`, and `terminal` is true.
 - **`cancel <id>`:** withdraws a request that is still PENDING (`vault_cancel_request`).
 - **`tools`:** prints the server's tools as JSON.
@@ -61,7 +62,7 @@ Once the owner answers on the phone, the same `get` prints `"status":"COMPLETED"
 
 | Code | Meaning |
 | --- | --- |
-| 0 | `hello`: the phone acknowledged, and the JSON acknowledgement is on stdout. `ack`, `get`, and `cancel`: the request is on stdout as JSON, in whatever state it's in. |
+| 0 | `hello`: the phone acknowledged, and the JSON acknowledgement is on stdout. `ack`, `get`, and `cancel`: the request is on stdout as JSON, in whatever state it's in. `address`: the wallet is on stdout as JSON. |
 | 1 | An unexpected result: the tool answered without an acknowledgement, or an internal error |
 | 2 | A usage or configuration problem |
 | 3 | A connection problem. One of these: the sidecar is unreachable; it rejected `MCP_TOKEN` (HTTP 401); it refused the request (HTTP 403); it doesn't offer the tool, as for `ack` on a sidecar without `MCP_DEMO_TOOLS=true`; or the connection dropped before the phone answered, which the agent reports at once. The sidecar cancels a command whose agent connection drops. |
@@ -70,7 +71,7 @@ Once the owner answers on the phone, the same `get` prints `"status":"COMPLETED"
 | 6 | `TIMEOUT`: the sidecar's deadline passed, or the client timeout did. On a client timeout, the agent cancels the command. |
 | 7 | `CANCELLED`: the phone disconnected, or the sidecar stopped |
 | 8 | `INVALID_TEXT`: the text is empty, whitespace-only, or over 4096 UTF-8 bytes |
-| 9 | `ack`, `get`, or `cancel`: the sidecar refused, and stderr carries its `<CODE>: <message>`. For example `NOT_PAIRED` (pair the phone first), `NOT_FOUND`, `INVALID_STATE`, `IDEMPOTENCY_CONFLICT`, or `INVALID_PARAMETERS`. |
+| 9 | `ack`, `get`, `cancel`, or `address`: the sidecar refused, and stderr carries its `<CODE>: <message>`. For example `NOT_PAIRED` (pair the phone first), `WALLET_NOT_CONNECTED` (connect a wallet in the app), `NOT_FOUND`, `INVALID_STATE`, `IDEMPOTENCY_CONFLICT`, or `INVALID_PARAMETERS`. |
 
 **The agent never reports success without the phone's acknowledgement.** For `ack`, exit code 0 means only that the request is stored, never that the owner has answered it.
 

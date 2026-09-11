@@ -4,7 +4,7 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { ActionRequest, Approval, PreparedTransaction, RequestRef } from "./request_pb.js";
+import type { ActionRequest, Approval, PreparedTransaction, RequestRef, WalletBinding } from "./request_pb.js";
 
 /**
  * Describes the file seekervault/request/v1/service.proto.
@@ -318,6 +318,56 @@ export declare type SubmitResultResponse = Message<"seekervault.request.v1.Submi
 export declare const SubmitResultResponseSchema: GenMessage<SubmitResultResponse>;
 
 /**
+ * @generated from message seekervault.request.v1.PublishWalletRequest
+ */
+export declare type PublishWalletRequest = Message<"seekervault.request.v1.PublishWalletRequest"> & {
+  /**
+   * @generated from field: string connection_id = 1;
+   */
+  connectionId: string;
+
+  /**
+   * The wallet the owner selected, or absent when no wallet is connected any more. Only wallet
+   * and network are read: the sidecar stamps bound_at itself.
+   *
+   * @generated from field: seekervault.request.v1.WalletBinding binding = 2;
+   */
+  binding?: WalletBinding | undefined;
+};
+
+/**
+ * Describes the message seekervault.request.v1.PublishWalletRequest.
+ * Use `create(PublishWalletRequestSchema)` to create a new message.
+ */
+export declare const PublishWalletRequestSchema: GenMessage<PublishWalletRequest>;
+
+/**
+ * @generated from message seekervault.request.v1.PublishWalletResponse
+ */
+export declare type PublishWalletResponse = Message<"seekervault.request.v1.PublishWalletResponse"> & {
+  /**
+   * The binding as the sidecar stored it; absent when it was cleared.
+   *
+   * @generated from field: seekervault.request.v1.WalletBinding binding = 1;
+   */
+  binding?: WalletBinding | undefined;
+
+  /**
+   * The PENDING requests this publication cancelled, because their wallet or network is no
+   * longer the connection's. Empty when the binding didn't change.
+   *
+   * @generated from field: repeated seekervault.request.v1.RequestRef cancelled = 2;
+   */
+  cancelled: RequestRef[];
+};
+
+/**
+ * Describes the message seekervault.request.v1.PublishWalletResponse.
+ * Use `create(PublishWalletResponseSchema)` to create a new message.
+ */
+export declare const PublishWalletResponseSchema: GenMessage<PublishWalletResponse>;
+
+/**
  * Acknowledgement is the user's OK on an ack request.
  *
  * @generated from message seekervault.request.v1.Acknowledgement
@@ -508,6 +558,19 @@ export declare const RequestService: GenService<{
     methodKind: "unary";
     input: typeof SubmitResultRequestSchema;
     output: typeof SubmitResultResponseSchema;
+  },
+  /**
+   * PublishWallet tells the sidecar which wallet and network the owner selected in the app, so
+   * that agents can read them (vault_get_address). An absent binding clears it, which is what a
+   * disconnected wallet means. Publishing a different wallet or network cancels the PENDING
+   * requests the new binding no longer fits.
+   *
+   * @generated from rpc seekervault.request.v1.RequestService.PublishWallet
+   */
+  publishWallet: {
+    methodKind: "unary";
+    input: typeof PublishWalletRequestSchema;
+    output: typeof PublishWalletResponseSchema;
   },
 }>;
 

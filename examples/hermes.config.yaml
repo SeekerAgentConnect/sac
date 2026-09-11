@@ -24,6 +24,8 @@ mcp_servers:
     tools:
       # Each tool is allowed on purpose:
       # - vault_display_command: the Stage 1 live diagnostic. It waits for the owner's OK.
+      # - vault_get_address: reads the wallet the owner connected on their phone, and its
+      #   network. Read-only, and it never invents an address.
       # - vault_request_ack: queues an acknowledgement and returns its request_id at once. A demo
       #   tool with no wallet involved: the sidecar serves it only with MCP_DEMO_TOOLS=true.
       # - vault_get_request: reads a request's status later, by its request_id.
@@ -31,6 +33,7 @@ mcp_servers:
       include:
         [
           vault_display_command,
+          vault_get_address,
           vault_request_ack,
           vault_get_request,
           vault_cancel_request,

@@ -24,13 +24,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.networkText
 
 /** How many requests wait for the owner, and how many answers wait to be sent. */
 data class InboxSummary(val waitingForYou: Int, val toSend: Int)
 
 /**
- * The Connections screen: every sidecar this phone is paired with, and the way to Pending requests
- * when [inbox] is given. Stock Material 3 only.
+ * The Connections screen: every sidecar this phone is paired with, the way to Pending requests when
+ * [inbox] is given, and the way to the Wallet screen. Stock Material 3 only.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +45,8 @@ fun ConnectionsScreen(
     modifier: Modifier = Modifier,
     inbox: InboxSummary? = null,
     onInbox: () -> Unit = {},
+    wallet: SelectedWallet? = null,
+    onWallet: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(state.message, snackbar, onMessageShown)
@@ -71,27 +75,53 @@ fun ConnectionsScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { innerPadding ->
-        if (state.loaded && state.connections.isEmpty()) {
-            Text(
-                stringResource(R.string.connections_empty),
-                modifier =
-                    Modifier.padding(innerPadding).padding(16.dp).testTag(ConnectionsTags.EMPTY),
-            )
-        } else {
-            LazyColumn(contentPadding = innerPadding) {
-                if (inbox != null && state.connections.isNotEmpty()) {
-                    item(key = "inbox") {
-                        InboxItem(inbox, onInbox)
-                        HorizontalDivider()
-                    }
-                }
-                items(state.connections, key = { it.id }) { connection ->
-                    ConnectionItem(connection, onClick = { onOpen(connection.id) })
+        // The wallet row comes first and is always there: the owner can connect a wallet before
+        // they pair with anything.
+        LazyColumn(contentPadding = innerPadding) {
+            item(key = "wallet") {
+                WalletItem(wallet, onWallet)
+                HorizontalDivider()
+            }
+            if (inbox != null && state.connections.isNotEmpty()) {
+                item(key = "inbox") {
+                    InboxItem(inbox, onInbox)
                     HorizontalDivider()
                 }
             }
+            if (state.loaded && state.connections.isEmpty()) {
+                item(key = "empty") {
+                    Text(
+                        stringResource(R.string.connections_empty),
+                        modifier = Modifier.padding(16.dp).testTag(ConnectionsTags.EMPTY),
+                    )
+                }
+            }
+            items(state.connections, key = { it.id }) { connection ->
+                ConnectionItem(connection, onClick = { onOpen(connection.id) })
+                HorizontalDivider()
+            }
         }
     }
+}
+
+@Composable
+private fun WalletItem(wallet: SelectedWallet?, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.wallet_row)) },
+        supportingContent = {
+            // The address only: it's a public key, and nothing else about the wallet is here.
+            Text(
+                if (wallet == null) stringResource(R.string.wallet_row_none)
+                else
+                    stringResource(
+                        R.string.wallet_row_connected,
+                        wallet.address,
+                        networkText(wallet.network),
+                    )
+            )
+        },
+        modifier = Modifier.clickable(onClick = onClick).testTag(ConnectionsTags.WALLET),
+    )
 }
 
 @Composable

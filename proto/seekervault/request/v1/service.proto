@@ -32,6 +32,11 @@ service RequestService {
   // SubmitResult reports the user's decision or the wallet's result, and returns the request as
   // it is afterwards. Repeating an accepted submission has no further effect.
   rpc SubmitResult(SubmitResultRequest) returns (SubmitResultResponse);
+  // PublishWallet tells the sidecar which wallet and network the owner selected in the app, so
+  // that agents can read them (vault_get_address). An absent binding clears it, which is what a
+  // disconnected wallet means. Publishing a different wallet or network cancels the PENDING
+  // requests the new binding no longer fits.
+  rpc PublishWallet(PublishWalletRequest) returns (PublishWalletResponse);
 }
 
 message PairRequest {
@@ -117,6 +122,21 @@ message SubmitResultRequest {
 
 message SubmitResultResponse {
   ActionRequest request = 1;
+}
+
+message PublishWalletRequest {
+  string connection_id = 1;
+  // The wallet the owner selected, or absent when no wallet is connected any more. Only wallet
+  // and network are read: the sidecar stamps bound_at itself.
+  WalletBinding binding = 2;
+}
+
+message PublishWalletResponse {
+  // The binding as the sidecar stored it; absent when it was cleared.
+  WalletBinding binding = 1;
+  // The PENDING requests this publication cancelled, because their wallet or network is no
+  // longer the connection's. Empty when the binding didn't change.
+  repeated RequestRef cancelled = 2;
 }
 
 // Acknowledgement is the user's OK on an ack request.

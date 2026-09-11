@@ -20,6 +20,26 @@ flowchart LR
 | **Android app** (`android/`) | Connections and their credentials, policies and their assessments, the user's decision, invoking the wallet, and results the sidecar hasn't acknowledged yet | Sign without the user's approval, or trust the agent's description over the transaction's contents |
 | **Seed Vault Wallet** | Keys, signing, and sending | Know anything about seeker-vault |
 
+### The wallet adapter boundary
+
+From SAW-015 the app reaches the wallet through one interface, `wallet/WalletAdapter.kt`, and nothing else in the app talks to a wallet library.
+
+```mermaid
+flowchart LR
+    Screen["Wallet screen<br>WalletViewModel"] --> Repo["WalletRepository"]
+    Repo --> Store["WalletStore<br>selection + authorization"]
+    Repo --> Adapter["WalletAdapter<br>(interface)"]
+    Repo --> Connections["ConnectionRepository<br>PublishWallet"]
+    Adapter --> Mwa["MwaWalletAdapter<br>Mobile Wallet Adapter"]
+    Adapter -. tests .-> Fake["FakeWalletAdapter"]
+    Mwa --> Wallet["Seed Vault Wallet"]
+```
+
+- **`WalletAdapter` has two operations,** `connect(network, authToken)` and `disconnect(authToken)`, and one result type: connected, no wallet, declined, the authorization expired, the network isn't served, or a failure. The tests drive a `FakeWalletAdapter`, so no wallet app and no activity are needed to cover every outcome.
+- **`MwaWalletAdapter` is the only file that imports the Mobile Wallet Adapter client.** It runs the wallet from the activity's `ActivityResultSender`, which `MainActivity` registers in `onCreate` and clears in `onDestroy`. There is no dedicated wallet activity and no foreground service.
+- **The app never creates a wallet or holds a key.** It learns a public address and a wallet authorization token. The address goes to each paired sidecar; the authorization stays on the phone, encrypted under the Keystore key, and never reaches a sidecar, a log, or a backup.
+- **The binding is explicit.** The owner picks the network, and the app publishes exactly the address and network the wallet returned. A sidecar with no binding answers `vault_get_address` with `WALLET_NOT_CONNECTED`; it never generates an address.
+
 ## Trust boundaries
 
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
@@ -36,6 +56,8 @@ flowchart LR
 | Pairing: the server ID, pairing tokens, and the hashes of phone credentials | The sidecar's SQLite database | SAW-011 |
 | Connections and phone credentials | The phone, with credentials in platform-backed secure storage | SAW-012 |
 | Results not yet acknowledged | The phone, until the sidecar acknowledges them | SAW-013 |
+| The owner's wallet selection, and the wallet's authorization token | The phone: the selection in `filesDir`, the authorization encrypted in `noBackupFilesDir` | SAW-015 |
+| The wallet binding each sidecar publishes to agents | The sidecar's SQLite database, on its connection | SAW-015 |
 | Policies, assessments, and daily counters | The phone | Stage 5 |
 | Keys | Seed Vault Wallet | Stage 3 |
 
@@ -57,6 +79,7 @@ These hold across the components, and every stage keeps them:
 5. **No automatic re-execution.** A restart never rebuilds or resends a transaction.
 6. **Identity is scoped.** Requests are addressed by connection and request ID together. One connection can't see or answer another's requests.
 7. **Exact values.** Amounts are integer base-unit strings, and messages are signed as the exact bytes sent.
+8. **The wallet is the owner's, and explicit.** The app and the sidecar never create a wallet or hold a key. A wallet action is stored only for the wallet and network the owner selected, and an agent that asks for an address when none is connected gets `WALLET_NOT_CONNECTED`.
 
 ## Stages
 
@@ -64,7 +87,7 @@ These hold across the components, and every stage keeps them:
 | --- | --- |
 | 1 | The live diagnostic flow: the MCP endpoint, the Android live-test screen, and the test agent |
 | 2 | The durable contract (SAW-009), storage and the async MCP tools (SAW-010), pairing (SAW-011), multiple connections (SAW-012), and the pending inbox (SAW-013) |
-| 3 | Mobile Wallet Adapter and message signing |
+| 3 | Mobile Wallet Adapter and the wallet binding (SAW-015), then message signing |
 | 4 | Transfers, on-phone transaction parsing, and on-chain confirmation |
 | 5 | Policies |
 | 6 | Jupiter swaps |

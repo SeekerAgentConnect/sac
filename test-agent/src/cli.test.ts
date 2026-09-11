@@ -17,11 +17,13 @@ import {
   requestClient,
 } from "../../sidecar/src/testing/clients.ts";
 import { temporaryDatabasePath } from "../../sidecar/src/testing/process.ts";
+import { Network } from "../../sidecar/src/gen/seekervault/request/v1/request_pb.js";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);
 const WRONG_TOKEN = "w".repeat(64);
+const WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW";
 
 interface Run {
   readonly code: number | null;
@@ -225,10 +227,30 @@ describe("pnpm agent ack, get, and cancel", () => {
     assert.match(tooShort.stderr, /^INVALID_PARAMETERS: /m);
   });
 
+  it("prints the owner's wallet only once the phone has published one", async () => {
+    // Pairing again replaces the phone, so this connection starts with no wallet.
+    const phone = await pairPhone(queue.url, databasePath);
+    const none = await agent(["address"], envFor(queue));
+    assert.equal(none.code, 9);
+    assert.equal(none.stdout, "");
+    assert.match(none.stderr, /^WALLET_NOT_CONNECTED: /m);
+    await requestClient(queue.url, phone.phoneToken).publishWallet({
+      connectionId: phone.connectionId,
+      binding: { wallet: WALLET, network: Network.DEVNET },
+    });
+    const { code, stdout } = await agent(["address"], envFor(queue));
+    assert.equal(code, 0);
+    const view = JSON.parse(stdout) as Record<string, unknown>;
+    assert.equal(view.wallet, WALLET);
+    assert.equal(view.network, "devnet");
+    assert.equal(typeof view.bound_at, "string");
+  });
+
   it("exits 2 for missing or extra arguments", async () => {
     for (const args of [
       ["ack"],
       ["get"],
+      ["address", "extra"],
       ["cancel", "a", "b"],
       ["tools", "extra"],
       ["ack", "x", "--expires", "soon"],
@@ -383,11 +405,16 @@ describe("pnpm agent", () => {
     const { code, stdout } = await agent(["tools"], envFor(sidecar));
     assert.equal(code, 0);
     const tools = JSON.parse(stdout) as { name: string }[];
-    // The durable request tools (SAW-010) follow the live one. Without MCP_DEMO_TOOLS, there's no
-    // vault_request_ack.
+    // The durable request tools (SAW-010) and vault_get_address (SAW-015) follow the live one.
+    // Without MCP_DEMO_TOOLS, there's no vault_request_ack.
     assert.deepEqual(
       tools.map((tool) => tool.name),
-      ["vault_display_command", "vault_get_request", "vault_cancel_request"],
+      [
+        "vault_display_command",
+        "vault_get_address",
+        "vault_get_request",
+        "vault_cancel_request",
+      ],
     );
   });
 
