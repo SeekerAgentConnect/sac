@@ -74,3 +74,13 @@
 - **`adb reverse` plus loopback cleartext stays the only local path.** The guides never suggest a LAN address, extra cleartext hosts, or skipping TLS validation, and the troubleshooting page says so explicitly.
 - **The guide's outputs are real.** A script ran the Mac-side steps in a fresh clone, and the guide quotes its output verbatim. Steps that couldn't run (Seeker, Android Studio, USB reconnect, a JDK older than 17) are marked NOT RUN, and troubleshooting cases that weren't reproduced say so.
 - **Token entry through `adb shell input text` is offered as a convenience.** Typing 64 hex characters on a phone is error-prone, and hex needs no shell quoting. The token is a local development credential that never leaves the USB connection.
+
+## 2026-09-11 — SAW-007 Hermes connection (SEE-13)
+
+- **The Hermes token lives in `~/.hermes/.env` as `MCP_SEEKER_VAULT_API_KEY`, never in `config.yaml`.** `hermes mcp add --auth header` generates the same name for a server called `seeker_vault` (`_env_key_for_server`), so both setup paths agree. Hermes sends an unset `${VAR}` as literal text, so the guide checks with `hermes mcp test` before the first prompt.
+- **`timeout: 90`.** That's above the sidecar's 60-second default deadline, so the sidecar's `TIMEOUT` wins, and below Hermes's fixed 300-second HTTP read timeout.
+- **`tools.include: [vault_display_command]`.** Later stages add wallet tools to the same server. Each should be allowed on purpose rather than appear in the owner's sessions automatically.
+- **The VPS path is an SSH reverse tunnel from the Mac to the VPS's loopback.** The sidecar stays on loopback, and the VPS needs no open port, domain, or OAuth. The sidecar's Host check already accepts loopback names on any port. A public gateway with TLS and OAuth is Stage 7.
+- **Verification ran Hermes's own code, without an LLM.** Hermes v0.21.1 was installed from its release tag into a scratch venv, with a scratch `HERMES_HOME`. `hermes mcp list` and `test` ran, then a tool call went through `discover_mcp_tools` and `model_tools.handle_function_call`, the path a model's tool call takes. That covers the compatibility risks: Python `mcp` 2.0.0 against the TypeScript SDK 1.30 server, header interpolation, and the model-visible result. The owner's session with a model stays NOT RUN.
+- **Integration docs moved to `docs/integrations/`,** matching the backlog's paths. The empty `docs/guide/` placeholder is removed and `CLAUDE.md` updated, as SEE-6 did for `docs/development/`.
+- **Known gap, left for SAW-008:** the test agent notices a mid-call connection drop only at its client timeout, and reports it as `TIMEOUT` (exit code 6). Hermes reports the same drop at once. The sidecar cancels the command immediately either way.

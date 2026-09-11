@@ -14,6 +14,7 @@
 - SAW-004, the Android live-test screen: stock Material 3 UI, a ViewModel, a Connect/OkHttp transport, and debug-only loopback cleartext
 - SAW-005, the MCP test client: `pnpm agent hello`, with exit codes for each outcome
 - SAW-006, the MacBook → Seeker guide: a quickstart and a troubleshooting page in `docs/guides/`
+- SAW-007, the Hermes connection: `examples/hermes.config.yaml`, `docs/integrations/hermes.md`, and the Stage 1 test record in `docs/testing/stage-1.md`
 
 Commands and milestone status are in `README.md`, and agent rules in `AGENTS.md`.
 
@@ -42,13 +43,14 @@ Commands and milestone status are in `README.md`, and agent rules in `AGENTS.md`
 | `scripts/` | `generate.mjs`: `buf generate` and fixture conversion; `--check` compares a fresh generation in a temp dir |
 | `test-agent/` | `@seeker-vault/test-agent` (`pnpm agent`). `src/main.ts` is the CLI (`hello`, `tools`, exit codes, token redaction); `src/agent.ts` is the MCP client (discover, call, validate the acknowledgement); `src/config.ts` reads MCP_URL, MCP_TOKEN, and the client timeout. Tests: `cli.test.ts` (the real CLI process against the real sidecar and a Connect phone client), `config.test.ts`. |
 | `gateway/` | Placeholder README; Docker/TLS/OAuth gateway lands in Stage 7 |
+| `examples/` | Configuration to merge into other tools: `hermes.config.yaml` (a Hermes `mcp_servers` entry for the sidecar) |
 | `docs/` | Project documentation; `protocol.md` (live diagnostic flow, rules, errors, generated code, fixtures) |
 | `docs/development/` | Developer docs: `toolchain.md` (pinned versions, MacBook setup, Studio/terminal compatibility, verification record) and `sidecar.md` (configuration, start/stop, endpoints, error examples), and `android.md` (hello screen, debug URL, lifecycle limitations, tests) |
-| `docs/testing/` | Test procedures and records: `hello-world.md` (test agent: automated and physical-Seeker checks) |
+| `docs/testing/` | Test procedures and records: `hello-world.md` (test agent: automated and physical-Seeker checks) and `stage-1.md` (the owner-run Hermes check and the SAW-007 record) |
 | `docs/guides/` | Owner guides: `macbook-seeker-quickstart.md` (fresh Mac → tools, build, USB debugging, install, `adb reverse`, hello world, cleanup, verification record) and `troubleshooting.md` (ADB, cable, JDK, SDK path, Node version, ports, reverse mapping, cleartext, app messages) |
 | `docs/changelog/` | Release notes and change logs |
 | `docs/wiki/` | Feature documentation |
-| `docs/guide/` | Integration guides (MWA, Jupiter, MCP clients, gateways) |
+| `docs/integrations/` | Integration guides: `hermes.md` (connect Hermes on the Mac, or on a VPS through an SSH reverse tunnel, and run the Stage 1 check). MWA, Jupiter, and gateway guides come in later stages. |
 
 ## Key Files
 
@@ -79,7 +81,7 @@ Commands and milestone status are in `README.md`, and agent rules in `AGENTS.md`
 - The user taps OK, and `AcknowledgeCommand` returns `{id, result: OK}` to the MCP caller.
 - The sidecar holds one watcher and one in-flight command, with a deadline (`LIVE_COMMAND_TIMEOUT_SECONDS`) and the errors OFFLINE, BUSY, TIMEOUT, CANCELLED, UNAUTHENTICATED, UNKNOWN_COMMAND, and INVALID_TEXT.
 - Everything is in memory. The sidecar is loopback-only, and remote agents use an SSH tunnel.
-- Progress: the contract and rules (SAW-002), the sidecar bridge (SAW-003), the Android screen (SAW-004), the test agent (SAW-005), and the MacBook → Seeker guide (SAW-006) exist. See `docs/protocol.md`, `docs/development/sidecar.md`, `docs/development/android.md`, and `docs/guides/`.
+- Progress: the contract and rules (SAW-002), the sidecar bridge (SAW-003), the Android screen (SAW-004), the test agent (SAW-005), and the MacBook → Seeker guide (SAW-006), and the Hermes connection (SAW-007) exist. See `docs/protocol.md`, `docs/development/sidecar.md`, `docs/development/android.md`, `docs/guides/`, and `docs/integrations/hermes.md`.
 
 Later stages (see `RFC.md` §3–6):
 
