@@ -20,7 +20,7 @@ sequenceDiagram
     Sidecar-->>Agent: {id, result: OK}
 ```
 
-The contract is `LiveCommandService` in [`proto/seekervault/live/v1/live.proto`](../proto/seekervault/live/v1/live.proto). The sidecar serves the MCP tool `vault_display_command` and the Connect service; see [`docs/development/sidecar.md`](development/sidecar.md). SAW-004 implements the Android screen.
+The contract is `LiveCommandService` in [`proto/seekervault/live/v1/live.proto`](../proto/seekervault/live/v1/live.proto). The sidecar serves the MCP tool `vault_display_command` and the Connect service; see [`docs/development/sidecar.md`](development/sidecar.md). The Android app's live-test screen is the phone side; see [`docs/development/android.md`](development/android.md).
 
 | RPC | Kind | Purpose |
 | --- | --- | --- |

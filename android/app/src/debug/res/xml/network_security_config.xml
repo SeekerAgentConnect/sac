@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only (docs/development/android.md): plain HTTP to the loopback sidecar that
+  `adb reverse tcp:8080 tcp:8080` forwards to the Mac over USB. Every other host stays
+  HTTPS-only, and release builds keep Android's default of no cleartext traffic at all.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

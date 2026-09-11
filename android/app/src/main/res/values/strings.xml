@@ -1,4 +1,35 @@
 <resources>
     <string name="app_name">Seeker Vault</string>
-    <string name="bootstrap_status">Stage 1 bootstrap build. The live command screen is not implemented yet.</string>
+    <string name="live_title">Live test</string>
+
+    <string name="server_url_label">Server URL</string>
+    <string name="phone_token_label">Phone token</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_connected">Connected. Waiting for text from the agent.</string>
+    <string name="status_invalid_url">Enter the sidecar URL, for example http://127.0.0.1:8080.</string>
+    <string name="status_missing_token">Enter the phone token (PHONE_TOKEN in the sidecar\'s .env).</string>
+    <string name="status_background">Disconnected while the app was in the background. It reconnects when you return.</string>
+    <string name="status_unauthenticated">The sidecar rejected the phone token. Check PHONE_TOKEN in the sidecar\'s .env.</string>
+    <string name="status_replaced">Another connection to the sidecar replaced this one.</string>
+    <string name="status_cleartext_blocked">This build allows plain HTTP only to 127.0.0.1. Run adb reverse tcp:8080 tcp:8080 and use http://127.0.0.1:8080.</string>
+    <string name="status_lost">Connection lost.</string>
+    <string name="status_lost_detail">Connection lost: %1$s</string>
+    <string name="limitation_foreground_only">Text reaches the phone only while this screen is open and connected. The sidecar cancels a waiting command when the phone disconnects and never sends it again, so any received text was cleared.</string>
+
+    <string name="received_text_label">Received text</string>
+    <string name="no_command">Nothing received yet. Keep this screen open while the agent sends text.</string>
+    <string name="ok">OK</string>
+    <string name="command_awaiting">Tap OK to confirm you read it.</string>
+    <string name="command_sending">Sending OK…</string>
+    <string name="command_acknowledged">OK sent. The agent has your answer.</string>
+    <string name="command_timed_out">Timed out. The agent was told nobody tapped OK in time.</string>
+    <string name="command_cancelled">The agent cancelled this command.</string>
+    <string name="command_unknown">The sidecar no longer tracks this command.</string>
+    <string name="command_unauthenticated">The sidecar rejected the phone token.</string>
+    <string name="command_unreachable">Could not reach the sidecar. The agent will see a timeout.</string>
+    <string name="command_failed">Could not send OK.</string>
 </resources>
