@@ -66,3 +66,11 @@
 - **Tokens are redacted.** `MCP_TOKEN` and `PHONE_TOKEN` are removed from every line the CLI writes, and errors print a message without a stack.
 - **The tests reuse the sidecar's code.** They run the CLI as a real process against an in-process sidecar, and the sidecar's test clients act as the phone. Relative imports into `sidecar/src` are for tests only; the test-agent build excludes them. `Code` and `ConnectError` are re-exported from the sidecar's testing module so both packages share one Connect instance.
 - **The MCP SDK, zod, and `@types/node` moved to the pnpm catalog,** shared by the sidecar and the test agent.
+
+## 2026-09-11 — SAW-006 MacBook → Seeker guide (SEE-12)
+
+- **pnpm enforces the Node version through `devEngines.runtime` (`onFail: "error"`), which replaced `engines`.** Measured with pnpm 12.3.4: it ignored the root `engines.node`, even with `engineStrict`, so Node 24.20.0 installed and ran scripts without a warning. With `devEngines.runtime`, every pnpm command stops with `ERR_PNPM_BAD_RUNTIME_VERSION`, and the lockfile doesn't change. CI still reads `.nvmrc`.
+- **The app names the fix when the first connection fails.** An Unreachable error before `ready` becomes `DisconnectReason.Unreachable(url, port)`, and the screen asks whether the sidecar is running and `adb reverse` was run for that port. After `ready`, the same error stays a lost connection: a setup that worked and then dropped needs a different explanation, and the received text was cleared.
+- **`adb reverse` plus loopback cleartext stays the only local path.** The guides never suggest a LAN address, extra cleartext hosts, or skipping TLS validation, and the troubleshooting page says so explicitly.
+- **The guide's outputs are real.** A script ran the Mac-side steps in a fresh clone, and the guide quotes its output verbatim. Steps that couldn't run (Seeker, Android Studio, USB reconnect, a JDK older than 17) are marked NOT RUN, and troubleshooting cases that weren't reproduced say so.
+- **Token entry through `adb shell input text` is offered as a convenience.** Typing 64 hex characters on a phone is error-prone, and hex needs no shell quoting. The token is a local development credential that never leaves the USB connection.

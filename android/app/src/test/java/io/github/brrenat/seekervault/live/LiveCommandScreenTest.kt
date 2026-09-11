@@ -159,5 +159,16 @@ class LiveCommandScreenTest {
                 connection = ConnectionState.Disconnected(DisconnectReason.Unauthenticated)
             )
         node(LiveCommandTags.LIMITATION).assertDoesNotExist()
+        // Never connected, so nothing was cleared: the hint names the URL and adb reverse.
+        state =
+            LiveCommandUiState(
+                connection =
+                    ConnectionState.Disconnected(
+                        DisconnectReason.Unreachable("http://127.0.0.1:8080", 8080)
+                    )
+            )
+        node(LiveCommandTags.CONNECTION_STATUS)
+            .assertTextEquals(string(R.string.status_unreachable, "http://127.0.0.1:8080", 8080))
+        node(LiveCommandTags.LIMITATION).assertDoesNotExist()
     }
 }

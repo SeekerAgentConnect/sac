@@ -21,6 +21,8 @@ This page describes how to test the Stage 1 transport without an LLM. The test a
 
 ## With the physical Seeker
 
+The first-time setup is in the [MacBook → Seeker quickstart](../guides/macbook-seeker-quickstart.md): the tools, the APK, USB debugging, and `adb reverse`.
+
 1. Configure and start the sidecar with `pnpm dev:sidecar`; see [`docs/development/sidecar.md`](../development/sidecar.md).
 2. Connect the phone over USB and run `adb reverse tcp:8080 tcp:8080`; see [`docs/development/android.md`](../development/android.md).
 3. On the Seeker, open Seeker Vault, enter the phone token, and tap **Connect**. The status reads "Connected".

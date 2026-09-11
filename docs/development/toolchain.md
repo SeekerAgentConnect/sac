@@ -1,6 +1,6 @@
 # Toolchain
 
-This page covers the pinned versions, MacBook setup, and how the Android Studio and terminal builds stay on the same tools. The step-by-step MacBook → Seeker walkthrough comes in SAW-006, in `docs/guides/macbook-seeker-quickstart.md`.
+This page covers the pinned versions, MacBook setup, and how the Android Studio and terminal builds stay on the same tools. The step-by-step MacBook → Seeker walkthrough is in [`docs/guides/macbook-seeker-quickstart.md`](../guides/macbook-seeker-quickstart.md).
 
 ## Tested versions
 
@@ -10,7 +10,7 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 
 | Tool | Version | Pinned in |
 | --- | --- | --- |
-| Node.js | 24.21.0 (LTS) | `.nvmrc`, and `engines` in `package.json` |
+| Node.js | 24.21.0 (LTS) | `.nvmrc`, and `devEngines.runtime` in `package.json`. pnpm stops with `ERR_PNPM_BAD_RUNTIME_VERSION` on any other version. |
 | pnpm | 12.3.4 | `packageManager` in `package.json` |
 | TypeScript | 6.0.3 | `catalog` in `pnpm-workspace.yaml` |
 | @types/node | 24.13.4 | `catalog` in `pnpm-workspace.yaml` |

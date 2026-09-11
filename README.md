@@ -13,7 +13,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | SAW-003: Live MCP command bridge | Done. `/mcp` with `vault_display_command`, the phone's Connect API, and `/healthz`; see [`docs/development/sidecar.md`](docs/development/sidecar.md). |
 | SAW-004: Android hello-world screen | Done. A stock Material 3 live-test screen: connect, the received text, and a one-tap OK, with lifecycle handling; see [`docs/development/android.md`](docs/development/android.md). The physical Seeker check is NOT RUN. |
 | SAW-005: MCP test client | Done. `pnpm agent hello "Hello Seeker"` calls the tool over MCP and prints the acknowledgement; see [`test-agent/README.md`](test-agent/README.md). The physical Seeker check is NOT RUN. |
-| SAW-006: MacBook → Seeker build and run guide | Not started |
+| SAW-006: MacBook → Seeker build and run guide | Done. A quickstart from a fresh MacBook to an acknowledged "Hello Seeker", and a troubleshooting page; see [`docs/guides/macbook-seeker-quickstart.md`](docs/guides/macbook-seeker-quickstart.md). The Seeker and Android Studio checks are NOT RUN. |
 | SAW-007: Real Hermes connection | Not started |
 | SAW-008: Stage 1 acceptance gate | Not started |
 
@@ -30,11 +30,15 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | `docs/` | Development docs, guides, testing notes, and the changelog |
 | `.github/workflows/ci.yml` | CI for pull requests and pushes |
 
+## Quickstart
+
+To go from a fresh MacBook to "Hello Seeker" on the phone, follow [`docs/guides/macbook-seeker-quickstart.md`](docs/guides/macbook-seeker-quickstart.md). It assumes no Android experience. If a step fails, see [`docs/guides/troubleshooting.md`](docs/guides/troubleshooting.md).
+
 ## Prerequisites
 
 Tested on a MacBook with macOS 26.5.2 on Apple silicon. Exact versions and setup details are in [`docs/development/toolchain.md`](docs/development/toolchain.md).
 
-- **Node.js 24.21.0** (`.nvmrc`), for example through nvm
+- **Node.js 24.21.0** (`.nvmrc`), for example through nvm. pnpm refuses to run on any other version.
 - **pnpm 9.7 or newer.** It switches to the pinned 12.3.4 from `package.json` automatically.
 - **Android SDK Platform 37.0 and Build-Tools 36.0.0**, from Android Studio Quail 4 or newer or from the command-line tools
 - **A JDK 17 or newer to launch Gradle.** Android Studio's bundled one works. Gradle downloads the pinned Temurin 21 for the build itself.

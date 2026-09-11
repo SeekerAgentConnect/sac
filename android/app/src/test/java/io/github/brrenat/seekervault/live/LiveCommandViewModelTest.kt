@@ -173,6 +173,31 @@ class LiveCommandViewModelTest {
         }
 
     @Test
+    fun pointsToAdbReverseWhenTheFirstConnectionCannotReachTheSidecar() =
+        runTest(dispatcher) {
+            val viewModel = viewModel()
+            viewModel.onPhoneTokenChange(token)
+            viewModel.connect()
+            sidecar.stream.fail(LiveTransportException.Kind.Unreachable)
+            runCurrent()
+            assertEquals(
+                ConnectionState.Disconnected(
+                    DisconnectReason.Unreachable(LiveCommandUiState.DEFAULT_SERVER_URL, 8080)
+                ),
+                viewModel.state.value.connection,
+            )
+            // Once connected, the same failure is a lost connection instead.
+            viewModel.connect()
+            sidecar.stream.ready()
+            sidecar.stream.fail(LiveTransportException.Kind.Unreachable)
+            runCurrent()
+            assertEquals(
+                ConnectionState.Disconnected(DisconnectReason.Lost("fake Unreachable")),
+                viewModel.state.value.connection,
+            )
+        }
+
+    @Test
     fun reconnectsWithAFreshStreamAndNoOldCommand() =
         runTest(dispatcher) {
             val viewModel = connected()
