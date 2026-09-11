@@ -6,7 +6,7 @@
 
 `seeker-vault` (repo: SeekerAgentWallet) is an Android app for the Solana Seeker phone that acts as a control center for requests from external AI agents, plus the self-hosted server software it talks to. Agents propose actions (message signing, transfers, Jupiter swaps) over MCP to a self-hosted TypeScript sidecar; the user reviews each request on the phone against per-connection policies and approves it through Mobile Wallet Adapter and Seed Vault Wallet. The sidecar never holds keys or signs. Stack: Kotlin/Compose (Android), TypeScript/Node (sidecar, test agent), Protobuf + Buf + Connect (phone–sidecar contract), Docker Compose (gateway/deployment).
 
-**Status:** Stage 1 (wallet-free hello world) is in progress. Done:
+**Status:** Stage 1 (wallet-free hello world) is implemented, and its automated checks pass. It's accepted once the owner records the physical Seeker and real Hermes round trips (`docs/testing/stage-1.md`). Done:
 
 - SAW-001, the bootstrap: pnpm workspace, sidecar skeleton, empty Android app, and CI
 - SAW-002, the live-command protocol: `LiveCommandService` contract, generated TypeScript and Kotlin code, sidecar protocol rules, and cross-runtime fixtures
@@ -15,6 +15,7 @@
 - SAW-005, the MCP test client: `pnpm agent hello`, with exit codes for each outcome
 - SAW-006, the MacBook → Seeker guide: a quickstart and a troubleshooting page in `docs/guides/`
 - SAW-007, the Hermes connection: `examples/hermes.config.yaml`, `docs/integrations/hermes.md`, and the Stage 1 test record in `docs/testing/stage-1.md`
+- SAW-008, the acceptance gate: `pnpm test:hello` (simulated device), `pnpm test:hello --device` (the instrumentation round trip), stage boundary guards, the CI emulator job, and the report in `docs/testing/stage-1.md`
 
 Commands and milestone status are in `README.md`, and agent rules in `AGENTS.md`.
 

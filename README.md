@@ -6,6 +6,8 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 
 **Stage 1: Hello world (Hermes → Seeker → OK → Hermes).** A real agent sends display-only text over MCP, and the Seeker shows it while the app is open. The user taps OK, and the agent receives the acknowledgement. Stage 1 has no wallet, keys, queue, persistence, policies, QR pairing, OAuth, Docker, or background service.
 
+**Status:** every automated Stage 1 check passes, including the round trip on an emulator in CI. Stage 1 is accepted once the owner records two checks in [`docs/testing/stage-1.md`](docs/testing/stage-1.md): the round trip on the physical Seeker, and the real Hermes → Seeker → OK → Hermes run. Both are NOT RUN.
+
 | Task | Status |
 | --- | --- |
 | SAW-001: Repository, toolchains, basic CI | Done. The empty Android app and the sidecar skeleton build and pass the checks. |
@@ -15,7 +17,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | SAW-005: MCP test client | Done. `pnpm agent hello "Hello Seeker"` calls the tool over MCP and prints the acknowledgement; see [`test-agent/README.md`](test-agent/README.md). The physical Seeker check is NOT RUN. |
 | SAW-006: MacBook → Seeker build and run guide | Done. A quickstart from a fresh MacBook to an acknowledged "Hello Seeker", and a troubleshooting page; see [`docs/guides/macbook-seeker-quickstart.md`](docs/guides/macbook-seeker-quickstart.md). The Seeker and Android Studio checks are NOT RUN. |
 | SAW-007: Real Hermes connection | Done. A Hermes `mcp_servers` entry to merge ([`examples/hermes.config.yaml`](examples/hermes.config.yaml)) and a guide for Hermes on the Mac or on a VPS through an SSH reverse tunnel; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md). Hermes's own MCP client passed against the sidecar. The owner's real Hermes session with the Seeker is NOT RUN. |
-| SAW-008: Stage 1 acceptance gate | Not started |
+| SAW-008: Stage 1 acceptance gate | Done. `pnpm test:hello` runs the acceptance suite, and `pnpm test:hello --device` runs the round trip on a device or emulator. CI runs both, the device one on an emulator. Stage boundary guards run on every check. See [`docs/testing/stage-1.md`](docs/testing/stage-1.md). The physical Seeker and the owner's Hermes round trip are NOT RUN. |
 
 ## Repository structure
 
