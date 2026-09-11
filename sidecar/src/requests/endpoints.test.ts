@@ -9,7 +9,7 @@ import {
   RequestErrorDetailSchema,
   RequestState,
 } from "../gen/seekervault/request/v1/request_pb.js";
-import { PairingStore } from "../pairing/store.ts";
+import { PairingStore } from "../storage/pairing-store.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
 import { openDatabase } from "../storage/database.ts";
 import {

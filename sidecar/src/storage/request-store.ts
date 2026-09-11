@@ -2,8 +2,8 @@
  * The durable request queue (docs/protocol.md): requests, the phone's accepted results, prepared
  * transactions, and idempotency records, in the sidecar's SQLite database. Each operation runs in
  * one IMMEDIATE transaction that commits before the operation returns, so no caller hears of a
- * change that isn't on disk. The rules come from action.ts, identity.ts, and lifecycle.ts, and
- * this module stores what they decide. Nothing here executes a request, and nothing runs on its
+ * change that isn't on disk. The rules come from requests/action.ts, identity.ts, and lifecycle.ts,
+ * and this module stores what they decide. Nothing here executes a request, and nothing runs on its
  * own after a restart.
  */
 import { randomUUID } from "node:crypto";
@@ -28,20 +28,21 @@ import {
   SubmitResultRequestSchema,
   type SubmitResultRequest,
 } from "../gen/seekervault/request/v1/service_pb.js";
-import {
-  transaction,
-  type DatabaseSync,
-  type Row,
-} from "../storage/database.ts";
-import { invalidActionReason, invalidNoteReason } from "./action.ts";
+import { transaction, type DatabaseSync, type Row } from "./database.ts";
+import { invalidActionReason, invalidNoteReason } from "../requests/action.ts";
+import { RequestFailure } from "../requests/failure.ts";
 import {
   actionFingerprint,
   checkRef,
   invalidIdempotencyKeyReason,
   invalidUuidReason,
   resolveIdempotency,
-} from "./identity.ts";
-import { canTransition, decideResult, type ActionKind } from "./lifecycle.ts";
+} from "../requests/identity.ts";
+import {
+  canTransition,
+  decideResult,
+  type ActionKind,
+} from "../requests/lifecycle.ts";
 
 /** The shortest and longest lifetime, in seconds, that an agent may ask for. */
 export const MIN_EXPIRES_IN_SECONDS = 60;
@@ -59,27 +60,6 @@ const EXPIRED_OUTCOME = toBinary(
   }),
 );
 const PAGE_TOKEN = /^(\d{1,15}):(.+)$/;
-
-/**
- * A refused operation: the RequestError that MCP and Connect both report, and the request as it
- * is now, when there is one.
- */
-export class RequestFailure extends Error {
-  readonly error: RequestError;
-  readonly request: ActionRequest | undefined;
-
-  constructor(error: RequestError, message: string, request?: ActionRequest) {
-    super(message);
-    this.name = "RequestFailure";
-    this.error = error;
-    this.request = request;
-  }
-
-  /** The error's name as agents see it, for example `NOT_FOUND`. */
-  get code(): string {
-    return RequestError[this.error];
-  }
-}
 
 export interface RequestStoreOptions {
   /** The lifetime of a request whose agent doesn't choose one (REQUEST_TTL_SECONDS). */
@@ -141,7 +121,7 @@ export class RequestStore {
 
   /**
    * The paired phone's connection, which new requests are bound to. There's at most one, because
-   * pairing a phone revokes the previous one (pairing/store.ts).
+   * pairing a phone revokes the previous one (pairing-store.ts).
    */
   activeConnection(): string | undefined {
     const row = this.#db

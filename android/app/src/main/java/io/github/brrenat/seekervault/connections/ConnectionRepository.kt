@@ -11,6 +11,7 @@ import java.io.IOException
 import java.security.GeneralSecurityException
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,9 +71,12 @@ class ConnectionRepository(
     // The answers being sent right now: an answer is never sent twice at once.
     private val sending = mutableSetOf<RequestKey>()
 
+    // One fetch per connection at a time, so an older fetch can't overwrite a newer one's list.
+    private val fetching = ConcurrentHashMap<String, Mutex>()
+
     /**
      * Reads the stored connections and answers. It deletes credentials and answers that no
-     * connection owns, and settled answers older than a week.
+     * connection owns, and answers that settled more than a week ago.
      */
     suspend fun load() = locked {
         val ids = store.list().map { it.id }.toSet()
@@ -81,7 +85,7 @@ class ConnectionRepository(
         val cutoff = now().minus(SETTLED_RETENTION)
         results
             .list()
-            .filter { it.delivery != Delivery.Waiting && it.answeredAt < cutoff }
+            .filter { it.delivery != Delivery.Waiting && (it.settledAt ?: it.answeredAt) < cutoff }
             .forEach { results.delete(it.connectionId, it.requestId) }
         publish()
     }
@@ -132,9 +136,13 @@ class ConnectionRepository(
     /**
      * Fetches the connection's pending requests (docs/protocol.md#phone-api). It first sends the
      * owner's answers that are still waiting, then reads every page. If the sidecar no longer
-     * accepts the credential, the connection is marked revoked and the credential deleted.
+     * accepts the credential, the connection is marked revoked and the credential deleted. One
+     * fetch per connection runs at a time.
      */
-    suspend fun refresh(id: String) {
+    suspend fun refresh(id: String) =
+        fetching.computeIfAbsent(id) { Mutex() }.withLock { fetch(id) }
+
+    private suspend fun fetch(id: String) {
         val connection = find(id) ?: return
         if (!connection.usable) return
         val credential = withContext(io) { vault.get(id) }
@@ -153,13 +161,35 @@ class ConnectionRepository(
                 var pages = 0
                 do {
                     val page = gateway.listPending(connection.serverUrl, credential, id, token)
-                    // Only this connection's requests count, whatever the sidecar sent.
-                    own += page.requests.filter { it.ref.connectionId == id }
+                    // Only this connection's requests count, whatever the sidecar sent, and only
+                    // with a request ID that an answer can be stored under.
+                    own +=
+                        page.requests.filter {
+                            it.ref.connectionId == id && isConnectionId(it.ref.requestId)
+                        }
                     token = page.nextPageToken
                     pages++
                 } while (token.isNotEmpty() && pages < MAX_PAGES)
-                _inbox.update { it.copy(pending = it.pending + (id to own.toList())) }
-                Connection.Check(now(), CheckOutcome.Ok, own.size, morePending = token.isNotEmpty())
+                val current = locked {
+                    // An answer that settled while the pages were on their way took its request
+                    // off the sidecar's list, so pages read earlier mustn't bring it back.
+                    val settled =
+                        results
+                            .listFor(id)
+                            .filter { it.delivery != Delivery.Waiting }
+                            .map { it.requestId }
+                            .toSet()
+                    own.filterNot { it.ref.requestId in settled }
+                        .also { list ->
+                            _inbox.update { it.copy(pending = it.pending + (id to list)) }
+                        }
+                }
+                Connection.Check(
+                    now(),
+                    CheckOutcome.Ok,
+                    current.size,
+                    morePending = token.isNotEmpty(),
+                )
             } catch (e: GatewayException) {
                 if (e.kind == GatewayException.Kind.Unauthenticated) return markRevoked(id)
                 Connection.Check(now(), e.kind.toOutcome())
@@ -294,7 +324,7 @@ class ConnectionRepository(
         results
             .listFor(id)
             .filter { it.delivery == Delivery.Waiting }
-            .forEach { results.put(it.copy(delivery = Delivery.Undeliverable)) }
+            .forEach { results.put(it.copy(delivery = Delivery.Undeliverable, settledAt = now())) }
         _inbox.update { it.copy(pending = it.pending - id) }
         publish()
     }
@@ -311,7 +341,13 @@ class ConnectionRepository(
         delivery: Delivery,
         request: ActionRequest,
     ): LocalResult = locked {
-        val settled = result.copy(delivery = delivery, request = request, lastFailure = null)
+        val settled =
+            result.copy(
+                delivery = delivery,
+                request = request,
+                lastFailure = null,
+                settledAt = now(),
+            )
         results.put(settled)
         val remaining =
             _inbox.value.pending[result.connectionId]?.filterNot {

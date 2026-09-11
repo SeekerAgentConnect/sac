@@ -46,8 +46,14 @@ class ResultStoreTest {
         val reopened = ResultStore(dir)
         assertEquals(waiting, reopened.get(A, SAME_REQUEST))
         assertEquals("Deploy ✓ finished", reopened.get(A, SAME_REQUEST)?.request?.action?.ack?.text)
-        store.put(waiting.copy(delivery = Delivery.Accepted, lastFailure = null))
-        assertEquals(Delivery.Accepted, ResultStore(dir).get(A, SAME_REQUEST)?.delivery)
+        val settled =
+            waiting.copy(
+                delivery = Delivery.Accepted,
+                lastFailure = null,
+                settledAt = Instant.parse("2026-09-19T08:30:00.125Z"),
+            )
+        store.put(settled)
+        assertEquals(settled, ResultStore(dir).get(A, SAME_REQUEST))
     }
 
     @Test
@@ -67,12 +73,20 @@ class ResultStoreTest {
     fun skipsDamagedFilesAndFilesUnderAnotherName() {
         store.put(result(A))
         File(dir, "$A/$OTHER_REQUEST.json").writeText("{not json")
+        File(dir, "$A/$THIRD_REQUEST.json")
+            .writeText(
+                File(dir, "$A/$SAME_REQUEST.json")
+                    .readText()
+                    .replace(SAME_REQUEST, THIRD_REQUEST)
+                    .replace("2026-09-11T12:00:00.250Z", "yesterday")
+            )
         // A's answer copied under B's name must not become B's.
         File(dir, B).mkdirs()
         File(dir, "$A/$SAME_REQUEST.json").copyTo(File(dir, "$B/$SAME_REQUEST.json"))
         assertEquals(listOf(A), store.list().map { it.connectionId })
         assertNull(store.get(B, SAME_REQUEST))
         assertNull(store.get(A, OTHER_REQUEST))
+        assertNull(store.get(A, THIRD_REQUEST)) // a malformed timestamp
     }
 
     @Test
@@ -89,5 +103,6 @@ class ResultStoreTest {
         const val B = "5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f"
         const val SAME_REQUEST = "7c6b5a49-3827-4615-a0b9-c8d7e6f5a4b3"
         const val OTHER_REQUEST = "de03846e-d435-4705-b2e3-ec67da539f12"
+        const val THIRD_REQUEST = "1f0e2d3c-4b5a-4698-8776-5a4b3c2d1e0f"
     }
 }

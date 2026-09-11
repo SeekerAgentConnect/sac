@@ -47,6 +47,8 @@ export function invalidServerUrlReason(url: string): string | undefined {
   if (parsed.search !== "" || parsed.hash !== "") {
     return "the server URL must not have a query or a fragment";
   }
+  // The URL parser takes port 0, but nothing listens there, and the phone refuses it.
+  if (parsed.port === "0") return "the server URL's port must be 1 to 65535";
   if (parsed.protocol === "https:") return undefined;
   if (parsed.protocol === "http:" && LOOPBACK_HOSTS.has(parsed.hostname)) {
     return undefined;

@@ -208,3 +208,23 @@
   - In-process tests get a fake clock through `SidecarOptions.now`, which moves only when the test moves it.
   - A harness never restarts a sidecar with its clock behind where it was, so no request is created in the future.
 - **Stage 2 isn't declared accepted yet.** Every automated check passes. But Stage 1 was accepted only after the owner's run on the Seeker, and Stage 2 follows the same rule. `docs/testing/stage-2.md` holds the owner-run steps.
+
+## 2026-09-11 — PR #3 review
+
+- **Coming back to the foreground counts as opening the app.** An owner who switches back expects what opening the app would show.
+  - The fetch runs from the activity's `onStart`, and only after an `onStop` that wasn't a rotation, so a rotation still fetches nothing.
+  - It's a foreground action, and nothing runs in the background.
+- **Fetches of one connection are serialized in the repository,** with one lock per connection. A guard in each ViewModel can't see the others.
+  - A second fetch waits, then reads again, so the newest page wins.
+  - The list is published under the repository's lock, without requests whose answers have settled. A page read before an answer can't bring its request back.
+- **A request ID must be a UUID before it enters the inbox,** because it names the file its answer is stored in. A request whose ID isn't one is left out, like another connection's request.
+- **Retention counts from `settledAt`.**
+  - Answers stored before this change have no `settledAt`, and count from `answeredAt` as before.
+  - The file format stays at version 1, because the field is optional.
+- **Device names are escaped when printed, not refused at pairing.**
+  - Escaping covers names already stored, and needs no change to the contract.
+  - Control, format, and line separator characters print as `\u{…}`, and backslashes are doubled, so the output can't be mistaken for an escape.
+- **The stores moved into `storage/`, and the guard now checks for SQL.**
+  - `AGENTS.md` and `docs/development/sidecar.md` said only `storage/` touches SQLite. The test checked imports only, while `RequestStore` and `PairingStore` ran SQL through the database handle.
+  - Moving the two stores was a file move, with no change in behavior.
+  - The pure rules stay in `requests/` and `pairing/`. `RequestFailure` moved to `requests/failure.ts`, so the workflow's error type doesn't live in storage.

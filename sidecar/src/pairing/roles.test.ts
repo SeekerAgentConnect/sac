@@ -25,7 +25,7 @@ import {
   type TestPhone,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { PairingStore } from "./store.ts";
+import { PairingStore } from "../storage/pairing-store.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);

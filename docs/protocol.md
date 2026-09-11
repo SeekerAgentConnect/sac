@@ -286,7 +286,7 @@ The table is `TRANSITIONS` in `lifecycle.ts`, and its tests spell out each kind'
 | `RequestService` | `PrepareRequest` | Phone credential | A new version of a PENDING transfer's or swap's transaction |
 | `RequestService` | `SubmitResult` | Phone credential | A decision or a wallet result. It returns the request as it is afterwards. |
 
-Every RPC is unary. The phone fetches when the app opens, when the user selects a connection, or when the user refreshes. Nothing is pushed, and the Stage 1 stream isn't needed. Credentials travel only in `Authorization: Bearer <token>`. [Pairing](#pairing) and [roles](#roles) define them, and [`docs/security.md`](security.md#transport-security) covers TLS.
+Every RPC is unary. The phone fetches when the app opens or comes back to the foreground, when the user selects a connection, or when the user refreshes. Nothing is pushed, and the Stage 1 stream isn't needed. Credentials travel only in `Authorization: Bearer <token>`. [Pairing](#pairing) and [roles](#roles) define them, and [`docs/security.md`](security.md#transport-security) covers TLS.
 
 A `SubmitResult` carries one result:
 
@@ -386,7 +386,7 @@ seekervault://pair?v=1&url=https%3A%2F%2Fmac.tailnet.ts.net&server=9fda5035-f3b4
 | Parameter | Meaning | Rules |
 | --- | --- | --- |
 | `v` | The code's version | `1`. The phone refuses any other version. |
-| `url` | The server URL: where the phone pairs, and then calls | `https://`, or `http://` on `127.0.0.1`, `localhost`, or `[::1]` for development. No user name, password, query, or fragment. It's compared after normalization: a lowercase host, no default port, and no trailing slash. |
+| `url` | The server URL: where the phone pairs, and then calls | `https://`, or `http://` on `127.0.0.1`, `localhost`, or `[::1]` for development. No user name, password, query, or fragment, and a port, if given, from 1 to 65535. It's compared after normalization: a lowercase host, no default port, and no trailing slash. |
 | `server` | The sidecar's lasting ID | A lowercase UUID. It survives restarts and pairings. |
 | `token` | The one-use pairing token | 43 base64url characters (32 random bytes) |
 

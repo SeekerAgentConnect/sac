@@ -40,6 +40,11 @@ data class LocalResult(
     val delivery: Delivery = Delivery.Waiting,
     /** Why the last attempt to send it failed, while it's waiting. */
     val lastFailure: CheckOutcome? = null,
+    /**
+     * When the sidecar settled it, or the phone found it undeliverable; null while it's waiting. A
+     * settled answer is kept for a week from then.
+     */
+    val settledAt: Instant? = null,
 ) {
     val key: RequestKey
         get() = RequestKey(connectionId, requestId)

@@ -21,9 +21,9 @@ import { isTerminal } from "./lifecycle.ts";
 import {
   MAX_EXPIRES_IN_SECONDS,
   MIN_EXPIRES_IN_SECONDS,
-  RequestFailure,
   type RequestStore,
-} from "./store.ts";
+} from "../storage/request-store.ts";
+import { RequestFailure } from "./failure.ts";
 
 export const REQUEST_ACK_TOOL = "vault_request_ack";
 export const GET_REQUEST_TOOL = "vault_get_request";

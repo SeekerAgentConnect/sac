@@ -12,7 +12,7 @@ import { invalidServerUrlReason, normalizeServerUrl } from "./pairing/uri.ts";
 import {
   MAX_EXPIRES_IN_SECONDS,
   MIN_EXPIRES_IN_SECONDS,
-} from "./requests/store.ts";
+} from "./storage/request-store.ts";
 
 export interface SidecarConfig {
   readonly host: string;

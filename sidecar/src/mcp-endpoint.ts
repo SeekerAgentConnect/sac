@@ -16,7 +16,7 @@ import { bearerTokenMatches } from "./auth.ts";
 import { LiveCommandFailure, type LiveCommandBridge } from "./live/bridge.ts";
 import { MAX_COMMAND_TEXT_BYTES } from "./live/command.ts";
 import { registerRequestTools } from "./requests/mcp-tools.ts";
-import type { RequestStore } from "./requests/store.ts";
+import type { RequestStore } from "./storage/request-store.ts";
 
 export const DISPLAY_COMMAND_TOOL = "vault_display_command";
 

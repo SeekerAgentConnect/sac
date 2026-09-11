@@ -9,8 +9,8 @@ import { bearerToken } from "../auth.ts";
 import { RequestError } from "../gen/seekervault/request/v1/request_pb.js";
 import { PairingService } from "../gen/seekervault/request/v1/service_pb.js";
 import { connectError } from "../requests/phone-service.ts";
-import { RequestFailure } from "../requests/store.ts";
-import type { PairingStore } from "./store.ts";
+import { RequestFailure } from "../requests/failure.ts";
+import type { PairingStore } from "../storage/pairing-store.ts";
 
 export function pairingRoutes(
   pairing: PairingStore,

@@ -14,13 +14,9 @@ import {
   RequestError,
   RequestState,
 } from "../gen/seekervault/request/v1/request_pb.js";
-import { RequestFailure } from "../requests/store.ts";
-import {
-  transaction,
-  type DatabaseSync,
-  type Row,
-} from "../storage/database.ts";
-import { invalidServerUrlReason, normalizeServerUrl } from "./uri.ts";
+import { RequestFailure } from "../requests/failure.ts";
+import { transaction, type DatabaseSync, type Row } from "./database.ts";
+import { invalidServerUrlReason, normalizeServerUrl } from "../pairing/uri.ts";
 
 /** The detail a request gets when its connection's revocation cancels it. */
 export const REVOKED_DETAIL = "The phone's connection was revoked.";

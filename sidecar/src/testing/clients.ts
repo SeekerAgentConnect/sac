@@ -29,7 +29,7 @@ import {
   RequestService,
 } from "../gen/seekervault/request/v1/service_pb.js";
 import { DISPLAY_COMMAND_TOOL } from "../mcp-endpoint.ts";
-import { PairingStore } from "../pairing/store.ts";
+import { PairingStore } from "../storage/pairing-store.ts";
 import type { RequestView } from "../requests/mcp-tools.ts";
 import { openDatabase } from "../storage/database.ts";
 

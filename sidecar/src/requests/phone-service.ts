@@ -17,8 +17,9 @@ import {
   RequestState,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { RequestService } from "../gen/seekervault/request/v1/service_pb.js";
-import type { PairingStore } from "../pairing/store.ts";
-import { RequestFailure, type RequestStore } from "./store.ts";
+import type { PairingStore } from "../storage/pairing-store.ts";
+import type { RequestStore } from "../storage/request-store.ts";
+import { RequestFailure } from "./failure.ts";
 
 const CODES: ReadonlyMap<RequestError, Code> = new Map([
   [RequestError.INVALID_PARAMETERS, Code.InvalidArgument],

@@ -26,7 +26,7 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 | `DATABASE_PATH` | Optional. The SQLite file for durable requests | Defaults to `sidecar/data/sidecar.db`, whatever the working directory. A relative path is resolved from the directory the sidecar starts in, and a missing directory is created. |
 | `REQUEST_TTL_SECONDS` | Optional. How long a request waits for the owner's decision when its agent doesn't choose | 60 to 604800; defaults to 86400 (a day) |
 | `REQUEST_PENDING_LIMIT` | Optional. The most requests that can wait for the owner at once | 1 to 10000; defaults to 100 |
-| `SIDECAR_PUBLIC_URL` | Optional. The URL that pairing codes carry: where the phone reaches the sidecar | `https://`, or `http://` on `127.0.0.1`, `localhost`, or `[::1]`. No user name, password, query, or fragment. Defaults to `http://<SIDECAR_HOST>:<SIDECAR_PORT>`, the development URL over `adb reverse`. For a phone on another network, use a trusted TLS endpoint; see [transport security](../security.md#transport-security). |
+| `SIDECAR_PUBLIC_URL` | Optional. The URL that pairing codes carry: where the phone reaches the sidecar | `https://`, or `http://` on `127.0.0.1`, `localhost`, or `[::1]`. No user name, password, query, or fragment, and a port, if given, from 1 to 65535. Defaults to `http://<SIDECAR_HOST>:<SIDECAR_PORT>`, the development URL over `adb reverse`. For a phone on another network, use a trusted TLS endpoint; see [transport security](../security.md#transport-security). |
 | `PAIRING_TOKEN_TTL_SECONDS` | Optional. How long a pairing code works | 60 to 3600; defaults to 600 (10 minutes) |
 
 Generate each token with `openssl rand -hex 32`. If the configuration is invalid, the sidecar names every problem and exits with status 1. It never prints a token value.
@@ -172,7 +172,7 @@ Durable requests live in one SQLite file, `DATABASE_PATH` (by default `sidecar/d
 - **The driver is Node's built-in `node:sqlite`,** so there's no native build and no extra dependency.
 - **The database runs in WAL mode with `synchronous = FULL`,** so a commit is on disk before it returns.
 - **Each operation is one transaction (`BEGIN IMMEDIATE`) that commits before the sidecar answers.** The agent's tool result and the phone's RPC response never report a change that a crash could still lose. Operations are synchronous, so two never interleave.
-- **Only `sidecar/src/storage/` touches SQLite or the file system.** `stage-boundary.test.ts` checks this.
+- **Only `sidecar/src/storage/` touches SQLite or the file system.** It alone imports them, and it alone runs SQL: `request-store.ts` and `pairing-store.ts` hold every query. `stage-boundary.test.ts` checks both.
 - **Run one sidecar per database file.**
 
 These are the tables at schema version 2:
@@ -304,17 +304,18 @@ Typical log lines:
 | `sidecar/src/requests/action.ts` | The durable request's parameters (SAW-009): each action kind's fields, base-unit amounts, base58 addresses, and exact message bytes |
 | `sidecar/src/requests/identity.ts` | Connection scope for references, idempotency keys, and action fingerprints (SAW-009) |
 | `sidecar/src/requests/lifecycle.ts` | The durable lifecycle (SAW-009): the transition table, the phone's results, the approval binding, and expiry |
-| `sidecar/src/requests/store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions |
+| `sidecar/src/requests/failure.ts` | `RequestFailure`, the error that every durable operation refuses with |
+| `sidecar/src/storage/request-store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions |
 | `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010) |
 | `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
 | `sidecar/src/storage/database.ts` | Opening the database, migrations, and transactions (SAW-010) |
 | `sidecar/src/storage/migrations.ts` | The numbered schema migrations (SAW-010, SAW-011) |
 | `sidecar/src/pairing/uri.ts` | The pairing code's URI, and the server URL rule (SAW-011) |
-| `sidecar/src/pairing/store.ts` | `PairingStore` (SAW-011): pairing tokens, pairing, phone credentials, revocation, and the server ID |
+| `sidecar/src/storage/pairing-store.ts` | `PairingStore` (SAW-011): pairing tokens, pairing, phone credentials, revocation, and the server ID |
 | `sidecar/src/pairing/service.ts` | The Connect `PairingService` (SAW-011) |
 | `sidecar/src/pairing/cli.ts` | `pnpm pair`, `pnpm pair status`, and `pnpm pair revoke` (SAW-011) |
 
-The SAW-009 modules are pure rules, which `store.ts` applies. The contract they implement is in [`docs/protocol.md`](../protocol.md#stage-2-durable-requests).
+The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. The contract they implement is in [`docs/protocol.md`](../protocol.md#stage-2-durable-requests).
 
 `pnpm check` runs these tests:
 
@@ -329,7 +330,7 @@ The SAW-009 modules are pure rules, which `store.ts` applies. The contract they 
   - `/healthz`
   - that no token or command text reaches the logs
 - **`src/restart.test.ts`** runs `src/main.ts` as a real process. It stops the process with SIGTERM and then with SIGKILL during a command, and checks that the original caller fails and nothing is replayed after the restart.
-- **`src/requests/store.test.ts`** tests the store on an in-memory database with a controlled clock. It covers:
+- **`src/storage/request-store.test.ts`** tests the request store on an in-memory database with a controlled clock. It covers:
   - creation and validation
   - idempotent retries and conflicts
   - the pending limit, and expiry at the exact deadline
@@ -349,13 +350,13 @@ The SAW-009 modules are pure rules, which `store.ts` applies. The contract they 
 - **`src/requests/restart.test.ts`** kills the sidecar with SIGKILL right after a tool answers and right after the phone's result is confirmed. It checks that both survived, along with the phone's pairing, and that nothing ran at startup.
 - **`src/pairing/`** tests pairing (SAW-011):
   - `uri.test.ts`: the pairing URI and the server URL rule
-  - `store.test.ts`: expired, reused, unknown, and wrong-URL pairing tokens; one active phone; revocation; a new code never changing an existing connection; and only hashes in the database
+  - `src/storage/pairing-store.test.ts`: expired, reused, unknown, and wrong-URL pairing tokens; one active phone; revocation; a new code never changing an existing connection; and only hashes in the database
   - `roles.test.ts`: every RPC and MCP method against every credential, including a revoked one; results from the wrong credential; and no secret in the log
   - `tls.test.ts`: pairing through a TLS endpoint, and refusals for an untrusted certificate and for another host's certificate
   - `cli.test.ts`: `pnpm pair` and its `status` and `revoke` commands, with no credential in their output
 - **`src/storage/database.test.ts`** tests the schema, the pragmas, the frozen v1 fixture and its migration to v2, a database from a newer sidecar, migration failures, and transaction rollback.
 - **The SAW-009 rule tests** are `src/requests/action.test.ts`, `identity.test.ts`, `lifecycle.test.ts`, `fixtures.test.ts`, and `live-compat.test.ts`.
-- **`src/stage-boundary.test.ts`** checks that there's no wallet package, no key generation, and no file system or SQLite access outside `src/storage/`.
+- **`src/stage-boundary.test.ts`** checks that there's no wallet package and no key generation, and that nothing outside `src/storage/` imports the file system or SQLite, or runs SQL.
 
 `pnpm test:queue` runs the Stage 2 acceptance scenario (SAW-014) with two sidecar processes that restart; see [`docs/testing/stage-2.md`](../testing/stage-2.md#the-acceptance-scenario-saw-014), which also holds its report. `src/testing/process.ts` starts the processes, with `MCP_DEMO_TOOLS` if asked. `src/testing/clock.ts`, loaded with `--import`, runs a restarted process's clock ahead, for time that passed while it was down.
 

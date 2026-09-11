@@ -52,6 +52,11 @@ describe("server URLs", () => {
         "the server URL must not have a query or a fragment",
       ],
       ["vault.example.com", "the server URL isn't a URL"],
+      [
+        "https://vault.example.com:0",
+        "the server URL's port must be 1 to 65535",
+      ],
+      ["http://127.0.0.1:0", "the server URL's port must be 1 to 65535"],
     ];
     for (const [url, reason] of cases) {
       assert.equal(invalidServerUrlReason(url), reason, url);

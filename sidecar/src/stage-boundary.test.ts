@@ -1,7 +1,7 @@
 /**
  * Stage boundaries on the Node side (AGENTS.md). There's no wallet library, and nothing creates
- * keys. The sidecar stores durable requests (SAW-010), and only src/storage/ touches the file
- * system or SQLite. These checks fail when that changes before the stage that changes it on
+ * keys. The sidecar stores durable requests (SAW-010): only src/storage/ imports the file system
+ * or SQLite, and only it runs SQL. These checks fail when that changes before the stage that changes it on
  * purpose.
  */
 import assert from "node:assert/strict";
@@ -45,7 +45,7 @@ describe("stage boundary", () => {
     );
   });
 
-  it("touches the file system and SQLite only in src/storage", () => {
+  it("imports the file system and SQLite only in src/storage", () => {
     const sources = shippedSources();
     const outside = sources.filter(
       (file) =>
@@ -60,6 +60,26 @@ describe("stage boundary", () => {
       readFileSync(join(SRC, "storage/database.ts"), "utf8"),
       STORAGE_IMPORT,
       "storage/database.ts is where the database is opened",
+    );
+  });
+
+  it("runs SQL only in src/storage", () => {
+    // Statements, queries, and transactions stay in storage's modules; the rest of the sidecar
+    // calls their APIs.
+    const sql = /\.prepare\(|\btransaction\(|\.exec\(\s*["'`]/;
+    const outside = shippedSources().filter(
+      (file) =>
+        !relative(SRC, file).startsWith("storage/") &&
+        sql.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      outside.map((file) => relative(ROOT, file)),
+      [],
+    );
+    assert.match(
+      readFileSync(join(SRC, "storage/request-store.ts"), "utf8"),
+      sql,
+      "the request store runs its SQL in storage",
     );
   });
 });

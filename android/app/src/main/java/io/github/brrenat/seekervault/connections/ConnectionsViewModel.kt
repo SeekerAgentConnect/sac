@@ -97,6 +97,9 @@ class ConnectionsViewModel(
     private val _state = MutableStateFlow(ConnectionsUiState())
     val state: StateFlow<ConnectionsUiState> = _state.asStateFlow()
 
+    // Whether the app has left the foreground since it last fetched on opening.
+    private var hidden = false
+
     init {
         viewModelScope.launch {
             repository.connections.collect { list -> _state.update { it.copy(connections = list) } }
@@ -105,8 +108,24 @@ class ConnectionsViewModel(
             repository.load()
             _state.update { it.copy(loaded = true) }
             // The phone fetches when the app opens (docs/protocol.md).
-            repository.connections.value.filter { it.usable }.forEach { refresh(it.id) }
+            refreshAll()
         }
+    }
+
+    /** The app left the foreground. A rotation doesn't count. */
+    fun onAppHidden() {
+        hidden = true
+    }
+
+    /**
+     * The app is back in the foreground, which is opening it again: every connection is fetched, as
+     * on the first start (docs/guides/pending-requests.md). The first start fetches once the stored
+     * connections are read, and a rotation fetches nothing.
+     */
+    fun onAppVisible() {
+        if (!hidden) return
+        hidden = false
+        refreshAll()
     }
 
     fun onCodeDraftChange(text: String) = _state.update { state ->
@@ -235,6 +254,9 @@ class ConnectionsViewModel(
     fun messageShown() = _state.update { it.copy(message = null) }
 
     private fun closeDialog() = _state.update { it.copy(disconnect = null) }
+
+    private fun refreshAll() =
+        repository.connections.value.filter { it.usable }.forEach { refresh(it.id) }
 
     private fun confirmationFor(code: PairingCode, connections: List<Connection>) =
         Confirmation(

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -92,6 +93,25 @@ class InboxActivityTest {
             .assertTextEquals(app.getString(R.string.status_acknowledged))
         compose.onNodeWithTag(InboxTags.REJECT).assertDoesNotExist()
         assertEquals(1, gateway.submits.size)
+    }
+
+    @Test
+    fun aRequestMadeWhileTheAppWasInTheBackgroundShowsWhenItComesBack() {
+        val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
+        val scenario = launch()
+        compose.waitForIdle()
+        server.addPending(connection.id, text = "While away")
+        // A rotation doesn't fetch.
+        scenario.recreate()
+        compose.waitForIdle()
+        assertTrue(app.connectionRepository.inbox.value.pending[connection.id].orEmpty().isEmpty())
+        // Leaving the app and coming back does, as opening it does.
+        scenario.moveToState(Lifecycle.State.CREATED)
+        scenario.moveToState(Lifecycle.State.RESUMED)
+        compose
+            .onNodeWithTag(ConnectionsTags.INBOX)
+            .assertTextContains(app.getString(R.string.inbox_row_waiting, 1))
+        assertTrue(gateway.submits.isEmpty())
     }
 
     @Test

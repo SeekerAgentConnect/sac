@@ -19,15 +19,15 @@ import { LiveCommandService } from "./gen/seekervault/live/v1/live_pb.js";
 import { LiveCommandBridge } from "./live/bridge.ts";
 import { createMcpEndpoint } from "./mcp-endpoint.ts";
 import { pairingRoutes } from "./pairing/service.ts";
-import { PairingStore } from "./pairing/store.ts";
 import { phoneRoutes } from "./phone-api.ts";
 import { requestRoutes } from "./requests/phone-service.ts";
-import { RequestStore } from "./requests/store.ts";
 import {
   openDatabase,
   schemaVersion,
   type DatabaseSync,
 } from "./storage/database.ts";
+import { PairingStore } from "./storage/pairing-store.ts";
+import { RequestStore } from "./storage/request-store.ts";
 
 export interface Sidecar {
   /** Base URL, for example http://127.0.0.1:8080. */

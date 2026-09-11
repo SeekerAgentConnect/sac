@@ -12,7 +12,7 @@ The phone must be paired with the sidecar first ([`pairing.md`](pairing.md)).
 
 ## When the phone fetches
 
-The phone fetches a connection's requests at three moments: when the app opens, when you open that connection, and when you tap **Refresh**. There's no push and no background service. A request made while the app is closed shows up the next time you open it.
+The phone fetches a connection's requests at three moments: when the app opens or comes back to the foreground, when you open that connection, and when you tap **Refresh**. Rotating the phone doesn't fetch. There's no push and no background service. A request made while the app is closed or in the background shows up the next time you open it.
 
 ## Reviewing a request
 

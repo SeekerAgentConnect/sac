@@ -10,8 +10,8 @@ import {
   RequestState,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { SubmitResultRequestSchema } from "../gen/seekervault/request/v1/service_pb.js";
-import { REVOKED_DETAIL } from "../pairing/store.ts";
-import { RequestStore } from "../requests/store.ts";
+import { REVOKED_DETAIL } from "./pairing-store.ts";
+import { RequestStore } from "./request-store.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
 import {
   IN_MEMORY,

@@ -238,6 +238,91 @@ class InboxTest {
     }
 
     @Test
+    fun anOlderFetchNeverOverwritesANewerOne() = runBlocking {
+        val connection = repository.pair(serverA.issue(URL_A))
+        val old = serverA.addPending(connection.id, text = "Old")
+        val read = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var hold = true
+        gateway.afterList = {
+            if (hold) {
+                hold = false
+                read.complete(Unit)
+                release.await()
+            }
+        }
+        val first = async { repository.refresh(connection.id) } // reads "Old", then waits
+        read.await()
+        // Meanwhile the agent withdraws that request and asks another, and a second fetch starts.
+        serverA.cancel(connection.id, old.ref.requestId)
+        val new = serverA.addPending(connection.id, text = "New")
+        val second = async { repository.refresh(connection.id) }
+        release.complete(Unit)
+        first.await()
+        second.await()
+        assertEquals(listOf("New"), repository.pending(connection.id).map { it.action.ack.text })
+        assertEquals(new.ref.requestId, repository.pending(connection.id).single().ref.requestId)
+        assertEquals(1, repository.connection(connection.id)?.lastCheck?.pending)
+    }
+
+    @Test
+    fun aFetchThatCrossesAnAnswerDoesntBringItsRequestBack() = runBlocking {
+        val key = oneRequest()
+        val read = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var hold = true
+        gateway.afterList = {
+            if (hold) {
+                hold = false
+                read.complete(Unit)
+                release.await()
+            }
+        }
+        val fetching = async { repository.refresh(key.connectionId) } // reads it as PENDING
+        read.await()
+        assertEquals(Delivery.Accepted, repository.answer(key, Answer.Acknowledge).delivery)
+        release.complete(Unit)
+        fetching.await()
+        assertTrue(repository.pending(key.connectionId).isEmpty())
+        assertEquals(0, repository.connection(key.connectionId)?.lastCheck?.pending)
+    }
+
+    @Test
+    fun leavesOutARequestWhoseIdCantNameAStoredAnswer() = runBlocking {
+        val connection = repository.pair(serverA.issue(URL_A))
+        val good = serverA.addPending(connection.id)
+        gateway.foreignRequests += FakeConnectionGateway.request(connection.id, "../../prefs")
+        repository.refresh(connection.id)
+        assertEquals(
+            listOf(good.ref.requestId),
+            repository.pending(connection.id).map { it.ref.requestId },
+        )
+        assertEquals(1, repository.connection(connection.id)?.lastCheck?.pending)
+    }
+
+    @Test
+    fun keepsAnAnswerThatSettledLateForAWeekFromWhenItSettled() = runBlocking {
+        val key = oneRequest()
+        serverA.failure = GatewayException.Kind.Unreachable
+        repository.answer(key, Answer.Acknowledge)
+        // The server stays unreachable for eight days, and then takes the answer.
+        clock = clock.plusSeconds(8 * 86_400)
+        serverA.failure = null
+        repository.refresh(key.connectionId)
+        assertEquals(Delivery.Accepted, repository.result(key)?.delivery)
+        assertEquals(clock, repository.result(key)?.settledAt)
+
+        clock = clock.plusSeconds(86_400)
+        val nextDay = repository()
+        nextDay.load()
+        assertEquals(Delivery.Accepted, nextDay.result(key)?.delivery)
+        clock = clock.plusSeconds(7 * 86_400)
+        val nextWeek = repository()
+        nextWeek.load()
+        assertNull(nextWeek.result(key))
+    }
+
+    @Test
     fun forgetsSettledAnswersAfterAWeekButKeepsWaitingOnes() = runBlocking {
         val settled = oneRequest(serverA, URL_A)
         val waiting = oneRequest(serverB, URL_B)

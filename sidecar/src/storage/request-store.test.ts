@@ -13,14 +13,11 @@ import {
   type ActionRequest,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { SubmitResultRequestSchema } from "../gen/seekervault/request/v1/service_pb.js";
-import {
-  IN_MEMORY,
-  openDatabase,
-  type DatabaseSync,
-} from "../storage/database.ts";
-import { PairingStore } from "../pairing/store.ts";
+import { IN_MEMORY, openDatabase, type DatabaseSync } from "./database.ts";
+import { RequestFailure } from "../requests/failure.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { RequestFailure, RequestStore, type NewRequest } from "./store.ts";
+import { PairingStore } from "./pairing-store.ts";
+import { RequestStore, type NewRequest } from "./request-store.ts";
 
 const NOON = Date.UTC(2026, 8, 11, 12); // 2026-09-11T12:00:00Z
 const DAY_SECONDS = 86_400;

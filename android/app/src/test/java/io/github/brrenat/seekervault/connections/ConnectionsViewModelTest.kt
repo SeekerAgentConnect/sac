@@ -54,6 +54,20 @@ class ConnectionsViewModelTest {
             "&server=${code.serverId}&token=${code.token}"
 
     @Test
+    fun fetchesAgainWhenTheAppComesBackToTheForegroundButNotOnARotation() {
+        val connection = runBlocking { repository.pair(server.issue(URL)) }
+        val viewModel = viewModel() // the app opens, and fetches
+        assertEquals(0, viewModel.state.value.connections.single().lastCheck?.pending)
+        server.addPending(connection.id)
+        // A rotation stops and starts the activity without leaving the foreground.
+        viewModel.onAppVisible()
+        assertEquals(0, viewModel.state.value.connections.single().lastCheck?.pending)
+        viewModel.onAppHidden()
+        viewModel.onAppVisible()
+        assertEquals(1, viewModel.state.value.connections.single().lastCheck?.pending)
+    }
+
+    @Test
     fun saysWhyACodeIsMalformedAndForgetsThatOnEdit() {
         val viewModel = viewModel()
         viewModel.onCodeDraftChange("seekervault://pair?v=2")

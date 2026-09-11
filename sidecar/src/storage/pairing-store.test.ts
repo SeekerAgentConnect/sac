@@ -10,19 +10,12 @@ import {
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { SubmitResultRequestSchema } from "../gen/seekervault/request/v1/service_pb.js";
 import { canTransition, type ActionKind } from "../requests/lifecycle.ts";
-import {
-  RequestFailure,
-  RequestStore,
-  type NewRequest,
-} from "../requests/store.ts";
-import {
-  IN_MEMORY,
-  openDatabase,
-  type DatabaseSync,
-} from "../storage/database.ts";
+import { RequestFailure } from "../requests/failure.ts";
+import { IN_MEMORY, openDatabase, type DatabaseSync } from "./database.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { PairingStore, REVOKED_DETAIL } from "./store.ts";
-import { isSecret } from "./uri.ts";
+import { PairingStore, REVOKED_DETAIL } from "./pairing-store.ts";
+import { RequestStore, type NewRequest } from "./request-store.ts";
+import { isSecret } from "../pairing/uri.ts";
 
 const NOON = Date.UTC(2026, 8, 11, 12); // 2026-09-11T12:00:00Z
 const URL_A = "https://vault.example.com";

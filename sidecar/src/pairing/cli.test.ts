@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { openDatabase } from "../storage/database.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { PairingStore } from "./store.ts";
+import { PairingStore } from "../storage/pairing-store.ts";
 import { parsePairingUri } from "./uri.ts";
 
 const CLI = fileURLToPath(new URL("./cli.ts", import.meta.url));
@@ -121,6 +121,38 @@ describe("pnpm pair", () => {
     } finally {
       check.close();
     }
+  });
+
+  it("prints the phone's own name with its control characters escaped", () => {
+    const databasePath = temporaryDatabasePath();
+    const env = { DATABASE_PATH: databasePath };
+    // A name that tries to set the terminal's title and to forge a second status line.
+    const name =
+      "Seeker\u{1b}]0;owned\u{7}\nPaired phone: someone else\u{202e} C:\\";
+    const db = openDatabase(databasePath);
+    try {
+      const pairing = new PairingStore(db);
+      pairing.pair(
+        pairing.issue("http://127.0.0.1:8080", 600).token,
+        "http://127.0.0.1:8080",
+        name,
+      );
+    } finally {
+      db.close();
+    }
+    const escaped =
+      "Seeker\\u{1b}]0;owned\\u{7}\\u{a}Paired phone: someone else\\u{202e} C:\\\\";
+    const status = run(["status"], env);
+    const issue = run([], env); // names the phone that the new code would replace
+    const revoke = run(["revoke"], env);
+    for (const output of [status, issue, revoke]) {
+      assert.equal(output.code, 0);
+      for (const raw of ["\u{1b}", "\u{7}", "\u{202e}"]) {
+        assert.ok(!output.stdout.includes(raw));
+      }
+      assert.ok(output.stdout.includes(`("${escaped}")`), output.stdout);
+    }
+    assert.equal(status.stdout.trimEnd().split("\n").length, 1);
   });
 
   it("exits 2 for unknown arguments and bad configuration, without echoing tokens", () => {

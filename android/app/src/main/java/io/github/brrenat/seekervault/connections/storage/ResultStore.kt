@@ -9,6 +9,7 @@ import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import java.io.File
 import java.io.IOException
+import java.time.DateTimeException
 import java.time.Instant
 import java.util.Base64
 import org.json.JSONException
@@ -74,7 +75,9 @@ class ResultStore(private val dir: File) {
         } catch (e: JSONException) {
             null
         } catch (e: IllegalArgumentException) {
-            null // an unknown enum value, a malformed timestamp, or bad base64
+            null // an unknown enum value, or bad base64
+        } catch (e: DateTimeException) {
+            null // a malformed timestamp
         }
     }
 
@@ -103,6 +106,7 @@ class ResultStore(private val dir: File) {
                 .put("request", Base64.getEncoder().encodeToString(result.request.toByteArray()))
                 .put("delivery", result.delivery.name)
                 .putOpt("lastFailure", result.lastFailure?.name)
+                .putOpt("settledAt", result.settledAt?.toString())
                 .toString()
 
         fun decode(text: String): LocalResult? {
@@ -121,6 +125,9 @@ class ResultStore(private val dir: File) {
                         .optString("lastFailure")
                         .takeIf { it.isNotEmpty() }
                         ?.let(CheckOutcome::valueOf),
+                // Absent from answers stored before it existed, which then count from answeredAt.
+                settledAt =
+                    json.optString("settledAt").takeIf { it.isNotEmpty() }?.let(Instant::parse),
             )
         }
     }

@@ -9,8 +9,8 @@ Stage 2 makes requests durable: agents' requests are stored, and the owner revie
 | Task | What the tests cover | Where |
 | --- | --- | --- |
 | SAW-009: the contract | The lifecycle, results, idempotency, and validation rules, plus fixtures that both runtimes decode the same way | `sidecar/src/requests/*.test.ts`; `RequestProtocolFixturesTest` |
-| SAW-010: the queue | SQLite storage and migrations, the MCP tools, the phone's `RequestService`, and restarts after SIGKILL | `store.test.ts`, `endpoints.test.ts`, `restart.test.ts`, `database.test.ts` |
-| SAW-011: pairing and roles | Pairing tokens, the role matrix, revocation, TLS, and redaction | `sidecar/src/pairing/*.test.ts` |
+| SAW-010: the queue | SQLite storage and migrations, the MCP tools, the phone's `RequestService`, and restarts after SIGKILL | `request-store.test.ts`, `endpoints.test.ts`, `restart.test.ts`, `database.test.ts` |
+| SAW-011: pairing and roles | Pairing tokens, the role matrix, revocation, TLS, and redaction | `sidecar/src/pairing/*.test.ts`, `pairing-store.test.ts` |
 | SAW-012: connections on the phone | The code parser, the Keystore vault, isolation between connections, the real sidecar, and TLS | `connections/` in `android/app/src/test`; `CredentialVaultDeviceTest` |
 | SAW-013: the inbox | See the list below | See the list below |
 | SAW-014: the acceptance gate | Two sidecars, restarts, expiry, rejection, revocation, isolation between connections, the live diagnostic, and the demo tool | [The acceptance scenario](#the-acceptance-scenario-saw-014) |
@@ -29,7 +29,9 @@ The SAW-013 tests:
   - identical request IDs on two servers
   - a cancelled or revoked request
   - a removed connection's answers
-  - pruning of settled answers
+  - pruning of settled answers, a week after they settled
+  - an older fetch that returns last, and a fetch that crosses an answer
+  - a request ID that isn't a UUID
 - **`InboxViewModelTest`** covers rapid second taps, refreshing every connection, sending again, and requests that aren't pending.
 - **`PendingRequestsScreenTest`** and **`RequestDetailsScreenTest`**, on Robolectric, cover:
   - the source, action, age, and expiry of each request
@@ -38,7 +40,7 @@ The SAW-013 tests:
   - the stored outcome instead of buttons
   - a waiting answer's **Send again**
   - expired and superseded requests
-- **`InboxActivityTest`** runs the activity with the app's own storage. A request is fetched when the app opens, answered, and still answered after a rotation. A connection's details open only that connection's requests.
+- **`InboxActivityTest`** runs the activity with the app's own storage. A request is fetched when the app opens, answered, and still answered after a rotation. A connection's details open only that connection's requests. A request made while the app was in the background is fetched when it comes back, and a rotation fetches nothing.
 - **`ResultStoreTest`** covers stored answers across a restart, identical request IDs on two connections, and damaged files.
 - **`StageBoundaryTest`** checks that there's no background component and no push library (Firebase Messaging, GCM).
 - **The test agent's `cli.test.ts`** covers `pnpm agent ack`, `get`, and `cancel`: NOT_PAIRED before pairing, retries with the same key, and reading back an answered request.
@@ -202,3 +204,4 @@ A regular `pip install` of Hermes v0.21.1 refuses to build a wheel, so it was in
 | The demo tool | PASS. Without `MCP_DEMO_TOOLS=true`, the sidecar doesn't list `vault_request_ack`, and a call to it fails as an unknown tool (`endpoints.test.ts`). `pnpm agent ack` then exits 3 and names the variable (`cli.test.ts`). |
 | Clocks | PASS. On a fake clock, `endpoints.test.ts` expired a request over MCP and Connect exactly at its deadline, and refused a pairing code exactly at its expiry. |
 | Deliberate breaks | Each break was caught, and each file was restored byte for byte afterwards. Each break ran alone, under a time limit:<ul><li>`vault_request_ack` served without `MCP_DEMO_TOOLS`: 4 tests failed, in `endpoints.test.ts`, `server.test.ts`, and `cli.test.ts`</li><li>`pnpm agent ack` without its tool check: the exit code 3 test failed</li><li>the test clock not moved ahead: the `pnpm test:queue` expiry case failed</li><li>revocation that leaves PENDING requests: the revocation and isolation cases failed</li><li>a request looked up without its connection: the isolation case failed</li><li>the app never resending a waiting answer: `Stage2AcceptanceTest`'s answer-while-down case failed</li></ul> |
+| After the PR #3 review fixes | PASS:<ul><li>`pnpm check`: 241/241 sidecar tests and 20/20 test agent tests</li><li>`pnpm test:queue` 7/7, `pnpm test:hello` 9/9, `pnpm check:generated`, and `pnpm build`</li><li>`pnpm check:android`: 191/191 unit tests, lint with no issues, and both APKs</li></ul>`ConnectionsActivityTest` failed once while the Node checks ran beside it, then passed twice alone and in a full run on its own.<br><br>Each fix's deliberate break was caught by its new test, and each file was restored byte for byte:<ul><li>no fetch on returning to the foreground</li><li>fetches not serialized</li><li>settled requests brought back by a stale fetch</li><li>request IDs that aren't UUIDs kept</li><li>retention counted from the answer</li><li>a malformed timestamp that throws</li><li>device names printed raw</li><li>port 0 allowed</li><li>SQL outside `storage/`</li></ul>The first attempt at the Android breaks never started Gradle, and one of them broke the syntax. Both were redone. |

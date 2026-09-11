@@ -51,12 +51,17 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         viewModel.onAppVisible()
+        connections.onAppVisible()
     }
 
     override fun onStop() {
         super.onStop()
-        // A rotation recreates the activity but keeps the ViewModel and its open stream.
-        if (!isChangingConfigurations) viewModel.onAppHidden()
+        // A rotation recreates the activity but keeps the ViewModels, the open stream, and the
+        // fetched inbox.
+        if (!isChangingConfigurations) {
+            viewModel.onAppHidden()
+            connections.onAppHidden()
+        }
     }
 }
 

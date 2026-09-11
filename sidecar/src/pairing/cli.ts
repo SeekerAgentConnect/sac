@@ -12,7 +12,7 @@ import { renderUnicodeCompact } from "uqr";
 
 import { ConfigError, loadSidecarConfig } from "../config.ts";
 import { openDatabase } from "../storage/database.ts";
-import { PairingStore, type PairedPhone } from "./store.ts";
+import { PairingStore, type PairedPhone } from "../storage/pairing-store.ts";
 import { pairingUri } from "./uri.ts";
 
 const USAGE = `Usage: pnpm pair [status | revoke]
@@ -97,8 +97,22 @@ function main(args: readonly string[]): number {
 }
 
 function describe(phone: PairedPhone): string {
-  const name = phone.deviceName === "" ? "" : ` ("${phone.deviceName}")`;
+  const name =
+    phone.deviceName === "" ? "" : ` ("${printable(phone.deviceName)}")`;
   return `connection ${phone.connectionId}${name}, paired ${new Date(phone.pairedAtMs).toISOString()}`;
+}
+
+/**
+ * The phone chooses its own name, so it's printed with backslashes, control characters, format
+ * characters, and line separators escaped. It can't start a line of its own or send the terminal an
+ * escape sequence.
+ */
+function printable(text: string): string {
+  return text.replace(/[\\\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, (character) =>
+    character === "\\"
+      ? "\\\\"
+      : `\\u{${(character.codePointAt(0) ?? 0).toString(16)}}`,
+  );
 }
 
 process.exitCode = main(process.argv.slice(2));

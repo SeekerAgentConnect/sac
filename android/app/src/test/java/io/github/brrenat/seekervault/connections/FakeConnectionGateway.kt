@@ -128,6 +128,11 @@ class FakeConnectionGateway : ConnectionGateway {
     /** Runs before each SubmitResult is applied, to hold it or to check what's going on. */
     var beforeSubmit: suspend () -> Unit = {}
 
+    /**
+     * Runs after ListPending reads its page and before it returns it, to hold a page going stale.
+     */
+    var afterList: suspend () -> Unit = {}
+
     /** A server reachable at [url]. Passing an existing [server] makes it reachable there too. */
     fun serve(url: String, server: Server = Server(UUID.randomUUID().toString())): Server {
         servers[url] = server
@@ -161,10 +166,13 @@ class FakeConnectionGateway : ConnectionGateway {
         val all = server.pending[id].orEmpty() + foreignRequests
         val start = pageToken.toIntOrNull() ?: 0
         val end = start + server.pageSize
-        return PendingRequests(
-            all.subList(start, minOf(end, all.size)),
-            if (end < all.size) "$end" else "",
-        )
+        val page =
+            PendingRequests(
+                all.subList(start, minOf(end, all.size)),
+                if (end < all.size) "$end" else "",
+            )
+        afterList()
+        return page
     }
 
     override suspend fun submitResult(

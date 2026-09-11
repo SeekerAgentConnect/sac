@@ -240,6 +240,7 @@ describe("loadSidecarConfig", () => {
       "ftp://vault.example.com",
       "https://owner:secret@vault.example.com",
       "https://vault.example.com/?code=1",
+      "https://vault.example.com:0",
       "not a URL",
     ]) {
       assert.match(
