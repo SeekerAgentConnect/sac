@@ -93,7 +93,18 @@ async function device() {
     adb("-s", serial, "shell", "getprop", name).stdout.trim();
   const emulator =
     prop("ro.kernel.qemu") === "1" || prop("ro.boot.qemu") === "1";
-  const target = `${emulator ? "an emulator" : "a device"} (${prop("ro.product.model")}, Android ${prop("ro.build.version.release")}, API ${prop("ro.build.version.sdk")})`;
+  // Only the Seeker counts as the physical device check. It reports brand "solanamobile" and
+  // model "Seeker" (manufacturer "Solana Mobile Inc.").
+  const seeker =
+    !emulator &&
+    prop("ro.product.brand") === "solanamobile" &&
+    prop("ro.product.model") === "Seeker";
+  const kind = emulator
+    ? "an emulator"
+    : seeker
+      ? "the Seeker"
+      : "a phone that isn't a Seeker";
+  const target = `${kind} (${prop("ro.product.model")}, Android ${prop("ro.build.version.release")}, API ${prop("ro.build.version.sdk")})`;
   console.log(`Stage 1 round trip on ${target}\n`);
 
   // Throwaway tokens and a free port: never the developer's .env or a running sidecar.
@@ -185,9 +196,9 @@ async function device() {
     console.log(
       `\nPASS on ${target}: the app showed the exact text, the double tap sent one OK, and the agent printed ${agent.stdout.trim()}`,
     );
-    if (emulator) {
+    if (!seeker) {
       console.log(
-        "This was an emulator. It doesn't count as the physical Seeker check.",
+        `This was ${emulator ? "an emulator" : "a phone that isn't a Seeker"}. It doesn't count as the physical Seeker check.`,
       );
     }
     return 0;

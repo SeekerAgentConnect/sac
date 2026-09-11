@@ -6,7 +6,7 @@ This guide starts from a MacBook with nothing installed and ends with the Stage 
 Mac: pnpm agent ──MCP──▶ sidecar on 127.0.0.1:8080 ◀──USB, adb reverse── Seeker: the Seeker Vault app
 ```
 
-> **What has been tested.** Every Mac-side command below was run as written on 2026-09-11, and the outputs shown are the real ones. The steps on the Seeker and in Android Studio have not been run yet: no Seeker was attached, and Android Studio isn't installed on the verification Mac. Their expected results come from the Android documentation. See the [verification record](#verification-record-saw-006).
+> **What has been tested.** Every Mac-side command below was run as written on 2026-09-11, and the outputs shown are the real ones. On the same day, the owner followed the Seeker steps on their Seeker (Android 16) and reported them working. The Android Studio steps haven't been recorded; their expected results come from the Android documentation. See the [verification record](#verification-record-saw-006).
 
 If a step fails, look it up in [`troubleshooting.md`](troubleshooting.md).
 
@@ -258,9 +258,9 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolch
 | Missing prerequisites | PASS. Each case failed with a message that names the problem; the messages are in [`troubleshooting.md`](troubleshooting.md). Cases: sidecar not running (exit code 3), no `.env`, placeholder tokens, port 8080 in use, no SDK path, `JAVA_HOME` pointing nowhere, Node.js 24.20.0. Before this change, pnpm ran on Node.js 24.20.0 without a word; it now stops with `ERR_PNPM_BAD_RUNTIME_VERSION`. |
 | The app after a failed first connection | PASS in JVM tests. A closed port maps to Unreachable, and the screen names the URL and the `adb reverse` command. |
 | Repository checks with this change | PASS: `pnpm check`, `pnpm check:android` (42/42 unit tests, lint with no issues, debug APK), `pnpm check:generated`, `pnpm build` |
-| Parts 3 to 6 on the Seeker: Developer options, USB debugging, authorization, `adb install`, launch, logcat, `adb reverse`, Connect, and OK | NOT RUN: no Seeker was attached |
+| Parts 3 to 6 on the Seeker: Developer options, USB debugging, authorization, `adb install`, launch, logcat, `adb reverse`, Connect, and OK | PASS, reported by the owner on 2026-09-11, on their Seeker (Android 16, API 36). Not run during the scripted walkthrough, when no Seeker was attached. |
 | Android Studio: open `android/`, sync, and Run | NOT RUN: Android Studio isn't installed on the verification Mac |
-| Step 29, after reconnecting USB | NOT RUN: no Seeker was attached |
+| Step 29, after reconnecting USB | NOT RUN. No Seeker was attached during the walkthrough, and the owner's run didn't record this step. |
 | A JDK older than 17 | NOT RUN: no such JDK on the verification Mac |
 
 To record a device run, note the commit, the Seeker's Android version (`adb shell getprop ro.build.version.release`), and PASS, FAIL, or NOT RUN for each step. A run with the Connect test client doesn't count as a device pass.

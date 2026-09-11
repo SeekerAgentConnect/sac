@@ -2,7 +2,7 @@
 
 This page connects [Hermes Agent](https://hermes-agent.nousresearch.com) to the sidecar's MCP endpoint, so a Hermes session can call `vault_display_command`: Hermes sends text, the Seeker shows it, you tap **OK**, and Hermes gets the acknowledgement. It covers Hermes on the Mac and Hermes on a VPS.
 
-> **What has been tested.** Hermes Agent v0.21.1 (2026.9.7) was run with this configuration against the sidecar, including through a forwarded port, and every output below is real. Hermes's own MCP client made the tool calls, without an LLM, and a test client stood in for the phone. A real Hermes session with a model and the physical Seeker has not been run yet. See [`docs/testing/stage-1.md`](../testing/stage-1.md).
+> **What has been tested.** Hermes Agent v0.21.1 (2026.9.7) was run with this configuration against the sidecar, including through a forwarded port, and every output below is real. Hermes's own MCP client made the tool calls, without an LLM, and a test client stood in for the phone. On 2026-09-11, the owner also ran the full round trip and reported it passed. That run used their own Hermes on a VPS, reaching the Mac [over Tailscale](#over-a-vpn-you-already-use), and their physical Seeker. See [`docs/testing/stage-1.md`](../testing/stage-1.md).
 
 ## Before you start
 
@@ -150,7 +150,25 @@ The sidecar accepts tunnelled requests because their `Host` is still a loopback 
 
 The tunnel lasts only as long as the SSH session. When it drops, calls fail with the errors below. Start it again, then run `/reload-mcp` if Hermes parked the server.
 
-If you already have a secured path from the VPS to the Mac, such as a VPN you manage, you can run the same tunnel over it. In every case, keep the sidecar on the Mac's loopback: never set `SIDECAR_HOST` to a public address, and never expose port 8080. The sidecar speaks plain HTTP. A public gateway with TLS and OAuth comes in a later stage.
+In every case, the sidecar itself stays on the Mac's loopback address: never set `SIDECAR_HOST` to a public address, and never expose port 8080 to the internet. The sidecar speaks plain HTTP. A public gateway with TLS and OAuth comes in a later stage.
+
+### Over a VPN you already use
+
+If the Mac and the VPS already share a private VPN that you control, such as Tailscale, Hermes can reach the sidecar over it instead of an SSH tunnel. The owner's Stage 1 check passed this way.
+
+1. **Forward a port on the Mac's VPN address to the sidecar.** For example, with `socat`:
+
+   ```bash
+   socat TCP-LISTEN:8081,fork,reuseaddr,bind=<mac-vpn-ip> TCP:127.0.0.1:8080
+   ```
+
+   Only this forward listens on the VPN address, which for Tailscale is a `100.x.y.z` address. The sidecar stays on loopback.
+
+2. **Limit who can reach that port.** In the VPN's access rules (Tailscale ACLs), allow only the VPS to reach port 8081 on the Mac.
+3. **Let the sidecar accept the address.** Add `MCP_ALLOWED_HOSTS=<mac-vpn-ip>` to the sidecar's `.env`, and restart the sidecar. Without it, the sidecar refuses Hermes with 403, because the requests' `Host` isn't a loopback address.
+4. **Point Hermes at the forward.** On the VPS, set `url: "http://<mac-vpn-ip>:8081/mcp"` in the `seeker_vault` entry. Then run `hermes mcp test seeker_vault` and `/reload-mcp`.
+
+The traffic is plain HTTP inside the VPN's encrypted tunnel. Never bind the forward to a public address.
 
 ## 5. What failures look like
 
@@ -162,6 +180,7 @@ These are real results from Hermes v0.21.1. "The model sees" is the tool result 
 | The tunnel or connection drops while the phone waits for OK | The model sees `{"error": "MCP call failed: MCPError: SSE stream ended without a response"}` at once. The sidecar cancels the command, so tapping OK on the phone shows "The agent cancelled this command." Nothing is replayed. |
 | The tunnel is down, or the sidecar isn't running, when the session starts | Hermes tries three times, then parks the server, and the tool is missing from the session. A call gets `{"error": "Unknown tool: mcp__seeker_vault__vault_display_command"}`, and `hermes mcp test` says `✗ Connection failed (7784ms): All connection attempts failed`. Start the tunnel or sidecar, then run `/reload-mcp`. |
 | The token is missing from `~/.hermes/.env`, or wrong | `hermes mcp test` says `✗ Connection failed (6330ms): a valid MCP token is required`, and the sidecar logs `rejected POST /mcp: a valid MCP token is required`. Hermes treats this as permanent and parks the server. Fix `.env`, then run `/reload-mcp`. |
+| Hermes reaches the sidecar through a VPN address, and the sidecar refuses it | `hermes mcp test` fails, and the sidecar logs `rejected POST /mcp: the Host header is not a loopback address or an MCP_ALLOWED_HOSTS entry`. Add the Mac's VPN address to `MCP_ALLOWED_HOSTS` and restart the sidecar; see [over a VPN](#over-a-vpn-you-already-use). |
 | Nobody taps OK in time | Not run with Hermes. The sidecar's answer is `TIMEOUT: no acknowledgement within 60 seconds`, and Hermes passes it on as an error, the same way as `OFFLINE`. |
 
 For problems on the phone or the Mac, see [`troubleshooting.md`](../guides/troubleshooting.md).
@@ -171,8 +190,3 @@ For problems on the phone or the Mac, see [`troubleshooting.md`](../guides/troub
 - The token belongs in `~/.hermes/.env` with mode 600, never in `config.yaml` or a chat.
 - Anyone with the MCP token can show text on your phone and wait for your OK. In later stages the same endpoint carries wallet requests, so treat it like a password.
 - Hermes redacts `Bearer …` values from MCP error messages, and the sidecar never logs tokens or command text.
-
-## Notes
-
-- confugured rules for 8081 port in tailscale
-- socat TCP-LISTEN:8081,fork,reuseaddr,bind=100.119.134.109 TCP:127.0.0.1:8080

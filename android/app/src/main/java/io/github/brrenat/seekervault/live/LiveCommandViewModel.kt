@@ -261,6 +261,8 @@ class LiveCommandViewModel(
 
     private fun isHttpUrl(value: String): Boolean {
         val uri = runCatching { URI(value) }.getOrNull() ?: return false
-        return (uri.scheme == "http" || uri.scheme == "https") && !uri.host.isNullOrEmpty()
+        return (uri.scheme == "http" || uri.scheme == "https") &&
+            !uri.host.isNullOrEmpty() &&
+            (uri.port == -1 || uri.port in 1..65535)
     }
 }

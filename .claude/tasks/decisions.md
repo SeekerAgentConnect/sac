@@ -102,3 +102,16 @@
   - Android: the manifest's components and permissions, forbidden storage, key, and background APIs in app code, and the absence of wallet, storage, and background classes on the classpath.
   - Node: no wallet packages in the lockfile, and no file-system, database, or key APIs in the sidecar's shipped code.
 - **Stage 1 stays unaccepted until the owner records the device round trip.** The physical Seeker and the real Hermes round trip are NOT RUN; an emulator and a simulated device don't close them.
+
+## 2026-09-11 — PR #2 review
+
+- **A VPN address for `/mcp` is configuration, not code.**
+  - Commit `e035411` put the owner's Tailscale address in `mcp-endpoint.ts`'s loopback list, so that their Hermes on a VPS could connect through `socat`.
+  - That address is now `MCP_ALLOWED_HOSTS`, validated as host names or IP addresses without a scheme, port, or wildcard. The owner's `.env` carries it.
+  - The DNS-rebinding defense still holds. A page on another origin fails the Origin check, and DNS rebinding can't produce an IP-literal Host.
+- **Node is pinned exactly: `devEngines.runtime` requires 24.21.0.** `.nvmrc`, the docs, and CI all say 24.21.0, and a range would let untested patch releases through silently. Updating Node means changing `.nvmrc` and `package.json` together.
+- **Tokens are limited to RFC 6750 bearer-token characters:** `A-Z a-z 0-9 - . _ ~ + /`, plus a trailing `=`. The `Authorization` parser accepts only tokens without spaces, so any other token would start a sidecar that no client can use.
+- **`--device` identifies the Seeker by `ro.product.brand=solanamobile` and `ro.product.model=Seeker`.** These values were read from the owner's device, which reports manufacturer "Solana Mobile Inc." and Android 16. Other phones are labeled "a phone that isn't a Seeker", and their runs don't count.
+- **`sdkmanager "platforms;android-37.0"` stays.** The review suggested `platforms;android-37`. The installed platform's own `package.xml`, however, declares `path="platforms;android-37.0"` (API level 37.0). Since API 36.1, platform packages carry a minor version.
+- **An overdue command is settled before the next one starts.** `LiveCommandSlot.start()` already expired it, but the bridge's waiter wasn't answered, so the first MCP call hung. `display()` now settles it as `TIMEOUT` first.
+- **The owner's device and Hermes pass is recorded with attribution:** "run and reported by the owner on 2026-09-11". The Seeker's details come from adb. The owner's Hermes version wasn't reported.

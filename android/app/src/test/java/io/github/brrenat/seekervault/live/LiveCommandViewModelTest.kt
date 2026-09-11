@@ -274,6 +274,12 @@ class LiveCommandViewModelTest {
                 ConnectionState.Disconnected(DisconnectReason.InvalidUrl),
                 viewModel.state.value.connection,
             )
+            viewModel.onServerUrlChange("http://127.0.0.1:99999") // no such TCP port
+            viewModel.connect()
+            assertEquals(
+                ConnectionState.Disconnected(DisconnectReason.InvalidUrl),
+                viewModel.state.value.connection,
+            )
             viewModel.onServerUrlChange(" http://127.0.0.1:8080 ")
             viewModel.onPhoneTokenChange("  ")
             viewModel.connect()

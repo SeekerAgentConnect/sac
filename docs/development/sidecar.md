@@ -4,16 +4,17 @@ The sidecar is the self-hosted TypeScript/Node server that sits between agents a
 
 ## Configuration
 
-`pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`. Every variable is required.
+`pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`. Every variable except `MCP_ALLOWED_HOSTS` is required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
 | `SIDECAR_HOST` | Address to listen on | `127.0.0.1`, `::1`, or `localhost`. Stage 1 never listens beyond the machine. |
 | `SIDECAR_PORT` | Port to listen on | 1 to 65535; `.env.example` uses 8080 |
-| `MCP_TOKEN` | Bearer token that agents send to `/mcp` | At least 32 characters, and not the placeholder |
-| `PHONE_TOKEN` | Bearer token that the phone sends to the Connect API | At least 32 characters, not the placeholder, and different from `MCP_TOKEN` |
+| `MCP_TOKEN` | Bearer token that agents send to `/mcp` | At least 32 characters, only bearer-token characters (letters, digits, and `- . _ ~ + /`), and not the placeholder |
+| `PHONE_TOKEN` | Bearer token that the phone sends to the Connect API | The same rules as `MCP_TOKEN`, and a different value |
 | `LIVE_COMMAND_TIMEOUT_SECONDS` | How long a command waits for the user's OK | 1 to 3600 |
 | `MCP_URL` | Not read by the sidecar; the test agent (SAW-005) uses it | None |
+| `MCP_ALLOWED_HOSTS` | Optional. Host names or IP addresses, comma-separated, that `/mcp` accepts in the `Host` and `Origin` headers besides loopback. It's for an agent that reaches the sidecar through a VPN address; see [Hermes over a VPN](../integrations/hermes.md#over-a-vpn-you-already-use). | No scheme, port, or wildcard |
 
 Generate each token with `openssl rand -hex 32`. If the configuration is invalid, the sidecar names every problem and exits with status 1. It never prints a token value.
 
@@ -53,8 +54,9 @@ A restart loses the in-flight command by design, and nothing is replayed after i
 
 The sidecar checks requests to `/mcp` as follows, following the MCP transport specification's defense against DNS rebinding:
 
-- **Host header:** must be a loopback name (`127.0.0.1`, `localhost`, or `[::1]`), on any port so that SSH tunnels work. Otherwise it returns 403.
-- **Origin header:** if present, it must also be a loopback origin. Otherwise it returns 403.
+- **Request target:** a target that isn't a path, such as `//[`, gets 400, and the sidecar keeps running.
+- **Host header:** must be a loopback name (`127.0.0.1`, `localhost`, or `[::1]`) or an `MCP_ALLOWED_HOSTS` entry, on any port so that SSH tunnels and port forwards work. Otherwise it returns 403.
+- **Origin header:** if present, it must also be a loopback origin or an `MCP_ALLOWED_HOSTS` entry. Otherwise it returns 403.
 - **Token:** a missing or wrong token gets 401 with `WWW-Authenticate: Bearer`.
 - **Session:** an unknown session ID gets 404, and the client then starts a new session.
 - **Request format:** the MCP SDK checks the `Accept` and `Content-Type` headers and the protocol version.
@@ -104,7 +106,7 @@ A request from a non-loopback origin, for example a web page after DNS rebinding
 ```console
 $ curl -s -X POST http://127.0.0.1:8080/mcp -H "Authorization: Bearer $MCP_TOKEN" \
     -H 'Origin: http://evil.example' -H 'Content-Type: application/json' -d '{}'
-{"jsonrpc":"2.0","error":{"code":-32000,"message":"the Origin header is not a loopback origin"},"id":null}
+{"jsonrpc":"2.0","error":{"code":-32000,"message":"the Origin header is not a loopback origin or an MCP_ALLOWED_HOSTS entry"},"id":null}
 ```
 
 The phone API called with the MCP token:

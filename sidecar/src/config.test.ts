@@ -34,6 +34,7 @@ describe("loadSidecarConfig", () => {
       mcpToken: MCP_TOKEN,
       phoneToken: PHONE_TOKEN,
       liveCommandTimeoutSeconds: 60,
+      mcpAllowedHosts: [],
     });
   });
 
@@ -102,6 +103,44 @@ describe("loadSidecarConfig", () => {
     assert.deepEqual(problemsFor({ ...validEnv, PHONE_TOKEN: MCP_TOKEN }), [
       "MCP_TOKEN and PHONE_TOKEN must be different values.",
     ]);
+  });
+
+  it("rejects tokens that can't travel as bearer credentials", () => {
+    const spaced = `${"m".repeat(20)} ${"m".repeat(20)}`;
+    assert.match(
+      problemsFor({ ...validEnv, MCP_TOKEN: spaced }).join("\n"),
+      /MCP_TOKEN may contain only/,
+    );
+    assert.match(
+      problemsFor({ ...validEnv, PHONE_TOKEN: `${"p".repeat(40)}"` }).join(
+        "\n",
+      ),
+      /PHONE_TOKEN may contain only/,
+    );
+  });
+
+  it("reads the extra /mcp host names in MCP_ALLOWED_HOSTS", () => {
+    assert.deepEqual(
+      loadSidecarConfig({
+        ...validEnv,
+        MCP_ALLOWED_HOSTS: " 100.64.0.1, Mac.tailnet.ts.net ,[fd7a:115c::1],",
+      }).mcpAllowedHosts,
+      ["100.64.0.1", "mac.tailnet.ts.net", "[fd7a:115c::1]"],
+    );
+    assert.deepEqual(
+      loadSidecarConfig({ ...validEnv, MCP_ALLOWED_HOSTS: "" }).mcpAllowedHosts,
+      [],
+    );
+  });
+
+  it("rejects MCP_ALLOWED_HOSTS entries with a scheme, port, or wildcard", () => {
+    for (const value of ["http://100.64.0.1", "100.64.0.1:8081", "*.ts.net"]) {
+      assert.match(
+        problemsFor({ ...validEnv, MCP_ALLOWED_HOSTS: value }).join("\n"),
+        /MCP_ALLOWED_HOSTS must list host names/,
+        value,
+      );
+    }
   });
 
   it("never includes token values in the error message", () => {

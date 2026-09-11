@@ -70,7 +70,7 @@ Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.pr
 
 Gradle installs the debug app and the test APK, then removes both after the run. To get the app back, reinstall it with `adb install`.
 
-`pnpm check:android` builds the test APK (`assembleDebugAndroidTest`) but doesn't run it. CI runs it on an API 36 emulator. An emulator run never counts as the physical Seeker check.
+`pnpm check:android` builds the test APK (`assembleDebugAndroidTest`) but doesn't run it. CI runs it on an API 36 emulator. The script names what it ran on: "the Seeker", identified by brand `solanamobile` and model `Seeker`; "an emulator"; or "a phone that isn't a Seeker". Only the Seeker counts as the physical Seeker check.
 
 ## Verification record: SAW-004
 
