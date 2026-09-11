@@ -38,3 +38,15 @@
   3. Give in-flight responses up to 1 second to finish.
   4. Close the MCP sessions and any remaining connections.
 - **Integration tests use the real MCP SDK client and a Connect client against an in-process server on port 0.** The restart test runs `node src/main.ts` as a child process, so the process boundary is real.
+
+## 2026-09-11 — SAW-004 Android live-test screen (SEE-10)
+
+- **The foreground is tracked with Activity `onStart` and `onStop`, skipping `isChangingConfigurations`.** A rotation keeps the ViewModel and its stream, because closing and reopening the stream would make the sidecar cancel the command. Backgrounding closes the stream, and coming back reopens it only if the user had connected. There's no extra lifecycle-process dependency.
+- **The ViewModel owns the connection. The screen is a stateless composable.** The transport sits behind `LiveCommandTransport`, so the ViewModel, Compose, and Activity tests all use one `FakeSidecar`. `SeekerVaultApplication.liveCommandTransports` is the injection point for tests.
+- **Double taps are guarded in the state, not only in the UI.** The status moves to Sending synchronously before the request, so a second tap does nothing even before recomposition.
+- **Connection loss clears the received text and says why.** The sidecar has already cancelled the command, so showing it would invite an OK that must fail.
+- **Connect-Kotlin runs with `streamTimeout = null`, over an OkHttp client without a read timeout.** Its defaults are 10 seconds, which would end an idle WatchCommands stream. Server streams aren't duplex, so HTTP/1.1 over `adb reverse` works.
+- **Cleartext is a debug source-set overlay:** a network security config for 127.0.0.1 and localhost only. Release builds carry no such config, and the aapt2 check confirmed it.
+- **UI tests run on Robolectric, as JVM tests, so CI needs no emulator.** Robolectric 4.16.1 runs them at SDK 36, because 4.17, which adds SDK 37, was released less than a day ago. Device and emulator instrumentation tests are SAW-008's.
+- **The transport is also tested against the real sidecar,** with `node sidecar/src/main.ts` and an MCP SDK agent script. This is the closest automated stand-in for the device check, and it is not reported as one.
+- **Tokens stay in memory only, never in saved state.** Process death forgets them.

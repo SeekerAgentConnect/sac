@@ -31,6 +31,15 @@ android {
         // Cross-runtime protocol fixtures, shared with the sidecar tests.
         getByName("test") { resources.srcDir("../../proto/fixtures") }
     }
+
+    // Robolectric runs the Compose tests on the JVM and needs the app's resources.
+    testOptions { unitTests { isIncludeAndroidResources = true } }
+
+    lint {
+        // Versions are pinned and reviewed on purpose (docs/development/toolchain.md); lint's
+        // network lookups for newer releases would make its results change from day to day.
+        disable += setOf("NewerVersionAvailable", "GradleDependency", "AndroidGradlePluginVersion")
+    }
 }
 
 dependencies {
@@ -38,8 +47,29 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.connect.kotlin)
+    implementation(libs.connect.kotlin.javalite)
+    implementation(libs.connect.kotlin.okhttp)
     implementation(libs.protobuf.kotlin.lite)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+}
+
+tasks.withType<Test>().configureEach {
+    // ConnectLiveCommandTransportTest runs the real sidecar from this repository.
+    val repoRoot = layout.projectDirectory.dir("../..")
+    systemProperty("seekervault.repoRoot", repoRoot.asFile.absolutePath)
+    inputs
+        .dir(repoRoot.dir("sidecar/src"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("sidecarSources")
 }

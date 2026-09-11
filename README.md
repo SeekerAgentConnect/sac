@@ -11,7 +11,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | SAW-001: Repository, toolchains, basic CI | Done. The empty Android app and the sidecar skeleton build and pass the checks. |
 | SAW-002: Live-command protocol and generated clients | Done. `LiveCommandService`, generated TypeScript and Kotlin code, and cross-runtime fixtures; see [`docs/protocol.md`](docs/protocol.md). |
 | SAW-003: Live MCP command bridge | Done. `/mcp` with `vault_display_command`, the phone's Connect API, and `/healthz`; see [`docs/development/sidecar.md`](docs/development/sidecar.md). |
-| SAW-004: Android hello-world screen | Not started |
+| SAW-004: Android hello-world screen | Done. A stock Material 3 live-test screen: connect, the received text, and a one-tap OK, with lifecycle handling; see [`docs/development/android.md`](docs/development/android.md). The physical Seeker check is NOT RUN. |
 | SAW-005: MCP test client | Not started |
 | SAW-006: MacBook → Seeker build and run guide | Not started |
 | SAW-007: Real Hermes connection | Not started |
@@ -21,7 +21,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 
 | Path | Contents |
 | --- | --- |
-| `android/` | Kotlin/Compose/Material 3 app with one `app` module, plus the Gradle wrapper and version catalog |
+| `android/` | Kotlin/Compose/Material 3 app with one `app` module: the live-test screen and its Connect client; see [`docs/development/android.md`](docs/development/android.md) |
 | `sidecar/` | TypeScript/Node sidecar: the MCP endpoint `/mcp`, the phone's Connect API, and `/healthz`, on loopback, around an in-memory live-command bridge; see [`docs/development/sidecar.md`](docs/development/sidecar.md) |
 | `proto/` | Protobuf contract (a Buf module) and cross-runtime fixtures in `proto/fixtures`; see [`docs/protocol.md`](docs/protocol.md) |
 | `scripts/` | `generate.mjs`, which backs `pnpm generate` and `pnpm check:generated` |

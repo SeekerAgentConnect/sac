@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The only permission: the live-test screen talks to the sidecar over the network. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
+        android:name=".SeekerVaultApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@android:drawable/sym_def_app_icon"

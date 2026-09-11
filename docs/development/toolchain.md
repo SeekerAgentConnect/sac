@@ -38,9 +38,13 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | Kotlin (AGP built-in Kotlin and the Compose compiler plugin) | 2.4.20 | `android/gradle/libs.versions.toml` |
 | Compose BOM | 2026.09.00 | `android/gradle/libs.versions.toml` |
 | androidx.activity:activity-compose | 1.13.0 | `android/gradle/libs.versions.toml` |
-| Connect-Kotlin (`com.connectrpc:connect-kotlin`) | 0.9.0 | `android/gradle/libs.versions.toml` |
+| Connect-Kotlin (`connect-kotlin`, `connect-kotlin-okhttp`, `connect-kotlin-google-javalite-ext`), which brings OkHttp 5.4 | 0.9.0 | `android/gradle/libs.versions.toml` |
 | `com.google.protobuf:protobuf-kotlin-lite` | 4.36.1 | `android/gradle/libs.versions.toml` |
+| AndroidX Lifecycle (`lifecycle-viewmodel-compose`, `lifecycle-runtime-compose`) | 2.11.0 | `android/gradle/libs.versions.toml` |
 | JUnit | 4.13.2 | `android/gradle/libs.versions.toml` |
+| Robolectric, running the tests on SDK 36 | 4.16.1 | `android/gradle/libs.versions.toml`, `android/app/src/test/resources/robolectric.properties` |
+| AndroidX Test (`core`, `ext:junit`) | 1.7.0, 1.3.0 | `android/gradle/libs.versions.toml` |
+| kotlinx-coroutines-test | 1.11.0 | `android/gradle/libs.versions.toml` |
 | Spotless, ktfmt (kotlinlang style) | 8.10.2, 0.64 | `android/gradle/libs.versions.toml` |
 | Foojay toolchain resolver | 1.0.0 | `android/settings.gradle.kts` |
 | Android SDK Platform | 37.0, used for `compileSdk` and `targetSdk` 37 with `minSdk` 31 | `android/app/build.gradle.kts` |
@@ -59,7 +63,7 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | `protoc-gen-es` 2.14.1 (local), `target=js+dts` | `sidecar/src/gen` | `@bufbuild/protobuf` 2.14.1, plus `@connectrpc/connect` 2.2.0 for the service |
 | `buf.build/protocolbuffers/java:v36.1`, `lite` | `android/app/src/main/generated/java` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/protocolbuffers/kotlin:v36.1`, `lite` | `android/app/src/main/generated/kotlin` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
-| `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0. The OkHttp transport and the lite codec arrive with the Android client in SAW-004. |
+| `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0, with its OkHttp transport and lite codec at the same version |
 
 - **Generation is covered in the protocol doc.** [`docs/protocol.md`](../protocol.md#generated-code) describes generation, the cross-runtime fixtures, and the stale-output check (`pnpm check:generated`).
 - **The TypeScript output is JavaScript plus type declarations.** Node's type stripping can't run the TypeScript `enum`s that `target=ts` produces. `sidecar/tsconfig.build.json` sets `allowJs`, so `pnpm build` also copies that JavaScript to `dist/`.

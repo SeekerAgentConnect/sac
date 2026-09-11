@@ -4,53 +4,49 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import io.github.brrenat.seekervault.live.LiveCommandRoute
+import io.github.brrenat.seekervault.live.LiveCommandViewModel
 
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent { SeekerVaultApp() }
-    }
-}
-
-/** Stage 1 bootstrap screen: stock Material 3 components and baseline colors only. */
-@Composable
-fun SeekerVaultApp() {
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
-    ) {
-        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-            Column(
-                modifier = Modifier.padding(innerPadding).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(text = stringResource(R.string.bootstrap_status))
+    private val viewModel: LiveCommandViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                LiveCommandViewModel((application as SeekerVaultApplication).liveCommandTransports)
             }
         }
     }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent { SeekerVaultTheme { LiveCommandRoute(viewModel) } }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        viewModel.onAppVisible()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // A rotation recreates the activity but keeps the ViewModel and its open stream.
+        if (!isChangingConfigurations) viewModel.onAppHidden()
+    }
 }
 
-@Preview(showBackground = true)
+/** Stock Material 3 with its baseline light and dark color schemes. */
 @Composable
-private fun SeekerVaultAppPreview() {
-    SeekerVaultApp()
+fun SeekerVaultTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
+        content = content,
+    )
 }
