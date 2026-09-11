@@ -9,7 +9,9 @@ import {
   RequestErrorDetailSchema,
   RequestState,
 } from "../gen/seekervault/request/v1/request_pb.js";
+import { PairingStore } from "../pairing/store.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
+import { openDatabase } from "../storage/database.ts";
 import {
   Code,
   ConnectError,
@@ -17,6 +19,7 @@ import {
   connectAgent,
   errorCode,
   pairPhone,
+  pairingClient,
   requestClient,
   viewOf,
   type TestPhone,
@@ -39,7 +42,7 @@ let agent: Client;
 let paired: TestPhone;
 let keys = 0;
 
-function config(databasePath: string, pendingLimit = 100) {
+function config(databasePath: string, pendingLimit = 100, demoTools = true) {
   return {
     host: "127.0.0.1",
     port: 0,
@@ -49,6 +52,7 @@ function config(databasePath: string, pendingLimit = 100) {
     databasePath,
     requestTtlSeconds: 86_400,
     pendingLimit,
+    demoTools,
   };
 }
 
@@ -160,6 +164,41 @@ describe("durable requests over MCP and Connect", () => {
       tools.find((tool) => tool.name === REQUEST_ACK_TOOL)?.description ?? "",
       /not the owner's approval/,
     );
+  });
+
+  it("serves vault_request_ack only when the demo tools are on", async () => {
+    const plain = await startSidecar(config(":memory:", 100, false), {
+      log: () => undefined,
+    });
+    const plainAgent = await connectAgent(plain.url, MCP_TOKEN);
+    try {
+      const { tools } = await plainAgent.listTools();
+      assert.deepEqual(
+        tools.map((tool) => tool.name).sort(),
+        [CANCEL_REQUEST_TOOL, "vault_display_command", GET_REQUEST_TOOL].sort(),
+      );
+      assert.doesNotMatch(
+        plainAgent.getInstructions() ?? "",
+        /vault_request_ack/,
+      );
+      assert.match(
+        agent.getInstructions() ?? "",
+        /vault_request_ack, a development and demo tool/,
+      );
+      const refused = await callTool(plainAgent, REQUEST_ACK_TOOL, {
+        text: "Not a demo sidecar",
+        idempotency_key: "no-demo-1",
+      });
+      assert.equal(refused.isError, true);
+      const [content] = refused.content;
+      assert.match(
+        content?.type === "text" ? content.text : "",
+        /Tool vault_request_ack not found/,
+      );
+    } finally {
+      await plainAgent.close();
+      await plain.close();
+    }
   });
 
   it("answers vault_request_ack at once with a PENDING request, with no phone connected", async () => {
@@ -422,5 +461,130 @@ describe("durable requests over MCP and Connect", () => {
       request_id: "abc",
     });
     assert.equal(errorCode(malformed), "INVALID_PARAMETERS");
+  });
+});
+
+// A fake clock that moves only when the test moves it, and a throwaway database for each sidecar.
+describe("durable requests and pairing codes on the sidecar's clock", () => {
+  async function clockedSidecar(): Promise<{
+    readonly sidecar: Sidecar;
+    readonly databasePath: string;
+    readonly clock: { now: number };
+  }> {
+    const clock = { now: Date.now() };
+    const databasePath = temporaryDatabasePath();
+    const started = await startSidecar(config(databasePath), {
+      log: () => undefined,
+      now: () => clock.now,
+    });
+    return { sidecar: started, databasePath, clock };
+  }
+
+  it("expires a request on both endpoints at its deadline, and not a millisecond before", async () => {
+    const { sidecar: clocked, databasePath, clock } = await clockedSidecar();
+    const clockedAgent = await connectAgent(clocked.url, MCP_TOKEN);
+    try {
+      const owner = await pairPhone(clocked.url, databasePath);
+      const created = viewOf(
+        await callTool(clockedAgent, REQUEST_ACK_TOOL, {
+          text: "Expires on the sidecar's clock",
+          idempotency_key: "clock-1",
+          expires_in_seconds: 60,
+        }),
+      );
+      assert.equal(created.created_at, new Date(clock.now).toISOString());
+      assert.equal(
+        created.expires_at,
+        new Date(clock.now + 60_000).toISOString(),
+      );
+      const read = async (): Promise<RequestView> =>
+        viewOf(
+          await callTool(clockedAgent, GET_REQUEST_TOOL, {
+            request_id: created.request_id,
+          }),
+        );
+      const pending = async (): Promise<(string | undefined)[]> =>
+        (
+          await phone(owner.phoneToken, clocked).listPending({
+            connectionId: owner.connectionId,
+          })
+        ).requests.map((request) => request.ref?.requestId);
+
+      clock.now += 59_999;
+      assert.equal((await read()).status, "PENDING");
+      assert.deepEqual(await pending(), [created.request_id]);
+
+      clock.now += 1;
+      const expired = await read();
+      assert.equal(expired.status, "EXPIRED");
+      assert.equal(expired.terminal, true);
+      assert.equal(expired.updated_at, new Date(clock.now).toISOString());
+      assert.equal(
+        expired.detail,
+        "The request expired before the owner decided.",
+      );
+      assert.deepEqual(await pending(), []);
+      await assert.rejects(
+        phone(owner.phoneToken, clocked).submitResult({
+          ref: refOf(created, owner.connectionId),
+          result: { case: "acknowledgement", value: {} },
+        }),
+        connectFailure(
+          Code.FailedPrecondition,
+          RequestError.INVALID_STATE,
+          RequestState.EXPIRED,
+        ),
+      );
+      assert.equal(
+        errorCode(
+          await callTool(clockedAgent, CANCEL_REQUEST_TOOL, {
+            request_id: created.request_id,
+          }),
+        ),
+        "INVALID_STATE",
+      );
+    } finally {
+      await clockedAgent.close();
+      await clocked.close();
+    }
+  });
+
+  it("pairs with a code until its expiry, refuses it from then on, and keeps the paired phone", async () => {
+    const { sidecar: clocked, databasePath, clock } = await clockedSidecar();
+    const issue = (): string => {
+      const db = openDatabase(databasePath);
+      try {
+        return new PairingStore(db, { now: () => clock.now }).issue(
+          clocked.url,
+          60,
+        ).token;
+      } finally {
+        db.close();
+      }
+    };
+    try {
+      const first = issue();
+      clock.now += 59_999;
+      const paired = await pairingClient(clocked.url, first).pair({
+        serverUrl: clocked.url,
+        deviceName: "In time",
+      });
+      const late = issue();
+      clock.now += 60_000;
+      await assert.rejects(
+        pairingClient(clocked.url, late).pair({
+          serverUrl: clocked.url,
+          deviceName: "Too late",
+        }),
+        connectFailure(Code.Unauthenticated, RequestError.UNAUTHENTICATED),
+      );
+      // The refused code revoked nothing: the phone paired in time still works.
+      const { requests } = await phone(paired.phoneToken, clocked).listPending({
+        connectionId: paired.connectionId,
+      });
+      assert.deepEqual(requests, []);
+    } finally {
+      await clocked.close();
+    }
   });
 });

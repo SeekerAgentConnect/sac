@@ -6,6 +6,8 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 
 **Stage 2: Persistent requests and connections.** The sidecar stores agents' requests, which survive restarts, and the phone fetches them when the app opens. Several self-hosted servers can be connected. There's still no wallet: a queued acknowledgement tests the workflow.
 
+**Status:** every Stage 2 task is done, and the automated acceptance scenario passes from both sides: `pnpm test:queue` and the app's `Stage2AcceptanceTest`. The owner's checks on the physical Seeker are NOT RUN; see [`docs/testing/stage-2.md`](docs/testing/stage-2.md#acceptance-report-saw-014).
+
 | Task | Status |
 | --- | --- |
 | SAW-009: Durable request contract and lifecycle | Done. `seekervault.request.v1` defines the phone's `PairingService` and `RequestService`, the actions, the lifecycle and its transitions, idempotency, and the errors. [`docs/protocol.md`](docs/protocol.md#stage-2-durable-requests) specifies all of that plus the agent's MCP tools, and [`docs/architecture.md`](docs/architecture.md) shows how the parts fit together. The rules exist as tested pure code in `sidecar/src/requests/`, with fixtures checked in both runtimes. SAW-010 serves it. |
@@ -13,7 +15,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | SAW-011: Secure pairing and separate access roles | Done. `pnpm pair` shows a one-use pairing code, as a QR code and as text, and the phone exchanges it for its own credential. Only that credential opens the phone's `RequestService`. The agent's MCP token opens `/mcp` only, and `PHONE_TOKEN` stays with the Stage 1 live-test screen. One phone is paired at a time, and `pnpm pair revoke` revokes it. A phone on another network reaches the loopback sidecar through a trusted TLS endpoint, such as Tailscale Serve. See [`docs/security.md`](docs/security.md). |
 | SAW-012: Android pairing and multiple connections | Done. The app opens on **Connections**. It pairs by scanning the `pnpm pair` QR code or by entering the code, and it shows the server for the owner to confirm first. Each sidecar's connection is kept apart, with its own name, address, and credential. The credential is encrypted under an Android Keystore key and never backed up. **Connection details** refreshes, renames, and disconnects, which revokes the connection on the sidecar. See [`docs/guides/pairing.md`](docs/guides/pairing.md). |
 | SAW-013: Pending inbox and queued acknowledgements | Done. The phone fetches pending requests when the app opens, when a connection is opened, and on **Refresh**. There's no push or background service. **Pending requests** shows each request's source, action, age, and expiry, with empty, offline, and error states. **Request details** acknowledges or rejects a queued acknowledgement. The answer is stored before it's sent, and sent again after a failure until the sidecar confirms it. A reopened request shows its outcome. `pnpm agent ack`, `get`, and `cancel` drive the flow from the agent's side. See [`docs/guides/pending-requests.md`](docs/guides/pending-requests.md) and [`docs/testing/stage-2.md`](docs/testing/stage-2.md). |
-| SAW-014: Stage 2 validation | Not started |
+| SAW-014: Stage 2 validation | Done. `pnpm test:queue` runs the acceptance scenario with two sidecars from the agent's side, and `Stage2AcceptanceTest` runs it from the app's. It covers restarts of both, expiry, rejection, a revoked pairing, isolation between connections, and a live diagnostic that still stores nothing. CI runs both. `vault_request_ack` is now a demo tool, served only with `MCP_DEMO_TOOLS=true`. Hermes's example config allows the durable tools, and [`docs/integrations/hermes.md`](docs/integrations/hermes.md#4-queued-requests-create-now-read-the-result-later) creates a request and checks it later. The owner's checks on the physical Seeker are NOT RUN. |
 
 ## Stage 1
 
@@ -85,8 +87,9 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm generate` | Regenerates the TypeScript and Kotlin protocol code and the binary fixtures from `proto/`; needs network access | Works |
 | `pnpm check:generated` | Fails if the committed generated code or fixtures differ from a fresh generation; changes no files | Works |
 | `pnpm agent hello [text]` | Shows text on the phone through MCP and prints the acknowledgement. OFFLINE, BUSY, TIMEOUT, and connection errors each get their own exit code. | Works |
-| `pnpm agent ack <text>`, `get <id>`, `cancel <id>` | Queues an acknowledgement for the owner, reads a request back, or withdraws one, through the durable MCP tools. Each prints the request as JSON. See [`test-agent/README.md`](test-agent/README.md). | Works; needs a paired phone |
+| `pnpm agent ack <text>`, `get <id>`, `cancel <id>` | Queues an acknowledgement for the owner, reads a request back, or withdraws one, through the durable MCP tools. Each prints the request as JSON. See [`test-agent/README.md`](test-agent/README.md). | Works; needs a paired phone, and `ack` needs `MCP_DEMO_TOOLS=true` |
 | `pnpm test:hello` | Runs the Stage 1 acceptance suite on a simulated device: the real CLI, the sidecar as a separate process, and a test client as the phone. With `--device`, it runs the round trip on the attached device or emulator instead: the app's UI test taps OK while the CLI sends over MCP. See [`docs/testing/stage-1.md`](docs/testing/stage-1.md). | Works; `--device` needs a device or an emulator |
+| `pnpm test:queue` | Runs the Stage 2 acceptance scenario: the real CLI, two sidecars as separate processes that restart, and a test client as the phone. See [`docs/testing/stage-2.md`](docs/testing/stage-2.md#the-acceptance-scenario-saw-014). | Works |
 | `pnpm format`, `pnpm format:android` | Apply Prettier and `buf format`, and ktfmt for Kotlin | Works |
 
 ## Development configuration
@@ -101,6 +104,7 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 - The sidecar rejects placeholder or short tokens, identical MCP and phone tokens, and hosts that are not loopback addresses.
 - Agents send `MCP_TOKEN`, and the Stage 1 live-test screen sends `PHONE_TOKEN`, each as `Authorization: Bearer <token>`; see [`docs/development/sidecar.md`](docs/development/sidecar.md). The durable workflow uses the credential that a phone gets by pairing (`pnpm pair`); see [`docs/security.md`](docs/security.md).
 - `SIDECAR_PUBLIC_URL` and `PAIRING_TOKEN_TTL_SECONDS` are optional. `SIDECAR_PUBLIC_URL` is the URL that pairing codes carry. It defaults to the loopback URL, for `adb reverse`. For a phone on another network, set it to a trusted HTTPS endpoint; see [transport security](docs/security.md#transport-security).
+- `MCP_DEMO_TOOLS=true`, which `.env.example` sets, serves the demo tool `vault_request_ack` for `pnpm agent ack` and Hermes. Leave it off outside development and demos.
 - `MCP_ALLOWED_HOSTS` is optional. It lets `/mcp` accept a VPN address, for Hermes on a VPS that reaches the Mac over a VPN; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md#over-a-vpn-you-already-use).
 - Durable requests are stored in `sidecar/data/sidecar.db` unless `DATABASE_PATH` says otherwise. `REQUEST_TTL_SECONDS` and `REQUEST_PENDING_LIMIT` are optional too; see [storage and lifecycle](docs/development/sidecar.md#storage-and-lifecycle).
 
@@ -108,7 +112,7 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 
 `.github/workflows/ci.yml` runs on pull requests and on pushes to `master` and `develop`:
 
-- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check`, `pnpm test:hello`, `pnpm check:generated`, and `pnpm build`
+- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check`, `pnpm test:hello`, `pnpm test:queue`, `pnpm check:generated`, and `pnpm build`
 - **Android:** `pnpm check:android` on Temurin 21
 - **Emulator:** `pnpm test:hello --device` on an Android 16 (API 36) emulator. An emulator run never counts as the physical Seeker check.
 

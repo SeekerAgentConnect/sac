@@ -13,9 +13,9 @@ This page describes how to test the Stage 1 transport without an LLM. The test a
   - 5 for BUSY
   - 6 for TIMEOUT, from the sidecar's deadline and from the client timeout; a client timeout also cancels the command on the sidecar
   - 8 for INVALID_TEXT
-  - 3 for an unreachable sidecar, a rejected token, or the phone token used as the MCP token
+  - 3 for an unreachable sidecar, a rejected token, or the phone token used as the MCP token, and for `ack` on a sidecar without the demo tool
   - 2 for missing configuration or bad arguments
-- **Tool discovery:** `pnpm agent tools` lists `vault_display_command`, followed by the durable request tools `vault_request_ack`, `vault_get_request`, and `vault_cancel_request` (SAW-010).
+- **Tool discovery:** `pnpm agent tools` lists `vault_display_command`, followed by the durable request tools `vault_get_request` and `vault_cancel_request` (SAW-010). A sidecar with `MCP_DEMO_TOOLS=true` also lists `vault_request_ack` (SAW-014).
 - **Configuration:** `.env` is loaded, and variables already in the environment take precedence.
 - **Credentials:** no token appears in stdout or stderr on any run.
 

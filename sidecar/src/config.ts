@@ -23,6 +23,11 @@ export interface SidecarConfig {
   readonly liveCommandTimeoutSeconds: number;
   /** Host names besides loopback that /mcp accepts in Host and Origin (MCP_ALLOWED_HOSTS). */
   readonly mcpAllowedHosts?: readonly string[];
+  /**
+   * Serves vault_request_ack, which queues a wallet-free acknowledgement, for development and demos
+   * (MCP_DEMO_TOOLS). Off unless it's set.
+   */
+  readonly demoTools?: boolean;
   /** The SQLite file for durable requests (DATABASE_PATH). ":memory:" keeps them in memory, for tests. */
   readonly databasePath: string;
   /** The lifetime of a request whose agent doesn't choose one (REQUEST_TTL_SECONDS). */
@@ -78,6 +83,7 @@ const MIN_PAIRING_TOKEN_TTL_SECONDS = 60;
 const MAX_PAIRING_TOKEN_TTL_SECONDS = 3600;
 
 export function loadSidecarConfig(env: Env): SidecarConfig & {
+  readonly demoTools: boolean;
   readonly publicUrl: string;
   readonly pairingTokenTtlSeconds: number;
 } {
@@ -103,6 +109,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     problems,
   );
   const mcpAllowedHosts = allowedHosts(env, problems);
+  const demoTools = flag(env, "MCP_DEMO_TOOLS", problems);
   const databasePath = env.DATABASE_PATH?.trim() || DEFAULT_DATABASE_PATH;
   const requestTtlSeconds = optionalWholeNumber(
     env,
@@ -151,6 +158,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     phoneToken,
     liveCommandTimeoutSeconds,
     mcpAllowedHosts,
+    demoTools,
     databasePath,
     requestTtlSeconds,
     pendingLimit,
@@ -198,6 +206,16 @@ function allowedHosts(env: Env, problems: string[]): readonly string[] {
     );
   }
   return entries;
+}
+
+/** A setting that is true or false; unset or empty means false. */
+function flag(env: Env, name: string, problems: string[]): boolean {
+  const value = env[name]?.trim().toLowerCase() ?? "";
+  if (value === "true") return true;
+  if (value !== "" && value !== "false") {
+    problems.push(`${name} must be true or false.`);
+  }
+  return false;
 }
 
 function required(

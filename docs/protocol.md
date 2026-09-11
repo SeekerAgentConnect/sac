@@ -100,11 +100,11 @@ From Stage 2 on, agents propose actions that are stored and decided later. SAW-0
 SAW-010 serves the workflow:
 
 - **Storage:** the sidecar stores requests in SQLite; see [storage and lifecycle](development/sidecar.md#storage-and-lifecycle).
-- **Endpoints:** it serves `vault_request_ack`, `vault_get_request`, `vault_cancel_request`, and `RequestService`.
+- **Endpoints:** it serves `vault_get_request`, `vault_cancel_request`, and `RequestService`, and the demo tool `vault_request_ack` when `MCP_DEMO_TOOLS=true` (SAW-014).
 
 SAW-011 adds [pairing](#pairing) and [separate roles](#roles). The operator shows the phone a one-use pairing code, and the phone exchanges it for a connection and a credential. Only that credential opens `RequestService`. [`docs/security.md`](security.md) explains the model.
 
-SAW-013 adds the phone's inbox, and Stages 3, 4, and 6 add the wallet actions. Until then, creating a wallet action fails with `WALLET_MISMATCH`, and `PrepareRequest` for a transfer or swap answers `unimplemented`.
+SAW-013 adds the phone's inbox, and SAW-014 validates the workflow end to end ([`docs/testing/stage-2.md`](testing/stage-2.md)). Stages 3, 4, and 6 add the wallet actions. Until then, creating a wallet action fails with `WALLET_MISMATCH`, and `PrepareRequest` for a transfer or swap answers `unimplemented`.
 
 ```mermaid
 sequenceDiagram
@@ -310,7 +310,7 @@ A `SubmitResult` carries one result:
 
 | Tool | Stage | Input | Result |
 | --- | --- | --- | --- |
-| `vault_request_ack` | SAW-010; development and demo only (SAW-014) | `text`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
+| `vault_request_ack` | SAW-010; development and demo only, served with `MCP_DEMO_TOOLS=true` (SAW-014) | `text`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_sign_message` | 3 | `wallet`, `message` (text) or `message_base64` (bytes), `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_transfer` | 4 | `wallet`, `network`, `recipient`, `asset`, `amount`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_swap` | 6 | `wallet`, `network`, `input_asset`, `output_asset`, `input_amount`, `slippage_bps`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
@@ -318,6 +318,7 @@ A `SubmitResult` carries one result:
 | `vault_cancel_request` | SAW-010 | `request_id` | The request, CANCELLED |
 
 - **A creation tool answers at once,** with the request ID and PENDING. Unlike `vault_display_command`, it never waits for the user. A stored request isn't an approved one.
+- **`vault_request_ack` is served only with `MCP_DEMO_TOOLS=true`.** Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The other tools are always served.
 - **`network`** is `"mainnet"`, `"devnet"`, or `"testnet"`.
 - **`asset`, `input_asset`, and `output_asset`** are `"SOL"` or a token's mint address.
 - **Amounts are strings.**

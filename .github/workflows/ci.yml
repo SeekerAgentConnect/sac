@@ -31,6 +31,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test:hello
+      # The Stage 2 acceptance scenario: two sidecar processes with throwaway databases.
+      - run: pnpm test:queue
       - run: pnpm check:generated
       - run: pnpm build
 

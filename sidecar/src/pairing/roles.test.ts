@@ -228,6 +228,8 @@ before(async () => {
       databasePath,
       requestTtlSeconds: 86_400,
       pendingLimit: 100,
+      // Every tool the sidecar can serve is in the matrix, the demo tool too.
+      demoTools: true,
     },
     { log: (line) => logs.push(line) },
   );

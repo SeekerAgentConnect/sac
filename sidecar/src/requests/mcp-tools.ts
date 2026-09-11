@@ -1,7 +1,8 @@
 /**
  * The agent's durable request tools (docs/protocol.md). vault_request_ack queues an
  * acknowledgement, vault_get_request reads a request, and vault_cancel_request withdraws one.
- * Every call answers at once; none of them waits for the owner.
+ * Every call answers at once; none of them waits for the owner. vault_request_ack is a
+ * development and demo tool, served only when MCP_DEMO_TOOLS is set.
  */
 import { create } from "@bufbuild/protobuf";
 import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
@@ -80,15 +81,15 @@ const VIEW_SCHEMA = {
 };
 
 const REQUEST_ACK_DESCRIPTION =
-  "Queues display-only text for the owner to acknowledge on their Seeker, and returns at once " +
-  "with the stored request: its request_id and the status PENDING. Being stored is not the " +
-  "owner's approval, and doesn't mean they've seen it: they see it the next time they open the " +
-  "app. Read the outcome later with vault_get_request until terminal is true. COMPLETED means " +
-  "they tapped OK, REJECTED that they declined, EXPIRED that the deadline passed, and CANCELLED " +
-  "that the request was withdrawn. A retry with the same idempotency_key and text returns the " +
-  "same request instead of queueing another. The text is never executed, and no wallet is " +
-  "involved. Errors start with a code: INVALID_PARAMETERS, IDEMPOTENCY_CONFLICT, NOT_PAIRED, " +
-  "or PENDING_LIMIT.";
+  "A development and demo tool, with no wallet involved. Queues display-only text for the owner " +
+  "to acknowledge on their Seeker, and returns at once with the stored request: its request_id " +
+  "and the status PENDING. Being stored is not the owner's approval, and doesn't mean they've " +
+  "seen it: they see it the next time they open the app. Read the outcome later with " +
+  "vault_get_request until terminal is true. COMPLETED means they tapped OK, REJECTED that they " +
+  "declined, EXPIRED that the deadline passed, and CANCELLED that the request was withdrawn. A " +
+  "retry with the same idempotency_key and text returns the same request instead of queueing " +
+  "another. The text is never executed. Errors start with a code: INVALID_PARAMETERS, " +
+  "IDEMPOTENCY_CONFLICT, NOT_PAIRED, or PENDING_LIMIT.";
 
 const GET_REQUEST_DESCRIPTION =
   "Returns a request as it is now, by request_id: its status, whether that's final (terminal), " +
@@ -101,8 +102,70 @@ const CANCEL_REQUEST_DESCRIPTION =
   "already acted on, or that expired, can't be cancelled: that fails with INVALID_STATE and " +
   "leaves it as it is. Errors start with a code: NOT_FOUND, INVALID_STATE, or INVALID_PARAMETERS.";
 
-/** Registers the durable request tools on an MCP server session. */
+export interface RequestToolOptions {
+  /** Serves vault_request_ack, a development and demo tool (MCP_DEMO_TOOLS). */
+  readonly demoTools?: boolean;
+}
+
+/** Registers the durable request tools on an MCP server session; vault_request_ack only in demo mode. */
 export function registerRequestTools(
+  server: McpServer,
+  store: RequestStore,
+  log: (message: string) => void,
+  options: RequestToolOptions = {},
+): void {
+  if (options.demoTools === true) registerAckTool(server, store, log);
+
+  server.registerTool(
+    GET_REQUEST_TOOL,
+    {
+      title: "Read a request",
+      description: GET_REQUEST_DESCRIPTION,
+      inputSchema: {
+        request_id: z
+          .string()
+          .describe("The request_id a creation tool returned."),
+      },
+      outputSchema: VIEW_SCHEMA,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ request_id }) => answer(() => store.get(request_id)),
+  );
+
+  server.registerTool(
+    CANCEL_REQUEST_TOOL,
+    {
+      title: "Cancel a pending request",
+      description: CANCEL_REQUEST_DESCRIPTION,
+      inputSchema: {
+        request_id: z
+          .string()
+          .describe("The request_id a creation tool returned."),
+      },
+      outputSchema: VIEW_SCHEMA,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({ request_id }) =>
+      answer(() => {
+        const request = store.cancel(request_id);
+        log(`request ${idOf(request)} cancelled by the agent`);
+        return request;
+      }),
+  );
+}
+
+/** vault_request_ack: queues a wallet-free acknowledgement. Not a financial action. */
+function registerAckTool(
   server: McpServer,
   store: RequestStore,
   log: (message: string) => void,
@@ -159,53 +222,6 @@ export function registerRequestTools(
             ? `request ${idOf(request)} stored (ack)`
             : `request ${idOf(request)} returned again for its idempotency key`,
         );
-        return request;
-      }),
-  );
-
-  server.registerTool(
-    GET_REQUEST_TOOL,
-    {
-      title: "Read a request",
-      description: GET_REQUEST_DESCRIPTION,
-      inputSchema: {
-        request_id: z
-          .string()
-          .describe("The request_id a creation tool returned."),
-      },
-      outputSchema: VIEW_SCHEMA,
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
-      },
-    },
-    ({ request_id }) => answer(() => store.get(request_id)),
-  );
-
-  server.registerTool(
-    CANCEL_REQUEST_TOOL,
-    {
-      title: "Cancel a pending request",
-      description: CANCEL_REQUEST_DESCRIPTION,
-      inputSchema: {
-        request_id: z
-          .string()
-          .describe("The request_id a creation tool returned."),
-      },
-      outputSchema: VIEW_SCHEMA,
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-        openWorldHint: false,
-      },
-    },
-    ({ request_id }) =>
-      answer(() => {
-        const request = store.cancel(request_id);
-        log(`request ${idOf(request)} cancelled by the agent`);
         return request;
       }),
   );

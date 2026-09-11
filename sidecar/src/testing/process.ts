@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAIN = fileURLToPath(new URL("../main.ts", import.meta.url));
+const CLOCK = fileURLToPath(new URL("./clock.ts", import.meta.url));
 
 export interface SidecarProcessOptions {
   readonly port: number;
@@ -20,6 +21,13 @@ export interface SidecarProcessOptions {
   readonly liveCommandTimeoutSeconds: number;
   /** The SQLite file. Pass the same one to restart onto the same requests; a new one if omitted. */
   readonly databasePath?: string;
+  /** Serves the demo tool vault_request_ack (MCP_DEMO_TOOLS). */
+  readonly demoTools?: boolean;
+  /**
+   * Runs the sidecar's clock this many milliseconds ahead of the real one (clock.ts). A restart
+   * with a larger value stands for time that passed while the sidecar was down.
+   */
+  readonly clockAheadMs?: number;
 }
 
 export interface SidecarProcess {
@@ -52,17 +60,24 @@ export function temporaryDatabasePath(): string {
 export async function startSidecarProcess(
   options: SidecarProcessOptions,
 ): Promise<SidecarProcess> {
-  const child = spawn(process.execPath, [MAIN], {
-    env: {
-      PATH: process.env.PATH,
-      SIDECAR_HOST: "127.0.0.1",
-      SIDECAR_PORT: String(options.port),
-      MCP_TOKEN: options.mcpToken,
-      PHONE_TOKEN: options.phoneToken,
-      LIVE_COMMAND_TIMEOUT_SECONDS: String(options.liveCommandTimeoutSeconds),
-      DATABASE_PATH: options.databasePath ?? temporaryDatabasePath(),
+  const ahead = options.clockAheadMs ?? 0;
+  const child = spawn(
+    process.execPath,
+    [...(ahead === 0 ? [] : ["--import", CLOCK]), MAIN],
+    {
+      env: {
+        PATH: process.env.PATH,
+        SIDECAR_HOST: "127.0.0.1",
+        SIDECAR_PORT: String(options.port),
+        MCP_TOKEN: options.mcpToken,
+        PHONE_TOKEN: options.phoneToken,
+        LIVE_COMMAND_TIMEOUT_SECONDS: String(options.liveCommandTimeoutSeconds),
+        DATABASE_PATH: options.databasePath ?? temporaryDatabasePath(),
+        MCP_DEMO_TOOLS: String(options.demoTools === true),
+        SIDECAR_TEST_CLOCK_AHEAD_MS: String(ahead),
+      },
     },
-  });
+  );
   let output = "";
   const collect = (chunk: string): void => {
     output += chunk;

@@ -39,6 +39,7 @@ describe("loadSidecarConfig", () => {
       phoneToken: PHONE_TOKEN,
       liveCommandTimeoutSeconds: 60,
       mcpAllowedHosts: [],
+      demoTools: false,
       databasePath: DEFAULT_DATABASE_PATH,
       requestTtlSeconds: 86_400,
       pendingLimit: 100,
@@ -153,6 +154,27 @@ describe("loadSidecarConfig", () => {
         /MCP_ALLOWED_HOSTS must list host names/,
         value,
       );
+    }
+  });
+
+  it("serves the demo tool only when MCP_DEMO_TOOLS is true", () => {
+    for (const [value, on] of [
+      ["true", true],
+      [" TRUE ", true],
+      ["false", false],
+      ["", false],
+      [undefined, false],
+    ] as const) {
+      assert.equal(
+        loadSidecarConfig({ ...validEnv, MCP_DEMO_TOOLS: value }).demoTools,
+        on,
+        String(value),
+      );
+    }
+    for (const value of ["1", "yes", "on"]) {
+      assert.deepEqual(problemsFor({ ...validEnv, MCP_DEMO_TOOLS: value }), [
+        "MCP_DEMO_TOOLS must be true or false.",
+      ]);
     }
   });
 

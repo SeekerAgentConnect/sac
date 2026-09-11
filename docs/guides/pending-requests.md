@@ -58,7 +58,7 @@ Requests from every connection appear together, each labeled with its connection
 
 ## Checking from the agent's side
 
-The test agent can make and read requests, without Hermes ([`test-agent/README.md`](../../test-agent/README.md)):
+The test agent can make and read requests, without Hermes ([`test-agent/README.md`](../../test-agent/README.md)). `pnpm agent ack` needs the demo tool `vault_request_ack`, which the sidecar serves only with `MCP_DEMO_TOOLS=true` in its `.env`, as `.env.example` sets it:
 
 ```console
 $ pnpm --silent agent ack "Deploy finished"
@@ -68,4 +68,4 @@ $ pnpm --silent agent get f7e6d5c4-b3a2-4918-8a7f-6e5d4c3b2a19
 {"request_id":"f7e6d5c4-b3a2-4918-8a7f-6e5d4c3b2a19","action":"ack","status":"COMPLETED","terminal":true,...}
 ```
 
-`pnpm agent cancel <id>` withdraws a request that's still pending. The full check is in [`docs/testing/stage-2.md`](../testing/stage-2.md).
+`pnpm agent cancel <id>` withdraws a request that's still pending. The full check is in [`docs/testing/stage-2.md`](../testing/stage-2.md). Hermes can do the same; see [queued requests](../integrations/hermes.md#4-queued-requests-create-now-read-the-result-later).

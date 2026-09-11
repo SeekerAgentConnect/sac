@@ -125,12 +125,31 @@ describe("pnpm agent ack, get, and cancel", () => {
         databasePath,
         requestTtlSeconds: 86_400,
         pendingLimit: 100,
+        demoTools: true,
       },
       { log: () => undefined },
     );
   });
 
   after(() => queue.close());
+
+  it("exits 3 when the sidecar doesn't serve the demo tool, and still reads requests", async () => {
+    // `sidecar` runs without MCP_DEMO_TOOLS.
+    const { code, stdout, stderr } = await agent(
+      ["ack", "Deploy finished"],
+      envFor(sidecar),
+    );
+    assert.equal(code, 3);
+    assert.equal(stdout, "");
+    assert.match(stderr, /does not offer vault_request_ack/);
+    assert.match(stderr, /MCP_DEMO_TOOLS=true/);
+    const missing = await agent(
+      ["get", "0b8e2b1c-3f4d-4e5a-9b6c-7d8e9f0a1b2c"],
+      envFor(sidecar),
+    );
+    assert.equal(missing.code, 9);
+    assert.match(missing.stderr, /^NOT_FOUND: /m);
+  });
 
   it("exits 9 with NOT_PAIRED until a phone is paired", async () => {
     const { code, stdout, stderr } = await agent(
@@ -364,15 +383,11 @@ describe("pnpm agent", () => {
     const { code, stdout } = await agent(["tools"], envFor(sidecar));
     assert.equal(code, 0);
     const tools = JSON.parse(stdout) as { name: string }[];
-    // The durable request tools (SAW-010) follow the live one.
+    // The durable request tools (SAW-010) follow the live one. Without MCP_DEMO_TOOLS, there's no
+    // vault_request_ack.
     assert.deepEqual(
       tools.map((tool) => tool.name),
-      [
-        "vault_display_command",
-        "vault_request_ack",
-        "vault_get_request",
-        "vault_cancel_request",
-      ],
+      ["vault_display_command", "vault_get_request", "vault_cancel_request"],
     );
   });
 

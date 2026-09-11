@@ -11,7 +11,7 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 
 `pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`.
 
-`MCP_ALLOWED_HOSTS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, and `PAIRING_TOKEN_TTL_SECONDS` are optional, and an empty one counts as unset. The others are required.
+`MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, and `PAIRING_TOKEN_TTL_SECONDS` are optional, and an empty one counts as unset. The others are required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
@@ -22,6 +22,7 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 | `LIVE_COMMAND_TIMEOUT_SECONDS` | How long a live command waits for the user's OK | 1 to 3600 |
 | `MCP_URL` | Not read by the sidecar; the test agent (SAW-005) uses it | None |
 | `MCP_ALLOWED_HOSTS` | Optional. Host names or IP addresses, comma-separated, that `/mcp` accepts in the `Host` and `Origin` headers besides loopback. It's for an agent that reaches the sidecar through a VPN address; see [Hermes over a VPN](../integrations/hermes.md#over-a-vpn-you-already-use). | No scheme, port, or wildcard |
+| `MCP_DEMO_TOOLS` | Optional. `true` serves the demo tool `vault_request_ack`, which queues a wallet-free acknowledgement, for development and demos. `.env.example` sets it. | `true` or `false`; unset or empty means `false` |
 | `DATABASE_PATH` | Optional. The SQLite file for durable requests | Defaults to `sidecar/data/sidecar.db`, whatever the working directory. A relative path is resolved from the directory the sidecar starts in, and a missing directory is created. |
 | `REQUEST_TTL_SECONDS` | Optional. How long a request waits for the owner's decision when its agent doesn't choose | 60 to 604800; defaults to 86400 (a day) |
 | `REQUEST_PENDING_LIMIT` | Optional. The most requests that can wait for the owner at once | 1 to 10000; defaults to 100 |
@@ -41,6 +42,7 @@ The expected output is:
 
 ```text
 [sidecar] requests are stored in /path/to/SeekerAgentWallet/sidecar/data/sidecar.db (schema version 2); server 9fda5035-f3b4-4ec3-a68a-5e6caa02397a; no phone is paired: run pnpm pair
+[sidecar] the demo tool vault_request_ack is on (MCP_DEMO_TOOLS=true)
 [sidecar] listening on http://127.0.0.1:8080: MCP at http://127.0.0.1:8080/mcp, phone API at http://127.0.0.1:8080/seekervault.live.v1.LiveCommandService
 ```
 
@@ -107,7 +109,7 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | Path | Caller | Authentication | Purpose |
 | --- | --- | --- | --- |
 | `GET /healthz` | Anything on the machine | None | Liveness check: `{"status":"ok"}` |
-| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>` | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, and the durable tools `vault_request_ack`, `vault_get_request`, and `vault_cancel_request` |
+| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>` | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, and the durable tools `vault_get_request` and `vault_cancel_request`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
 | `/seekervault.live.v1.LiveCommandService/WatchCommands` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect server stream of live commands |
 | `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
 | `/seekervault.request.v1.PairingService/Pair` | A phone that's pairing | `Authorization: Bearer <pairing token>`, from `pnpm pair` | Exchanges the pairing token for a connection and its credential |
@@ -158,8 +160,8 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 
 - **Every call answers at once.** Creation stores the request and returns it as PENDING. At that point the owner hasn't seen it yet, let alone approved it. The agent reads the outcome later with `vault_get_request`.
 - **Retries are safe.** The same `idempotency_key` with the same text returns the original request, in whatever state it's in now. The same key with different text fails with `IDEMPOTENCY_CONFLICT`.
-- **Ack only, for now.** `vault_request_ack` involves no wallet, and SAW-014 limits it to development and demo use. Until wallets arrive in Stage 3, ack is the only kind of request that can be created.
-- **Hermes doesn't see these tools yet.** `examples/hermes.config.yaml` still allows only `vault_display_command`; SAW-014 updates it.
+- **Ack only, for now, and only in demo mode.** `vault_request_ack` involves no wallet, and it's a development and demo tool: the sidecar serves it only with `MCP_DEMO_TOOLS=true`. Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The startup log says which. Until wallets arrive in Stage 3, ack is the only kind of request that can be created.
+- **Hermes gets all four tools** from `examples/hermes.config.yaml`; see [queued requests](../integrations/hermes.md#4-queued-requests-create-now-read-the-result-later).
 
 ## Storage and lifecycle
 
@@ -342,6 +344,8 @@ The SAW-009 modules are pure rules, which `store.ts` applies. The contract they 
   - repeated results and the pending limit
   - the size limits
   - the phone's authentication and scope
+  - the demo tool, served only with `MCP_DEMO_TOOLS`
+  - on a fake clock (`SidecarOptions.now`): expiry on both endpoints at the exact deadline, and a pairing code refused from its exact expiry on
 - **`src/requests/restart.test.ts`** kills the sidecar with SIGKILL right after a tool answers and right after the phone's result is confirmed. It checks that both survived, along with the phone's pairing, and that nothing ran at startup.
 - **`src/pairing/`** tests pairing (SAW-011):
   - `uri.test.ts`: the pairing URI and the server URL rule
@@ -352,6 +356,8 @@ The SAW-009 modules are pure rules, which `store.ts` applies. The contract they 
 - **`src/storage/database.test.ts`** tests the schema, the pragmas, the frozen v1 fixture and its migration to v2, a database from a newer sidecar, migration failures, and transaction rollback.
 - **The SAW-009 rule tests** are `src/requests/action.test.ts`, `identity.test.ts`, `lifecycle.test.ts`, `fixtures.test.ts`, and `live-compat.test.ts`.
 - **`src/stage-boundary.test.ts`** checks that there's no wallet package, no key generation, and no file system or SQLite access outside `src/storage/`.
+
+`pnpm test:queue` runs the Stage 2 acceptance scenario (SAW-014) with two sidecar processes that restart; see [`docs/testing/stage-2.md`](../testing/stage-2.md#the-acceptance-scenario-saw-014), which also holds its report. `src/testing/process.ts` starts the processes, with `MCP_DEMO_TOOLS` if asked. `src/testing/clock.ts`, loaded with `--import`, runs a restarted process's clock ahead, for time that passed while it was down.
 
 ## Verification record: SAW-003
 

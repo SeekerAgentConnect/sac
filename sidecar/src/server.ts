@@ -44,6 +44,8 @@ export interface Sidecar {
 export interface SidecarOptions {
   /** Receives one line per event; lines never contain tokens, command text, or notes. */
   readonly log?: (message: string) => void;
+  /** The clock for requests and pairing codes, in epoch milliseconds. Tests replace it. */
+  readonly now?: () => number;
 }
 
 // How long close() lets in-flight responses, such as a CANCELLED tool result, finish.
@@ -62,7 +64,7 @@ export async function startSidecar(
     });
   const db = openDatabase(config.databasePath);
   try {
-    return await serve(config, db, log);
+    return await serve(config, db, log, options.now);
   } catch (error) {
     db.close();
     throw error;
@@ -73,13 +75,15 @@ async function serve(
   config: SidecarConfig,
   db: DatabaseSync,
   log: (message: string) => void,
+  now: (() => number) | undefined,
 ): Promise<Sidecar> {
   // Nothing is executed at startup: stored requests wait for the phone and the agent.
   const requests = new RequestStore(db, {
     defaultTtlSeconds: config.requestTtlSeconds,
     pendingLimit: config.pendingLimit,
+    now,
   });
-  const pairing = new PairingStore(db);
+  const pairing = new PairingStore(db, { now });
   const serverId = pairing.serverId();
   const phone = pairing.activeConnection();
   log(
@@ -88,18 +92,20 @@ async function serve(
         ? "no phone is paired: run pnpm pair"
         : `paired phone: connection ${phone.connectionId}`),
   );
+  log(
+    config.demoTools === true
+      ? "the demo tool vault_request_ack is on (MCP_DEMO_TOOLS=true)"
+      : "the demo tool vault_request_ack is off; MCP_DEMO_TOOLS=true serves it",
+  );
 
   const bridge = new LiveCommandBridge({
     timeoutSeconds: config.liveCommandTimeoutSeconds,
     log,
   });
-  const mcp = createMcpEndpoint(
-    bridge,
-    requests,
-    config.mcpToken,
-    log,
-    config.mcpAllowedHosts,
-  );
+  const mcp = createMcpEndpoint(bridge, requests, config.mcpToken, log, {
+    allowedHosts: config.mcpAllowedHosts,
+    demoTools: config.demoTools,
+  });
   const phoneApi = connectNodeAdapter({
     routes: (router) => {
       // The Stage 1 diagnostic keeps its development token; the durable API needs a paired phone.

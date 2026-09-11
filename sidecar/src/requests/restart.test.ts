@@ -31,6 +31,7 @@ describe("durable requests across sidecar restarts", () => {
         phoneToken: PHONE_TOKEN,
         liveCommandTimeoutSeconds: 30,
         databasePath,
+        demoTools: true,
       });
     const ack = { text: "Survives a crash", idempotency_key: "restart-1" };
     let sidecar = await start();

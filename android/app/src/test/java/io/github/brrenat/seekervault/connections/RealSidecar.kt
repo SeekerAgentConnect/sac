@@ -8,8 +8,9 @@ import kotlin.concurrent.thread
 
 /**
  * The real sidecar from this repository (`node sidecar/src/main.ts`) on a free loopback port with a
- * throwaway database and tokens, plus the operator's `pnpm pair` commands against it. Needs Node 24
- * on PATH and `pnpm install`.
+ * throwaway database and tokens, plus the operator's `pnpm pair` commands against it. It serves the
+ * demo tool `vault_request_ack` (MCP_DEMO_TOOLS), and [stop] and [start] restart it on the same
+ * port and database. Needs Node 24 on PATH and `pnpm install`.
  */
 class RealSidecar : AutoCloseable {
     private val sidecarDir =
@@ -28,44 +29,85 @@ class RealSidecar : AutoCloseable {
             "MCP_TOKEN" to MCP_TOKEN,
             "PHONE_TOKEN" to PHONE_TOKEN,
             "LIVE_COMMAND_TIMEOUT_SECONDS" to "30",
+            "MCP_DEMO_TOOLS" to "true",
             // A throwaway database, never the developer's sidecar/data/sidecar.db.
             "DATABASE_PATH" to
                 Files.createTempDirectory("seeker-vault-sidecar").resolve("sidecar.db").toString(),
         )
     private val log = StringBuffer()
-    private val process: Process
+    private var process: Process? = null
+    private var clockAheadSeconds = 0L
 
     init {
         check(File(sidecarDir, "node_modules").isDirectory) { "run pnpm install first" }
-        process = node("src/main.ts")
-        val output = process.inputStream.bufferedReader()
+        start()
+    }
+
+    /** Everything the sidecar has logged so far, across restarts. */
+    val output: String
+        get() = log.toString()
+
+    /**
+     * Starts the sidecar on its port and database. [clockAheadSeconds] runs its clock that far
+     * ahead of the real one (`sidecar/src/testing/clock.ts`), for time that passed while it was
+     * down. The clock never goes back.
+     */
+    fun start(clockAheadSeconds: Long = this.clockAheadSeconds) {
+        check(process == null) { "the sidecar is already running" }
+        this.clockAheadSeconds = maxOf(this.clockAheadSeconds, clockAheadSeconds)
+        val started =
+            if (this.clockAheadSeconds == 0L) {
+                node("src/main.ts")
+            } else {
+                node(
+                    "--import",
+                    "./src/testing/clock.ts",
+                    "src/main.ts",
+                    extra =
+                        mapOf("SIDECAR_TEST_CLOCK_AHEAD_MS" to "${this.clockAheadSeconds * 1000}"),
+                )
+            }
+        val output = started.inputStream.bufferedReader()
         while (true) {
             val line = output.readLine() ?: error("the sidecar exited before listening:\n$log")
             log.appendLine(line)
             if ("listening on" in line) break
         }
         thread(isDaemon = true) { output.forEachLine { log.appendLine(it) } }
+        process = started
     }
 
-    /** Everything the sidecar has logged so far. */
-    val output: String
-        get() = log.toString()
+    /** Stops the sidecar with SIGTERM, or with SIGKILL when [kill] is set, as a crash would. */
+    fun stop(kill: Boolean = false) {
+        val running = process ?: return
+        if (kill) running.destroyForcibly() else running.destroy()
+        running.waitFor(10, TimeUnit.SECONDS)
+        process = null
+    }
+
+    /** [stop], then [start] on the same port and database. */
+    fun restart(kill: Boolean = false, clockAheadSeconds: Long = this.clockAheadSeconds) {
+        stop(kill)
+        start(clockAheadSeconds)
+    }
 
     /** Runs `pnpm pair` and returns the pairing code it printed as text. */
     fun pairingCode(): String = cli().lines().first { it.startsWith("seekervault://pair?") }
 
-    /** Runs `pnpm pair revoke`. */
+    /** Runs `pnpm pair revoke`. It works on the database, whether or not the sidecar is running. */
     fun revokePairedPhone(): String = cli("revoke")
 
     /**
      * Stores a PENDING ack request, as an agent does with `vault_request_ack`, and returns its
-     * request ID.
+     * request ID. [expiresInSeconds] is the request's lifetime; the sidecar's default otherwise.
      */
-    fun requestAck(text: String, idempotencyKey: String): String {
+    fun requestAck(text: String, idempotencyKey: String, expiresInSeconds: Int? = null): String {
+        val lifetime =
+            if (expiresInSeconds == null) "" else ""","expires_in_seconds":$expiresInSeconds"""
         val view =
             tool(
                 "vault_request_ack",
-                """{"text":${quote(text)},"idempotency_key":${quote(idempotencyKey)}}""",
+                """{"text":${quote(text)},"idempotency_key":${quote(idempotencyKey)}$lifetime}""",
             )
         check("\"PENDING\"" in view) { "vault_request_ack didn't store a request: $view" }
         return checkNotNull(REQUEST_ID.find(view)?.groupValues?.get(1)) { "no request ID: $view" }
@@ -102,10 +144,7 @@ class RealSidecar : AutoCloseable {
 
     private fun quote(text: String) = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-    override fun close() {
-        process.destroy()
-        process.waitFor(10, TimeUnit.SECONDS)
-    }
+    override fun close() = stop()
 
     private fun cli(vararg args: String): String {
         val cli = node("src/pairing/cli.ts", *args)

@@ -118,6 +118,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `InboxViewModelTest` | Rapid second taps, refreshing every connection, sending again, and requests that aren't pending |
 | `PendingRequestsScreenTest`, `RequestDetailsScreenTest` | Compose on Robolectric: source, action, age, and expiry; the empty, no-server, and offline states; disabled buttons while sending; the stored outcome; **Send again**; and expired and superseded requests |
 | `InboxActivityTest` | The activity with the app's own storage and a fake sidecar: a request fetched when the app opens, answered, and still answered after a rotation, and a connection's own requests |
+| `Stage2AcceptanceTest` | The Stage 2 acceptance scenario (SAW-014), with the app's own repository and storage and two real sidecars, which `RealSidecar` restarts:<ul><li>requests queued while the app is closed survive both sidecars' restarts, and complete after the app reopens</li><li>an answer given while its sidecar is down goes out after the app and the sidecar restart</li><li>a request that expires while its sidecar is down is superseded</li><li>`pnpm pair revoke` shuts out only that connection</li></ul>See [`docs/testing/stage-2.md`](../testing/stage-2.md#the-acceptance-scenario-saw-014). |
 | `StageBoundaryTest` | The stage boundary. The manifest declares only `MainActivity`, `INTERNET`, and an optional camera. Storage and Keystore APIs appear only in `connections/storage/`, and background APIs nowhere. Nothing is backed up. No wallet, Room, DataStore, or WorkManager library is on the classpath. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
@@ -196,3 +197,7 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolch
 | `pnpm check`, `pnpm test:hello`, `pnpm check:generated` | PASS: 235/235 sidecar tests and 19/19 test agent tests, the 9/9 Stage 1 acceptance cases, and current generated code |
 | Deliberate breaks | NOT RUN (timed out): the run hung during its third break, in `InboxTest`, and was stopped before it reported. The file that break had changed was restored. |
 | Physical Seeker | NOT RUN: no device was attached. The owner-run check is in [`docs/testing/stage-2.md`](../testing/stage-2.md). |
+
+## Verification record: SAW-014
+
+The Stage 2 acceptance report, including the app's side of the scenario, is in [`docs/testing/stage-2.md`](../testing/stage-2.md#acceptance-report-saw-014).

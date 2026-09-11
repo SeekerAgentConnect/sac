@@ -10,6 +10,7 @@ import {
   displayCommand,
   listTools,
   requestTool,
+  requireTool,
   withMcpSession,
 } from "./agent.ts";
 import {
@@ -23,8 +24,9 @@ const USAGE = `Usage: pnpm agent <command> [options]
 Commands:
   hello [text]     Show text on the phone (default "Hello Seeker") and wait for OK.
                    Prints the acknowledgement {"id":"...","result":"OK"} on stdout.
-  ack <text>       Queue text for the owner to acknowledge later (vault_request_ack).
-                   Prints the request, PENDING, as JSON; it doesn't wait for the owner.
+  ack <text>       Queue text for the owner to acknowledge later (vault_request_ack, a demo
+                   tool that the sidecar serves only with MCP_DEMO_TOOLS=true). Prints the
+                   request, PENDING, as JSON; it doesn't wait for the owner.
   get <id>         Print a request as it is now (vault_get_request).
   cancel <id>      Withdraw a PENDING request (vault_cancel_request).
   tools            List the MCP server's tools as JSON.
@@ -150,6 +152,11 @@ async function main(argv: string[]): Promise<number> {
           return;
         }
         case "ack": {
+          await requireTool(
+            client,
+            REQUEST_ACK_TOOL,
+            "it's a demo tool, which the sidecar serves only with MCP_DEMO_TOOLS=true",
+          );
           const key = parsed.values.key ?? `ack-${randomUUID()}`;
           if (parsed.values.key === undefined) {
             // Printed so that a retry can reuse it and get the same request back.

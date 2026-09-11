@@ -1,6 +1,7 @@
 /**
  * The agent-facing MCP endpoint: Streamable HTTP at /mcp, authenticated with MCP_TOKEN. It serves
- * the Stage 1 tool `vault_display_command` and the durable request tools (requests/mcp-tools.ts).
+ * the Stage 1 tool `vault_display_command` and the durable request tools (requests/mcp-tools.ts),
+ * with the demo tool `vault_request_ack` only when MCP_DEMO_TOOLS is set.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -19,12 +20,20 @@ import type { RequestStore } from "./requests/store.ts";
 
 export const DISPLAY_COMMAND_TOOL = "vault_display_command";
 
-const INSTRUCTIONS =
-  "seeker-vault puts an agent's requests in front of the owner on their Seeker phone. " +
-  "vault_display_command is a live diagnostic: it shows text on the open live-test screen and " +
-  "waits for the owner's OK. vault_request_ack queues text for the owner to acknowledge later, " +
-  "and returns at once; read the outcome with vault_get_request, and withdraw it with " +
-  "vault_cancel_request. Nothing here signs or sends transactions.";
+/** What the server tells an agent when it connects; it names only the tools it serves. */
+function instructionsFor(demoTools: boolean): string {
+  return [
+    "seeker-vault puts an agent's requests in front of the owner on their Seeker phone.",
+    "vault_display_command is a live diagnostic: it shows text on the open live-test screen and waits for the owner's OK.",
+    ...(demoTools
+      ? [
+          "vault_request_ack, a development and demo tool, queues text for the owner to acknowledge later, and returns at once with a request_id.",
+        ]
+      : []),
+    "Read a request's outcome later with vault_get_request, and withdraw a pending one with vault_cancel_request.",
+    "Nothing here signs or sends transactions.",
+  ].join(" ");
+}
 
 const TOOL_DESCRIPTION =
   "Shows display-only text on the owner's Seeker (its live-test screen must be open) and " +
@@ -45,16 +54,24 @@ export interface McpEndpoint {
   close(): Promise<void>;
 }
 
+export interface McpEndpointOptions {
+  /** Host names besides loopback that pass the Host and Origin checks (MCP_ALLOWED_HOSTS). */
+  readonly allowedHosts?: readonly string[];
+  /** Serves the demo tool vault_request_ack (MCP_DEMO_TOOLS). */
+  readonly demoTools?: boolean;
+}
+
 export function createMcpEndpoint(
   bridge: LiveCommandBridge,
   requests: RequestStore,
   mcpToken: string,
   log: (message: string) => void,
-  allowedHosts: readonly string[] = [],
+  options: McpEndpointOptions = {},
 ): McpEndpoint {
+  const demoTools = options.demoTools === true;
   const hostnames: ReadonlySet<string> = new Set([
     ...LOOPBACK_HOSTNAMES,
-    ...allowedHosts,
+    ...(options.allowedHosts ?? []),
   ]);
   const sessions = new Map<string, StreamableHTTPServerTransport>();
   // Aborts when the connection carrying a tool call closes before its response is sent.
@@ -63,7 +80,7 @@ export function createMcpEndpoint(
   function createServer(): McpServer {
     const server = new McpServer(
       { name: "seeker-vault", version: "0.1.0" },
-      { instructions: INSTRUCTIONS },
+      { instructions: instructionsFor(demoTools) },
     );
     server.registerTool(
       DISPLAY_COMMAND_TOOL,
@@ -112,7 +129,7 @@ export function createMcpEndpoint(
         }
       },
     );
-    registerRequestTools(server, requests, log);
+    registerRequestTools(server, requests, log, { demoTools });
     return server;
   }
 

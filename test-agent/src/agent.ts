@@ -94,6 +94,23 @@ export async function listTools(client: Client): Promise<Tool[]> {
 }
 
 /**
+ * Fails with exit code 3 unless the MCP server offers the tool `name`. `why` tells the reader what
+ * to do about it. Listing the tools also lets the SDK validate results against their schemas.
+ */
+export async function requireTool(
+  client: Client,
+  name: string,
+  why?: string,
+): Promise<void> {
+  if (!(await listTools(client)).some((tool) => tool.name === name)) {
+    throw new AgentFailure(
+      ExitCode.CONNECTION,
+      `the MCP server does not offer ${name}${why === undefined ? "" : `; ${why}`}`,
+    );
+  }
+}
+
+/**
  * Discovers vault_display_command, calls it with `text`, and returns the acknowledgement once the
  * user taps OK. Throws AgentFailure for tool errors (OFFLINE, BUSY, ...) and for the client timeout.
  */
@@ -102,16 +119,7 @@ export async function displayCommand(
   text: string,
   timeoutMs: number,
 ): Promise<Acknowledgement> {
-  if (
-    !(await listTools(client)).some(
-      (tool) => tool.name === DISPLAY_COMMAND_TOOL,
-    )
-  ) {
-    throw new AgentFailure(
-      ExitCode.CONNECTION,
-      `the MCP server does not offer ${DISPLAY_COMMAND_TOOL}`,
-    );
-  }
+  await requireTool(client, DISPLAY_COMMAND_TOOL);
 
   let result: CallToolResult;
   // Without resumable streams, the SDK reports a dropped response stream only through onerror and

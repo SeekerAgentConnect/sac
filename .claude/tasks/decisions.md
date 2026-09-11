@@ -192,3 +192,19 @@
 - **One send per answer at a time,** guarded in the repository. A refresh that overlaps a tap skips the answer being sent, and the ViewModel ignores taps while a send runs or after an answer exists.
 - **Settled answers are kept for a week,** so reopening a request shows its outcome, and then pruned at start-up. Waiting answers are kept until they settle.
 - **The test agent gained `ack`, `get`, and `cancel`.** Hermes is limited to the Stage 1 tool until SAW-014, and the owner-run Stage 2 check needs an agent that can queue a request and read it back.
+
+## 2026-09-11 — SAW-014 Stage 2 acceptance gate (SEE-21)
+
+- **The demo tool is opt-in, with `MCP_DEMO_TOOLS=true`.** `vault_request_ack` isn't a financial action, but it exists only to exercise the workflow without a wallet.
+  - A sidecar that nobody configured serves only the tools that later stages keep: `vault_display_command`, `vault_get_request`, and `vault_cancel_request`.
+  - `.env.example` is a development configuration, so it sets the flag.
+  - A value other than `true` or `false` is a configuration error, so a typo can't turn the tool off without a word.
+- **Hermes gets `vault_cancel_request` too.** Withdrawing its own request costs the owner nothing, and the wallet tools of later stages need the same way out. As before, no tool pairs, answers, or revokes.
+- **Two acceptance suites, one per side.** Each side's real code runs only in its own runtime: the CLI, the sidecar processes, and `pnpm pair` in Node, and the app's repository and files on the JVM.
+  - `pnpm test:queue` runs in the Node job in seconds.
+  - `Stage2AcceptanceTest` runs in `pnpm check:android`, against the same real sidecars.
+- **Time passes while a sidecar is down through a preload, not a setting.** Expiry across a restart needs the sidecar's clock to jump, and a configuration variable for the clock would ship a way to change the time.
+  - Test harnesses start the process with `--import sidecar/src/testing/clock.ts`, which moves `Date.now()` ahead by a fixed amount. The stores already read the time through `Date.now()`.
+  - In-process tests get a fake clock through `SidecarOptions.now`, which moves only when the test moves it.
+  - A harness never restarts a sidecar with its clock behind where it was, so no request is created in the future.
+- **Stage 2 isn't declared accepted yet.** Every automated check passes. But Stage 1 was accepted only after the owner's run on the Seeker, and Stage 2 follows the same rule. `docs/testing/stage-2.md` holds the owner-run steps.
