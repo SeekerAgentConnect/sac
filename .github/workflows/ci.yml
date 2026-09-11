@@ -79,7 +79,9 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
-          cache-provider: basic
+          # No Gradle cache in this job: restoring the Android job's (about 900 MB) leaves less free
+          # disk than the emulator's data partition needs (7.2 GB), and the emulator never boots.
+          cache-disabled: true
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -91,9 +93,6 @@ jobs:
           api-level: 36
           target: google_apis
           arch: x86_64
-          # The image's default data partition doesn't fit on a runner with about 6 GB of free
-          # disk, and the emulator then never boots. The app and its tests need far less.
-          disk-size: 4096M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: pnpm test:hello --device

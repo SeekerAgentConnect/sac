@@ -150,4 +150,8 @@
   - A larger chunked body is drained without being kept.
 - **The stage guard changed on purpose.** It now allows the file system and SQLite only in `src/storage/`, and still forbids key generation and wallet packages.
 - **The v1 fixture is SQL, not a binary database.** It's reviewable and diffable, and the test proves it's a real v1 database by comparing its schema with migration 1's.
-- **The CI emulator gets a 4 GB data partition (`disk-size: 4096M`).** The API 36 image's default needs more than the roughly 6 GB of disk that some runners have free, and then the emulator never boots: run 34593182239 failed with "Not enough space to create userdata partition". The app and its tests need a small fraction of 4 GB.
+- **The CI emulator job runs without the Gradle cache.**
+  - The emulator needs 7.2 GB of free disk for its data partition. After the Android job saved an 886 MB Gradle cache, restoring it left 6.1 GB, so from run 34593182239 on, the emulator never booted.
+  - Passing and failing runs had the same runner image and the same emulator build (37.1.11.0).
+  - `disk-size: 4096M` didn't lower the 7.2 GB, so it's removed.
+  - The job builds the app without the cache, as the passing runs did.
