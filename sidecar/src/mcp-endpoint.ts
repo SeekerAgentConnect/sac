@@ -1,6 +1,6 @@
 /**
- * The agent-facing MCP endpoint: Streamable HTTP at /mcp with the Stage 1 tool
- * `vault_display_command`, authenticated with MCP_TOKEN.
+ * The agent-facing MCP endpoint: Streamable HTTP at /mcp, authenticated with MCP_TOKEN. It serves
+ * the Stage 1 tool `vault_display_command` and the durable request tools (requests/mcp-tools.ts).
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -14,12 +14,17 @@ import { z } from "zod";
 import { bearerTokenMatches } from "./auth.ts";
 import { LiveCommandFailure, type LiveCommandBridge } from "./live/bridge.ts";
 import { MAX_COMMAND_TEXT_BYTES } from "./live/command.ts";
+import { registerRequestTools } from "./requests/mcp-tools.ts";
+import type { RequestStore } from "./requests/store.ts";
 
 export const DISPLAY_COMMAND_TOOL = "vault_display_command";
 
 const INSTRUCTIONS =
-  "Stage 1 diagnostic server for seeker-vault. vault_display_command shows text on the " +
-  "owner's Seeker phone and returns their OK. It never signs or sends transactions.";
+  "seeker-vault puts an agent's requests in front of the owner on their Seeker phone. " +
+  "vault_display_command is a live diagnostic: it shows text on the open live-test screen and " +
+  "waits for the owner's OK. vault_request_ack queues text for the owner to acknowledge later, " +
+  "and returns at once; read the outcome with vault_get_request, and withdraw it with " +
+  "vault_cancel_request. Nothing here signs or sends transactions.";
 
 const TOOL_DESCRIPTION =
   "Shows display-only text on the owner's Seeker (its live-test screen must be open) and " +
@@ -32,6 +37,9 @@ const TOOL_DESCRIPTION =
 // that reaches /mcp through a VPN address adds it with MCP_ALLOWED_HOSTS, not here.
 const LOOPBACK_HOSTNAMES = ["127.0.0.1", "localhost", "[::1]"];
 
+// The largest JSON-RPC body /mcp reads. Every tool's arguments fit in a small fraction of it.
+const MAX_BODY_BYTES = 64 * 1024;
+
 export interface McpEndpoint {
   handle(req: IncomingMessage, res: ServerResponse): Promise<void>;
   close(): Promise<void>;
@@ -39,6 +47,7 @@ export interface McpEndpoint {
 
 export function createMcpEndpoint(
   bridge: LiveCommandBridge,
+  requests: RequestStore,
   mcpToken: string,
   log: (message: string) => void,
   allowedHosts: readonly string[] = [],
@@ -103,6 +112,7 @@ export function createMcpEndpoint(
         }
       },
     );
+    registerRequestTools(server, requests, log);
     return server;
   }
 
@@ -119,6 +129,17 @@ export function createMcpEndpoint(
           : {};
       sendError(res, rejection.status, rejection.reason, headers);
       return;
+    }
+
+    let body: unknown;
+    if (req.method === "POST") {
+      const read = await readJsonBody(req);
+      if (!read.ok) {
+        log(`rejected POST /mcp: ${read.message}`);
+        sendError(res, read.status, read.message, read.headers, read.code);
+        return;
+      }
+      body = read.value;
     }
 
     const sessionId = req.headers["mcp-session-id"];
@@ -153,7 +174,7 @@ export function createMcpEndpoint(
       if (!res.writableFinished) closed.abort();
     });
     await connectionClosed.run(closed.signal, () =>
-      active.handleRequest(req, res),
+      active.handleRequest(req, res, body),
     );
   }
 
@@ -164,6 +185,63 @@ export function createMcpEndpoint(
   }
 
   return { handle, close };
+}
+
+type JsonBody =
+  | { readonly ok: true; readonly value: unknown }
+  | {
+      readonly ok: false;
+      readonly status: 400 | 413;
+      readonly code: number;
+      readonly message: string;
+      readonly headers: Record<string, string>;
+    };
+
+/**
+ * Reads a POST body of at most MAX_BODY_BYTES, and parses it as JSON. A larger declared length
+ * is refused before reading, and the connection closes after the answer. A larger chunked body is
+ * drained without being kept.
+ */
+function readJsonBody(req: IncomingMessage): Promise<JsonBody> {
+  const tooLarge: JsonBody = {
+    ok: false,
+    status: 413,
+    code: -32000,
+    message: `the request body is over ${MAX_BODY_BYTES} bytes`,
+    headers: { Connection: "close" },
+  };
+  if (Number(req.headers["content-length"]) > MAX_BODY_BYTES) {
+    return Promise.resolve(tooLarge);
+  }
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size <= MAX_BODY_BYTES) chunks.push(chunk);
+    });
+    req.once("error", reject);
+    req.once("end", () => {
+      if (size > MAX_BODY_BYTES) {
+        resolve(tooLarge);
+        return;
+      }
+      try {
+        resolve({
+          ok: true,
+          value: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+        });
+      } catch {
+        resolve({
+          ok: false,
+          status: 400,
+          code: -32700,
+          message: "Parse error: Invalid JSON",
+          headers: {},
+        });
+      }
+    });
+  });
 }
 
 function rejectionFor(
@@ -212,12 +290,13 @@ function sendError(
   status: number,
   message: string,
   headers: Record<string, string> = {},
+  code = -32000,
 ): void {
   res.writeHead(status, { "Content-Type": "application/json", ...headers });
   res.end(
     JSON.stringify({
       jsonrpc: "2.0",
-      error: { code: -32000, message },
+      error: { code, message },
       id: null,
     }),
   );

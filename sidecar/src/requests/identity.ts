@@ -110,7 +110,11 @@ export function resolveIdempotency(
     : { kind: "conflict", requestId: existing.requestId };
 }
 
-function invalidUuidReason(field: string, value: string): string | undefined {
+/** Says why `value`, the field named `field`, isn't a lowercase UUID. */
+export function invalidUuidReason(
+  field: string,
+  value: string,
+): string | undefined {
   if (value === "") return `${field} is missing`;
   return UUID.test(value) ? undefined : `${field} is not a lowercase UUID`;
 }

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ConfigError, loadSidecarConfig } from "./config.ts";
+import {
+  ConfigError,
+  DEFAULT_DATABASE_PATH,
+  loadSidecarConfig,
+} from "./config.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);
@@ -27,7 +31,7 @@ function problemsFor(
 }
 
 describe("loadSidecarConfig", () => {
-  it("parses a valid Stage 1 configuration", () => {
+  it("parses a valid configuration, with the storage defaults", () => {
     assert.deepEqual(loadSidecarConfig(validEnv), {
       host: "127.0.0.1",
       port: 8080,
@@ -35,7 +39,14 @@ describe("loadSidecarConfig", () => {
       phoneToken: PHONE_TOKEN,
       liveCommandTimeoutSeconds: 60,
       mcpAllowedHosts: [],
+      databasePath: DEFAULT_DATABASE_PATH,
+      requestTtlSeconds: 86_400,
+      pendingLimit: 100,
     });
+    assert.match(
+      DEFAULT_DATABASE_PATH,
+      /[/\\]sidecar[/\\]data[/\\]sidecar\.db$/,
+    );
   });
 
   it("accepts the other loopback hosts", () => {
@@ -139,6 +150,41 @@ describe("loadSidecarConfig", () => {
         problemsFor({ ...validEnv, MCP_ALLOWED_HOSTS: value }).join("\n"),
         /MCP_ALLOWED_HOSTS must list host names/,
         value,
+      );
+    }
+  });
+
+  it("reads the optional storage settings, and treats empty ones as unset", () => {
+    const config = loadSidecarConfig({
+      ...validEnv,
+      DATABASE_PATH: " /var/lib/seeker-vault/sidecar.db ",
+      REQUEST_TTL_SECONDS: "3600",
+      REQUEST_PENDING_LIMIT: "5",
+    });
+    assert.equal(config.databasePath, "/var/lib/seeker-vault/sidecar.db");
+    assert.equal(config.requestTtlSeconds, 3600);
+    assert.equal(config.pendingLimit, 5);
+    const empty = loadSidecarConfig({
+      ...validEnv,
+      DATABASE_PATH: "",
+      REQUEST_TTL_SECONDS: " ",
+      REQUEST_PENDING_LIMIT: "",
+    });
+    assert.equal(empty.databasePath, DEFAULT_DATABASE_PATH);
+    assert.equal(empty.requestTtlSeconds, 86_400);
+    assert.equal(empty.pendingLimit, 100);
+  });
+
+  it("rejects request lifetimes and pending limits outside their ranges", () => {
+    for (const ttl of ["59", "604801", "1h"]) {
+      assert.deepEqual(problemsFor({ ...validEnv, REQUEST_TTL_SECONDS: ttl }), [
+        "REQUEST_TTL_SECONDS must be a whole number from 60 to 604800.",
+      ]);
+    }
+    for (const limit of ["0", "10001", "-5"]) {
+      assert.deepEqual(
+        problemsFor({ ...validEnv, REQUEST_PENDING_LIMIT: limit }),
+        ["REQUEST_PENDING_LIMIT must be a whole number from 1 to 10000."],
       );
     }
   });

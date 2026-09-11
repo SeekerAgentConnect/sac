@@ -1,10 +1,17 @@
 # Sidecar
 
-The sidecar is the self-hosted TypeScript/Node server that sits between agents and the phone. In Stage 1 it runs the live diagnostic flow from [`docs/protocol.md`](../protocol.md): an agent calls an MCP tool, the Seeker shows the text, and the user's OK goes back to the agent. All state is in memory, and the sidecar listens on loopback only.
+The sidecar is the self-hosted TypeScript/Node server that sits between agents and the phone. It runs both flows from [`docs/protocol.md`](../protocol.md):
+
+- **The Stage 1 live diagnostic,** which stays in memory.
+- **The durable request workflow, from Stage 2 on.** It's stored in a local SQLite database; see [storage and lifecycle](#storage-and-lifecycle).
+
+The sidecar listens on loopback only.
 
 ## Configuration
 
-`pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`. Every variable except `MCP_ALLOWED_HOSTS` is required.
+`pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`.
+
+`MCP_ALLOWED_HOSTS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, and `REQUEST_PENDING_LIMIT` are optional, and an empty one counts as unset. The others are required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
@@ -12,9 +19,12 @@ The sidecar is the self-hosted TypeScript/Node server that sits between agents a
 | `SIDECAR_PORT` | Port to listen on | 1 to 65535; `.env.example` uses 8080 |
 | `MCP_TOKEN` | Bearer token that agents send to `/mcp` | At least 32 characters, only bearer-token characters (letters, digits, and `- . _ ~ + /`), and not the placeholder |
 | `PHONE_TOKEN` | Bearer token that the phone sends to the Connect API | The same rules as `MCP_TOKEN`, and a different value |
-| `LIVE_COMMAND_TIMEOUT_SECONDS` | How long a command waits for the user's OK | 1 to 3600 |
+| `LIVE_COMMAND_TIMEOUT_SECONDS` | How long a live command waits for the user's OK | 1 to 3600 |
 | `MCP_URL` | Not read by the sidecar; the test agent (SAW-005) uses it | None |
 | `MCP_ALLOWED_HOSTS` | Optional. Host names or IP addresses, comma-separated, that `/mcp` accepts in the `Host` and `Origin` headers besides loopback. It's for an agent that reaches the sidecar through a VPN address; see [Hermes over a VPN](../integrations/hermes.md#over-a-vpn-you-already-use). | No scheme, port, or wildcard |
+| `DATABASE_PATH` | Optional. The SQLite file for durable requests | Defaults to `sidecar/data/sidecar.db`, whatever the working directory. A relative path is resolved from the directory the sidecar starts in, and a missing directory is created. |
+| `REQUEST_TTL_SECONDS` | Optional. How long a request waits for the owner's decision when its agent doesn't choose | 60 to 604800; defaults to 86400 (a day) |
+| `REQUEST_PENDING_LIMIT` | Optional. The most requests that can wait for the owner at once | 1 to 10000; defaults to 100 |
 
 Generate each token with `openssl rand -hex 32`. If the configuration is invalid, the sidecar names every problem and exits with status 1. It never prints a token value.
 
@@ -28,18 +38,21 @@ pnpm dev:sidecar
 The expected output is:
 
 ```text
+[sidecar] requests are stored in /path/to/SeekerAgentWallet/sidecar/data/sidecar.db (schema version 1); phone connection 5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f
 [sidecar] listening on http://127.0.0.1:8080: MCP at http://127.0.0.1:8080/mcp, phone API at http://127.0.0.1:8080/seekervault.live.v1.LiveCommandService
 ```
 
-To check that it's up, run `curl -s http://127.0.0.1:8080/healthz`, which prints `{"status":"ok"}`.
+The phone connection is created along with the database and keeps its ID across restarts. The phone's `RequestService` calls name it, until pairing replaces it in SAW-011.
+
+To check that the sidecar is up, run `curl -s http://127.0.0.1:8080/healthz`, which prints `{"status":"ok"}`.
 
 To stop it, press Ctrl+C or send SIGTERM. Stopping happens in this order:
 
-1. The in-flight command, if any, is cancelled, and the agent gets `CANCELLED`.
+1. The in-flight live command, if any, is cancelled, and the agent gets `CANCELLED`.
 2. The phone's stream ends with `unavailable`.
-3. The process exits within about a second.
+3. The database closes, and the process exits within about a second.
 
-A restart loses the in-flight command by design, and nothing is replayed after it.
+A restart loses the in-flight live command by design, and nothing is replayed after it. Durable requests survive a restart unchanged; see [storage and lifecycle](#storage-and-lifecycle).
 
 `pnpm build` compiles the sidecar to `sidecar/dist`. To run that build from the repository root, use `node --env-file-if-exists=.env sidecar/dist/main.js`.
 
@@ -48,9 +61,10 @@ A restart loses the in-flight command by design, and nothing is replayed after i
 | Path | Caller | Authentication | Purpose |
 | --- | --- | --- | --- |
 | `GET /healthz` | Anything on the machine | None | Liveness check: `{"status":"ok"}` |
-| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>` | MCP Streamable HTTP with sessions, and the tool `vault_display_command` |
+| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>` | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, and the durable tools `vault_request_ack`, `vault_get_request`, and `vault_cancel_request` |
 | `/seekervault.live.v1.LiveCommandService/WatchCommands` | The phone | `Authorization: Bearer <PHONE_TOKEN>` | Connect server stream of live commands |
 | `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The phone | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
+| `/seekervault.request.v1.RequestService/ListPending`, `GetRequest`, `PrepareRequest`, and `SubmitResult` | The phone | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary calls of the durable workflow |
 
 The sidecar checks requests to `/mcp` as follows, following the MCP transport specification's defense against DNS rebinding:
 
@@ -58,17 +72,22 @@ The sidecar checks requests to `/mcp` as follows, following the MCP transport sp
 - **Host header:** must be a loopback name (`127.0.0.1`, `localhost`, or `[::1]`) or an `MCP_ALLOWED_HOSTS` entry, on any port so that SSH tunnels and port forwards work. Otherwise it returns 403.
 - **Origin header:** if present, it must also be a loopback origin or an `MCP_ALLOWED_HOSTS` entry. Otherwise it returns 403.
 - **Token:** a missing or wrong token gets 401 with `WWW-Authenticate: Bearer`.
+- **Body size:** a POST body over 64 KiB gets 413. When the length is declared, the sidecar answers without reading the body, and closes the connection.
 - **Session:** an unknown session ID gets 404, and the client then starts a new session.
 - **Request format:** the MCP SDK checks the `Accept` and `Content-Type` headers and the protocol version.
 
 On the phone API:
 
-- **Token:** a missing or wrong token fails with `unauthenticated`. The MCP token is refused here, and the phone token is refused on `/mcp`.
-- **Size:** each message is limited to 64 KiB.
+- **Token:** a missing or wrong token fails with `unauthenticated`. The MCP token is refused here, and the phone token on `/mcp`.
+- **Size:** each message is limited to 64 KiB, and a larger one fails with `resource_exhausted`.
+- **Connection:** until pairing arrives in SAW-011, `PHONE_TOKEN` authenticates as the sidecar's one connection. Every `RequestService` call must name that connection, in `connection_id` or `ref`. A call that names another connection gets `not_found`.
+- **Errors:** every `RequestService` error carries a `RequestErrorDetail`; see [request errors](../protocol.md#request-errors). `PairingService` arrives in SAW-011.
 
-**Tokens and logs:** tokens are read only from the `Authorization` header, compared in constant time, and never logged. Log lines carry command IDs and sizes, never command text.
+**Tokens and logs:** tokens are read only from the `Authorization` header, compared in constant time, and never logged. Log lines carry command and request IDs, sizes, and states. They never carry command text, request text, or notes.
 
-## The MCP tool
+## The MCP tools
+
+### vault_display_command
 
 `vault_display_command` takes `{"text": string}`. To call it from the command line, run `pnpm agent hello "Hello Seeker"`; see [`test-agent/README.md`](../../test-agent/README.md). To connect Hermes, on the Mac or on a VPS, see [`docs/integrations/hermes.md`](../integrations/hermes.md).
 
@@ -84,6 +103,66 @@ On the phone API:
 - **Set the client's request timeout above `LIVE_COMMAND_TIMEOUT_SECONDS`.** The MCP TypeScript SDK's default is 60 seconds.
 
 The call is cancelled when the agent cancels it (`notifications/cancelled`) or when the agent's HTTP connection drops before the answer.
+
+### The durable request tools
+
+`vault_request_ack` queues display-only text for the owner to acknowledge. `vault_get_request` reads a request, and `vault_cancel_request` withdraws one. The full contract, including the request view and every error, is in [`docs/protocol.md`](../protocol.md#agent-api-mcp).
+
+- **Every call answers at once.** Creation stores the request and returns it as PENDING. At that point the owner hasn't seen it yet, let alone approved it. The agent reads the outcome later with `vault_get_request`.
+- **Retries are safe.** The same `idempotency_key` with the same text returns the original request, in whatever state it's in now. The same key with different text fails with `IDEMPOTENCY_CONFLICT`.
+- **Ack only, for now.** `vault_request_ack` involves no wallet, and SAW-014 limits it to development and demo use. Until wallets arrive in Stage 3, ack is the only kind of request that can be created.
+- **Hermes doesn't see these tools yet.** `examples/hermes.config.yaml` still allows only `vault_display_command`; SAW-014 updates it.
+
+## Storage and lifecycle
+
+Durable requests live in one SQLite file, `DATABASE_PATH` (by default `sidecar/data/sidecar.db`). While the sidecar runs, SQLite keeps `-wal` and `-shm` files next to it. `.gitignore` covers all three (`*.db`, `*.db-*`).
+
+### How requests are stored
+
+- **The driver is Node's built-in `node:sqlite`,** so there's no native build and no extra dependency.
+- **The database runs in WAL mode with `synchronous = FULL`,** so a commit is on disk before it returns.
+- **Each operation is one transaction (`BEGIN IMMEDIATE`) that commits before the sidecar answers.** The agent's tool result and the phone's RPC response never report a change that a crash could still lose. Operations are synchronous, so two never interleave.
+- **Only `sidecar/src/storage/` touches SQLite or the file system.** `stage-boundary.test.ts` checks this.
+- **Run one sidecar per database file.**
+
+These are the tables at schema version 1:
+
+| Table | Holds |
+| --- | --- |
+| `connections` | The phone connection. Until pairing (SAW-011) there's one, created with the database. |
+| `requests` | Each request: its connection, kind, action (as Protobuf binary), note, state, times, and outcome |
+| `idempotency_keys` | Each key's request and action fingerprint, across the whole sidecar |
+| `results` | Every result the phone submitted and the sidecar accepted, so that a repeat changes nothing |
+| `prepared_transactions` | Prepared transaction versions. It stays empty until transfers arrive in Stage 4. |
+
+To look inside, run `sqlite3 sidecar/data/sidecar.db "SELECT request_id, kind, state FROM requests"`. States are `RequestState` numbers, from 1 (PENDING) to 10 (UNKNOWN).
+
+### Migrations
+
+- **`sidecar/src/storage/migrations.ts` lists numbered migrations,** and `PRAGMA user_version` records the last one applied.
+- **At startup, the sidecar applies the missing ones in order,** each in its own transaction, so a failure leaves the database at the last complete version.
+- **A database from a newer sidecar is refused,** and the sidecar exits rather than guess.
+- **A shipped migration is never edited;** a schema change is a new migration. `sidecar/src/storage/fixtures/schema-v1.sql` freezes a v1 database, and `database.test.ts` opens it with the current code.
+
+### The lifecycle in the sidecar
+
+- **Creation:**
+  - validates the action, the note, the idempotency key, and the lifetime
+  - applies the idempotency key
+  - checks `REQUEST_PENDING_LIMIT`
+  - stores the request as PENDING. Its `expires_at` is the time of creation plus `expires_in_seconds`, or plus `REQUEST_TTL_SECONDS` if the agent gave none.
+
+  Storing a request isn't the owner's approval.
+- **Expiry** has no timer. Every operation first moves each PENDING request that's past its `expires_at` to EXPIRED, so no answer ever shows an overdue request as PENDING.
+- **Cancellation** by the agent works only while the request is PENDING. A repeat returns the cancelled request.
+- **Results** from the phone go through the lifecycle's rules. A result identical to an accepted one changes nothing. A result that doesn't fit the current state gets `INVALID_STATE`, with the request as it is.
+- **Pending pages** are ordered by `created_at`, then `request_id`, and the page token names the last request returned.
+
+### Restarts, backups, and a fresh start
+
+- **Nothing runs at startup.** No request is rebuilt, re-executed, replayed, or expired early. Requests wait in their states for the phone and the agent, and the connection keeps its ID. The live diagnostic still loses its in-flight command.
+- **To back up,** stop the sidecar, then copy the database file together with its `-wal` file, if there is one.
+- **To start over,** stop the sidecar and delete `sidecar/data/sidecar.db*`. Every request, and the connection's ID, is gone, and the next start creates a new connection.
 
 ## Examples
 
@@ -118,7 +197,7 @@ $ curl -s -X POST http://127.0.0.1:8080/seekervault.live.v1.LiveCommandService/A
 {"code":"unauthenticated","message":"a valid phone token is required"}
 ```
 
-Tool errors, as the agent sees them:
+Live tool errors, as the agent sees them:
 
 ```text
 OFFLINE: no phone is watching; open the live-test screen and connect
@@ -126,6 +205,15 @@ BUSY: another live command is in flight
 INVALID_TEXT: text is empty
 TIMEOUT: no acknowledgement within 60 seconds
 CANCELLED: the command was cancelled: the phone disconnected
+```
+
+Durable tool errors, as the agent sees them:
+
+```text
+IDEMPOTENCY_CONFLICT: idempotency_key "deploy-1" was already used for request 3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c with different parameters
+PENDING_LIMIT: the phone already has 100 pending requests, which is the limit; wait for the owner to decide some, or cancel ones you no longer need
+INVALID_STATE: the request is COMPLETED, so it can no longer be cancelled
+NOT_FOUND: no such request
 ```
 
 Acknowledgement errors, as the phone sees them:
@@ -141,6 +229,8 @@ Typical log lines:
 [sidecar] MCP session opened
 [sidecar] command 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed sent (12 bytes)
 [sidecar] command 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed acknowledged
+[sidecar] request 3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c stored (ack)
+[sidecar] request 3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c: acknowledgement, now COMPLETED
 [sidecar] rejected POST /mcp: a valid MCP token is required
 ```
 
@@ -149,16 +239,21 @@ Typical log lines:
 | File | Role |
 | --- | --- |
 | `sidecar/src/main.ts` | Entry point: loads the configuration, starts the server, and stops it on SIGINT or SIGTERM |
-| `sidecar/src/server.ts` | The HTTP server: `/healthz`, `/mcp`, the phone API, and a graceful close |
-| `sidecar/src/mcp-endpoint.ts` | MCP sessions, `vault_display_command`, and the Host, Origin, and token checks |
+| `sidecar/src/server.ts` | The HTTP server: `/healthz`, `/mcp`, the phone API, the database, and a graceful close |
+| `sidecar/src/mcp-endpoint.ts` | MCP sessions, the tools, the body limit, and the Host, Origin, and token checks |
 | `sidecar/src/phone-api.ts` | The Connect `LiveCommandService` |
 | `sidecar/src/live/bridge.ts` | The in-memory waiter: one watcher, one in-flight command, deadline timers, and cancellation |
 | `sidecar/src/live/command.ts` | The protocol rules from SAW-002 |
 | `sidecar/src/requests/action.ts` | The durable request's parameters (SAW-009): each action kind's fields, base-unit amounts, base58 addresses, and exact message bytes |
 | `sidecar/src/requests/identity.ts` | Connection scope for references, idempotency keys, and action fingerprints (SAW-009) |
 | `sidecar/src/requests/lifecycle.ts` | The durable lifecycle (SAW-009): the transition table, the phone's results, the approval binding, and expiry |
+| `sidecar/src/requests/store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions |
+| `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010) |
+| `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010) |
+| `sidecar/src/storage/database.ts` | Opening the database, migrations, and transactions (SAW-010) |
+| `sidecar/src/storage/migrations.ts` | The numbered schema migrations (SAW-010) |
 
-The `requests/` modules are pure rules, and nothing calls them yet. SAW-010 wires them to storage and the MCP tools; see [`docs/protocol.md`](../protocol.md#stage-2-durable-requests).
+The SAW-009 modules are pure rules, which `store.ts` applies. The contract they implement is in [`docs/protocol.md`](../protocol.md#stage-2-durable-requests).
 
 `pnpm check` runs these tests:
 
@@ -173,6 +268,25 @@ The `requests/` modules are pure rules, and nothing calls them yet. SAW-010 wire
   - `/healthz`
   - that no token or command text reaches the logs
 - **`src/restart.test.ts`** runs `src/main.ts` as a real process. It stops the process with SIGTERM and then with SIGKILL during a command, and checks that the original caller fails and nothing is replayed after the restart.
+- **`src/requests/store.test.ts`** tests the store on an in-memory database with a controlled clock. It covers:
+  - creation and validation
+  - idempotent retries and conflicts
+  - the pending limit, and expiry at the exact deadline
+  - results and their repeats
+  - cancellation and its races
+  - connection scope, and pages while states change
+  - a restart that reopens the file
+- **`src/requests/endpoints.test.ts`** runs the durable workflow end to end, with the MCP SDK client and a Connect client. It covers:
+  - the tools and the round trip
+  - retries and cancellation
+  - simultaneous cancellations and acknowledgements
+  - repeated results and the pending limit
+  - the size limits
+  - the phone's authentication and scope
+- **`src/requests/restart.test.ts`** kills the sidecar with SIGKILL right after a tool answers and right after the phone's result is confirmed. It checks that both survived, and that nothing ran at startup.
+- **`src/storage/database.test.ts`** tests the schema, the pragmas, the frozen v1 fixture, a database from a newer sidecar, migration failures, and transaction rollback.
+- **The SAW-009 rule tests** are `src/requests/action.test.ts`, `identity.test.ts`, `lifecycle.test.ts`, `fixtures.test.ts`, and `live-compat.test.ts`.
+- **`src/stage-boundary.test.ts`** checks that there's no wallet package, no key generation, and no file system or SQLite access outside `src/storage/`.
 
 ## Verification record: SAW-003
 
@@ -188,3 +302,20 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolch
 | Deliberate breaks | Each of these failed the matching integration tests: skipping the token check, disabling cancellation, dropping the Origin check |
 | `pnpm build`, `pnpm check:generated`, `pnpm check:android` | PASS |
 | Physical Seeker | NOT RUN: the Android screen arrives in SAW-004 |
+
+## Verification record: SAW-010
+
+Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with Node 24.21.0 (its `node:sqlite` is SQLite 3.53.4), pnpm 12.3.4, and the other versions in [`toolchain.md`](toolchain.md).
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, and `tsc`. 189/189 sidecar tests pass, 42 more than before: the store, the database, the endpoints, the restart, and the configuration. The test agent's 15/15 pass too. |
+| Restart persistence | PASS. `src/requests/restart.test.ts` killed the sidecar with SIGKILL twice: right after `vault_request_ack` answered, and right after the phone's acknowledgement was confirmed. After each restart:<ul><li>the request, and then its COMPLETED result, were there</li><li>the connection kept its ID</li><li>a retry with the same key returned the same request</li><li>nothing ran at startup</li></ul> |
+| The lifecycle in the store | PASS, in `store.test.ts` and `endpoints.test.ts`:<ul><li>A duplicate creation replays the original, and a changed retry gets IDEMPOTENCY_CONFLICT.</li><li>A repeated result changes nothing, and a conflicting one gets INVALID_STATE.</li><li>Expiry happens exactly at `expires_at`.</li><li>In eight simultaneous cancel-and-acknowledge pairs, each had exactly one winner.</li><li>Pages neither repeated nor skipped a request while states changed.</li><li>PENDING_LIMIT held.</li><li>Oversized requests got INVALID_PARAMETERS, 413, or `resource_exhausted`.</li></ul> |
+| Migration | PASS. The frozen v1 fixture has migration 1's schema, and the current code opens it with its requests, idempotency records, and results intact. A database from a newer sidecar is refused and left untouched. A failing migration rolls back to the last complete version. |
+| `pnpm test:hello` | PASS: the 9/9 Stage 1 acceptance cases, unchanged |
+| `pnpm check:android` | PASS: 61/61 unit tests. `ConnectLiveCommandTransportTest` now gives the sidecar a throwaway database. |
+| `pnpm build` | PASS: `sidecar/dist` includes `storage/` and `requests/`. The built sidecar starts, answers `/healthz`, and logs its connection. |
+| `pnpm check:generated` | PASS: the protocol didn't change |
+| Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>expiry one millisecond late</li><li>a changed retry reusing the original request</li><li>a repeated result not recognized</li><li>a page repeating its last request</li><li>one request accepted past the limit</li><li>an edit to the shipped migration</li><li>the database kept in memory</li><li>a 128 KiB body limit</li></ul> |
+| Physical Seeker | NOT RUN: SAW-010 has no phone-side code. The Android inbox arrives in SAW-013. |

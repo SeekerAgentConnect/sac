@@ -60,6 +60,18 @@ export function decodeBase58(text: string): Uint8Array | undefined {
   return Uint8Array.from(bytes);
 }
 
+/** Encodes bytes as base58, the way Solana writes addresses and signatures. */
+export function encodeBase58(bytes: Uint8Array): string {
+  let value = 0n;
+  for (const byte of bytes) value = value * 256n + BigInt(byte);
+  let text = "";
+  for (; value > 0n; value /= 58n)
+    text = BASE58.charAt(Number(value % 58n)) + text;
+  // Each leading zero byte is written as "1".
+  for (let i = 0; bytes[i] === 0; i++) text = "1" + text;
+  return text;
+}
+
 /** Whether `text` is a Solana address: base58 for exactly 32 bytes. */
 export function isAddress(text: string): boolean {
   return (

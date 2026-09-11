@@ -4,17 +4,25 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
 
 ## Stage boundaries
 
-- **Current stage: Stage 2, persistent requests and connections.** Stage 1, the wallet-free hello world, is accepted. SAW-009 defined the durable request contract (`docs/protocol.md`) and its rules as pure code. Storage, pairing, and the phone's inbox arrive in SAW-010 to SAW-013. Until the task that adds each one lands, the limits below still hold.
+- **Current stage: Stage 2, persistent requests and connections.** Stage 1, the wallet-free hello world, is accepted. SAW-009 defined the durable request contract (`docs/protocol.md`), and SAW-010 added the sidecar's SQLite request queue. Pairing, and the phone's connections and inbox, arrive in SAW-011 to SAW-013. Until the task that adds each one lands, the limits below still hold.
 - **Out of scope until a later stage:**
   - wallet SDKs, keys, or signing
-  - request queues or any persistence (SAW-010)
+  - storage on the phone (SAW-012, SAW-013)
   - policies
   - QR pairing (SAW-011)
   - OAuth
   - Docker deployment
   - background services
   - push notifications
-- **`StageOneBoundaryTest` (Android) and `sidecar/src/stage-boundary.test.ts` enforce this list:** no wallet library, no key generation, no stored commands, and no background components. The stage that adds one of these changes the guard on purpose.
+- **Storage stays in one place.** The sidecar stores durable requests in SQLite, and only through `sidecar/src/storage/`. The live diagnostic stays in memory, and nothing re-executes a request after a restart.
+- **`StageOneBoundaryTest` (Android) and `sidecar/src/stage-boundary.test.ts` enforce these limits:**
+  - no wallet library
+  - no key generation
+  - no storage outside the sidecar's `src/storage/`
+  - nothing stored on the phone
+  - no background components
+
+  The stage that lifts a limit changes the guard on purpose.
 - **Don't implement later tasks early.** A directory for a later component doesn't mean the component should be built yet.
 - **Never fake success.** A command whose task hasn't landed must fail clearly, and a check must never pass without doing what it claims.
 - **Live commands are display-only text.** They are never shell code or instructions to execute on the phone.

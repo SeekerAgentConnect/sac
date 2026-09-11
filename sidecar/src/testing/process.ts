@@ -1,10 +1,14 @@
 /**
- * Runs the sidecar (`node src/main.ts`) as a real process, for the Stage 1 acceptance checks
- * (`pnpm test:hello`). The process gets only the settings passed here, never the developer's .env.
+ * Runs the sidecar (`node src/main.ts`) as a real process, for the acceptance checks
+ * (`pnpm test:hello`) and the restart tests. The process gets only the settings passed here, never
+ * the developer's .env, and a throwaway database unless the caller names one.
  */
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { mkdtempSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAIN = fileURLToPath(new URL("../main.ts", import.meta.url));
@@ -14,10 +18,14 @@ export interface SidecarProcessOptions {
   readonly mcpToken: string;
   readonly phoneToken: string;
   readonly liveCommandTimeoutSeconds: number;
+  /** The SQLite file. Pass the same one to restart onto the same requests; a new one if omitted. */
+  readonly databasePath?: string;
 }
 
 export interface SidecarProcess {
   readonly url: string;
+  /** The phone connection the sidecar logged at startup. */
+  readonly connectionId: string;
   /** Everything the process has printed so far. */
   output(): string;
   /** Sends `signal` (default SIGTERM) and waits until the process has exited. */
@@ -34,6 +42,14 @@ export async function freePort(): Promise<number> {
   return port;
 }
 
+/** A path for a new database, in a new temporary directory. */
+export function temporaryDatabasePath(): string {
+  return join(
+    mkdtempSync(join(tmpdir(), "seeker-vault-sidecar-")),
+    "sidecar.db",
+  );
+}
+
 /** Starts the sidecar and resolves once it listens. */
 export async function startSidecarProcess(
   options: SidecarProcessOptions,
@@ -46,6 +62,7 @@ export async function startSidecarProcess(
       MCP_TOKEN: options.mcpToken,
       PHONE_TOKEN: options.phoneToken,
       LIVE_COMMAND_TIMEOUT_SECONDS: String(options.liveCommandTimeoutSeconds),
+      DATABASE_PATH: options.databasePath ?? temporaryDatabasePath(),
     },
   });
   let output = "";
@@ -67,8 +84,13 @@ export async function startSidecarProcess(
     child.stdout.on("data", onData);
     child.once("exit", onExit);
   });
+  const connectionId = /phone connection ([0-9a-f-]{36})/.exec(output)?.[1];
+  if (connectionId === undefined) {
+    throw new Error(`the sidecar didn't log its phone connection: ${output}`);
+  }
   return {
     url: `http://127.0.0.1:${options.port}`,
+    connectionId,
     output: () => output,
     async stop(signal = "SIGTERM") {
       if (child.exitCode !== null || child.signalCode !== null) return;

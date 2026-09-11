@@ -95,7 +95,13 @@ From Stage 2 on, agents propose actions that are stored and decided later. SAW-0
 - the agent's side as the [MCP tools](#agent-api-mcp) below
 - the rules as pure code in [`sidecar/src/requests/`](../sidecar/src/requests)
 
-Nothing serves the workflow yet. SAW-010 adds storage and the MCP tools, SAW-011 pairing, and SAW-013 the phone's inbox. Stages 3, 4, and 6 add the wallet actions.
+SAW-010 serves the workflow:
+
+- **Storage:** the sidecar stores requests in SQLite; see [storage and lifecycle](development/sidecar.md#storage-and-lifecycle).
+- **Endpoints:** it serves `vault_request_ack`, `vault_get_request`, `vault_cancel_request`, and `RequestService`.
+- **Connection:** until pairing arrives in SAW-011, the sidecar has a single connection, created with its database. `PHONE_TOKEN` authenticates as that connection, and the startup log prints its ID.
+
+SAW-013 adds the phone's inbox, and Stages 3, 4, and 6 add the wallet actions. Until then, creating a wallet action fails with `WALLET_MISMATCH`, and `PrepareRequest` for a transfer or swap answers `unimplemented`.
 
 ```mermaid
 sequenceDiagram
@@ -312,6 +318,11 @@ A `SubmitResult` carries one result:
 - **`network`** is `"mainnet"`, `"devnet"`, or `"testnet"`.
 - **`asset`, `input_asset`, and `output_asset`** are `"SOL"` or a token's mint address.
 - **Amounts are strings.**
+- **`expires_in_seconds` is optional, from 60 to 604800.** Without it, the sidecar's `REQUEST_TTL_SECONDS` applies, which is a day unless configured.
+- **Sizes are bounded:**
+  - An ack's text follows the Stage 1 text rules, and a note is at most 1024 UTF-8 bytes.
+  - A whole `/mcp` body is at most 64 KiB; a larger one gets 413.
+  - Each phone API message is at most 64 KiB; a larger one gets `resource_exhausted`.
 - **An agent polls `vault_get_request` until `terminal` is true.** An UNKNOWN request isn't finished, and the agent must not create a replacement for it.
 
 Every tool returns the same view in `structuredContent`:

@@ -53,6 +53,9 @@ before(async () => {
       mcpToken: MCP_TOKEN,
       phoneToken: PHONE_TOKEN,
       liveCommandTimeoutSeconds: 1,
+      databasePath: ":memory:",
+      requestTtlSeconds: 86_400,
+      pendingLimit: 100,
     },
     { log: (line) => logs.push(line) },
   );
@@ -80,9 +83,15 @@ describe("sidecar", () => {
     const agent = await connectAgent(sidecar.url, MCP_TOKEN);
     try {
       const { tools } = await agent.listTools(); // the client then validates the output schema
+      // The durable request tools (SAW-010) follow the live one.
       assert.deepEqual(
         tools.map((tool) => tool.name),
-        [DISPLAY_COMMAND_TOOL],
+        [
+          DISPLAY_COMMAND_TOOL,
+          "vault_request_ack",
+          "vault_get_request",
+          "vault_cancel_request",
+        ],
       );
       let settled = false;
       const call = display(agent, "Hello Seeker 👋").finally(() => {
@@ -296,6 +305,9 @@ describe("sidecar", () => {
         mcpToken: MCP_TOKEN,
         phoneToken: PHONE_TOKEN,
         liveCommandTimeoutSeconds: 1,
+        databasePath: ":memory:",
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
         mcpAllowedHosts: ["100.64.0.1"],
       },
       { log: () => undefined },

@@ -1,6 +1,6 @@
 /**
- * Real clients for the sidecar's two endpoints, used by the integration tests: a Connect
- * client acting as the phone, and an MCP SDK client acting as the agent.
+ * Real clients for the sidecar's two endpoints, used by the integration tests: Connect clients
+ * acting as the phone, and an MCP SDK client acting as the agent.
  */
 // Re-exported so tests in other packages check errors against this module's Connect instance.
 export { Code, ConnectError } from "@connectrpc/connect";
@@ -24,23 +24,35 @@ import {
   type LiveCommand,
   type WatchCommandsResponse,
 } from "../gen/seekervault/live/v1/live_pb.js";
+import { RequestService } from "../gen/seekervault/request/v1/service_pb.js";
 import { DISPLAY_COMMAND_TOOL } from "../mcp-endpoint.ts";
+import type { RequestView } from "../requests/mcp-tools.ts";
 
 export function phoneClient(
   baseUrl: string,
   token?: string,
 ): ConnectClient<typeof LiveCommandService> {
-  const bearer: Interceptor = (next) => (request) => {
-    if (token !== undefined)
-      request.header.set("Authorization", `Bearer ${token}`);
-    return next(request);
-  };
   return createClient(
     LiveCommandService,
     createConnectTransport({
       baseUrl,
       httpVersion: "1.1",
-      interceptors: [bearer],
+      interceptors: [authorization(token)],
+    }),
+  );
+}
+
+/** A Connect client for the durable RequestService, acting as the phone. */
+export function requestClient(
+  baseUrl: string,
+  token?: string,
+): ConnectClient<typeof RequestService> {
+  return createClient(
+    RequestService,
+    createConnectTransport({
+      baseUrl,
+      httpVersion: "1.1",
+      interceptors: [authorization(token)],
     }),
   );
 }
@@ -115,6 +127,24 @@ export async function display(
   return result as CallToolResult;
 }
 
+/** Calls any tool; the durable ones answer at once, so the client timeout is short. */
+export async function callTool(
+  agent: Client,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<CallToolResult> {
+  const result = await agent.callTool({ name, arguments: args }, undefined, {
+    timeout: 10_000,
+  });
+  return result as CallToolResult;
+}
+
+/** The request a durable tool returned. Fails the test if the tool failed. */
+export function viewOf(result: CallToolResult): RequestView {
+  assert.notEqual(result.isError, true, JSON.stringify(result.content));
+  return result.structuredContent as unknown as RequestView;
+}
+
 /** The code of a failed tool result, such as `BUSY`, or undefined for a success. */
 export function errorCode(result: CallToolResult): string | undefined {
   if (result.isError !== true) return undefined;
@@ -136,4 +166,12 @@ export async function waitFor(
       assert.fail(`timed out waiting for ${description}`);
     await delay(10);
   }
+}
+
+function authorization(token: string | undefined): Interceptor {
+  return (next) => (request) => {
+    if (token !== undefined)
+      request.header.set("Authorization", `Bearer ${token}`);
+    return next(request);
+  };
 }

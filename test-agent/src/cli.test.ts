@@ -86,6 +86,9 @@ before(async () => {
     port: 0,
     mcpToken: MCP_TOKEN,
     phoneToken: PHONE_TOKEN,
+    databasePath: ":memory:",
+    requestTtlSeconds: 86_400,
+    pendingLimit: 100,
   };
   const log = (): void => undefined;
   sidecar = await startSidecar(
@@ -247,9 +250,15 @@ describe("pnpm agent", () => {
     const { code, stdout } = await agent(["tools"], envFor(sidecar));
     assert.equal(code, 0);
     const tools = JSON.parse(stdout) as { name: string }[];
+    // The durable request tools (SAW-010) follow the live one.
     assert.deepEqual(
       tools.map((tool) => tool.name),
-      ["vault_display_command"],
+      [
+        "vault_display_command",
+        "vault_request_ack",
+        "vault_get_request",
+        "vault_cancel_request",
+      ],
     );
   });
 

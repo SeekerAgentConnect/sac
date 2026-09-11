@@ -8,8 +8,9 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 
 | Task | Status |
 | --- | --- |
-| SAW-009: Durable request contract and lifecycle | Done. `seekervault.request.v1` defines the phone's `PairingService` and `RequestService`, the actions, the lifecycle and its transitions, idempotency, and the errors. [`docs/protocol.md`](docs/protocol.md#stage-2-durable-requests) specifies all of that plus the agent's MCP tools, and [`docs/architecture.md`](docs/architecture.md) shows how the parts fit together. The rules exist as tested pure code in `sidecar/src/requests/`, with fixtures checked in both runtimes. Nothing serves the workflow yet. |
-| SAW-010 to SAW-014: Queue, pairing, connections, inbox, validation | Not started |
+| SAW-009: Durable request contract and lifecycle | Done. `seekervault.request.v1` defines the phone's `PairingService` and `RequestService`, the actions, the lifecycle and its transitions, idempotency, and the errors. [`docs/protocol.md`](docs/protocol.md#stage-2-durable-requests) specifies all of that plus the agent's MCP tools, and [`docs/architecture.md`](docs/architecture.md) shows how the parts fit together. The rules exist as tested pure code in `sidecar/src/requests/`, with fixtures checked in both runtimes. SAW-010 serves it. |
+| SAW-010: Persistent sidecar queue and async MCP lifecycle | Done. The sidecar stores requests in SQLite (`DATABASE_PATH`, default `sidecar/data/sidecar.db`), with migrations and durable commits, and creation and results are idempotent. Agents call `vault_request_ack`, `vault_get_request`, and `vault_cancel_request`, which answer at once. The phone's `RequestService` lists, reads, and answers requests. Requests survive restarts, and nothing runs on its own. See [`docs/development/sidecar.md`](docs/development/sidecar.md#storage-and-lifecycle). |
+| SAW-011 to SAW-014: Pairing, connections, inbox, validation | Not started |
 
 ## Stage 1
 
@@ -95,6 +96,7 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 - The sidecar rejects placeholder or short tokens, identical MCP and phone tokens, and hosts that are not loopback addresses.
 - Agents send `MCP_TOKEN` and the phone sends `PHONE_TOKEN`, each as `Authorization: Bearer <token>`; see [`docs/development/sidecar.md`](docs/development/sidecar.md).
 - `MCP_ALLOWED_HOSTS` is optional. It lets `/mcp` accept a VPN address, for Hermes on a VPS that reaches the Mac over a VPN; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md#over-a-vpn-you-already-use).
+- Durable requests are stored in `sidecar/data/sidecar.db` unless `DATABASE_PATH` says otherwise. `REQUEST_TTL_SECONDS` and `REQUEST_PENDING_LIMIT` are optional too; see [storage and lifecycle](docs/development/sidecar.md#storage-and-lifecycle).
 
 ## CI
 

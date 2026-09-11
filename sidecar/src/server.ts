@@ -1,6 +1,7 @@
 /**
- * The Stage 1 sidecar: GET /healthz, the MCP endpoint at /mcp, and the phone's Connect
- * API, on one loopback HTTP server. All state is in memory.
+ * The sidecar: GET /healthz, the MCP endpoint at /mcp, and the phone's Connect API, on one
+ * loopback HTTP server. The Stage 1 live diagnostic stays in memory; durable requests live in the
+ * SQLite database at DATABASE_PATH.
  */
 import { once } from "node:events";
 import {
@@ -18,16 +19,28 @@ import { LiveCommandService } from "./gen/seekervault/live/v1/live_pb.js";
 import { LiveCommandBridge } from "./live/bridge.ts";
 import { createMcpEndpoint } from "./mcp-endpoint.ts";
 import { phoneRoutes } from "./phone-api.ts";
+import { requestRoutes } from "./requests/phone-service.ts";
+import { RequestStore } from "./requests/store.ts";
+import {
+  openDatabase,
+  schemaVersion,
+  type DatabaseSync,
+} from "./storage/database.ts";
 
 export interface Sidecar {
   /** Base URL, for example http://127.0.0.1:8080. */
   readonly url: string;
-  /** Cancels the in-flight command, ends every stream, and stops listening. */
+  /** The phone connection that durable requests belong to, until pairing arrives (SAW-011). */
+  readonly connectionId: string;
+  /**
+   * Cancels the in-flight live command, ends every stream, stops listening, and closes the
+   * database. Durable requests stay as they are.
+   */
   close(): Promise<void>;
 }
 
 export interface SidecarOptions {
-  /** Receives one line per event; lines never contain tokens or command text. */
+  /** Receives one line per event; lines never contain tokens, command text, or notes. */
   readonly log?: (message: string) => void;
 }
 
@@ -45,18 +58,46 @@ export async function startSidecar(
     ((message: string) => {
       console.log(`[sidecar] ${message}`);
     });
+  const db = openDatabase(config.databasePath);
+  try {
+    return await serve(config, db, log);
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+}
+
+async function serve(
+  config: SidecarConfig,
+  db: DatabaseSync,
+  log: (message: string) => void,
+): Promise<Sidecar> {
+  // Nothing is executed at startup: stored requests wait for the phone and the agent.
+  const requests = new RequestStore(db, {
+    defaultTtlSeconds: config.requestTtlSeconds,
+    pendingLimit: config.pendingLimit,
+  });
+  const connectionId = requests.ensureConnection();
+  log(
+    `requests are stored in ${config.databasePath} (schema version ${schemaVersion(db)}); phone connection ${connectionId}`,
+  );
+
   const bridge = new LiveCommandBridge({
     timeoutSeconds: config.liveCommandTimeoutSeconds,
     log,
   });
   const mcp = createMcpEndpoint(
     bridge,
+    requests,
     config.mcpToken,
     log,
     config.mcpAllowedHosts,
   );
   const phone = connectNodeAdapter({
-    routes: phoneRoutes(bridge, config.phoneToken, log),
+    routes: (router) => {
+      phoneRoutes(bridge, config.phoneToken, log)(router);
+      requestRoutes(requests, config.phoneToken, connectionId, log)(router);
+    },
     readMaxBytes: PHONE_API_MAX_MESSAGE_BYTES,
   });
 
@@ -95,6 +136,7 @@ export async function startSidecar(
   let closing: Promise<void> | undefined;
   return {
     url,
+    connectionId,
     close() {
       closing ??= (async () => {
         bridge.shutdown();
@@ -109,6 +151,7 @@ export async function startSidecar(
         await mcp.close();
         server.closeAllConnections();
         await stopped;
+        db.close();
         log("stopped");
       })();
       return closing;

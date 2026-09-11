@@ -15,7 +15,7 @@ This page describes how to test the Stage 1 transport without an LLM. The test a
   - 8 for INVALID_TEXT
   - 3 for an unreachable sidecar, a rejected token, or the phone token used as the MCP token
   - 2 for missing configuration or bad arguments
-- **Tool discovery:** `pnpm agent tools` lists `vault_display_command`.
+- **Tool discovery:** `pnpm agent tools` lists `vault_display_command`, followed by the durable request tools `vault_request_ack`, `vault_get_request`, and `vault_cancel_request` (SAW-010).
 - **Configuration:** `.env` is loaded, and variables already in the environment take precedence.
 - **Credentials:** no token appears in stdout or stderr on any run.
 

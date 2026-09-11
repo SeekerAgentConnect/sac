@@ -1,11 +1,17 @@
 /**
- * Stage 1 sidecar configuration.
+ * Sidecar configuration.
  *
  * `pnpm dev:sidecar` loads the ignored root `.env` file with Node's
  * `--env-file-if-exists`; variables already set in the environment take
  * precedence over the file. Problems name the variable but never echo a
  * token value.
  */
+import { fileURLToPath } from "node:url";
+
+import {
+  MAX_EXPIRES_IN_SECONDS,
+  MIN_EXPIRES_IN_SECONDS,
+} from "./requests/store.ts";
 
 export interface SidecarConfig {
   readonly host: string;
@@ -15,6 +21,12 @@ export interface SidecarConfig {
   readonly liveCommandTimeoutSeconds: number;
   /** Host names besides loopback that /mcp accepts in Host and Origin (MCP_ALLOWED_HOSTS). */
   readonly mcpAllowedHosts?: readonly string[];
+  /** The SQLite file for durable requests (DATABASE_PATH). ":memory:" keeps them in memory, for tests. */
+  readonly databasePath: string;
+  /** The lifetime of a request whose agent doesn't choose one (REQUEST_TTL_SECONDS). */
+  readonly requestTtlSeconds: number;
+  /** The most PENDING requests the phone may have at once (REQUEST_PENDING_LIMIT). */
+  readonly pendingLimit: number;
 }
 
 export class ConfigError extends Error {
@@ -34,6 +46,11 @@ export class ConfigError extends Error {
 
 type Env = Readonly<Record<string, string | undefined>>;
 
+/** Where durable requests live unless DATABASE_PATH says otherwise: `sidecar/data/sidecar.db`. */
+export const DEFAULT_DATABASE_PATH = fileURLToPath(
+  new URL("../data/sidecar.db", import.meta.url),
+);
+
 // Stage 1 only listens on the local machine; remote agents reach it through a tunnel.
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 const PLACEHOLDER_PREFIX = "REPLACE_WITH_";
@@ -44,6 +61,9 @@ const BEARER_TOKEN = /^[A-Za-z0-9\-._~+/]+=*$/;
 const HOSTNAME =
   /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$|^\[[0-9a-f:.]+\]$/;
 const MAX_LIVE_COMMAND_TIMEOUT_SECONDS = 3600;
+const DEFAULT_REQUEST_TTL_SECONDS = 24 * 60 * 60;
+const DEFAULT_PENDING_LIMIT = 100;
+const MAX_PENDING_LIMIT = 10_000;
 
 export function loadSidecarConfig(env: Env): SidecarConfig {
   const problems: string[] = [];
@@ -68,6 +88,23 @@ export function loadSidecarConfig(env: Env): SidecarConfig {
     problems,
   );
   const mcpAllowedHosts = allowedHosts(env, problems);
+  const databasePath = env.DATABASE_PATH?.trim() || DEFAULT_DATABASE_PATH;
+  const requestTtlSeconds = optionalWholeNumber(
+    env,
+    "REQUEST_TTL_SECONDS",
+    MIN_EXPIRES_IN_SECONDS,
+    MAX_EXPIRES_IN_SECONDS,
+    DEFAULT_REQUEST_TTL_SECONDS,
+    problems,
+  );
+  const pendingLimit = optionalWholeNumber(
+    env,
+    "REQUEST_PENDING_LIMIT",
+    1,
+    MAX_PENDING_LIMIT,
+    DEFAULT_PENDING_LIMIT,
+    problems,
+  );
 
   if (
     problems.length > 0 ||
@@ -75,7 +112,9 @@ export function loadSidecarConfig(env: Env): SidecarConfig {
     port === undefined ||
     mcpToken === undefined ||
     phoneToken === undefined ||
-    liveCommandTimeoutSeconds === undefined
+    liveCommandTimeoutSeconds === undefined ||
+    requestTtlSeconds === undefined ||
+    pendingLimit === undefined
   ) {
     throw new ConfigError(problems);
   }
@@ -86,6 +125,9 @@ export function loadSidecarConfig(env: Env): SidecarConfig {
     phoneToken,
     liveCommandTimeoutSeconds,
     mcpAllowedHosts,
+    databasePath,
+    requestTtlSeconds,
+    pendingLimit,
   };
 }
 
@@ -135,6 +177,19 @@ function wholeNumber(
     return undefined;
   }
   return value;
+}
+
+/** Like wholeNumber, but an unset or empty variable takes `fallback`. */
+function optionalWholeNumber(
+  env: Env,
+  name: string,
+  min: number,
+  max: number,
+  fallback: number,
+  problems: string[],
+): number | undefined {
+  if (!env[name]?.trim()) return fallback;
+  return wholeNumber(env, name, min, max, problems);
 }
 
 function token(env: Env, name: string, problems: string[]): string | undefined {

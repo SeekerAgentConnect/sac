@@ -51,7 +51,7 @@ What each setting does:
 | `url` | The sidecar's MCP endpoint. It listens only on the Mac's loopback address. On a VPS, this is the tunnel's end instead; see [Hermes on a VPS](#4-hermes-on-a-vps). |
 | `Authorization` | Hermes fills in `${MCP_SEEKER_VAULT_API_KEY}` from `~/.hermes/.env`, or from the environment, when it loads the configuration. If the variable is missing, Hermes sends the literal text, and the sidecar refuses the connection. `hermes mcp add` uses the same variable name for a server called `seeker_vault`. |
 | `timeout` | How long Hermes waits for the tool call, in seconds; Hermes's default is 300. Keep it above the sidecar's `LIVE_COMMAND_TIMEOUT_SECONDS` (60 by default), so that the sidecar's own `TIMEOUT` answer arrives first, and below 300, Hermes's fixed HTTP read limit. If you raise `LIVE_COMMAND_TIMEOUT_SECONDS`, raise this too. |
-| `tools` | Exposes only `vault_display_command`. The sidecar offers no resources or prompts. Later stages add tools to this server, and each one should be allowed on purpose. |
+| `tools` | Exposes only `vault_display_command`. Since SAW-010, the sidecar also serves the durable request tools, which this entry leaves out; SAW-014 decides which of them Hermes gets. Allow each tool on purpose. The sidecar offers no resources or prompts. |
 
 Leave `trust` unset, which Hermes treats as `full`. With `trust: untrusted`, Hermes asks for approval before every call, because this tool isn't read-only.
 

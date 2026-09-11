@@ -132,3 +132,21 @@
 - **One `RequestError` enum serves both MCP text and Connect details.** A Connect code alone can't tell a superseded version from an expired request, so each RPC error carries a `RequestErrorDetail` with the request as it is now. Both runtimes can read it: connect-kotlin 0.9.0 has `unpackedDetails` and a javalite parser (checked in the jar), and connect-es has `findDetails` (checked in the types).
 - **`PolicyEvaluation` is defined, but nothing sends it.** The RFC keeps policies on the phone. The message fixes the shape and makes the separation from `RequestState` explicit. Stage 5 decides where the phone keeps it.
 - **The rules are pure code in `sidecar/src/requests/`, as SAW-002's were.** SAW-010 adds storage, duplicate submissions, and transactions around them. The Stage 1 boundary guards stay unchanged, because nothing here stores anything.
+
+## 2026-09-11 — SAW-010 persistent sidecar queue (SEE-17)
+
+- **SQLite through Node's built-in `node:sqlite`.** Node 24.21 ships it without a flag or a warning, so there's no native build, no new dependency, and no difference between the Mac and CI. The ticket rules out Redis and external databases.
+- **WAL with `synchronous = FULL`, and one IMMEDIATE transaction per operation that commits before the answer.**
+  - WAL with NORMAL could lose the last commits in a power cut, which would break "persist before acknowledging".
+  - The store's API is synchronous, so Node's single thread never interleaves two operations.
+  - The write lock also covers a second process.
+- **Expiry runs first in every operation, not on a timer.** A timer would add a background component, and a window in which a PENDING request is already past its deadline. Applying expiry inside each transaction gives the contract's exact boundary.
+- **Repeated results are recognized by their bytes.** Every accepted result is kept in `results`, and an identical submission returns the request unchanged. That's simpler and stricter than comparing states, because a different result that leads to the same state is still a conflict.
+- **Until pairing, the sidecar has one connection, created with the database, and `PHONE_TOKEN` authenticates as it.** Requests need a connection now, and pairing is SAW-011. The connection's ID survives restarts, and the startup log prints it.
+- **Wallet actions are refused with `WALLET_MISMATCH`.** Until a wallet connects in Stage 3, only the ack can be created. That matches the contract: no wallet binding matches when there's no wallet.
+- **The database defaults to `sidecar/data/sidecar.db`, resolved from the sidecar package rather than the working directory.** That way, `pnpm dev:sidecar` and `node sidecar/dist/main.js` use the same file. Test harnesses always pass a throwaway path, so tests never touch the developer's requests.
+- **`/mcp` bodies are limited to 64 KiB.** The MCP SDK reads a body of any size. The endpoint now reads the body itself and passes it on parsed:
+  - A declared length over the limit is refused at once.
+  - A larger chunked body is drained without being kept.
+- **The stage guard changed on purpose.** It now allows the file system and SQLite only in `src/storage/`, and still forbids key generation and wallet packages.
+- **The v1 fixture is SQL, not a binary database.** It's reviewable and diffable, and the test proves it's a real v1 database by comparing its schema with migration 1's.
