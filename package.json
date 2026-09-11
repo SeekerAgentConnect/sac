@@ -13,7 +13,7 @@
   "scripts": {
     "build": "pnpm --recursive run build",
     "check": "pnpm run check:format && pnpm run check:lint && pnpm --recursive run typecheck && pnpm --recursive run test",
-    "check:android": "android/gradlew -p android spotlessCheck :app:testDebugUnitTest :app:lintDebug :app:assembleDebug",
+    "check:android": "android/gradlew -p android spotlessCheck :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest",
     "check:format": "prettier --check . && buf format --diff --exit-code",
     "check:generated": "node scripts/generate.mjs --check",
     "check:lint": "eslint . && buf lint",
@@ -22,7 +22,7 @@
     "format:android": "android/gradlew -p android spotlessApply",
     "generate": "node scripts/generate.mjs",
     "agent": "node --env-file-if-exists=.env test-agent/src/main.ts",
-    "test:hello": "node -e \"console.error('pnpm test:hello is not implemented yet: live-bridge integration tests land in SAW-008.'); process.exit(1)\""
+    "test:hello": "node scripts/test-hello.mjs"
   },
   "devDependencies": {
     "@bufbuild/buf": "1.72.0",

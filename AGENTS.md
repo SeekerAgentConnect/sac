@@ -14,8 +14,9 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
   - Docker deployment
   - background services
   - push notifications
+- **`StageOneBoundaryTest` (Android) and `sidecar/src/stage-boundary.test.ts` enforce this list:** no wallet library, no key generation, no stored commands, and no background components. The stage that adds one of these changes the guard on purpose.
 - **Don't implement later tasks early.** A directory for a later component doesn't mean the component should be built yet.
-- **Never fake success.** A command whose task hasn't landed must fail clearly, as `pnpm agent` and `pnpm test:hello` do today.
+- **Never fake success.** A command whose task hasn't landed must fail clearly, and a check must never pass without doing what it claims.
 - **Live commands are display-only text.** They are never shell code or instructions to execute on the phone.
 
 ## UI
@@ -25,7 +26,12 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
 
 ## Tests and checks
 
-- **Before handing off,** run `pnpm check` (formatting, lint, types, tests) and `pnpm check:android` (Kotlin formatting, unit tests, Android lint, debug APK). CI runs the same commands and never commits.
+- **Before handing off,** run these:
+  - `pnpm check`: formatting, lint, types, tests
+  - `pnpm test:hello`: the Stage 1 acceptance suite
+  - `pnpm check:android`: Kotlin formatting, unit tests, Android lint, and the debug and instrumentation APKs
+
+  CI runs the same commands, plus `pnpm test:hello --device` on an emulator, and never commits.
 - **Test every behavior change.** A deliberately broken test must make the relevant check fail.
 - **Report physical-device checks as PASS, FAIL, or NOT RUN.** Mocks, emulators, and a successful APK build never count as a device pass.
 - **Never commit secrets.** That covers credentials, tokens, `.env`, `local.properties`, keystores, real wallet keys, and machine-specific paths. Default checks must never spend mainnet funds.

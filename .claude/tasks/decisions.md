@@ -84,3 +84,21 @@
 - **Verification ran Hermes's own code, without an LLM.** Hermes v0.21.1 was installed from its release tag into a scratch venv, with a scratch `HERMES_HOME`. `hermes mcp list` and `test` ran, then a tool call went through `discover_mcp_tools` and `model_tools.handle_function_call`, the path a model's tool call takes. That covers the compatibility risks: Python `mcp` 2.0.0 against the TypeScript SDK 1.30 server, header interpolation, and the model-visible result. The owner's session with a model stays NOT RUN.
 - **Integration docs moved to `docs/integrations/`,** matching the backlog's paths. The empty `docs/guide/` placeholder is removed and `CLAUDE.md` updated, as SEE-6 did for `docs/development/`.
 - **Known gap, left for SAW-008:** the test agent notices a mid-call connection drop only at its client timeout, and reports it as `TIMEOUT` (exit code 6). Hermes reports the same drop at once. The sidecar cancels the command immediately either way.
+
+## 2026-09-11 — SAW-008 Stage 1 acceptance gate (SEE-14)
+
+- **`pnpm test:hello` runs `test-agent/src/stage1.acceptance.ts`, one case per acceptance scenario.** The file name keeps it out of the package test glob, so `pnpm check` doesn't run it twice; CI runs `pnpm test:hello` as its own step. The suite runs the real CLI against the sidecar as a separate process (`sidecar/src/testing/process.ts`), because the restart cases need a process to kill.
+- **`--device` is orchestrated from the host.**
+  - It uses throwaway tokens and a free port, never the owner's `.env` or a running sidecar.
+  - It runs `adb reverse` for that port.
+  - The instrumentation test gets the URL, the phone token, and the text (base64url, for safe `am instrument` quoting) as instrumentation arguments.
+  - The CLI sends only after the sidecar logs the phone's connection.
+  - It passes only when the UI test passes, the agent prints the OK, and the sidecar logged exactly one acknowledgement.
+  - The run labels itself as an emulator or a device, from `ro.kernel.qemu` and `ro.boot.qemu`.
+- **The instrumentation test drives the real UI.** It enters the token and taps Connect and OK like the owner would, and uses the app's real transport, with nothing injected.
+- **The emulator job runs Android 16 (API 36) `google_apis` x86_64, through `android-emulator-runner`, with KVM enabled.** The debug build's loopback-only cleartext rule works unchanged, because the emulator also reaches the host through `adb reverse`.
+- **The SAW-007 gap is fixed in the test agent.** When the SDK reports that the call's SSE response stream disconnected, `displayCommand` aborts the pending call and exits 3 at once. Without resumable streams, the SDK would otherwise leave the call waiting for its timeout. The SIGKILL restart case asserts this.
+- **Stage boundary guards run on every check.**
+  - Android: the manifest's components and permissions, forbidden storage, key, and background APIs in app code, and the absence of wallet, storage, and background classes on the classpath.
+  - Node: no wallet packages in the lockfile, and no file-system, database, or key APIs in the sidecar's shipped code.
+- **Stage 1 stays unaccepted until the owner records the device round trip.** The physical Seeker and the real Hermes round trip are NOT RUN; an emulator and a simulated device don't close them.

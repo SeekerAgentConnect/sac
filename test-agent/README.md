@@ -36,7 +36,7 @@ Showing the text on the phone; waiting up to 75 s for OK...
 | 0 | The phone acknowledged, and the JSON acknowledgement is on stdout |
 | 1 | An unexpected result: the tool answered without an acknowledgement, or an internal error |
 | 2 | A usage or configuration problem |
-| 3 | A connection problem: the sidecar is unreachable, rejected `MCP_TOKEN` (HTTP 401), refused the request (HTTP 403), or doesn't offer the tool |
+| 3 | A connection problem. One of these: the sidecar is unreachable; it rejected `MCP_TOKEN` (HTTP 401); it refused the request (HTTP 403); it doesn't offer the tool; or the connection dropped before the phone answered, which the agent reports at once. The sidecar cancels a command whose agent connection drops. |
 | 4 | `OFFLINE`: no phone is watching |
 | 5 | `BUSY`: another command is waiting |
 | 6 | `TIMEOUT`: the sidecar's deadline passed, or the client timeout did. On a client timeout, the agent cancels the command. |
@@ -49,4 +49,4 @@ Showing the text on the phone; waiting up to 75 s for OK...
 
 ## In regression tests
 
-Run the CLI as a process, then check its exit code and stdout. `src/cli.test.ts` does exactly that against a real sidecar, with a Connect client standing in for the phone. [`docs/testing/hello-world.md`](../docs/testing/hello-world.md) describes the automated and the physical-device checks. Later stages add commands here, starting with message signing in Stage 3.
+Run the CLI as a process, then check its exit code and stdout. `src/cli.test.ts` does exactly that against a real sidecar, with a Connect client standing in for the phone. `src/stage1.acceptance.ts`, which `pnpm test:hello` runs, walks through the Stage 1 acceptance cases the same way, with the sidecar as a separate process. [`docs/testing/hello-world.md`](../docs/testing/hello-world.md) describes the automated and the physical-device checks. Later stages add commands here, starting with message signing in Stage 3.
