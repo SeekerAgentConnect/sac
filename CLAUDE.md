@@ -32,7 +32,7 @@ Every completed task **except pure bug fixes** must generate or update relevant 
 | Change type                        | Action                                                  |
 | ---------------------------------- | ------------------------------------------------------- |
 | New feature / major change         | Create or update `docs/wiki/<feature>.md`              |
-| Integration (APIs, SDKs, webhooks) | Create or update `docs/guide/<integration>.md`         |
+| Integration (APIs, SDKs, webhooks) | Create or update `docs/integrations/<integration>.md`  |
 | Dev process (CI, tooling, conventions) | Update `docs/development/<topic>.md`               |
 | Any shipped change                 | Append entry to `docs/changelog/<version-or-date>.md`  |
 

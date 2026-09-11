@@ -1,0 +1,27 @@
+# seeker-vault Stage 1: a Hermes MCP server entry for the sidecar's vault_display_command tool.
+#
+# Merge the `seeker_vault` entry into the `mcp_servers` section of your existing
+# ~/.hermes/config.yaml. Don't replace that file. Keep the token out of this file: put it in
+# ~/.hermes/.env as
+#
+#   MCP_SEEKER_VAULT_API_KEY=<the MCP_TOKEN value from the sidecar's .env>
+#
+# Setup, checks, and the VPS variant: docs/integrations/hermes.md
+mcp_servers:
+  seeker_vault:
+    # The sidecar's MCP endpoint. For Hermes on a VPS, use the VPS end of the SSH tunnel
+    # instead, for example http://127.0.0.1:18080/mcp.
+    url: "http://127.0.0.1:8080/mcp"
+    headers:
+      # Hermes fills in ${...} from ~/.hermes/.env or the environment. An unset variable is
+      # sent as the literal text, and the sidecar answers 401.
+      Authorization: "Bearer ${MCP_SEEKER_VAULT_API_KEY}"
+    # Seconds Hermes waits for the tool call. Keep it above the sidecar's
+    # LIVE_COMMAND_TIMEOUT_SECONDS (60 in .env.example), so the sidecar's TIMEOUT answer arrives
+    # first, and below Hermes's fixed 300-second HTTP read limit.
+    timeout: 90
+    tools:
+      # Only the Stage 1 tool. Later stages add tools, and each one should be allowed on purpose.
+      include: [vault_display_command]
+      resources: false
+      prompts: false

@@ -14,7 +14,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | SAW-004: Android hello-world screen | Done. A stock Material 3 live-test screen: connect, the received text, and a one-tap OK, with lifecycle handling; see [`docs/development/android.md`](docs/development/android.md). The physical Seeker check is NOT RUN. |
 | SAW-005: MCP test client | Done. `pnpm agent hello "Hello Seeker"` calls the tool over MCP and prints the acknowledgement; see [`test-agent/README.md`](test-agent/README.md). The physical Seeker check is NOT RUN. |
 | SAW-006: MacBook → Seeker build and run guide | Done. A quickstart from a fresh MacBook to an acknowledged "Hello Seeker", and a troubleshooting page; see [`docs/guides/macbook-seeker-quickstart.md`](docs/guides/macbook-seeker-quickstart.md). The Seeker and Android Studio checks are NOT RUN. |
-| SAW-007: Real Hermes connection | Not started |
+| SAW-007: Real Hermes connection | Done. A Hermes `mcp_servers` entry to merge ([`examples/hermes.config.yaml`](examples/hermes.config.yaml)) and a guide for Hermes on the Mac or on a VPS through an SSH reverse tunnel; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md). Hermes's own MCP client passed against the sidecar. The owner's real Hermes session with the Seeker is NOT RUN. |
 | SAW-008: Stage 1 acceptance gate | Not started |
 
 ## Repository structure
@@ -27,6 +27,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | `scripts/` | `generate.mjs`, which backs `pnpm generate` and `pnpm check:generated` |
 | `test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`test-agent/README.md`](test-agent/README.md). |
 | `gateway/` | Docker Compose, TLS, and OAuth gateway configuration, landing in Stage 7 |
+| `examples/` | Configuration to merge into other tools: `hermes.config.yaml`; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md) |
 | `docs/` | Development docs, guides, testing notes, and the changelog |
 | `.github/workflows/ci.yml` | CI for pull requests and pushes |
 
