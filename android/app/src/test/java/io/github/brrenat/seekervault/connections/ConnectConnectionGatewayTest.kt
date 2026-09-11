@@ -49,7 +49,7 @@ class ConnectConnectionGatewayTest {
         assertTrue(isConnectionId(paired.connectionId))
         assertTrue(isSecret(paired.credential))
         assertEquals(code.serverId, paired.serverId)
-        assertEquals(PendingRequests(emptyList(), more = false), pending(paired))
+        assertEquals(PendingRequests(emptyList()), pending(paired))
 
         sidecar.requestAck("Deploy finished", "deploy-1")
         val requests = pending(paired).requests

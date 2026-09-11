@@ -4,16 +4,16 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
 
 ## Stage boundaries
 
-- **Current stage: Stage 2, persistent requests and connections.** Stage 1, the wallet-free hello world, is accepted. SAW-009 defined the durable request contract (`docs/protocol.md`), SAW-010 added the sidecar's SQLite request queue, SAW-011 added pairing and separate roles (`docs/security.md`), and SAW-012 added the phone's connections (`docs/guides/pairing.md`). The inbox arrives in SAW-013. Until the task that adds each one lands, the limits below still hold.
+- **Current stage: Stage 2, persistent requests and connections.** Stage 1, the wallet-free hello world, is accepted. SAW-009 defined the durable request contract (`docs/protocol.md`), SAW-010 added the sidecar's SQLite request queue, SAW-011 added pairing and separate roles (`docs/security.md`), SAW-012 added the phone's connections (`docs/guides/pairing.md`), and SAW-013 added the pending inbox (`docs/guides/pending-requests.md`). SAW-014 validates Stage 2. Until the task that adds each capability lands, the limits below still hold.
 - **Out of scope until a later stage:**
   - wallet SDKs, keys, or signing
-  - storage on the phone beyond its connections (SAW-013 adds the inbox's)
+  - storage on the phone beyond its connections and the owner's answers
   - policies
   - OAuth
   - Docker deployment
   - background services
   - push notifications
-- **Storage stays in one place.** The sidecar stores durable requests in SQLite, and only through `sidecar/src/storage/`. The live diagnostic stays in memory, and nothing re-executes a request after a restart. The phone stores its connections only through `connections/storage/`: metadata in `filesDir`, and credentials, encrypted under an Android Keystore key, in `noBackupFilesDir`. Nothing on the phone is backed up.
+- **Storage stays in one place.** The sidecar stores durable requests in SQLite, and only through `sidecar/src/storage/`. The live diagnostic stays in memory, and nothing re-executes a request after a restart. The phone stores its connections and the owner's answers only through `connections/storage/`: metadata and answers in `filesDir`, and credentials, encrypted under an Android Keystore key, in `noBackupFilesDir`. Nothing on the phone is backed up. The inbox is fetched when the app opens, when a connection is opened, or when the owner refreshes. Nothing answers a request but the owner.
 - **Roles stay separate.** The agent's MCP token never opens a phone RPC, and no MCP tool pairs, prepares, submits a result, or revokes. Tokens and credentials never reach a log. Every new RPC or tool joins the matrix in `sidecar/src/pairing/roles.test.ts`.
 - **`StageBoundaryTest` (Android) and `sidecar/src/stage-boundary.test.ts` enforce these limits:**
   - no wallet library

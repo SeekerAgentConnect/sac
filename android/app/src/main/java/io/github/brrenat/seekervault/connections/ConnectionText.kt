@@ -43,6 +43,8 @@ object ConnectionsTags {
     const val PAIR = "pair"
     const val CANCEL_PAIRING = "cancelPairing"
     const val PAIRING_FAILURE = "pairingFailure"
+    const val INBOX = "inbox"
+    const val PENDING = "pendingRequests"
 
     fun item(id: String) = "connection:$id"
 

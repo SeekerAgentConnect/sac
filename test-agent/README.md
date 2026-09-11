@@ -1,6 +1,6 @@
 # test-agent
 
-A minimal MCP client for Stage 1 regression tests and demos. It calls the sidecar's `vault_display_command` through the same MCP Streamable HTTP interface that Hermes uses, with no LLM involved, and prints the phone's acknowledgement.
+A minimal MCP client for regression tests and demos. It calls the sidecar's tools through the same MCP Streamable HTTP interface that Hermes uses, with no LLM involved. `hello` sends Stage 1's `vault_display_command` and prints the phone's acknowledgement. `ack`, `get`, and `cancel` drive Stage 2's durable requests.
 
 ## Usage
 
@@ -13,6 +13,12 @@ Showing the text on the phone; waiting up to 75 s for OK...
 ```
 
 - **`hello [text]`:** discovers `vault_display_command` and calls it with the text, which defaults to `Hello Seeker`. Once the user taps OK, it prints the acknowledgement on stdout. Progress messages and errors go to stderr.
+- **`ack <text>`:** queues the text for the owner to acknowledge (`vault_request_ack`), and prints the request, PENDING, as JSON. It doesn't wait: the owner answers later on the phone ([`docs/guides/pending-requests.md`](../docs/guides/pending-requests.md)). The phone must be paired first. Options:
+  - `--key <key>`: the idempotency key. Without it, the agent makes one and prints it on stderr, so that a retry with the same key returns the same request.
+  - `--note <text>`: a note for the owner, which the phone shows apart from the text.
+  - `--expires <seconds>`: the request's lifetime, from 60 to 604800.
+- **`get <id>`:** prints the request as it is now (`vault_get_request`). Once the owner has answered, its `status` is `COMPLETED` or `REJECTED`, and `terminal` is true.
+- **`cancel <id>`:** withdraws a request that is still PENDING (`vault_cancel_request`).
 - **`tools`:** prints the server's tools as JSON.
 - **`--timeout <seconds>`:** sets the client timeout. The default is `LIVE_COMMAND_TIMEOUT_SECONDS` plus 15 seconds, so the sidecar's own `TIMEOUT` normally arrives first.
 - **`--silent`:** a pnpm flag that stops pnpm from echoing the command, so stdout carries only the JSON.
@@ -42,6 +48,7 @@ Showing the text on the phone; waiting up to 75 s for OK...
 | 6 | `TIMEOUT`: the sidecar's deadline passed, or the client timeout did. On a client timeout, the agent cancels the command. |
 | 7 | `CANCELLED`: the phone disconnected, or the sidecar stopped |
 | 8 | `INVALID_TEXT`: the text is empty, whitespace-only, or over 4096 UTF-8 bytes |
+| 9 | `ack`, `get`, or `cancel`: the sidecar refused, and stderr carries its `<CODE>: <message>`. For example `NOT_PAIRED` (pair the phone first), `NOT_FOUND`, `INVALID_STATE`, `IDEMPOTENCY_CONFLICT`, or `INVALID_PARAMETERS`. |
 
 **The agent never reports success without the phone's acknowledgement.**
 

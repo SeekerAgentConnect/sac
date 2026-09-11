@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
+import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
 
 class MainActivity : ComponentActivity() {
@@ -33,10 +34,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val inbox: InboxViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                InboxViewModel((application as SeekerVaultApplication).connectionRepository)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { SeekerVaultTheme { SeekerVaultApp(connections, viewModel) } }
+        setContent { SeekerVaultTheme { SeekerVaultApp(connections, inbox, viewModel) } }
     }
 
     override fun onStart() {

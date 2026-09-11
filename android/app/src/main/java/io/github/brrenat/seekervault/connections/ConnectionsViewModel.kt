@@ -260,6 +260,7 @@ class ConnectionsViewModel(
                 GatewayException.Kind.Unreachable -> PairingFailure.Unreachable
                 GatewayException.Kind.NotFound,
                 GatewayException.Kind.BadResponse -> PairingFailure.BadResponse
+                GatewayException.Kind.InvalidState,
                 GatewayException.Kind.Other -> PairingFailure.Other
             }
     }

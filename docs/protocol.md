@@ -301,7 +301,7 @@ A `SubmitResult` carries one result:
 | `unknown_outcome {detail}` | PROCESSING | UNKNOWN | sign_message, transfer, swap |
 
 - **Signatures are 64 bytes, and hashes 32.** From Stage 3 on, the sidecar verifies each signature against the request's wallet before it accepts it.
-- **Repeating an accepted result has no further effect.** The sidecar returns the request as it is, so the phone can retry after a lost response. The phone keeps each result until the sidecar has acknowledged it (SAW-013).
+- **Repeating an accepted result has no further effect.** The sidecar returns the request as it is, so the phone can retry after a lost response. The phone stores each result before it sends it, and sends it again on each refresh until the sidecar answers (SAW-013; [`docs/guides/pending-requests.md`](guides/pending-requests.md)).
 - **Any other result for a request that has moved on** gets `INVALID_STATE`, with the request as it is now.
 
 `decideResult` implements this table and the approval binding. SAW-010 adds storage, duplicate detection, and transactions around it.

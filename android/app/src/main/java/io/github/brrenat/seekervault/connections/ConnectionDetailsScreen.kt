@@ -55,6 +55,7 @@ fun ConnectionDetailsScreen(
     onDismissDisconnect: () -> Unit,
     onMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
+    onPendingRequests: (() -> Unit)? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(message, snackbar, onMessageShown)
@@ -108,6 +109,16 @@ fun ConnectionDetailsScreen(
                     modifier = Modifier.testTag(ConnectionsTags.RENAME),
                 ) {
                     Text(stringResource(R.string.rename))
+                }
+            }
+            if (onPendingRequests != null && connection.usable) {
+                OutlinedButton(
+                    onClick = onPendingRequests,
+                    modifier =
+                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            .testTag(ConnectionsTags.PENDING),
+                ) {
+                    Text(stringResource(R.string.pending_requests))
                 }
             }
             if (connection.usable) {

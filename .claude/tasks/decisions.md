@@ -182,3 +182,13 @@
 - **CameraX and ZXing for scanning.** ZXing's core decoder has no dependencies and needs no Google Play services. Google's code scanner would have needed Play services and brings its own UI, which runs outside the app's permission.
 - **Navigation is a saved list of route strings,** not a navigation library. Four screens don't need one, and nothing secret goes into saved state. The code being entered stays in the ViewModel's memory.
 - **The error classifier reads suppressed exceptions.** When `localhost` resolves to both `::1` and `127.0.0.1`, OkHttp throws the first route's failure and suppresses the rest. A refused IPv6 connection hid the certificate failure on IPv4, and the TLS test caught it.
+
+## 2026-09-11 — SAW-013 pending inbox and queued acknowledgements (SEE-20)
+
+- **The repository that holds the credentials also does the fetching and answering.** Every call needs a connection's credential, and keeping those calls in `ConnectionRepository` keeps one rule in one place: a credential goes only to its own URL. A separate inbox class would have needed the credential handed to it.
+- **Answers are stored first; pending lists aren't stored at all.** The sidecar holds the requests, so the phone fetches them fresh. Only the owner's decision must survive a crash or a dead network, so only answers are written, one file per answer under its connection's directory, which keeps identical request IDs on two servers apart.
+- **A failed send is retried by resending, never by asking first.** `SubmitResult` already returns the request unchanged for a repeat of an accepted result. So after a lost response, sending again is the whole recovery. `INVALID_STATE` with its `RequestErrorDetail` tells the phone the request moved on (cancelled or expired), and the answer is marked superseded, not retried.
+- **Retries happen only when the owner acts:** on opening the app, opening a connection, refreshing, or **Send again**. That keeps the no-background-service rule. Resending the owner's own answer isn't automatic execution: nothing is answered that the owner didn't answer.
+- **One send per answer at a time,** guarded in the repository. A refresh that overlaps a tap skips the answer being sent, and the ViewModel ignores taps while a send runs or after an answer exists.
+- **Settled answers are kept for a week,** so reopening a request shows its outcome, and then pruned at start-up. Waiting answers are kept until they settle.
+- **The test agent gained `ack`, `get`, and `cancel`.** Hermes is limited to the Stage 1 tool until SAW-014, and the owner-run Stage 2 check needs an agent that can queue a request and read it back.

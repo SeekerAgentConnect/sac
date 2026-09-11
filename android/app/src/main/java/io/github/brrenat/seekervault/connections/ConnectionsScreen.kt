@@ -25,7 +25,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 
-/** The Connections screen: every sidecar this phone is paired with. Stock Material 3 only. */
+/** How many requests wait for the owner, and how many answers wait to be sent. */
+data class InboxSummary(val waitingForYou: Int, val toSend: Int)
+
+/**
+ * The Connections screen: every sidecar this phone is paired with, and the way to Pending requests
+ * when [inbox] is given. Stock Material 3 only.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectionsScreen(
@@ -35,6 +41,8 @@ fun ConnectionsScreen(
     onLiveTest: () -> Unit,
     onMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
+    inbox: InboxSummary? = null,
+    onInbox: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(state.message, snackbar, onMessageShown)
@@ -71,6 +79,12 @@ fun ConnectionsScreen(
             )
         } else {
             LazyColumn(contentPadding = innerPadding) {
+                if (inbox != null && state.connections.isNotEmpty()) {
+                    item(key = "inbox") {
+                        InboxItem(inbox, onInbox)
+                        HorizontalDivider()
+                    }
+                }
                 items(state.connections, key = { it.id }) { connection ->
                     ConnectionItem(connection, onClick = { onOpen(connection.id) })
                     HorizontalDivider()
@@ -78,6 +92,29 @@ fun ConnectionsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun InboxItem(inbox: InboxSummary, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.inbox_row)) },
+        supportingContent = {
+            Text(
+                when {
+                    inbox.toSend > 0 ->
+                        stringResource(
+                            R.string.inbox_row_waiting_and_to_send,
+                            inbox.waitingForYou,
+                            inbox.toSend,
+                        )
+                    inbox.waitingForYou > 0 ->
+                        stringResource(R.string.inbox_row_waiting, inbox.waitingForYou)
+                    else -> stringResource(R.string.inbox_row_nothing)
+                }
+            )
+        },
+        modifier = Modifier.clickable(onClick = onClick).testTag(ConnectionsTags.INBOX),
+    )
 }
 
 @Composable

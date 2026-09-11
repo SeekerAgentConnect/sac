@@ -1,6 +1,6 @@
 # Android
 
-The app opens on **Connections**: the sidecars this phone is paired with (SAW-012). From there, **Add connection** pairs with a new sidecar, a connection's details refresh, rename, or disconnect it, and **Live test** opens the Stage 1 live-test screen. That screen connects to the sidecar's `LiveCommandService` ([`docs/protocol.md`](../protocol.md)), shows an agent's text, and sends the user's OK back. The app uses stock Jetpack Compose and Material 3 components only, and no wallet.
+The app opens on **Connections**: the sidecars this phone is paired with (SAW-012). From there, **Pending requests** shows what agents asked (SAW-013), **Add connection** pairs with a new sidecar, a connection's details refresh, rename, or disconnect it, and **Live test** opens the Stage 1 live-test screen. That screen connects to the sidecar's `LiveCommandService` ([`docs/protocol.md`](../protocol.md)), shows an agent's text, and sends the user's OK back. The app uses stock Jetpack Compose and Material 3 components only, and no wallet.
 
 ## Connections
 
@@ -29,6 +29,25 @@ The code is in `connections/`:
 - **The app fetches when it opens and when the owner opens a connection** ([`docs/protocol.md`](../protocol.md#phone-api)), and on **Refresh**. Nothing runs in the background.
 - **The camera is optional** (`android.hardware.camera.any`, not required). Without a camera, or with the permission denied, the owner enters the code. **Open settings** leads to the app's permission settings.
 - **Nothing is backed up.** The manifest sets `allowBackup="false"`, and `data_extraction_rules.xml` excludes every domain from cloud backup and device transfer.
+
+## Pending requests
+
+The owner's guide is [`docs/guides/pending-requests.md`](../guides/pending-requests.md), and the test procedure is [`docs/testing/stage-2.md`](../testing/stage-2.md).
+
+| Screen | What it shows and does |
+| --- | --- |
+| **Pending requests** | Opened from its row on Connections for every connection, or from a connection's details for that one only. It lists **Waiting for you**, **Waiting to be sent**, and **Answered**. Each request shows its source, action, age, and expiry. A connection whose fetch failed is named at the top, and there are empty and no-server states. **Refresh** fetches again. |
+| **Request details** | The source, action, message (plain text, never parsed), the agent's note (apart, marked as not verified), created, expires, and request ID. A pending acknowledgement offers **Acknowledge** and **Reject**, both disabled while the answer is sent. Once answered, it shows the stored outcome instead. A waiting answer offers **Send again**. |
+
+How the code works:
+
+- **`ConnectionRepository` does the fetching and answering,** because each call needs a connection's credential, which never leaves it:
+  - `refresh` first sends the answers still waiting, then reads every page of PENDING requests, up to 10 pages of 100, into an in-memory `Inbox`. It counts only the connection's own requests.
+  - `answer` writes a `LocalResult` through `ResultStore` before calling `SubmitResult`, and a request gets one answer.
+  - `deliver` sends a waiting answer, with at most one send per answer at a time. The sidecar's reply settles it: accepted, superseded (`INVALID_STATE`, with the request from the `RequestErrorDetail`), or undeliverable (revoked). A failure keeps it waiting.
+- **Settled answers are kept for a week,** so a reopened request still shows its outcome. Removing a connection deletes its answers.
+- **`InboxViewModel` guards the buttons:** a request that's being sent or already answered ignores further taps.
+- **Nothing runs in the background.** The app fetches when it opens (`ConnectionsViewModel`), when a connection is opened, and on **Refresh**. Loading the inbox sends no answer.
 
 ## The hello screen
 
@@ -94,6 +113,11 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `ConnectConnectionGatewayTest`, `TwoSidecarsTest` | The real client against the real sidecar, `node sidecar/src/main.ts`. A code printed by `pnpm pair` is read by the app's parser and paired. They also cover pending requests, a reused code, a code for another address, revocation by the phone and by `pnpm pair revoke`, a replaced phone, a stopped sidecar, and two sidecars at once. |
 | `ConnectConnectionGatewayTlsTest` | HTTPS with MockWebServer: an untrusted certificate and a certificate for another host name fail before anything is sent, and a trusted one pairs |
 | `QrDecoderTest` | QR codes drawn by ZXing, decoded from luminance planes with and without row padding |
+| `InboxTest`, `InboxRealSidecarTest` | The inbox against fake sidecars and the real one:<ul><li>a request made while the app was closed, fetched, answered, and read back by the agent</li><li>every page, and nothing answered by a fetch</li><li>one answer per request</li><li>an answer kept through an unreachable server and a restart</li><li>a lost response sent again and recognized</li><li>overlapping sends</li><li>identical request IDs on two servers</li><li>a request cancelled first, and a revoked connection</li><li>a removed connection's answers, and pruning</li></ul> |
+| `ResultStoreTest` | Stored answers: a restart, identical request IDs on two connections, damaged files, and file names that aren't UUIDs |
+| `InboxViewModelTest` | Rapid second taps, refreshing every connection, sending again, and requests that aren't pending |
+| `PendingRequestsScreenTest`, `RequestDetailsScreenTest` | Compose on Robolectric: source, action, age, and expiry; the empty, no-server, and offline states; disabled buttons while sending; the stored outcome; **Send again**; and expired and superseded requests |
+| `InboxActivityTest` | The activity with the app's own storage and a fake sidecar: a request fetched when the app opens, answered, and still answered after a rotation, and a connection's own requests |
 | `StageBoundaryTest` | The stage boundary. The manifest declares only `MainActivity`, `INTERNET`, and an optional camera. Storage and Keystore APIs appear only in `connections/storage/`, and background APIs nowhere. Nothing is backed up. No wallet, Room, DataStore, or WorkManager library is on the classpath. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
@@ -155,3 +179,20 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolch
 | Deliberate breaks | Each break failed its test class, and each file was restored byte for byte afterwards:<ul><li>a `PairResponse`'s connection ID used unchecked</li><li>another connection's requests counted</li><li>a rejected credential kept</li><li>credentials not bound to their connection</li><li>plain HTTP accepted like HTTPS</li><li>suppressed TLS failures ignored</li><li>backups turned on</li><li>the token shown on the confirmation</li><li>credentials stored outside `noBackupFilesDir`</li></ul> |
 | `CredentialVaultDeviceTest` and `LiveCommandDeviceTest` on an emulator | NOT RUN locally: no device or emulator was attached. CI's emulator job runs both through `pnpm test:hello --device`. |
 | Physical Seeker: scanning, pairing, and the Keystore | NOT RUN: no device was attached. The owner's steps are in [`docs/guides/pairing.md`](../guides/pairing.md). |
+
+## Verification record: SAW-013
+
+Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolchain.md`](toolchain.md).
+
+| Check | Result |
+| --- | --- |
+| `pnpm check:android` | PASS: Spotless, 181/181 unit tests (39 more than before), Android lint with no issues, and the debug and instrumentation APKs |
+| A request made while the app was closed | PASS, in `InboxRealSidecarTest` against the real sidecar. The agent's request was stored before the app's repository existed. The next start fetched it, and the agent still read PENDING. It was acknowledged, and the agent read COMPLETED. A repeat of the result returned COMPLETED again. |
+| Lost responses, retries, and restarts | PASS, in `InboxTest`. An answer that couldn't be sent waited through a restart, and went out on the next refresh. A lost response was sent again, and applied once. |
+| Duplicate taps and overlapping sends | PASS. A second tap while sending, or on an answered request, sent nothing (`InboxViewModelTest`). A refresh during a send didn't send it again (`InboxTest`). |
+| Identical request IDs on two servers | PASS: each answer went only to its own server, and was stored apart |
+| Nothing automatic | PASS. Fetching submitted nothing (`InboxTest`, `InboxActivityTest`). `StageBoundaryTest` found no background component and no push library. |
+| Screens | PASS:<ul><li>source, action, age, and expiry</li><li>the empty, no-server, and offline states</li><li>buttons disabled while sending</li><li>the stored outcome on reopening, and after a rotation</li></ul> |
+| `pnpm check`, `pnpm test:hello`, `pnpm check:generated` | PASS: 235/235 sidecar tests and 19/19 test agent tests, the 9/9 Stage 1 acceptance cases, and current generated code |
+| Deliberate breaks | NOT RUN (timed out): the run hung during its third break, in `InboxTest`, and was stopped before it reported. The file that break had changed was restored. |
+| Physical Seeker | NOT RUN: no device was attached. The owner-run check is in [`docs/testing/stage-2.md`](../testing/stage-2.md). |

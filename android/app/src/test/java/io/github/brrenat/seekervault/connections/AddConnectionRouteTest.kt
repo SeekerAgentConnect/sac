@@ -30,6 +30,7 @@ import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
+import io.github.brrenat.seekervault.connections.storage.ResultStore
 import java.io.File
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +60,7 @@ class AddConnectionRouteTest {
         ConnectionRepository(
             store = ConnectionStore(File(folder.root, "connections")),
             vault = CredentialVault(File(folder.root, "credentials")) { key },
+            results = ResultStore(File(folder.root, "results")),
             gateway = gateway,
             deviceName = "Seeker",
             io = Dispatchers.Unconfined,

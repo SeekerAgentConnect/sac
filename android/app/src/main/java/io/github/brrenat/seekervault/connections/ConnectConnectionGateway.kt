@@ -9,8 +9,11 @@ import com.connectrpc.impl.ProtocolClient
 import com.connectrpc.okhttp.ConnectOkHttpClient
 import com.connectrpc.protocols.NetworkProtocol
 import com.connectrpc.simpleTimeouts
+import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PairingServiceClient
+import io.github.brrenat.seekervault.request.v1.RequestErrorDetail
 import io.github.brrenat.seekervault.request.v1.RequestServiceClient
+import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.listPendingRequest
 import io.github.brrenat.seekervault.request.v1.pairRequest
 import io.github.brrenat.seekervault.request.v1.revokeConnectionRequest
@@ -45,16 +48,27 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
         serverUrl: String,
         credential: String,
         connectionId: String,
+        pageToken: String,
     ): PendingRequests {
         val request = listPendingRequest {
             this.connectionId = connectionId
             pageSize = PAGE_SIZE
+            this.pageToken = pageToken
         }
         val response = call {
             RequestServiceClient(protocolClient(serverUrl)).listPending(request, bearer(credential))
         }
-        return PendingRequests(response.requestsList, more = response.nextPageToken.isNotEmpty())
+        return PendingRequests(response.requestsList, response.nextPageToken)
     }
+
+    override suspend fun submitResult(
+        serverUrl: String,
+        credential: String,
+        submission: SubmitResultRequest,
+    ): ActionRequest = call {
+        RequestServiceClient(protocolClient(serverUrl)).submitResult(submission, bearer(credential))
+    }
+        .request
 
     override suspend fun revoke(serverUrl: String, credential: String, connectionId: String) {
         val request = revokeConnectionRequest { this.connectionId = connectionId }
@@ -114,11 +128,25 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
                     code == Code.UNAUTHENTICATED -> GatewayException.Kind.Unauthenticated
                     code == Code.INVALID_ARGUMENT -> GatewayException.Kind.Rejected
                     code == Code.NOT_FOUND -> GatewayException.Kind.NotFound
+                    code == Code.FAILED_PRECONDITION -> GatewayException.Kind.InvalidState
                     code == Code.UNAVAILABLE || causes.any { it is IOException } ->
                         GatewayException.Kind.Unreachable
                     else -> GatewayException.Kind.Other
                 }
-            return GatewayException(kind, error.message, error)
+            // For INVALID_STATE, the sidecar sends the request as it is now
+            // (docs/protocol.md#request-errors).
+            val detail =
+                causes.filterIsInstance<ConnectException>().firstNotNullOfOrNull { exception ->
+                    runCatching { exception.unpackedDetails(RequestErrorDetail::class) }
+                        .getOrNull()
+                        ?.firstOrNull()
+                }
+            return GatewayException(
+                kind,
+                error.message,
+                error,
+                request = detail?.takeIf { it.hasRequest() }?.request,
+            )
         }
 
         /**

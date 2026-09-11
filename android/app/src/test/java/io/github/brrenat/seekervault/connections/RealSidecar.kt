@@ -57,21 +57,50 @@ class RealSidecar : AutoCloseable {
     /** Runs `pnpm pair revoke`. */
     fun revokePairedPhone(): String = cli("revoke")
 
-    /** Stores a PENDING ack request, as an agent does with `vault_request_ack`. */
-    fun requestAck(text: String, idempotencyKey: String) {
+    /**
+     * Stores a PENDING ack request, as an agent does with `vault_request_ack`, and returns its
+     * request ID.
+     */
+    fun requestAck(text: String, idempotencyKey: String): String {
+        val view =
+            tool(
+                "vault_request_ack",
+                """{"text":${quote(text)},"idempotency_key":${quote(idempotencyKey)}}""",
+            )
+        check("\"PENDING\"" in view) { "vault_request_ack didn't store a request: $view" }
+        return checkNotNull(REQUEST_ID.find(view)?.groupValues?.get(1)) { "no request ID: $view" }
+    }
+
+    /** The request's status as the agent reads it with `vault_get_request`, such as COMPLETED. */
+    fun status(requestId: String): String =
+        statusOf(tool("vault_get_request", """{"request_id":"$requestId"}"""))
+
+    /**
+     * Cancels the request as the agent does with `vault_cancel_request`, and returns its status.
+     */
+    fun cancel(requestId: String): String =
+        statusOf(tool("vault_cancel_request", """{"request_id":"$requestId"}"""))
+
+    // Calls one MCP tool as the agent, and returns the structured result, or the error, as JSON.
+    private fun tool(name: String, arguments: String): String {
         val agent =
             node(
                 "--input-type=module",
                 "-e",
                 AGENT_SCRIPT,
-                extra = mapOf("MCP_URL" to "$url/mcp", "TEXT" to text, "KEY" to idempotencyKey),
+                extra = mapOf("MCP_URL" to "$url/mcp", "TOOL" to name, "ARGS" to arguments),
             )
         val result = agent.inputStream.bufferedReader().readText()
         check(agent.waitFor(30, TimeUnit.SECONDS) && agent.exitValue() == 0) {
             "the agent failed: $result"
         }
-        check("\"PENDING\"" in result) { "vault_request_ack didn't store a request: $result" }
+        return result
     }
+
+    private fun statusOf(view: String): String =
+        checkNotNull(STATUS.find(view)?.groupValues?.get(1)) { "no status: $view" }
+
+    private fun quote(text: String) = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
     override fun close() {
         process.destroy()
@@ -98,6 +127,9 @@ class RealSidecar : AutoCloseable {
         val MCP_TOKEN = "m".repeat(64)
         val PHONE_TOKEN = "p".repeat(64)
 
+        private val REQUEST_ID = Regex("\"request_id\":\"([0-9a-f-]{36})\"")
+        private val STATUS = Regex("\"status\":\"([A-Z]+)\"")
+
         // Stands in for Hermes: one durable tool call that prints the structured result.
         private val AGENT_SCRIPT =
             """
@@ -108,8 +140,8 @@ class RealSidecar : AutoCloseable {
               requestInit: { headers: { Authorization: "Bearer " + process.env.MCP_TOKEN } },
             }));
             const result = await client.callTool({
-              name: "vault_request_ack",
-              arguments: { text: process.env.TEXT, idempotency_key: process.env.KEY },
+              name: process.env.TOOL,
+              arguments: JSON.parse(process.env.ARGS),
             });
             console.log(JSON.stringify(result.isError ? result.content : result.structuredContent));
             await client.close();

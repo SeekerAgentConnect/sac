@@ -10,10 +10,13 @@ import io.github.brrenat.seekervault.connections.ConnectionRepository
 import io.github.brrenat.seekervault.connections.storage.AndroidKeystoreKey
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
+import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import java.io.File
 import javax.crypto.SecretKey
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import okhttp3.OkHttpClient
 
 class SeekerVaultApplication : Application() {
@@ -37,17 +40,22 @@ class SeekerVaultApplication : Application() {
     var credentialKey: () -> SecretKey = AndroidKeystoreKey::get
 
     /**
-     * The phone's connections (docs/security.md#local-storage-and-recovery): metadata in
-     * `filesDir`, and credentials, encrypted, in `noBackupFilesDir`.
+     * The phone's connections and their requests (docs/security.md#local-storage-and-recovery):
+     * metadata and answers in `filesDir`, and credentials, encrypted, in `noBackupFilesDir`.
      */
     val connectionRepository: ConnectionRepository by lazy {
         ConnectionRepository(
             store = ConnectionStore(File(filesDir, "connections")),
             vault = CredentialVault(File(noBackupFilesDir, "credentials")) { credentialKey() },
+            results = ResultStore(File(filesDir, "results")),
             gateway = connectionGateway(),
             deviceName = Build.MODEL,
+            io = connectionIo,
         )
     }
+
+    /** Where storage and network calls run. Tests replace it, to run them in step. */
+    var connectionIo: CoroutineDispatcher = Dispatchers.IO
 
     /** Whether this build lets plain HTTP reach [host]: debug builds allow only loopback. */
     fun isCleartextPermitted(host: String): Boolean =

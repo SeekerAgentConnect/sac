@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.connections
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
+import io.github.brrenat.seekervault.connections.storage.ResultStore
 import java.io.File
 import java.security.GeneralSecurityException
 import java.time.Instant
@@ -40,6 +41,7 @@ class ConnectionRepositoryTest {
         ConnectionRepository(
             store = ConnectionStore(File(folder.root, "files/connections")),
             vault = CredentialVault(File(folder.root, "no_backup/credentials")) { key() },
+            results = ResultStore(File(folder.root, "files/results")),
             gateway = gateway,
             deviceName = "Seeker",
             now = { clock },

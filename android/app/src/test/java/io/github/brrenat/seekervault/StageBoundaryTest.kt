@@ -115,6 +115,9 @@ class StageBoundaryTest {
                     "androidx.datastore.core.DataStore",
                     "androidx.security.crypto.EncryptedSharedPreferences",
                     "androidx.work.WorkManager",
+                    // No push: the phone fetches when the app opens or the owner refreshes.
+                    "com.google.firebase.messaging.FirebaseMessaging",
+                    "com.google.android.gms.gcm.GcmListenerService",
                 )
                 .filter { name ->
                     runCatching { Class.forName(name, false, javaClass.classLoader) }.isSuccess

@@ -13,7 +13,10 @@ import {
   Code,
   ConnectError,
   connectPhone,
+  pairPhone,
+  requestClient,
 } from "../../sidecar/src/testing/clients.ts";
+import { temporaryDatabasePath } from "../../sidecar/src/testing/process.ts";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 const MCP_TOKEN = "m".repeat(64);
@@ -103,6 +106,117 @@ before(async () => {
 
 after(async () => {
   await Promise.all([sidecar.close(), quickSidecar.close()]);
+});
+
+// The durable request commands, against a sidecar with a database file, so a phone can pair.
+describe("pnpm agent ack, get, and cancel", () => {
+  let queue: Sidecar;
+  let databasePath: string;
+
+  before(async () => {
+    databasePath = temporaryDatabasePath();
+    queue = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        mcpToken: MCP_TOKEN,
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 30,
+        databasePath,
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
+      },
+      { log: () => undefined },
+    );
+  });
+
+  after(() => queue.close());
+
+  it("exits 9 with NOT_PAIRED until a phone is paired", async () => {
+    const { code, stdout, stderr } = await agent(
+      ["ack", "Deploy finished"],
+      envFor(queue),
+    );
+    assert.equal(code, 9);
+    assert.equal(stdout, "");
+    assert.match(stderr, /^NOT_PAIRED: /m);
+  });
+
+  it("queues a request, reads it back once the phone answers, and cancels another", async () => {
+    const phone = await pairPhone(queue.url, databasePath);
+    const queued = await agent(
+      ["ack", "Deploy finished", "--key", "deploy-7", "--note", "nightly"],
+      envFor(queue),
+    );
+    assert.equal(queued.code, 0, queued.stderr);
+    const view = JSON.parse(queued.stdout) as {
+      request_id: string;
+      status: string;
+      action: string;
+    };
+    assert.equal(view.status, "PENDING");
+    assert.equal(view.action, "ack");
+    // A retry with the same key returns the same request.
+    const retried = await agent(
+      ["ack", "Deploy finished", "--key", "deploy-7"],
+      envFor(queue),
+    );
+    assert.equal(
+      (JSON.parse(retried.stdout) as { request_id: string }).request_id,
+      view.request_id,
+    );
+
+    await requestClient(queue.url, phone.phoneToken).submitResult({
+      ref: { connectionId: phone.connectionId, requestId: view.request_id },
+      result: { case: "acknowledgement", value: {} },
+    });
+    const read = await agent(["get", view.request_id], envFor(queue));
+    assert.equal(read.code, 0, read.stderr);
+    assert.deepEqual(
+      (({ status, terminal }) => ({ status, terminal }))(
+        JSON.parse(read.stdout) as { status: string; terminal: boolean },
+      ),
+      { status: "COMPLETED", terminal: true },
+    );
+
+    const other = JSON.parse(
+      (await agent(["ack", "Never mind", "--expires", "3600"], envFor(queue)))
+        .stdout,
+    ) as { request_id: string };
+    const cancelled = await agent(["cancel", other.request_id], envFor(queue));
+    assert.equal(cancelled.code, 0, cancelled.stderr);
+    assert.equal(
+      (JSON.parse(cancelled.stdout) as { status: string }).status,
+      "CANCELLED",
+    );
+  });
+
+  it("prints the idempotency key it chose, and exits 9 with the sidecar's reason", async () => {
+    const chosen = await agent(["ack", "Pick a key"], envFor(queue));
+    assert.equal(chosen.code, 0, chosen.stderr);
+    assert.match(chosen.stderr, /^idempotency key: ack-[0-9a-f-]{36}$/m);
+    const missing = await agent(
+      ["get", "0b8e2b1c-3f4d-4e5a-9b6c-7d8e9f0a1b2c"],
+      envFor(queue),
+    );
+    assert.equal(missing.code, 9);
+    assert.match(missing.stderr, /^NOT_FOUND: /m);
+    const tooShort = await agent(["ack", "x", "--expires", "5"], envFor(queue));
+    assert.equal(tooShort.code, 9);
+    assert.match(tooShort.stderr, /^INVALID_PARAMETERS: /m);
+  });
+
+  it("exits 2 for missing or extra arguments", async () => {
+    for (const args of [
+      ["ack"],
+      ["get"],
+      ["cancel", "a", "b"],
+      ["tools", "extra"],
+      ["ack", "x", "--expires", "soon"],
+    ]) {
+      assert.equal((await agent(args, envFor(queue))).code, 2, args.join(" "));
+    }
+  });
 });
 
 describe("pnpm agent", () => {

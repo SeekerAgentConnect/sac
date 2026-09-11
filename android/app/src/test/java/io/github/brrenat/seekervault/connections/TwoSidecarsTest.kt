@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.connectrpc.okhttp.ConnectOkHttpClient
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
+import io.github.brrenat.seekervault.connections.storage.ResultStore
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -43,6 +44,7 @@ class TwoSidecarsTest {
             ConnectionRepository(
                 store = ConnectionStore(File(folder.root, "connections")),
                 vault = CredentialVault(File(folder.root, "credentials")) { key },
+                results = ResultStore(File(folder.root, "results")),
                 gateway =
                     ConnectConnectionGateway(
                         ConnectOkHttpClient.configureClient(OkHttpClient.Builder()).build()
