@@ -15,6 +15,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.live.LiveCommandTags
 import java.util.Base64
 import org.junit.Rule
@@ -70,6 +71,8 @@ class LiveCommandDeviceTest {
         val acknowledged = context.getString(R.string.command_acknowledged)
 
         ActivityScenario.launch(MainActivity::class.java).use {
+            // The app opens on Connections; the live test is one tap away.
+            compose.onNodeWithTag(ConnectionsTags.LIVE_TEST).performClick()
             compose.onNodeWithTag(LiveCommandTags.SERVER_URL).performTextReplacement(serverUrl)
             compose.onNodeWithTag(LiveCommandTags.PHONE_TOKEN).performTextInput(phoneToken)
             compose.onNodeWithTag(LiveCommandTags.CONNECT).performClick()

@@ -10,8 +10,9 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | --- | --- |
 | SAW-009: Durable request contract and lifecycle | Done. `seekervault.request.v1` defines the phone's `PairingService` and `RequestService`, the actions, the lifecycle and its transitions, idempotency, and the errors. [`docs/protocol.md`](docs/protocol.md#stage-2-durable-requests) specifies all of that plus the agent's MCP tools, and [`docs/architecture.md`](docs/architecture.md) shows how the parts fit together. The rules exist as tested pure code in `sidecar/src/requests/`, with fixtures checked in both runtimes. SAW-010 serves it. |
 | SAW-010: Persistent sidecar queue and async MCP lifecycle | Done. The sidecar stores requests in SQLite (`DATABASE_PATH`, default `sidecar/data/sidecar.db`), with migrations and durable commits, and creation and results are idempotent. Agents call `vault_request_ack`, `vault_get_request`, and `vault_cancel_request`, which answer at once. The phone's `RequestService` lists, reads, and answers requests. Requests survive restarts, and nothing runs on its own. See [`docs/development/sidecar.md`](docs/development/sidecar.md#storage-and-lifecycle). |
-| SAW-011: Secure pairing and separate access roles | Done. `pnpm pair` shows a one-use pairing code, as a QR code and as text, and the phone exchanges it for its own credential. Only that credential opens the phone's `RequestService`. The agent's MCP token opens `/mcp` only, and `PHONE_TOKEN` stays with the Stage 1 live-test screen. One phone is paired at a time, and `pnpm pair revoke` revokes it. A phone on another network reaches the loopback sidecar through a trusted TLS endpoint, such as Tailscale Serve. See [`docs/security.md`](docs/security.md). The app's pairing screen arrives in SAW-012. |
-| SAW-012 to SAW-014: Connections, inbox, validation | Not started |
+| SAW-011: Secure pairing and separate access roles | Done. `pnpm pair` shows a one-use pairing code, as a QR code and as text, and the phone exchanges it for its own credential. Only that credential opens the phone's `RequestService`. The agent's MCP token opens `/mcp` only, and `PHONE_TOKEN` stays with the Stage 1 live-test screen. One phone is paired at a time, and `pnpm pair revoke` revokes it. A phone on another network reaches the loopback sidecar through a trusted TLS endpoint, such as Tailscale Serve. See [`docs/security.md`](docs/security.md). |
+| SAW-012: Android pairing and multiple connections | Done. The app opens on **Connections**. It pairs by scanning the `pnpm pair` QR code or by entering the code, and it shows the server for the owner to confirm first. Each sidecar's connection is kept apart, with its own name, address, and credential. The credential is encrypted under an Android Keystore key and never backed up. **Connection details** refreshes, renames, and disconnects, which revokes the connection on the sidecar. See [`docs/guides/pairing.md`](docs/guides/pairing.md). |
+| SAW-013 and SAW-014: Inbox, validation | Not started |
 
 ## Stage 1
 
@@ -34,7 +35,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 
 | Path | Contents |
 | --- | --- |
-| `android/` | Kotlin/Compose/Material 3 app with one `app` module: the live-test screen and its Connect client; see [`docs/development/android.md`](docs/development/android.md) |
+| `android/` | Kotlin/Compose/Material 3 app with one `app` module: the connection screens (pairing, details) and the live-test screen, with their Connect clients; see [`docs/development/android.md`](docs/development/android.md) |
 | `sidecar/` | TypeScript/Node sidecar: the MCP endpoint `/mcp`, the phone's Connect API, and `/healthz`, on loopback, around an in-memory live-command bridge; see [`docs/development/sidecar.md`](docs/development/sidecar.md) |
 | `proto/` | Protobuf contract (a Buf module) and cross-runtime fixtures in `proto/fixtures`; see [`docs/protocol.md`](docs/protocol.md) |
 | `scripts/` | `generate.mjs`, which backs `pnpm generate` and `pnpm check:generated` |
@@ -79,7 +80,7 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm check:android` | Runs Spotless (ktfmt), Android unit tests, and Android lint, and builds the debug APK and the instrumentation test APK | Works |
 | `pnpm build` | Compiles the sidecar to `sidecar/dist` | Works |
 | `pnpm dev:sidecar` | Starts the sidecar with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. | Works |
-| `pnpm pair [status \| revoke]` | Shows a one-use pairing code for the phone, as a QR code and as text. `status` shows the paired phone, and `revoke` revokes it. See [`docs/development/sidecar.md`](docs/development/sidecar.md#pairing-a-phone). | Works. The app's pairing screen arrives in SAW-012. |
+| `pnpm pair [status \| revoke]` | Shows a one-use pairing code for the phone, as a QR code and as text. `status` shows the paired phone, and `revoke` revokes it. See [`docs/development/sidecar.md`](docs/development/sidecar.md#pairing-a-phone), and for the app, [`docs/guides/pairing.md`](docs/guides/pairing.md). | Works |
 | `pnpm generate` | Regenerates the TypeScript and Kotlin protocol code and the binary fixtures from `proto/`; needs network access | Works |
 | `pnpm check:generated` | Fails if the committed generated code or fixtures differ from a fresh generation; changes no files | Works |
 | `pnpm agent hello [text]` | Shows text on the phone through MCP and prints the acknowledgement. OFFLINE, BUSY, TIMEOUT, and connection errors each get their own exit code. | Works |

@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Keep all app data on the device: later stages store connection credentials. -->
+<!--
+  Keep all app data on the device (docs/security.md#local-storage-and-recovery): connection
+  metadata, the connections' credentials, and later the wallet's authorization are never backed up
+  or transferred. The credentials are also in no_backup (the root domain), encrypted with a
+  Keystore key that never leaves the device. StageBoundaryTest checks these rules.
+-->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" />

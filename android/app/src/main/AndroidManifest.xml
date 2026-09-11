@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- The only permission: the live-test screen talks to the sidecar over the network. -->
+    <!-- The network: the connections' sidecars, and the live-test screen. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Scanning a pairing QR code (SAW-012), asked for only when the owner taps Scan. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- The camera is optional: a pairing code can also be entered by hand. -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
 
     <application
         android:name=".SeekerVaultApplication"

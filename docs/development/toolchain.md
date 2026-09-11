@@ -41,6 +41,9 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | androidx.activity:activity-compose | 1.13.0 | `android/gradle/libs.versions.toml` |
 | Connect-Kotlin (`connect-kotlin`, `connect-kotlin-okhttp`, `connect-kotlin-google-javalite-ext`), which brings OkHttp 5.4 | 0.9.0 | `android/gradle/libs.versions.toml` |
 | `com.google.protobuf:protobuf-kotlin-lite` | 4.36.1 | `android/gradle/libs.versions.toml` |
+| CameraX (`camera-core`, `camera-camera2`, `camera-lifecycle`, `camera-compose`), for scanning pairing codes | 1.6.2 | `android/gradle/libs.versions.toml` |
+| ZXing `core`, the QR decoder (no dependencies, no Play services) | 3.5.4 | `android/gradle/libs.versions.toml` |
+| OkHttp `mockwebserver3` and `okhttp-tls`, test-only, on the OkHttp version that Connect-Kotlin brings | 5.4.0 | `android/gradle/libs.versions.toml` |
 | AndroidX Lifecycle (`lifecycle-viewmodel-compose`, `lifecycle-runtime-compose`) | 2.11.0 | `android/gradle/libs.versions.toml` |
 | JUnit | 4.13.2 | `android/gradle/libs.versions.toml` |
 | Robolectric, running the tests on SDK 36 | 4.16.1 | `android/gradle/libs.versions.toml`, `android/app/src/test/resources/robolectric.properties` |
@@ -56,7 +59,7 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 
 **Application ID and namespace: `io.github.brrenat.seekervault`.** Treat it as fixed: changing it would make the next build a different app on the device.
 
-**Backups are disabled.** The manifest turns off backups and `res/xml/data_extraction_rules.xml` excludes all app data from cloud backup and device transfer, because later stages store connection credentials.
+**Backups are disabled.** The manifest turns off backups and `res/xml/data_extraction_rules.xml` excludes all app data from cloud backup and device transfer, because the app stores connection credentials (SAW-012); see [`docs/security.md`](../security.md#local-storage-and-recovery).
 
 ### Code generators
 

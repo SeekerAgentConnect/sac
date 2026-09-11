@@ -73,7 +73,7 @@ The durable workflow needs a paired phone. [`docs/security.md`](../security.md) 
 - **The QR code is drawn in block characters, and scans on a dark terminal background.** On a light background, or if it doesn't scan, enter the URI printed under it.
 - **Only `pnpm pair` prints a secret,** the code's token. `status` and `revoke` print none, and the sidecar logs none.
 - **A usage or configuration error exits with status 2.** An invalid `SIDECAR_PUBLIC_URL` is reported, and no code is issued.
-- **The app's pairing screen arrives with its connections in SAW-012.** Until then, any Connect client can pair. For example, with the token from the code:
+- **The app pairs from Add connection** ([`docs/guides/pairing.md`](../guides/pairing.md)). Any other Connect client can pair too. For example, with the token from the code:
 
   ```bash
   curl -s -X POST http://127.0.0.1:8080/seekervault.request.v1.PairingService/Pair \

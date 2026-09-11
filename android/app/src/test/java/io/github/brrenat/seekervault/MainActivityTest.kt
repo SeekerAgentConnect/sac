@@ -10,6 +10,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.connections.ConnectionsTags
+import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.live.FakeSidecar
 import io.github.brrenat.seekervault.live.LiveCommandTags
 import io.github.brrenat.seekervault.live.command
@@ -36,7 +39,11 @@ class MainActivityTest {
     @Before
     fun launch() {
         app.liveCommandTransports = sidecar
+        app.connectionGateway = { FakeConnectionGateway() }
+        app.credentialKey = softwareKey().let { key -> { key } }
         scenario = ActivityScenario.launch(MainActivity::class.java)
+        // The app opens on Connections; the live test is one tap away.
+        compose.onNodeWithTag(ConnectionsTags.LIVE_TEST).performClick()
     }
 
     @After fun close() = scenario.close()
@@ -96,5 +103,15 @@ class MainActivityTest {
         compose
             .onNodeWithTag(LiveCommandTags.CONNECTION_STATUS)
             .assertTextEquals(app.getString(R.string.status_connected))
+    }
+
+    @Test
+    fun leavingTheLiveTestClosesItsStream() {
+        connectAndReceive()
+        scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        assertFalse(sidecar.stream.open)
+        compose.onNodeWithTag(ConnectionsTags.ADD).assertExists()
+        compose.onNodeWithTag(LiveCommandTags.COMMAND_TEXT).assertDoesNotExist()
     }
 }

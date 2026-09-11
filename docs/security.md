@@ -45,7 +45,7 @@ sequenceDiagram
 3. The phone calls `Pair` at that URL, with the token as its bearer credential and the URL in `server_url`.
 4. The sidecar checks the token, and creates a new connection with a new credential.
 
-Pairing doesn't involve the wallet. Wallet authorization is a separate step, from Stage 3 on. The app's side of pairing (scanning the code and storing the credential) arrives with its connections in SAW-012.
+Pairing doesn't involve the wallet. Wallet authorization is a separate step, from Stage 3 on. The owner's walkthrough is [`docs/guides/pairing.md`](guides/pairing.md), and what the phone stores is under [local storage and recovery](#local-storage-and-recovery).
 
 Pairing tokens are:
 
@@ -59,7 +59,7 @@ Pairing tokens are:
 ### A code never redirects an existing connection
 
 - **Pairing always creates a new connection,** with a new ID and a new credential. The sidecar never changes an existing connection's URL, ID, or credential, and the new connection can't see the old one's requests.
-- **The phone must do the same.** A scanned code is always a new pairing. It never changes the URL of a connection the phone already has, even when its `server` ID matches. So a code that points at another host can't take over an existing connection or its credential. The phone sends each credential only to the URL it paired with.
+- **The phone does the same.** A scanned code is always a new pairing. It never changes the URL of a connection the phone already has, even when its `server` ID matches. So a code that points at another host can't take over an existing connection or its credential. The phone sends each credential only to the URL it paired with. Before pairing, the app shows the code's server URL and ID for the owner to confirm, and notes a server it already knows.
 - **The server ID is how the phone recognizes a sidecar.** It stays the same across restarts and pairings, so the phone can tell the owner that a new code comes from a sidecar it already knows, possibly at a new address.
 
 ## One active phone per sidecar
@@ -103,6 +103,31 @@ Only devices on the tailnet can reach this endpoint.
 Don't use a self-signed certificate. The phone rightly refuses it, and the only way around that is weakening its checks.
 
 `sidecar/src/pairing/tls.test.ts` runs a TLS endpoint in front of the sidecar and pairs through it. Pairing works with a trusted certificate. An untrusted certificate, or one for another host name, fails before the token is sent, and the token stays usable.
+
+## Local storage and recovery
+
+What the phone keeps for each connection (SAW-012), and what happens when it's lost.
+
+| What | Where | Protection |
+| --- | --- | --- |
+| Metadata: the name, the server URL and ID, the device name sent at pairing, when it paired, the last refresh, and any revocation | `filesDir/connections/<connection ID>.json`, one file per connection, written atomically | App-private storage |
+| The phone credential | `noBackupFilesDir/credentials/<connection ID>`, one file per connection | AES-256-GCM under an Android Keystore key |
+| The pairing token | The app's memory, until pairing ends or the owner leaves the screen | Never written to disk or to saved instance state |
+
+- **The credential key lives in the Android Keystore** (`seekervault.credentials.v1`), created on first use. Its material never leaves the Keystore, so it can't be exported, backed up, or moved to another device. It protects credentials; it isn't a wallet key.
+- **Each credential file is bound to its connection.** The connection ID is the cipher's associated data, so a file copied under another connection's name doesn't decrypt. One file holds `1 || IV length || IV || ciphertext and tag`, and every write uses a fresh IV.
+- **Connections are keyed by the connection ID** that the sidecar assigned. The app accepts a `PairResponse` only if the ID is a lowercase UUID (it names the files), the credential has the format of one, and the server ID matches the code's. Removing a connection deletes its credential file first, then its metadata, and touches no other connection. A refresh counts only requests whose reference names the connection, whatever the sidecar sends.
+- **Nothing is backed up or transferred.** The manifest sets `allowBackup="false"`. `data_extraction_rules.xml` excludes every domain from cloud backup and from device-to-device transfer, including `root`, which holds `no_backup/`. From Stage 3 on, Mobile Wallet Adapter authorization material is stored and excluded the same way. `StageBoundaryTest` checks the rules.
+- **The app logs nothing about connections,** and its screens show the URL, the IDs, and the status, never the credential or the token.
+- **A credential the sidecar rejects is deleted.** When a refresh gets `UNAUTHENTICATED`, the app marks the connection revoked, deletes its credential, and never sends it again.
+
+| What happened | What the phone shows | What to do |
+| --- | --- | --- |
+| A new phone, a reinstall, or cleared app data | No connections | Pair with each sidecar again. That revokes the old phone's connection. |
+| A lost or stolen phone | — | Run `pnpm pair revoke` on each sidecar. |
+| The Keystore lost the key, or a file is damaged | "This phone no longer has the credential…" | Pair again, and remove the old connection. |
+| The sidecar revoked the phone, another phone paired, or its database was reset | "The server no longer accepts this phone…" | Pair again, and remove the old connection. |
+| The sidecar moved to a new address | The old connection can't reach it | Pair again with a code for the new address. The app never moves a credential to a new host. |
 
 ## Logs and diagnostics
 
