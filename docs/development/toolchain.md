@@ -13,13 +13,13 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | Node.js | 24.21.0 (LTS) | `.nvmrc`, and `engines` in `package.json` |
 | pnpm | 12.3.4 | `packageManager` in `package.json` |
 | TypeScript | 6.0.3 | `catalog` in `pnpm-workspace.yaml` |
-| @types/node | 24.13.4 | `sidecar/package.json` |
+| @types/node | 24.13.4 | `catalog` in `pnpm-workspace.yaml` |
 | ESLint, @eslint/js, typescript-eslint | 10.10.0, 10.0.1, 8.70.0 | `package.json` |
 | Prettier | 3.9.6 | `package.json` |
 | Buf CLI (`@bufbuild/buf`) | 1.72.0 | `package.json` |
-| MCP TypeScript SDK (`@modelcontextprotocol/sdk`) | 1.30.0 | `sidecar/package.json` |
+| MCP TypeScript SDK (`@modelcontextprotocol/sdk`), used by the sidecar and the test agent | 1.30.0 | `catalog` in `pnpm-workspace.yaml` |
 | Connect for Node (`@connectrpc/connect`, `@connectrpc/connect-node`) | 2.2.0 | `sidecar/package.json` |
-| zod, for the MCP tool schemas | 4.6.1 | `sidecar/package.json` |
+| zod, for the MCP tool schemas and the SDK's peer | 4.6.1 | `catalog` in `pnpm-workspace.yaml` |
 | protoc-gen-es (generator), @bufbuild/protobuf (runtime) | 2.14.1 | `catalog` in `pnpm-workspace.yaml`; generator and runtime move together |
 
 **TypeScript stays on 6.0** because typescript-eslint 8.70 supports only `typescript <6.1`. TypeScript 7 can follow once typescript-eslint supports it.

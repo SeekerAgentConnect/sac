@@ -50,3 +50,19 @@
 - **UI tests run on Robolectric, as JVM tests, so CI needs no emulator.** Robolectric 4.16.1 runs them at SDK 36, because 4.17, which adds SDK 37, was released less than a day ago. Device and emulator instrumentation tests are SAW-008's.
 - **The transport is also tested against the real sidecar,** with `node sidecar/src/main.ts` and an MCP SDK agent script. This is the closest automated stand-in for the device check, and it is not reported as one.
 - **Tokens stay in memory only, never in saved state.** Process death forgets them.
+
+## 2026-09-11 — SAW-005 MCP test client (SEE-11)
+
+- **`pnpm agent` runs `node test-agent/src/main.ts` directly.** A plain `pnpm run` keeps the script's exit code, but `pnpm --filter …` turns every failure into 1, which was measured.
+- **The exit codes are fixed, and tests assert them:**
+  - 0 OK
+  - 1 unexpected
+  - 2 usage or configuration
+  - 3 connection
+  - 4 OFFLINE, 5 BUSY, 6 TIMEOUT, 7 CANCELLED, 8 INVALID_TEXT
+
+  Tool errors map through the sidecar's `"<CODE>: "` prefix. Success needs a real `{id, result: "OK"}`.
+- **The client timeout is the sidecar's deadline plus 15 seconds** (`--timeout` overrides it), so the sidecar's own TIMEOUT normally wins. On a client timeout, the SDK sends `notifications/cancelled`, and the CLI ends its MCP session, so the sidecar frees the phone.
+- **Tokens are redacted.** `MCP_TOKEN` and `PHONE_TOKEN` are removed from every line the CLI writes, and errors print a message without a stack.
+- **The tests reuse the sidecar's code.** They run the CLI as a real process against an in-process sidecar, and the sidecar's test clients act as the phone. Relative imports into `sidecar/src` are for tests only; the test-agent build excludes them. `Code` and `ConnectError` are re-exported from the sidecar's testing module so both packages share one Connect instance.
+- **The MCP SDK, zod, and `@types/node` moved to the pnpm catalog,** shared by the sidecar and the test agent.
