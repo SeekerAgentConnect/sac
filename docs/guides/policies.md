@@ -99,11 +99,55 @@ The summary at the top is the whole policy read back in plain language, not a hi
 
 ## What a rule does when a request arrives
 
-Right now: nothing visible. The phone already assesses requests against these rules and counts the day's spending, but the request-review screen doesn't show the result yet — that is the next task (SAW-028). Until it lands, what you write here is stored, checked by the app's own tests, and not yet on screen.
+Open the request, and under everything the phone read for itself is **What your rules make of this**.
+
+It says one of two things at the top — *Matches your rules*, or *Outside your rules* — and then every check, one line each, with what it read:
+
+| The line | What it means |
+| --- | --- |
+| **Matched** | That check was configured, and the request is inside it. |
+| **Outside the rules** | That check was configured, and the request isn't inside it. |
+| **Could not be checked** | That check was configured, and the phone couldn't establish the fact it needs — the bytes don't say who receives the funds, the amount couldn't be read, today's total didn't read back. It does not pass. |
+| **No rule set** | You wrote no such rule, so nothing was checked and nothing is claimed. |
+
+Under the checks, the ones nothing covered are named again in a line of their own. *Matches your rules* is never a statement about a parameter you didn't write a rule for, and the screen says which ones those are rather than leaving you to work it out.
+
+Under all of it, every time, is the line that doesn't change: **whatever this says, it approves nothing and stops nothing.** You still approve here, and your wallet still asks you again.
+
+Nothing on this screen is said by colour alone. Everything it means, it says.
+
+### Going ahead anyway
+
+When something is outside your rules, or couldn't be checked, the Approve button waits. Above it is a box to tick — *I have read the warnings above and want to go ahead anyway* — and the button says what it would be doing: **Approve despite warnings**.
+
+**Reject never waits for anything.** Saying no is always available in one tap.
+
+What you tick is for the reasons in front of you, not for the request. If the transaction is read again, or you edit the rules, or the day's total moves, that is a different assessment — the tick clears, and the reasons are there to read again.
+
+**A connection with no rules never asks you to tick.** Every request under it is *Outside your rules* for want of any, which is not a warning about anything; a phone that asked you to tick past that on every request would be teaching you to tick without reading. Rules that are stored and can't be read do ask, because there you did write something and this app can't tell you what.
+
+### What the rules can't do
+
+They can't make a transfer approvable. If the prepared transaction disagrees with the request, or this phone couldn't account for all of it, **there is no Approve button at all**, and nothing you tick brings one back — that is a different check, made on the bytes, before any rule is consulted ([`transfers.md`](transfers.md)). *Matches your rules* next to it changes nothing.
+
+They can't refuse one either. A request outside your rules is exactly as approvable as it was.
+
+### What is checked again, and when
+
+Nothing is remembered. The rules and the day's records are read from disk when you open the request, again every time the transaction is read, again when you come back to the app, and once more the moment you answer.
+
+If they changed while you were reading — you edited them, or a transfer settled — **the answer stops** rather than going ahead on what you read. Nothing is answered, no wallet is opened, and the review on screen is replaced by the one that stands now.
+
+## What the history keeps
+
+When you answer, the assessment you read is kept with the record in **Activity**: the verdict, the reasons, which checks nothing covered, and whether you went ahead anyway.
+
+It keeps what you were told, never what you wrote. No threshold and no address from your rules is copied into the history — those are stored once, where you set them. Nothing about either reaches the server.
 
 ## See also
 
 - [`docs/testing/stage-5.md`](../testing/stage-5.md) — what the tests cover, and the device checks
 - [`docs/policy.md`](../policy.md) — the model, the evaluation semantics, the counters, and the stored document
+- [`docs/security.md`](../security.md#verification-versus-advisory-rules) — what stops a request, and what only warns about one
 - [`transfers.md`](transfers.md) — what a transfer request is, and what your approval binds
 - [`pairing.md`](pairing.md) — pairing a connection in the first place

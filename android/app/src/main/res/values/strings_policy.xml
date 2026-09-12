@@ -112,4 +112,30 @@
     <string name="policy_unreadable_unknown">The stored rules name something this version has no name for.</string>
     <string name="policy_unreadable_text">Every request from this connection is shown as under restrictions until this is settled. Starting over replaces what is stored, and nothing here can show you what you are replacing.</string>
     <string name="policy_start_over">Start over from no rules</string>
+    <!-- The assessment on the request-review screen (SAW-028). -->
+    <string name="policy_verdict_allowed">Matches your rules</string>
+    <string name="policy_verdict_restricted">Outside your rules</string>
+
+    <string name="policy_review_check_action">Action</string>
+    <string name="policy_review_check_asset">Asset</string>
+    <string name="policy_review_check_recipient">Recipient</string>
+    <string name="policy_review_check_program">Programs</string>
+    <string name="policy_review_check_per_operation">Most per request</string>
+    <string name="policy_review_check_daily">Most per day</string>
+
+    <string name="policy_reason_no_policy">No rules are set for this connection, so nothing was checked.</string>
+    <string name="policy_reason_unreadable">Rules are stored for this connection and this app cannot read them, so nothing was checked.</string>
+    <string name="policy_reason_action">This kind of request is not on your list.</string>
+    <string name="policy_reason_asset">That asset is not on your list.</string>
+    <string name="policy_reason_recipient">That recipient is not on your list.</string>
+    <string name="policy_reason_program">The transaction calls a program that is not on your list.</string>
+    <string name="policy_reason_per_operation">More than your threshold for one request.</string>
+    <string name="policy_reason_daily">More than your threshold for a day, counting what this app has already moved today.</string>
+    <string name="policy_reason_action_unverified">This app has no name for this kind of request, so your rule about actions could not be applied to it.</string>
+    <string name="policy_reason_asset_unverified">Which asset moves could not be established, so your rule about assets could not be applied.</string>
+    <string name="policy_reason_recipient_unverified">The transaction does not establish who receives the funds, so your rule about recipients could not be applied.</string>
+    <string name="policy_reason_program_unverified">The transaction could not be read, so the programs it calls are not all known.</string>
+    <string name="policy_reason_amount_unverified">The amount could not be read, so no threshold could be applied.</string>
+    <string name="policy_reason_daily_unverified">Today\'s total could not be read, so your threshold for a day could not be applied.</string>
+    <string name="policy_reason_request_unverified">This phone could not account for the whole transaction. What the rest of it matched says nothing about the part that was not read.</string>
 </resources>

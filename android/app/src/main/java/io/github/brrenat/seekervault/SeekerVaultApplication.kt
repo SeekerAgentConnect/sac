@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
+import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.wallet.MwaWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletAdapter
@@ -69,6 +70,15 @@ class SeekerVaultApplication : Application() {
      * here is encrypted, because a policy holds no credential and no key.
      */
     val policyStore: PolicyStore by lazy { PolicyStore(File(filesDir, "policies")) }
+
+    /**
+     * What the rules make of a request (docs/policy.md#re-evaluation). It caches nothing: every
+     * assessment re-reads the connection's rules and the owner's own records, so the verdict on
+     * screen is always one that was just made. It reads, and does nothing else.
+     */
+    val policyEvaluator: PolicyEvaluator by lazy {
+        PolicyEvaluator(policyStore, records = { activityLog.records.value })
+    }
 
     /**
      * The phone's connections and their requests (docs/security.md#local-storage-and-recovery):

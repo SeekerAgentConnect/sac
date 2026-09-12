@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.policy
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import io.github.brrenat.seekervault.R
@@ -211,3 +212,62 @@ private fun uncheckedText(draft: PolicyDraft): List<String> {
     }
     return unchecked
 }
+
+/**
+ * The assessment in the owner's own words (SAW-028). Neither verdict is a decision: one says the
+ * request matched what they wrote down, the other that something didn't or couldn't be checked, and
+ * both still need their hand on the wallet.
+ */
+@StringRes
+fun assessmentText(assessment: PolicyAssessment): Int =
+    when (assessment) {
+        PolicyAssessment.Allowed -> R.string.policy_verdict_allowed
+        PolicyAssessment.UnderRestrictions -> R.string.policy_verdict_restricted
+    }
+
+/** One check, named the way the review screen heads it. */
+@StringRes
+fun checkText(check: PolicyCheck): Int =
+    when (check) {
+        PolicyCheck.Action -> R.string.policy_review_check_action
+        PolicyCheck.Asset -> R.string.policy_review_check_asset
+        PolicyCheck.Recipient -> R.string.policy_review_check_recipient
+        PolicyCheck.Program -> R.string.policy_review_check_program
+        PolicyCheck.PerOperationLimit -> R.string.policy_review_check_per_operation
+        PolicyCheck.DailyLimit -> R.string.policy_review_check_daily
+    }
+
+/**
+ * Why a request isn't ALLOWED, in the owner's language. The stored reason is a code, and this is
+ * where it becomes words: a record keeps the code, so what it means can be said better later
+ * without the record having to be rewritten.
+ */
+@StringRes
+fun reasonText(reason: PolicyReason): Int =
+    when (reason) {
+        PolicyReason.NoPolicyConfigured -> R.string.policy_reason_no_policy
+        PolicyReason.PolicyUnreadable -> R.string.policy_reason_unreadable
+        PolicyReason.ActionNotAllowed -> R.string.policy_reason_action
+        PolicyReason.AssetNotAllowed -> R.string.policy_reason_asset
+        PolicyReason.RecipientNotAllowed -> R.string.policy_reason_recipient
+        PolicyReason.ProgramNotAllowed -> R.string.policy_reason_program
+        PolicyReason.OverPerOperationLimit -> R.string.policy_reason_per_operation
+        PolicyReason.OverDailyLimit -> R.string.policy_reason_daily
+        PolicyReason.ActionUnverified -> R.string.policy_reason_action_unverified
+        PolicyReason.AssetUnverified -> R.string.policy_reason_asset_unverified
+        PolicyReason.RecipientUnverified -> R.string.policy_reason_recipient_unverified
+        PolicyReason.ProgramUnverified -> R.string.policy_reason_program_unverified
+        PolicyReason.AmountUnverified -> R.string.policy_reason_amount_unverified
+        PolicyReason.DailyTotalUnverified -> R.string.policy_reason_daily_unverified
+        PolicyReason.RequestUnverified -> R.string.policy_reason_request_unverified
+    }
+
+/** The reason a stored code names, or null for one this build has no name for. */
+fun reasonOf(code: String): PolicyReason? = PolicyReason.entries.firstOrNull { it.code == code }
+
+/** The check a stored code names, or null for one this build has no name for. */
+fun checkOf(code: String): PolicyCheck? = PolicyCheck.entries.firstOrNull { it.code == code }
+
+/** The verdict a stored code names, or null for one this build has no name for. */
+fun assessmentOf(code: String): PolicyAssessment? =
+    PolicyAssessment.entries.firstOrNull { it.code == code }

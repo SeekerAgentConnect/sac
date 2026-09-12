@@ -62,4 +62,9 @@
     <string name="activity_explorer_note">The explorer opens in your browser. This app makes no connection to it.</string>
     <string name="activity_checked_with">Checked with %1$s</string>
     <string name="activity_summary">%1$s · %2$s</string>
+    <!-- The assessment the owner read when they answered, kept with the record (SAW-028). -->
+    <string name="activity_field_policy">Your rules when you answered</string>
+    <string name="activity_policy_anyway">%1$s, and you went ahead anyway</string>
+    <string name="activity_policy_uncovered">Nothing was checked for: %1$s.</string>
+    <string name="activity_policy_unknown">This app has no name for what was recorded here.</string>
 </resources>

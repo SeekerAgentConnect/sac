@@ -173,6 +173,34 @@ class StageBoundaryTest {
             ),
             reaches,
         )
+        // The rules never leave the phone, and neither does what they made of a request
+        // (SAW-028). The two files that speak to a sidecar have never heard of a policy, and the
+        // one file in `connections/` that has, has it to delete a removed connection's rules and
+        // for nothing else — an assessment is the owner's to read, and no agent's to learn of.
+        val speaking =
+            File(main, "java")
+                .walk()
+                .filter {
+                    it.name == "ConnectConnectionGateway.kt" ||
+                        it.name == "ConnectLiveCommandTransport.kt" ||
+                        it.name == "ConnectionRepository.kt"
+                }
+                .toList()
+        assertEquals(3, speaking.size)
+        assertEquals(
+            listOf(
+                "ConnectionRepository.kt: io.github.brrenat.seekervault.policy.storage.PolicyStore"
+            ),
+            speaking
+                .flatMap { file ->
+                    file
+                        .readLines()
+                        .map { it.trim() }
+                        .filter { it.startsWith("import io.github.brrenat.seekervault.policy") }
+                        .map { "${file.name}: ${it.removePrefix("import ")}" }
+                }
+                .sorted(),
+        )
         // There is no BLOCKED verdict and no branch that acts on either of the two there are. The
         // comments say so too, so this reads the code with the comments taken out of it.
         val acting =

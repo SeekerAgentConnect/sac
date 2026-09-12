@@ -146,7 +146,7 @@ A policy never softens step 1: no rule can make a malformed or mismatched prepar
 
 Every rule in the MVP is advisory, thresholds included.
 
-- A warning can be overridden by the owner, deliberately, in the app (SAW-028 gives it its own step).
+- A warning can be overridden by the owner, deliberately, in the app: the review gives it [its own step](#going-ahead-anyway).
 - A counter is a record of what went through **this app**, not a spending cap. It sees nothing the owner did in their wallet directly, and nothing any other app did with the same wallet.
 - Nothing here is enforced on chain. The wallet and the network do not know these rules exist.
 
@@ -155,6 +155,8 @@ Every rule in the MVP is advisory, thresholds included.
 There is no stored verdict. `PolicyEvaluator` (`policy/PolicyEvaluation.kt`) re-reads the connection's rules from disk and the app's own records on every call, so asking again immediately before the owner proceeds is the whole of re-evaluating — and a verdict read a minute ago is never the one acted on, because there is nothing kept to act on.
 
 That matters at three moments: the policy may have been edited since the review opened, the day's counters may have moved, and a transfer is re-prepared as its blockhash expires. Each new preparation is new bytes and is read again from scratch.
+
+The review reads again when the request is opened, whenever a preparation has been read, when the app comes back to the front, and once more at the moment the owner answers ([the review](#read-again-before-the-answer-not-after)).
 
 ## The editor
 
@@ -183,6 +185,40 @@ A draft that configures nothing **removes** the connection's rules rather than s
 ### Rules that can't be read
 
 The editor does not open a blank form over a `StoredPolicy.Unreadable`. It says what was found and offers **Start over from no rules**, which the owner presses on purpose — an empty form saved on top would delete rules they set and never saw.
+
+## The review
+
+`PolicyReview` (`inbox/PolicyReview.kt`), on Request details, under everything the phone established for itself and above the button that answers.
+
+The order on that screen is the order of trust, and the assessment is last on purpose. The facts above it come from the transaction's own bytes. The assessment is the owner's own note to themselves about what they expected this agent to ask for, and it is the weakest thing on the screen: it cannot make anything executable, and it cannot stop anything.
+
+Every check is named with what it read and what became of it — matched, outside the rules, could not be checked, or no rule set — and the checks nothing covered are named too, so `ALLOWED` is never read as a statement about a parameter nobody wrote a rule for. Under every verdict is the line that never changes: both verdicts still need the owner's hand on the wallet.
+
+Nothing is said by colour alone. A reader who sees no colour, or who hears the screen rather than seeing it, is told the same things in the same words.
+
+### Going ahead anyway
+
+A warning the owner can tap straight past is a warning that teaches them to tap past warnings. So an affirmative answer to a request the assessment warns about takes a deliberate step: a checkbox saying they have read the warnings and want to go ahead anyway, next to the button that does it, and the button says what it would be doing. Rejecting never asks for anything — saying no is the safe answer.
+
+**What they agree to is the assessment, not the request.** The tick is bound to the exact `PolicyDecision` it was given for. A new preparation, edited rules, or a moved counter produce a different assessment, and a different assessment is a different thing to agree to: the tick goes, and the reasons are there to be read again.
+
+**Having no rules at all is not a warning.** Every request on a phone whose owner has written no rules is `UNDER_RESTRICTIONS` for want of any, and asking them to tick past that on every request would make the tick a ritual. `PolicyDecision.warns` is `UNDER_RESTRICTIONS` for any other reason — rules this build can't read included, because there the owner did write something and this build can't say what.
+
+### Read again before the answer, not after
+
+The screen's assessment is a snapshot of a reading. The answer does not act on it: `InboxViewModel` reads the rules and the records again at the moment the owner answers, compares what comes back with what they were shown, and stops if it differs — nothing is answered, no wallet is opened, and the review on screen is replaced by the one that stands now. That is what makes a stale review unusable rather than merely unlikely.
+
+The advisory check comes second, always. A preparation that failed this phone's own inspection was refused before any of it ran ([`security.md`](security.md#verification-versus-advisory-rules)).
+
+### The stored snapshot
+
+The assessment the owner read is kept with the record of what they did (`activity/ActivityRecord.kt`, `ReviewedPolicy`): the verdict's code, the reason codes, the codes of the checks nothing covered, when it was made, and whether they went ahead with a warning in front of them.
+
+**It is codes, and never rules.** No threshold, no address, and no list is written into the history: the rules are stored once, in the one place they belong, and a snapshot that copied them would be a second copy to keep in step and a second thing to leak. Codes also mean what a code means can be said better later without the record having to be rewritten, and a code a later version invented is left out of the reading rather than shown as itself.
+
+Nothing reads it back to decide anything. It is written when the owner answers, carried forward unchanged when the record is written again — a status checked ten times later does not know what the review said, and must not take it away — and shown on Activity details.
+
+None of it reaches the sidecar. `StageBoundaryTest` holds the files that speak to one to having never heard of a policy.
 
 ## Counters
 
@@ -302,9 +338,12 @@ The facts themselves are checked against real transactions rather than invented 
 | `policy/PolicyDraft.kt` | `PolicyDraft`, `AssetDraft`, `readAmount`, and `review` |
 | `policy/PolicyEditorViewModel.kt` | `PolicyUiState`, and load, edit, save, remove, start over |
 | `policy/PolicyEditorScreen.kt` | The editor itself |
-| `policy/PolicyText.kt` | `PolicyTags`, the owner's words for each rule, and the plain-language summary |
+| `policy/PolicyText.kt` | `PolicyTags`, the owner's words for each rule and each verdict, reason and check, and the plain-language summary |
 | `policy/storage/PolicyStore.kt` | The document, its versions, and `StoredPolicy` |
+| `inbox/PolicyReview.kt` | The assessment on Request details, and the step before going ahead anyway |
+| `inbox/InboxViewModel.kt` | `RequestAssessment`, when an assessment is made, and the re-read before an answer |
+| `activity/ActivityRecord.kt` | `ReviewedPolicy`, the snapshot kept with the record |
 
-Tests: `policy/PolicyTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage.
+Tests: `policy/PolicyTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`.
 
 `StageBoundaryTest` keeps the package unable to act — the editor included. Everything it may reach into is a read: the connection ID rule, the protocol's requests and networks, what the phone read out of a transaction's bytes, the owner's own activity records, the address rule, and the app's own strings, back button, and date format. It may reach nothing that opens a wallet, a connection, or a socket.

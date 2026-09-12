@@ -193,11 +193,19 @@ fun SeekerVaultApp(
                     },
                     checking = key in inboxState.checking,
                     onCheckStatus = { inbox.checkStatus(key) },
+                    assessment = inboxState.assessments[key],
+                    acknowledged =
+                        inboxState.acknowledged[key] != null &&
+                            inboxState.acknowledged[key] == inboxState.assessments[key]?.decision,
+                    onAcknowledge = { inbox.acknowledge(key, it) },
                     onBack = pop,
                 )
                 // Opening a transfer fetches a fresh transaction and reads it on this phone. It
                 // is a read and nothing more: no wallet opens until the owner taps Approve.
                 LaunchedEffect(key) { inbox.prepare(key) }
+                // And the rules are read for it, every time it is opened. Nothing is remembered
+                // between visits, so rules changed in between are the ones that apply (SAW-028).
+                LaunchedEffect(key) { inbox.review(key) }
             }
         }
     }

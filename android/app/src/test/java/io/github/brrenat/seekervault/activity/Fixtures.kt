@@ -143,6 +143,7 @@ fun record(
     checkedWith: String? = "api.devnet.solana.com",
     detail: String? = null,
     answeredAt: Instant = ANSWERED_AT,
+    policy: ReviewedPolicy? = null,
 ): ActivityRecord =
     ActivityRecord(
         connectionId = CONNECTION,
@@ -164,7 +165,23 @@ fun record(
                     mint = mint,
                     preparedVersion = 2,
                 ),
+        policy = policy,
         signature = signature,
         detail = detail,
         checkedWith = checkedWith,
+    )
+
+/** The assessment a review showed, as one is kept with a record (SAW-028). */
+fun reviewedPolicy(
+    assessment: String = "under_restrictions",
+    reasons: List<String> = listOf("over_daily_limit"),
+    notChecked: List<String> = listOf("program"),
+    approvedAnyway: Boolean = true,
+): ReviewedPolicy =
+    ReviewedPolicy(
+        assessment = assessment,
+        reasons = reasons,
+        notChecked = notChecked,
+        assessedAt = ANSWERED_AT.minusSeconds(30),
+        approvedAnyway = approvedAnyway,
     )

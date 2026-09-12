@@ -280,6 +280,28 @@ network, and it is checked against transactions the sidecar really builds
 ([`docs/testing/transaction-fixtures.md`](testing/transaction-fixtures.md)).
 `StageBoundaryTest` fails if a source file starts importing an SDK decoder instead.
 
+## Verification versus advisory rules
+
+Two different things on the review screen look, at a glance, like the same kind of judgement. They are not, and the difference is the one the whole design rests on.
+
+| | Input validation | The owner's rules |
+| --- | --- | --- |
+| What it is about | Whether the bytes are the transaction the request asked for | Whether the request is what the owner expected this agent to ask for |
+| Where it comes from | The transaction's own bytes, read by this phone ([above](#inspecting-a-transfer)) | A file on this phone that the owner wrote ([`policy.md`](policy.md)) |
+| What it can do | Take the Approve button away entirely | Add reasons to read |
+| Who can overrule it | Nobody | The owner, deliberately |
+| When it runs | First, always | Second, on what passed |
+
+**A rule can never make something executable.** A preparation that is malformed, that disagrees with its request, or that this phone could not account for whole has no Approve button, and there is no tick that brings one back. `ALLOWED` next to it changes nothing at all: it is a statement about parameters, made about a transaction the phone already refused to put in front of a wallet.
+
+**A malformed preparation is never relabelled as an advisory warning.** The two live in separate blocks on the screen, with their own words, and the block that says why there is no button is the input-validation one. Calling a byte mismatch "outside your rules" would offer the owner a way past it that does not exist, and would teach them that the refusals they cannot overrule are the same kind of thing as the warnings they can.
+
+**A rule can never make something stricter, either.** `UNDER_RESTRICTIONS` leaves a request exactly as executable as it was. There is no `BLOCKED`, and no setting that makes the app turn a request down on its own.
+
+**Neither one approves.** `ALLOWED` means the parameters matched what the owner wrote down. The owner still approves by hand in the app, and their wallet asks them again.
+
+The assessment the owner read is kept with their own record of what they did, as codes ([`policy.md`](policy.md#the-stored-snapshot)). The rules never reach the sidecar, and neither does the assessment: no RPC carries one, and `StageBoundaryTest` holds the files that speak to a sidecar to having never heard of a policy.
+
 ## Logs and diagnostics
 
 - **No token reaches the log.** Pairing logs connection IDs and error codes only:

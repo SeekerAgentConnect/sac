@@ -4,6 +4,7 @@ import android.util.AtomicFile
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.activity.ActivityRecord
+import io.github.brrenat.seekervault.activity.ReviewedPolicy
 import io.github.brrenat.seekervault.activity.ReviewedTransfer
 import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.request.v1.Network
@@ -11,6 +12,7 @@ import java.io.File
 import java.io.IOException
 import java.time.DateTimeException
 import java.time.Instant
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -114,6 +116,11 @@ class ActivityStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
+        // SAW-028 added the assessment the owner was shown, and left the version alone. The field
+        // is optional and additive, so a file with one reads the same on a build that has never
+        // heard of it. A bump would not: a build that refuses the version drops the whole record,
+        // and a dropped record is a transfer the day's counters never see
+        // (docs/policy.md#counters).
         const val VERSION = 1
         const val OLDEST_VERSION = 1
 
@@ -129,6 +136,8 @@ class ActivityStore(private val dir: File) {
                 .put("recordedAt", record.recordedAt.toString())
                 .put("outcome", record.outcome.name)
                 .putOpt("transfer", record.transfer?.let(::encodeTransfer))
+                // Codes, never rules: what the owner read, not what they wrote.
+                .putOpt("policy", record.policy?.let(::encodePolicy))
                 // The signature is public the moment the wallet makes it, like the address.
                 .putOpt("signature", record.signature)
                 .putOpt("detail", record.detail)
@@ -155,6 +164,32 @@ class ActivityStore(private val dir: File) {
             )
         }
 
+        fun encodePolicy(policy: ReviewedPolicy): JSONObject =
+            JSONObject()
+                .put("assessment", policy.assessment)
+                .put("reasons", JSONArray(policy.reasons))
+                .put("notChecked", JSONArray(policy.notChecked))
+                .put("assessedAt", policy.assessedAt.toString())
+                .put("approvedAnyway", policy.approvedAnyway)
+
+        fun decodePolicy(json: JSONObject?): ReviewedPolicy? = json?.let {
+            ReviewedPolicy(
+                assessment = it.getString("assessment"),
+                reasons = codes(it.optJSONArray("reasons")),
+                notChecked = codes(it.optJSONArray("notChecked")),
+                assessedAt = Instant.parse(it.getString("assessedAt")),
+                approvedAnyway = it.optBoolean("approvedAnyway"),
+            )
+        }
+
+        /** A list of codes, with anything that isn't one left out rather than guessed at. */
+        fun codes(array: JSONArray?): List<String> =
+            (0 until (array?.length() ?: 0))
+                .mapNotNull { array?.optString(it) }
+                .filter {
+                    it.isNotEmpty()
+                }
+
         fun decode(text: String): ActivityRecord? {
             val json = JSONObject(text)
             if (json.getInt("version") !in OLDEST_VERSION..VERSION) return null
@@ -168,6 +203,7 @@ class ActivityStore(private val dir: File) {
                 recordedAt = Instant.parse(json.getString("recordedAt")),
                 outcome = ActivityOutcome.valueOf(json.getString("outcome")),
                 transfer = decodeTransfer(json.optJSONObject("transfer")),
+                policy = decodePolicy(json.optJSONObject("policy")),
                 signature = json.optString("signature").takeIf(String::isNotEmpty),
                 detail = json.optString("detail").takeIf(String::isNotEmpty),
                 checkedWith = json.optString("checkedWith").takeIf(String::isNotEmpty),

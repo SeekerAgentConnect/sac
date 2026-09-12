@@ -139,6 +139,21 @@ data class PolicyDecision(
     val allowed: Boolean
         get() = assessment == PolicyAssessment.Allowed
 
+    /**
+     * Whether this assessment has something to warn the owner about, which is what the review
+     * screen asks them to go past on purpose (SAW-028).
+     *
+     * UNDER_RESTRICTIONS for want of any rules is not a warning. Nothing was checked because
+     * nothing was configured, and a phone whose owner has written no rules would otherwise warn
+     * about every request it ever shows — which is the surest way to teach someone to tick past a
+     * warning without reading it. Rules that are stored and can't be read are the other way round:
+     * the owner did write something, and this build can't tell them what.
+     */
+    val warns: Boolean
+        get() =
+            assessment == PolicyAssessment.UnderRestrictions &&
+                reason != PolicyReason.NoPolicyConfigured
+
     /** Every reason behind the verdict, in check order, with [reason] first when there is one. */
     val reasons: List<PolicyReason>
         get() = listOfNotNull(reason) + checks.mapNotNull { it.reason }

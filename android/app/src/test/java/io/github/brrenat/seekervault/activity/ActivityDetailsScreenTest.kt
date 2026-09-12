@@ -40,6 +40,48 @@ class ActivityDetailsScreenTest {
     }
 
     @Test
+    fun showsTheAssessmentTheOwnerReadWhenTheyAnswered() {
+        show(record(policy = reviewedPolicy()))
+        val shown = compose.onNodeWithTag(ActivityTags.POLICY).performScrollTo()
+        // The verdict, and that they went ahead past it: the record says both, in words.
+        shown.assertTextContains(
+            context.getString(
+                R.string.activity_policy_anyway,
+                context.getString(R.string.policy_verdict_restricted),
+            ),
+            substring = true,
+        )
+        shown.assertTextContains(
+            context.getString(R.string.policy_reason_daily),
+            substring = true,
+        )
+        // And what the assessment did not cover, so it is never read as covering everything.
+        shown.assertTextContains(
+            context.getString(R.string.policy_review_check_program),
+            substring = true,
+        )
+    }
+
+    @Test
+    fun showsNoAssessmentForARecordWrittenBeforeThereWasOne() {
+        show(record())
+        compose.onNodeWithTag(ActivityTags.POLICY).assertDoesNotExist()
+    }
+
+    @Test
+    fun saysSoRatherThanShowingACodeItHasNoNameFor() {
+        // The record keeps codes on purpose. One from a later version is not shown as itself.
+        show(record(policy = reviewedPolicy(assessment = "something_else")))
+        compose
+            .onNodeWithTag(ActivityTags.POLICY)
+            .performScrollTo()
+            .assertTextContains(
+                context.getString(R.string.activity_policy_unknown),
+                substring = true,
+            )
+    }
+
+    @Test
     fun showsTheReviewedTransferItsClusterAndItsOutcome() {
         show(record(detail = "The transfer succeeded on chain in slot 298471553."))
         compose

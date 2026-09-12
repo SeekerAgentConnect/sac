@@ -4,6 +4,12 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.policy.assessmentOf
+import io.github.brrenat.seekervault.policy.assessmentText
+import io.github.brrenat.seekervault.policy.checkOf
+import io.github.brrenat.seekervault.policy.checkText
+import io.github.brrenat.seekervault.policy.reasonOf
+import io.github.brrenat.seekervault.policy.reasonText
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
@@ -25,6 +31,7 @@ object ActivityTags {
     const val CHECKED_WITH = "activityCheckedWith"
     const val DETAIL = "activityDetail"
     const val SOURCE = "activitySource"
+    const val POLICY = "activityPolicy"
 
     fun item(record: ActivityRecord) = "activity:${record.connectionId}/${record.requestId}"
 
@@ -104,4 +111,34 @@ fun operationText(record: ActivityRecord): String {
             transfer.recipient,
         )
     }
+}
+
+/**
+ * The assessment the owner read when they answered, in words (SAW-028).
+ *
+ * The record keeps codes, so what a code means can be said better later without the record having
+ * to be rewritten — and a code this build has no name for is left out of the reading rather than
+ * shown as itself. It says nothing about what the rules were: those are stored once, in the one
+ * place they belong, and a rule the owner has changed since does not rewrite what they were told.
+ */
+@Composable
+fun policyText(policy: ReviewedPolicy): String {
+    val assessment =
+        assessmentOf(policy.assessment) ?: return stringResource(R.string.activity_policy_unknown)
+    val verdict = stringResource(assessmentText(assessment))
+    val lines = mutableListOf<String>()
+    lines +=
+        if (policy.approvedAnyway) stringResource(R.string.activity_policy_anyway, verdict)
+        else verdict
+    for (code in policy.reasons) {
+        reasonOf(code)?.let { lines += stringResource(reasonText(it)) }
+    }
+    val uncovered = mutableListOf<String>()
+    for (code in policy.notChecked) {
+        checkOf(code)?.let { uncovered += stringResource(checkText(it)) }
+    }
+    if (uncovered.isNotEmpty()) {
+        lines += stringResource(R.string.activity_policy_uncovered, uncovered.joinToString())
+    }
+    return lines.joinToString("\n")
 }

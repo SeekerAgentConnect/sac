@@ -133,7 +133,6 @@
     <string name="transfer_estimate_fee_and_rent">Network fee about %1$s SOL, and %2$s SOL for the new token account</string>
 
     <!-- Approving a transfer through the wallet (SAW-021). docs/guides/transfers.md -->
-    <string name="transfer_policy_not_evaluated">Not evaluated. Per-connection rules are not built yet, so nothing here was measured against one. Every transfer needs your approval either way.</string>
     <string name="transfer_not_approvable">This transfer can\'t be approved on this phone. Only a transaction this phone read whole, and found to match the request, is ever handed to your wallet. You can reject it.</string>
     <string name="transfer_no_wallet">Connect a wallet before approving this. Nothing can be sent until you do.</string>
 
@@ -159,4 +158,23 @@
     <string name="finding_destination_owner_unchecked">Nothing in this transaction makes the chain check that the destination token account is still the recipient\'s, so who would receive the tokens cannot be established.</string>
     <string name="finding_unrecognized">The transaction also runs a program this phone does not read. It is not thereby harmless.</string>
     <string name="finding_unreadable_value">A program that can move funds is asked to do something this phone does not read. Being a program a transfer may use is no reason to accept every instruction it offers.</string>
+    <!-- What the owner\'s own rules make of the request (SAW-028). -->
+    <string name="request_field_programs">Programs called</string>
+    <string name="policy_review_heading">What your rules make of this</string>
+    <string name="policy_review_pending">Reading this connection\'s rules…</string>
+    <string name="policy_status_passed">Matched — %1$s</string>
+    <string name="policy_status_passed_plain">Matched</string>
+    <string name="policy_status_failed">Outside the rules — %1$s</string>
+    <string name="policy_status_failed_plain">Outside the rules</string>
+    <string name="policy_status_unverified">Could not be checked — %1$s</string>
+    <string name="policy_status_unverified_plain">Could not be checked</string>
+    <string name="policy_status_not_configured">No rule set</string>
+    <string name="policy_review_uncovered">Nothing was checked for: %1$s. Nothing above says anything about those.</string>
+    <string name="policy_review_manual">Whatever this says, it approves nothing and stops nothing. Both verdicts need your approval here, and your wallet will ask you again.</string>
+    <string name="policy_acknowledge">I have read the warnings above and want to go ahead anyway</string>
+    <string name="approve_despite_warnings">Approve despite warnings</string>
+    <string name="approve_and_send_despite_warnings">Approve and send despite warnings</string>
+    <string name="acknowledge_despite_warnings">Acknowledge despite warnings</string>
+    <string name="problem_rules_changed">Your rules, or this phone\'s own records, changed while this was on screen, so what you read is not what stands now. Nothing was answered and no wallet was opened. The review above has been made again — read it, then answer.</string>
+    <string name="problem_not_acknowledged">This request is outside your rules. Read the reasons above, then say you want to go ahead anyway.</string>
 </resources>

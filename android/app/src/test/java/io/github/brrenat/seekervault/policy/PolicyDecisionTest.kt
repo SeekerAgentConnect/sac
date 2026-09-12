@@ -189,6 +189,48 @@ class PolicyDecisionTest {
         assertEquals(codes.map { it.lowercase() }, codes)
     }
 
+    @Test
+    fun havingNoRulesAtAllIsNotSomethingToWarnAbout() {
+        // Every request on a phone whose owner has written no rules is UNDER_RESTRICTIONS. Asking
+        // them to tick past that every time would teach them to tick past warnings (SAW-028).
+        assertFalse(noPolicy(PolicyReason.NoPolicyConfigured).warns)
+        // Rules that are stored and can't be read are the other way round: something was written,
+        // and this build can't say what.
+        assertTrue(noPolicy(PolicyReason.PolicyUnreadable).warns)
+    }
+
+    @Test
+    fun anythingOutsideTheRulesIsSomethingToWarnAbout() {
+        val failed =
+            assess(
+                checks(
+                    PolicyCheck.Recipient to
+                        PolicyCheckResult.failed(
+                            PolicyCheck.Recipient,
+                            PolicyReason.RecipientNotAllowed,
+                        )
+                )
+            )
+        assertTrue(failed.warns)
+        // A check that couldn't be applied warns too: coverage is not compliance.
+        val unverified =
+            assess(
+                checks(
+                    PolicyCheck.Recipient to
+                        PolicyCheckResult.unverified(
+                            PolicyCheck.Recipient,
+                            PolicyReason.RecipientUnverified,
+                        )
+                )
+            )
+        assertTrue(unverified.warns)
+        // And a match warns about nothing, which is not the same as approving anything.
+        val matched =
+            assess(checks(PolicyCheck.Action to PolicyCheckResult.passed(PolicyCheck.Action)))
+        assertFalse(matched.warns)
+        assertTrue(matched.allowed)
+    }
+
     /** Every check, in order, with [configured] put in place of the checks nobody configured. */
     private fun checks(
         vararg configured: Pair<PolicyCheck, PolicyCheckResult>

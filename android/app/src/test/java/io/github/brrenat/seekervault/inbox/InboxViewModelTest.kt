@@ -19,6 +19,13 @@ import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.policy.Allowlist
+import io.github.brrenat.seekervault.policy.ConnectionPolicy
+import io.github.brrenat.seekervault.policy.PolicyAction
+import io.github.brrenat.seekervault.policy.PolicyAssessment
+import io.github.brrenat.seekervault.policy.PolicyEvaluator
+import io.github.brrenat.seekervault.policy.PolicyReason
+import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.transactions.Finding
@@ -65,6 +72,10 @@ class InboxViewModelTest {
     private val other = gateway.serve(OTHER_URL)
     private val key = softwareKey()
     private val history by lazy { ActivityLog(ActivityStore(File(folder.root, "activity"))) }
+    private val policies by lazy { PolicyStore(File(folder.root, "policies")) }
+    private val evaluator by lazy {
+        PolicyEvaluator(policies, records = { history.records.value })
+    }
     private val repository by lazy {
         ConnectionRepository(
             store = ConnectionStore(File(folder.root, "connections")),
@@ -89,7 +100,8 @@ class InboxViewModelTest {
 
     private val scheduler = TestCoroutineScheduler()
 
-    private fun viewModel() = InboxViewModel(repository, wallet)
+    private fun viewModel() =
+        InboxViewModel(repository, wallet, evaluator, history, io = Dispatchers.Unconfined)
 
     @Before fun setMain() = Dispatchers.setMain(UnconfinedTestDispatcher(scheduler))
 
@@ -729,7 +741,15 @@ class InboxViewModelTest {
         var clock = Instant.parse("2026-09-12T12:00:00Z")
         gateway.preparedExpiry = clock.plusSeconds(60)
         val (key, _) = pendingTransfer()
-        val viewModel = InboxViewModel(repository, wallet, now = { clock })
+        val viewModel =
+            InboxViewModel(
+                repository,
+                wallet,
+                evaluator,
+                history,
+                now = { clock },
+                io = Dispatchers.Unconfined,
+            )
         viewModel.prepare(key)
         val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
         assertEquals(1, gateway.preparations[key])
@@ -763,7 +783,15 @@ class InboxViewModelTest {
         var clock = Instant.parse("2026-09-12T12:00:00Z")
         gateway.preparedExpiry = clock.plusSeconds(60)
         val (key, _) = pendingTransfer()
-        val viewModel = InboxViewModel(repository, wallet, now = { clock })
+        val viewModel =
+            InboxViewModel(
+                repository,
+                wallet,
+                evaluator,
+                history,
+                now = { clock },
+                io = Dispatchers.Unconfined,
+            )
         viewModel.prepare(key)
         val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
         // The sidecar takes the approval, and the round trip outlasts the window.
@@ -1328,6 +1356,254 @@ class InboxViewModelTest {
             ),
             submitted(),
         )
+    }
+
+    // --- What the rules make of a request, on the screen where it is answered (SAW-028) ---
+
+    /** Rules for [connectionId], written the way the editor writes them. */
+    private fun rules(
+        connectionId: String,
+        actions: Allowlist<PolicyAction>? = null,
+        recipients: Allowlist<String>? = null,
+    ) =
+        policies.put(
+            ConnectionPolicy(
+                connectionId = connectionId,
+                actions = actions,
+                recipients = recipients,
+                updatedAt = Instant.parse("2026-09-12T10:00:00Z"),
+            )
+        )
+
+    @Test
+    fun aRequestThatMatchesTheRulesIsAllowedAndWarnsAboutNothing() {
+        val (key, case) = pendingTransfer()
+        rules(
+            key.connectionId,
+            recipients = Allowlist.of(case.getJSONObject("request").getString("recipient")),
+        )
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+
+        viewModel.review(key)
+
+        val decision = checkNotNull(viewModel.state.value.assessments[key]).decision
+        assertEquals(PolicyAssessment.Allowed, decision.assessment)
+        assertFalse(decision.warns)
+        // Allowed is not approved: nothing was answered and no wallet was opened by looking.
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+    }
+
+    @Test
+    fun aConnectionWithNoRulesIsNotSomethingToWarnAbout() {
+        val (key, _) = pendingTransfer()
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+
+        viewModel.review(key)
+
+        val decision = checkNotNull(viewModel.state.value.assessments[key]).decision
+        assertEquals(PolicyAssessment.UnderRestrictions, decision.assessment)
+        assertEquals(PolicyReason.NoPolicyConfigured, decision.reason)
+        assertFalse(decision.warns)
+    }
+
+    @Test
+    fun nothingReachesTheWalletByOpeningRefreshingOrAssessingARequest() {
+        val (key, case) = pendingTransfer()
+        rules(
+            key.connectionId,
+            recipients = Allowlist.of(case.getJSONObject("request").getString("recipient")),
+        )
+        // Connecting the wallet in the setup is the only thing that has reached it so far.
+        val connects = adapter.connects.size
+        val viewModel = viewModel()
+
+        viewModel.prepare(key)
+        viewModel.review(key)
+        viewModel.refresh(key.connectionId)
+        viewModel.prepare(key, force = true)
+        viewModel.onAppVisible()
+
+        assertEquals(
+            PolicyAssessment.Allowed,
+            viewModel.state.value.assessments[key]?.decision?.assessment,
+        )
+        assertEquals(connects, adapter.connects.size)
+        assertEquals(emptyList<Any>(), adapter.signings)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(emptyList<Any>(), adapter.disconnects)
+    }
+
+    @Test
+    fun aTransferOutsideTheRulesIsApprovedOnlyOnceTheOwnerSaysSo() {
+        val (key, _) = pendingTransfer()
+        rules(key.connectionId, recipients = Allowlist.of(OTHER_WALLET))
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        viewModel.review(key)
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+
+        viewModel.approveTransfer(key, reviewed)
+
+        // Nothing was approved and no wallet was opened: the warning is theirs to overrule.
+        assertEquals(SigningProblem.NotAcknowledged, viewModel.state.value.problem)
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+
+        viewModel.acknowledge(key, true)
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(reviewed.prepared.transaction, adapter.sendings.single().first)
+        assertTrue(gateway.submits.first().second.hasApproval())
+    }
+
+    @Test
+    fun rulesChangedWhileTheRequestWasOnScreenStopTheAnswerRatherThanBeingReadPastIt() {
+        val (key, case) = pendingTransfer()
+        val recipient = case.getJSONObject("request").getString("recipient")
+        rules(key.connectionId, recipients = Allowlist.of(recipient))
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        viewModel.review(key)
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+        assertEquals(
+            PolicyAssessment.Allowed,
+            viewModel.state.value.assessments[key]?.decision?.assessment,
+        )
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 2 }))
+
+        // The owner edits the rules on another screen, and comes back to this one.
+        rules(key.connectionId, recipients = Allowlist.of(OTHER_WALLET))
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(SigningProblem.RulesChanged, viewModel.state.value.problem)
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        // And what is on screen is the assessment that stands now, not the one they read.
+        val decision = checkNotNull(viewModel.state.value.assessments[key]).decision
+        assertEquals(PolicyAssessment.UnderRestrictions, decision.assessment)
+        assertTrue(decision.warns)
+    }
+
+    @Test
+    fun theOwnersWordIsForTheReasonsTheyReadAndNotForTheRequest() {
+        val (key, _) = pendingTransfer()
+        rules(key.connectionId, recipients = Allowlist.of(OTHER_WALLET))
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        viewModel.review(key)
+        viewModel.acknowledge(key, true)
+        assertNotNull(viewModel.state.value.acknowledged[key])
+
+        // Another assessment is another thing to agree to, so the agreement goes.
+        rules(key.connectionId, actions = Allowlist.of(PolicyAction.MessageSignature))
+        viewModel.review(key)
+
+        assertNull(viewModel.state.value.acknowledged[key])
+    }
+
+    @Test
+    fun aNewPreparationIsANewAssessmentAndTakesTheOwnersWordWithIt() {
+        val (key, _) = pendingTransfer()
+        rules(key.connectionId, recipients = Allowlist.of(OTHER_WALLET))
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        viewModel.acknowledge(key, true)
+        assertNotNull(viewModel.state.value.acknowledged[key])
+
+        // A version read again is a different transaction, assessed on its own.
+        gateway.transactions[key] =
+            java.util.Base64.getDecoder()
+                .decode(transferCase("changed_recipient").getString("transaction"))
+        viewModel.prepare(key, force = true)
+
+        assertNull(viewModel.state.value.acknowledged[key])
+    }
+
+    @Test
+    fun aTransactionThisPhoneCouldNotAccountForIsRefusedBeforeAnyRuleIsConsulted() {
+        // Input validation is not an advisory rule and is never relabelled as one: there is no
+        // warning to tick past here, because there is no Approve at all (SAW-020).
+        val (key, case) = pendingTransfer("changed_amount")
+        rules(
+            key.connectionId,
+            recipients = Allowlist.of(case.getJSONObject("request").getString("recipient")),
+        )
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+        assertFalse(reviewed.inspection.approvable)
+        viewModel.acknowledge(key, true)
+
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(SigningProblem.NotVerified, viewModel.state.value.problem)
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+    }
+
+    @Test
+    fun sayingNoNeverNeedsAWordAboutAWarning() {
+        val request = pendingRequest()
+        rules(request.connectionId, actions = Allowlist.of(PolicyAction.Transfer))
+        val viewModel = viewModel()
+        viewModel.review(request)
+        assertTrue(checkNotNull(viewModel.state.value.assessments[request]).decision.warns)
+
+        viewModel.answer(request, Answer.Reject)
+
+        assertEquals(1, gateway.submits.size)
+        assertEquals(Delivery.Accepted, viewModel.state.value.inbox.result(request)?.delivery)
+    }
+
+    @Test
+    fun sayingYesToSomethingOutsideTheRulesNeedsTheOwnersWordFirst() {
+        val request = pendingRequest()
+        rules(request.connectionId, actions = Allowlist.of(PolicyAction.Transfer))
+        val viewModel = viewModel()
+        viewModel.review(request)
+
+        viewModel.answer(request, Answer.Acknowledge)
+
+        assertEquals(SigningProblem.NotAcknowledged, viewModel.state.value.problem)
+        assertEquals(emptyList<Any>(), gateway.submits)
+
+        viewModel.acknowledge(request, true)
+        viewModel.answer(request, Answer.Acknowledge)
+
+        assertEquals(1, gateway.submits.size)
+        assertTrue(gateway.submits.single().second.hasAcknowledgement())
+    }
+
+    @Test
+    fun theAssessmentTheOwnerReadIsKeptWithTheRecordAndNeverSentAnywhere() {
+        val (key, _) = pendingTransfer()
+        rules(key.connectionId, recipients = Allowlist.of(OTHER_WALLET))
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        viewModel.review(key)
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 4 }))
+        viewModel.acknowledge(key, true)
+
+        viewModel.approveTransfer(key, reviewed)
+
+        val stored =
+            checkNotNull(history.records.value.single { it.requestId == key.requestId }.policy)
+        assertEquals("under_restrictions", stored.assessment)
+        assertEquals(listOf("recipient_not_allowed"), stored.reasons)
+        assertTrue("action" in stored.notChecked)
+        assertTrue(stored.approvedAnyway)
+
+        // And none of it, nor anything the rules themselves say, went to the sidecar. The rules
+        // are the owner\'s own note, and the agent can neither read them nor learn of them.
+        val sent = gateway.submits.joinToString("\n") { it.second.toString() }
+        PolicyReason.entries.forEach { assertFalse(it.code, it.code in sent) }
+        PolicyAssessment.entries.forEach { assertFalse(it.code, it.code in sent) }
+        assertFalse(OTHER_WALLET in sent)
     }
 
     private companion object {

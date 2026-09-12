@@ -50,6 +50,11 @@ import java.time.Instant
  * network that would sign it (docs/guides/message-signing.md). A transfer is shown as this phone
  * read its transaction, with Approve offered only for one the phone could account for whole
  * (docs/guides/transfers.md). Nothing reaches the wallet until the owner taps Approve.
+ *
+ * Under the facts, and never in place of them, is what the owner's own rules made of the request
+ * (SAW-028). It is advisory: a request outside the rules can still be answered, once the owner says
+ * they mean to, and one that matches them is no nearer approved than any other. What the rules say
+ * never restores an Approve button that input validation took away.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,7 +83,15 @@ fun RequestDetailsScreen(
     checking: Boolean = false,
     /** Asks the server what became of a sent transaction. It opens no wallet and sends nothing. */
     onCheckStatus: () -> Unit = {},
+    /** What the owner's rules make of this request; null until they have been read (SAW-028). */
+    assessment: RequestAssessment? = null,
+    /** Whether the owner has said they want to go ahead past the warnings above. */
+    acknowledged: Boolean = false,
+    onAcknowledge: (Boolean) -> Unit = {},
 ) {
+    // Warnings are the owner's to overrule, and overruling one is something they say they are
+    // doing. Having no rules at all is not a warning: it would be one on every request there is.
+    val warns = assessment?.decision?.warns == true
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -211,7 +224,15 @@ fun RequestDetailsScreen(
                     signingProblem = signingProblem,
                     onPrepareAgain = onPrepareAgain,
                     onApprove = onApproveTransfer,
+                    assessment = assessment,
+                    warns = warns,
+                    acknowledged = acknowledged,
+                    onAcknowledge = onAcknowledge,
                 )
+            } else {
+                // A transfer's review has its own place for this, under the facts and above the
+                // button. Everything else has nothing between the two.
+                PolicyReview(assessment)
             }
             if (request.agentNote.isNotEmpty()) {
                 // Shown apart from the request itself: the agent wrote it, and nothing checked it.
@@ -235,6 +256,10 @@ fun RequestDetailsScreen(
             )
             Field(R.string.request_field_id, request.ref.requestId, "requestId")
             if (canAnswer(request, result, now)) {
+                // A transfer's tick sits with its own Approve button, in the review above.
+                if (transfer == null && warns) {
+                    ApproveAnyway(acknowledged, onAcknowledge)
+                }
                 Row(
                     modifier = Modifier.padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -246,20 +271,30 @@ fun RequestDetailsScreen(
                     } else if (message == null) {
                         Button(
                             onClick = { onAnswer(Answer.Acknowledge) },
-                            enabled = !sending,
+                            enabled = !sending && (!warns || acknowledged),
                             modifier = Modifier.testTag(InboxTags.ACKNOWLEDGE),
                         ) {
-                            Text(stringResource(R.string.acknowledge))
+                            Text(
+                                stringResource(
+                                    if (warns) R.string.acknowledge_despite_warnings
+                                    else R.string.acknowledge
+                                )
+                            )
                         }
                     } else {
                         // Approve is the only thing that reaches the wallet, and only once the
                         // owner has a wallet connected to sign with.
                         Button(
                             onClick = onApprove,
-                            enabled = !sending && wallet != null,
+                            enabled = !sending && wallet != null && (!warns || acknowledged),
                             modifier = Modifier.testTag(InboxTags.APPROVE),
                         ) {
-                            Text(stringResource(R.string.approve))
+                            Text(
+                                stringResource(
+                                    if (warns) R.string.approve_despite_warnings
+                                    else R.string.approve
+                                )
+                            )
                         }
                     }
                     OutlinedButton(
@@ -312,9 +347,12 @@ fun RequestDetailsScreen(
  *
  * The order on screen is the order of trust: the verdict first, then the facts the bytes establish,
  * then what could not be established, and only then the server's own numbers, labelled as theirs.
- * The agent's note is rendered by the caller, further down and marked unverified, so that nothing
- * it says can sit next to a fact and borrow its weight. Approve comes last, under everything it
- * approves, and only for a transaction this phone could account for whole.
+ * The owner's own rules come after all of it, because they are the weakest thing here: they are a
+ * note to themselves, and no rule can put back an Approve button that this phone's own inspection
+ * took away (docs/security.md#verification-versus-advisory-rules). The agent's note is rendered by
+ * the caller, further down and marked unverified, so that nothing it says can sit next to a fact
+ * and borrow its weight. Approve comes last, under everything it approves, and only for a
+ * transaction this phone could account for whole.
  */
 @Composable
 private fun TransferReview(
@@ -326,6 +364,10 @@ private fun TransferReview(
     signingProblem: SigningProblem?,
     onPrepareAgain: () -> Unit,
     onApprove: () -> Unit,
+    assessment: RequestAssessment?,
+    warns: Boolean,
+    acknowledged: Boolean,
+    onAcknowledge: (Boolean) -> Unit,
 ) {
     when (preparation) {
         null,
@@ -385,6 +427,17 @@ private fun TransferReview(
                         "priority",
                     )
                 }
+                // Every program the transaction calls, so that a request nothing could be
+                // verified about still shows what it would run (SAW-028).
+                facts.programs
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { programs ->
+                        Field(
+                            R.string.request_field_programs,
+                            programs.joinToString("\n"),
+                            "programs",
+                        )
+                    }
                 Field(
                     R.string.request_field_instructions,
                     stringResource(
@@ -429,13 +482,10 @@ private fun TransferReview(
                 estimateText(preparation.prepared),
                 "estimate",
             )
-            // Policies are Stage 5. Until they exist this says so, rather than implying that
-            // anything here was measured against a rule and allowed.
-            Field(
-                R.string.request_field_policy,
-                stringResource(R.string.transfer_policy_not_evaluated),
-                "policy",
-            )
+            // The owner's own rules, under everything the phone established for itself. What
+            // they say changes nothing above: a transaction that failed its own inspection has no
+            // Approve button whatever the rules made of it, and this never says otherwise.
+            PolicyReview(assessment)
             OutlinedButton(
                 onClick = onPrepareAgain,
                 enabled = !sending,
@@ -445,14 +495,22 @@ private fun TransferReview(
             }
             if (!answered) {
                 if (inspection.approvable) {
+                    // A warning is the owner's to overrule, and overruling it is a thing they say
+                    // they are doing, next to the button that does it.
+                    if (warns) ApproveAnyway(acknowledged, onAcknowledge)
                     // The only thing that opens the wallet, and only for a transaction this phone
                     // read whole and found to match the request.
                     Button(
                         onClick = onApprove,
-                        enabled = !sending && wallet != null,
+                        enabled = !sending && wallet != null && (!warns || acknowledged),
                         modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_APPROVE),
                     ) {
-                        Text(stringResource(R.string.approve_and_send))
+                        Text(
+                            stringResource(
+                                if (warns) R.string.approve_and_send_despite_warnings
+                                else R.string.approve_and_send
+                            )
+                        )
                     }
                     if (wallet == null) {
                         Text(
@@ -466,12 +524,14 @@ private fun TransferReview(
                     }
                 } else {
                     // No button at all rather than one that refuses: nothing this phone could not
-                    // account for is ever put in front of a wallet.
+                    // account for is ever put in front of a wallet. This is input validation, and
+                    // it is not a rule the owner could tick past — there is nothing to tick.
                     Text(
                         stringResource(R.string.transfer_not_approvable),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_POLICY),
+                        modifier =
+                            Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_NOT_APPROVABLE),
                     )
                 }
             }
