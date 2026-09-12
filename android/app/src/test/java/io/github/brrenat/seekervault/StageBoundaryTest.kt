@@ -154,4 +154,39 @@ class StageBoundaryTest {
                 }
         assertEquals(emptyList<String>(), present)
     }
+
+    @Test
+    fun nothingSpendsSwapsOrAsksForABiometricOfItsOwn() {
+        // SAW-018 closes Stage 3, which is signing and nothing else. No transaction is built or
+        // sent, there is no swap, and the app asks for no authentication of its own: the owner taps
+        // Approve and sign, and their wallet app decides for itself what it needs before signing.
+        // Transfers and swaps are Stages 4 and 6; the task that adds one changes this.
+        val spending =
+            Regex(
+                """signTransactions|signAndSendTransactions|sendTransaction|""" +
+                    """mainnet-beta|clusterApiUrl|solana\.com"""
+            )
+        val ownAuthentication =
+            Regex(
+                """BiometricPrompt|BiometricManager|FingerprintManager|KeyguardManager|""" +
+                    """createConfirmDeviceCredentialIntent|setUserAuthenticationRequired"""
+            )
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        fun hits(pattern: Regex) = sources.flatMap { file ->
+            file.readLines().mapIndexedNotNull { index, line ->
+                "${file.name}:${index + 1}: ${line.trim()}".takeIf { pattern.containsMatchIn(line) }
+            }
+        }
+        assertEquals(emptyList<String>(), hits(spending))
+        assertEquals(emptyList<String>(), hits(ownAuthentication))
+        // The scan reads the real sources, so a line that did match would be found.
+        assertTrue(hits(Regex("signMessage")).isNotEmpty())
+        assertEquals(
+            emptyList<String>(),
+            listOf("androidx.biometric.BiometricPrompt", "androidx.biometric.BiometricManager")
+                .filter { name ->
+                    runCatching { Class.forName(name, false, javaClass.classLoader) }.isSuccess
+                },
+        )
+    }
 }

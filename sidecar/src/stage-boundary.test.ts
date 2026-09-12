@@ -100,4 +100,46 @@ describe("stage boundary", () => {
       "the request store runs its SQL in storage",
     );
   });
+
+  it("serves nothing that spends, swaps, or needs a key of an agent's own", () => {
+    // SAW-018 closes Stage 3, which is signing and nothing else. The tools an agent can call are
+    // named here on purpose: a transfer or a swap tool is Stage 4's and Stage 6's work, and until
+    // then no agent can ask for one. Nothing reaches a chain RPC, so nothing can be broadcast, and
+    // no agent has a key: an agent authenticates with the bearer token the owner issued it.
+    const known = [
+      "DISPLAY_COMMAND_TOOL",
+      "GET_ADDRESS_TOOL",
+      "GET_CAPABILITIES_TOOL",
+      "SIGN_MESSAGE_TOOL",
+      "REQUEST_ACK_TOOL",
+      "GET_REQUEST_TOOL",
+      "CANCEL_REQUEST_TOOL",
+    ];
+    const registered = shippedSources().flatMap((file) =>
+      [
+        ...readFileSync(file, "utf8").matchAll(
+          /registerTool\(\s*([A-Za-z_$][\w$]*)/g,
+        ),
+      ].map((match) => match[1] ?? ""),
+    );
+    assert.ok(
+      registered.includes("SIGN_MESSAGE_TOOL"),
+      "found the registrations, so an unknown one would show up",
+    );
+    assert.deepEqual(
+      registered.filter((name) => !known.includes(name)),
+      [],
+    );
+
+    // No chain client, no broadcast, and no key of the sidecar's or an agent's.
+    const spending =
+      /mainnet-beta|clusterApiUrl|sendRawTransaction|sendTransaction|getLatestBlockhash|jup\.ag|\bprivateKey\b|\bsecretKey\b|\bkeypair\b/i;
+    const hits = shippedSources().filter((file) =>
+      spending.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      hits.map((file) => relative(ROOT, file)),
+      [],
+    );
+  });
 });

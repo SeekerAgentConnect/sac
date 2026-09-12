@@ -7,7 +7,7 @@ This page connects [Hermes Agent](https://hermes-agent.nousresearch.com) to the 
 
 It covers Hermes on the Mac and Hermes on a VPS.
 
-> **What has been tested.** Hermes Agent v0.21.1 (2026.9.7) was run with this configuration against the sidecar, including through a forwarded port, and every output below is real. Hermes's own MCP client made the tool calls, without an LLM, and a test client stood in for the phone. On 2026-09-11, the owner also ran the live round trip and reported it passed. That run used their own Hermes on a VPS, reaching the Mac [over Tailscale](#over-a-vpn-you-already-use), and their physical Seeker; see [`docs/testing/stage-1.md`](../testing/stage-1.md). The durable tools were run the same way on 2026-09-11, without a model or the Seeker; see [`docs/testing/stage-2.md`](../testing/stage-2.md#acceptance-report-saw-014).
+> **What has been tested.** Hermes Agent v0.21.1 (2026.9.7) was run with this configuration against the sidecar, including through a forwarded port, and every output below is real. Hermes's own MCP client made the tool calls, without an LLM, and a test client stood in for the phone. On 2026-09-11, the owner also ran the live round trip and reported it passed. That run used their own Hermes on a VPS, reaching the Mac [over Tailscale](#over-a-vpn-you-already-use), and their physical Seeker; see [`docs/testing/stage-1.md`](../testing/stage-1.md). The durable tools were run the same way on 2026-09-11, without a model or the Seeker; see [`docs/testing/stage-2.md`](../testing/stage-2.md#acceptance-report-saw-014). The wallet tools of [section 5](#5-sign-a-message-with-your-wallet) have **not** been run through Hermes: they have only been driven by `pnpm agent` and the automated tests, and that section says so where its results are shown.
 
 ## Before you start
 
@@ -63,7 +63,7 @@ What each setting does:
 
 | Setting | Meaning |
 | --- | --- |
-| `url` | The sidecar's MCP endpoint. It listens only on the Mac's loopback address. On a VPS, this is the tunnel's end instead; see [Hermes on a VPS](#5-hermes-on-a-vps). |
+| `url` | The sidecar's MCP endpoint. It listens only on the Mac's loopback address. On a VPS, this is the tunnel's end instead; see [Hermes on a VPS](#6-hermes-on-a-vps). |
 | `Authorization` | Hermes fills in `${MCP_SEEKER_VAULT_API_KEY}` from `~/.hermes/.env`, or from the environment, when it loads the configuration. If the variable is missing, Hermes sends the literal text, and the sidecar refuses the connection. `hermes mcp add` uses the same variable name for a server called `seeker_vault`. |
 | `timeout` | How long Hermes waits for a tool call, in seconds; Hermes's default is 300. Only `vault_display_command` waits for you. Keep this above the sidecar's `LIVE_COMMAND_TIMEOUT_SECONDS` (60 by default), so that the sidecar's own `TIMEOUT` answer arrives first, and below 300, Hermes's fixed HTTP read limit. If you raise `LIVE_COMMAND_TIMEOUT_SECONDS`, raise this too. The durable tools answer at once. |
 | `tools` | The tools Hermes may call, each allowed on purpose:<ul><li>`vault_display_command`: the live diagnostic</li><li>`vault_get_address`: reads the wallet you connected on the phone, and its network (SAW-015). It's read-only, and fails with `WALLET_NOT_CONNECTED` rather than inventing an address.</li><li>`vault_get_capabilities`: says what this sidecar serves, and that approval is always manual (SAW-016)</li><li>`vault_sign_message`: asks your wallet to sign a message (SAW-016). It returns a request ID at once; nothing is signed until you approve it on the phone.</li><li>`vault_request_ack`: queues an acknowledgement. It's a demo tool with no wallet involved, and the sidecar serves it only with `MCP_DEMO_TOOLS=true`.</li><li>`vault_get_request`: reads a request's status by its ID</li><li>`vault_cancel_request`: withdraws a request you haven't answered</li></ul>A tool listed here that the sidecar doesn't serve is missing from the session. The sidecar offers no resources or prompts. |
@@ -102,7 +102,7 @@ hermes mcp test seeker_vault
     vault_cancel_request                 Withdraws a PENDING request so the owner can no longer ...
 ```
 
-Hermes masks the header and shows only its first and last four characters; `xxxx` stands for your token's last four. For errors instead of `✓ Connected`, see [what failures look like](#6-what-failures-look-like).
+Hermes masks the header and shows only its first and last four characters; `xxxx` stands for your token's last four. For errors instead of `✓ Connected`, see [what failures look like](#7-what-failures-look-like).
 
 The output above is from the run on 2026-09-11, before `vault_get_address`, `vault_get_capabilities`, and `vault_sign_message` existed; with the configuration as it is now, the counts are three higher and those three are listed too.
 
@@ -199,7 +199,86 @@ These IDs come from the verification run, where a test client tapped **Acknowled
 - `EXPIRED`: nobody answered before `expires_at`.
 - `CANCELLED`: the agent withdrew it, or the phone's pairing was revoked. To withdraw a request you haven't answered, ask Hermes to call `vault_cancel_request` with its `request_id`. The result then carries `"detail":"The agent cancelled the request."`
 
-## 5. Hermes on a VPS
+## 5. Sign a message with your wallet
+
+`vault_sign_message` asks the wallet you connected on the phone to sign a message. It's a durable request: the call answers at once with a request ID, the wallet app opens only when you tap **Approve and sign** on the Seeker, and Hermes reads the outcome afterwards. A signature proves your wallet signed those exact bytes; it moves no funds and sends nothing on chain.
+
+Connect the wallet first ([`../guides/wallet-setup.md`](../guides/wallet-setup.md)). Without one, the tool fails with `WALLET_NOT_CONNECTED`, and no address is invented.
+
+> **Not yet run with Hermes.** Unlike sections 3 and 4, the results below aren't from a recorded Hermes session: the wallet tools have only been driven by `pnpm agent` and the automated tests, which is where these shapes come from. Running them through Hermes on the Seeker is [step 24 of the owner's checks](../testing/stage-3.md#the-hermes-round-trip-saw-018), and stays NOT RUN until the owner does it.
+
+1. **Read what this sidecar serves**, once per session, before asking for anything:
+
+   ```text
+   Call vault_get_capabilities and report the real result.
+   ```
+
+   ```text
+   {"approval":"manual","signing":"wallet","operations":["ack","sign_message"],"wallet_connected":true,
+    "max_message_bytes":4096,"max_note_bytes":280,"max_pending_requests":100,
+    "min_expires_in_seconds":60,"max_expires_in_seconds":604800}
+   ```
+
+   `"approval":"manual"` is not a setting an agent can change: every request waits for a tap on the phone. `operations` lists what is implemented right now, so a model should treat anything missing from it — a transfer, a swap — as unavailable rather than attempting it.
+
+2. **Read the wallet to name**, rather than assuming one:
+
+   ```text
+   Call vault_get_address and report the real wallet and network.
+   ```
+
+   ```text
+   {"wallet":"G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW","network":"devnet","bound_at":"2026-09-12T09:30:00.000Z"}
+   ```
+
+   A request that names another wallet is refused with `WALLET_MISMATCH`.
+
+3. **Create the request.** Give the message exactly as it should be signed; nothing is trimmed, normalized, or re-encoded anywhere.
+
+   ```text
+   Call vault_sign_message with the wallet "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW", the
+   message "Sign in to example.com\nNonce: 4711", and the idempotency_key "seeker-check-003".
+   Report the real request_id and status, and don't wait for an answer.
+   ```
+
+   ```text
+   {"request_id":"f7e6d5c4-…","action":"sign_message","status":"PENDING","terminal":false,
+    "wallet":"G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW","created_at":"…","expires_at":"…","updated_at":"…"}
+   ```
+
+   **The wallet app does not open, and nothing is signed.** PENDING means the request is stored, and you may not have seen it yet. The same prompt sent again, with the same key and message, returns the same request instead of queueing another; the same key with a different message is refused with `IDEMPOTENCY_CONFLICT`.
+
+4. **Answer on the Seeker.** Open the app and then **Pending requests**, or tap **Refresh**. The request shows the complete message with its invisible characters marked, the number of bytes, and the wallet that would sign. Tap **Approve and sign**, and approve in the wallet as well ([`../guides/message-signing.md`](../guides/message-signing.md)).
+
+5. **Read the outcome.** Nothing pushes it to Hermes; ask when you next need it.
+
+   ```text
+   Call vault_get_request with the request_id "f7e6d5c4-…" and report the real status.
+   ```
+
+   ```text
+   {"request_id":"f7e6d5c4-…","action":"sign_message","status":"COMPLETED","terminal":true,
+    "wallet":"G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW","signature":"52o3UtBit8…",
+    "signed_message_base64":"U2lnbiBpbiB0by…"}
+   ```
+
+6. **Verify the signature yourself.** `signed_message_base64` is exactly the bytes that were signed, so an agent checks the signature against those rather than re-encoding the message and hoping it matches. Any Ed25519 verifier does it; [`../guides/message-signing.md`](../guides/message-signing.md#the-agent-reads-the-result) has a ten-line one for Node. From the repository, `pnpm agent get <request_id>` does the same with its own verifier, which shares no code with the sidecar's, and prints `"signature_verified":true`.
+
+A model saying "signed" is not a signature. Count this as passed only when `vault_get_request` returned COMPLETED with a `signature`, and a verifier you ran accepted it against `signed_message_base64` and the wallet address.
+
+### What a refusal looks like
+
+Not every end is a signature, and none of these is an error to retry around.
+
+| What you did | What the agent reads |
+| --- | --- |
+| Tapped **Reject** on the phone | `REJECTED`, with `"detail":"The owner rejected the request."` No wallet was opened. |
+| Tapped **Approve and sign**, then declined inside the wallet | `REJECTED`. You said no; nothing went wrong and nothing was signed. |
+| The wallet couldn't sign, or the phone never learned what it did | `FAILED`, with the reason as `detail`. Nothing was signed, and nothing reached the network. |
+| Changed the wallet or the network while the request was waiting | `CANCELLED`: the sidecar withdrew the requests the new binding no longer fits. |
+| Left it unanswered past `expires_at` | `EXPIRED`. |
+
+## 6. Hermes on a VPS
 
 In Stage 1, the sidecar listens only on the Mac's loopback address. A Hermes on a VPS reaches it through an SSH reverse tunnel that the Mac opens to the VPS. The VPS needs no public domain, no open port, and no OAuth.
 
@@ -245,7 +324,7 @@ If the Mac and the VPS already share a private VPN that you control, such as Tai
 
 The traffic is plain HTTP inside the VPN's encrypted tunnel. Never bind the forward to a public address.
 
-## 6. What failures look like
+## 7. What failures look like
 
 These are real results from Hermes v0.21.1. "The model sees" is the tool result the model receives.
 
@@ -259,6 +338,8 @@ These are real results from Hermes v0.21.1. "The model sees" is the tool result 
 | Nobody taps OK in time | Not run with Hermes. The sidecar's answer is `TIMEOUT: no acknowledgement within 60 seconds`, and Hermes passes it on as an error, the same way as `OFFLINE`. |
 | The sidecar runs without `MCP_DEMO_TOOLS=true` | `hermes mcp test` discovers 3 tools, though `hermes mcp list` still says `4 selected`. A call gets `{"error": "Unknown tool: mcp__seeker_vault__vault_request_ack"}` from Hermes itself, and never reaches the sidecar. `vault_get_request` still works. Set the variable, restart the sidecar, and run `/reload-mcp`. |
 | A request ID the sidecar doesn't know | The model sees `{"error": "NOT_FOUND: no such request"}`. |
+| The owner has connected no wallet | Not run with Hermes. The sidecar answers `WALLET_NOT_CONNECTED: the owner has no wallet connected on their phone; ask them to connect one in the app`, and Hermes passes it on as an error. Connect one ([`wallet-setup.md`](../guides/wallet-setup.md)); no address is ever invented. |
+| A signing request names another wallet | Not run with Hermes. The sidecar answers `WALLET_MISMATCH`, and nothing is stored. Read `vault_get_address` again rather than caching an address: the owner can change it at any time. |
 | No phone is paired | Not run with Hermes. The sidecar answers `NOT_PAIRED: no phone is paired with this sidecar`, and Hermes passes it on as an error, the same way as `NOT_FOUND`. Pair the phone ([`pairing.md`](../guides/pairing.md)). |
 
 For problems on the phone or the Mac, see [`troubleshooting.md`](../guides/troubleshooting.md).
