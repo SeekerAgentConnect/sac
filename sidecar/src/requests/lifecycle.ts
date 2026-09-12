@@ -17,6 +17,7 @@ import type { SubmitResultRequest } from "../gen/seekervault/request/v1/service_
 import { isExpired } from "../live/command.ts";
 import { invalidNoteReason, messageBytes } from "./action.ts";
 import { invalidRefReason } from "./identity.ts";
+import { verifySignature } from "./signature.ts";
 
 /** An action kind, as the Action.kind oneof names it. */
 export type ActionKind = NonNullable<Action["kind"]["case"]>;
@@ -354,8 +355,7 @@ export type ResultDecision =
  * - expire an overdue request first (`isOverdue`)
  * - answer a repeat of a result they already accepted with the request as it is (SAW-010 keeps the
  *   accepted results)
- * - from Stage 3 on, verify signatures against the request's wallet, and refuse an approval whose
- *   blockhash is about to expire
+ * - from Stage 4 on, refuse an approval whose blockhash is about to expire
  */
 export function decideResult(
   request: ActionRequest,
@@ -387,6 +387,27 @@ export function decideResult(
   if (result.case === "approval") {
     const mismatch = approvalMismatch(action, result.value, latest);
     if (mismatch !== undefined) return mismatch;
+  }
+  if (
+    result.case === "messageSignature" &&
+    action.kind.case === "signMessage"
+  ) {
+    // The sidecar holds no key and signs nothing; it only checks that the wallet the request
+    // names signed exactly the bytes the request stores (docs/protocol.md#message-results).
+    const signed = action.kind.value;
+    if (
+      !verifySignature(
+        signed.wallet,
+        messageBytes(signed),
+        result.value.signature,
+      )
+    ) {
+      return {
+        ok: false,
+        error: RequestError.INVALID_PARAMETERS,
+        message: `message_signature.signature isn't ${signed.wallet}'s signature of this request's message`,
+      };
+    }
   }
   return { ok: true, to };
 }

@@ -35,10 +35,11 @@ flowchart LR
     Mwa --> Wallet["Seed Vault Wallet"]
 ```
 
-- **`WalletAdapter` has two operations,** `connect(network, authToken)` and `disconnect(authToken)`, and one result type: connected, no wallet, declined, the authorization expired, the network isn't served, or a failure. The tests drive a `FakeWalletAdapter`, so no wallet app and no activity are needed to cover every outcome.
+- **`WalletAdapter` has three operations,** `connect(network, authToken)`, `disconnect(authToken)`, and `signMessage(message, wallet, authToken)` (SAW-016). Each answers with one of a small set of outcomes: connected or signed, no wallet, declined, the authorization expired, the network isn't served, or a failure. The tests drive a `FakeWalletAdapter`, so no wallet app and no activity are needed to cover every outcome.
 - **`MwaWalletAdapter` is the only file that imports the Mobile Wallet Adapter client.** It runs the wallet from the activity's `ActivityResultSender`, which `MainActivity` registers in `onCreate` and clears in `onDestroy`. There is no dedicated wallet activity and no foreground service.
 - **The app never creates a wallet or holds a key.** It learns a public address and a wallet authorization token. The address goes to each paired sidecar; the authorization stays on the phone, encrypted under the Keystore key, and never reaches a sidecar, a log, or a backup.
 - **The binding is explicit.** The owner picks the network, and the app publishes exactly the address and network the wallet returned. A sidecar with no binding answers `vault_get_address` with `WALLET_NOT_CONNECTED`; it never generates an address.
+- **Signing is reached only through the owner's tap (SAW-016).** The inbox stores the approval, sends it, and only then calls `WalletRepository.sign`, which asks the wallet for the selection the owner reviewed and refuses anything else. The signature comes back through the same boundary, and the sidecar verifies it against the request's wallet; see [`protocol.md`](protocol.md#message-results).
 
 ## Trust boundaries
 
@@ -80,6 +81,7 @@ These hold across the components, and every stage keeps them:
 6. **Identity is scoped.** Requests are addressed by connection and request ID together. One connection can't see or answer another's requests.
 7. **Exact values.** Amounts are integer base-unit strings, and messages are signed as the exact bytes sent.
 8. **The wallet is the owner's, and explicit.** The app and the sidecar never create a wallet or hold a key. A wallet action is stored only for the wallet and network the owner selected, and an agent that asks for an address when none is connected gets `WALLET_NOT_CONNECTED`.
+9. **The wallet is asked only after the owner approves.** No wallet call happens while a request is PENDING, and a signature is accepted only if it verifies against the request's wallet over the request's own bytes.
 
 ## Stages
 
@@ -87,7 +89,7 @@ These hold across the components, and every stage keeps them:
 | --- | --- |
 | 1 | The live diagnostic flow: the MCP endpoint, the Android live-test screen, and the test agent |
 | 2 | The durable contract (SAW-009), storage and the async MCP tools (SAW-010), pairing (SAW-011), multiple connections (SAW-012), and the pending inbox (SAW-013) |
-| 3 | Mobile Wallet Adapter and the wallet binding (SAW-015), then message signing |
+| 3 | Mobile Wallet Adapter and the wallet binding (SAW-015), and manual message signing (SAW-016) |
 | 4 | Transfers, on-phone transaction parsing, and on-chain confirmation |
 | 5 | Policies |
 | 6 | Jupiter swaps |

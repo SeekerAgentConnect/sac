@@ -109,7 +109,7 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | Path | Caller | Authentication | Purpose |
 | --- | --- | --- | --- |
 | `GET /healthz` | Anything on the machine | None | Liveness check: `{"status":"ok"}` |
-| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>` | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, the durable tools `vault_get_address`, `vault_get_request`, and `vault_cancel_request`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
+| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>` | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, the durable tools `vault_sign_message`, `vault_get_capabilities`, `vault_get_address`, `vault_get_request`, and `vault_cancel_request`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
 | `/seekervault.live.v1.LiveCommandService/WatchCommands` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect server stream of live commands |
 | `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
 | `/seekervault.request.v1.PairingService/Pair` | A phone that's pairing | `Authorization: Bearer <pairing token>`, from `pnpm pair` | Exchanges the pairing token for a connection and its credential |
@@ -160,7 +160,7 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 
 - **Every call answers at once.** Creation stores the request and returns it as PENDING. At that point the owner hasn't seen it yet, let alone approved it. The agent reads the outcome later with `vault_get_request`.
 - **Retries are safe.** The same `idempotency_key` with the same text returns the original request, in whatever state it's in now. The same key with different text fails with `IDEMPOTENCY_CONFLICT`.
-- **Ack only, for now, and only in demo mode.** `vault_request_ack` involves no wallet, and it's a development and demo tool: the sidecar serves it only with `MCP_DEMO_TOOLS=true`. Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The startup log says which. The tools that create wallet actions arrive with the later tasks of Stages 3, 4, and 6, so ack is still the only kind an agent can create.
+- **`vault_request_ack` is demo-only.** It involves no wallet, and the sidecar serves it only with `MCP_DEMO_TOOLS=true`. Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The startup log says which. `vault_sign_message` (SAW-016) is always served; transfers and swaps arrive with Stages 4 and 6.
 - **Hermes gets every tool** from `examples/hermes.config.yaml`; see [queued requests](../integrations/hermes.md#4-queued-requests-create-now-read-the-result-later).
 
 ### vault_get_address
@@ -170,6 +170,38 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 - **It's read-only and always served,** in demo mode or not.
 - **It never invents an address.** With no phone paired it fails with `NOT_PAIRED`, and with no wallet connected with `WALLET_NOT_CONNECTED`. The sidecar holds no keys and makes no wallet.
 - **The phone publishes the binding** with `RequestService.PublishWallet` (SAW-015); see [the wallet binding](../protocol.md#the-wallet-binding) and [`docs/guides/wallet-setup.md`](../guides/wallet-setup.md).
+
+### vault_sign_message
+
+`vault_sign_message` queues a message for the owner's wallet to sign: `{wallet, message | message_base64, idempotency_key, note?, expires_in_seconds?}`, answered at once with the request as PENDING. Run it with `pnpm agent sign "<text>"`.
+
+- **It creates a request and nothing else.** No wallet is contacted until the owner approves it on their phone. Being stored is not approval and not a signature.
+- **The message is taken one way or the other:** `message` as text, whose UTF-8 encoding is signed, or `message_base64` as bytes, signed as they are. Both together, or neither, is `INVALID_PARAMETERS`. 1 to 4096 bytes.
+- **The wallet must be the owner's.** Another one is `WALLET_MISMATCH`, and none connected is `WALLET_NOT_CONNECTED`.
+- **The result carries the signed bytes.** A COMPLETED request has `signature` (base58), `wallet`, and `signed_message_base64`, so the agent verifies the signature itself. The sidecar verifies it too, before accepting it from the phone, and refuses anything that isn't that wallet's signature over those bytes. It signs nothing: see [message results](../protocol.md#message-results) and [`docs/guides/message-signing.md`](../guides/message-signing.md).
+
+### vault_get_capabilities
+
+`vault_get_capabilities` takes no input, never fails, and says what this sidecar actually serves:
+
+```json
+{
+  "approval": "manual",
+  "signing": "wallet",
+  "operations": ["sign_message"],
+  "wallet_connected": true,
+  "max_message_bytes": 4096,
+  "max_note_bytes": 1024,
+  "max_pending_requests": 20,
+  "min_expires_in_seconds": 60,
+  "max_expires_in_seconds": 604800
+}
+```
+
+- **`approval` is always `manual`,** and there is no way to ask for anything else.
+- **`signing` is always `wallet`:** the owner's own wallet signs, and the sidecar holds no key.
+- **`operations` lists only what is implemented here,** so an agent treats anything missing as unavailable. `ack` appears only in demo mode.
+- **`max_pending_requests` is `REQUEST_PENDING_LIMIT`,** and the expiry bounds are the ones every creation tool takes. Run it with `pnpm agent capabilities`.
 
 ## Storage and lifecycle
 
@@ -315,7 +347,8 @@ Typical log lines:
 | `sidecar/src/requests/lifecycle.ts` | The durable lifecycle (SAW-009): the transition table, the phone's results, the approval binding, and expiry |
 | `sidecar/src/requests/failure.ts` | `RequestFailure`, the error that every durable operation refuses with |
 | `sidecar/src/storage/request-store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions, and the wallet binding (SAW-015) |
-| `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010), and `vault_get_address` (SAW-015) |
+| `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010), `vault_get_address` (SAW-015), and `vault_sign_message` and `vault_get_capabilities` (SAW-016) |
+| `sidecar/src/requests/signature.ts` | Ed25519 verification (SAW-016): the sidecar checks a wallet's signature, and never makes one |
 | `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
 | `sidecar/src/storage/database.ts` | Opening the database, migrations, and transactions (SAW-010) |
 | `sidecar/src/storage/migrations.ts` | The numbered schema migrations (SAW-010, SAW-011) |

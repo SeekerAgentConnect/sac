@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 
 import { create, equals, type MessageInitShape } from "@bufbuild/protobuf";
@@ -18,6 +19,7 @@ import { SubmitResultRequestSchema } from "../gen/seekervault/request/v1/service
 import { IN_MEMORY, openDatabase, type DatabaseSync } from "./database.ts";
 import { RequestFailure } from "../requests/failure.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
+import { testWallet } from "../testing/wallet.ts";
 import { PairingStore } from "./pairing-store.ts";
 import {
   RequestStore,
@@ -522,6 +524,54 @@ describe("RequestStore: results", () => {
     assert.ok(
       equals(ActionRequestSchema, s.store.get(idOf(request)), answered.request),
     );
+  });
+
+  it("keeps a message's approval and its verified signature in the outcome", () => {
+    const s = setup();
+    const signer = testWallet();
+    const message = "Sign in to Example";
+    const bytes = new TextEncoder().encode(message);
+    s.store.publishWallet(s.connectionId, binding(signer.address));
+    const { request } = s.store.create({
+      action: create(ActionSchema, {
+        kind: {
+          case: "signMessage",
+          value: {
+            wallet: signer.address,
+            content: { case: "text", value: message },
+          },
+        },
+      }),
+      agentNote: "",
+      idempotencyKey: "sign",
+    });
+    const contentHash = Uint8Array.from(
+      createHash("sha256").update(bytes).digest(),
+    );
+    const approved = answer(s, request, {
+      case: "approval",
+      value: { preparedVersion: 0, contentHash },
+    }).request;
+    assert.equal(approved.state, RequestState.PROCESSING);
+    assert.deepEqual(approved.outcome?.approval?.contentHash, contentHash);
+    // A signature the wallet didn't make over these bytes never reaches storage.
+    assert.throws(
+      () =>
+        answer(s, approved, {
+          case: "messageSignature",
+          value: { signature: testWallet().sign(bytes) },
+        }),
+      refused(RequestError.INVALID_PARAMETERS, RequestState.PROCESSING),
+    );
+    const signature = signer.sign(bytes);
+    const completed = answer(s, approved, {
+      case: "messageSignature",
+      value: { signature },
+    }).request;
+    assert.equal(completed.state, COMPLETED);
+    assert.deepEqual(completed.outcome?.signature, signature);
+    // The approval is kept beside it: an outcome is added to, never cleared.
+    assert.deepEqual(completed.outcome?.approval?.contentHash, contentHash);
   });
 
   it("applies a repeated result once, and refuses a different one after the end", () => {

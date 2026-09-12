@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.wallet
 
+import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.ConnectionRepository
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.walletBinding
@@ -26,6 +27,8 @@ class WalletStorageException(cause: Throwable) : Exception(cause.message, cause)
  *   to every connection that can be reached.
  * - Disconnecting tells the wallet, forgets the authorization, and publishes "no wallet" the same
  *   way. A sidecar then answers `vault_get_address` with WALLET_NOT_CONNECTED.
+ * - Signing asks the wallet for a signature over exact bytes, and only for the selection the owner
+ *   reviewed (SAW-016). It is never called before the owner approves.
  * - The address is public and goes to the sidecars; the wallet's authorization token stays in
  *   [store] and goes nowhere.
  *
@@ -95,6 +98,28 @@ class WalletRepository(
                 setWallet(null)
             }
             else -> Unit
+        }
+        result
+    }
+
+    /**
+     * Asks the wallet to sign exactly [message] with the wallet the owner selected, which must
+     * still be [reviewed]: the one they saw when they approved. A selection that has changed, or
+     * gone, is reported without asking the wallet anything, so nothing is ever signed for a wallet
+     * or network the owner didn't review. An authorization the wallet refuses is forgotten, the
+     * same way connecting does.
+     */
+    suspend fun sign(message: ByteString, reviewed: SelectedWallet): SignResult = lock.withLock {
+        val selected = _wallet.value ?: return@withLock SignResult.NotConnected
+        if (selected.address != reviewed.address || selected.network != reviewed.network) {
+            return@withLock SignResult.Changed
+        }
+        val authorization =
+            withContext(io) { store.authorization() } ?: return@withLock SignResult.NotConnected
+        val result = adapter.signMessage(message, selected, authorization)
+        if (result == SignResult.AuthorizationExpired) {
+            withContext(io) { store.clear() }
+            setWallet(null)
         }
         result
     }

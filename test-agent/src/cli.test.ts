@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -17,6 +18,7 @@ import {
   requestClient,
 } from "../../sidecar/src/testing/clients.ts";
 import { temporaryDatabasePath } from "../../sidecar/src/testing/process.ts";
+import { testWallet } from "../../sidecar/src/testing/wallet.ts";
 import { Network } from "../../sidecar/src/gen/seekervault/request/v1/request_pb.js";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
@@ -246,11 +248,81 @@ describe("pnpm agent ack, get, and cancel", () => {
     assert.equal(typeof view.bound_at, "string");
   });
 
+  it("says the sidecar approves by hand, and lists only what it serves", async () => {
+    const { code, stdout } = await agent(["capabilities"], envFor(queue));
+    assert.equal(code, 0);
+    const view = JSON.parse(stdout) as Record<string, unknown>;
+    assert.equal(view.approval, "manual");
+    assert.equal(view.signing, "wallet");
+    assert.deepEqual(view.operations, ["ack", "sign_message"]);
+    assert.equal(view.max_message_bytes, 4096);
+  });
+
+  it("queues a message for the owner, and checks the signature it gets back", async () => {
+    const signer = testWallet();
+    const phone = await pairPhone(queue.url, databasePath);
+    const client = requestClient(queue.url, phone.phoneToken);
+    await client.publishWallet({
+      connectionId: phone.connectionId,
+      binding: { wallet: signer.address, network: Network.DEVNET },
+    });
+    const message = "Sign in to Example\nNonce: 4711";
+    // No --wallet: the agent reads the owner's wallet first, as an agent should.
+    const queued = await agent(["sign", message], envFor(queue));
+    assert.equal(queued.code, 0);
+    const created = JSON.parse(queued.stdout) as Record<string, unknown>;
+    assert.equal(created.action, "sign_message");
+    assert.equal(created.status, "PENDING");
+    assert.equal(created.wallet, signer.address);
+    assert.match(queued.stderr, /nothing is signed until they approve/);
+
+    // The owner approves on the phone, and the wallet signs.
+    const bytes = new TextEncoder().encode(message);
+    const ref = {
+      connectionId: phone.connectionId,
+      requestId: String(created.request_id),
+    };
+    await client.submitResult({
+      ref,
+      result: {
+        case: "approval",
+        value: {
+          preparedVersion: 0,
+          contentHash: createHash("sha256").update(bytes).digest(),
+        },
+      },
+    });
+    await client.submitResult({
+      ref,
+      result: {
+        case: "messageSignature",
+        value: { signature: signer.sign(bytes) },
+      },
+    });
+
+    const read = await agent(
+      ["get", String(created.request_id)],
+      envFor(queue),
+    );
+    assert.equal(read.code, 0);
+    const view = JSON.parse(read.stdout) as Record<string, unknown>;
+    assert.equal(view.status, "COMPLETED");
+    assert.equal(view.terminal, true);
+    assert.equal(
+      view.signed_message_base64,
+      Buffer.from(bytes).toString("base64"),
+    );
+    // The agent verified it itself, with its own verifier.
+    assert.equal(view.signature_verified, true);
+  });
+
   it("exits 2 for missing or extra arguments", async () => {
     for (const args of [
       ["ack"],
       ["get"],
       ["address", "extra"],
+      ["sign"],
+      ["capabilities", "extra"],
       ["cancel", "a", "b"],
       ["tools", "extra"],
       ["ack", "x", "--expires", "soon"],
@@ -405,12 +477,14 @@ describe("pnpm agent", () => {
     const { code, stdout } = await agent(["tools"], envFor(sidecar));
     assert.equal(code, 0);
     const tools = JSON.parse(stdout) as { name: string }[];
-    // The durable request tools (SAW-010) and vault_get_address (SAW-015) follow the live one.
-    // Without MCP_DEMO_TOOLS, there's no vault_request_ack.
+    // The durable request tools (SAW-010), vault_get_address (SAW-015), and message signing
+    // (SAW-016) follow the live one. Without MCP_DEMO_TOOLS, there's no vault_request_ack.
     assert.deepEqual(
       tools.map((tool) => tool.name),
       [
         "vault_display_command",
+        "vault_sign_message",
+        "vault_get_capabilities",
         "vault_get_address",
         "vault_get_request",
         "vault_cancel_request",

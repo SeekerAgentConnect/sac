@@ -1,6 +1,6 @@
 # test-agent
 
-A minimal MCP client for regression tests and demos. It calls the sidecar's tools through the same MCP Streamable HTTP interface that Hermes uses, with no LLM involved. `hello` sends Stage 1's `vault_display_command` and waits for the phone's acknowledgement. `ack`, `get`, and `cancel` drive Stage 2's durable requests, which answer at once; see [live commands and durable requests](#live-commands-and-durable-requests). `address` reads the wallet the owner connected.
+A minimal MCP client for regression tests and demos. It calls the sidecar's tools through the same MCP Streamable HTTP interface that Hermes uses, with no LLM involved. `hello` sends Stage 1's `vault_display_command` and waits for the phone's acknowledgement. `ack`, `get`, and `cancel` drive Stage 2's durable requests, which answer at once; see [live commands and durable requests](#live-commands-and-durable-requests). `address` reads the wallet the owner connected, `sign` asks that wallet to sign a message, and `capabilities` says what the sidecar serves.
 
 ## Usage
 
@@ -18,7 +18,9 @@ Showing the text on the phone; waiting up to 75 s for OK...
   - `--note <text>`: a note for the owner, which the phone shows apart from the text.
   - `--expires <seconds>`: the request's lifetime, from 60 to 604800.
 - **`address`:** prints the wallet the owner connected on their phone, and its network (`vault_get_address`): `{"wallet":"…","network":"devnet","bound_at":"…"}`. It exits 9 with `WALLET_NOT_CONNECTED` when they've connected none; there is no fallback address. See [`docs/guides/wallet-setup.md`](../docs/guides/wallet-setup.md).
-- **`get <id>`:** prints the request as it is now (`vault_get_request`). Once the owner has answered, its `status` is `COMPLETED` or `REJECTED`, and `terminal` is true.
+- **`sign <text>`:** asks the owner's wallet to sign the text (`vault_sign_message`), and prints the request, PENDING, as JSON. It doesn't wait, and nothing is signed until the owner reviews the message on their phone and approves it ([`docs/guides/message-signing.md`](../docs/guides/message-signing.md)). Without `--wallet`, it reads the owner's wallet with `vault_get_address` first, since naming another one is refused. It takes the same `--key`, `--note`, and `--expires` options as `ack`.
+- **`capabilities`:** prints what the sidecar actually serves (`vault_get_capabilities`): `{"approval":"manual","signing":"wallet","operations":["sign_message"],…}`. Anything missing from `operations` isn't implemented there.
+- **`get <id>`:** prints the request as it is now (`vault_get_request`). Once the owner has answered, its `status` is `COMPLETED` or `REJECTED`, and `terminal` is true. For a signed message it adds `signature`, `wallet`, and `signed_message_base64`, and `signature_verified`, which the agent works out itself with its own Ed25519 verifier (`src/verify.ts`) rather than trusting the sidecar.
 - **`cancel <id>`:** withdraws a request that is still PENDING (`vault_cancel_request`).
 - **`tools`:** prints the server's tools as JSON.
 - **`--timeout <seconds>`:** sets the client timeout. The default is `LIVE_COMMAND_TIMEOUT_SECONDS` plus 15 seconds, so the sidecar's own `TIMEOUT` normally arrives first.

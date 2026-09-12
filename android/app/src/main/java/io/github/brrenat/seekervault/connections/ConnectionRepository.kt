@@ -6,7 +6,10 @@ import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Rejection
+import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
+import io.github.brrenat.seekervault.request.v1.executionFailure
+import io.github.brrenat.seekervault.request.v1.messageSignature
 import io.github.brrenat.seekervault.request.v1.submitResultRequest
 import java.io.IOException
 import java.security.GeneralSecurityException
@@ -50,6 +53,8 @@ data class Inbox(
  * - A pairing code always makes a new connection; it never changes an existing one.
  * - A credential the sidecar stops accepting is deleted, and the connection must be paired again.
  * - An answer is stored before it's sent, and sent again until the sidecar settles it.
+ * - An approved message takes two sends: the owner's approval, and then what the wallet did. The
+ *   wallet is asked only in between, and only by the caller (SAW-016).
  * - Nothing is answered unless the owner answers: fetching only reads.
  *
  * Network calls run outside the lock; each storage change runs under it.
@@ -88,6 +93,15 @@ class ConnectionRepository(
             .list()
             .filter { it.delivery != Delivery.Waiting && (it.settledAt ?: it.answeredAt) < cutoff }
             .forEach { results.delete(it.connectionId, it.requestId) }
+        // An approval the wallet never answered: the app closed in between. Nothing was signed and
+        // nothing was broadcast, so it's a failure, not an uncertain outcome. The approval is still
+        // sent first, so the sidecar sees the same order this phone saw.
+        results
+            .list()
+            .filter {
+                it.answer == Answer.Approve && it.signing == null && it.delivery == Delivery.Waiting
+            }
+            .forEach { results.put(it.copy(signing = SigningOutcome.Failed(APP_CLOSED))) }
         publish()
     }
 
@@ -252,13 +266,32 @@ class ConnectionRepository(
                 ?: run {
                     val request =
                         checkNotNull(_inbox.value.pendingRequest(key)) { "not a pending request" }
-                    require(request.action.hasAck()) { "only an acknowledgement can be answered" }
+                    require(answer.applies(request)) { "this answer doesn't apply to this request" }
                     LocalResult(key.connectionId, key.requestId, answer, now(), request).also {
                         results.put(it)
                         publish()
                     }
                 }
         }
+        if (stored.delivery != Delivery.Waiting) return stored
+        return deliver(key) ?: stored
+    }
+
+    /**
+     * Records what the wallet did with an approved message, and sends it. The first outcome stored
+     * stands: a later one changes nothing, so a signature can't be replaced by anything else.
+     */
+    suspend fun recordSigning(key: RequestKey, outcome: SigningOutcome): LocalResult? {
+        val stored =
+            locked {
+                val current = results.get(key.connectionId, key.requestId) ?: return@locked null
+                if (current.answer != Answer.Approve || current.signing != null)
+                    return@locked current
+                current.copy(signing = outcome).also {
+                    results.put(it)
+                    publish()
+                }
+            } ?: return null
         if (stored.delivery != Delivery.Waiting) return stored
         return deliver(key) ?: stored
     }
@@ -284,23 +317,35 @@ class ConnectionRepository(
                 forgetCredential(key.connectionId)
                 return settle(result, Delivery.Undeliverable, result.request)
             }
-            val submission = submitResultRequest {
-                ref = result.request.ref
-                when (result.answer) {
-                    Answer.Acknowledge -> acknowledgement = Acknowledgement.getDefaultInstance()
-                    Answer.Reject -> rejection = Rejection.getDefaultInstance()
-                }
-            }
+            var current = result
             return try {
+                // The owner's approval goes first: the sidecar takes the wallet's result only for a
+                // request the approval has already moved to PROCESSING.
+                if (current.answer == Answer.Approve && !current.approved) {
+                    val approval =
+                        current.request.messageApproval()
+                            ?: return settle(current, Delivery.Undeliverable, current.request)
+                    gateway.submitResult(
+                        connection.serverUrl,
+                        credential,
+                        submitResultRequest {
+                            ref = current.request.ref
+                            this.approval = approval
+                        },
+                    )
+                    current = markApproved(current) ?: return null
+                }
+                // Nothing more to send until the wallet has answered.
+                val submission = submissionFor(current) ?: return current
                 val after = gateway.submitResult(connection.serverUrl, credential, submission)
-                settle(result, Delivery.Accepted, after)
+                settle(current, Delivery.Accepted, after)
             } catch (e: GatewayException) {
                 when (e.kind) {
                     // The agent cancelled it, or it expired, before the answer arrived.
                     GatewayException.Kind.InvalidState ->
-                        settle(result, Delivery.Superseded, e.request ?: result.request)
+                        settle(current, Delivery.Superseded, e.request ?: current.request)
                     GatewayException.Kind.NotFound ->
-                        settle(result, Delivery.Undeliverable, result.request)
+                        settle(current, Delivery.Undeliverable, current.request)
                     GatewayException.Kind.Unauthenticated -> {
                         markRevoked(key.connectionId)
                         locked { results.get(key.connectionId, key.requestId) }
@@ -309,9 +354,9 @@ class ConnectionRepository(
                     // revocation settled the answer meanwhile, it stays settled.
                     else ->
                         locked<LocalResult?> {
-                            val current = stillStored(result) ?: return@locked null
-                            if (current.delivery != Delivery.Waiting) return@locked current
-                            current.copy(lastFailure = e.kind.toOutcome()).also {
+                            val stored = stillStored(current) ?: return@locked null
+                            if (stored.delivery != Delivery.Waiting) return@locked stored
+                            stored.copy(lastFailure = e.kind.toOutcome()).also {
                                 results.put(it)
                                 publish()
                             }
@@ -415,6 +460,16 @@ class ConnectionRepository(
         settled
     }
 
+    // Records that the sidecar accepted the approval, so a retry doesn't send it again.
+    private suspend fun markApproved(result: LocalResult): LocalResult? = locked {
+        val current = stillStored(result) ?: return@locked null
+        if (current.approved) return@locked current
+        current.copy(approved = true).also {
+            results.put(it)
+            publish()
+        }
+    }
+
     // The answer as it's stored now, or null if it or its connection was removed while it was on
     // its way. Call it under the lock, just before writing a delivery outcome. Removal holds the
     // same lock, so a late reply can't recreate what removal deleted.
@@ -445,5 +500,57 @@ class ConnectionRepository(
         /** At most this many pages of 100 PENDING requests are read per connection. */
         const val MAX_PAGES = 10
         val SETTLED_RETENTION: Duration = Duration.ofDays(7)
+        const val APP_CLOSED = "The app closed before the wallet answered, so nothing was signed."
+
+        /** Which answers a request can be given: the owner can always refuse. */
+        fun Answer.applies(request: ActionRequest) =
+            when (this) {
+                Answer.Acknowledge -> request.action.hasAck()
+                Answer.Reject -> request.action.hasAck() || request.signMessage() != null
+                Answer.Approve -> request.signMessage() != null
+            }
+
+        /**
+         * The result to send for an answer, or null when there is nothing to send yet: an approved
+         * message waiting for the wallet. A wallet that declined is the owner declining, which is a
+         * rejection; a wallet that couldn't sign is an execution failure, and neither signed
+         * anything.
+         */
+        fun submissionFor(result: LocalResult): SubmitResultRequest? {
+            val requestRef = result.request.ref
+            return when (result.answer) {
+                Answer.Acknowledge ->
+                    submitResultRequest {
+                        ref = requestRef
+                        acknowledgement = Acknowledgement.getDefaultInstance()
+                    }
+                Answer.Reject ->
+                    submitResultRequest {
+                        ref = requestRef
+                        rejection = Rejection.getDefaultInstance()
+                    }
+                Answer.Approve ->
+                    when (val outcome = result.signing) {
+                        null -> null
+                        is SigningOutcome.Signed ->
+                            submitResultRequest {
+                                ref = requestRef
+                                messageSignature = messageSignature {
+                                    signature = outcome.signature
+                                }
+                            }
+                        SigningOutcome.Declined ->
+                            submitResultRequest {
+                                ref = requestRef
+                                rejection = Rejection.getDefaultInstance()
+                            }
+                        is SigningOutcome.Failed ->
+                            submitResultRequest {
+                                ref = requestRef
+                                executionFailure = executionFailure { detail = outcome.detail }
+                            }
+                    }
+            }
+        }
     }
 }

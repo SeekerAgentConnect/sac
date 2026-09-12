@@ -1,7 +1,9 @@
 package io.github.brrenat.seekervault.wallet
 
 import java.util.Base64
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -30,6 +32,28 @@ class Base58Test {
     fun treatsBytesAsUnsigned() {
         assertEquals("5Q", encodeBase58(byteArrayOf(-1)))
         assertEquals("LUv", encodeBase58(byteArrayOf(-1, -1)))
+    }
+
+    @Test
+    fun readsBackEveryAddressItWrites() {
+        // The wallet takes an account as its raw key bytes, so an address has to decode again.
+        for ((base64, address) in VECTORS) {
+            val bytes = Base64.getDecoder().decode(base64)
+            assertArrayEquals(bytes, decodeBase58(address))
+            assertEquals(32, decodeBase58(address)?.size)
+        }
+        assertArrayEquals(ByteArray(32), decodeBase58("1".repeat(32)))
+        assertArrayEquals(byteArrayOf(0, 1), decodeBase58("12"))
+        assertArrayEquals(byteArrayOf(-1, -1), decodeBase58("LUv"))
+    }
+
+    @Test
+    fun refusesAnythingOutsideTheAlphabet() {
+        // 0, O, I, and l are left out of base58 on purpose, and so is everything else.
+        for (text in
+            listOf("", "0", "O", "I", "l", "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4fa+")) {
+            assertNull(text, decodeBase58(text))
+        }
     }
 
     private companion object {

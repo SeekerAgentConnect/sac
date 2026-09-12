@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.wallet
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionRepository
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
@@ -12,6 +13,7 @@ import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
+import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -242,10 +244,82 @@ class WalletRepositoryTest {
         assertEquals(publications + 1, server.publications)
     }
 
+    @Test
+    fun signsWithTheStoredAuthorizationAndTheSelectedWallet() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET, authToken = SECRET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        val signature = ByteString.copyFrom(ByteArray(64) { 9 })
+        adapter.signWith(signature)
+
+        val message = ByteString.copyFromUtf8("Sign in to Example")
+        val result = repository.sign(message, selected)
+
+        assertEquals(SignResult.Signed(message, WALLET, signature), result)
+        val asked = adapter.signings.single()
+        assertEquals(message, asked.first)
+        assertEquals(selected, asked.second)
+        // The wallet's authorization is what reaches the wallet, and it never goes anywhere else.
+        assertEquals(SECRET, asked.third)
+        assertTrue(gateway.sent.none { (_, secret) -> secret == SECRET })
+    }
+
+    @Test
+    fun asksTheWalletNothingWithoutAConnectedWallet() = runBlocking {
+        pair()
+        assertEquals(
+            SignResult.NotConnected,
+            repository.sign(ByteString.copyFromUtf8("x"), REVIEWED),
+        )
+        assertEquals(emptyList<Any>(), adapter.signings)
+    }
+
+    @Test
+    fun asksTheWalletNothingWhenTheSelectionIsNotTheOneReviewed() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        // The same wallet on another network is another selection: the owner reviewed one of them.
+        for (reviewed in listOf(REVIEWED, selected.copy(network = WalletNetwork.Mainnet))) {
+            assertEquals(
+                SignResult.Changed,
+                repository.sign(ByteString.copyFromUtf8("x"), reviewed),
+            )
+        }
+        assertEquals(emptyList<Any>(), adapter.signings)
+    }
+
+    @Test
+    fun forgetsAnAuthorizationTheWalletRefusesWhileSigning() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET, authToken = SECRET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        adapter.answerSigning(SignResult.AuthorizationExpired)
+
+        assertEquals(
+            SignResult.AuthorizationExpired,
+            repository.sign(ByteString.copyFromUtf8("x"), selected),
+        )
+        // Nothing is left to sign with, and every sidecar is told there is no wallet.
+        assertNull(repository.wallet.value)
+        assertNull(store.authorization())
+        assertNull(server.wallet)
+    }
+
     private companion object {
         const val URL = "http://127.0.0.1:8080"
         const val OTHER_URL = "http://127.0.0.1:8081"
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
         const val SECRET = "authorization-the-wallet-issued-0123456789"
+        const val OTHER_WALLET = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
+        val REVIEWED =
+            SelectedWallet(
+                address = OTHER_WALLET,
+                network = WalletNetwork.Devnet,
+                selectedAt = Instant.parse("2026-09-11T12:00:00Z"),
+            )
     }
 }

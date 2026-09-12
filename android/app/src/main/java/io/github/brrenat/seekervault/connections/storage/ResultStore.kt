@@ -1,10 +1,12 @@
 package io.github.brrenat.seekervault.connections.storage
 
 import android.util.AtomicFile
+import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.LocalResult
+import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import java.io.File
@@ -94,7 +96,10 @@ class ResultStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        const val VERSION = 1
+        // 2 adds an approval's signing outcome (SAW-016). A version 1 file is read as it was: it
+        // can only hold an acknowledgement or a rejection, neither of which has one.
+        const val VERSION = 2
+        const val OLDEST_VERSION = 1
 
         fun encode(result: LocalResult): String =
             JSONObject()
@@ -105,13 +110,41 @@ class ResultStore(private val dir: File) {
                 .put("answeredAt", result.answeredAt.toString())
                 .put("request", Base64.getEncoder().encodeToString(result.request.toByteArray()))
                 .put("delivery", result.delivery.name)
+                .put("approved", result.approved)
+                .putOpt("signing", result.signing?.let(::encodeSigning))
                 .putOpt("lastFailure", result.lastFailure?.name)
                 .putOpt("settledAt", result.settledAt?.toString())
                 .toString()
 
+        fun encodeSigning(outcome: SigningOutcome): JSONObject =
+            when (outcome) {
+                is SigningOutcome.Signed ->
+                    JSONObject()
+                        .put("outcome", "Signed")
+                        // The signature is public, like the address: it proves what the wallet did.
+                        .put(
+                            "signature",
+                            Base64.getEncoder().encodeToString(outcome.signature.toByteArray()),
+                        )
+                SigningOutcome.Declined -> JSONObject().put("outcome", "Declined")
+                is SigningOutcome.Failed ->
+                    JSONObject().put("outcome", "Failed").put("detail", outcome.detail)
+            }
+
+        fun decodeSigning(json: JSONObject?): SigningOutcome? =
+            when (json?.getString("outcome")) {
+                "Signed" ->
+                    SigningOutcome.Signed(
+                        ByteString.copyFrom(Base64.getDecoder().decode(json.getString("signature")))
+                    )
+                "Declined" -> SigningOutcome.Declined
+                "Failed" -> SigningOutcome.Failed(json.getString("detail"))
+                else -> null
+            }
+
         fun decode(text: String): LocalResult? {
             val json = JSONObject(text)
-            if (json.getInt("version") != VERSION) return null
+            if (json.getInt("version") !in OLDEST_VERSION..VERSION) return null
             return LocalResult(
                 connectionId = json.getString("connectionId"),
                 requestId = json.getString("requestId"),
@@ -120,6 +153,8 @@ class ResultStore(private val dir: File) {
                 request =
                     ActionRequest.parseFrom(Base64.getDecoder().decode(json.getString("request"))),
                 delivery = Delivery.valueOf(json.getString("delivery")),
+                approved = json.optBoolean("approved"),
+                signing = decodeSigning(json.optJSONObject("signing")),
                 lastFailure =
                     json
                         .optString("lastFailure")

@@ -1,5 +1,7 @@
 package io.github.brrenat.seekervault.wallet
 
+import com.google.protobuf.ByteString
+
 /**
  * A wallet that answers whatever a test says, without an activity or an installed wallet app. It
  * records what it was asked, so a test can check that the stored authorization is reused and that
@@ -11,6 +13,10 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
     val connects = mutableListOf<Pair<WalletNetwork, String?>>()
     /** Every authorization the phone told the wallet to forget. */
     val disconnects = mutableListOf<String>()
+    /** Every signing: the bytes, the wallet they were for, and the authorization offered. */
+    val signings = mutableListOf<Triple<ByteString, SelectedWallet, String>>()
+
+    private var nextSignature: (ByteString) -> SignResult = { SignResult.NoWallet }
 
     fun answer(result: WalletResult) {
         next = { result }
@@ -31,5 +37,26 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
 
     override suspend fun disconnect(authToken: String) {
         disconnects += authToken
+    }
+
+    /** The next signing answers with [result], whatever it is asked to sign. */
+    fun answerSigning(result: SignResult) {
+        nextSignature = { result }
+    }
+
+    /** The next signing succeeds, over exactly the bytes it was given. */
+    fun signWith(signature: ByteString) {
+        nextSignature = { message ->
+            SignResult.Signed(message, signings.last().second.address, signature)
+        }
+    }
+
+    override suspend fun signMessage(
+        message: ByteString,
+        wallet: SelectedWallet,
+        authToken: String,
+    ): SignResult {
+        signings += Triple(message, wallet, authToken)
+        return nextSignature(message)
     }
 }

@@ -6,10 +6,11 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 
 **Stage 3: The wallet.** The app connects the wallet the owner already has, through Mobile Wallet Adapter, and publishes the address and network it selected to every paired sidecar. Signing follows in the next task; nothing signs or spends yet.
 
-**Status:** SAW-015 is done, and its automated checks pass. The owner's checks on the physical Seeker with Seed Vault Wallet are NOT RUN; see [`docs/testing/stage-3.md`](docs/testing/stage-3.md#the-owners-checks-on-the-seeker).
+**Status:** SAW-015 and SAW-016 are done, and their automated checks pass. The owner's checks on the physical Seeker with Seed Vault Wallet are NOT RUN; see [`docs/testing/stage-3.md`](docs/testing/stage-3.md#the-owners-checks-on-the-seeker).
 
 | Task | Status |
 | --- | --- |
+| SAW-016: manual message signing | Done. An agent asks with `vault_sign_message`; the owner sees the complete message on their phone, with every invisible character marked, together with the wallet that would sign it, and taps **Approve and sign**. Only then is the wallet opened. The sidecar verifies the signature against the request's wallet and its own copy of the message, and hands the agent the signature, the address, and the exact signed bytes. `vault_get_capabilities` says what a sidecar serves. A signature moves no funds. See [`docs/guides/message-signing.md`](docs/guides/message-signing.md). |
 | SAW-015: Mobile Wallet Adapter and the wallet binding | Done. The **Wallet** screen connects the installed wallet on the network the owner picks, shows the address it selected, and disconnects again. The app creates no wallet and holds no key: the wallet's authorization stays on the phone, encrypted and never backed up, and only the public address and network are published, to each paired sidecar. Agents read them with `vault_get_address`, or get `WALLET_NOT_CONNECTED`. Changing or disconnecting the wallet cancels the pending requests it no longer fits. See [`docs/guides/wallet-setup.md`](docs/guides/wallet-setup.md) and [`docs/testing/stage-3.md`](docs/testing/stage-3.md). |
 
 ## Stage 2
@@ -99,6 +100,8 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm agent hello [text]` | Shows text on the phone through MCP and prints the acknowledgement. OFFLINE, BUSY, TIMEOUT, and connection errors each get their own exit code. | Works |
 | `pnpm agent ack <text>`, `get <id>`, `cancel <id>` | Queues an acknowledgement for the owner, reads a request back, or withdraws one, through the durable MCP tools. Each prints the request as JSON. See [`test-agent/README.md`](test-agent/README.md). | Works; needs a paired phone, and `ack` needs `MCP_DEMO_TOOLS=true` |
 | `pnpm agent address` | Prints the wallet the owner connected on their phone, and its network, through `vault_get_address`. See [`docs/guides/wallet-setup.md`](docs/guides/wallet-setup.md). | Works; exits 9 with `WALLET_NOT_CONNECTED` until the owner connects one |
+| `pnpm agent sign <text>` | Asks the owner's wallet to sign the text, through `vault_sign_message`. It prints the request as PENDING; the owner approves it on the phone, and `pnpm agent get <id>` reads the signature back and verifies it. See [`docs/guides/message-signing.md`](docs/guides/message-signing.md). | Works; needs a connected wallet |
+| `pnpm agent capabilities` | Prints what the sidecar serves, through `vault_get_capabilities`: manual approval, the operations it implements, and the limits. | Works |
 | `pnpm test:hello` | Runs the Stage 1 acceptance suite on a simulated device: the real CLI, the sidecar as a separate process, and a test client as the phone. With `--device`, it runs the round trip on the attached device or emulator instead: the app's UI test taps OK while the CLI sends over MCP. See [`docs/testing/stage-1.md`](docs/testing/stage-1.md). | Works; `--device` needs a device or an emulator |
 | `pnpm test:queue` | Runs the Stage 2 acceptance scenario: the real CLI, two sidecars as separate processes that restart, and a test client as the phone. See [`docs/testing/stage-2.md`](docs/testing/stage-2.md#the-acceptance-scenario-saw-014). | Works |
 | `pnpm format`, `pnpm format:android` | Apply Prettier and `buf format`, and ktfmt for Kotlin | Works |

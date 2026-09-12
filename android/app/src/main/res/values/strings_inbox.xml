@@ -30,7 +30,22 @@
     <string name="request_field_created">Created</string>
     <string name="request_field_expires">Expires</string>
     <string name="request_field_id">Request ID</string>
+    <string name="request_field_encoding">What will be signed</string>
+    <string name="request_field_signs_with">Signs with</string>
+    <plurals name="message_text_bytes">
+        <item quantity="one">Text, %1$d byte as UTF-8</item>
+        <item quantity="other">Text, %1$d bytes as UTF-8</item>
+    </plurals>
+    <plurals name="message_data_bytes">
+        <item quantity="one">%1$d byte, shown as hex</item>
+        <item quantity="other">%1$d bytes, shown as hex</item>
+    </plurals>
+    <string name="message_hidden_characters">This message contains characters that normally can\'t be seen. They\'re marked above, and the wallet signs the message exactly as it is.</string>
+    <string name="message_not_a_payment">Signing proves your wallet signed this text. It moves no funds and sends nothing to the network.</string>
+    <string name="message_no_wallet">Connect a wallet before approving this. Nothing can be signed until you do.</string>
+    <string name="signing_wallet">%1$s on %2$s</string>
     <string name="acknowledge">Acknowledge</string>
+    <string name="approve">Approve and sign</string>
     <string name="reject">Reject</string>
     <string name="send_again">Send again</string>
 
@@ -46,11 +61,24 @@
     <string name="status_undeliverable">The server no longer accepts this phone, so your answer can\'t be sent.</string>
     <string name="status_expired">This request has expired, so it can no longer be answered.</string>
     <string name="status_unsupported">This app can\'t answer this kind of request yet.</string>
+    <string name="status_waiting_for_wallet">You approved this. Waiting for the wallet…</string>
+    <string name="status_signed">Your wallet signed this. The agent can read the signature.</string>
+    <string name="status_to_send_signed">Your wallet signed this. The signature is saved on this phone, and is sent when the server can be reached.</string>
+    <string name="status_declined_in_wallet">You declined in the wallet. Nothing was signed.</string>
+    <string name="status_to_send_declined_in_wallet">You declined in the wallet. Nothing was signed. Your answer is saved on this phone, and is sent when the server can be reached.</string>
+    <string name="status_not_signed">Nothing was signed. %1$s</string>
+    <string name="problem_no_wallet">No wallet is connected on this phone, so nothing can be signed. Connect one on the Wallet screen.</string>
+    <string name="problem_other_wallet">This request names another wallet than the one you connected. It can only be rejected.</string>
+    <string name="problem_wallet_changed">Your wallet changed while you were reviewing this. Check the request again before approving it.</string>
     <string name="status_last_failure">Last attempt: %1$s</string>
     <string name="status_gone">This request isn\'t pending on this phone. It may have been answered, cancelled, or not fetched yet.</string>
 
     <string name="answer_acknowledged">Acknowledged</string>
     <string name="answer_rejected">Rejected</string>
+    <string name="answer_approved">Approved</string>
+    <string name="answer_signed">Signed</string>
+    <string name="answer_declined_in_wallet">Declined in the wallet</string>
+    <string name="answer_not_signed">Not signed</string>
     <string name="summary_waiting">%1$s, waiting to be sent</string>
     <string name="summary_superseded">%1$s too late: the request had moved on</string>
     <string name="summary_undeliverable">%1$s, can\'t be sent</string>

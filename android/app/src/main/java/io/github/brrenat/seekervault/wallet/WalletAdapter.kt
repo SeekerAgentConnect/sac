@@ -1,5 +1,7 @@
 package io.github.brrenat.seekervault.wallet
 
+import com.google.protobuf.ByteString
+
 /** One account as the wallet app reported it. */
 data class WalletAccount(
     /** The account's base58 address. */
@@ -37,6 +39,46 @@ sealed interface WalletResult {
 }
 
 /**
+ * What asking the wallet to sign a message produced (docs/guides/message-signing.md). The wallet
+ * either signs or it doesn't: nothing is broadcast either way, so there is no uncertain outcome.
+ */
+sealed interface SignResult {
+    /**
+     * The wallet signed. [message] is what it reported signing, which the caller checks against
+     * what it asked for, and [address] the account it signed with.
+     */
+    data class Signed(
+        val message: ByteString,
+        val address: String,
+        val signature: ByteString,
+    ) : SignResult
+
+    /** No wallet app that speaks Mobile Wallet Adapter is installed. */
+    data object NoWallet : SignResult
+
+    /** The owner declined in the wallet. Nothing was signed. */
+    data object Declined : SignResult
+
+    /** The stored authorization no longer works; the owner connects the wallet again. */
+    data object AuthorizationExpired : SignResult
+
+    /** Anything else the wallet reported. [message] is for display, never for parsing. */
+    data class Failed(val message: String?) : SignResult
+
+    /**
+     * The app didn't ask the wallet anything: no wallet is connected on this phone. [WalletAdapter]
+     * never returns it, only [WalletRepository].
+     */
+    data object NotConnected : SignResult
+
+    /**
+     * The app didn't ask the wallet anything: the owner's selection isn't the one they reviewed, so
+     * the request needs another look. [WalletAdapter] never returns it, only [WalletRepository].
+     */
+    data object Changed : SignResult
+}
+
+/**
  * The phone's boundary to the installed wallet (docs/architecture.md#the-wallet-adapter-boundary).
  * The app talks to a wallet only through this interface, so the screens and the repository can be
  * tested without one. [MwaWalletAdapter] is the real implementation, over Mobile Wallet Adapter.
@@ -56,4 +98,15 @@ interface WalletAdapter {
      * forgets the authorization either way.
      */
     suspend fun disconnect(authToken: String)
+
+    /**
+     * Asks the wallet to sign exactly [message] with [wallet]'s account, using the authorization
+     * [authToken] from the owner's earlier connection. It is called only after the owner has
+     * approved the request on this phone.
+     */
+    suspend fun signMessage(
+        message: ByteString,
+        wallet: SelectedWallet,
+        authToken: String,
+    ): SignResult
 }

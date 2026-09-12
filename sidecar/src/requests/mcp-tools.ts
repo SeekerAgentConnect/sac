@@ -1,6 +1,7 @@
 /**
- * The agent's durable request tools (docs/protocol.md). vault_request_ack queues an
- * acknowledgement, vault_get_request reads a request, and vault_cancel_request withdraws one.
+ * The agent's durable request tools (docs/protocol.md). vault_sign_message asks the owner's wallet
+ * for a signature, vault_request_ack queues an acknowledgement, vault_get_request reads a request,
+ * and vault_cancel_request withdraws one; vault_get_address and vault_get_capabilities only read.
  * Every call answers at once; none of them waits for the owner. vault_request_ack is a
  * development and demo tool, served only when MCP_DEMO_TOOLS is set.
  */
@@ -12,12 +13,20 @@ import { z } from "zod";
 
 import {
   ActionSchema,
+  RequestError,
   RequestState,
+  type Action,
   type ActionRequest,
   type WalletBinding,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { MAX_COMMAND_TEXT_BYTES } from "../live/command.ts";
-import { MAX_NOTE_BYTES, encodeBase58 } from "./action.ts";
+import {
+  MAX_MESSAGE_BYTES,
+  MAX_NOTE_BYTES,
+  actionBinding,
+  encodeBase58,
+  messageBytes,
+} from "./action.ts";
 import { isTerminal } from "./lifecycle.ts";
 import {
   MAX_EXPIRES_IN_SECONDS,
@@ -28,6 +37,8 @@ import {
 import { RequestFailure } from "./failure.ts";
 
 export const GET_ADDRESS_TOOL = "vault_get_address";
+export const GET_CAPABILITIES_TOOL = "vault_get_capabilities";
+export const SIGN_MESSAGE_TOOL = "vault_sign_message";
 export const REQUEST_ACK_TOOL = "vault_request_ack";
 export const GET_REQUEST_TOOL = "vault_get_request";
 export const CANCEL_REQUEST_TOOL = "vault_cancel_request";
@@ -55,7 +66,9 @@ export interface RequestView {
   readonly created_at: string;
   readonly expires_at: string;
   readonly updated_at: string;
+  readonly wallet?: string;
   readonly signature?: string;
+  readonly signed_message_base64?: string;
   readonly detail?: string;
 }
 
@@ -73,10 +86,20 @@ const VIEW_SCHEMA = {
       "The deadline for the owner's decision, while the request is PENDING.",
     ),
   updated_at: z.string(),
+  wallet: z
+    .string()
+    .optional()
+    .describe("The wallet the request is bound to, for a wallet action."),
   signature: z
     .string()
     .optional()
     .describe("The wallet's signature in base58, once there is one."),
+  signed_message_base64: z
+    .string()
+    .optional()
+    .describe(
+      "For a signed message: exactly the bytes the wallet signed, in base64. Verify the signature against these bytes and wallet, rather than re-encoding the message yourself.",
+    ),
   detail: z
     .string()
     .optional()
@@ -103,6 +126,74 @@ const ADDRESS_SCHEMA = {
     .string()
     .describe("When the phone last published this wallet to the sidecar."),
 };
+
+/** What this sidecar can actually do, as agents see it: never a promise about a later stage. */
+export interface CapabilitiesView {
+  readonly approval: "manual";
+  readonly signing: "wallet";
+  /** The action kinds this sidecar serves a creation tool for, right now. */
+  readonly operations: string[];
+  readonly wallet_connected: boolean;
+  readonly max_message_bytes: number;
+  readonly max_note_bytes: number;
+  readonly max_pending_requests: number;
+  readonly min_expires_in_seconds: number;
+  readonly max_expires_in_seconds: number;
+}
+
+const CAPABILITIES_SCHEMA = {
+  approval: z
+    .literal("manual")
+    .describe(
+      "Every request waits for the owner's tap on their phone. There is no automatic approval, and no way to ask for one.",
+    ),
+  signing: z
+    .literal("wallet")
+    .describe(
+      "The owner's own wallet app signs. The sidecar holds no key and signs nothing.",
+    ),
+  operations: z
+    .array(z.string())
+    .describe(
+      "The actions this sidecar serves now, such as sign_message. Anything not listed here is not implemented; don't attempt it.",
+    ),
+  wallet_connected: z
+    .boolean()
+    .describe(
+      "Whether the owner has a wallet connected. Read it with vault_get_address.",
+    ),
+  max_message_bytes: z.number(),
+  max_note_bytes: z.number(),
+  max_pending_requests: z
+    .number()
+    .describe("The most requests the owner may have waiting at once."),
+  min_expires_in_seconds: z.number(),
+  max_expires_in_seconds: z.number(),
+};
+
+const GET_CAPABILITIES_DESCRIPTION =
+  "Returns what this sidecar can actually do, so you don't have to guess. Approval is always " +
+  "manual: the owner reviews every request on their Seeker and taps Approve, and nothing can be " +
+  "carried out without them. Signing is done by the owner's own wallet app; the sidecar holds no " +
+  "key and never signs. `operations` lists only what is implemented here, so treat anything " +
+  "missing from it as unavailable rather than trying it. Read it once per session, before the " +
+  "first request. It takes no input and never fails.";
+
+const SIGN_MESSAGE_DESCRIPTION =
+  "Asks the owner to have their wallet sign a message, and returns at once with the stored " +
+  "request: its request_id and the status PENDING. Being stored is not a signature and not the " +
+  "owner's approval: they see the request the next time they open the app, review the exact " +
+  "bytes, and approve or reject it, and only then does the wallet sign. Read the outcome later " +
+  "with vault_get_request until terminal is true. COMPLETED carries `signature` (base58), " +
+  "`wallet`, and `signed_message_base64`, exactly the bytes that were signed; verify the " +
+  "signature against those bytes yourself. REJECTED means the owner or the wallet declined, " +
+  "EXPIRED that the deadline passed, and FAILED that the wallet could not sign. A signature " +
+  "proves the owner's wallet signed those bytes; it moves no funds and sends nothing on chain. " +
+  "The message is signed exactly as given, never trimmed, normalized, or re-encoded. `wallet` " +
+  "must be the one vault_get_address returns. A retry with the same idempotency_key and the same " +
+  "message returns the same request instead of queueing another. Errors start with a code: " +
+  "INVALID_PARAMETERS, IDEMPOTENCY_CONFLICT, NOT_PAIRED, WALLET_NOT_CONNECTED, WALLET_MISMATCH, " +
+  "or PENDING_LIMIT.";
 
 const GET_ADDRESS_DESCRIPTION =
   "Returns the wallet the owner selected on their Seeker, and the network they selected it for. " +
@@ -147,6 +238,38 @@ export function registerRequestTools(
   options: RequestToolOptions = {},
 ): void {
   if (options.demoTools === true) registerAckTool(server, store, log);
+  registerSignMessageTool(server, store, log);
+
+  server.registerTool(
+    GET_CAPABILITIES_TOOL,
+    {
+      title: "Read what this sidecar can do",
+      description: GET_CAPABILITIES_DESCRIPTION,
+      inputSchema: {},
+      outputSchema: CAPABILITIES_SCHEMA,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    () =>
+      answer(() => ({
+        approval: "manual",
+        signing: "wallet",
+        operations: [
+          ...(options.demoTools === true ? ["ack"] : []),
+          "sign_message",
+        ],
+        wallet_connected: store.connectedWallet() !== undefined,
+        max_message_bytes: MAX_MESSAGE_BYTES,
+        max_note_bytes: MAX_NOTE_BYTES,
+        max_pending_requests: store.pendingLimit,
+        min_expires_in_seconds: MIN_EXPIRES_IN_SECONDS,
+        max_expires_in_seconds: MAX_EXPIRES_IN_SECONDS,
+      })),
+  );
 
   server.registerTool(
     GET_ADDRESS_TOOL,
@@ -211,6 +334,134 @@ export function registerRequestTools(
         return requestView(request);
       }),
   );
+}
+
+/**
+ * vault_sign_message: queues a message for the owner's wallet to sign. It creates a request and
+ * nothing else: no wallet is contacted until the owner approves it on their phone.
+ */
+function registerSignMessageTool(
+  server: McpServer,
+  store: RequestStore,
+  log: (message: string) => void,
+): void {
+  server.registerTool(
+    SIGN_MESSAGE_TOOL,
+    {
+      title: "Ask the owner's wallet to sign a message",
+      description: SIGN_MESSAGE_DESCRIPTION,
+      inputSchema: {
+        wallet: z
+          .string()
+          .describe(
+            "The owner's wallet, exactly as vault_get_address returns it. Another one is refused with WALLET_MISMATCH.",
+          ),
+        message: z
+          .string()
+          .optional()
+          .describe(
+            `The message as text. Its UTF-8 encoding is what gets signed, exactly as given: 1 to ${MAX_MESSAGE_BYTES} bytes. Give either this or message_base64, not both.`,
+          ),
+        message_base64: z
+          .string()
+          .optional()
+          .describe(
+            `The message as bytes, in standard base64, signed as they are: 1 to ${MAX_MESSAGE_BYTES} bytes. Use it only for a message that isn't text; the owner sees text far better.`,
+          ),
+        idempotency_key: z
+          .string()
+          .describe(
+            "1 to 128 characters from A-Z, a-z, 0-9, '.', '_', ':', and '-'. Reuse it when you retry the same request; use a new one for a new request.",
+          ),
+        note: z
+          .string()
+          .optional()
+          .describe(
+            `Optional: why you're asking, up to ${MAX_NOTE_BYTES} UTF-8 bytes. The phone shows it apart from the message itself.`,
+          ),
+        expires_in_seconds: z
+          .number()
+          .optional()
+          .describe(
+            `Optional: how long the owner has to decide, ${MIN_EXPIRES_IN_SECONDS} to ${MAX_EXPIRES_IN_SECONDS} seconds. The sidecar's default applies otherwise.`,
+          ),
+      },
+      outputSchema: VIEW_SCHEMA,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    ({
+      wallet,
+      message,
+      message_base64,
+      idempotency_key,
+      note,
+      expires_in_seconds,
+    }) =>
+      answer(() => {
+        const { request, created } = store.create({
+          action: signMessageAction(wallet, message, message_base64),
+          agentNote: note ?? "",
+          idempotencyKey: idempotency_key,
+          expiresInSeconds: expires_in_seconds,
+        });
+        log(
+          created
+            ? `request ${idOf(request)} stored (sign_message for ${wallet})`
+            : `request ${idOf(request)} returned again for its idempotency key`,
+        );
+        return requestView(request);
+      }),
+  );
+}
+
+/**
+ * The action for one of the two message forms. Exactly one must be given: an agent that sends
+ * both, or neither, is refused rather than having one silently chosen for it.
+ */
+function signMessageAction(
+  wallet: string,
+  text: string | undefined,
+  base64: string | undefined,
+): Action {
+  if ((text === undefined) === (base64 === undefined)) {
+    throw new RequestFailure(
+      RequestError.INVALID_PARAMETERS,
+      "give either message or message_base64, not both and not neither",
+    );
+  }
+  if (text !== undefined) {
+    return create(ActionSchema, {
+      kind: {
+        case: "signMessage",
+        value: { wallet, content: { case: "text", value: text } },
+      },
+    });
+  }
+  const data = decodeBase64(base64 ?? "");
+  if (data === undefined) {
+    throw new RequestFailure(
+      RequestError.INVALID_PARAMETERS,
+      "message_base64 is not standard base64",
+    );
+  }
+  return create(ActionSchema, {
+    kind: {
+      case: "signMessage",
+      value: { wallet, content: { case: "data", value: data } },
+    },
+  });
+}
+
+/** Standard base64, strictly: anything Buffer would quietly ignore is refused instead. */
+function decodeBase64(text: string): Uint8Array | undefined {
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text)) return undefined;
+  const bytes = Buffer.from(text, "base64");
+  return bytes.toString("base64") === text ? bytes : undefined;
 }
 
 /** vault_request_ack: queues a wallet-free acknowledgement. Not a financial action. */
@@ -278,8 +529,12 @@ function registerAckTool(
 
 /** A request as agents see it, with timestamps in RFC 3339 and the signature in base58. */
 export function requestView(request: ActionRequest): RequestView {
-  const kind = request.action?.kind.case ?? "ack";
+  const action = request.action;
+  const kind = action?.kind.case ?? "ack";
   const { outcome } = request;
+  const signed = outcome !== undefined && outcome.signature.length > 0;
+  const wallet =
+    action === undefined ? undefined : actionBinding(action)?.wallet;
   return {
     request_id: idOf(request),
     action: kind === "signMessage" ? "sign_message" : kind,
@@ -288,8 +543,16 @@ export function requestView(request: ActionRequest): RequestView {
     created_at: iso(request.createdAt),
     expires_at: iso(request.expiresAt),
     updated_at: iso(request.updatedAt),
-    ...(outcome !== undefined && outcome.signature.length > 0
-      ? { signature: encodeBase58(outcome.signature) }
+    ...(wallet === undefined ? {} : { wallet }),
+    ...(signed ? { signature: encodeBase58(outcome.signature) } : {}),
+    // Exactly the bytes the wallet signed: the sidecar accepted the signature only after
+    // verifying it against them (docs/protocol.md#message-results).
+    ...(signed && action?.kind.case === "signMessage"
+      ? {
+          signed_message_base64: Buffer.from(
+            messageBytes(action.kind.value),
+          ).toString("base64"),
+        }
       : {}),
     ...(outcome !== undefined && outcome.detail !== ""
       ? { detail: outcome.detail }
@@ -307,7 +570,9 @@ export function addressView(binding: WalletBinding): AddressView {
 }
 
 /** Runs a store operation and turns its view, or its RequestFailure, into a tool result. */
-function answer(operation: () => RequestView | AddressView): CallToolResult {
+function answer(
+  operation: () => RequestView | AddressView | CapabilitiesView,
+): CallToolResult {
   try {
     const view = operation();
     return {

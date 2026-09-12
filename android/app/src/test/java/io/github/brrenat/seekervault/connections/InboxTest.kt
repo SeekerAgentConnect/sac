@@ -1,13 +1,16 @@
 package io.github.brrenat.seekervault.connections
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.walletBinding
 import java.io.File
+import java.security.MessageDigest
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -487,6 +490,139 @@ class InboxTest {
         reopened.load()
         assertNull(reopened.result(settled))
         assertEquals(Delivery.Waiting, reopened.result(waiting)?.delivery)
+    }
+
+    /** A paired connection with one PENDING message for [WALLET], fetched into the inbox. */
+    private suspend fun oneMessage(): RequestKey {
+        val connection = repository.pair(serverA.issue(URL_A))
+        val request = serverA.addPendingMessage(connection.id, WALLET)
+        repository.refresh(connection.id)
+        return RequestKey(connection.id, request.ref.requestId)
+    }
+
+    @Test
+    fun sendsTheApprovalFirstAndTheSignatureAfterIt() = runBlocking {
+        val key = oneMessage()
+        val approved = repository.answer(key, Answer.Approve)
+        // The approval has been accepted, and the request is with the wallet now.
+        assertTrue(approved.approved)
+        assertEquals(Delivery.Waiting, approved.delivery)
+        assertNull(approved.signing)
+        assertEquals(
+            RequestState.REQUEST_STATE_PROCESSING,
+            serverA.stateOf(key.connectionId, key.requestId),
+        )
+        val signature = ByteString.copyFrom(ByteArray(64) { 3 })
+        val signed = checkNotNull(repository.recordSigning(key, SigningOutcome.Signed(signature)))
+        assertEquals(Delivery.Accepted, signed.delivery)
+        assertEquals(
+            RequestState.REQUEST_STATE_COMPLETED,
+            serverA.stateOf(key.connectionId, key.requestId),
+        )
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.MESSAGE_SIGNATURE,
+            ),
+            gateway.submits.map { it.second.resultCase },
+        )
+        // The approval names the SHA-256 of exactly the message's bytes, and no preparation.
+        val approval = gateway.submits.first().second.approval
+        assertEquals(0, approval.preparedVersion)
+        assertEquals(
+            ByteString.copyFrom(
+                MessageDigest.getInstance("SHA-256")
+                    .digest("Sign in to Example".toByteArray(Charsets.UTF_8))
+            ),
+            approval.contentHash,
+        )
+    }
+
+    @Test
+    fun keepsAnApprovalWaitingWhileTheServerCantBeReachedAndSendsBothOnRefresh() = runBlocking {
+        val key = oneMessage()
+        serverA.failure = GatewayException.Kind.Unreachable
+        val stored = repository.answer(key, Answer.Approve)
+        assertEquals(Delivery.Waiting, stored.delivery)
+        assertFalse(stored.approved)
+        val signature = ByteString.copyFrom(ByteArray(64) { 3 })
+        repository.recordSigning(key, SigningOutcome.Signed(signature))
+        assertEquals(emptyList<Any>(), gateway.submits)
+
+        serverA.failure = null
+        repository.refresh(key.connectionId)
+
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.MESSAGE_SIGNATURE,
+            ),
+            gateway.submits.map { it.second.resultCase },
+        )
+        assertEquals(Delivery.Accepted, repository.result(key)?.delivery)
+    }
+
+    @Test
+    fun recordsAnApprovalTheWalletNeverAnsweredAsAFailureWhenTheAppOpensAgain() = runBlocking {
+        val key = oneMessage()
+        // The owner approved, and the app closed before the wallet came back with anything.
+        serverA.failure = GatewayException.Kind.Unreachable
+        repository.answer(key, Answer.Approve)
+        serverA.failure = null
+
+        val reopened = repository()
+        reopened.load()
+
+        val outcome = reopened.result(key)?.signing
+        assertEquals(
+            SigningOutcome.Failed(
+                "The app closed before the wallet answered, so nothing was signed."
+            ),
+            outcome,
+        )
+        // Nothing was signed and nothing was broadcast, so the request fails rather than hanging.
+        reopened.deliver(key)
+        assertEquals(
+            RequestState.REQUEST_STATE_FAILED,
+            serverA.stateOf(key.connectionId, key.requestId),
+        )
+        assertEquals(Delivery.Accepted, reopened.result(key)?.delivery)
+    }
+
+    @Test
+    fun keepsTheFirstSigningOutcomeAndIgnoresALaterOne() = runBlocking {
+        val key = oneMessage()
+        repository.answer(key, Answer.Approve)
+        val signature = ByteString.copyFrom(ByteArray(64) { 3 })
+        repository.recordSigning(key, SigningOutcome.Signed(signature))
+        repository.recordSigning(key, SigningOutcome.Declined)
+        assertEquals(SigningOutcome.Signed(signature), repository.result(key)?.signing)
+        assertEquals(2, gateway.submits.size)
+    }
+
+    @Test
+    fun refusesAnApprovalOfSomethingThatIsNotAMessage() = runBlocking {
+        val key = oneRequest()
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.answer(key, Answer.Approve) }
+        }
+        assertEquals(emptyList<Any>(), gateway.submits)
+    }
+
+    @Test
+    fun letsTheOwnerRejectAMessageWithoutAnyApproval() = runBlocking {
+        val key = oneMessage()
+        val rejected = repository.answer(key, Answer.Reject)
+        assertEquals(Delivery.Accepted, rejected.delivery)
+        assertFalse(rejected.approved)
+        assertEquals(
+            listOf(SubmitResultRequest.ResultCase.REJECTION),
+            gateway.submits.map { it.second.resultCase },
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_REJECTED,
+            serverA.stateOf(key.connectionId, key.requestId),
+        )
     }
 
     private companion object {

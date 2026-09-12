@@ -21,7 +21,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Answer
@@ -32,12 +34,20 @@ import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.PairingCodes
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.connections.outcomeText
+import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.networkText
 import java.time.Instant
 
 /**
  * Request details: who asked, what, and until when. A pending acknowledgement offers Acknowledge
- * and Reject; once answered, the screen shows the stored outcome instead of the buttons.
+ * and Reject, and a message to sign offers Approve and Reject; once answered, the screen shows the
+ * stored outcome instead of the buttons.
+ *
+ * A message is shown complete, with every invisible character marked, together with the wallet and
+ * network that would sign it (docs/guides/message-signing.md). Nothing reaches the wallet until the
+ * owner taps Approve.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,9 +58,14 @@ fun RequestDetailsScreen(
     sending: Boolean,
     now: Instant,
     onAnswer: (Answer) -> Unit,
+    onApprove: () -> Unit,
     onSendAgain: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The wallet that would sign a message; null when none is connected. */
+    wallet: SelectedWallet? = null,
+    /** Why the last approval didn't reach the wallet. */
+    signingProblem: SigningProblem? = null,
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -102,6 +117,70 @@ fun RequestDetailsScreen(
                     },
                 )
             }
+            val message = messagePreview(request)
+            if (message != null) {
+                // The complete message the wallet would sign, with nothing hidden in it.
+                ListItem(
+                    overlineContent = { Text(stringResource(R.string.request_field_message)) },
+                    headlineContent = {
+                        Text(
+                            message.display,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.testTag(InboxTags.MESSAGE),
+                        )
+                    },
+                )
+                Field(
+                    R.string.request_field_encoding,
+                    pluralStringResource(
+                        if (message.isText) R.plurals.message_text_bytes
+                        else R.plurals.message_data_bytes,
+                        message.bytes,
+                        message.bytes,
+                    ),
+                    "encoding",
+                )
+                if (message.hasHidden) {
+                    Text(
+                        stringResource(R.string.message_hidden_characters),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp).testTag(InboxTags.HIDDEN),
+                    )
+                }
+                Field(
+                    R.string.request_field_signs_with,
+                    wallet?.let {
+                        stringResource(
+                            R.string.signing_wallet,
+                            it.address,
+                            networkText(it.network),
+                        )
+                    } ?: request.signMessage()?.wallet.orEmpty(),
+                    "signsWith",
+                )
+                Text(
+                    stringResource(R.string.message_not_a_payment),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier =
+                        Modifier.padding(horizontal = 16.dp).testTag(InboxTags.NOT_A_PAYMENT),
+                )
+                if (wallet == null && result == null) {
+                    Text(
+                        stringResource(R.string.message_no_wallet),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                    )
+                }
+                if (signingProblem != null) {
+                    Text(
+                        stringResource(problemText(signingProblem)),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                    )
+                }
+            }
             if (request.agentNote.isNotEmpty()) {
                 // Shown apart from the request itself: the agent wrote it, and nothing checked it.
                 ListItem(
@@ -128,12 +207,24 @@ fun RequestDetailsScreen(
                     modifier = Modifier.padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Button(
-                        onClick = { onAnswer(Answer.Acknowledge) },
-                        enabled = !sending,
-                        modifier = Modifier.testTag(InboxTags.ACKNOWLEDGE),
-                    ) {
-                        Text(stringResource(R.string.acknowledge))
+                    if (message == null) {
+                        Button(
+                            onClick = { onAnswer(Answer.Acknowledge) },
+                            enabled = !sending,
+                            modifier = Modifier.testTag(InboxTags.ACKNOWLEDGE),
+                        ) {
+                            Text(stringResource(R.string.acknowledge))
+                        }
+                    } else {
+                        // Approve is the only thing that reaches the wallet, and only once the
+                        // owner has a wallet connected to sign with.
+                        Button(
+                            onClick = onApprove,
+                            enabled = !sending && wallet != null,
+                            modifier = Modifier.testTag(InboxTags.APPROVE),
+                        ) {
+                            Text(stringResource(R.string.approve))
+                        }
                     }
                     OutlinedButton(
                         onClick = { onAnswer(Answer.Reject) },
