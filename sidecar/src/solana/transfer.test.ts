@@ -173,8 +173,10 @@ describe("buildTransfer", () => {
     );
 
     const { message } = parse(built.transaction);
-    assert.equal(message.compiledInstructions.length, 1);
-    const [instruction] = message.compiledInstructions;
+    // The account exists, so nothing is created and no rent is charged; the idempotent create is
+    // still there, because it is what makes the chain check whose account the destination is.
+    assert.equal(message.compiledInstructions.length, 2);
+    const [, instruction] = message.compiledInstructions;
     assert.equal(
       message.staticAccountKeys[instruction?.programIdIndex ?? -1]?.toBase58(),
       TOKEN_PROGRAM.toBase58(),
@@ -246,7 +248,7 @@ describe("buildTransfer", () => {
     const built = await buildTransfer(chain, tokenTransferAction("7"), NOW);
     const { message } = parse(built.transaction);
     const data = Buffer.from(
-      message.compiledInstructions[0]?.data ?? new Uint8Array(),
+      message.compiledInstructions[1]?.data ?? new Uint8Array(),
     );
     assert.equal(data.readBigUInt64LE(1), 7n);
     assert.equal(data.readUInt8(9), 0);

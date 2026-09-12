@@ -78,6 +78,49 @@ export interface ChainReader {
   ): Promise<ChainTransaction | undefined>;
 }
 
+/**
+ * How long one chain-backed operation may take in total, however many calls it makes.
+ *
+ * A preparation reads the mint, both token accounts, the recipient, the rent, the blockhash, the
+ * fee, and the block height, one after another, and a confirmation check reads up to three
+ * things. The phone waits on one unary RPC for all of it, so the per-call timeout
+ * (`SOLANA_RPC_TIMEOUT_MS`) can't be the only bound: a slow endpoint would let the sidecar keep
+ * building and storing a preparation long after the phone gave up on it. This is the bound the
+ * phone's deadline is set against (android ConnectConnectionGateway.CHAIN_TIMEOUT).
+ */
+export const CHAIN_BUDGET_MS = 20_000;
+
+/**
+ * Runs one chain-backed operation under {@link CHAIN_BUDGET_MS}. When the budget runs out the
+ * operation is abandoned with a ChainUnavailable, so nothing it would have produced is stored:
+ * the caller hears the same "the endpoint didn't answer" it hears for a single slow call, and the
+ * request is left exactly as it was.
+ */
+export async function withChainBudget<T>(
+  operation: () => Promise<T>,
+  budgetMs: number = CHAIN_BUDGET_MS,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new ChainUnavailable(
+            `the Solana RPC endpoint didn't finish answering within ${budgetMs} ms`,
+          ),
+        ),
+      budgetMs,
+    );
+    // A pending timer must not keep the process alive on its own.
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([operation(), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface SolanaRpcOptions {
   /** How long one call may take before it's abandoned. */
   readonly timeoutMs: number;

@@ -422,8 +422,20 @@ class FakeConnectionGateway : ConnectionGateway {
             contentHash = ByteString.copyFrom(MessageDigest.getInstance("SHA-256").digest(bytes))
             feeLamports = 5_000L
             rentLamports = 0L
+            preparedExpiry?.let {
+                estimatedExpiry = timestamp {
+                    seconds = it.epochSecond
+                    nanos = it.nano
+                }
+            }
         }
     }
+
+    /**
+     * When the preparations this fake hands out say their blockhash window closes. Null leaves it
+     * unset, which is what most tests want: the freshness check then has nothing to judge.
+     */
+    var preparedExpiry: Instant? = null
 
     /**
      * The bytes this fake hands over. Tests that read them supply their own through [transactions].

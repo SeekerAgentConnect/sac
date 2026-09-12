@@ -17,7 +17,7 @@ The one check that talks to a real network is opt-in, reads, and is described at
 
 ## Automated checks
 
-`pnpm check` runs the sidecar's and the test agent's tests, `pnpm check:android` runs the app's JVM and Robolectric tests, and `pnpm test:transfer` runs the acceptance scenario end to end. CI runs them.
+`pnpm check` runs the sidecar's and the test agent's tests, `pnpm check:android` runs the app's JVM and Robolectric tests, and `pnpm test:transfer` runs the acceptance scenario end to end. CI runs all three, `pnpm test:transfer` among them (`.github/workflows/ci.yml`, the node job). CI never sets `SEEKER_VAULT_NETWORK_CHECKS` and never sets `SOLANA_RPC_URL`, so its transfer run uses the fake RPC on loopback and the throwaway wallet key, reaches no cluster, and spends nothing.
 
 | Area | What the tests cover | Where |
 | --- | --- | --- |
@@ -25,7 +25,10 @@ The one check that talks to a real network is opt-in, reads, and is described at
 | The transaction builder | SOL and SPL transfers, a recipient with no token account, a Token-2022 mint, an NFT, a token account given as a recipient, a frozen account, too little held, and a cluster that doesn't match the request | `sidecar/src/solana/transfer.test.ts` |
 | Preparation | A new version per preparation, the content hash, the fee and rent, the blockhash window, and an approval refused once it runs down | `sidecar/src/requests/preparation.test.ts` |
 | The phone's own parser | The shared fixtures, decoded on the phone, including the adversarial ones that are perfectly valid transactions and simply aren't the one that was asked for | `TransactionFixturesTest`, `transactions/` tests |
-| Confirmation | A delayed confirmation, a chain failure, an RPC timeout, a signature not yet visible, a mismatched transaction, and a signature that can no longer land | `sidecar/src/requests/confirmation.test.ts`, `sidecar/src/solana/confirmation.test.ts` |
+| Confirmation | A delayed confirmation, a chain failure, an RPC timeout, a signature not yet visible, a mismatched transaction, a signature that can no longer land, and a restart whose `SOLANA_RPC_URL` points at another cluster whose block height is long past the window — which settles nothing | `sidecar/src/requests/confirmation.test.ts`, `sidecar/src/solana/confirmation.test.ts` |
+| The destination's authority | A classic SPL token account at exactly the recipient's derived address whose authority is now somebody else's: the sidecar refuses to build it, and the phone refuses to call a transaction without the associated-account instruction verified at all | `sidecar/src/requests/transfers.test.ts`, `TransactionFixturesTest` (`token_destination_authority_changed`) |
+| Freshness at the wallet | Time passing the blockhash window while another wallet interaction holds the lock, and while the approval is being committed: the wallet is never called with stale bytes | `InboxViewModelTest` |
+| An approval nobody answered | A lost response to the approval: it is kept rather than deleted, and the next delivery reads the request and either drops it (still PENDING) or ends it (PROCESSING) | `InboxViewModelTest` |
 | The agent's transfer command | A transfer that names its wallet and cluster; one that names neither, or only one; a cluster the CLI doesn't know; an amount that isn't base units; a retry under the same key; and a refusal from the sidecar | `test-agent/src/cli.test.ts` |
 | The agent's `status` | An acknowledgement, a cancelled request, a signed message, and a pending transfer, each with its exit code and its view — and no explorer link on a message signature | `test-agent/src/cli.test.ts` |
 | The whole path | The scenario table below | `test-agent/src/stage4.acceptance.ts` (`pnpm test:transfer`) |

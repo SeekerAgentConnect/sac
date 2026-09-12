@@ -26,6 +26,7 @@ import io.github.brrenat.seekervault.wallet.SendResult
 import io.github.brrenat.seekervault.wallet.SignResult
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import java.time.Duration
+import java.time.Instant
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -120,6 +121,8 @@ class InboxViewModel(
      * not hold a request open for the rest of the session.
      */
     private val walletTimeout: Duration = WALLET_TIMEOUT,
+    /** The clock the blockhash window is judged against; tests move it. */
+    private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
     private data class Activity(
         val refreshing: Boolean = false,
@@ -320,32 +323,77 @@ class InboxViewModel(
         }
         viewModelScope.launch {
             try {
-                when (val outcome = repository.approveTransfer(key, approved)) {
-                    is ApprovalOutcome.Accepted -> {
-                        // A wallet that never answers leaves the outcome unknown rather than open:
-                        // it may have sent the transaction, and this phone must not say otherwise.
-                        val sent =
-                            withTimeoutOrNull(walletTimeout.toMillis()) {
-                                wallet.signAndSend(approved.transaction, selected)
-                            }
-                        repository.recordSigning(
-                            key,
-                            sent?.let(::outcomeOf) ?: SigningOutcome.Unresolved(NO_ANSWER_SENDING),
-                        )
-                    }
-                    // Nothing was approved: read the transfer again so the owner reviews the
-                    // preparation as it is now, rather than the one that has gone.
-                    ApprovalOutcome.Stale -> {
+                // Everything from here runs holding the one wallet lock. That lock is where the
+                // waiting happens — another wallet interaction can hold it for as long as the
+                // owner is in the wallet app — so the freshness of what is being approved is
+                // checked on this side of the wait, not before it.
+                wallet.withWallet<Unit> { session ->
+                    if (!stillFresh(reviewed.prepared)) {
+                        // Nothing has been approved anywhere yet, so the request is still the
+                        // sidecar's and still PENDING: the owner reviews a new preparation.
                         problem(key, SigningProblem.Stale)
                         prepare(key, force = true)
+                        return@withWallet
                     }
-                    is ApprovalOutcome.Superseded -> Unit // the inbox shows where it went
-                    is ApprovalOutcome.Refused -> problem(key, SigningProblem.NotApproved)
+                    when (val outcome = repository.approveTransfer(key, approved)) {
+                        is ApprovalOutcome.Accepted -> {
+                            // The last thing before the wallet, with the lock still held: the
+                            // commit itself took time, and a transaction that can no longer land
+                            // is never put in front of the wallet.
+                            if (!stillFresh(reviewed.prepared)) {
+                                repository.recordSigning(
+                                    key,
+                                    SigningOutcome.Failed(EXPIRED_BEFORE_THE_WALLET),
+                                )
+                                problem(key, SigningProblem.Stale)
+                                return@withWallet
+                            }
+                            // A wallet that never answers leaves the outcome unknown rather than
+                            // open: it may have sent the transaction, and this phone must not say
+                            // otherwise.
+                            val sent =
+                                withTimeoutOrNull(walletTimeout.toMillis()) {
+                                    session.signAndSend(approved.transaction, selected)
+                                }
+                            repository.recordSigning(
+                                key,
+                                sent?.let(::outcomeOf)
+                                    ?: SigningOutcome.Unresolved(NO_ANSWER_SENDING),
+                            )
+                        }
+                        // Nothing was approved: read the transfer again so the owner reviews the
+                        // preparation as it is now, rather than the one that has gone.
+                        ApprovalOutcome.Stale -> {
+                            problem(key, SigningProblem.Stale)
+                            prepare(key, force = true)
+                        }
+                        is ApprovalOutcome.Superseded -> Unit // the inbox shows where it went
+                        is ApprovalOutcome.Refused -> problem(key, SigningProblem.NotApproved)
+                    }
                 }
             } finally {
                 activity.update { it.copy(sending = it.sending - key) }
             }
         }
+    }
+
+    /**
+     * Whether [prepared] could still land if the wallet were asked now, with the margin the sidecar
+     * applies when it accepts an approval. A blockhash window that has closed, or is about to,
+     * means the wallet would be handed a transaction no block can include any more.
+     *
+     * A preparation with no expiry is taken as fresh: the sidecar states one for every transfer it
+     * builds, and inventing a deadline for bytes that carry none would refuse them for a reason
+     * this phone made up.
+     */
+    private fun stillFresh(prepared: PreparedTransaction): Boolean {
+        if (!prepared.hasEstimatedExpiry()) return true
+        val expiry =
+            Instant.ofEpochSecond(
+                prepared.estimatedExpiry.seconds,
+                prepared.estimatedExpiry.nanos.toLong(),
+            )
+        return now().plus(APPROVAL_MARGIN).isBefore(expiry)
     }
 
     private fun problem(key: RequestKey, problem: SigningProblem?) = activity.update {
@@ -400,6 +448,18 @@ class InboxViewModel(
 
     private companion object {
         val WALLET_TIMEOUT: Duration = Duration.ofMinutes(10)
+
+        /**
+         * How much of a prepared transaction's window must be left when the wallet is asked. It is
+         * the sidecar's own margin (requests/lifecycle.ts APPROVAL_MARGIN_MS): the sidecar applies
+         * it when it accepts the approval, and the phone applies it again at the wallet, because
+         * the wait for the wallet lock happens in between.
+         */
+        val APPROVAL_MARGIN: Duration = Duration.ofSeconds(15)
+
+        const val EXPIRED_BEFORE_THE_WALLET =
+            "The transaction's blockhash window closed before the wallet could be asked, so " +
+                "nothing was signed and nothing was sent."
         const val NO_ANSWER =
             "The wallet didn't answer, so nothing reached this phone and nothing was signed."
         // The same silence means something else for a transaction: the wallet may have sent it.

@@ -66,6 +66,13 @@ enum class Finding {
     SourceNotOwnersAccount,
     /** The tokens would go to an account that isn't the recipient's own for this mint. */
     DestinationNotRecipientsAccount,
+    /**
+     * The destination is the address the recipient's associated token account derives to, but
+     * nothing in the transaction makes the chain check that it is still theirs. A classic SPL token
+     * account's authority can be handed to somebody else after its address was derived, so the
+     * address alone establishes nothing about who receives the tokens.
+     */
+    DestinationOwnerUnchecked,
     /** A token account would be created for someone other than the recipient. */
     AccountCreationForSomeoneElse,
     /** The transaction contains an instruction this app can't read. It is not thereby safe. */
@@ -97,9 +104,9 @@ data class TransferFacts(
     val payer: String,
     /**
      * The wallet the funds provably reach, or null when the bytes don't establish one. For SOL it
-     * is the account the instruction names. For a token it is a wallet only when the destination
-     * token account derives from it, which is the only thing that ties an account to an owner
-     * without asking anyone.
+     * is the account the instruction names. For a token it is a wallet only when the transaction
+     * itself has the chain establish that the destination token account is that wallet's, which an
+     * address on its own never does.
      */
     val recipient: String?,
     /** For a token transfer, the token account the tokens go to; null for SOL. */
@@ -114,8 +121,12 @@ data class TransferFacts(
      * mint on chain.
      */
     val decimals: Int,
-    /** True when the transaction also gives the recipient their token account for this mint. */
-    val createsRecipientAccount: Boolean,
+    /**
+     * True when the transaction makes the chain vouch for the recipient's token account for this
+     * mint: the associated-account program re-derives the address, creates the account if it is
+     * missing, and fails the whole transaction unless it is the recipient's for this mint.
+     */
+    val ensuresRecipientAccount: Boolean,
     val computeUnitLimit: UInt?,
     /** A priority price the owner would also pay, in micro-lamports per compute unit. */
     val computeUnitPrice: ULong?,
@@ -275,7 +286,7 @@ private fun inspectSol(
         amount = move.lamports,
         mint = null,
         decimals = LAMPORT_DECIMALS,
-        createsAccount = false,
+        ensuresAccount = false,
     )
 }
 
@@ -299,28 +310,37 @@ private fun inspectToken(
     if (move.authority != action.wallet) findings += Finding.FeePayerNotTheWallet
     if (move.mint != mint) findings += Finding.MintMismatch
     if (amount == null || move.amount != amount) findings += Finding.AmountMismatch
-    // A token account's address is derived from its owner and its mint, so the only way it can
-    // belong to the recipient the request names is to be exactly this address.
+    // A token account's address is derived from its owner and its mint, so the recipient's account
+    // can only be this address. It being this address is necessary, and it is not sufficient.
     val source = associatedTokenAddress(action.wallet, mint)
     val destination = associatedTokenAddress(action.recipient, mint)
     if (source == null || move.source != source) findings += Finding.SourceNotOwnersAccount
-    // Only the derivation ties the destination account to a wallet. Without it the app knows the
-    // account the tokens go to and nothing at all about who owns it, and says so.
-    val provenRecipient =
-        if (destination != null && move.destination == destination) action.recipient else null
-    if (provenRecipient == null) findings += Finding.DestinationNotRecipientsAccount
 
     val creations = instructions.filterIsInstance<ReadInstruction.CreateTokenAccount>()
     if (creations.size > 1) findings += Finding.ExtraTransfer
     val creation = creations.firstOrNull()
-    if (
+    // The associated-account instruction is the only thing in the bytes that says anything about
+    // who owns the destination now: its program re-derives the address, reads the account, and
+    // fails the transaction unless the account's owner and mint are the recipient's. The phone
+    // reaches no chain, so this is the whole of its evidence.
+    val vouchedFor =
         creation != null &&
-            (creation.owner != action.recipient ||
-                creation.mint != mint ||
-                creation.account != destination ||
-                creation.payer != action.wallet)
-    ) {
-        findings += Finding.AccountCreationForSomeoneElse
+            creation.owner == action.recipient &&
+            creation.mint == mint &&
+            creation.account == destination &&
+            creation.payer == action.wallet
+    if (creation != null && !vouchedFor) findings += Finding.AccountCreationForSomeoneElse
+
+    // Derivation alone would only say what the account is called. A classic SPL token account's
+    // authority can be handed to somebody else afterwards, so an address that derives correctly
+    // and nothing else leaves the owner unknown, and unknown is not approvable.
+    val provenRecipient =
+        if (destination != null && move.destination == destination && vouchedFor) action.recipient
+        else null
+    if (destination == null || move.destination != destination) {
+        findings += Finding.DestinationNotRecipientsAccount
+    } else if (!vouchedFor) {
+        findings += Finding.DestinationOwnerUnchecked
     }
     return facts(
         decoded = decoded,
@@ -331,7 +351,7 @@ private fun inspectToken(
         amount = move.amount,
         mint = move.mint,
         decimals = move.decimals,
-        createsAccount = creation != null,
+        ensuresAccount = vouchedFor,
     )
 }
 
@@ -344,7 +364,7 @@ private fun facts(
     amount: ULong,
     mint: String?,
     decimals: Int,
-    createsAccount: Boolean,
+    ensuresAccount: Boolean,
 ) =
     TransferFacts(
         payer = decoded.feePayer.orEmpty(),
@@ -353,7 +373,7 @@ private fun facts(
         amount = amount,
         mint = mint,
         decimals = decimals,
-        createsRecipientAccount = createsAccount,
+        ensuresRecipientAccount = ensuresAccount,
         computeUnitLimit = budget.firstNotNullOfOrNull { it.unitLimit },
         computeUnitPrice = budget.firstNotNullOfOrNull { it.microLamportsPerUnit },
         blockhash = decoded.recentBlockhash,

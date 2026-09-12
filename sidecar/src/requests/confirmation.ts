@@ -15,6 +15,7 @@ import { timestampFromMs, timestampMs } from "@bufbuild/protobuf/wkt";
 import {
   ConfirmationLevel,
   ConfirmationSchema,
+  Network,
   RequestState,
   type ActionRequest,
   type Confirmation,
@@ -23,9 +24,11 @@ import {
 import { isApprovedTransaction } from "../solana/confirmation.ts";
 import {
   ChainUnavailable,
+  withChainBudget,
   type ChainReader,
   type SignatureStatus,
 } from "../solana/rpc.ts";
+import { UnsupportedTransfer, assertNetwork } from "../solana/transfer.ts";
 import type { RequestStore } from "../storage/request-store.ts";
 import { encodeBase58 } from "./action.ts";
 
@@ -124,22 +127,28 @@ export class ConfirmationTracker {
 
     let finding: Finding;
     try {
-      finding = await this.#look(
-        encodeBase58(signature),
-        this.#approvedTransaction(request),
+      finding = await withChainBudget(() =>
+        this.#lookOnTheRequestsChain(request, signature),
       );
     } catch (error) {
-      if (!(error instanceof ChainUnavailable)) throw error;
-      // An endpoint that didn't answer is not evidence about the transaction. Nothing moves, and
-      // the attempt is kept so the owner can see that it was tried and what stopped it.
-      const known = request.outcome?.confirmation;
-      finding = {
-        level: known?.level ?? ConfirmationLevel.UNSPECIFIED,
-        slot: known?.slot ?? 0n,
-        chainError: known?.chainError ?? "",
-        matchesApproval: known?.matchesApproval ?? false,
-        detail: `The status couldn't be checked: ${error.message}. This says nothing about the transaction itself.`,
-      };
+      if (error instanceof UnsupportedTransfer) {
+        // The endpoint serves another cluster, so nothing it says is about this transaction at
+        // all: not its status, not the transaction under it, and above all not the block height,
+        // which belongs to a chain this transfer was never sent to. Nothing moves.
+        finding = {
+          ...unchanged(request),
+          detail: `The status couldn't be checked: ${error.message}. Nothing on that cluster is evidence about this transfer, so nothing here has been settled.`,
+        };
+      } else if (error instanceof ChainUnavailable) {
+        // An endpoint that didn't answer is not evidence about the transaction. Nothing moves, and
+        // the attempt is kept so the owner can see that it was tried and what stopped it.
+        finding = {
+          ...unchanged(request),
+          detail: `The status couldn't be checked: ${error.message}. This says nothing about the transaction itself.`,
+        };
+      } else {
+        throw error;
+      }
     }
 
     return this.#store.recordConfirmation(requestId, {
@@ -148,6 +157,28 @@ export class ConfirmationTracker {
       confirmation: this.#confirmation(finding, checks),
       detail: finding.outcomeDetail,
     });
+  }
+
+  /**
+   * Checks that the configured endpoint serves the cluster this request is bound to, and only
+   * then reads anything from it.
+   *
+   * The database outlives the process, and `SOLANA_RPC_URL` does not: a restart can point the
+   * same stored requests at another cluster. On that cluster the signature is absent and the
+   * block height is somebody else's, which together read exactly like "the transaction expired
+   * and nothing was spent" — a settled, terminal answer, and a false one. So the cluster is
+   * established first, from the genesis hash, the same way a preparation establishes it
+   * (solana/transfer.ts). A mismatch throws, and the caller settles nothing.
+   */
+  async #lookOnTheRequestsChain(
+    request: ActionRequest,
+    signature: Uint8Array,
+  ): Promise<Finding> {
+    await assertNetwork(this.#rpc, boundNetwork(request));
+    return this.#look(
+      encodeBase58(signature),
+      this.#approvedTransaction(request),
+    );
   }
 
   /** What the endpoint says about `signature`, read as a move for a SUBMITTED request. */
@@ -309,6 +340,28 @@ export class ConfirmationTracker {
     if (version === undefined || version === 0) return undefined;
     return this.#store.preparedVersion(request.ref?.requestId ?? "", version);
   }
+}
+
+/**
+ * The network the request is bound to. Its action names one, and the action never changes, so
+ * this is what the endpoint has to be serving for anything it says to be about this request.
+ */
+function boundNetwork(request: ActionRequest): Network {
+  const kind = request.action?.kind;
+  if (kind?.case === "transfer" || kind?.case === "swap")
+    return kind.value.network;
+  return Network.UNSPECIFIED;
+}
+
+/** The confirmation a request already has, for a check that established nothing new. */
+function unchanged(request: ActionRequest): Omit<Finding, "detail"> {
+  const known = request.outcome?.confirmation;
+  return {
+    level: known?.level ?? ConfirmationLevel.UNSPECIFIED,
+    slot: known?.slot ?? 0n,
+    chainError: known?.chainError ?? "",
+    matchesApproval: known?.matchesApproval ?? false,
+  };
 }
 
 /**

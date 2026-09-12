@@ -260,7 +260,7 @@ describe("loadSidecarConfig", () => {
     }
     assert.match(
       problemsFor({ ...validEnv, SOLANA_RPC_TIMEOUT_MS: "0" }).join("\n"),
-      /SOLANA_RPC_TIMEOUT_MS must be a whole number from 1000 to 60000/,
+      /SOLANA_RPC_TIMEOUT_MS must be a whole number from 1000 to 20000/,
     );
   });
 

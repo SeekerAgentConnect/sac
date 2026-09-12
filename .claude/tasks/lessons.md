@@ -23,3 +23,30 @@
   - Reread existence under the same lock right before each write.
   - Write from the stored state, never from a copy captured before a suspension.
 - **Tool inputs turn `\uXXXX` into the character itself.** To keep an escape in a source file, write `\u{301}` in TypeScript or build the string from code points in Kotlin (`String(intArrayOf(...), 0, n)`), then check the code points with a script. That matters wherever NFC and NFD must differ.
+
+## Review findings
+
+- **"Independently verified" has to name what enforces the fact, not what implies it.** The PR #4
+  review caught the phone treating a derived associated-token-account address as proof of who owns
+  that account. Address derivation is a *necessary* condition; authority can be changed afterwards
+  with `SetAuthority`. When a claim can't be checked where it is made — the phone reaches no chain
+  by design — the fix is to move the check to something that does enforce it at execution time, not
+  to loosen the claim. Ask, for each fact a review presents: which program, or which byte, makes
+  this false if it isn't true?
+- **State that outlives the process must be re-bound to its environment on every restart.** The
+  database survives a restart and `SOLANA_RPC_URL` does not, so stored transfers could be settled
+  against a cluster they were never sent to — and another cluster's silence plus its block height
+  reads exactly like "expired, nothing spent". Wherever a stored record names a network, a chain, a
+  tenant, or an account, re-verify that binding before reading anything from the environment as
+  evidence about the record.
+- **A transport failure is not an answer.** Deleting local state because a call threw treats
+  "unreachable" as "refused". Split failures into *the peer answered*, *the call never left here*,
+  and *nobody knows* — and for the third, keep the state and reconcile it with a **read**, never by
+  repeating the write.
+- **A check and the act it guards must be inside the same lock.** The sidecar checked a blockhash
+  window when it accepted an approval, and the phone then waited on its wallet lock before calling
+  the wallet. Whenever a guard and the guarded action are separated by a wait, the guard has to be
+  re-applied on the far side of it — and the recovery you want decides which side the lock goes on.
+- **An existing script is not a running check.** `pnpm test:transfer` existed for a whole stage
+  without any CI job invoking it. When a task adds a command, add it to the workflow in the same
+  change, and read the workflow to confirm rather than assuming the suite name is picked up.

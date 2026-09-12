@@ -12,7 +12,7 @@ import { after, before, describe, it } from "node:test";
 import { Network } from "../gen/seekervault/request/v1/request_pb.js";
 import { FakeChain, startFakeRpc, type FakeRpc } from "../testing/chain.ts";
 import { GENESIS_HASHES } from "./network.ts";
-import { ChainUnavailable, SolanaRpc } from "./rpc.ts";
+import { ChainUnavailable, SolanaRpc, withChainBudget } from "./rpc.ts";
 
 const TIMEOUT_MS = 2000;
 const API_KEY = "super-secret-api-key";
@@ -182,5 +182,30 @@ describe("SolanaRpc failures", () => {
         `the message leaked the endpoint: ${message}`,
       );
     }
+  });
+});
+
+describe("withChainBudget", () => {
+  it("returns what the operation returned, when it finishes in time", async () => {
+    assert.equal(
+      await withChainBudget(() => Promise.resolve("built"), 1000),
+      "built",
+    );
+  });
+
+  it("abandons an operation that outlasts the budget, so nothing it built is used", async () => {
+    let finished = false;
+    const slow = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      finished = true;
+      return "built";
+    };
+    await assert.rejects(
+      withChainBudget(slow, 20),
+      (error: Error) =>
+        error instanceof ChainUnavailable &&
+        /didn't finish answering within 20 ms/.test(error.message),
+    );
+    assert.equal(finished, false, "the caller is not waiting on it either way");
   });
 });

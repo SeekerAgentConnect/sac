@@ -30,9 +30,12 @@ import io.github.brrenat.seekervault.wallet.WalletNetwork
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
+import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -634,6 +637,74 @@ class InboxViewModelTest {
         return Triple(key, viewModel, viewModel.state.value.preparations[key] as Preparation.Ready)
     }
 
+    /**
+     * The gap the sidecar's own freshness check cannot close: it checks when it accepts the
+     * approval, and the phone may then wait on the one wallet lock for as long as the owner is in
+     * the wallet app with something else.
+     */
+    @Test
+    fun aWindowThatClosesWhileTheWalletIsBusyNeverReachesTheWallet() {
+        var clock = Instant.parse("2026-09-12T12:00:00Z")
+        gateway.preparedExpiry = clock.plusSeconds(60)
+        val (key, _) = pendingTransfer()
+        val viewModel = InboxViewModel(repository, wallet, now = { clock })
+        viewModel.prepare(key)
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+        assertEquals(1, gateway.preparations[key])
+
+        // Another wallet interaction holds the one wallet lock.
+        val release = CompletableDeferred<Unit>()
+        val holder = CoroutineScope(Dispatchers.Unconfined)
+        val busy = holder.launch { wallet.withWallet { release.await() } }
+
+        viewModel.approveTransfer(key, reviewed)
+        // While the approval waits for the lock, the blockhash window closes.
+        clock = clock.plusSeconds(61)
+        release.complete(Unit)
+        runBlocking { busy.join() }
+
+        assertTrue("no wallet was opened", adapter.sendings.isEmpty())
+        assertEquals("and nothing was approved anywhere", emptyList<Any>(), gateway.submits)
+        assertNull(viewModel.state.value.inbox.result(key))
+        assertEquals(SigningProblem.Stale, viewModel.state.value.problem)
+        assertEquals(key, viewModel.state.value.problemKey)
+        // The owner is given a fresh preparation to review instead.
+        assertEquals(2, gateway.preparations[key])
+        assertEquals(
+            RequestState.REQUEST_STATE_PENDING,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
+    @Test
+    fun aWindowThatClosesWhileTheApprovalIsCommittedNeverReachesTheWalletEither() {
+        var clock = Instant.parse("2026-09-12T12:00:00Z")
+        gateway.preparedExpiry = clock.plusSeconds(60)
+        val (key, _) = pendingTransfer()
+        val viewModel = InboxViewModel(repository, wallet, now = { clock })
+        viewModel.prepare(key)
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+        // The sidecar takes the approval, and the round trip outlasts the window.
+        gateway.beforeSubmit = { clock = clock.plusSeconds(61) }
+
+        viewModel.approveTransfer(key, reviewed)
+
+        assertTrue("stale bytes never reach the wallet", adapter.sendings.isEmpty())
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.EXECUTION_FAILURE,
+            ),
+            submitted(),
+        )
+        val signing = viewModel.state.value.inbox.result(key)?.signing
+        assertTrue("$signing", signing is SigningOutcome.Failed)
+        assertEquals(
+            RequestState.REQUEST_STATE_FAILED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
     @Test
     fun approvingHandsTheWalletExactlyTheBytesThatWereReviewed() {
         val (key, viewModel, reviewed) = reviewedTransfer()
@@ -789,20 +860,80 @@ class InboxViewModelTest {
     }
 
     @Test
-    fun anApprovalTheServerNeverTookOpensNoWalletAndIsNotKept() {
+    fun anApprovalTheServerRefusedOpensNoWalletAndIsNotKept() {
         val (key, viewModel, reviewed) = reviewedTransfer()
-        server.failure = GatewayException.Kind.Unreachable
+        server.failure = GatewayException.Kind.CertificateRejected
 
         viewModel.approveTransfer(key, reviewed)
 
         assertEquals(emptyList<Any>(), adapter.sendings)
-        // Nothing is stored, so the transfer is the owner's to review and approve again.
+        // The call never left this phone, so nothing was approved: the transfer is the owner's to
+        // review and approve again.
         assertNull(viewModel.state.value.inbox.result(key))
         assertEquals(SigningProblem.NotApproved, viewModel.state.value.problem)
         assertEquals(
             RequestState.REQUEST_STATE_PENDING,
             server.stateOf(key.connectionId, key.requestId),
         )
+    }
+
+    @Test
+    fun anApprovalWithNoAnswerIsKeptAndDroppedOnlyOnceTheServerSaysItNeverArrived() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        server.failure = GatewayException.Kind.Unreachable
+
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(SigningProblem.NotApproved, viewModel.state.value.problem)
+        // The approval is kept: a dropped connection is not an answer, and the server may have
+        // taken it. Only the server can say.
+        assertNotNull(viewModel.state.value.inbox.result(key))
+
+        server.failure = null
+        viewModel.sendAgain(key)
+
+        // It never arrived, so the request is the server's again and the owner reviews afresh.
+        assertNull(viewModel.state.value.inbox.result(key))
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(
+            RequestState.REQUEST_STATE_PENDING,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
+    @Test
+    fun anApprovalTheServerTookButNeverConfirmedEndsTheTransferInsteadOfStrandingIt() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        // The server commits the approval and the response is lost on the way back.
+        server.loseNextResponse = true
+
+        viewModel.approveTransfer(key, reviewed)
+
+        // As far as this phone knows nothing was approved, so no wallet was opened.
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(
+            RequestState.REQUEST_STATE_PROCESSING,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+
+        viewModel.sendAgain(key)
+
+        // The approval is never sent a second time; the request is read, and the server is told
+        // what happened, so it ends instead of waiting for a wallet that was never asked.
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.EXECUTION_FAILURE,
+            ),
+            submitted(),
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_FAILED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        assertEquals(Delivery.Accepted, viewModel.state.value.inbox.result(key)?.delivery)
     }
 
     @Test

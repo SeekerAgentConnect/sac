@@ -8,6 +8,7 @@ import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.Rejection
+import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.executionFailure
@@ -140,18 +141,33 @@ class ConnectionRepository(
                 .also { if (it.isNotEmpty()) publish() }
         }
         abandoned.forEach { deliver(it.key) }
+        // And an approval whose answer was lost is asked about, rather than left in the dark: the
+        // sidecar may be holding a PROCESSING request only this phone can settle.
+        locked { unreconciledApprovals(except) }.forEach { deliver(it) }
         return abandoned.map { it.key }
     }
 
-    // Approvals with no wallet answer and nothing settled yet. Call it under the lock.
+    // Approvals with no wallet answer and nothing settled yet. Call it under the lock. An approval
+    // whose own fate is unknown isn't one: no wallet was opened for it, so there is nothing to
+    // report until the sidecar has said whether it took the approval at all.
     private fun abandonedSignings(except: Set<RequestKey>): List<LocalResult> =
         results.list().filter {
             it.answer == Answer.Approve &&
                 it.signing == null &&
                 it.delivery == Delivery.Waiting &&
                 it.key !in except &&
-                !it.uncommittedTransfer
+                !it.uncommittedTransfer &&
+                !it.approvalUncertain
         }
+
+    // Approvals this phone sent and never got an answer to. Call it under the lock.
+    private fun unreconciledApprovals(except: Set<RequestKey>): List<RequestKey> =
+        results
+            .list()
+            .filter {
+                it.approvalUncertain && it.delivery == Delivery.Waiting && it.key !in except
+            }
+            .map { it.key }
 
     /**
      * Approved transfers the sidecar never accepted. Nothing was asked of the wallet for one, and
@@ -400,10 +416,24 @@ class ConnectionRepository(
             markApproved(stored)?.let { ApprovalOutcome.Accepted(it) }
                 ?: ApprovalOutcome.Refused(CheckOutcome.Failed)
         } catch (e: GatewayException) {
-            // Nothing was approved, so nothing is kept. The wallet was never opened.
-            locked {
-                results.delete(key.connectionId, key.requestId)
-                publish()
+            // A refusal is an answer: the sidecar has the approval and turned it down, or the call
+            // never left this phone. Nothing was approved, so nothing is kept.
+            //
+            // A failure that isn't an answer is a different thing. The sidecar may have committed
+            // the approval and lost the response on the way back, and a request it moved to
+            // PROCESSING is one only this phone can settle. Deleting the approval would strand it
+            // there for good, with the owner's reviewed bytes gone too, so it is kept and marked
+            // as unknown; delivery asks the sidecar what became of it (send).
+            if (e.kind.answersTheApproval) {
+                locked {
+                    results.delete(key.connectionId, key.requestId)
+                    publish()
+                }
+            } else {
+                locked {
+                    stillStored(stored)?.let { save(it.copy(approvalUncertain = true)) }
+                    publish()
+                }
             }
             if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(key.connectionId)
             when (e.kind) {
@@ -554,25 +584,34 @@ class ConnectionRepository(
             // The owner's approval goes first: the sidecar takes the wallet's result only for a
             // request the approval has already moved to PROCESSING.
             if (current.answer == Answer.Approve && !current.approved) {
-                // An approved transfer that reaches here was never committed, so there is nothing
-                // to send: approveTransfer removes such an approval, and load() cleans up one a
-                // crash left behind. Sending it now would approve a transaction nobody reviewed
-                // afresh.
-                if (current.uncommittedTransfer) {
-                    return settle(current, Delivery.Undeliverable, current.request)
+                if (current.approvalUncertain) {
+                    // An approval this phone never got an answer to. The approval is never sent
+                    // again: reading the request says whether the sidecar took it, and that is the
+                    // whole question. Whatever it says, there is no approval left to submit here.
+                    current =
+                        reconcileApproval(current, connection.serverUrl, credential) ?: return null
+                    if (current.delivery != Delivery.Waiting || !current.approved) return current
+                } else {
+                    // An approved transfer that reaches here was never committed, so there is
+                    // nothing to send: approveTransfer removes such an approval, and load() cleans
+                    // up one a crash left behind. Sending it now would approve a transaction
+                    // nobody reviewed afresh.
+                    if (current.uncommittedTransfer) {
+                        return settle(current, Delivery.Undeliverable, current.request)
+                    }
+                    val approval =
+                        current.request.messageApproval()
+                            ?: return settle(current, Delivery.Undeliverable, current.request)
+                    gateway.submitResult(
+                        connection.serverUrl,
+                        credential,
+                        submitResultRequest {
+                            ref = current.request.ref
+                            this.approval = approval
+                        },
+                    )
+                    current = markApproved(current) ?: return null
                 }
-                val approval =
-                    current.request.messageApproval()
-                        ?: return settle(current, Delivery.Undeliverable, current.request)
-                gateway.submitResult(
-                    connection.serverUrl,
-                    credential,
-                    submitResultRequest {
-                        ref = current.request.ref
-                        this.approval = approval
-                    },
-                )
-                current = markApproved(current) ?: return null
             }
             // Nothing more to send until the wallet has answered.
             val submission = submissionFor(current) ?: return current
@@ -601,6 +640,62 @@ class ConnectionRepository(
                         }
                     }
             }
+        }
+    }
+
+    /**
+     * Finds out what became of an approval whose answer this phone never got, by reading the
+     * request rather than sending anything (SAW-021). The approval is never submitted a second time
+     * from here: the owner reviewed one preparation, and the only open question is whether the
+     * sidecar took it.
+     * - Still PENDING: it never arrived. The approval is dropped and null is returned, so the owner
+     *   sees the request pending again and reviews the preparation as it is then.
+     * - PROCESSING: it arrived, and the wallet was never opened — this phone opens it only for an
+     *   approval the sidecar answered. So nothing was signed and nothing was sent, and that is what
+     *   the answer now says, rather than leaving the request PROCESSING for ever.
+     * - Anything else: the request has moved on, and what the sidecar reports stands.
+     *
+     * A sidecar that can't be asked throws, and [send] treats that like any other failed delivery:
+     * the approval waits, and the next refresh asks again.
+     */
+    private suspend fun reconcileApproval(
+        result: LocalResult,
+        serverUrl: String,
+        credential: String,
+    ): LocalResult? {
+        val checked =
+            try {
+                gateway.checkStatus(serverUrl, credential, result.key)
+            } catch (e: GatewayException) {
+                // The sidecar refuses to look on chain for a request that has nothing there yet —
+                // one still PENDING, or PROCESSING and waiting for a wallet — and sends the
+                // request itself along with the refusal. That request is the whole answer here.
+                if (e.kind == GatewayException.Kind.Unauthenticated) throw e
+                e.request ?: throw e
+            }
+        if (checked.state == RequestState.REQUEST_STATE_PENDING) {
+            return locked<LocalResult?> {
+                stillStored(result)?.let { results.delete(it.connectionId, it.requestId) }
+                publish()
+                null
+            }
+        }
+        if (checked.state != RequestState.REQUEST_STATE_PROCESSING) {
+            return settle(result, Delivery.Superseded, checked)
+        }
+        return locked<LocalResult?> {
+            val stored = stillStored(result) ?: return@locked null
+            stored
+                .copy(
+                    approved = true,
+                    approvalUncertain = false,
+                    request = checked,
+                    signing = stored.signing ?: SigningOutcome.Failed(APPROVAL_ANSWER_LOST),
+                )
+                .also {
+                    save(it)
+                    publish()
+                }
         }
     }
 
@@ -747,6 +842,10 @@ class ConnectionRepository(
         const val MAX_PAGES = 10
         val SETTLED_RETENTION: Duration = Duration.ofDays(7)
         const val APP_CLOSED = "The app closed before the wallet answered, so nothing was signed."
+        const val APPROVAL_ANSWER_LOST =
+            "The approval reached the server, but its answer never reached this phone, so the " +
+                "wallet was never opened. Nothing was signed and nothing was sent."
+
         const val WALLET_LOST =
             "The wallet's answer never reached this phone, so nothing was signed."
         // A transfer can't say that: the wallet may have sent the transaction before it went.
@@ -756,6 +855,27 @@ class ConnectionRepository(
         const val WALLET_LOST_SENDING =
             "The wallet's answer never reached this phone, so it never learned whether the " +
                 "transaction was sent."
+
+        /**
+         * Whether a failed approval is an answer about the approval itself. A refusal, and a call
+         * that never left this phone, both say the approval was not taken. Everything else — a
+         * connection that dropped, a response this app couldn't read — says nothing, and an
+         * approval nobody answered must not be thrown away (approveTransfer).
+         */
+        val GatewayException.Kind.answersTheApproval: Boolean
+            get() =
+                when (this) {
+                    GatewayException.Kind.Unauthenticated,
+                    GatewayException.Kind.Rejected,
+                    GatewayException.Kind.NotFound,
+                    GatewayException.Kind.InvalidState,
+                    GatewayException.Kind.StalePreparation,
+                    GatewayException.Kind.CertificateRejected,
+                    GatewayException.Kind.CleartextBlocked -> true
+                    GatewayException.Kind.Unreachable,
+                    GatewayException.Kind.BadResponse,
+                    GatewayException.Kind.Other -> false
+                }
 
         /**
          * What an outcome this phone never learned means, which depends on what was with the

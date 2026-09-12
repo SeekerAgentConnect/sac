@@ -116,7 +116,7 @@
     <string name="request_field_token">Token (by its mint address)</string>
     <string name="request_field_token_account">Into the token account</string>
     <string name="request_field_pays_fee">Paid and signed by</string>
-    <string name="request_field_creates">Also creates</string>
+    <string name="request_field_creates">Recipient\'s account</string>
     <string name="request_field_priority">Priority fee</string>
     <string name="request_field_instructions">Instructions read</string>
     <string name="request_field_blockhash">Blockhash</string>
@@ -125,7 +125,7 @@
     <string name="transfer_amount_sol">%1$s SOL (%2$s lamports)</string>
     <string name="transfer_amount_token">%1$s (%2$s base units)</string>
     <string name="transfer_recipient_unknown">An account this phone cannot tie to any wallet</string>
-    <string name="transfer_creates_account">A token account for the recipient, which they keep</string>
+    <string name="transfer_creates_account">Checked as theirs on chain, and created if they have none</string>
     <string name="transfer_priority_price">%1$s micro-lamports per compute unit</string>
     <string name="transfer_instructions_read">%1$d of %2$d</string>
     <string name="transfer_estimate_fee">Network fee about %1$s SOL</string>
@@ -155,6 +155,7 @@
     <string name="finding_source_account">The tokens would come from an account that is not yours for this token.</string>
     <string name="finding_destination_account">The tokens would go to an account that is not the recipient\'s for this token.</string>
     <string name="finding_creation_for_someone_else">A token account would be created for somebody other than the recipient.</string>
+    <string name="finding_destination_owner_unchecked">Nothing in this transaction makes the chain check that the destination token account is still the recipient\'s, so who would receive the tokens cannot be established.</string>
     <string name="finding_unrecognized">The transaction also runs a program this phone does not read. It is not thereby harmless.</string>
     <string name="finding_unreadable_value">A program that can move funds is asked to do something this phone does not read. Being a program a transfer may use is no reason to accept every instruction it offers.</string>
 </resources>

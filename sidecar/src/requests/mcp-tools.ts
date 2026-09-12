@@ -648,6 +648,14 @@ function registerTransferTool(
         if (reason !== undefined) {
           throw new RequestFailure(RequestError.INVALID_PARAMETERS, reason);
         }
+        // A retry is answered before anything is read from a chain: the tool's contract is that
+        // the same idempotency key gives back the same request, and that must not depend on an
+        // endpoint being reachable, or on the mint looking the same as it did then.
+        const replay = store.replayOf(idempotency_key, action);
+        if (replay !== undefined) {
+          log(`request ${idOf(replay)} returned again for its idempotency key`);
+          return requestView(replay);
+        }
         await preparer.checkAsset(asset);
         const { request, created } = store.create({
           action,

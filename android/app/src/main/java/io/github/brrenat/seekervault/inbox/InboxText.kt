@@ -429,6 +429,7 @@ fun findingText(finding: Finding): Int =
         Finding.MintMismatch -> R.string.finding_mint_mismatch
         Finding.SourceNotOwnersAccount -> R.string.finding_source_account
         Finding.DestinationNotRecipientsAccount -> R.string.finding_destination_account
+        Finding.DestinationOwnerUnchecked -> R.string.finding_destination_owner_unchecked
         Finding.AccountCreationForSomeoneElse -> R.string.finding_creation_for_someone_else
         Finding.UnrecognizedInstruction -> R.string.finding_unrecognized
         Finding.UnreadableValueInstruction -> R.string.finding_unreadable_value

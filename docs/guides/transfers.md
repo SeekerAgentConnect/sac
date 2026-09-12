@@ -58,9 +58,11 @@ When the app asks to prepare the request, the sidecar reads the chain and builds
 
 | | Native SOL | A classic SPL token |
 | --- | --- | --- |
-| **Instructions** | One System `Transfer` | `TransferChecked`, and before it `CreateIdempotent` when the recipient has no token account yet |
+| **Instructions** | One System `Transfer` | `TransferChecked`, and before it `CreateIdempotent`, always |
 | **Accounts** | Your wallet and the recipient | Both associated token accounts, the mint, and your wallet as the authority |
-| **Extra cost** | None | The rent for a token account it creates, reported as `rent_lamports` |
+| **Extra cost** | None | The rent for a token account it creates, reported as `rent_lamports`, and nothing when the recipient already has one |
+
+`CreateIdempotent` is in every token transfer, not only the ones that create an account. It costs nothing when the account exists, and it is what makes the chain check who the destination belongs to: that program refuses the whole transaction unless the account is the recipient's for that mint. Your phone reaches no chain, and a token account's owner can be changed after its address is derived, so without that instruction the phone would be reading an address and calling it a person. It refuses to ([`../security.md`](../security.md#inspecting-a-transfer)).
 
 It also returns the network fee it estimated, how long the transaction can still land, and the SHA-256 of its bytes. Your wallet is the fee payer and the only signer, and every signature slot is empty.
 
@@ -258,7 +260,8 @@ Check, against what you typed in step 7:
 
 - the amount, in base units, and the recipient;
 - the wallet that pays and signs;
-- the token's mint, for a token, and the account it goes into;
+- the token's mint, for a token, and the account it goes into. **Recipient's account** says that
+  account is checked as theirs on chain, and created if they have none;
 - the network fee and, for a new token account, its rent — both labelled as **the server's
   estimate**, because neither can be read out of a transaction;
 - that policy says **Not evaluated**, which is what it will say until Stage 5.
@@ -325,7 +328,7 @@ None of these is a failure of the transfer you asked for; each is a place it sto
 
 | What you see | What happened | What to do |
 | --- | --- | --- |
-| **"The server has a newer transaction for this request, or this one can no longer be sent."** Nothing was approved, and the screen has already read it again. | Your review sat long enough for the blockhash to run down, or the server built a newer version meanwhile. The approval binds to a version and a hash, so the old one can't be used. | Review the version now on screen — it is a different transaction — and approve that. Nothing was signed, nothing was sent, and the request is still `PENDING`. |
+| **"The server has a newer transaction for this request, or this one can no longer be sent."** Nothing was approved, and the screen has already read it again. | Your review sat long enough for the blockhash to run down, or the server built a newer version meanwhile. The approval binds to a version and a hash, so the old one can't be used. This also happens when another wallet interaction was still open when you tapped: the phone runs one at a time, and it checks the window again once its turn comes. | Review the version now on screen — it is a different transaction — and approve that. Nothing was signed, nothing was sent, and the request is still `PENDING`. |
 | The transfer confirms as **failed**, with the network's own reason, usually about lamports. | Not enough SOL. **Nothing reads your balance before you approve**: the sidecar has no `getBalance` call at all, so a SOL amount larger than you hold, and a fee or rent you can't cover, are all found out by the network when the transaction runs. | Fund the account — at least the amount, plus the fee, plus the rent when a token account is created — and have the agent ask again. The failed attempt still cost its fee. Nothing here builds a replacement. |
 | The review shows **"Network fee about … SOL, and … SOL for the new token account"**. | The recipient has no account for that mint, so the transaction creates one, and Solana charges rent for it — about 0.002 SOL, paid by you, once per recipient per mint. | Nothing is wrong. Either approve it, or send to someone who already holds that token. The second transfer to the same recipient has no rent in it. |
 | **"You declined in the wallet. Nothing was signed."** The agent reads `REJECTED`. | You said no inside the wallet — or **Reject** in the app, which never opens the wallet at all. | Nothing to undo: nothing was signed and nothing reached the network. If it was a mistake, have the agent ask again; the same request can't be revived. |
