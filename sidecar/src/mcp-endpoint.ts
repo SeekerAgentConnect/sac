@@ -15,6 +15,7 @@ import { z } from "zod";
 import { bearerTokenMatches } from "./auth.ts";
 import { LiveCommandFailure, type LiveCommandBridge } from "./live/bridge.ts";
 import { MAX_COMMAND_TEXT_BYTES } from "./live/command.ts";
+import type { ConfirmationTracker } from "./requests/confirmation.ts";
 import { registerRequestTools } from "./requests/mcp-tools.ts";
 import type { TransactionPreparer } from "./requests/preparation.ts";
 import type { RequestStore } from "./storage/request-store.ts";
@@ -69,6 +70,8 @@ export interface McpEndpointOptions {
   readonly demoTools?: boolean;
   /** Serves vault_transfer; absent when no Solana RPC endpoint is configured (SOLANA_RPC_URL). */
   readonly preparer?: TransactionPreparer;
+  /** Checks a submitted transaction against the chain when a tool reads it (SAW-022). */
+  readonly tracker?: ConfirmationTracker;
 }
 
 export function createMcpEndpoint(
@@ -147,6 +150,7 @@ export function createMcpEndpoint(
     registerRequestTools(server, requests, log, {
       demoTools,
       preparer: options.preparer,
+      tracker: options.tracker,
     });
     return server;
   }

@@ -171,7 +171,8 @@ describe("stage boundary", () => {
 
     // Nothing broadcasts, nothing signs, nothing swaps, and no key is the sidecar's or an
     // agent's. The sidecar reads the chain (SAW-019) and hands the unsigned bytes to the owner's
-    // wallet; sending is the wallet's, and confirmation is SAW-022's work.
+    // wallet; sending is the wallet's. SAW-022 lets it read what became of a signature, which is
+    // still only reading: it can see a transaction, and it can't make or send one.
     const spending =
       /sendRawTransaction|sendTransaction|sendAndConfirm|signTransaction|signAllTransactions|requestAirdrop|jup\.ag|\bKeypair\b|\bprivateKey\b|\bsecretKey\b|\bkeypair\b/i;
     const hits = shippedSources().filter((file) =>
@@ -197,6 +198,8 @@ describe("stage boundary", () => {
         "getGenesisHash",
         "getLatestBlockhash",
         "getMinimumBalanceForRentExemption",
+        "getSignatureStatuses",
+        "getTransaction",
       ],
       "the chain client asks for nothing but these reads",
     );

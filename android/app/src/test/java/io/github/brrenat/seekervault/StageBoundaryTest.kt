@@ -222,6 +222,10 @@ class StageBoundaryTest {
         // wallet bytes a sidecar built and this phone read. The app still builds no transaction,
         // makes no signature of its own, and reaches no chain — it has no RPC endpoint at all, and
         // couldn't broadcast or simulate anything if it wanted to. Swaps are Stage 6.
+        //
+        // SAW-022 lifts nothing here. Following a sent transaction is the sidecar's work, and this
+        // app only asks it (`RequestService.CheckStatus`): it reads no chain of its own, and a
+        // status check never reaches a wallet.
         val spending =
             Regex(
                 """signTransactions\b|sendTransaction|sendRawTransaction|""" +
@@ -247,7 +251,19 @@ class StageBoundaryTest {
             listOf("MwaWalletAdapter.kt"),
             hits(Regex("signAndSendTransactions")).map { it.substringBefore(':') }.distinct(),
         )
+        // Checking a status asks the server and nothing else. The wallet is reached from one
+        // place, and following a transaction to the chain isn't it (SAW-022).
+        assertEquals(
+            emptyList<String>(),
+            hits(Regex("checkStatus")).filter { it.startsWith("MwaWalletAdapter") },
+        )
+        assertEquals(
+            emptyList<String>(),
+            hits(Regex("""\bwallet\.sign""")).filter { it.startsWith("ConnectionRepo") },
+        )
         // The scan reads the real sources, so a line that did match would be found.
+        assertTrue(hits(Regex("checkStatus")).isNotEmpty())
+        assertTrue(hits(Regex("""\bwallet\.sign""")).isNotEmpty())
         assertTrue(hits(Regex("signMessage")).isNotEmpty())
         assertTrue(hits(Regex("decodeTransaction")).isNotEmpty())
         assertEquals(

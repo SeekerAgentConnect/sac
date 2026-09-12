@@ -104,10 +104,29 @@ If the server refuses the approval because a newer version exists or the blockha
 | Refuses before signing | Not sent, with what it said | `FAILED` |
 | Never answers, or the app dies while it has it | This phone never learned what the wallet did | `UNKNOWN` |
 
-`UNKNOWN` is not a failure and not a licence to retry. A signed transaction can land after your phone has stopped listening, so the honest answer is that nobody here knows yet. Your wallet is never asked a second time. Checking the chain and settling `UNKNOWN` is SAW-022.
+`UNKNOWN` is not a failure and not a licence to retry. A signed transaction can land after your phone has stopped listening, so the honest answer is that nobody here knows yet. Your wallet is never asked a second time.
 
-`SUBMITTED` means your wallet sent it, not that it succeeded on chain — that is a separate question, and also SAW-022.
+`SUBMITTED` means your wallet sent it, not that it succeeded on chain. That is the next question.
+
+## Following it to the network
+
+Tap **Check status** on the request and the server looks the transaction's ID up on the chain (SAW-022). It opens no wallet, signs nothing, and sends nothing again, so you can tap it as often as you like. The agent gets the same answer by reading the request.
+
+| What the network says | What you see | What the agent reads |
+| --- | --- | --- |
+| It succeeded | "This transfer went through on the network." | `CONFIRMED`, which is terminal |
+| It ran and failed | The network's own reason | `FAILED` |
+| It hasn't landed yet | Still sent, not confirmed | `SUBMITTED` |
+| Its blockhash expired and it never landed | Sent, then failed: nothing was spent | `FAILED` |
+
+Three things are worth knowing about that answer:
+
+- **It is one server's word.** The line says which host looked — "Checked with rpc.example.test" — because there is no second opinion behind a confirmed or failed transfer.
+- **The server checks that what it found is what you approved.** It fetches the transaction the chain holds under that ID and compares it, byte for byte, with the one you read. If they differ, it says so and settles nothing, rather than reporting a stranger's transaction as yours.
+- **Nothing is ever retried for you.** A failure on chain, an expired blockhash, and an ID the server can't account for are all reported as what they are. If you still want the transfer, the agent asks again and you review a fresh request.
+
+An `UNKNOWN` transfer is the one case nothing here can settle: no ID ever reached this phone, so there is nothing to look up. [`troubleshooting.md`](troubleshooting.md#a-transfer-whose-outcome-is-unknown) says how to find out from your wallet's own history.
 
 ## Where this stops for now
 
-SAW-019 built the transaction, SAW-020 taught the phone to read it, and SAW-021 lets you approve one and have your wallet send it. Following a sent transaction to confirmation, and settling an `UNKNOWN` outcome from the chain, come with SAW-022.
+SAW-019 built the transaction, SAW-020 taught the phone to read it, SAW-021 lets you approve one and have your wallet send it, and SAW-022 follows it to the network. Policies (Stage 5) and swaps (Stage 6) come later; until then every transfer is one you approved by hand.

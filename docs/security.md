@@ -154,6 +154,16 @@ The wallet signs **and sends** a transfer, so the rules around it are tighter th
 - **One wallet interaction at a time,** and one per approval. What the wallet did is stored before it is sent, and every retry reaches a sidecar, never a wallet.
 - **An outcome nobody knows is reported as UNKNOWN.** A wallet that reports it signed but did not submit, a session that ended without an answer, or an app killed while the wallet had the transaction all leave it unknown rather than failed. A signed transaction can still land, and the phone never asks again.
 
+### Confirming a transfer (SAW-022)
+
+Whether a sent transaction succeeded is read from the chain, and only by the sidecar ([`docs/protocol.md`](protocol.md#confirmation)).
+
+- **A result is checked against the approved bytes.** Before a transfer is reported CONFIRMED, the sidecar fetches the transaction the chain holds under the reported signature and compares its message with the exact `PreparedTransaction` the approval named. A signature naming anything else settles nothing, and is disclosed as not matching rather than reported either way.
+- **The trust is named.** The whole answer rests on one configured endpoint. `Outcome.confirmation.endpoint`, the agent's `checked_with`, and the phone's "Checked with …" line all carry its **host only**: `SOLANA_RPC_URL` can hold an API key, so the URL never reaches a log, an error, or a stored record.
+- **A check can settle a request or leave it alone, and nothing else.** It opens no wallet, signs nothing, sends nothing, and never moves a request backward or back to PENDING. A request that has finished is left as it is, whatever a later look says.
+- **Silence is not evidence.** An endpoint that timed out, refused, or has no status yet changes nothing. Only the approved transaction's blockhash window closing, together with a search of the ledger that still finds nothing, is taken as proof that it never landed.
+- **Nothing builds a replacement.** Not the sidecar, not the phone, not on a chain failure, an expiry, or an unaccountable signature. Another attempt is a new request the owner approves by hand.
+
 ### Signing a message (SAW-016)
 
 - **Nothing reaches the wallet before the owner approves.** The app opens the wallet only after they tap **Approve and sign** on the request, and only for the wallet and network shown on that screen. `InboxViewModelTest` checks that no wallet call happens otherwise.

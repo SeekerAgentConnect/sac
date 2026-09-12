@@ -14,11 +14,13 @@ import { z } from "zod";
 import {
   ActionSchema,
   AssetSchema,
+  ConfirmationLevel,
   Network,
   RequestError,
   RequestState,
   type Action,
   type ActionRequest,
+  type Confirmation,
   type WalletBinding,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { MAX_COMMAND_TEXT_BYTES } from "../live/command.ts";
@@ -31,6 +33,7 @@ import {
   invalidActionReason,
   messageBytes,
 } from "./action.ts";
+import type { ConfirmationTracker } from "./confirmation.ts";
 import { isTerminal } from "./lifecycle.ts";
 import type { TransactionPreparer } from "./preparation.ts";
 import {
@@ -63,6 +66,17 @@ const STATUSES = [
   "UNKNOWN",
 ] as const;
 
+const LEVELS = ["not_found", "processed", "confirmed", "finalized"] as const;
+
+/** Each ConfirmationLevel's name for agents; UNSPECIFIED has none, and is left out. */
+const LEVEL_NAMES: ReadonlyMap<ConfirmationLevel, (typeof LEVELS)[number]> =
+  new Map([
+    [ConfirmationLevel.NOT_FOUND, "not_found"],
+    [ConfirmationLevel.PROCESSED, "processed"],
+    [ConfirmationLevel.CONFIRMED, "confirmed"],
+    [ConfirmationLevel.FINALIZED, "finalized"],
+  ]);
+
 /** A request as agents see it: every tool returns this in structuredContent. */
 export interface RequestView {
   readonly request_id: string;
@@ -76,6 +90,11 @@ export interface RequestView {
   readonly signature?: string;
   readonly signed_message_base64?: string;
   readonly detail?: string;
+  readonly confirmation?: (typeof LEVELS)[number];
+  readonly slot?: number;
+  readonly chain_error?: string;
+  readonly checked_at?: string;
+  readonly checked_with?: string;
 }
 
 const VIEW_SCHEMA = {
@@ -110,6 +129,30 @@ const VIEW_SCHEMA = {
     .string()
     .optional()
     .describe("Display text that explains how the request ended."),
+  confirmation: z
+    .enum(LEVELS)
+    .optional()
+    .describe(
+      "How far the transaction had got the last time the chain was asked. It is not the status: a finalized transaction that failed on chain leaves the request FAILED.",
+    ),
+  slot: z
+    .number()
+    .optional()
+    .describe("The slot the transaction landed in, once it has been seen."),
+  chain_error: z
+    .string()
+    .optional()
+    .describe("The chain's own error, when the transaction ran and failed."),
+  checked_at: z
+    .string()
+    .optional()
+    .describe("When the chain was last asked about the signature."),
+  checked_with: z
+    .string()
+    .optional()
+    .describe(
+      "The host of the single Solana RPC endpoint this result rests on. CONFIRMED and FAILED are that one endpoint's word, checked against the exact transaction the owner approved.",
+    ),
 };
 
 const NETWORKS = ["mainnet", "devnet", "testnet"] as const;
@@ -152,6 +195,11 @@ export interface CapabilitiesView {
   readonly max_pending_requests: number;
   readonly min_expires_in_seconds: number;
   readonly max_expires_in_seconds: number;
+  /**
+   * Where a confirmed or failed transfer's word comes from: the host of the one Solana RPC
+   * endpoint this sidecar is configured with, or absent when it has none and can check nothing.
+   */
+  readonly confirmed_with?: string;
 }
 
 const CAPABILITIES_SCHEMA = {
@@ -182,6 +230,12 @@ const CAPABILITIES_SCHEMA = {
     .describe("The most requests the owner may have waiting at once."),
   min_expires_in_seconds: z.number(),
   max_expires_in_seconds: z.number(),
+  confirmed_with: z
+    .string()
+    .optional()
+    .describe(
+      "The host of the single Solana RPC endpoint that decides whether a transfer CONFIRMED or FAILED. There is no second opinion: a result rests on this one endpoint's word. Absent when none is configured, and then a sent transfer stays SUBMITTED.",
+    ),
 };
 
 const GET_CAPABILITIES_DESCRIPTION =
@@ -248,8 +302,12 @@ const REQUEST_ACK_DESCRIPTION =
 
 const GET_REQUEST_DESCRIPTION =
   "Returns a request as it is now, by request_id: its status, whether that's final (terminal), " +
-  "and its result. It never waits for the owner. Errors start with a code: NOT_FOUND or " +
-  "INVALID_PARAMETERS.";
+  "and its result. It never waits for the owner. For a SUBMITTED transfer it also asks the " +
+  "chain what became of the signature, so polling this is how a transfer reaches CONFIRMED or " +
+  "FAILED. A transfer stays SUBMITTED while its outcome is still open, and becomes UNKNOWN if " +
+  "the transaction on chain under that signature isn't the one the owner approved; neither is " +
+  "a failure, and neither is a reason to send a replacement. Errors start with a code: " +
+  "NOT_FOUND or INVALID_PARAMETERS.";
 
 const CANCEL_REQUEST_DESCRIPTION =
   "Withdraws a PENDING request so the owner can no longer act on it, and returns it as " +
@@ -265,6 +323,12 @@ export interface RequestToolOptions {
    * (SOLANA_RPC_URL): without one the sidecar could prepare no transfer, so it offers none.
    */
   readonly preparer?: TransactionPreparer;
+  /**
+   * Asks the chain what became of a submitted transaction, when vault_get_request reads one
+   * (SAW-022). Absent with no endpoint configured, which is when nothing can be checked: a
+   * request then stays SUBMITTED, and says so.
+   */
+  readonly tracker?: ConfirmationTracker;
 }
 
 /** Registers the durable request tools on an MCP server session; vault_request_ack only in demo mode. */
@@ -309,6 +373,9 @@ export function registerRequestTools(
         max_pending_requests: store.pendingLimit,
         min_expires_in_seconds: MIN_EXPIRES_IN_SECONDS,
         max_expires_in_seconds: MAX_EXPIRES_IN_SECONDS,
+        ...(options.tracker === undefined
+          ? {}
+          : { confirmed_with: options.tracker.endpoint }),
       })),
   );
 
@@ -347,7 +414,16 @@ export function registerRequestTools(
         openWorldHint: false,
       },
     },
-    ({ request_id }) => answer(() => requestView(store.get(request_id))),
+    ({ request_id }) =>
+      answerAsync(async () => {
+        const request = store.get(request_id);
+        // Reading is how the sidecar's knowledge advances: it has no background worker, so a
+        // submitted transaction is checked against the chain when somebody asks about it.
+        const tracker = options.tracker;
+        return requestView(
+          tracker === undefined ? request : await tracker.settle(request),
+        );
+      }),
   );
 
   server.registerTool(
@@ -719,6 +795,31 @@ export function requestView(request: ActionRequest): RequestView {
     ...(outcome !== undefined && outcome.detail !== ""
       ? { detail: outcome.detail }
       : {}),
+    ...confirmationView(outcome?.confirmation),
+  };
+}
+
+/**
+ * What the sidecar has checked on chain, as agents see it. `checked_with` is there on purpose:
+ * a CONFIRMED or FAILED transfer rests on one endpoint's word, and the agent is told whose.
+ */
+function confirmationView(
+  confirmation: Confirmation | undefined,
+): Partial<RequestView> {
+  if (confirmation === undefined) return {};
+  const level = LEVEL_NAMES.get(confirmation.level);
+  return {
+    ...(level === undefined ? {} : { confirmation: level }),
+    ...(confirmation.slot === 0n ? {} : { slot: Number(confirmation.slot) }),
+    ...(confirmation.chainError === ""
+      ? {}
+      : { chain_error: confirmation.chainError }),
+    ...(confirmation.checkedAt === undefined
+      ? {}
+      : { checked_at: iso(confirmation.checkedAt) }),
+    ...(confirmation.endpoint === ""
+      ? {}
+      : { checked_with: confirmation.endpoint }),
   };
 }
 

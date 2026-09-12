@@ -16,7 +16,10 @@ import {
   ChainUnavailable,
   type ChainAccount,
   type ChainReader,
+  type ChainTransaction,
+  type Commitment,
   type LatestBlockhash,
+  type SignatureStatus,
 } from "../solana/rpc.ts";
 import {
   MINT_BYTES,
@@ -32,6 +35,21 @@ export const TEST_BLOCKHASH = new PublicKey(
 /** The rent a token account needs, as mainnet charges it. */
 export const TOKEN_ACCOUNT_RENT = 2_039_280n;
 
+/** One signature the fake chain knows about (SAW-022). */
+export interface FakeSignature {
+  readonly slot: bigint;
+  readonly commitment: Commitment;
+  /** The chain's own error, when the transaction ran and failed. */
+  readonly chainError?: string;
+  /**
+   * The wire transaction the chain serves under this signature. Absent stands for an endpoint
+   * that has a status but hasn't served the transaction yet.
+   */
+  readonly transaction?: Uint8Array;
+  /** True for a signature the status cache has dropped: only a ledger search finds it. */
+  readonly onlyInHistory?: boolean;
+}
+
 export class FakeChain implements ChainReader {
   genesisHashValue = GENESIS_HASHES.get(Network.DEVNET) ?? "";
   readonly accounts = new Map<string, ChainAccount>();
@@ -45,6 +63,8 @@ export class FakeChain implements ChainReader {
   readonly calls: string[] = [];
   /** When set, every call fails with it: an endpoint that stopped answering. */
   unavailable: string | undefined;
+  /** What the chain holds under each signature, by base58 signature (SAW-022). */
+  readonly signatures = new Map<string, FakeSignature>();
 
   put(address: PublicKey | string, account: ChainAccount): void {
     this.accounts.set(
@@ -84,6 +104,43 @@ export class FakeChain implements ChainReader {
   rentExemption(): Promise<bigint> {
     this.#called("getMinimumBalanceForRentExemption");
     return Promise.resolve(this.rentLamports);
+  }
+
+  /** Puts a transaction on chain under `signature`. */
+  land(signature: string, entry: FakeSignature): void {
+    this.signatures.set(signature, entry);
+  }
+
+  signatureStatus(
+    signature: string,
+    searchHistory: boolean,
+  ): Promise<SignatureStatus | undefined> {
+    this.#called(
+      `getSignatureStatuses(${searchHistory ? "history" : "cache"})`,
+    );
+    const found = this.signatures.get(signature);
+    if (found === undefined) return Promise.resolve(undefined);
+    if (found.onlyInHistory === true && !searchHistory) {
+      return Promise.resolve(undefined);
+    }
+    return Promise.resolve({
+      slot: found.slot,
+      commitment: found.commitment,
+      chainError: found.chainError,
+    });
+  }
+
+  confirmedTransaction(
+    signature: string,
+  ): Promise<ChainTransaction | undefined> {
+    this.#called("getTransaction");
+    const found = this.signatures.get(signature);
+    if (found?.transaction === undefined) return Promise.resolve(undefined);
+    return Promise.resolve({
+      slot: found.slot,
+      transaction: found.transaction,
+      chainError: found.chainError,
+    });
   }
 
   #called(method: string): void {
@@ -257,6 +314,47 @@ async function answer(
     }
     case "getMinimumBalanceForRentExemption":
       return Number(await chain.rentExemption());
+    case "getSignatureStatuses": {
+      const options = params[1];
+      const searchHistory =
+        typeof options === "object" &&
+        options !== null &&
+        (options as { searchTransactionHistory?: unknown })
+          .searchTransactionHistory === true;
+      const wanted = Array.isArray(params[0]) ? params[0] : [];
+      const statuses = await Promise.all(
+        wanted.map(async (signature) => {
+          const status = await chain.signatureStatus(
+            String(signature),
+            searchHistory,
+          );
+          return status === undefined
+            ? null
+            : {
+                slot: Number(status.slot),
+                confirmations: null,
+                err: status.chainError === undefined ? null : status.chainError,
+                confirmationStatus: status.commitment,
+              };
+        }),
+      );
+      return { ...context, value: statuses };
+    }
+    case "getTransaction": {
+      const found = await chain.confirmedTransaction(String(params[0]));
+      return found === undefined
+        ? null
+        : {
+            slot: Number(found.slot),
+            transaction: [
+              Buffer.from(found.transaction).toString("base64"),
+              "base64",
+            ],
+            meta: {
+              err: found.chainError === undefined ? null : found.chainError,
+            },
+          };
+    }
     default:
       throw new Error(`the fake chain doesn't serve ${method}`);
   }

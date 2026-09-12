@@ -488,6 +488,51 @@ class ConnectionRepository(
         }
     }
 
+    /**
+     * Asks the connection's sidecar what became of a transfer this phone's wallet sent, and keeps
+     * what it answers (SAW-022). No wallet is opened, nothing is signed, nothing is sent again, and
+     * no second record of the spending is made: the only thing that changes here is this phone's
+     * copy of a request the sidecar already had.
+     *
+     * Returns the stored answer as it is afterwards, or null when there is nothing to check.
+     */
+    suspend fun checkStatus(key: RequestKey): LocalResult? {
+        val stored = locked { results.get(key.connectionId, key.requestId) } ?: return null
+        if (!stored.awaitingChain) return stored
+        val connection =
+            find(key.connectionId)?.takeIf { it.usable }
+                ?: throw GatewayException(
+                    GatewayException.Kind.NotFound,
+                    "this connection can't be used",
+                )
+        val credential =
+            withContext(io) { vault.get(key.connectionId) }
+                ?: run {
+                    forgetCredential(key.connectionId)
+                    throw GatewayException(
+                        GatewayException.Kind.Unauthenticated,
+                        "this phone has no credential for the connection any more",
+                    )
+                }
+        val checked =
+            try {
+                gateway.checkStatus(connection.serverUrl, credential, key)
+            } catch (e: GatewayException) {
+                if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(key.connectionId)
+                // A request the sidecar says has moved on is still news: keep what it reported.
+                e.request ?: throw e
+            }
+        return locked {
+            val current = stillStored(stored) ?: return@locked null
+            // Only the phone's copy of the request changes. The owner's answer, the wallet's
+            // outcome, and how it was delivered are what happened here, and they stand.
+            current.copy(request = checked).also {
+                results.put(it)
+                publish()
+            }
+        }
+    }
+
     private suspend fun send(key: RequestKey): LocalResult? {
         val result = locked { results.get(key.connectionId, key.requestId) } ?: return null
         if (result.delivery != Delivery.Waiting) return result

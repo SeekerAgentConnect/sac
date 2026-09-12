@@ -75,6 +75,10 @@ fun RequestDetailsScreen(
     onPrepareAgain: () -> Unit = {},
     /** Approves the transfer as the screen shows it, which opens the wallet (SAW-021). */
     onApproveTransfer: () -> Unit = {},
+    /** A status check is running: the server is reading the chain (SAW-022). */
+    checking: Boolean = false,
+    /** Asks the server what became of a sent transaction. It opens no wallet and sends nothing. */
+    onCheckStatus: () -> Unit = {},
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -105,10 +109,21 @@ fun RequestDetailsScreen(
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
-            if (sending) {
+            if (sending || checking) {
                 LinearProgressIndicator(
                     Modifier.fillMaxWidth().padding(16.dp).testTag(InboxTags.SENDING)
                 )
+            }
+            // What the server read from the chain, and whose word that is (SAW-022).
+            result?.let { answered ->
+                confirmationText(answered)?.let { checked ->
+                    Text(
+                        "$checked ${stringResource(R.string.confirmation_trust)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier =
+                            Modifier.padding(horizontal = 16.dp).testTag(InboxTags.CONFIRMATION),
+                    )
+                }
             }
             Field(
                 R.string.request_field_from,
@@ -268,6 +283,28 @@ fun RequestDetailsScreen(
                     modifier = Modifier.padding(16.dp).testTag(InboxTags.SEND_AGAIN),
                 ) {
                     Text(stringResource(R.string.send_again))
+                }
+            }
+            // Only while the chain could still settle it. It asks the server and nothing else: no
+            // wallet is opened, and the transaction is never sent a second time.
+            if (result?.awaitingChain == true) {
+                // A check that couldn't be made belongs here, next to the button that makes it.
+                // Every other signing problem happens before an answer exists, and shows above.
+                if (signingProblem != null) {
+                    Text(
+                        stringResource(problemText(signingProblem)),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier =
+                            Modifier.padding(horizontal = 16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                    )
+                }
+                OutlinedButton(
+                    onClick = onCheckStatus,
+                    enabled = !checking,
+                    modifier = Modifier.padding(16.dp).testTag(InboxTags.CHECK_STATUS),
+                ) {
+                    Text(stringResource(R.string.check_status))
                 }
             }
         }

@@ -60,6 +60,11 @@ enum class SigningProblem {
      * transfer can be approved again once the server answers.
      */
     NotApproved,
+    /**
+     * The status couldn't be checked: the server didn't answer, or it couldn't read the chain. It
+     * says nothing about the transaction, which stands exactly as it did (SAW-022).
+     */
+    NotChecked,
 }
 
 /**
@@ -98,6 +103,8 @@ data class InboxUiState(
     val problemKey: RequestKey? = null,
     /** Each transfer the owner has opened, and what this phone made of its transaction. */
     val preparations: Map<RequestKey, Preparation> = emptyMap(),
+    /** Transfers whose status is being checked on chain now (SAW-022). */
+    val checking: Set<RequestKey> = emptySet(),
 )
 
 /**
@@ -120,6 +127,7 @@ class InboxViewModel(
         val problem: SigningProblem? = null,
         val problemKey: RequestKey? = null,
         val preparations: Map<RequestKey, Preparation> = emptyMap(),
+        val checking: Set<RequestKey> = emptySet(),
     )
 
     private val activity = MutableStateFlow(Activity())
@@ -139,6 +147,7 @@ class InboxViewModel(
                     now.problem,
                     now.problemKey,
                     now.preparations,
+                    now.checking,
                 )
             }
             .stateIn(
@@ -353,6 +362,27 @@ class InboxViewModel(
      */
     fun onAppVisible() {
         viewModelScope.launch { repository.resolveAbandonedSignings(activity.value.sending) }
+    }
+
+    /**
+     * Asks the sidecar what became of a transfer the wallet sent (SAW-022). It reaches no wallet
+     * and sends nothing: the sidecar looks the signature up on chain and answers with the request
+     * as it stands. A check that can't be made leaves the transfer exactly as it was.
+     */
+    fun checkStatus(key: RequestKey) {
+        if (key in activity.value.checking) return
+        if (repository.inbox.value.result(key)?.awaitingChain != true) return
+        activity.update { it.copy(checking = it.checking + key) }
+        viewModelScope.launch {
+            try {
+                repository.checkStatus(key)
+                problem(key, null)
+            } catch (_: GatewayException) {
+                problem(key, SigningProblem.NotChecked)
+            } finally {
+                activity.update { it.copy(checking = it.checking - key) }
+            }
+        }
     }
 
     /** Sends a waiting answer again now. */

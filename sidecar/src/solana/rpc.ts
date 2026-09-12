@@ -18,6 +18,29 @@ export interface LatestBlockhash {
   readonly lastValidBlockHeight: bigint;
 }
 
+/** How far a signature has got, as getSignatureStatuses reports it. */
+export type Commitment = "processed" | "confirmed" | "finalized";
+
+/** What the endpoint knows about one signature. */
+export interface SignatureStatus {
+  readonly slot: bigint;
+  readonly commitment: Commitment;
+  /**
+   * The chain's own error, when the transaction ran and failed; undefined when it succeeded. It
+   * is the JSON the endpoint returned, rendered for a person to read.
+   */
+  readonly chainError: string | undefined;
+}
+
+/** One confirmed transaction as the chain holds it. */
+export interface ChainTransaction {
+  readonly slot: bigint;
+  /** The whole transaction in wire format, signatures and all. */
+  readonly transaction: Uint8Array;
+  /** The chain's own error, when it ran and failed. */
+  readonly chainError: string | undefined;
+}
+
 /**
  * The chain couldn't be read: the endpoint didn't answer, answered an error, or answered
  * something this client doesn't understand. It says nothing about the request that needed it, so
@@ -40,6 +63,19 @@ export interface ChainReader {
   /** The fee for a compiled message, or undefined when the endpoint can't say. */
   feeForMessage(messageBase64: string): Promise<bigint | undefined>;
   rentExemption(bytes: number): Promise<bigint>;
+  /**
+   * What the endpoint knows about a signature, or undefined when it knows nothing. A recent
+   * signature is answered from the status cache; `searchHistory` also searches the ledger, which
+   * is the only way to tell "it never ran" from "it left the cache" (SAW-022).
+   */
+  signatureStatus(
+    signature: string,
+    searchHistory: boolean,
+  ): Promise<SignatureStatus | undefined>;
+  /** The transaction under a signature, or undefined when the endpoint hasn't got it. */
+  confirmedTransaction(
+    signature: string,
+  ): Promise<ChainTransaction | undefined>;
 }
 
 export interface SolanaRpcOptions {
@@ -54,6 +90,9 @@ export interface SolanaRpcOptions {
  * which their approval can still land.
  */
 const COMMITMENT = "confirmed";
+
+/** How much of a chain error is kept: Outcome.detail and Confirmation.chain_error are display text. */
+const MAX_CHAIN_ERROR_CHARS = 512;
 
 export class SolanaRpc implements ChainReader {
   readonly #url: string;
@@ -137,6 +176,58 @@ export class SolanaRpc implements ChainReader {
       : expectCount(value, "getFeeForMessage");
   }
 
+  async signatureStatus(
+    signature: string,
+    searchHistory: boolean,
+  ): Promise<SignatureStatus | undefined> {
+    const statuses = valueOf(
+      await this.#call("getSignatureStatuses", [
+        [signature],
+        { searchTransactionHistory: searchHistory },
+      ]),
+      "getSignatureStatuses",
+    );
+    if (!Array.isArray(statuses)) {
+      throw unexpected("getSignatureStatuses", "a list of statuses");
+    }
+    const status: unknown = statuses[0];
+    if (status === null || status === undefined) return undefined;
+    const value = expectObject(status, "getSignatureStatuses");
+    return {
+      slot: expectCount(value.slot, "getSignatureStatuses"),
+      commitment: expectCommitment(value.confirmationStatus),
+      chainError: chainError(value.err),
+    };
+  }
+
+  async confirmedTransaction(
+    signature: string,
+  ): Promise<ChainTransaction | undefined> {
+    const result = await this.#call("getTransaction", [
+      signature,
+      {
+        encoding: "base64",
+        commitment: COMMITMENT,
+        maxSupportedTransactionVersion: 0,
+      },
+    ]);
+    if (result === null || result === undefined) return undefined;
+    const value = expectObject(result, "getTransaction");
+    const encoded = value.transaction;
+    if (!Array.isArray(encoded) || typeof encoded[0] !== "string") {
+      throw unexpected("getTransaction", "the transaction in base64");
+    }
+    const meta =
+      value.meta === null || value.meta === undefined
+        ? undefined
+        : expectObject(value.meta, "getTransaction");
+    return {
+      slot: expectCount(value.slot, "getTransaction"),
+      transaction: Buffer.from(encoded[0], "base64"),
+      chainError: chainError(meta?.err),
+    };
+  }
+
   async rentExemption(bytes: number): Promise<bigint> {
     return expectCount(
       await this.#call("getMinimumBalanceForRentExemption", [
@@ -194,6 +285,26 @@ export class SolanaRpc implements ChainReader {
     if (!("result" in envelope)) throw unexpected(method, "a result");
     return envelope.result;
   }
+}
+
+/**
+ * A commitment the endpoint named. An unrecognized one is read as the weakest, `processed`,
+ * because a result is only ever reported on a level this client actually understands.
+ */
+function expectCommitment(value: unknown): Commitment {
+  return value === "finalized" || value === "confirmed" ? value : "processed";
+}
+
+/**
+ * The chain's own error for a person to read, or undefined when there was none. It is the
+ * endpoint's JSON as it came, capped, and never parsed into a promise about what went wrong.
+ */
+function chainError(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  // Whatever shape the endpoint sent, kept as JSON. It is display text and nothing parses it.
+  const rendered =
+    typeof value === "string" ? value : (JSON.stringify(value) ?? "an error");
+  return rendered.slice(0, MAX_CHAIN_ERROR_CHARS);
 }
 
 /** The `value` of a response that wraps its result in a context, such as getAccountInfo. */

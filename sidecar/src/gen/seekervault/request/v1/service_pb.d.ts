@@ -318,6 +318,41 @@ export declare type SubmitResultResponse = Message<"seekervault.request.v1.Submi
 export declare const SubmitResultResponseSchema: GenMessage<SubmitResultResponse>;
 
 /**
+ * @generated from message seekervault.request.v1.CheckStatusRequest
+ */
+export declare type CheckStatusRequest = Message<"seekervault.request.v1.CheckStatusRequest"> & {
+  /**
+   * @generated from field: seekervault.request.v1.RequestRef ref = 1;
+   */
+  ref?: RequestRef | undefined;
+};
+
+/**
+ * Describes the message seekervault.request.v1.CheckStatusRequest.
+ * Use `create(CheckStatusRequestSchema)` to create a new message.
+ */
+export declare const CheckStatusRequestSchema: GenMessage<CheckStatusRequest>;
+
+/**
+ * @generated from message seekervault.request.v1.CheckStatusResponse
+ */
+export declare type CheckStatusResponse = Message<"seekervault.request.v1.CheckStatusResponse"> & {
+  /**
+   * The request as it is after the check. Its Outcome.confirmation says what the endpoint
+   * answered, including when the check settled nothing.
+   *
+   * @generated from field: seekervault.request.v1.ActionRequest request = 1;
+   */
+  request?: ActionRequest | undefined;
+};
+
+/**
+ * Describes the message seekervault.request.v1.CheckStatusResponse.
+ * Use `create(CheckStatusResponseSchema)` to create a new message.
+ */
+export declare const CheckStatusResponseSchema: GenMessage<CheckStatusResponse>;
+
+/**
  * @generated from message seekervault.request.v1.PublishWalletRequest
  */
 export declare type PublishWalletRequest = Message<"seekervault.request.v1.PublishWalletRequest"> & {
@@ -558,6 +593,18 @@ export declare const RequestService: GenService<{
     methodKind: "unary";
     input: typeof SubmitResultRequestSchema;
     output: typeof SubmitResultResponseSchema;
+  },
+  /**
+   * CheckStatus asks the chain what became of a submitted transaction, and returns the request as
+   * it is afterwards. It reaches no wallet and signs nothing: the owner can ask as often as they
+   * like, and a request whose outcome it can't establish stays exactly as it was.
+   *
+   * @generated from rpc seekervault.request.v1.RequestService.CheckStatus
+   */
+  checkStatus: {
+    methodKind: "unary";
+    input: typeof CheckStatusRequestSchema;
+    output: typeof CheckStatusResponseSchema;
   },
   /**
    * PublishWallet tells the sidecar which wallet and network the owner selected in the app, so

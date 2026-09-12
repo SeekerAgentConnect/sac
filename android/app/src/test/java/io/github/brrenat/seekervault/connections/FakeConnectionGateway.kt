@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import com.google.protobuf.timestamp
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
+import io.github.brrenat.seekervault.request.v1.ConfirmationLevel
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.RequestState
@@ -13,6 +14,7 @@ import io.github.brrenat.seekervault.request.v1.ackAction
 import io.github.brrenat.seekervault.request.v1.action
 import io.github.brrenat.seekervault.request.v1.actionRequest
 import io.github.brrenat.seekervault.request.v1.asset
+import io.github.brrenat.seekervault.request.v1.confirmation
 import io.github.brrenat.seekervault.request.v1.preparedTransaction
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.signMessageAction
@@ -59,6 +61,10 @@ class FakeConnectionGateway : ConnectionGateway {
         var loseNextResponse = false
         /** How many requests one ListPending page holds. */
         var pageSize = 100
+        /** What the chain will say about a request the next time the phone checks (SAW-022). */
+        val onChain = mutableMapOf<String, Confirmed>()
+        /** How many times the phone has asked this server to check a status. */
+        var checks = 0
 
         /** A fresh pairing code for this server at [url], as `pnpm pair` shows it. */
         fun issue(url: String): PairingCode {
@@ -156,6 +162,70 @@ class FakeConnectionGateway : ConnectionGateway {
 
         fun authenticate(credential: String): String? =
             connections.entries.firstOrNull { it.value == credential && it.key !in revoked }?.key
+
+        /**
+         * What one look at the chain finds. The real sidecar works this out from the signature's
+         * status and the approved bytes; the fake is simply told the answer.
+         */
+        class Confirmed(
+            val state: RequestState,
+            val detail: String = "",
+            val level: ConfirmationLevel = ConfirmationLevel.CONFIRMATION_LEVEL_FINALIZED,
+            val endpoint: String = "rpc.test.invalid",
+            val matchesApproval: Boolean = true,
+        )
+
+        /** Says what the chain holds for a request, for the phone's next status check. */
+        fun putOnChain(connectionId: String, requestId: String, found: Confirmed) {
+            onChain["$connectionId/$requestId"] = found
+        }
+
+        /**
+         * One status check: the sidecar reads the chain and answers with the request as it stands.
+         * Nothing here signs or sends, exactly as on the real one.
+         */
+        fun check(connectionId: String, requestId: String): ActionRequest {
+            checks++
+            val now =
+                settled[connectionId]?.get(requestId)
+                    ?: pending[connectionId]?.firstOrNull { it.ref.requestId == requestId }
+                    ?: throw GatewayException(GatewayException.Kind.NotFound, "no such request")
+            if (
+                now.state != RequestState.REQUEST_STATE_SUBMITTED &&
+                    now.state != RequestState.REQUEST_STATE_UNKNOWN
+            ) {
+                throw GatewayException(
+                    GatewayException.Kind.InvalidState,
+                    "nothing left to check on chain",
+                    request = now,
+                )
+            }
+            val found =
+                onChain["$connectionId/$requestId"]
+                    ?: Confirmed(
+                        now.state,
+                        "The endpoint has no status for this signature yet.",
+                        ConfirmationLevel.CONFIRMATION_LEVEL_NOT_FOUND,
+                        matchesApproval = false,
+                    )
+            val outcome =
+                now.outcome
+                    .toBuilder()
+                    .setConfirmation(
+                        confirmation {
+                            level = found.level
+                            endpoint = found.endpoint
+                            matchesApproval = found.matchesApproval
+                            detail = found.detail
+                            checks = this@Server.checks
+                        }
+                    )
+                    .also { if (found.state != now.state) it.detail = found.detail }
+                    .build()
+            val after = now.toBuilder().setState(found.state).setOutcome(outcome).build()
+            settled.getOrPut(connectionId) { mutableMapOf() }[requestId] = after
+            return after
+        }
 
         fun stateOf(connectionId: String, requestId: String): RequestState? =
             settled[connectionId]?.get(requestId)?.state
@@ -275,6 +345,8 @@ class FakeConnectionGateway : ConnectionGateway {
 
     /** Runs before each SubmitResult is applied, to hold it or to check what's going on. */
     var beforeSubmit: suspend () -> Unit = {}
+    /** Runs before a status check answers, so a test can hold one open (SAW-022). */
+    var beforeCheck: suspend () -> Unit = {}
 
     /**
      * Runs after ListPending reads its page and before it returns it, to hold a page going stale.
@@ -374,6 +446,17 @@ class FakeConnectionGateway : ConnectionGateway {
             throw GatewayException(GatewayException.Kind.Unreachable, "the response was lost")
         }
         return after
+    }
+
+    override suspend fun checkStatus(
+        serverUrl: String,
+        credential: String,
+        key: RequestKey,
+    ): ActionRequest {
+        val server = reach(serverUrl, credential)
+        val id = authenticated(server, credential, key.connectionId)
+        beforeCheck()
+        return server.check(id, key.requestId)
     }
 
     override suspend fun publishWallet(

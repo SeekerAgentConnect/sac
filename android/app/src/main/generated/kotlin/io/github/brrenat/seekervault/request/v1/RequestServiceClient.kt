@@ -82,6 +82,23 @@ public class RequestServiceClient(
 
 
   /**
+   *  CheckStatus asks the chain what became of a submitted transaction, and returns the request as
+   *  it is afterwards. It reaches no wallet and signs nothing: the owner can ask as often as they
+   *  like, and a request whose outcome it can't establish stays exactly as it was.
+   */
+  override suspend fun checkStatus(request: CheckStatusRequest, headers: Headers): ResponseMessage<CheckStatusResponse> = client.unary(
+    request,
+    headers,
+    MethodSpec(
+    "seekervault.request.v1.RequestService/CheckStatus",
+      io.github.brrenat.seekervault.request.v1.CheckStatusRequest::class,
+      io.github.brrenat.seekervault.request.v1.CheckStatusResponse::class,
+      StreamType.UNARY,
+    ),
+  )
+
+
+  /**
    *  PublishWallet tells the sidecar which wallet and network the owner selected in the app, so
    *  that agents can read them (vault_get_address). An absent binding clears it, which is what a
    *  disconnected wallet means. Publishing a different wallet or network cancels the PENDING

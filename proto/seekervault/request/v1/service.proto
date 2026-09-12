@@ -32,6 +32,10 @@ service RequestService {
   // SubmitResult reports the user's decision or the wallet's result, and returns the request as
   // it is afterwards. Repeating an accepted submission has no further effect.
   rpc SubmitResult(SubmitResultRequest) returns (SubmitResultResponse);
+  // CheckStatus asks the chain what became of a submitted transaction, and returns the request as
+  // it is afterwards. It reaches no wallet and signs nothing: the owner can ask as often as they
+  // like, and a request whose outcome it can't establish stays exactly as it was.
+  rpc CheckStatus(CheckStatusRequest) returns (CheckStatusResponse);
   // PublishWallet tells the sidecar which wallet and network the owner selected in the app, so
   // that agents can read them (vault_get_address). An absent binding clears it, which is what a
   // disconnected wallet means. Publishing a different wallet or network cancels the PENDING
@@ -121,6 +125,16 @@ message SubmitResultRequest {
 }
 
 message SubmitResultResponse {
+  ActionRequest request = 1;
+}
+
+message CheckStatusRequest {
+  RequestRef ref = 1;
+}
+
+message CheckStatusResponse {
+  // The request as it is after the check. Its Outcome.confirmation says what the endpoint
+  // answered, including when the check settled nothing.
   ActionRequest request = 1;
 }
 
