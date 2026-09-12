@@ -233,6 +233,62 @@ public object PreparedTransactionKt {
 
     public val PreparedTransactionKt.Dsl.estimatedExpiryOrNull: com.google.protobuf.Timestamp?
       get() = _builder.estimatedExpiryOrNull
+
+    /**
+     * ```
+     * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+     * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+     * ```
+     *
+     * `uint64 fee_lamports = 8 [json_name = "feeLamports"];`
+     */
+    public var feeLamports: kotlin.Long
+      @kotlin.jvm.JvmName("getFeeLamports")
+        get() = _builder.feeLamports
+      @kotlin.jvm.JvmName("setFeeLamports")
+        set(value) {
+        _builder.feeLamports = value
+      }
+    /**
+     * ```
+     * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+     * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+     * ```
+     *
+     * `uint64 fee_lamports = 8 [json_name = "feeLamports"];`
+     */
+    public fun clearFeeLamports() {
+      _builder.clearFeeLamports()
+    }
+
+    /**
+     * ```
+     * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+     * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+     * comes back only if the account is ever closed. The phone shows it apart from the amount.
+     * ```
+     *
+     * `uint64 rent_lamports = 9 [json_name = "rentLamports"];`
+     */
+    public var rentLamports: kotlin.Long
+      @kotlin.jvm.JvmName("getRentLamports")
+        get() = _builder.rentLamports
+      @kotlin.jvm.JvmName("setRentLamports")
+        set(value) {
+        _builder.rentLamports = value
+      }
+    /**
+     * ```
+     * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+     * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+     * comes back only if the account is ever closed. The phone shows it apart from the amount.
+     * ```
+     *
+     * `uint64 rent_lamports = 9 [json_name = "rentLamports"];`
+     */
+    public fun clearRentLamports() {
+      _builder.clearRentLamports()
+    }
   }
 }
 public inline fun io.github.brrenat.seekervault.request.v1.PreparedTransaction.copy(block: `io.github.brrenat.seekervault.request.v1`.PreparedTransactionKt.Dsl.() -> kotlin.Unit): io.github.brrenat.seekervault.request.v1.PreparedTransaction =

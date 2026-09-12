@@ -5,6 +5,8 @@
  */
 import { createHash } from "node:crypto";
 
+import { timestampMs } from "@bufbuild/protobuf/wkt";
+
 import {
   RequestError,
   RequestState,
@@ -54,6 +56,13 @@ const {
   FAILED,
   UNKNOWN,
 } = RequestState;
+
+/**
+ * How much of a prepared transaction's blockhash window must be left when an approval arrives.
+ * The phone invokes the wallet as soon as the sidecar accepts the approval, so anything less
+ * would have the owner sign a transaction that can no longer land (docs/protocol.md#preparation).
+ */
+export const APPROVAL_MARGIN_MS = 15_000;
 
 const EVERY_KIND: readonly ActionKind[] = [
   "ack",
@@ -355,12 +364,12 @@ export type ResultDecision =
  * - expire an overdue request first (`isOverdue`)
  * - answer a repeat of a result they already accepted with the request as it is (SAW-010 keeps the
  *   accepted results)
- * - from Stage 4 on, refuse an approval whose blockhash is about to expire
  */
 export function decideResult(
   request: ActionRequest,
   submission: SubmitResultRequest,
   latest?: PreparedTransaction,
+  nowMs: number = Date.now(),
 ): ResultDecision {
   const action = request.action;
   const kind = action?.kind.case;
@@ -385,7 +394,7 @@ export function decideResult(
     };
   }
   if (result.case === "approval") {
-    const mismatch = approvalMismatch(action, result.value, latest);
+    const mismatch = approvalMismatch(action, result.value, latest, nowMs);
     if (mismatch !== undefined) return mismatch;
   }
   if (
@@ -412,11 +421,12 @@ export function decideResult(
   return { ok: true, to };
 }
 
-/** Whether the approval names exactly what the wallet will sign. */
+/** Whether the approval names exactly what the wallet will sign, and still can. */
 function approvalMismatch(
   action: Action,
   approval: Approval,
   latest: PreparedTransaction | undefined,
+  nowMs: number,
 ): ResultDecision | undefined {
   if (action.kind.case === "signMessage") {
     const hash = createHash("sha256")
@@ -444,6 +454,41 @@ function approvalMismatch(
     return stale(
       "the approval's content_hash isn't the latest prepared transaction's",
     );
+  }
+  // The wallet is invoked right after the sidecar accepts the approval, so an approval that
+  // arrives with almost no window left would have it sign something that can no longer land.
+  const expiry = latest.estimatedExpiry;
+  if (
+    expiry !== undefined &&
+    timestampMs(expiry) - nowMs < APPROVAL_MARGIN_MS
+  ) {
+    return stale(
+      "the prepared transaction's blockhash has expired or is about to; prepare the request again and have the owner review the new version",
+    );
+  }
+  return undefined;
+}
+
+/**
+ * Why a request can't be prepared now, or undefined when it can. Only a PENDING transfer or swap
+ * has a transaction to build, and only while the owner can still decide: a request they have
+ * already answered must never get a new version to approve.
+ */
+export function unpreparableReason(
+  request: ActionRequest,
+): { readonly error: RequestError; readonly message: string } | undefined {
+  const kind = request.action?.kind.case;
+  if (kind !== "transfer" && kind !== "swap") {
+    return {
+      error: RequestError.INVALID_PARAMETERS,
+      message: `${kind === "signMessage" ? "sign_message" : "ack"} requests have nothing to prepare`,
+    };
+  }
+  if (request.state !== PENDING) {
+    return {
+      error: RequestError.INVALID_STATE,
+      message: `only a PENDING request can be prepared; this one is ${RequestState[request.state]}`,
+    };
   }
   return undefined;
 }

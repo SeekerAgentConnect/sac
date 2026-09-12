@@ -43,6 +43,8 @@ describe("loadSidecarConfig", () => {
       databasePath: DEFAULT_DATABASE_PATH,
       requestTtlSeconds: 86_400,
       pendingLimit: 100,
+      solanaRpcUrl: undefined,
+      solanaRpcTimeoutMs: 10_000,
       publicUrl: "http://127.0.0.1:8080",
       pairingTokenTtlSeconds: 600,
     });
@@ -231,6 +233,34 @@ describe("loadSidecarConfig", () => {
         SIDECAR_PUBLIC_URL: "http://localhost:8080",
       }).publicUrl,
       "http://localhost:8080",
+    );
+  });
+
+  it("reads SOLANA_RPC_URL and SOLANA_RPC_TIMEOUT_MS, with no endpoint by default", () => {
+    assert.equal(loadSidecarConfig(validEnv).solanaRpcUrl, undefined);
+    assert.equal(loadSidecarConfig(validEnv).solanaRpcTimeoutMs, 10_000);
+    const config = loadSidecarConfig({
+      ...validEnv,
+      SOLANA_RPC_URL: " https://api.devnet.solana.com ",
+      SOLANA_RPC_TIMEOUT_MS: "2500",
+    });
+    assert.equal(config.solanaRpcUrl, "https://api.devnet.solana.com/");
+    assert.equal(config.solanaRpcTimeoutMs, 2500);
+  });
+
+  it("refuses an RPC endpoint that isn't an HTTP URL, without echoing it", () => {
+    for (const url of [
+      "wss://rpc.example.com/?api-key=s3cret",
+      "rpc.example.com/?api-key=s3cret",
+    ]) {
+      const problems = problemsFor({ ...validEnv, SOLANA_RPC_URL: url });
+      assert.match(problems.join("\n"), /SOLANA_RPC_URL/);
+      // The endpoint can carry an API key, so a problem names the variable and nothing else.
+      assert.ok(!problems.join("\n").includes("s3cret"), problems.join("\n"));
+    }
+    assert.match(
+      problemsFor({ ...validEnv, SOLANA_RPC_TIMEOUT_MS: "0" }).join("\n"),
+      /SOLANA_RPC_TIMEOUT_MS must be a whole number from 1000 to 60000/,
     );
   });
 

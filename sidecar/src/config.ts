@@ -41,6 +41,14 @@ export interface SidecarConfig {
   readonly publicUrl?: string;
   /** How long a pairing code works (PAIRING_TOKEN_TTL_SECONDS). Only `pnpm pair` reads it. */
   readonly pairingTokenTtlSeconds?: number;
+  /**
+   * The Solana JSON-RPC endpoint transfers are prepared against (SOLANA_RPC_URL). Without it the
+   * sidecar serves no transfer tool at all, rather than accepting requests it couldn't prepare.
+   * The URL may carry an API key, so it is never logged or put in an error message.
+   */
+  readonly solanaRpcUrl?: string;
+  /** How long one chain call may take (SOLANA_RPC_TIMEOUT_MS); the default applies when unset. */
+  readonly solanaRpcTimeoutMs?: number;
 }
 
 export class ConfigError extends Error {
@@ -81,6 +89,10 @@ const MAX_PENDING_LIMIT = 10_000;
 const DEFAULT_PAIRING_TOKEN_TTL_SECONDS = 600;
 const MIN_PAIRING_TOKEN_TTL_SECONDS = 60;
 const MAX_PAIRING_TOKEN_TTL_SECONDS = 3600;
+/** How long one Solana RPC call may take unless SOLANA_RPC_TIMEOUT_MS says otherwise. */
+export const DEFAULT_SOLANA_RPC_TIMEOUT_MS = 10_000;
+const MIN_SOLANA_RPC_TIMEOUT_MS = 1000;
+const MAX_SOLANA_RPC_TIMEOUT_MS = 60_000;
 
 export function loadSidecarConfig(env: Env): SidecarConfig & {
   readonly demoTools: boolean;
@@ -136,6 +148,15 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     DEFAULT_PAIRING_TOKEN_TTL_SECONDS,
     problems,
   );
+  const solanaRpcUrl = endpointUrl(env, problems);
+  const solanaRpcTimeoutMs = optionalWholeNumber(
+    env,
+    "SOLANA_RPC_TIMEOUT_MS",
+    MIN_SOLANA_RPC_TIMEOUT_MS,
+    MAX_SOLANA_RPC_TIMEOUT_MS,
+    DEFAULT_SOLANA_RPC_TIMEOUT_MS,
+    problems,
+  );
 
   if (
     problems.length > 0 ||
@@ -147,7 +168,8 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     requestTtlSeconds === undefined ||
     pendingLimit === undefined ||
     publicUrl === undefined ||
-    pairingTokenTtlSeconds === undefined
+    pairingTokenTtlSeconds === undefined ||
+    solanaRpcTimeoutMs === undefined
   ) {
     throw new ConfigError(problems);
   }
@@ -164,7 +186,31 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     pendingLimit,
     publicUrl,
     pairingTokenTtlSeconds,
+    solanaRpcUrl,
+    solanaRpcTimeoutMs,
   };
+}
+
+/**
+ * SOLANA_RPC_URL: the JSON-RPC endpoint transfers are prepared against. It's optional, and
+ * without it the sidecar simply serves no transfer tool. A problem names the variable and never
+ * the value, which may hold an API key.
+ */
+function endpointUrl(env: Env, problems: string[]): string | undefined {
+  const raw = env.SOLANA_RPC_URL?.trim();
+  if (!raw) return undefined;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    problems.push("SOLANA_RPC_URL is not a URL.");
+    return undefined;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    problems.push("SOLANA_RPC_URL must be an http:// or https:// endpoint.");
+    return undefined;
+  }
+  return url.toString();
 }
 
 /**

@@ -349,6 +349,91 @@ public  final class PreparedTransaction extends
     bitField0_ = (bitField0_ & ~0x00000004);
   }
 
+  public static final int FEE_LAMPORTS_FIELD_NUMBER = 8;
+  private long feeLamports_;
+  /**
+   * <pre>
+   * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+   * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+   * </pre>
+   *
+   * <code>uint64 fee_lamports = 8 [json_name = "feeLamports"];</code>
+   * @return The feeLamports.
+   */
+  @java.lang.Override
+  public long getFeeLamports() {
+    return feeLamports_;
+  }
+  /**
+   * <pre>
+   * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+   * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+   * </pre>
+   *
+   * <code>uint64 fee_lamports = 8 [json_name = "feeLamports"];</code>
+   * @param value The feeLamports to set.
+   */
+  private void setFeeLamports(long value) {
+    
+    feeLamports_ = value;
+  }
+  /**
+   * <pre>
+   * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+   * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+   * </pre>
+   *
+   * <code>uint64 fee_lamports = 8 [json_name = "feeLamports"];</code>
+   */
+  private void clearFeeLamports() {
+
+    feeLamports_ = 0L;
+  }
+
+  public static final int RENT_LAMPORTS_FIELD_NUMBER = 9;
+  private long rentLamports_;
+  /**
+   * <pre>
+   * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+   * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+   * comes back only if the account is ever closed. The phone shows it apart from the amount.
+   * </pre>
+   *
+   * <code>uint64 rent_lamports = 9 [json_name = "rentLamports"];</code>
+   * @return The rentLamports.
+   */
+  @java.lang.Override
+  public long getRentLamports() {
+    return rentLamports_;
+  }
+  /**
+   * <pre>
+   * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+   * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+   * comes back only if the account is ever closed. The phone shows it apart from the amount.
+   * </pre>
+   *
+   * <code>uint64 rent_lamports = 9 [json_name = "rentLamports"];</code>
+   * @param value The rentLamports to set.
+   */
+  private void setRentLamports(long value) {
+    
+    rentLamports_ = value;
+  }
+  /**
+   * <pre>
+   * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+   * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+   * comes back only if the account is ever closed. The phone shows it apart from the amount.
+   * </pre>
+   *
+   * <code>uint64 rent_lamports = 9 [json_name = "rentLamports"];</code>
+   */
+  private void clearRentLamports() {
+
+    rentLamports_ = 0L;
+  }
+
   public static io.github.brrenat.seekervault.request.v1.PreparedTransaction parseFrom(
       java.nio.ByteBuffer data)
       throws com.google.protobuf.InvalidProtocolBufferException {
@@ -786,6 +871,95 @@ public  final class PreparedTransaction extends
       return this;
     }
 
+    /**
+     * <pre>
+     * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+     * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+     * </pre>
+     *
+     * <code>uint64 fee_lamports = 8 [json_name = "feeLamports"];</code>
+     * @return The feeLamports.
+     */
+    @java.lang.Override
+    public long getFeeLamports() {
+      return instance.getFeeLamports();
+    }
+    /**
+     * <pre>
+     * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+     * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+     * </pre>
+     *
+     * <code>uint64 fee_lamports = 8 [json_name = "feeLamports"];</code>
+     * @param value The feeLamports to set.
+     * @return This builder for chaining.
+     */
+    public Builder setFeeLamports(long value) {
+      copyOnWrite();
+      instance.setFeeLamports(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+     * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+     * </pre>
+     *
+     * <code>uint64 fee_lamports = 8 [json_name = "feeLamports"];</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearFeeLamports() {
+      copyOnWrite();
+      instance.clearFeeLamports();
+      return this;
+    }
+
+    /**
+     * <pre>
+     * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+     * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+     * comes back only if the account is ever closed. The phone shows it apart from the amount.
+     * </pre>
+     *
+     * <code>uint64 rent_lamports = 9 [json_name = "rentLamports"];</code>
+     * @return The rentLamports.
+     */
+    @java.lang.Override
+    public long getRentLamports() {
+      return instance.getRentLamports();
+    }
+    /**
+     * <pre>
+     * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+     * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+     * comes back only if the account is ever closed. The phone shows it apart from the amount.
+     * </pre>
+     *
+     * <code>uint64 rent_lamports = 9 [json_name = "rentLamports"];</code>
+     * @param value The rentLamports to set.
+     * @return This builder for chaining.
+     */
+    public Builder setRentLamports(long value) {
+      copyOnWrite();
+      instance.setRentLamports(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+     * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+     * comes back only if the account is ever closed. The phone shows it apart from the amount.
+     * </pre>
+     *
+     * <code>uint64 rent_lamports = 9 [json_name = "rentLamports"];</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearRentLamports() {
+      copyOnWrite();
+      instance.clearRentLamports();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.request.v1.PreparedTransaction)
   }
   @java.lang.Override
@@ -810,10 +984,12 @@ public  final class PreparedTransaction extends
             "preparedAt_",
             "lastValidBlockHeight_",
             "estimatedExpiry_",
+            "feeLamports_",
+            "rentLamports_",
           };
           java.lang.String info =
-              "\u0000\u0007\u0000\u0001\u0001\u0007\u0007\u0000\u0000\u0000\u0001\u1009\u0000\u0002" +
-              "\u000b\u0003\n\u0004\n\u0005\u1009\u0001\u0006\u0003\u0007\u1009\u0002";
+              "\u0000\t\u0000\u0001\u0001\t\t\u0000\u0000\u0000\u0001\u1009\u0000\u0002\u000b\u0003" +
+              "\n\u0004\n\u0005\u1009\u0001\u0006\u0003\u0007\u1009\u0002\b\u0003\t\u0003";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

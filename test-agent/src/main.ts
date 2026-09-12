@@ -8,6 +8,7 @@ import {
   GET_REQUEST_TOOL,
   REQUEST_ACK_TOOL,
   SIGN_MESSAGE_TOOL,
+  TRANSFER_TOOL,
   displayCommand,
   getAddress,
   getCapabilities,
@@ -35,6 +36,11 @@ Commands:
   sign <text>      Ask the owner's wallet to sign the text (vault_sign_message). Prints the
                    request, PENDING, as JSON; it doesn't wait for the owner. Read it back
                    with get, which checks the signature itself.
+  transfer <to> <amount>
+                   Ask the owner to send <amount> base units to <to> (vault_transfer):
+                   lamports for SOL, or the mint's base units with --mint. Prints the
+                   request, PENDING, as JSON; nothing is built, signed, or sent here.
+                   Read it back with get.
   ack <text>       Queue text for the owner to acknowledge later (vault_request_ack, a demo
                    tool that the sidecar serves only with MCP_DEMO_TOOLS=true). Prints the
                    request, PENDING, as JSON; it doesn't wait for the owner.
@@ -43,10 +49,13 @@ Commands:
   tools            List the MCP server's tools as JSON.
 
 Options:
-  --key <key>      ack, sign: the idempotency key. Default: a new one, printed on stderr.
-  --note <text>    ack, sign: a note for the owner, shown apart from the text.
-  --expires <s>    ack, sign: seconds until the request expires, 60 to 604800.
-  --wallet <addr>  sign: the wallet to sign with. Default: the one vault_get_address returns.
+  --key <key>      ack, sign, transfer: the idempotency key. Default: a new one, printed on
+                   stderr. Reuse it to retry without sending twice.
+  --note <text>    ack, sign, transfer: a note for the owner, shown apart from the text.
+  --expires <s>    ack, sign, transfer: seconds until the request expires, 60 to 604800.
+  --wallet <addr>  sign, transfer: the wallet to pay with. Default: the one
+                   vault_get_address returns.
+  --mint <addr>    transfer: the SPL token's mint. Default: native SOL.
   --timeout <s>    hello: client timeout in seconds; default LIVE_COMMAND_TIMEOUT_SECONDS + ${CLIENT_TIMEOUT_MARGIN_SECONDS}.
   -h, --help       Show this help.
 
@@ -62,6 +71,7 @@ const ARITY: Readonly<Record<string, readonly [number, number]>> = {
   address: [0, 0],
   capabilities: [0, 0],
   sign: [1, 1],
+  transfer: [2, 2],
   ack: [1, 1],
   get: [1, 1],
   cancel: [1, 1],
@@ -119,6 +129,7 @@ async function main(argv: string[]): Promise<number> {
         timeout: { type: "string" },
         key: { type: "string" },
         wallet: { type: "string" },
+        mint: { type: "string" },
         note: { type: "string" },
         expires: { type: "string" },
         help: { type: "boolean", short: "h" },
@@ -213,6 +224,32 @@ async function main(argv: string[]): Promise<number> {
           print(
             JSON.stringify(await requestTool(client, SIGN_MESSAGE_TOOL, args)),
           );
+          return;
+        }
+        case "transfer": {
+          // The owner's wallet and network come from the sidecar, never from a guess: a request
+          // for another one is refused, and the amount is always in base units.
+          const binding = await getAddress(client);
+          const key = parsed.values.key ?? `transfer-${randomUUID()}`;
+          if (parsed.values.key === undefined) {
+            printError(`idempotency key: ${key}`);
+          }
+          const args: Record<string, unknown> = {
+            wallet: parsed.values.wallet ?? binding.wallet,
+            network: binding.network,
+            recipient: rest[0],
+            amount: rest[1],
+            idempotency_key: key,
+          };
+          if (parsed.values.mint !== undefined) {
+            args.token_mint = parsed.values.mint;
+          }
+          if (parsed.values.note !== undefined) args.note = parsed.values.note;
+          if (expires !== undefined) args.expires_in_seconds = expires;
+          printError(
+            "The owner reviews it on their Seeker; nothing is signed or sent until they approve.",
+          );
+          print(JSON.stringify(await requestTool(client, TRANSFER_TOOL, args)));
           return;
         }
         case "ack": {

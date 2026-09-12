@@ -4,5 +4,7 @@
     "requestId": "f7e6d5c4-b3a2-4918-8a7f-6e5d4c3b2a19"
   },
   "version": 4294967295,
-  "lastValidBlockHeight": "18446744073709551615"
+  "lastValidBlockHeight": "18446744073709551615",
+  "feeLamports": "18446744073709551615",
+  "rentLamports": "18446744073709551615"
 }

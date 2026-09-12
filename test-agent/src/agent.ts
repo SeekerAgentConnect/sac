@@ -18,6 +18,7 @@ export const DISPLAY_COMMAND_TOOL = "vault_display_command";
 export const GET_ADDRESS_TOOL = "vault_get_address";
 export const GET_CAPABILITIES_TOOL = "vault_get_capabilities";
 export const SIGN_MESSAGE_TOOL = "vault_sign_message";
+export const TRANSFER_TOOL = "vault_transfer";
 export const REQUEST_ACK_TOOL = "vault_request_ack";
 export const GET_REQUEST_TOOL = "vault_get_request";
 export const CANCEL_REQUEST_TOOL = "vault_cancel_request";

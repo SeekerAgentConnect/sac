@@ -13,6 +13,8 @@ import { z } from "zod";
 
 import {
   ActionSchema,
+  AssetSchema,
+  Network,
   RequestError,
   RequestState,
   type Action,
@@ -21,13 +23,16 @@ import {
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { MAX_COMMAND_TEXT_BYTES } from "../live/command.ts";
 import {
+  MAX_BASE_UNITS,
   MAX_MESSAGE_BYTES,
   MAX_NOTE_BYTES,
   actionBinding,
   encodeBase58,
+  invalidActionReason,
   messageBytes,
 } from "./action.ts";
 import { isTerminal } from "./lifecycle.ts";
+import type { TransactionPreparer } from "./preparation.ts";
 import {
   MAX_EXPIRES_IN_SECONDS,
   MIN_EXPIRES_IN_SECONDS,
@@ -39,6 +44,7 @@ import { RequestFailure } from "./failure.ts";
 export const GET_ADDRESS_TOOL = "vault_get_address";
 export const GET_CAPABILITIES_TOOL = "vault_get_capabilities";
 export const SIGN_MESSAGE_TOOL = "vault_sign_message";
+export const TRANSFER_TOOL = "vault_transfer";
 export const REQUEST_ACK_TOOL = "vault_request_ack";
 export const GET_REQUEST_TOOL = "vault_get_request";
 export const CANCEL_REQUEST_TOOL = "vault_cancel_request";
@@ -107,6 +113,13 @@ const VIEW_SCHEMA = {
 };
 
 const NETWORKS = ["mainnet", "devnet", "testnet"] as const;
+
+/** The Network value each name stands for; `networkName` writes them the same way. */
+const NETWORK_VALUES: Readonly<Record<(typeof NETWORKS)[number], Network>> = {
+  mainnet: Network.MAINNET,
+  devnet: Network.DEVNET,
+  testnet: Network.TESTNET,
+};
 
 /** The owner's wallet as agents see it: a public address, never a key. */
 export interface AddressView {
@@ -195,6 +208,25 @@ const SIGN_MESSAGE_DESCRIPTION =
   "INVALID_PARAMETERS, IDEMPOTENCY_CONFLICT, NOT_PAIRED, WALLET_NOT_CONNECTED, WALLET_MISMATCH, " +
   "or PENDING_LIMIT.";
 
+const TRANSFER_DESCRIPTION =
+  "Asks the owner to send SOL or an SPL token from their wallet, and returns at once with the " +
+  "stored request: its request_id and the status PENDING. Nothing is built, signed, or sent " +
+  "here. The owner sees the request the next time they open the app; the sidecar then builds a " +
+  "fresh unsigned transaction for them to review, and only their own wallet can sign and send " +
+  "it. Read the outcome later with vault_get_request until terminal is true: CONFIRMED means it " +
+  "succeeded on chain and carries the transaction's `signature`, REJECTED that the owner or the " +
+  "wallet declined, EXPIRED that the deadline passed, FAILED that it did not go through, and " +
+  "UNKNOWN that the result isn't settled yet — never retry an UNKNOWN request. `amount` is in " +
+  "the asset's base units, never a decimal: lamports for SOL (1 SOL is 1000000000), and the " +
+  "mint's own base units for a token, whose decimals the sidecar reads from the chain rather " +
+  "than from any ticker. `recipient` is the receiving wallet's own address, not a token " +
+  "account; when it has no account for the token yet, the transaction creates one and the owner " +
+  "is shown what that costs. Only classic SPL tokens are supported: a Token-2022 mint or an NFT " +
+  "is refused. A retry with the same idempotency_key and the same parameters returns the same " +
+  "request instead of sending twice; a different amount or recipient under a used key is " +
+  "refused. Errors start with a code: INVALID_PARAMETERS, IDEMPOTENCY_CONFLICT, NOT_PAIRED, " +
+  "WALLET_NOT_CONNECTED, WALLET_MISMATCH, PENDING_LIMIT, or CHAIN_UNAVAILABLE.";
+
 const GET_ADDRESS_DESCRIPTION =
   "Returns the wallet the owner selected on their Seeker, and the network they selected it for. " +
   "Use it before any wallet action, and name exactly this wallet and network: a request for " +
@@ -228,6 +260,11 @@ const CANCEL_REQUEST_DESCRIPTION =
 export interface RequestToolOptions {
   /** Serves vault_request_ack, a development and demo tool (MCP_DEMO_TOOLS). */
   readonly demoTools?: boolean;
+  /**
+   * Serves vault_transfer. It's absent unless a Solana RPC endpoint is configured
+   * (SOLANA_RPC_URL): without one the sidecar could prepare no transfer, so it offers none.
+   */
+  readonly preparer?: TransactionPreparer;
 }
 
 /** Registers the durable request tools on an MCP server session; vault_request_ack only in demo mode. */
@@ -239,6 +276,9 @@ export function registerRequestTools(
 ): void {
   if (options.demoTools === true) registerAckTool(server, store, log);
   registerSignMessageTool(server, store, log);
+  if (options.preparer !== undefined) {
+    registerTransferTool(server, store, options.preparer, log);
+  }
 
   server.registerTool(
     GET_CAPABILITIES_TOOL,
@@ -261,6 +301,7 @@ export function registerRequestTools(
         operations: [
           ...(options.demoTools === true ? ["ack"] : []),
           "sign_message",
+          ...(options.preparer === undefined ? [] : ["transfer"]),
         ],
         wallet_connected: store.connectedWallet() !== undefined,
         max_message_bytes: MAX_MESSAGE_BYTES,
@@ -420,6 +461,127 @@ function registerSignMessageTool(
 }
 
 /**
+ * vault_transfer: queues a transfer of SOL or an SPL token. It creates a request and nothing
+ * else. The asset is checked against the chain first, so an agent hears about a token this
+ * sidecar can't send before the owner ever sees the request; the transaction itself is built
+ * later, when the owner opens it.
+ */
+function registerTransferTool(
+  server: McpServer,
+  store: RequestStore,
+  preparer: TransactionPreparer,
+  log: (message: string) => void,
+): void {
+  server.registerTool(
+    TRANSFER_TOOL,
+    {
+      title: "Ask the owner to send SOL or an SPL token",
+      description: TRANSFER_DESCRIPTION,
+      inputSchema: {
+        wallet: z
+          .string()
+          .describe(
+            "The owner's wallet, exactly as vault_get_address returns it. Another one is refused with WALLET_MISMATCH.",
+          ),
+        network: z
+          .enum(NETWORKS)
+          .describe(
+            "The network, exactly as vault_get_address returns it. Another one is refused with WALLET_MISMATCH.",
+          ),
+        recipient: z
+          .string()
+          .describe(
+            "The receiving wallet's own base58 address. For a token, this is the owner of the tokens, never a token account.",
+          ),
+        amount: z
+          .string()
+          .describe(
+            `The amount in the asset's base units, as decimal digits: lamports for SOL (1 SOL is 1000000000), or the mint's base units for a token. 1 to ${MAX_BASE_UNITS.toString()}, with no sign, decimal point, exponent, or leading zeros. Never a human-readable decimal.`,
+          ),
+        token_mint: z
+          .string()
+          .optional()
+          .describe(
+            "The SPL token's base58 mint address. Leave it out to send native SOL. Only classic SPL mints are supported: Token-2022 mints and NFTs are refused.",
+          ),
+        idempotency_key: z
+          .string()
+          .describe(
+            "1 to 128 characters from A-Z, a-z, 0-9, '.', '_', ':', and '-'. Reuse it when you retry the same transfer, so it is never sent twice; use a new one for a new transfer.",
+          ),
+        note: z
+          .string()
+          .optional()
+          .describe(
+            `Optional: why you're asking, up to ${MAX_NOTE_BYTES} UTF-8 bytes. The phone shows it apart from the verified parameters.`,
+          ),
+        expires_in_seconds: z
+          .number()
+          .optional()
+          .describe(
+            `Optional: how long the owner has to decide, ${MIN_EXPIRES_IN_SECONDS} to ${MAX_EXPIRES_IN_SECONDS} seconds. The sidecar's default applies otherwise.`,
+          ),
+      },
+      outputSchema: VIEW_SCHEMA,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    ({
+      wallet,
+      network,
+      recipient,
+      amount,
+      token_mint,
+      idempotency_key,
+      note,
+      expires_in_seconds,
+    }) =>
+      answerAsync(async () => {
+        const asset = create(AssetSchema, {
+          kind:
+            token_mint === undefined
+              ? { case: "nativeSol", value: {} }
+              : { case: "tokenMint", value: token_mint },
+        });
+        const action = create(ActionSchema, {
+          kind: {
+            case: "transfer",
+            value: {
+              wallet,
+              network: NETWORK_VALUES[network],
+              recipient,
+              amount,
+              asset,
+            },
+          },
+        });
+        // The request's own rules first, so a malformed address or amount never reaches the chain.
+        const reason = invalidActionReason(action);
+        if (reason !== undefined) {
+          throw new RequestFailure(RequestError.INVALID_PARAMETERS, reason);
+        }
+        await preparer.checkAsset(asset);
+        const { request, created } = store.create({
+          action,
+          agentNote: note ?? "",
+          idempotencyKey: idempotency_key,
+          expiresInSeconds: expires_in_seconds,
+        });
+        log(
+          created
+            ? `request ${idOf(request)} stored (transfer on ${network})`
+            : `request ${idOf(request)} returned again for its idempotency key`,
+        );
+        return requestView(request);
+      }),
+  );
+}
+
+/**
  * The action for one of the two message forms. Exactly one must be given: an agent that sends
  * both, or neither, is refused rather than having one silently chosen for it.
  */
@@ -569,24 +731,42 @@ export function addressView(binding: WalletBinding): AddressView {
   };
 }
 
+type ToolView = RequestView | AddressView | CapabilitiesView;
+
 /** Runs a store operation and turns its view, or its RequestFailure, into a tool result. */
-function answer(
-  operation: () => RequestView | AddressView | CapabilitiesView,
-): CallToolResult {
+function answer(operation: () => ToolView): CallToolResult {
   try {
-    const view = operation();
-    return {
-      content: [{ type: "text", text: JSON.stringify(view) }],
-      structuredContent: { ...view },
-    };
+    return success(operation());
   } catch (error) {
-    if (!(error instanceof RequestFailure)) throw error;
-    // No structuredContent: clients validate it against the success schema.
-    return {
-      isError: true,
-      content: [{ type: "text", text: `${error.code}: ${error.message}` }],
-    };
+    return refusal(error);
   }
+}
+
+/** `answer` for a tool that awaits, such as one that reads the chain before it stores a request. */
+async function answerAsync(
+  operation: () => Promise<ToolView>,
+): Promise<CallToolResult> {
+  try {
+    return success(await operation());
+  } catch (error) {
+    return refusal(error);
+  }
+}
+
+function success(view: ToolView): CallToolResult {
+  return {
+    content: [{ type: "text", text: JSON.stringify(view) }],
+    structuredContent: { ...view },
+  };
+}
+
+function refusal(error: unknown): CallToolResult {
+  if (!(error instanceof RequestFailure)) throw error;
+  // No structuredContent: clients validate it against the success schema.
+  return {
+    isError: true,
+    content: [{ type: "text", text: `${error.code}: ${error.message}` }],
+  };
 }
 
 function idOf(request: ActionRequest): string {

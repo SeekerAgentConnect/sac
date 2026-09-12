@@ -230,6 +230,13 @@ message PreparedTransaction {
   uint64 last_valid_block_height = 6;
   // The sidecar's estimate of when last_valid_block_height passes, for display only.
   google.protobuf.Timestamp estimated_expiry = 7;
+  // The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+  // estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+  uint64 fee_lamports = 8;
+  // Lamports this transaction also spends to give the recipient a token account, or 0 when it
+  // creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+  // comes back only if the account is ever closed. The phone shows it apart from the amount.
+  uint64 rent_lamports = 9;
 }
 
 // PolicyEvaluation is the phone's own assessment of a request against its connection's policy
@@ -285,6 +292,10 @@ enum RequestError {
   // The phone has no wallet connected, so there is nothing to sign with. The owner connects one
   // in the app; the sidecar never makes a wallet of its own. Nothing was created.
   REQUEST_ERROR_WALLET_NOT_CONNECTED = 10;
+  // The sidecar couldn't read the chain: no RPC endpoint is configured, or the one configured
+  // didn't answer. Nothing was created, and nothing was prepared. It says nothing about the
+  // request itself, so the same call can be retried once the endpoint answers again.
+  REQUEST_ERROR_CHAIN_UNAVAILABLE = 11;
 }
 
 // RequestErrorDetail is the Connect error detail on every PairingService and RequestService

@@ -11,7 +11,7 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 
 `pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`.
 
-`MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, and `PAIRING_TOKEN_TTL_SECONDS` are optional, and an empty one counts as unset. The others are required.
+`MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, and `SOLANA_RPC_TIMEOUT_MS` are optional, and an empty one counts as unset. The others are required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
@@ -28,6 +28,8 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 | `REQUEST_PENDING_LIMIT` | Optional. The most requests that can wait for the owner at once | 1 to 10000; defaults to 100 |
 | `SIDECAR_PUBLIC_URL` | Optional. The URL that pairing codes carry: where the phone reaches the sidecar | `https://`, or `http://` on `127.0.0.1`, `localhost`, or `[::1]`. No user name, password, query, or fragment, and a port, if given, from 1 to 65535. Defaults to `http://<SIDECAR_HOST>:<SIDECAR_PORT>`, the development URL over `adb reverse`. For a phone on another network, use a trusted TLS endpoint; see [transport security](../security.md#transport-security). |
 | `PAIRING_TOKEN_TTL_SECONDS` | Optional. How long a pairing code works | 60 to 3600; defaults to 600 (10 minutes) |
+| `SOLANA_RPC_URL` | Optional. The Solana JSON-RPC endpoint transfers are prepared against (SAW-019). Without it the sidecar serves no `vault_transfer` and prepares no transaction. | An `http://` or `https://` URL. It may carry an API key, so the sidecar never logs it or puts it in an error message. |
+| `SOLANA_RPC_TIMEOUT_MS` | Optional. How long one chain call may take | 1000 to 60000; defaults to 10000 |
 
 Generate each token with `openssl rand -hex 32`. If the configuration is invalid, the sidecar names every problem and exits with status 1. It never prints a token value.
 
@@ -160,7 +162,7 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 
 - **Every call answers at once.** Creation stores the request and returns it as PENDING. At that point the owner hasn't seen it yet, let alone approved it. The agent reads the outcome later with `vault_get_request`.
 - **Retries are safe.** The same `idempotency_key` with the same text returns the original request, in whatever state it's in now. The same key with different text fails with `IDEMPOTENCY_CONFLICT`.
-- **`vault_request_ack` is demo-only.** It involves no wallet, and the sidecar serves it only with `MCP_DEMO_TOOLS=true`. Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The startup log says which. `vault_sign_message` (SAW-016) is always served; transfers and swaps arrive with Stages 4 and 6.
+- **`vault_request_ack` is demo-only.** It involves no wallet, and the sidecar serves it only with `MCP_DEMO_TOOLS=true`. Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The startup log says which. `vault_sign_message` (SAW-016) is always served, `vault_transfer` (SAW-019) whenever `SOLANA_RPC_URL` is set, and swaps arrive with Stage 6.
 - **Hermes gets every tool** from `examples/hermes.config.yaml`; see [queued requests](../integrations/hermes.md#4-queued-requests-create-now-read-the-result-later).
 
 ### vault_get_address
@@ -180,6 +182,17 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 - **The wallet must be the owner's.** Another one is `WALLET_MISMATCH`, and none connected is `WALLET_NOT_CONNECTED`.
 - **The result carries the signed bytes.** A COMPLETED request has `signature` (base58), `wallet`, and `signed_message_base64`, so the agent verifies the signature itself. The sidecar verifies it too, before accepting it from the phone, and refuses anything that isn't that wallet's signature over those bytes. It signs nothing: see [message results](../protocol.md#message-results) and [`docs/guides/message-signing.md`](../guides/message-signing.md).
 
+### vault_transfer
+
+`vault_transfer` queues a transfer of SOL or a classic SPL token: `{wallet, network, recipient, amount, token_mint?, idempotency_key, note?, expires_in_seconds?}`, answered at once with the request as PENDING. Run it with `pnpm agent transfer <recipient> <amount>`, and `--mint <address>` for a token.
+
+- **It is served only with `SOLANA_RPC_URL` set.** Without an endpoint the sidecar couldn't prepare the transaction, so it doesn't offer the tool, leaves `transfer` out of `operations`, and answers `PrepareRequest` for a transfer with `CHAIN_UNAVAILABLE`.
+- **It creates a request and nothing else.** No transaction is built, signed, or sent. The only thing it reads from the chain is the mint, so an agent hears about an unsupported token before the owner ever sees the request.
+- **`amount` is always base units:** lamports for SOL, or the mint's base units for a token, as decimal digits from 1 to the u64 maximum. The decimals come from the mint at preparation, never from a name or a ticker.
+- **`recipient` is a wallet address,** never a token account; the associated token account is derived, and created when the recipient has none.
+- **Only classic SPL tokens.** A Token-2022 mint, an NFT, an uninitialized mint, or an account that is missing or frozen is refused with `INVALID_PARAMETERS`, and the reason says which.
+- **The transaction itself** is built by `RequestService.PrepareRequest`; see [transfers](../protocol.md#transfers-saw-019) and [`docs/guides/transfers.md`](../guides/transfers.md).
+
 ### vault_get_capabilities
 
 `vault_get_capabilities` takes no input, never fails, and says what this sidecar actually serves:
@@ -188,7 +201,7 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 {
   "approval": "manual",
   "signing": "wallet",
-  "operations": ["sign_message"],
+  "operations": ["sign_message", "transfer"],
   "wallet_connected": true,
   "max_message_bytes": 4096,
   "max_note_bytes": 1024,
@@ -200,7 +213,7 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 
 - **`approval` is always `manual`,** and there is no way to ask for anything else.
 - **`signing` is always `wallet`:** the owner's own wallet signs, and the sidecar holds no key.
-- **`operations` lists only what is implemented here,** so an agent treats anything missing as unavailable. `ack` appears only in demo mode.
+- **`operations` lists only what is implemented here,** so an agent treats anything missing as unavailable. `ack` appears only in demo mode, and `transfer` only with a chain endpoint configured.
 - **`max_pending_requests` is `REQUEST_PENDING_LIMIT`,** and the expiry bounds are the ones every creation tool takes. Run it with `pnpm agent capabilities`.
 
 ## Storage and lifecycle
@@ -349,6 +362,10 @@ Typical log lines:
 | `sidecar/src/storage/request-store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions, and the wallet binding (SAW-015) |
 | `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010), `vault_get_address` (SAW-015), and `vault_sign_message` and `vault_get_capabilities` (SAW-016) |
 | `sidecar/src/requests/signature.ts` | Ed25519 verification (SAW-016): the sidecar checks a wallet's signature, and never makes one |
+| `sidecar/src/requests/preparation.ts` | `TransactionPreparer` (SAW-019): checks an asset before a request is stored, and builds and records the next prepared version |
+| `sidecar/src/solana/rpc.ts` | The chain client (SAW-019): the read-only JSON-RPC calls a preparation needs. The only code that reaches a network besides the sidecar's own listeners. |
+| `sidecar/src/solana/transfer.ts` | Building a transfer (SAW-019): the network check, what is supported, and the unsigned transaction |
+| `sidecar/src/solana/token.ts`, `addresses.ts`, `network.ts` | The SPL Token layouts and instructions, the program addresses and the associated-token-account derivation, and each network's genesis hash |
 | `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
 | `sidecar/src/storage/database.ts` | Opening the database, migrations, and transactions (SAW-010) |
 | `sidecar/src/storage/migrations.ts` | The numbered schema migrations (SAW-010, SAW-011) |
@@ -398,7 +415,12 @@ The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. Th
   - `cli.test.ts`: `pnpm pair` and its `status` and `revoke` commands, with no credential in their output
 - **`src/storage/database.test.ts`** tests the schema, the pragmas, the frozen v1 fixture and its migration to v2, a database from a newer sidecar, migration failures, and transaction rollback.
 - **The SAW-009 rule tests** are `src/requests/action.test.ts`, `identity.test.ts`, `lifecycle.test.ts`, `fixtures.test.ts`, and `live-compat.test.ts`.
-- **`src/stage-boundary.test.ts`** checks that there's no wallet package and no key generation, and that nothing outside `src/storage/` imports the file system or SQLite, or runs SQL.
+- **The SAW-019 transfer tests** are:
+  - `src/solana/token.test.ts`: the instruction bytes, the account layouts, and the associated-token-account derivation, each against the program's documented layout
+  - `src/solana/rpc.test.ts`: what the client reads, and how it reports a JSON-RPC error, an HTTP error, an answer that isn't JSON or isn't the right shape, and a timeout — none of which ever names the endpoint
+  - `src/solana/transfer.test.ts`: SOL and token amounts, decimals, the created token account and its rent, the fee and the blockhash window, and every refusal (wrong network, Token-2022, NFT, missing or frozen accounts, a recipient that is a token account, too small a balance, a bad address, a zero or overflowing amount, and an endpoint that stopped answering). Each case deserializes the built transaction and checks its fee payer, signer set, and instructions.
+  - `src/requests/transfers.test.ts`: the tool and `PrepareRequest` end to end against a fake chain — a new version per preparation, an old approval refused, no submission, and a failed preparation that leaves the request as it was
+- **`src/stage-boundary.test.ts`** checks that there's no wallet package beyond the chain client, no key generation and no signing, no tool the stage doesn't serve, and that nothing outside `src/storage/` imports the file system or SQLite or runs SQL, and nothing outside `src/solana/` imports the chain client.
 
 `pnpm test:queue` runs the Stage 2 acceptance scenario (SAW-014) with two sidecar processes that restart; see [`docs/testing/stage-2.md`](../testing/stage-2.md#the-acceptance-scenario-saw-014), which also holds its report. `src/testing/process.ts` starts the processes, with `MCP_DEMO_TOOLS` if asked. `src/testing/clock.ts`, loaded with `--import`, runs a restarted process's clock ahead, for time that passed while it was down.
 
@@ -454,3 +476,19 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.
 | Deliberate breaks | Each break failed the pairing tests, and each file was restored byte for byte afterwards:<ul><li>a pairing token that still works at its expiry</li><li>a used pairing token that works again</li><li>`Pair` ignoring the token's URL</li><li>a revoked credential that still authenticates</li><li>revocation that leaves PENDING requests</li><li>a new pairing that keeps the previous phone</li><li>`RequestService` accepting any bearer token once a phone is paired</li><li>plain HTTP allowed off loopback</li><li>`Pair` logging the bearer token</li></ul> |
 | Remote pairing through Tailscale Serve or Caddy | NOT RUN: it needs the owner's tailnet or domain. `tls.test.ts` covers the same path with a local TLS endpoint. |
 | Physical Seeker | NOT RUN: the app's pairing screen arrives in SAW-012. |
+
+## Verification record: SAW-019
+
+Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, buf 1.72.0, and the other versions in [`docs/development/toolchain.md`](toolchain.md). No real cluster was reached: every chain call in every check goes to a fake JSON-RPC server on loopback.
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, and `tsc`. 359/359 sidecar tests pass, 47 of them new: the chain client, the SPL encodings, the transfer builder, the preparation end to end, the approval margin, and `SOLANA_RPC_URL`. The test agent's 27/27 pass too, 4 of them new for `pnpm agent transfer`. |
+| `pnpm check:android` | PASS: Spotless, 294/294 unit tests, lint with no issues, and the debug and instrumentation APKs. Kotlin compiles `PreparedTransaction.fee_lamports` and `.rent_lamports` and the new `REQUEST_ERROR_CHAIN_UNAVAILABLE`; `RequestProtocolFixturesTest` reads both new fields, including the u64 maximum. |
+| `pnpm check:generated` | PASS: the committed TypeScript, Kotlin, Java, and `.binpb` fixtures match a fresh generation |
+| `pnpm test:hello` | PASS: the 9/9 Stage 1 acceptance cases on a simulated device, unchanged |
+| `pnpm test:queue` | PASS: the 7/7 Stage 2 acceptance cases, unchanged |
+| `pnpm build` | PASS: `sidecar/dist` includes `solana/` and `requests/preparation.js` |
+| Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>Encoding `TransferChecked` as instruction 3 failed `token.test.ts` and the token case in `transfer.test.ts`.</li><li>An `assertNetwork` that accepts any genesis hash failed both wrong-network cases.</li><li>A preparation that always numbers itself version 1 failed the new-version and superseded-approval tests.</li><li>A `vault_transfer` that skips the asset check let a Token-2022 mint and an NFT through, failing three tool tests.</li><li>Putting the endpoint URL into a `ChainUnavailable` message failed the test that no error names it.</li><li>Adding a `sendTransaction` method to the chain client failed the stage-boundary test, which names every method that client may call.</li></ul> |
+| Physical device | NOT RUN: SAW-019 is the sidecar's side, and adds no device behaviour. The owner's own transfer on the Seeker is SAW-024. |
+| Mainnet | NOT RUN, and never by default: no check contacts a cluster, and none can spend. |
