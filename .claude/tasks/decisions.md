@@ -368,3 +368,8 @@
   as two surrogate halves. `Character.getType` over code points is the same question asked of the
   platform's own tables, and a code point those tables don't know is marked rather than shown: for
   bytes the owner is about to sign, the safe way round is to over-mark.
+
+## SAW-024 (PR #6 review)
+
+- **Ed25519 verification is written out on the phone, not taken from the platform and not added as a dependency.** `Signature.getInstance("Ed25519")` arrives in API 33 and the app supports 31, so a platform check would silently not happen on two API levels; a library for one verification is more surface than the 150 lines it replaces, and the app already derives program addresses with the same field arithmetic. Nothing verified here is secret, so nothing here needs to be constant-time, and `Ed25519Test` holds it to the JDK's own verifier.
+- **A message approval the sidecar didn't take is kept, while a transfer's is deleted.** Both stop the wallet from opening. They differ afterwards because a transfer's approval names a preparation that goes stale, so the owner must review a fresh one, while a message's bytes never change: the answer the sidecar is owed is already on disk, it is sent again by itself, and an approval with no wallet answer settles as unresolved rather than being silently dropped.

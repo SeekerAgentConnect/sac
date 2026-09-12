@@ -84,6 +84,7 @@
     <string name="problem_not_verified">The transaction on screen is not the one this phone holds any more, or this phone could not read all of it. Nothing was approved. Read it again and review the new version.</string>
     <string name="problem_stale_preparation">The server has a newer transaction for this request, or this one can no longer be sent. Nothing was approved, and it has been read again for you to review.</string>
     <string name="problem_not_approved">The server could not be reached, so nothing was approved and your wallet was not opened. You can approve it again.</string>
+    <string name="problem_not_sent_yet">The server could not be reached, so your approval is still on this phone and your wallet was not opened. Nothing was signed. The approval is sent again by itself, and what became of it appears under the request.</string>
     <string name="problem_not_checked">The status could not be checked: the server did not answer, or it could not read the network. Nothing about the transaction has changed, and nothing was sent again.</string>
     <string name="status_last_failure">Last attempt: %1$s</string>
     <string name="status_gone">This request isn\'t pending on this phone. It may have been answered, cancelled, or not fetched yet.</string>

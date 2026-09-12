@@ -60,14 +60,16 @@ class MwaWalletAdapter(
         // the one session the owner sees, so a signature the wallet then declines still carries it
         // and the wallet is never opened a second time just to learn it.
         var refreshed: String? = null
+        val asked = message.toByteArray()
         val result =
             adapter.transact(activity) { authorization ->
                 refreshed = tokenOf(authorization)
-                signMessagesDetached(arrayOf(message.toByteArray()), arrayOf(account))
+                signMessagesDetached(arrayOf(asked), arrayOf(account))
             }
         val outcome =
             when (result) {
-                is TransactionResult.Success -> signed(result.payload, wallet.address)
+                is TransactionResult.Success ->
+                    signed(result.payload, wallet.address, account, asked)
                 is TransactionResult.NoWalletFound -> SignResult.NoWallet
                 is TransactionResult.Failure -> classifySigning(result.e)
             }
@@ -107,7 +109,9 @@ class MwaWalletAdapter(
         adapter.disconnect(activity)
     }
 
-    private companion object {
+    // Internal, not private: every one of these checks the wallet's own answer, and each is worth
+    // a test of its own (`MwaWalletAdapterTest`). Nothing here reaches the wallet or the network.
+    internal companion object {
         const val NO_ACTIVITY = "the app's screen closed before the wallet answered"
 
         fun WalletNetwork.blockchain(): Blockchain =
@@ -145,10 +149,23 @@ class MwaWalletAdapter(
 
         /**
          * The wallet's answer, checked before it's believed: one signed message, signed by the
-         * account that was asked, with a signature of the right size. What it says it signed is
-         * returned as it is, so the caller can compare it with what it sent.
+         * account that was asked, with a signature of the right size — and one that verifies as
+         * [key]'s over exactly [asked]. What it says it signed is returned as it is, so the caller
+         * can compare it with what it sent.
+         *
+         * The signature is verified here because the sidecar verifies every signature it is sent
+         * and refuses anything else with INVALID_PARAMETERS, and the first outcome stored for an
+         * approval stands: believing 64 bytes that aren't a signature would send that answer again
+         * for ever, and leave the request PROCESSING with nothing able to settle it. A wallet whose
+         * answer doesn't verify has failed to sign, which is an outcome both the owner and the
+         * agent can be told once and be done with.
          */
-        fun signed(result: SignMessagesResult?, expected: String): SignResult {
+        fun signed(
+            result: SignMessagesResult?,
+            expected: String,
+            key: ByteArray,
+            asked: ByteArray,
+        ): SignResult {
             val signed =
                 result?.messages?.firstOrNull()
                     ?: return SignResult.Failed("the wallet returned no signed message")
@@ -161,6 +178,11 @@ class MwaWalletAdapter(
             val signer = signed.addresses?.firstOrNull()?.let(::encodeBase58)
             if (signer != null && signer != expected) {
                 return SignResult.Failed("the wallet signed with $signer, not the selected wallet")
+            }
+            if (!verifiesSignature(key, asked, signature)) {
+                return SignResult.Failed(
+                    "the wallet's answer is not this wallet's signature over this message"
+                )
             }
             return SignResult.Signed(
                 message = ByteString.copyFrom(signed.message ?: ByteArray(0)),

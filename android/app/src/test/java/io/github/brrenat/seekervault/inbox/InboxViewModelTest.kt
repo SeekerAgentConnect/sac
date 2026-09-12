@@ -210,6 +210,57 @@ class InboxViewModelTest {
     }
 
     @Test
+    fun opensNoWalletForAnApprovalTheServerHasNotTaken() {
+        val (key, selected) = readyToSign()
+        // The server can't be reached, so the approval is stored here and taken by nobody. A
+        // request the sidecar may have cancelled or let expire meanwhile must not reach the wallet:
+        // it is asked only once the approval has moved the request to PROCESSING there.
+        server.failure = GatewayException.Kind.Unreachable
+        val viewModel = viewModel()
+
+        viewModel.approve(key, selected)
+
+        assertEquals(emptyList<Any>(), adapter.signings)
+        assertEquals(SigningProblem.NotSentYet, viewModel.state.value.problem)
+        assertEquals(key, viewModel.state.value.problemKey)
+        // The owner's approval is not lost: it is stored, unaccepted, and sent again by itself.
+        val result = checkNotNull(viewModel.state.value.inbox.result(key))
+        assertEquals(Delivery.Waiting, result.delivery)
+        assertFalse(result.approved)
+        assertNull(result.signing)
+    }
+
+    @Test
+    fun anApprovalTheServerNeverTookEndsAsAFailureWithNoWalletEverOpened() {
+        val (key, selected) = readyToSign()
+        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        server.failure = GatewayException.Kind.Unreachable
+        val viewModel = viewModel()
+        viewModel.approve(key, selected)
+        assertEquals(emptyList<Any>(), adapter.signings)
+
+        // The server answers again: the approval this phone kept reaches it, and the approval with
+        // no wallet answer settles as unresolved. The agent is told the request failed rather than
+        // being left with a PROCESSING request nothing can settle, and no wallet was ever opened.
+        server.failure = null
+        val reopened = viewModel()
+        reopened.onAppVisible()
+
+        assertEquals(emptyList<Any>(), adapter.signings)
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.EXECUTION_FAILURE,
+            ),
+            submitted(),
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_FAILED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
+    @Test
     fun asksNothingWhenTheWalletChangedWhileTheOwnerWasReviewing() {
         val (key, reviewed) = readyToSign()
         // The owner connected another wallet on the Wallet screen while this was on screen. The

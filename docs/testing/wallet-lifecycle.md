@@ -43,6 +43,19 @@ This page is what is checked automatically, what only the Seeker can show, and t
   approval it refused as stale, or that never reached it, is deleted from the phone: nothing was
   approved anywhere, the request stays PENDING on the sidecar, and the owner reviews a fresh
   preparation. That is what makes "approved, no wallet answer" mean exactly one thing.
+- **A message's approval is taken first too (SAW-024).** `InboxViewModel.approve` opens the wallet
+  only once the sidecar has accepted the approval, and not merely once it has been stored here: a
+  request the agent cancelled, or that expired, must not reach the owner's wallet, and this phone
+  can't know which happened while the server is unreachable. An approval it still holds is sent
+  again by itself, and one with no wallet answer settles as unresolved, so the agent is told the
+  request failed instead of waiting on a signature nobody will make. Unlike a transfer's, the
+  approval is kept rather than deleted: the message never goes stale, so there is nothing to
+  re-review, and the answer the sidecar is owed is the one already on disk.
+- **A signature is verified before it is believed (SAW-024).** `MwaWalletAdapter` checks the wallet's
+  answer against the selected wallet's key and the exact bytes it asked to be signed. A wallet that
+  answers with 64 bytes of anything has failed to sign, which is a terminal outcome the agent can
+  read — rather than a signature the sidecar refuses with `INVALID_PARAMETERS` for ever, since the
+  first outcome stored for an approval stands.
 - **Nothing unread reaches the wallet.** Only a preparation whose own inspection came back
   `Verified` (SAW-020) can be approved, checked once when the button is offered and again when it
   is tapped.
