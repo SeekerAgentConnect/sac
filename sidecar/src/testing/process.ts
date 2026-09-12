@@ -28,6 +28,11 @@ export interface SidecarProcessOptions {
    * with a larger value stands for time that passed while the sidecar was down.
    */
   readonly clockAheadMs?: number;
+  /**
+   * The Solana JSON-RPC endpoint (SOLANA_RPC_URL). Point it at `startFakeRpc` to run the transfer
+   * tools against a chain the test controls; without one the sidecar serves no transfer at all.
+   */
+  readonly solanaRpcUrl?: string;
 }
 
 export interface SidecarProcess {
@@ -75,6 +80,9 @@ export async function startSidecarProcess(
         DATABASE_PATH: options.databasePath ?? temporaryDatabasePath(),
         MCP_DEMO_TOOLS: String(options.demoTools === true),
         SIDECAR_TEST_CLOCK_AHEAD_MS: String(ahead),
+        ...(options.solanaRpcUrl === undefined
+          ? {}
+          : { SOLANA_RPC_URL: options.solanaRpcUrl }),
       },
     },
   );

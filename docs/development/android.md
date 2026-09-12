@@ -81,6 +81,32 @@ The approval and the message itself live with the inbox: `connections/SignMessag
 - **Publishing is idempotent and retried.** `ConnectionRepository.publishWallet` sends the binding to one connection, marks the connection revoked on `UNAUTHENTICATED`, and takes the requests the sidecar cancelled off the inbox. Opening the app again re-sends what a connection hasn't been told yet.
 - **The network is the owner's explicit choice,** and it's fixed while a wallet is connected. If the wallet lists chains for the account and the chosen one isn't among them, the screen says the wallet didn't confirm it rather than pretending it did.
 
+## Activity
+
+The owner's guide is [`docs/guides/transfers.md`](../guides/transfers.md#the-activity-record). The history is the owner's own record of what this phone did (SAW-023), and it is deliberately not the same thing as a `LocalResult`: an answer is what the sidecar is owed, and it is dropped a week after it settles and when its connection is removed. A record of a payment outlives both.
+
+| Screen | What it shows and does |
+| --- | --- |
+| **Activity** | Opened from the Connections screen, which shows how many actions are recorded. The list is newest first: who asked, what was done, how it ended, and when. **Refresh** reads the store again, **Clear** removes everything after a confirmation. A history that couldn't be read says so and keeps showing what it last read. |
+| **Record** | One record in full: the outcome, the reviewed operation, the connection and its host, the kind of request, the network, the wallet, the recipient, the asset, when it was answered, and the signature. A transfer that was sent offers **View on Solana Explorer** on its own cluster. |
+
+The code is in `activity/`:
+
+| File | Role |
+| --- | --- |
+| `ActivityRecord.kt` | `ActivityKind`, `ActivityOutcome`, `ReviewedTransfer`, and `ActivityRecord`, with `signatureIsTransaction` and the `identity` that says what counts as the same record |
+| `storage/ActivityStore.kt` | One JSON file per request, `filesDir/activity/<connection ID>/<request ID>.json`, written atomically. Nothing prunes it. A directory that exists and can't be listed throws rather than coming back empty. |
+| `ActivityLog.kt` | Derives a record from a `LocalResult` and writes it, and holds the list as a `StateFlow` |
+| `Explorer.kt` | The explorer address, and `openLink`, which hands it to whatever app opens links |
+| `ActivityViewModel.kt`, `ActivityScreen.kt`, `ActivityDetailsScreen.kt`, `ActivityText.kt` | The state, the two stateless screens, and their texts |
+
+- **One writer.** Every place `ConnectionRepository` writes an answer goes through its private `save()`, which writes the record too. A record can't be forgotten at one call site and written at another.
+- **An approval the sidecar never accepted is recorded as nothing.** No wallet was opened for one, the approval is removed again, and the request goes back to waiting for the owner (SAW-021). There is nothing that happened, so there is nothing to have a record of.
+- **A message signature is never a payment.** `signatureIsTransaction` comes from the record's kind, never from the presence of a signature, and the details screen says so in words as well as by offering no link.
+- **The cluster is on every transfer.** The same 64 bytes on another cluster are another transaction, or none, so a record with no network gets no link rather than a guessed one.
+- **The explorer is a link, never a fetch.** `StageBoundaryTest` proves both halves: the address appears in `Explorer.kt` and nowhere else, that file holds no HTTP client, and the app's HTTP clients exist only in the two sidecar transports and the one client they share.
+- **Amounts are kept in base units.** SOL is also shown the readable way; a token's decimals belong to its mint and are read fresh at review time, so a count stored months ago can never show a wrong amount here.
+
 ## The hello screen
 
 | Element | Behavior |
@@ -158,7 +184,12 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `WalletViewModelTest` | The screen's state: the chosen network, every refusal the wallet can give, disconnecting, the connections that couldn't be told, and a connection paired later being told when the app comes back |
 | `WalletScreenTest` | Compose on Robolectric: the networks and **Connect wallet**, the address and network once connected, the unconfirmed-network warning, each problem message, the unpublished connections and **Tell them again**, and the disabled controls while the wallet is busy |
 | `WalletActivityTest` | The activity with the app's own storage, a fake wallet, and a fake sidecar: connecting from the Connections screen publishes the address and survives a restart, disconnecting tells the wallet and the sidecar, a connection paired afterwards is told when the app comes back, and no wallet installed is explained |
-| `StageBoundaryTest` | The stage boundary. The manifest declares only `MainActivity`, `INTERNET`, and an optional camera. Storage and Keystore APIs appear only in `connections/storage/` and `wallet/storage/`, and background APIs and wallet-key APIs nowhere. Nothing is backed up. The Mobile Wallet Adapter client is on the classpath on purpose (SAW-015); Seed Vault's own SDK, Room, DataStore, and WorkManager are not. |
+| `ActivityStoreTest` | The history on disk: every field across a restart, a token transfer on its own cluster and a message with none, the same request replaced rather than added to, a write refused over a record of something else (another wallet, cluster, or asset), a damaged file skipped, newest first, clearing, and IDs that could name a path |
+| `ActivityLogTest` | What is recorded: one transfer through each step it takes, the same result three times, a restart with the confirmation arriving afterwards, a message signature that is never a payment, an acknowledgement and a rejection, an outcome nobody knows, an answer that never reached the server, clearing, a connection that is gone, and an approval the server never accepted, which is recorded as nothing at all |
+| `ExplorerTest` | The cluster in the link for each network, no link for a message signature, and no link without a signature or without a cluster |
+| `ActivityViewModelTest` | Reading what is stored, a history that can't be read leaving the records on screen and saying so, recovery on the next read, a link nothing could open, and clearing |
+| `ActivityScreenTest`, `ActivityDetailsScreenTest` | Compose on Robolectric: the list and the empty state, the unreadable warning with the records still openable, Clear only after a confirmation, the record in full, the cluster named on every transfer, the explorer offered only for a sent transaction and on its own cluster, the words that say a message signature is not a payment, and the message when nothing can open a link |
+| `StageBoundaryTest` | The stage boundary. The manifest declares only `MainActivity`, `INTERNET`, and an optional camera. Storage and Keystore APIs appear only in `connections/storage/`, `wallet/storage/`, and `activity/storage/`, and background APIs and wallet-key APIs nowhere. Nothing is backed up. The Mobile Wallet Adapter client is on the classpath on purpose (SAW-015); Seed Vault's own SDK, Room, DataStore, and WorkManager are not. The explorer address lives in one file that holds no HTTP client, and the app's HTTP clients exist only where they talk to a sidecar (SAW-023). |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
 

@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.connections
 
+import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
@@ -71,6 +72,11 @@ class ConnectionRepository(
     private val vault: CredentialVault,
     private val results: ResultStore,
     private val gateway: ConnectionGateway,
+    /**
+     * The owner's own history, which every answer is written to as well (SAW-023). It is optional
+     * because it is not part of answering: a phone without one still answers, sends, and settles.
+     */
+    private val history: ActivityLog? = null,
     private val deviceName: String,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -108,9 +114,7 @@ class ConnectionRepository(
         // only after it does, so that one was never asked anything, and it is dropped instead.
         uncommittedApprovals().forEach { results.delete(it.connectionId, it.requestId) }
         abandonedSignings(emptySet()).forEach {
-            results.put(
-                it.copy(signing = SigningOutcome.Unresolved(it.lostDetail(appClosed = true)))
-            )
+            save(it.copy(signing = SigningOutcome.Unresolved(it.lostDetail(appClosed = true))))
         }
         publish()
     }
@@ -132,7 +136,7 @@ class ConnectionRepository(
                 .map {
                     it.copy(signing = SigningOutcome.Unresolved(it.lostDetail(appClosed = false)))
                 }
-                .onEach(results::put)
+                .onEach(::save)
                 .also { if (it.isNotEmpty()) publish() }
         }
         abandoned.forEach { deliver(it.key) }
@@ -322,7 +326,7 @@ class ConnectionRepository(
                         checkNotNull(_inbox.value.pendingRequest(key)) { "not a pending request" }
                     require(answer.applies(request)) { "this answer doesn't apply to this request" }
                     LocalResult(key.connectionId, key.requestId, answer, now(), request).also {
-                        results.put(it)
+                        save(it)
                         publish()
                     }
                 }
@@ -380,7 +384,7 @@ class ConnectionRepository(
                         approvedTransaction = approved,
                     )
                     .also {
-                        results.put(it)
+                        save(it)
                         publish()
                     }
             } ?: return ApprovalOutcome.Refused(CheckOutcome.Failed)
@@ -422,7 +426,7 @@ class ConnectionRepository(
                 if (current.answer != Answer.Approve || current.signing != null)
                     return@locked current
                 current.copy(signing = outcome).also {
-                    results.put(it)
+                    save(it)
                     publish()
                 }
             } ?: return null
@@ -527,7 +531,7 @@ class ConnectionRepository(
             // Only the phone's copy of the request changes. The owner's answer, the wallet's
             // outcome, and how it was delivered are what happened here, and they stand.
             current.copy(request = checked).also {
-                results.put(it)
+                save(it)
                 publish()
             }
         }
@@ -592,7 +596,7 @@ class ConnectionRepository(
                         val stored = stillStored(current) ?: return@locked null
                         if (stored.delivery != Delivery.Waiting) return@locked stored
                         stored.copy(lastFailure = e.kind.toOutcome()).also {
-                            results.put(it)
+                            save(it)
                             publish()
                         }
                     }
@@ -648,7 +652,7 @@ class ConnectionRepository(
         results
             .listFor(id)
             .filter { it.delivery == Delivery.Waiting }
-            .forEach { results.put(it.copy(delivery = Delivery.Undeliverable, settledAt = now())) }
+            .forEach { save(it.copy(delivery = Delivery.Undeliverable, settledAt = now())) }
         _inbox.update { it.copy(pending = it.pending - id) }
         publish()
     }
@@ -674,7 +678,7 @@ class ConnectionRepository(
                 lastFailure = null,
                 settledAt = now(),
             )
-        results.put(settled)
+        save(settled)
         val remaining =
             _inbox.value.pending[result.connectionId]?.filterNot {
                 it.ref.requestId == result.requestId
@@ -697,9 +701,19 @@ class ConnectionRepository(
         val current = stillStored(result) ?: return@locked null
         if (current.approved) return@locked current
         current.copy(approved = true).also {
-            results.put(it)
+            save(it)
             publish()
         }
+    }
+
+    /**
+     * Writes an answer, and records what this phone did in the owner's history at the same time
+     * (SAW-023). Every write of an answer goes through here, so a record can never be forgotten at
+     * one call site and written at another.
+     */
+    private fun save(result: LocalResult) {
+        results.put(result)
+        history?.record(result, store.get(result.connectionId))
     }
 
     // The answer as it's stored now, or null if it or its connection was removed while it was on

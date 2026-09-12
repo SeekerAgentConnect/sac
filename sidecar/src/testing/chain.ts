@@ -10,7 +10,11 @@ import type { AddressInfo } from "node:net";
 import { PublicKey } from "@solana/web3.js";
 
 import { Network } from "../gen/seekervault/request/v1/request_pb.js";
-import { SYSTEM_PROGRAM, TOKEN_PROGRAM } from "../solana/addresses.ts";
+import {
+  SYSTEM_PROGRAM,
+  TOKEN_PROGRAM,
+  associatedTokenAddress,
+} from "../solana/addresses.ts";
 import { GENESIS_HASHES } from "../solana/network.ts";
 import {
   ChainUnavailable,
@@ -211,6 +215,34 @@ export function tokenAccount(account: FakeTokenAccount): ChainAccount {
     executable: false,
     data,
   };
+}
+
+/**
+ * Gives `owner` the associated token account a holder of `mint` has, and returns its address.
+ * Addresses go in and out as base58, so a caller outside this package needs no chain library of
+ * its own to set a token holding up.
+ */
+export function holdToken(
+  chain: FakeChain,
+  holding: {
+    readonly mint: string;
+    readonly owner: string;
+    readonly amount: bigint;
+  },
+): string {
+  const address = associatedTokenAddress(
+    new PublicKey(holding.owner),
+    new PublicKey(holding.mint),
+  ).toBase58();
+  chain.put(
+    address,
+    tokenAccount({
+      mint: holding.mint,
+      owner: holding.owner,
+      amount: holding.amount,
+    }),
+  );
+  return address;
 }
 
 export interface FakeRpc {
