@@ -26,6 +26,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -72,9 +73,11 @@ class InboxViewModelTest {
         )
     }
 
+    private val scheduler = TestCoroutineScheduler()
+
     private fun viewModel() = InboxViewModel(repository, wallet)
 
-    @Before fun setMain() = Dispatchers.setMain(UnconfinedTestDispatcher())
+    @Before fun setMain() = Dispatchers.setMain(UnconfinedTestDispatcher(scheduler))
 
     @After fun resetMain() = Dispatchers.resetMain()
 
@@ -336,6 +339,152 @@ class InboxViewModelTest {
             SigningOutcome.Failed("The wallet signed other bytes than the message."),
             viewModel.state.value.inbox.result(key)?.signing,
         )
+    }
+
+    @Test
+    fun approvesOnceHoweverFastTheOwnerTaps() {
+        val (key, selected) = readyToSign()
+        val signature = ByteString.copyFrom(ByteArray(64) { 7 })
+        adapter.signWith(signature)
+        val release = CompletableDeferred<Unit>()
+        adapter.beforeSigning = { release.await() }
+        val viewModel = viewModel()
+
+        viewModel.approve(key, selected)
+        assertEquals(setOf(key), viewModel.state.value.sending)
+        // More taps while the wallet is in front, on Approve and on Reject alike.
+        viewModel.approve(key, selected)
+        viewModel.answer(key, Answer.Reject)
+        release.complete(Unit)
+
+        assertEquals(1, adapter.signings.size)
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.MESSAGE_SIGNATURE,
+            ),
+            submitted(),
+        )
+        assertEquals(
+            SigningOutcome.Signed(signature),
+            viewModel.state.value.inbox.result(key)?.signing,
+        )
+    }
+
+    @Test
+    fun settlesAnApprovalWhoseAnswerNeverArrivedWhenTheAppComesBack() {
+        val (key, selected) = readyToSign()
+        val release = CompletableDeferred<Unit>()
+        adapter.beforeSigning = { release.await() }
+        val open = viewModel()
+        open.approve(key, selected)
+        assertEquals(1, adapter.signings.size)
+
+        // Coming back to a screen that knows this signing leaves it alone.
+        open.onAppVisible()
+        assertNull(viewModel().state.value.inbox.result(key)?.signing)
+
+        // Coming back to a new screen, after the process died in the wallet, settles it: no
+        // signature reached this phone, so none exists anywhere.
+        val reopened = viewModel()
+        reopened.onAppVisible()
+
+        assertEquals(
+            SigningOutcome.Unresolved(
+                "The wallet's answer never reached this phone, so nothing was signed."
+            ),
+            reopened.state.value.inbox.result(key)?.signing,
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_FAILED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        // And an answer that turns up afterwards changes nothing, and asks no wallet again.
+        release.complete(Unit)
+        assertEquals(1, adapter.signings.size)
+        assertTrue(reopened.state.value.inbox.result(key)?.signing is SigningOutcome.Unresolved)
+    }
+
+    @Test
+    fun givesUpOnAWalletThatNeverAnswersAtAll() {
+        val (key, selected) = readyToSign()
+        adapter.beforeSigning = { CompletableDeferred<Unit>().await() }
+        val viewModel = viewModel()
+
+        viewModel.approve(key, selected)
+        assertEquals(setOf(key), viewModel.state.value.sending)
+        scheduler.advanceUntilIdle()
+
+        assertEquals(
+            SigningOutcome.Unresolved(
+                "The wallet didn't answer, so nothing reached this phone and nothing was signed."
+            ),
+            viewModel.state.value.inbox.result(key)?.signing,
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_FAILED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        assertTrue(viewModel.state.value.sending.isEmpty())
+    }
+
+    @Test
+    fun sendsTheSignatureAgainAfterALostResponseWithoutAskingTheWalletTwice() {
+        val (key, selected) = readyToSign()
+        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        // The signature reaches the sidecar, and the response is lost on the way back.
+        adapter.beforeSigning = { server.loseNextResponse = true }
+        val viewModel = viewModel()
+
+        viewModel.approve(key, selected)
+        assertEquals(Delivery.Waiting, viewModel.state.value.inbox.result(key)?.delivery)
+
+        viewModel.sendAgain(key)
+
+        assertEquals(Delivery.Accepted, viewModel.state.value.inbox.result(key)?.delivery)
+        assertEquals(
+            RequestState.REQUEST_STATE_COMPLETED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        // Sending the result again never reaches the wallet: it was asked exactly once.
+        assertEquals(1, adapter.signings.size)
+    }
+
+    @Test
+    fun neverSettlesAnotherConnectionsRequestWithThisOnesReply() {
+        val first = runBlocking { repository.pair(server.issue(URL)) }
+        val second = runBlocking { repository.pair(other.issue(OTHER_URL)) }
+        adapter.answerConnected(WALLET)
+        val selected = runBlocking {
+            wallet.connect(WalletNetwork.Mainnet)
+            checkNotNull(wallet.wallet.value)
+        }
+        // The same request ID on both servers: only the connection tells them apart.
+        server.addPendingMessage(first.id, WALLET, "For the first", OTHER_REQUEST)
+        other.addPendingMessage(second.id, WALLET, "For the second", OTHER_REQUEST)
+        runBlocking {
+            repository.refresh(first.id)
+            repository.refresh(second.id)
+        }
+        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 4 }))
+        val viewModel = viewModel()
+
+        viewModel.approve(RequestKey(first.id, OTHER_REQUEST), selected)
+
+        assertEquals(
+            RequestState.REQUEST_STATE_COMPLETED,
+            server.stateOf(first.id, OTHER_REQUEST),
+        )
+        // The other connection's request is untouched, and nothing went to its server.
+        assertEquals(RequestState.REQUEST_STATE_PENDING, other.stateOf(second.id, OTHER_REQUEST))
+        assertNull(viewModel.state.value.inbox.result(RequestKey(second.id, OTHER_REQUEST)))
+        assertEquals(listOf(URL, URL), gateway.submits.map { it.first })
+        assertEquals(
+            listOf(first.id),
+            gateway.submits.map { it.second.ref.connectionId }.distinct(),
+        )
+        // And the wallet signed the first connection's message, not the other's.
+        assertEquals(ByteString.copyFromUtf8("For the first"), adapter.signings.single().first)
     }
 
     @Test

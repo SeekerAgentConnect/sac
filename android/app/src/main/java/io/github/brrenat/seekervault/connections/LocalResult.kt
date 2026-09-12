@@ -22,7 +22,7 @@ enum class Answer {
 
 /**
  * What the wallet did with an approved message (docs/guides/message-signing.md). Nothing is
- * broadcast either way, so there is no uncertain outcome to record.
+ * broadcast either way, so no signature can be in doubt: either this phone holds one or it doesn't.
  */
 sealed interface SigningOutcome {
     /** The wallet signed: 64 bytes, which the sidecar verifies against the request's wallet. */
@@ -31,8 +31,16 @@ sealed interface SigningOutcome {
     /** The owner declined in the wallet. */
     data object Declined : SigningOutcome
 
-    /** Nothing was signed. [detail] is display text, and goes to the sidecar as one. */
+    /** Nothing was signed, and the phone knows why. [detail] is display text, and goes as one. */
     data class Failed(val detail: String) : SigningOutcome
+
+    /**
+     * The phone never learned what the wallet did: the app closed, or the wallet never answered,
+     * while the message was with it (SAW-017). No signature reached this phone, so none exists
+     * anywhere and nothing was sent to the network; the sidecar is told the request failed, and the
+     * wallet is never asked a second time. [detail] is display text, and goes as one.
+     */
+    data class Unresolved(val detail: String) : SigningOutcome
 }
 
 /** Where an answer stands between this phone and its sidecar. */

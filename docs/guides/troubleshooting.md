@@ -249,6 +249,56 @@ The sidecar serves one phone connection at a time, and the newest one wins. Some
 
 The sidecar stopped, or the USB cable was unplugged. The app clears the received text, because the sidecar has already cancelled the waiting command, and the agent got `CANCELLED`. Start the sidecar, run `adb reverse` again if you reconnected the cable, and tap **Connect**.
 
+## Signing a message
+
+These are about the wallet and the round trip a signature makes; the whole flow is in
+[`message-signing.md`](message-signing.md).
+
+### The wallet app didn't open when I tapped Approve and sign
+
+The button is disabled until a wallet is connected, so first check the **Wallet** row on
+Connections. If the screen says one of these, the app deliberately asked the wallet nothing:
+
+- **"No wallet is connected on this phone…"** — connect one on the Wallet screen.
+- **"This request names another wallet than the one you connected."** — the agent asked for an
+  address you don't have here. You can only reject it.
+- **"Your wallet changed while you were reviewing this."** — the selection isn't the one the screen
+  showed any more. Look at the request again; nothing was signed.
+
+### It says "This phone never learned what the wallet did"
+
+The app closed, or the wallet never came back, while the message was with it. No signature reached
+this phone, so none exists anywhere, and nothing was sent to the network. The request is reported
+as failed, and **the app never re-opens the wallet on its own**: if you still want the signature,
+have the agent ask again and review the new request.
+
+The usual causes are Android stopping the app under memory pressure while the wallet was in front,
+force-stopping it, or swiping it away in the app switcher.
+
+### My wallet signed, but the agent still reads PROCESSING
+
+The signature is on the phone and the sidecar hasn't got it yet — the screen says so: "The
+signature is saved on this phone, and is sent when the server can be reached." Nothing is lost.
+
+- Check that the sidecar is running and reachable (`curl -s http://127.0.0.1:8080/healthz`), and
+  that `adb reverse tcp:8080 tcp:8080` is still in place.
+- Then tap **Refresh** in Pending requests, or **Send again** on the request.
+
+Sending it again is safe: the sidecar recognizes a result it already accepted and answers with the
+same request. It never opens the wallet again.
+
+### I tapped Approve twice, or rotated the phone. Did it sign twice?
+
+No. One request gets one answer: further taps while it is being sent are ignored, and the wallet is
+asked exactly once per request. A rotation keeps the request, the approval, and the signing where
+they were.
+
+### The agent reads REJECTED but I never rejected it
+
+Declining in the wallet itself is a rejection, and the app says "You declined in the wallet.
+Nothing was signed." A sidecar that couldn't be reached is a different thing and never rejects
+anything: it leaves your answer waiting on the phone.
+
 ## Reporting a problem
 
 Include these details, and never `.env` itself:

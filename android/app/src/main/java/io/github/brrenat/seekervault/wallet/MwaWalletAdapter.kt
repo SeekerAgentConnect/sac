@@ -15,12 +15,13 @@ import com.solana.mobilewalletadapter.common.ProtocolContract
 /**
  * [WalletAdapter] over Mobile Wallet Adapter. It associates with the wallet the owner already has,
  * such as Seed Vault Wallet on the Seeker, from the current activity: [sender] gives the
- * `ActivityResultSender` that `MainActivity` registered. No separate activity and no foreground
- * service is needed, and the app never becomes a wallet itself.
+ * `ActivityResultSender` that `MainActivity` registered, waiting for the next one while a rotation
+ * replaces the screen (SAW-017). No separate activity and no foreground service is needed, and the
+ * app never becomes a wallet itself.
  */
 class MwaWalletAdapter(
     private val identity: ConnectionIdentity,
-    private val sender: () -> ActivityResultSender?,
+    private val sender: suspend () -> ActivityResultSender?,
     private val adapters: (ConnectionIdentity) -> MobileWalletAdapter = ::MobileWalletAdapter,
 ) : WalletAdapter {
     override suspend fun connect(network: WalletNetwork, authToken: String?): WalletResult {

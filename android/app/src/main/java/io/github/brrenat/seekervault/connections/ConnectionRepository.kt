@@ -74,8 +74,9 @@ class ConnectionRepository(
     private val _inbox = MutableStateFlow(Inbox())
     val inbox: StateFlow<Inbox> = _inbox.asStateFlow()
 
-    // The answers being sent right now: an answer is never sent twice at once.
-    private val sending = mutableSetOf<RequestKey>()
+    // One send per answer at a time. A send that arrives while another is running waits for it and
+    // then sees what it settled, so nothing is dropped and nothing is sent twice (SAW-017).
+    private val sending = ConcurrentHashMap<RequestKey, Mutex>()
 
     // One fetch per connection at a time, so an older fetch can't overwrite a newer one's list.
     private val fetching = ConcurrentHashMap<String, Mutex>()
@@ -93,17 +94,41 @@ class ConnectionRepository(
             .list()
             .filter { it.delivery != Delivery.Waiting && (it.settledAt ?: it.answeredAt) < cutoff }
             .forEach { results.delete(it.connectionId, it.requestId) }
-        // An approval the wallet never answered: the app closed in between. Nothing was signed and
-        // nothing was broadcast, so it's a failure, not an uncertain outcome. The approval is still
-        // sent first, so the sidecar sees the same order this phone saw.
-        results
-            .list()
-            .filter {
-                it.answer == Answer.Approve && it.signing == null && it.delivery == Delivery.Waiting
-            }
-            .forEach { results.put(it.copy(signing = SigningOutcome.Failed(APP_CLOSED))) }
+        publish()
+        // The app closed while a message was with the wallet: whatever the wallet did, this phone
+        // never learned it, so the approval is settled as unresolved rather than left open.
+        abandonedSignings(emptySet()).forEach {
+            results.put(it.copy(signing = SigningOutcome.Unresolved(APP_CLOSED)))
+        }
         publish()
     }
+
+    /**
+     * Settles every approval this phone never got a wallet answer for, and sends it (SAW-017). The
+     * keys in [except] are the signings in flight in this process, whose wallet is still being
+     * asked; everything else was abandoned when the app or the activity went away. Nothing here
+     * reaches the wallet: an unresolved signing is reported, never signed again. Returns the
+     * requests it settled.
+     */
+    suspend fun resolveAbandonedSignings(except: Set<RequestKey>): List<RequestKey> {
+        val abandoned = locked {
+            abandonedSignings(except)
+                .map { it.copy(signing = SigningOutcome.Unresolved(WALLET_LOST)) }
+                .onEach(results::put)
+                .also { if (it.isNotEmpty()) publish() }
+        }
+        abandoned.forEach { deliver(it.key) }
+        return abandoned.map { it.key }
+    }
+
+    // Approvals with no wallet answer and nothing settled yet. Call it under the lock.
+    private fun abandonedSignings(except: Set<RequestKey>): List<LocalResult> =
+        results.list().filter {
+            it.answer == Answer.Approve &&
+                it.signing == null &&
+                it.delivery == Delivery.Waiting &&
+                it.key !in except
+        }
 
     /**
      * Pairs with [code]'s sidecar and stores the new connection. Throws [GatewayException] if the
@@ -166,7 +191,9 @@ class ConnectionRepository(
             _inbox.value.results.filter { it.connectionId == id && it.delivery == Delivery.Waiting }
         for (result in waiting) {
             // Stop at the first the sidecar didn't take; the fetch below records why.
-            if (deliver(result.key)?.delivery == Delivery.Waiting) break
+            if (deliver(result.key, waitForTheOneInFlight = false)?.delivery == Delivery.Waiting) {
+                break
+            }
         }
         if (find(id)?.usable != true) return // revoked while the answers were sent
         val check =
@@ -298,73 +325,89 @@ class ConnectionRepository(
 
     /**
      * Sends a waiting answer now, and returns it as it stands afterwards. It returns null if
-     * there's no answer, if the answer is being sent already, or if its connection was removed
-     * while it was sent. The sidecar recognizes a repeat, so sending again after a lost response is
-     * safe. A reply is written only if the connection and the answer are both still there, checked
-     * under the lock that removal holds, so a late reply can't undo a removal.
+     * there's no answer, or if its connection was removed while it was sent. A send that finds
+     * another send of the same answer running waits for it and then returns what that one settled,
+     * so an answer stored while a send is in the air still reaches the sidecar and nothing is sent
+     * twice at once (SAW-017). The sidecar recognizes a repeat, so sending again after a lost
+     * response is safe. A reply is written only if the connection and the answer are both still
+     * there, checked under the lock that removal holds, so a late reply can't undo a removal.
+     *
+     * Delivery never reaches the wallet: the wallet is asked once, between the approval and the
+     * signing outcome, and only by the caller (SAW-016).
      */
-    suspend fun deliver(key: RequestKey): LocalResult? {
-        if (!synchronized(sending) { sending.add(key) }) return null
-        try {
-            val result = locked { results.get(key.connectionId, key.requestId) } ?: return null
-            if (result.delivery != Delivery.Waiting) return result
-            val connection = find(key.connectionId)
-            if (connection == null || !connection.usable) {
-                return settle(result, Delivery.Undeliverable, result.request)
-            }
-            val credential = withContext(io) { vault.get(key.connectionId) }
-            if (credential == null) {
-                forgetCredential(key.connectionId)
-                return settle(result, Delivery.Undeliverable, result.request)
-            }
-            var current = result
-            return try {
-                // The owner's approval goes first: the sidecar takes the wallet's result only for a
-                // request the approval has already moved to PROCESSING.
-                if (current.answer == Answer.Approve && !current.approved) {
-                    val approval =
-                        current.request.messageApproval()
-                            ?: return settle(current, Delivery.Undeliverable, current.request)
-                    gateway.submitResult(
-                        connection.serverUrl,
-                        credential,
-                        submitResultRequest {
-                            ref = current.request.ref
-                            this.approval = approval
-                        },
-                    )
-                    current = markApproved(current) ?: return null
-                }
-                // Nothing more to send until the wallet has answered.
-                val submission = submissionFor(current) ?: return current
-                val after = gateway.submitResult(connection.serverUrl, credential, submission)
-                settle(current, Delivery.Accepted, after)
-            } catch (e: GatewayException) {
-                when (e.kind) {
-                    // The agent cancelled it, or it expired, before the answer arrived.
-                    GatewayException.Kind.InvalidState ->
-                        settle(current, Delivery.Superseded, e.request ?: current.request)
-                    GatewayException.Kind.NotFound ->
-                        settle(current, Delivery.Undeliverable, current.request)
-                    GatewayException.Kind.Unauthenticated -> {
-                        markRevoked(key.connectionId)
-                        locked { results.get(key.connectionId, key.requestId) }
-                    }
-                    // Unreachable, or another failure: keep it, and send it again on refresh. If a
-                    // revocation settled the answer meanwhile, it stays settled.
-                    else ->
-                        locked<LocalResult?> {
-                            val stored = stillStored(current) ?: return@locked null
-                            if (stored.delivery != Delivery.Waiting) return@locked stored
-                            stored.copy(lastFailure = e.kind.toOutcome()).also {
-                                results.put(it)
-                                publish()
-                            }
-                        }
-                }
-            }
+    suspend fun deliver(key: RequestKey): LocalResult? = deliver(key, waitForTheOneInFlight = true)
+
+    // Sends the answer, or, with [waitForTheOneInFlight] false, leaves it to the send already
+    // running and returns null. A refresh takes that route: it has other answers and pages to get
+    // through, and waiting for a send that is already on its way would gain it nothing.
+    private suspend fun deliver(key: RequestKey, waitForTheOneInFlight: Boolean): LocalResult? {
+        val mutex = sending.computeIfAbsent(key) { Mutex() }
+        if (!waitForTheOneInFlight && mutex.isLocked) return null
+        return try {
+            mutex.withLock { send(key) }
         } finally {
-            synchronized(sending) { sending.remove(key) }
+            // Keep the map to the sends still running.
+            sending.computeIfPresent(key) { _, running -> running.takeIf { it.isLocked } }
+        }
+    }
+
+    private suspend fun send(key: RequestKey): LocalResult? {
+        val result = locked { results.get(key.connectionId, key.requestId) } ?: return null
+        if (result.delivery != Delivery.Waiting) return result
+        val connection = find(key.connectionId)
+        if (connection == null || !connection.usable) {
+            return settle(result, Delivery.Undeliverable, result.request)
+        }
+        val credential = withContext(io) { vault.get(key.connectionId) }
+        if (credential == null) {
+            forgetCredential(key.connectionId)
+            return settle(result, Delivery.Undeliverable, result.request)
+        }
+        var current = result
+        return try {
+            // The owner's approval goes first: the sidecar takes the wallet's result only for a
+            // request the approval has already moved to PROCESSING.
+            if (current.answer == Answer.Approve && !current.approved) {
+                val approval =
+                    current.request.messageApproval()
+                        ?: return settle(current, Delivery.Undeliverable, current.request)
+                gateway.submitResult(
+                    connection.serverUrl,
+                    credential,
+                    submitResultRequest {
+                        ref = current.request.ref
+                        this.approval = approval
+                    },
+                )
+                current = markApproved(current) ?: return null
+            }
+            // Nothing more to send until the wallet has answered.
+            val submission = submissionFor(current) ?: return current
+            val after = gateway.submitResult(connection.serverUrl, credential, submission)
+            settle(current, Delivery.Accepted, after)
+        } catch (e: GatewayException) {
+            when (e.kind) {
+                // The agent cancelled it, or it expired, before the answer arrived.
+                GatewayException.Kind.InvalidState ->
+                    settle(current, Delivery.Superseded, e.request ?: current.request)
+                GatewayException.Kind.NotFound ->
+                    settle(current, Delivery.Undeliverable, current.request)
+                GatewayException.Kind.Unauthenticated -> {
+                    markRevoked(key.connectionId)
+                    locked { results.get(key.connectionId, key.requestId) }
+                }
+                // Unreachable, or another failure: keep it, and send it again on refresh. If a
+                // revocation settled the answer meanwhile, it stays settled.
+                else ->
+                    locked<LocalResult?> {
+                        val stored = stillStored(current) ?: return@locked null
+                        if (stored.delivery != Delivery.Waiting) return@locked stored
+                        stored.copy(lastFailure = e.kind.toOutcome()).also {
+                            results.put(it)
+                            publish()
+                        }
+                    }
+            }
         }
     }
 
@@ -501,6 +544,8 @@ class ConnectionRepository(
         const val MAX_PAGES = 10
         val SETTLED_RETENTION: Duration = Duration.ofDays(7)
         const val APP_CLOSED = "The app closed before the wallet answered, so nothing was signed."
+        const val WALLET_LOST =
+            "The wallet's answer never reached this phone, so nothing was signed."
 
         /** Which answers a request can be given: the owner can always refuse. */
         fun Answer.applies(request: ActionRequest) =
@@ -545,6 +590,13 @@ class ConnectionRepository(
                                 rejection = Rejection.getDefaultInstance()
                             }
                         is SigningOutcome.Failed ->
+                            submitResultRequest {
+                                ref = requestRef
+                                executionFailure = executionFailure { detail = outcome.detail }
+                            }
+                        // Nothing reached this phone, so nothing was signed and nothing is in
+                        // doubt: the agent is told the request failed, never that it succeeded.
+                        is SigningOutcome.Unresolved ->
                             submitResultRequest {
                                 ref = requestRef
                                 executionFailure = executionFailure { detail = outcome.detail }

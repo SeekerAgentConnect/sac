@@ -2,6 +2,8 @@
 
 Stage 3 brings the wallet in. SAW-015 is its first task: the app connects the wallet the owner already has through Mobile Wallet Adapter, and publishes the address and network to every paired sidecar so an agent can read them. SAW-016 adds the first thing the wallet is asked to do: sign a message the owner has reviewed and approved by hand. No funds move in either: a signature is not a transaction.
 
+SAW-017 is about what happens around that trip to the wallet — rotation, backgrounding, a killed process, a dead network, a restarted sidecar — and has its own page: [`wallet-lifecycle.md`](wallet-lifecycle.md).
+
 ## Automated checks
 
 `pnpm check` runs the sidecar's and the test agent's tests, and `pnpm check:android` runs the app's JVM and Robolectric tests. CI runs both.

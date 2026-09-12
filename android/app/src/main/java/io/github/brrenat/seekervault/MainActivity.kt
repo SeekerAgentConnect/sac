@@ -64,13 +64,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        (application as SeekerVaultApplication).detachWalletActivity()
+        (application as SeekerVaultApplication).detachWalletActivity(this)
     }
 
     override fun onStart() {
         super.onStart()
         viewModel.onAppVisible()
         connections.onAppVisible()
+        // Also after coming back from the wallet app: an approval whose answer never arrived is
+        // settled here rather than left waiting (docs/testing/wallet-lifecycle.md).
+        inbox.onAppVisible()
         wallet.onAppVisible()
     }
 

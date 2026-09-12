@@ -54,13 +54,16 @@ Then either:
 | Your wallet signed this. The signature is saved on this phone, and is sent when the server can be reached. | The server was unreachable; it's sent again on the next refresh, and nothing is lost |
 | You declined in the wallet. Nothing was signed. | You said no in the wallet itself |
 | Nothing was signed. … | The wallet couldn't sign, and says why. Nothing happened. |
+| This phone never learned what the wallet did. … | The app closed, or the wallet never answered, while the message was with it. No signature reached this phone, so none exists anywhere and nothing went to the network. The agent is told the request failed, and the wallet is not asked again. |
 | Connect a wallet before approving this. | No wallet is connected. Connect one on the **Wallet** screen. |
 | This request names another wallet than the one you connected. | The agent asked for a wallet you don't have here; you can only reject it |
 | Your wallet changed while you were reviewing this. | The selection isn't the one on screen any more, so the app asked the wallet nothing. Look at the request again. |
 
 **Approving binds to what you saw.** The app sends the SHA-256 of the exact message with your approval, and the sidecar refuses an approval that doesn't match the request it stored. Changing the message, the wallet, or the network needs a new review: a changed message is a different request, and changing your wallet cancels the requests it no longer fits.
 
-**If the app closes between your approval and the wallet's answer,** nothing was signed, and the request is reported as failed the next time you open it. A signature that never reached this phone doesn't exist anywhere, and nothing was sent to the network, so there is nothing in doubt.
+**If the app closes between your approval and the wallet's answer,** nothing was signed, and the request is reported as failed the next time you open it. A signature that never reached this phone doesn't exist anywhere, and nothing was sent to the network, so there is nothing in doubt. The app never re-opens the wallet by itself: if you still want the signature, the agent asks again, and you review the new request.
+
+**Rotating the phone, or leaving the app and coming back, changes nothing.** The request stays where it was, your approval isn't sent twice, and the wallet isn't asked twice. If your wallet signed but the server couldn't be reached, the signature is kept here and sent on the next refresh — see [`../testing/wallet-lifecycle.md`](../testing/wallet-lifecycle.md).
 
 ## The agent reads the result
 

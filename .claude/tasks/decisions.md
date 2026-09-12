@@ -270,3 +270,47 @@
   - The sidecar's own rule already cancels a PENDING request a new binding no longer fits, so this only covers the window where the phone hasn't learned that yet, such as an unreachable sidecar.
 - **Invisible characters are marked where they are, not stripped or escaped wholesale.** `visibleText` keeps a line break as a line break and adds `␊`, maps the other control characters to their Control Pictures symbol, and writes zero-width, bidirectional, and no-break characters as `<U+XXXX>`. The message itself is never changed: the wallet signs the original bytes.
 - **`vault_get_capabilities` lists only what is served.** It reports `approval: "manual"` and `signing: "wallet"` as literals rather than as anything configurable, and `operations` is built from the tools actually registered, so a later stage can't leave it claiming something that isn't there.
+
+## 2026-09-12 — SAW-017, the wallet lifecycle and reliable result delivery
+
+- **An answer the phone never received is its own outcome, not a wallet failure.** SAW-016 recorded
+  it as `SigningOutcome.Failed`, which reads as "the wallet told us it couldn't sign". It never did:
+  the app died, or the wallet never came back. `SigningOutcome.Unresolved` says exactly that on
+  screen, and `ResultStore` went to version 3 for it.
+  - On the wire it is still `execution_failure`, and the request is still FAILED. Nothing was
+    broadcast, so a signature that never reached this phone exists nowhere; there is no third state
+    for the sidecar to be in, and UNKNOWN would leave the request non-terminal forever.
+  - It is never retried at the wallet. A signature the owner still wants is a new request they
+    review afresh.
+- **Abandoned signings are settled when the app comes back, not only when it starts.**
+  `ConnectionRepository.load` runs once per process; an approval left open by a ViewModel that went
+  away would otherwise wait for the rest of the session. `InboxViewModel.onAppVisible`, from
+  `MainActivity.onStart`, sweeps on every return to the foreground.
+  - Coming back from the wallet app is such a return, so the sweep takes the keys currently being
+    sent as an exclusion set: a signing this process is still waiting for is left alone. After a
+    process death that set is empty, which is exactly right.
+  - The first outcome stored still stands, so a late answer from a coroutine that outlived the
+    sweep changes nothing.
+- **The wallet call has a timeout, ten minutes.** It is the owner's own time in the wallet app, so
+  it is generous; the point is only that a wallet which never answers at all can't hold a request
+  open forever. The timeout produces the same unresolved outcome.
+- **Delivery serializes per request instead of dropping.** A second send of the same answer used to
+  return null, which could leave a signature stored but unsent until the next refresh — the exact
+  race between coming back from the wallet (which refreshes) and the wallet's answer arriving.
+  `deliver` now waits for the send in flight and returns what it settled.
+  - A refresh keeps the old behaviour and skips: it has other answers and pages to get through, and
+    waiting for a send already on its way would gain it nothing. It would also deadlock the case
+    where a refresh runs while a held send is being tested.
+- **The Mobile Wallet Adapter sender waits for the next screen's.** A rotation destroys one activity
+  before creating the next, so there is a moment with no `ActivityResultSender` at all. Failing an
+  approval the owner just gave with "the app's screen closed" would be wrong; the adapter's `sender`
+  is now suspending and waits up to five seconds. `detachWalletActivity` also takes the activity, so
+  only the one that registered a sender clears it.
+- **No sidecar change was needed for repeated results.** `RequestStore.submit` already compares the
+  submitted result with every result stored for that request, byte for byte, and returns the current
+  request on a match; the results table makes that survive a restart. The task added the tests that
+  say so, for an approval and a signature, before and after reopening the database.
+- **Connection scoping was already right, on both sides.** An answer is keyed by connection and
+  request ID, goes to that connection's own URL with its own credential, and the sidecar refuses a
+  reference naming another connection's request. The task added the end-to-end checks: the same
+  request ID on two servers, answered on one only.

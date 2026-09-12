@@ -33,7 +33,8 @@ const OTHER_CONNECTION = "a7e9c1b3-4d5f-4a6b-8c7d-9e0f1a2b3c4d";
 const SERVER_URL = "http://127.0.0.1:8080";
 const WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW";
 const OTHER_WALLET = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh";
-const { PENDING, COMPLETED, REJECTED, CANCELLED, EXPIRED } = RequestState;
+const { PENDING, PROCESSING, COMPLETED, REJECTED, CANCELLED, EXPIRED } =
+  RequestState;
 
 type Result = MessageInitShape<typeof SubmitResultRequestSchema>["result"];
 const ACKNOWLEDGEMENT: Result = { case: "acknowledgement", value: {} };
@@ -104,6 +105,24 @@ function ack(
     agentNote: "",
     idempotencyKey,
     ...fields,
+  };
+}
+
+/** A request to sign `text`, bound to `wallet`. */
+function message(
+  wallet: string,
+  idempotencyKey: string,
+  text = "Sign in to Example",
+): NewRequest {
+  return {
+    action: create(ActionSchema, {
+      kind: {
+        case: "signMessage",
+        value: { wallet, content: { case: "text", value: text } },
+      },
+    }),
+    agentNote: "",
+    idempotencyKey,
   };
 }
 
@@ -572,6 +591,58 @@ describe("RequestStore: results", () => {
     assert.deepEqual(completed.outcome?.signature, signature);
     // The approval is kept beside it: an outcome is added to, never cleared.
     assert.deepEqual(completed.outcome?.approval?.contentHash, contentHash);
+  });
+
+  it("settles a message once, however often the phone sends the same results", () => {
+    // The phone sends an answer again whenever it didn't hear back, and a sidecar restart doesn't
+    // change that (SAW-017): every repeat must give the phone the same terminal result.
+    const path = temporaryDatabasePath();
+    const signer = testWallet();
+    const bytes = new TextEncoder().encode("Sign in to Example");
+    const signature = signer.sign(bytes);
+    const approval: Result = {
+      case: "approval",
+      value: {
+        preparedVersion: 0,
+        contentHash: Uint8Array.from(
+          createHash("sha256").update(bytes).digest(),
+        ),
+      },
+    };
+    const signed: Result = { case: "messageSignature", value: { signature } };
+    const before = setup({ path });
+    before.store.publishWallet(before.connectionId, binding(signer.address));
+    const { request } = before.store.create(message(signer.address, "once"));
+
+    assert.equal(answer(before, request, approval).request.state, PROCESSING);
+    const repeated = answer(before, request, approval);
+    assert.equal(repeated.duplicate, true);
+    assert.equal(repeated.request.state, PROCESSING);
+    assert.equal(answer(before, request, signed).request.state, COMPLETED);
+    assert.equal(rows(before.db, "results"), 2);
+    before.db.close();
+
+    const db = openDatabase(path);
+    try {
+      const store = new RequestStore(db, {
+        defaultTtlSeconds: DAY_SECONDS,
+        pendingLimit: 100,
+        now: () => NOON + 1000,
+      });
+      for (const result of [approval, signed]) {
+        const again = store.submit(
+          before.connectionId,
+          create(SubmitResultRequestSchema, { ref: request.ref, result }),
+        );
+        assert.equal(again.duplicate, true);
+        assert.equal(again.request.state, COMPLETED);
+        assert.deepEqual(again.request.outcome?.signature, signature);
+      }
+      // Nothing was written a second time, and the wallet was never involved here at all.
+      assert.equal(rows(db, "results"), 2);
+    } finally {
+      db.close();
+    }
   });
 
   it("applies a repeated result once, and refuses a different one after the end", () => {

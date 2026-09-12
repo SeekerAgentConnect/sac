@@ -175,10 +175,13 @@ class InboxTest {
         }
         val answering = async { repository.answer(key, Answer.Acknowledge) }
         sendingNow.await()
-        repository.refresh(key.connectionId) // finds the answer already being sent
-        assertNull(repository.deliver(key))
+        repository.refresh(key.connectionId) // leaves the send in flight to itself
+        // An explicit send waits for the one running and then sees what it settled: nothing is
+        // sent twice, and nothing is dropped (SAW-017).
+        val again = async { repository.deliver(key) }
         release.complete(Unit)
         assertEquals(Delivery.Accepted, answering.await().delivery)
+        assertEquals(Delivery.Accepted, again.await()?.delivery)
         assertEquals(1, gateway.submits.size)
     }
 
@@ -563,7 +566,7 @@ class InboxTest {
     }
 
     @Test
-    fun recordsAnApprovalTheWalletNeverAnsweredAsAFailureWhenTheAppOpensAgain() = runBlocking {
+    fun recordsAnApprovalTheWalletNeverAnsweredAsUnresolvedWhenTheAppOpensAgain() = runBlocking {
         val key = oneMessage()
         // The owner approved, and the app closed before the wallet came back with anything.
         serverA.failure = GatewayException.Kind.Unreachable
@@ -573,12 +576,12 @@ class InboxTest {
         val reopened = repository()
         reopened.load()
 
-        val outcome = reopened.result(key)?.signing
+        // Unresolved, not signed and not a success this phone made up: no signature arrived here.
         assertEquals(
-            SigningOutcome.Failed(
+            SigningOutcome.Unresolved(
                 "The app closed before the wallet answered, so nothing was signed."
             ),
-            outcome,
+            reopened.result(key)?.signing,
         )
         // Nothing was signed and nothing was broadcast, so the request fails rather than hanging.
         reopened.deliver(key)
@@ -587,6 +590,93 @@ class InboxTest {
             serverA.stateOf(key.connectionId, key.requestId),
         )
         assertEquals(Delivery.Accepted, reopened.result(key)?.delivery)
+    }
+
+    @Test
+    fun settlesAnApprovalTheWalletNeverAnsweredWhenTheAppComesBackToTheForeground() = runBlocking {
+        val key = oneMessage()
+        repository.answer(key, Answer.Approve)
+        assertNull(repository.result(key)?.signing)
+
+        // The app was in the wallet and came back without an answer: the process was killed, or
+        // the wallet never replied. It is settled here and sent, and no wallet is involved.
+        assertEquals(listOf(key), repository.resolveAbandonedSignings(emptySet()))
+
+        assertEquals(
+            SigningOutcome.Unresolved(
+                "The wallet's answer never reached this phone, so nothing was signed."
+            ),
+            repository.result(key)?.signing,
+        )
+        assertEquals(Delivery.Accepted, repository.result(key)?.delivery)
+        assertEquals(
+            RequestState.REQUEST_STATE_FAILED,
+            serverA.stateOf(key.connectionId, key.requestId),
+        )
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.EXECUTION_FAILURE,
+            ),
+            gateway.submits.map { it.second.resultCase },
+        )
+    }
+
+    @Test
+    fun leavesASigningThatIsStillWithTheWalletAlone() = runBlocking {
+        val key = oneMessage()
+        repository.answer(key, Answer.Approve)
+
+        // Coming back from the wallet app while this phone is still waiting for its answer.
+        assertEquals(emptyList<RequestKey>(), repository.resolveAbandonedSignings(setOf(key)))
+
+        assertNull(repository.result(key)?.signing)
+        assertEquals(
+            RequestState.REQUEST_STATE_PROCESSING,
+            serverA.stateOf(key.connectionId, key.requestId),
+        )
+        // And the signature that arrives afterwards still settles it.
+        val signature = ByteString.copyFrom(ByteArray(64) { 7 })
+        repository.recordSigning(key, SigningOutcome.Signed(signature))
+        assertEquals(
+            RequestState.REQUEST_STATE_COMPLETED,
+            serverA.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
+    @Test
+    fun sendsASignatureStoredWhileAnEarlierSendWasStillRunning() = runBlocking {
+        val key = oneMessage()
+        // The approval couldn't be sent when the owner gave it, so a refresh sends it.
+        serverA.failure = GatewayException.Kind.Unreachable
+        repository.answer(key, Answer.Approve)
+        serverA.failure = null
+        val sendingNow = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.beforeSubmit = {
+            sendingNow.complete(Unit)
+            release.await()
+        }
+        val refreshing = async { repository.refresh(key.connectionId) }
+        sendingNow.await()
+        // The wallet comes back with the signature while that send is still in the air.
+        val signature = ByteString.copyFrom(ByteArray(64) { 5 })
+        val recording = async { repository.recordSigning(key, SigningOutcome.Signed(signature)) }
+        release.complete(Unit)
+        refreshing.await()
+
+        assertEquals(Delivery.Accepted, recording.await()?.delivery)
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.MESSAGE_SIGNATURE,
+            ),
+            gateway.submits.map { it.second.resultCase },
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_COMPLETED,
+            serverA.stateOf(key.connectionId, key.requestId),
+        )
     }
 
     @Test
