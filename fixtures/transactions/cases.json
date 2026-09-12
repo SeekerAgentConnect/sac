@@ -221,7 +221,7 @@
         "amount": "1500000",
         "mint": "4iYFsZcZXQLTfykuzRwY19SxRja53Vm6jSf6CuTx6Kjt",
         "decimals": 6,
-        "ensuresRecipientAccount": true
+        "ensuresRecipientAccount": false
       }
     },
     {

@@ -24,7 +24,7 @@ describe("the shared transfer fixtures", () => {
     assert.equal(
       readFileSync(COMMITTED, "utf8"),
       built,
-      `${FIXTURE_PATH} is stale; run \`node sidecar/src/solana/fixtures.ts\``,
+      `${FIXTURE_PATH} is stale; run \`node sidecar/src/testing/transaction-fixtures.ts\``,
     );
   });
 

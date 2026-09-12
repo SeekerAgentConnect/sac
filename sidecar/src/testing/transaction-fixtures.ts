@@ -273,17 +273,19 @@ function solFacts(amount: string, recipient = RECIPIENT): FixtureFacts {
 
 function tokenFacts(
   amount: string,
-  ensuresRecipientAccount: boolean,
+  carriesAccountInstruction: boolean,
   decimals = 6,
   mint: PublicKey = MINT,
 ): FixtureFacts {
   const destination = associatedTokenAddress(RECIPIENT, mint);
+  // The associated-account instruction vouches for the recipient's account for the mint it names,
+  // and for no other. A mint the request doesn't name derives a different account, so carrying the
+  // instruction there vouches for somebody else's: the transaction establishes nothing about the
+  // account this request's transfer was meant to reach, and so it names no wallet and ensures
+  // nothing.
+  const ensuresRecipientAccount = carriesAccountInstruction && mint === MINT;
   return {
-    // A wallet is named only when the transaction itself has the chain check whose account the
-    // destination is. A mint the request doesn't name derives a different account, and then the
-    // associated-account instruction vouches for somebody else's.
-    recipient:
-      mint === MINT && ensuresRecipientAccount ? RECIPIENT.toBase58() : null,
+    recipient: ensuresRecipientAccount ? RECIPIENT.toBase58() : null,
     destinationAccount: destination.toBase58(),
     amount,
     mint: mint.toBase58(),
