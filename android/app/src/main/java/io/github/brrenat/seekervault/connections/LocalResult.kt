@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.connections
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Approval
+import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.approval
 import java.time.Instant
 
@@ -133,7 +134,31 @@ data class LocalResult(
      */
     val uncommittedTransfer: Boolean
         get() = answer == Answer.Approve && approvedTransaction != null && !approved
+
+    /**
+     * Whether asking the sidecar again could still change what this says (SAW-022). A transfer the
+     * sidecar accepted stops at SUBMITTED, or at UNKNOWN when the wallet's answer was lost, and
+     * only the chain settles it. Checking opens no wallet and sends nothing: it asks the sidecar
+     * what it has learned, and nothing else.
+     */
+    val awaitingChain: Boolean
+        get() =
+            delivery == Delivery.Accepted &&
+                request.hasAction() &&
+                request.action.hasTransfer() &&
+                request.state !in SETTLED
 }
+
+/** The states a request can no longer leave (docs/protocol.md#lifecycle). */
+private val SETTLED =
+    setOf(
+        RequestState.REQUEST_STATE_CONFIRMED,
+        RequestState.REQUEST_STATE_COMPLETED,
+        RequestState.REQUEST_STATE_REJECTED,
+        RequestState.REQUEST_STATE_CANCELLED,
+        RequestState.REQUEST_STATE_EXPIRED,
+        RequestState.REQUEST_STATE_FAILED,
+    )
 
 /** What came of sending the owner's approval of a transfer to the sidecar. */
 sealed interface ApprovalOutcome {

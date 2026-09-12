@@ -37,6 +37,13 @@ public interface RequestServiceClientInterface {
   public suspend fun submitResult(request: SubmitResultRequest, headers: Headers = emptyMap()): ResponseMessage<SubmitResultResponse>
 
   /**
+   *  CheckStatus asks the chain what became of a submitted transaction, and returns the request as
+   *  it is afterwards. It reaches no wallet and signs nothing: the owner can ask as often as they
+   *  like, and a request whose outcome it can't establish stays exactly as it was.
+   */
+  public suspend fun checkStatus(request: CheckStatusRequest, headers: Headers = emptyMap()): ResponseMessage<CheckStatusResponse>
+
+  /**
    *  PublishWallet tells the sidecar which wallet and network the owner selected in the app, so
    *  that agents can read them (vault_get_address). An absent binding clears it, which is what a
    *  disconnected wallet means. Publishing a different wallet or network cancels the PENDING

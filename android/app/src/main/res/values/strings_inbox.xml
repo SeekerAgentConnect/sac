@@ -49,6 +49,10 @@
     <string name="approve_and_send">Approve and send</string>
     <string name="reject">Reject</string>
     <string name="send_again">Send again</string>
+    <string name="check_status">Check status</string>
+    <string name="confirmation_checked">Checked with %1$s. %2$s</string>
+    <string name="confirmation_unchecked">The server has not looked this up on the network yet.</string>
+    <string name="confirmation_trust">A confirmed or failed result is what that one server read from the network.</string>
 
     <string name="status_waiting_for_you">Waiting for your answer.</string>
     <string name="status_sending">Sending your answer…</string>
@@ -65,7 +69,9 @@
     <string name="status_waiting_for_wallet">You approved this. Waiting for the wallet…</string>
     <string name="status_signed">Your wallet signed this. The agent can read the signature.</string>
     <string name="status_to_send_signed">Your wallet signed this. The signature is saved on this phone, and is sent when the server can be reached.</string>
-    <string name="status_sent">Your wallet sent this transaction. Its ID is %1$s. Whether it succeeded on the network is not checked here yet.</string>
+    <string name="status_sent">Your wallet sent this transaction. Its ID is %1$s. It has not been confirmed on the network yet.</string>
+    <string name="status_confirmed">This transfer went through on the network. Its transaction ID is %1$s.</string>
+    <string name="status_chain_failed">This transaction ran on the network and failed, so the transfer did not happen. %2$s Its ID is %1$s.</string>
     <string name="status_to_send_sent">Your wallet sent this transaction. Its ID, %1$s, is saved on this phone, and is sent to the server when it can be reached.</string>
     <string name="status_declined_in_wallet">You declined in the wallet. Nothing was signed.</string>
     <string name="status_to_send_declined_in_wallet">You declined in the wallet. Nothing was signed. Your answer is saved on this phone, and is sent when the server can be reached.</string>
@@ -78,6 +84,7 @@
     <string name="problem_not_verified">The transaction on screen is not the one this phone holds any more, or this phone could not read all of it. Nothing was approved. Read it again and review the new version.</string>
     <string name="problem_stale_preparation">The server has a newer transaction for this request, or this one can no longer be sent. Nothing was approved, and it has been read again for you to review.</string>
     <string name="problem_not_approved">The server could not be reached, so nothing was approved and your wallet was not opened. You can approve it again.</string>
+    <string name="problem_not_checked">The status could not be checked: the server did not answer, or it could not read the network. Nothing about the transaction has changed, and nothing was sent again.</string>
     <string name="status_last_failure">Last attempt: %1$s</string>
     <string name="status_gone">This request isn\'t pending on this phone. It may have been answered, cancelled, or not fetched yet.</string>
 
@@ -86,6 +93,8 @@
     <string name="answer_approved">Approved</string>
     <string name="answer_signed">Signed</string>
     <string name="answer_sent">Sent to the network</string>
+    <string name="answer_confirmed">Confirmed on the network</string>
+    <string name="answer_chain_failed">Failed on the network</string>
     <string name="answer_declined_in_wallet">Declined in the wallet</string>
     <string name="answer_not_signed">Not signed</string>
     <string name="answer_unresolved">Not signed: no answer from the wallet</string>

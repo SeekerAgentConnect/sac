@@ -901,6 +901,168 @@ class InboxViewModelTest {
         assertEquals(1, adapter.sendings.size)
     }
 
+    // --- Following a sent transaction to the chain (SAW-022) ---
+
+    /**
+     * A transfer the wallet has sent, so the server has it as SUBMITTED and this phone knows it.
+     */
+    private fun sentTransfer(): Pair<RequestKey, InboxViewModel> {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        viewModel.approveTransfer(key, reviewed)
+        assertEquals(
+            RequestState.REQUEST_STATE_SUBMITTED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        return key to viewModel
+    }
+
+    @Test
+    fun checkingAConfirmationKeepsWhatTheServerReadAndOpensNoWallet() {
+        val (key, viewModel) = sentTransfer()
+        val sendings = adapter.sendings.size
+        val submits = gateway.submits.size
+        server.putOnChain(
+            key.connectionId,
+            key.requestId,
+            FakeConnectionGateway.Server.Confirmed(
+                RequestState.REQUEST_STATE_CONFIRMED,
+                "The approved transaction succeeded on chain in slot 4242.",
+            ),
+        )
+
+        viewModel.checkStatus(key)
+
+        val result = checkNotNull(viewModel.state.value.inbox.result(key))
+        assertEquals(RequestState.REQUEST_STATE_CONFIRMED, result.request.state)
+        assertEquals("rpc.test.invalid", result.request.outcome.confirmation.endpoint)
+        // The wallet's own answer stands: a confirmation says what the chain did with it, not
+        // what the wallet did.
+        assertEquals(SigningOutcome.Sent(ByteString.copyFrom(ByteArray(64) { 9 })), result.signing)
+        assertEquals(Delivery.Accepted, result.delivery)
+        // And nothing was asked of the wallet, and no second result was sent.
+        assertEquals(sendings, adapter.sendings.size)
+        assertEquals(submits, gateway.submits.size)
+    }
+
+    @Test
+    fun aTransactionThatFailedOnChainIsKeptAsAFailureWithItsReason() {
+        val (key, viewModel) = sentTransfer()
+        server.putOnChain(
+            key.connectionId,
+            key.requestId,
+            FakeConnectionGateway.Server.Confirmed(
+                RequestState.REQUEST_STATE_FAILED,
+                "The transaction ran on chain and failed: insufficient funds.",
+            ),
+        )
+
+        viewModel.checkStatus(key)
+
+        val result = checkNotNull(viewModel.state.value.inbox.result(key))
+        assertEquals(RequestState.REQUEST_STATE_FAILED, result.request.state)
+        assertTrue(result.request.outcome.detail.contains("insufficient funds"))
+        // A failure on chain is not an excuse to try again: nothing here sends a replacement.
+        assertEquals(1, adapter.sendings.size)
+    }
+
+    @Test
+    fun aTransferTheChainCannotSettleStaysExactlyWhereItWas() {
+        val (key, viewModel) = sentTransfer()
+
+        viewModel.checkStatus(key)
+
+        val result = checkNotNull(viewModel.state.value.inbox.result(key))
+        assertEquals(RequestState.REQUEST_STATE_SUBMITTED, result.request.state)
+        assertEquals(true, result.awaitingChain)
+        assertEquals(1, adapter.sendings.size)
+    }
+
+    @Test
+    fun aSecondTapWhileAChecksIsRunningAsksOnlyOnce() {
+        val (key, viewModel) = sentTransfer()
+        val release = CompletableDeferred<Unit>()
+        gateway.beforeSubmit = {}
+        gateway.beforeCheck = { release.await() }
+
+        viewModel.checkStatus(key)
+        assertEquals(setOf(key), viewModel.state.value.checking)
+        viewModel.checkStatus(key)
+        viewModel.checkStatus(key)
+        release.complete(Unit)
+
+        assertEquals(1, server.checks)
+        assertEquals(emptySet<RequestKey>(), viewModel.state.value.checking)
+    }
+
+    @Test
+    fun aServerThatCannotBeReachedChangesNothingAboutTheTransaction() {
+        val (key, viewModel) = sentTransfer()
+        val before = checkNotNull(viewModel.state.value.inbox.result(key))
+        server.failure = GatewayException.Kind.Unreachable
+
+        viewModel.checkStatus(key)
+
+        assertEquals(SigningProblem.NotChecked, viewModel.state.value.problem)
+        val after = checkNotNull(viewModel.state.value.inbox.result(key))
+        assertEquals(before.request.state, after.request.state)
+        assertEquals(before.signing, after.signing)
+        assertEquals(before.delivery, after.delivery)
+        assertEquals(1, adapter.sendings.size)
+    }
+
+    @Test
+    fun aSettledTransferIsNotCheckedAgain() {
+        val (key, viewModel) = sentTransfer()
+        server.putOnChain(
+            key.connectionId,
+            key.requestId,
+            FakeConnectionGateway.Server.Confirmed(
+                RequestState.REQUEST_STATE_CONFIRMED,
+                "It went through.",
+            ),
+        )
+        viewModel.checkStatus(key)
+        val asked = server.checks
+
+        viewModel.checkStatus(key)
+
+        assertEquals(asked, server.checks)
+        assertEquals(
+            false,
+            checkNotNull(viewModel.state.value.inbox.result(key)).awaitingChain,
+        )
+    }
+
+    @Test
+    fun aTransferTheWalletNeverAnsweredIsNeverSentAgainToSettleIt() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        // The wallet never answers, so the phone reports an unknown outcome (SAW-021).
+        adapter.answerSending(SendResult.Unknown("the wallet never came back"))
+        viewModel.approveTransfer(key, reviewed)
+        assertEquals(
+            RequestState.REQUEST_STATE_UNKNOWN,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        val sendings = adapter.sendings.size
+
+        viewModel.checkStatus(key)
+
+        // The server looked, found nothing to look up, and said so. Nothing went to the wallet.
+        assertEquals(sendings, adapter.sendings.size)
+        assertEquals(
+            RequestState.REQUEST_STATE_UNKNOWN,
+            checkNotNull(viewModel.state.value.inbox.result(key)).request.state,
+        )
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.UNKNOWN_OUTCOME,
+            ),
+            submitted(),
+        )
+    }
+
     private companion object {
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
         const val OTHER_WALLET = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"

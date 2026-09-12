@@ -265,11 +265,13 @@ The rules behind the table:
 - **No state moves backward, and nothing leaves a terminal state.** A request never returns to PENDING. Another attempt is a new request, with a new idempotency key.
 - **Approval is the commit point.** The phone reports its approval, which moves the request to PROCESSING, before it invokes the wallet. It invokes the wallet only if the sidecar accepted that approval. The sidecar applies one change to a request at a time, so when the agent's cancellation and the user's approval race, exactly one wins: a cancelled request refuses the approval, and a PROCESSING request can't be cancelled.
 - **Success depends on the kind.** An `ack` or a message succeeds as COMPLETED, because nothing goes on chain. A transfer or swap succeeds only as CONFIRMED: the wallet's submission is SUBMITTED, not success.
-- **UNKNOWN isn't terminal.** It means the wallet may have signed or sent, and the sidecar keeps resolving it. SUBMITTED never becomes UNKNOWN, because by then the sidecar knows the signature and can always check the chain.
+- **UNKNOWN isn't terminal.** It means the wallet may have signed or sent, and the sidecar keeps resolving it. SUBMITTED never becomes UNKNOWN either: both already mean "not settled", and the lifecycle never goes back. When a check can't account for a SUBMITTED transaction — the signature names a transaction nobody approved — the request stays SUBMITTED and its `Outcome.confirmation` says exactly that, rather than moving sideways into another unsettled state. See [confirmation](#confirmation).
 - **Expiry comes first.** At or after `expires_at`, the sidecar moves a PENDING request to EXPIRED before it applies any other operation, so a late approval gets `INVALID_STATE` with the request as EXPIRED. The boundary is Stage 1's: a request is PENDING strictly before `expires_at`.
 - **The sidecar never re-executes on its own.** After a restart it neither rebuilds nor resubmits anything (SAW-010).
 
 The table is `TRANSITIONS` in `lifecycle.ts`, and its tests spell out each kind's table independently.
+
+Not every sidecar-driven transition in it has an implementation yet. SAW-022 implements the three a signature can settle — `SUBMITTED → CONFIRMED`, `SUBMITTED → FAILED`, and expiry — and no more. The rest need the sidecar to find a transaction it was never told the signature of, which would mean searching the wallet's own history; nothing does that today, and nothing pretends to. They stay in the table as what a later stage may implement, not as something the sidecar already does.
 
 ### Two expiries
 
@@ -320,6 +322,7 @@ The sidecar builds a transfer itself, from the chain and the stored action. Noth
 | `RequestService` | `GetRequest` | Phone credential | One request, in any state |
 | `RequestService` | `PrepareRequest` | Phone credential | A new version of a PENDING transfer's or swap's transaction |
 | `RequestService` | `SubmitResult` | Phone credential | A decision or a wallet result. It returns the request as it is afterwards. |
+| `RequestService` | `CheckStatus` | Phone credential | What became of a sent transaction, read from the chain. It reaches no wallet, and returns the request as it is afterwards (SAW-022). |
 | `RequestService` | `PublishWallet` | Phone credential | The wallet the owner selected, or none. It returns the stored binding and the requests it cancelled (SAW-015). |
 
 Every RPC is unary. The phone fetches when the app opens or comes back to the foreground, when the user selects a connection, or when the user refreshes. Nothing is pushed, and the Stage 1 stream isn't needed. Credentials travel only in `Authorization: Bearer <token>`. [Pairing](#pairing) and [roles](#roles) define them, and [`docs/security.md`](security.md#transport-security) covers TLS.
@@ -342,6 +345,39 @@ A `SubmitResult` carries one result:
 - **Any other result for a request that has moved on** gets `INVALID_STATE`, with the request as it is now.
 
 `decideResult` implements this table and the approval binding. SAW-010 adds storage, duplicate detection, and transactions around it.
+
+### Confirmation
+
+A transfer succeeds only as CONFIRMED. The wallet's `transaction_submission` says it sent something and names the signature; what became of that signature is a separate question, and SAW-022 is what answers it.
+
+**Nothing runs on its own.** The sidecar has no background worker (AGENTS.md), so its knowledge advances when somebody asks. Two people ask, and both run the same check:
+
+- the **agent**, every time it reads a SUBMITTED transfer with `vault_get_request`. At most one chain check per request every two seconds, so a tight polling loop gets the stored answer in between.
+- the **owner**, through `RequestService.CheckStatus` from the phone. That one always checks: they asked.
+
+**What one check does.** It reads `getSignatureStatuses` for the reported signature, and, when there is a confirmed or finalized status, `getTransaction` for the transaction itself.
+
+| What the endpoint says | Where the request goes |
+| --- | --- |
+| Confirmed or finalized, no chain error, and the transaction under it is the approved one | CONFIRMED |
+| The same, with a chain error | FAILED, with the chain's own error kept |
+| `processed` only | Unchanged: a processed transaction can still be dropped |
+| No status, and the approved version's `last_valid_block_height` hasn't passed | Unchanged |
+| No status, the window has passed, and a search of the ledger itself still finds nothing | FAILED: it can no longer land, and nothing was spent |
+| The transaction under that signature isn't the approved one | Unchanged, and `matches_approval` is false |
+| The endpoint timed out, refused, or answered nonsense | Unchanged, and the attempt is recorded |
+
+The rules behind it:
+
+- **A confirmed result is checked against the approved bytes.** The sidecar fetches the transaction the chain holds under that signature and compares it with the exact `PreparedTransaction` the approval named, over the message — everything the signatures cover. A wallet's signature fills the slots the approved bytes leave empty, so that part differs and nothing else may. A transaction it can't take apart is not a match.
+- **A missing status is never proof.** A signature drops out of a node's status cache after a while, and an endpoint that didn't answer has said nothing at all. Only the approved transaction's own blockhash window closing, together with a search of the ledger that still finds nothing, means it can never land ([R9](https://solana.com/developers/cookbook/transactions/confirmation)).
+- **A check settles a request or leaves it exactly as it was.** It never moves one backward, never returns one to PENDING, and never opens a wallet. A finished request is left alone, whatever the chain says later.
+- **The result rests on one endpoint.** `Outcome.confirmation.endpoint` is the host of the configured `SOLANA_RPC_URL` — the host and nothing else, because the URL can carry an API key. There is no second opinion behind a CONFIRMED or a FAILED transfer, and the agent (`checked_with`) and the owner are both told whose word it is.
+- **Nothing replaces a transaction.** A failure on chain, an expired blockhash, and an unaccountable signature are all reported as what they are. The sidecar builds no replacement, and the phone sends nothing to a wallet a second time. Another attempt is a new request, from the agent, approved by the owner.
+- **An UNKNOWN transfer has nothing to look up.** The phone lost the wallet before it reported anything, so no signature exists to ask about. A check says so and changes nothing; it stays UNKNOWN ([`docs/guides/troubleshooting.md`](guides/troubleshooting.md#a-transfer-whose-outcome-is-unknown)).
+- **Without an endpoint, nothing is checked.** A sidecar with no `SOLANA_RPC_URL` serves no transfer to begin with; one that had a request from before answers `CHAIN_UNAVAILABLE` to `CheckStatus`, and the request stays SUBMITTED.
+
+`Outcome.confirmation` carries `level`, `slot`, `chain_error`, `checked_at`, `checks`, `endpoint`, `matches_approval`, and `detail`. It is stored with the request, so a signature and every unsettled attempt survive a restart of the sidecar and of the phone. `requests/confirmation.ts` decides, `storage/request-store.ts` commits, and `solana/confirmation.ts` compares the bytes.
 
 ### Message results
 
@@ -382,7 +418,7 @@ A `sign_message` request is the one wallet action with no transaction: it produc
   - An ack's text follows the Stage 1 text rules, and a note is at most 1024 UTF-8 bytes.
   - A whole `/mcp` body is at most 64 KiB; a larger one gets 413.
   - Each phone API message is at most 64 KiB; a larger one gets `resource_exhausted`.
-- **An agent polls `vault_get_request` until `terminal` is true.** An UNKNOWN request isn't finished, and the agent must not create a replacement for it.
+- **An agent polls `vault_get_request` until `terminal` is true.** An UNKNOWN request isn't finished, and the agent must not create a replacement for it. Neither is a SUBMITTED one: polling is also what makes the sidecar look, so a transfer reaches CONFIRMED or FAILED because somebody asked ([confirmation](#confirmation)).
 
 Every tool returns the same view in `structuredContent`:
 
@@ -403,6 +439,7 @@ Every tool returns the same view in `structuredContent`:
 - **`signature`** (base58) appears once there is one.
 - **`signed_message_base64`** carries a signed message's exact bytes, so the agent verifies the signature against them.
 - **`detail`** is display text that explains a REJECTED, CANCELLED, EXPIRED, FAILED, or UNKNOWN request.
+- **`confirmation`**, **`slot`**, **`chain_error`**, **`checked_at`**, and **`checked_with`** say what the chain was asked about a sent transaction, and when ([confirmation](#confirmation)). `checked_with` is the host of the one endpoint whose word a CONFIRMED or FAILED transfer rests on.
 - **Timestamps** are RFC 3339 in UTC, with milliseconds.
 - **Errors keep the Stage 1 format:** `isError: true`, text `"<CODE>: <message>"`, and no `structuredContent`.
 

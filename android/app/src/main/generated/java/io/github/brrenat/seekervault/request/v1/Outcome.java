@@ -205,6 +205,78 @@ public  final class Outcome extends
 
   }
 
+  public static final int CONFIRMATION_FIELD_NUMBER = 4;
+  private io.github.brrenat.seekervault.request.v1.Confirmation confirmation_;
+  /**
+   * <pre>
+   * What the sidecar has learned from the chain about signature. Set from the first check on,
+   * for transfers and swaps (SAW-022); absent for actions with no transaction.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+   */
+  @java.lang.Override
+  public boolean hasConfirmation() {
+    return ((bitField0_ & 0x00000002) != 0);
+  }
+  /**
+   * <pre>
+   * What the sidecar has learned from the chain about signature. Set from the first check on,
+   * for transfers and swaps (SAW-022); absent for actions with no transaction.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+   */
+  @java.lang.Override
+  public io.github.brrenat.seekervault.request.v1.Confirmation getConfirmation() {
+    return confirmation_ == null ? io.github.brrenat.seekervault.request.v1.Confirmation.getDefaultInstance() : confirmation_;
+  }
+  /**
+   * <pre>
+   * What the sidecar has learned from the chain about signature. Set from the first check on,
+   * for transfers and swaps (SAW-022); absent for actions with no transaction.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+   */
+  private void setConfirmation(io.github.brrenat.seekervault.request.v1.Confirmation value) {
+    java.util.Objects.requireNonNull(value);
+    confirmation_ = value;
+    bitField0_ |= 0x00000002;
+  }
+  /**
+   * <pre>
+   * What the sidecar has learned from the chain about signature. Set from the first check on,
+   * for transfers and swaps (SAW-022); absent for actions with no transaction.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+   */
+  @java.lang.SuppressWarnings("ReferenceEquality")
+  private void mergeConfirmation(io.github.brrenat.seekervault.request.v1.Confirmation value) {
+    java.util.Objects.requireNonNull(value);
+    if (confirmation_ != null &&
+        confirmation_ != io.github.brrenat.seekervault.request.v1.Confirmation.getDefaultInstance()) {
+      confirmation_ =
+        io.github.brrenat.seekervault.request.v1.Confirmation.newBuilder(confirmation_).mergeFrom(value).buildPartial();
+    } else {
+      confirmation_ = value;
+    }
+    bitField0_ |= 0x00000002;
+  }
+  /**
+   * <pre>
+   * What the sidecar has learned from the chain about signature. Set from the first check on,
+   * for transfers and swaps (SAW-022); absent for actions with no transaction.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+   */
+  private void clearConfirmation() {
+    confirmation_ = null;
+    bitField0_ = (bitField0_ & ~0x00000002);
+  }
+
   public static io.github.brrenat.seekervault.request.v1.Outcome parseFrom(
       java.nio.ByteBuffer data)
       throws com.google.protobuf.InvalidProtocolBufferException {
@@ -495,6 +567,83 @@ public  final class Outcome extends
       return this;
     }
 
+    /**
+     * <pre>
+     * What the sidecar has learned from the chain about signature. Set from the first check on,
+     * for transfers and swaps (SAW-022); absent for actions with no transaction.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+     */
+    @java.lang.Override
+    public boolean hasConfirmation() {
+      return instance.hasConfirmation();
+    }
+    /**
+     * <pre>
+     * What the sidecar has learned from the chain about signature. Set from the first check on,
+     * for transfers and swaps (SAW-022); absent for actions with no transaction.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+     */
+    @java.lang.Override
+    public io.github.brrenat.seekervault.request.v1.Confirmation getConfirmation() {
+      return instance.getConfirmation();
+    }
+    /**
+     * <pre>
+     * What the sidecar has learned from the chain about signature. Set from the first check on,
+     * for transfers and swaps (SAW-022); absent for actions with no transaction.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+     */
+    public Builder setConfirmation(io.github.brrenat.seekervault.request.v1.Confirmation value) {
+      copyOnWrite();
+      instance.setConfirmation(value);
+      return this;
+      }
+    /**
+     * <pre>
+     * What the sidecar has learned from the chain about signature. Set from the first check on,
+     * for transfers and swaps (SAW-022); absent for actions with no transaction.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+     */
+    public Builder setConfirmation(
+        io.github.brrenat.seekervault.request.v1.Confirmation.Builder builderForValue) {
+      copyOnWrite();
+      instance.setConfirmation(builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * What the sidecar has learned from the chain about signature. Set from the first check on,
+     * for transfers and swaps (SAW-022); absent for actions with no transaction.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+     */
+    public Builder mergeConfirmation(io.github.brrenat.seekervault.request.v1.Confirmation value) {
+      copyOnWrite();
+      instance.mergeConfirmation(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * What the sidecar has learned from the chain about signature. Set from the first check on,
+     * for transfers and swaps (SAW-022); absent for actions with no transaction.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+     */
+    public Builder clearConfirmation() {  copyOnWrite();
+      instance.clearConfirmation();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.request.v1.Outcome)
   }
   @java.lang.Override
@@ -515,10 +664,11 @@ public  final class Outcome extends
             "approval_",
             "signature_",
             "detail_",
+            "confirmation_",
           };
           java.lang.String info =
-              "\u0000\u0003\u0000\u0001\u0001\u0003\u0003\u0000\u0000\u0000\u0001\u1009\u0000\u0002" +
-              "\n\u0003\u0208";
+              "\u0000\u0004\u0000\u0001\u0001\u0004\u0004\u0000\u0000\u0000\u0001\u1009\u0000\u0002" +
+              "\n\u0003\u0208\u0004\u1009\u0001";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

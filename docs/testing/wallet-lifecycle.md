@@ -46,6 +46,13 @@ This page is what is checked automatically, what only the Seeker can show, and t
 - **Nothing unread reaches the wallet.** Only a preparation whose own inspection came back
   `Verified` (SAW-020) can be approved, checked once when the button is offered and again when it
   is tapped.
+- **Sending is not succeeding, and a check settles it or nothing (SAW-022).** A transfer the
+  wallet sent stops at SUBMITTED until the chain says otherwise. Only the sidecar reads the chain,
+  and only when the agent reads the request or the owner taps **Check status**; the phone reaches
+  no chain and opens no wallet to check one. A check reports CONFIRMED only when the transaction on
+  chain under that signature is byte for byte the one the approval named, and an endpoint that
+  didn't answer, a status that isn't there yet, and a signature naming something else all leave the
+  request exactly as it was. Nothing anywhere builds a replacement transaction.
 - **A reply belongs to its connection.** An answer is keyed by connection ID and request ID, it is
   sent to that connection's own URL with that connection's own credential, and the sidecar refuses
   a reference that names a request another connection owns.
@@ -86,6 +93,24 @@ This page is what is checked automatically, what only the Seeker can show, and t
 | Activity recreation while the wallet has the transaction | `InboxActivityTest.aRotationWhileTheWalletHasTheTransactionKeepsTheApprovalAndAsksItOnlyOnce` |
 | One wallet interaction at a time | `WalletRepositoryTest.runsOneWalletInteractionAtATime` |
 | The approved transaction survives a restart of the app's storage | `ResultStoreTest.keepsTheTransactionAnApprovedTransferIsBoundToAcrossARestart` |
+| **Confirmation (SAW-022)** | |
+| A confirmed signature is checked against the approved bytes before anything is called CONFIRMED | `sidecar/src/requests/confirmation.test.ts`, "confirms only what it found on chain and checked against the approved bytes" |
+| A delayed confirmation: `processed` is not a result, and the next look settles it | `…test.ts`, "waits through a delayed confirmation rather than calling processed a result" |
+| A transaction that ran and failed on chain, with the chain's own error kept | `…test.ts`, "fails a transaction that ran on chain and failed, keeping the chain's own error" |
+| A signature the endpoint hasn't seen: open while it could still land, failed only past the window and after a ledger search | `…test.ts`, "keeps a signature the endpoint hasn't seen open…", "fails a transaction that never landed, but only past its blockhash window" |
+| A signature found only in the ledger is the result it is | `…test.ts`, "takes a signature found only in the ledger as the result it is" |
+| A signature naming a transaction nobody approved settles nothing | `…test.ts`, "settles nothing when the transaction under that signature isn't the approved one" |
+| An endpoint that timed out changes nothing, and the next check still settles it | `…test.ts`, "treats an endpoint that stopped answering as no news, and never as a failure" |
+| Status retries send nothing again, add no second spending record, and never return a request to PENDING | `…test.ts`, "reports the same signature, and records no second spending", "never returns an unsettled request to PENDING…" |
+| A sidecar restart after sending keeps the signature and the unresolved attempt | `…test.ts`, "keeps the signature and the unresolved attempt across a restart" |
+| An UNKNOWN transfer has nothing to look up, and is told so rather than settled | `…test.ts`, "explains an unknown outcome instead of inventing one, and asks the chain nothing" |
+| The bytes comparison itself: a signed copy matches, one byte's difference doesn't, and unparsable bytes never do | `sidecar/src/solana/confirmation.test.ts` |
+| On the phone: a confirmation is kept, no wallet opens, and no second result is sent | `InboxViewModelTest.checkingAConfirmationKeepsWhatTheServerReadAndOpensNoWallet` |
+| A chain failure is kept with its reason, and nothing is re-sent | `InboxViewModelTest.aTransactionThatFailedOnChainIsKeptAsAFailureWithItsReason` |
+| A check that settles nothing, a second tap while one runs, and a server that couldn't be reached | `InboxViewModelTest.aTransferTheChainCannotSettleStaysExactlyWhereItWas`, `…aSecondTapWhileAChecksIsRunningAsksOnlyOnce`, `…aServerThatCannotBeReachedChangesNothingAboutTheTransaction` |
+| A settled transfer is not checked again; an UNKNOWN one is never re-sent to the wallet | `InboxViewModelTest.aSettledTransferIsNotCheckedAgain`, `…aTransferTheWalletNeverAnsweredIsNeverSentAgainToSettleIt` |
+| The signature and what the chain said of it survive a restart of the app's storage | `ResultStoreTest.keepsASentTransactionsIdAndWhatTheChainSaidOfItAcrossARestart` |
+| The status text and **Check status**, including who checked | `RequestDetailsScreenTest.saysATransactionIsSentAndNotConfirmedYet`, `…saysWhoCheckedAConfirmedTransferAndOffersNoFurtherCheck`, `…saysWhyATransactionFailedOnTheNetwork` |
 
 ### What the automated checks deliberately can't show
 
@@ -132,9 +157,22 @@ Run these on **devnet** with a funded devnet wallet, and never on mainnet. Have
 | 19 | Ask for another and decline in the wallet | The agent reads REJECTED. Nothing is on chain. |
 | 20 | Ask for another, open it, wait for the blockhash window to run down (about a minute past `estimated_expiry`), then approve | Nothing reaches the wallet. The app says the server has a newer transaction and has read it again; the agent still reads PENDING. |
 | 21 | Ask for another, tap **Approve and send**, and force-stop the app while the wallet is in front | Reopen: the app says it never learned what the wallet did, and the agent reads UNKNOWN, not FAILED and not SUBMITTED. The wallet is never asked again. |
-| 22 | Look the fee payer up on a devnet explorer for the request in step 21 | Either the transaction is there or it isn't. Either way the app and the agent still say UNKNOWN rather than guessing, and no second transaction was sent. Settling UNKNOWN from the chain is SAW-022. |
+| 22 | Look the fee payer up on a devnet explorer for the request in step 21 | Either the transaction is there or it isn't. Either way the app and the agent still say UNKNOWN rather than guessing, and no second transaction was sent. Tapping **Check status** on it says there is no signature to look up. |
 | 23 | Ask for another, turn on airplane mode, and tap **Approve and send** | Nothing opens the wallet. The app says nothing was approved and it can be approved again. |
 | 24 | Ask for another and change the wallet on the **Wallet** screen while the review is open | The request is cancelled by the sidecar, and the screen says so. No approval is possible. |
+
+### Confirmation (SAW-022)
+
+Also **devnet only**, continuing from the transfers above.
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 25 | Right after step 17, tap **Check status** | Within a few seconds the screen says the transfer went through on the network, and names the host that checked. `pnpm agent get <id>` reads CONFIRMED with `confirmation: "confirmed"` or `"finalized"`, a slot, and `checked_with`. |
+| 26 | Compare the slot on a devnet explorer | The slot and the signature are the ones on chain, and the transaction there is the one the review showed. |
+| 27 | Ask for a transfer of more than the wallet holds, approve it, and send it | The wallet sends it and it fails on chain. The screen quotes the network's own reason, and the agent reads FAILED with `chain_error`. No replacement is built anywhere. |
+| 28 | Stop the sidecar's Solana RPC endpoint (or point `SOLANA_RPC_URL` at a dead port) and tap **Check status** on a sent transfer | The app says the status couldn't be checked and that nothing about the transaction changed. The request is still SUBMITTED, not FAILED. |
+| 29 | Restart the sidecar with a SUBMITTED transfer outstanding, then read it with `pnpm agent get <id>` | The signature and the previous check are still there, and reading it now settles it. Nothing ran during the restart. |
+| 30 | Poll `pnpm agent get <id>` in a tight loop on a SUBMITTED transfer | It answers every time; the sidecar's log shows it reaching the endpoint at most once every couple of seconds. |
 
 ## Verification record: SAW-021
 
@@ -153,6 +191,24 @@ Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
 | A lost wallet callback is UNKNOWN | PASS: `unknown_outcome` reaches the sidecar, the request is UNKNOWN, and `Send again` opens no wallet |
 | Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>Dropping `WalletRepository`'s lock failed `runsOneWalletInteractionAtATime`.</li><li>Fetching the transaction again instead of using the approved bytes failed seven transfer tests, including `approvingHandsTheWalletExactlyTheBytesThatWereReviewed`.</li><li>Reporting an unresolved transfer as an execution failure failed both UNKNOWN tests.</li><li>Treating a refused approval as accepted failed `anApprovalTheServerNeverTookOpensNoWalletAndIsNotKept` and `aStalePreparationIsRefusedAndReadAgainRatherThanApproved`.</li><li>Offering **Approve and send** whatever the verdict failed both `offersNoApprovalFor…` screen tests.</li><li>Naming `signAndSendTransactions` outside `MwaWalletAdapter` failed `StageBoundaryTest.nothingSpendsSwapsOrAsksForABiometricOfItsOwn`.</li></ul> |
 | The owner's checks on the Seeker, steps 15 to 24 | NOT RUN: no device was attached, and no transaction was ever sent to any cluster |
+
+## Verification record: SAW-022
+
+Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
+[`toolchain.md`](../development/toolchain.md).
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, `tsc`, 384/384 sidecar tests (21 more than before), and 27/27 test agent tests |
+| `pnpm check:generated` | PASS: `Outcome.confirmation`, `Confirmation`, `ConfirmationLevel`, and `RequestService.CheckStatus` were added to `proto/`, and the committed generated code and fixtures are a fresh generation of them |
+| `pnpm test:hello` | PASS: 9/9 Stage 1 acceptance cases |
+| `pnpm test:queue` | PASS: 7/7 Stage 2 acceptance cases |
+| `pnpm check:android` | PASS: Spotless, 379/379 unit tests (14 more than before), Android lint with no issues, and the debug and instrumentation APKs |
+| Nothing is confirmed without checking the approved bytes | PASS: the fake chain serves a different transaction under the reported signature, and the request stays SUBMITTED with `matches_approval` false |
+| Silence settles nothing | PASS: a timeout, a missing status inside the window, and a status without a transaction each leave the request where it was |
+| No chain method beyond reading | PASS: `stage-boundary.test.ts` names every JSON-RPC method the client calls, and the two new ones are `getSignatureStatuses` and `getTransaction` |
+| Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards. They are listed with their failures in the SEE-31 record. |
+| The owner's checks on the Seeker, steps 25 to 30 | NOT RUN: no device was attached, and no transaction was ever sent to any cluster |
 
 ## Verification record: SAW-017
 

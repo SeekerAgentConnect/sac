@@ -44,6 +44,17 @@ interface ConnectionGateway {
     ): ActionRequest
 
     /**
+     * Asks the sidecar what became of a transfer the wallet sent, and returns the request as it is
+     * afterwards. The sidecar reads the chain; this phone signs nothing and sends nothing, and no
+     * wallet is opened (docs/protocol.md#confirmation).
+     */
+    suspend fun checkStatus(
+        serverUrl: String,
+        credential: String,
+        key: RequestKey,
+    ): ActionRequest
+
+    /**
      * Tells the connection's sidecar which wallet the owner selected, or, with a null [binding],
      * that none is connected. Returns the request IDs the sidecar cancelled because the new binding
      * no longer fits them.
