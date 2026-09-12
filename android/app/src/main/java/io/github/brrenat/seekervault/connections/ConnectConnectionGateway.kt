@@ -11,13 +11,16 @@ import com.connectrpc.protocols.NetworkProtocol
 import com.connectrpc.simpleTimeouts
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PairingServiceClient
+import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.RequestErrorDetail
 import io.github.brrenat.seekervault.request.v1.RequestServiceClient
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.listPendingRequest
 import io.github.brrenat.seekervault.request.v1.pairRequest
+import io.github.brrenat.seekervault.request.v1.prepareRequestRequest
 import io.github.brrenat.seekervault.request.v1.publishWalletRequest
+import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.revokeConnectionRequest
 import java.io.IOException
 import java.net.UnknownServiceException
@@ -61,6 +64,24 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
             RequestServiceClient(protocolClient(serverUrl)).listPending(request, bearer(credential))
         }
         return PendingRequests(response.requestsList, response.nextPageToken)
+    }
+
+    override suspend fun prepareRequest(
+        serverUrl: String,
+        credential: String,
+        key: RequestKey,
+    ): PreparedTransaction {
+        val request = prepareRequestRequest {
+            ref = requestRef {
+                connectionId = key.connectionId
+                requestId = key.requestId
+            }
+        }
+        return call {
+            RequestServiceClient(protocolClient(serverUrl))
+                .prepareRequest(request, bearer(credential))
+        }
+            .prepared
     }
 
     override suspend fun submitResult(

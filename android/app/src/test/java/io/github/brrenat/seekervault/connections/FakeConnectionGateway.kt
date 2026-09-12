@@ -1,9 +1,11 @@
 package io.github.brrenat.seekervault.connections
 
+import com.google.protobuf.ByteString
 import com.google.protobuf.timestamp
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
@@ -11,9 +13,11 @@ import io.github.brrenat.seekervault.request.v1.ackAction
 import io.github.brrenat.seekervault.request.v1.action
 import io.github.brrenat.seekervault.request.v1.actionRequest
 import io.github.brrenat.seekervault.request.v1.asset
+import io.github.brrenat.seekervault.request.v1.preparedTransaction
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.signMessageAction
 import io.github.brrenat.seekervault.request.v1.transferAction
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
 import java.util.Base64
@@ -27,6 +31,11 @@ import javax.crypto.SecretKey
  * a credential never leaves its own server, and every result it's sent.
  */
 class FakeConnectionGateway : ConnectionGateway {
+    /** How many times each request has been prepared: every call is a new version. */
+    val preparations = mutableMapOf<RequestKey, Int>()
+    /** The transaction bytes to hand over for a request, when a test supplies real ones. */
+    val transactions = mutableMapOf<RequestKey, ByteArray>()
+
     class Server(val serverId: String) {
         val pairingTokens = mutableSetOf<String>()
         /** Connection ID to credential, in pairing order. */
@@ -76,6 +85,9 @@ class FakeConnectionGateway : ConnectionGateway {
             wallet: String,
             network: Network,
             requestId: String = UUID.randomUUID().toString(),
+            recipient: String = wallet,
+            amount: String = "1",
+            tokenMint: String? = null,
         ): ActionRequest = actionRequest {
             ref = requestRef {
                 this.connectionId = connectionId
@@ -85,9 +97,12 @@ class FakeConnectionGateway : ConnectionGateway {
                 transfer = transferAction {
                     this.wallet = wallet
                     this.network = network
-                    recipient = wallet
-                    asset = asset { nativeSol = Asset.NativeSol.getDefaultInstance() }
-                    amount = "1"
+                    this.recipient = recipient
+                    asset = asset {
+                        if (tokenMint == null) nativeSol = Asset.NativeSol.getDefaultInstance()
+                        else this.tokenMint = tokenMint
+                    }
+                    this.amount = amount
                 }
             }
             state = RequestState.REQUEST_STATE_PENDING
@@ -274,6 +289,41 @@ class FakeConnectionGateway : ConnectionGateway {
         afterList()
         return page
     }
+
+    override suspend fun prepareRequest(
+        serverUrl: String,
+        credential: String,
+        key: RequestKey,
+    ): PreparedTransaction {
+        val server = reach(serverUrl, credential)
+        val id = authenticated(server, credential, key.connectionId)
+        val request =
+            server.pending[id]?.firstOrNull { it.ref.requestId == key.requestId }
+                ?: throw GatewayException(GatewayException.Kind.NotFound, "no such request")
+        if (!request.action.hasTransfer()) {
+            throw GatewayException(
+                GatewayException.Kind.Rejected,
+                "this request has nothing to prepare",
+            )
+        }
+        // A new version every time, as the real sidecar does: each preparation supersedes the last.
+        val version = preparations.merge(key, 1) { old, _ -> old + 1 } ?: 1
+        val bytes = prepared(key, version)
+        return preparedTransaction {
+            ref = request.ref
+            this.version = version
+            transaction = ByteString.copyFrom(bytes)
+            contentHash = ByteString.copyFrom(MessageDigest.getInstance("SHA-256").digest(bytes))
+            feeLamports = 5_000L
+            rentLamports = 0L
+        }
+    }
+
+    /**
+     * The bytes this fake hands over. Tests that read them supply their own through [transactions].
+     */
+    private fun prepared(key: RequestKey, version: Int): ByteArray =
+        transactions[key] ?: "not a transaction, version $version".toByteArray()
 
     override suspend fun submitResult(
         serverUrl: String,
