@@ -10,6 +10,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -123,14 +124,14 @@ class PolicyEvaluatorTest {
         val evaluator = evaluator()
 
         zone = ZoneId.of("UTC")
-        assertEquals(ONE_SOL, evaluator.spentToday(scopeOf(solFacts())).confirmed)
+        assertEquals(ONE_SOL, checkNotNull(evaluator.spentToday(scopeOf(solFacts()))).confirmed)
 
         // Carried west far enough, the same instant is still yesterday, and the phone says so.
         zone = ZoneId.of("Pacific/Honolulu")
         clock = Instant.parse("2026-09-13T05:00:00Z")
 
         assertEquals(LocalDate.of(2026, 9, 12), evaluator.today())
-        assertEquals(ONE_SOL, evaluator.spentToday(scopeOf(solFacts())).confirmed)
+        assertEquals(ONE_SOL, checkNotNull(evaluator.spentToday(scopeOf(solFacts()))).confirmed)
     }
 
     @Test
@@ -181,6 +182,49 @@ class PolicyEvaluatorTest {
         assertTrue(
             evaluator.evaluate(solFacts(connectionId = OTHER_CONNECTION, amount = 1UL)).allowed
         )
+    }
+
+    @Test
+    fun aDayNobodyHasReadYetIsNotADayWithNothingInIt() {
+        // The history is read off the disk asynchronously, and a read can fail. Until one has
+        // succeeded there is no day's total — which is not the same as a day with nothing in it,
+        // and the difference is the whole of whether a daily threshold means anything. Reporting
+        // an unread day as empty would pass every request through every daily threshold there is.
+        save(
+            policy()
+                .copy(
+                    assets = Allowlist.of(SOL),
+                    limits = mapOf(SOL to AssetLimits(daily = ONE_SOL)),
+                )
+        )
+        records = listOf(record("earlier", answeredAt = clock, amount = ONE_SOL.toString()))
+        assertEquals(
+            listOf("over_daily_limit"),
+            evaluator().evaluate(solFacts(amount = 1UL)).reasonCodes,
+        )
+
+        val unread = PolicyEvaluator(PolicyStore(dir), { null }, { clock }, { zone })
+        val decision = unread.evaluate(solFacts(amount = 1UL))
+
+        assertFalse(decision.allowed)
+        assertEquals(listOf("daily_total_unverified"), decision.reasonCodes)
+        assertTrue(decision.unverified.contains(PolicyCheck.DailyLimit))
+        assertNull(unread.spentToday(scopeOf(solFacts())))
+    }
+
+    @Test
+    fun aDayThatWasReadAndHoldsNothingIsADayWithNothingInIt() {
+        save(
+            policy()
+                .copy(
+                    assets = Allowlist.of(SOL),
+                    limits = mapOf(SOL to AssetLimits(daily = ONE_SOL)),
+                )
+        )
+        // An empty list is the app having looked, and it passes on its own terms.
+        records = emptyList()
+
+        assertTrue(evaluator().evaluate(solFacts(amount = 1UL)).allowed)
     }
 
     @Test

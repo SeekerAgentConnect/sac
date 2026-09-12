@@ -104,7 +104,9 @@ No production file changed. Two test suites, one shared fixture, and the documen
 `pnpm test:hello` 0 · `pnpm test:queue` 0 · `pnpm test:transfer` 0. Six deliberate breaks, each
 applied, run, confirmed to fail the recorded tests and nothing else, and reverted byte for byte.
 
-**Device checks: NOT RUN.** Checks 56–78 have not been done on the Seeker.
+**Device checks 56–78: PASS**, 2026-09-13, all 23 on the owner's own Seeker.
+
+Review of the stage PR then turned up three defects in code SAW-026 to SAW-028 had already landed, each fixed here with a test that fails without it and a deliberate break confirming so: a history nobody had read counting as a day with nothing spent, consent to a warning surviving a transaction prepared again, and edits typed while a save was in flight marked as saved. The unit suite is 662.
 
 ### What was deliberately left out
 

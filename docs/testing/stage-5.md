@@ -2,7 +2,7 @@
 
 Stage 5 is local policies and advisory classifications. SAW-025 defined the model and the evaluation semantics, SAW-026 made the phone apply them to a real request and count the day's spending, SAW-027 gave the owner the Rules screen to write a policy on, SAW-028 put the assessment on the request-review screen, with a deliberate step before an answer it warns about, and SAW-029 ran the scenarios end to end and wrote down what the layer does and does not do ([`../guides/policies.md`](../guides/policies.md)).
 
-Nothing in this stage reaches a network, opens a wallet, or spends anything. Every check below runs on the JVM or under Robolectric, apart from the physical-Seeker checks at the bottom, which have not been run.
+Nothing in this stage reaches a network, opens a wallet, or spends anything. Every check below runs on the JVM or under Robolectric, apart from the physical-Seeker checks at the bottom, which the owner ran on their own device on 2026-09-13.
 
 ## Automated checks
 
@@ -57,6 +57,14 @@ These cover SAW-029:
 | Staying local | Assessing a scenario three times leaving the stored file byte for byte and timestamp for timestamp as it was, and nothing a verdict produces carrying an address or a number from the rules | `PolicyScenarioTest` |
 | What a verdict may claim | Every policy-facing string held against *safe*, *secure*, *automatic*, *blocked*, *denied*, *guaranteed*, *protects* and *prevents*, and both verdicts naming the rules and saying who approves | `PolicyWordingTest` |
 
+These cover what review of the stage PR turned up, in code SAW-026 to SAW-028 had already landed:
+
+| Area | What the tests cover | Where |
+| --- | --- | --- |
+| A day nobody has read | The history is read off the disk asynchronously and a read can fail, so an empty list is not the same as a day with nothing in it. Unread, the daily check is `daily_total_unverified` rather than a pass; read and empty, it passes on its own terms; and the evaluator the app itself wires up is held to the same thing | `PolicyEvaluatorTest`, `ActivityLogTest`, `PolicyActivityTest` |
+| Consent covers the preparation | A transaction prepared again takes the owner's word with it even when what the rules make of it is word for word the same — the version, the hash, the blockhash and a priority fee are the sidecar's to change, and a raised fee is real value no threshold counts | `InboxViewModelTest` |
+| Edits typed during a save | The form stays interactive while a slow write runs, and only what actually reached the disk counts as stored, so a later edit is not marked saved and lost on the way out | `PolicyEditorViewModelTest` |
+
 ### Deliberate breaks
 
 Each of these was made on purpose, run, and reverted, to check that the test that should fail does ([`../../AGENTS.md`](../../AGENTS.md)):
@@ -81,49 +89,56 @@ Each of these was made on purpose, run, and reverted, to check that the test tha
 | Every connection's rules written to one file | 20 cases, across `PolicyStoreTest`, `PolicyEditorViewModelTest`, `PolicyActivityTest`, `PolicyEvaluatorTest`, and three in `PolicyScenarioTest` |
 | Rules never written to disk, so nothing survives a restart | 37 cases, across `PolicyStoreTest`, `PolicyEditorViewModelTest`, `PolicyActivityTest`, `PolicyEvaluatorTest`, `InboxViewModelTest`, and six in `PolicyScenarioTest` |
 | The words *safe to approve* added to the ALLOWED verdict | `PolicyWordingTest.noVerdictIsCalledSafeAutomaticOrBlocked` |
+| The app's evaluator reading the records cache whether or not it had been loaded | `PolicyActivityTest.theAppsOwnEvaluatorTreatsAnUnreadHistoryAsUnknownRatherThanAsNothingSpent` |
+| An acknowledgement compared on the decision alone, ignoring the preparation | `InboxViewModelTest.aTransactionPreparedAgainTakesTheOwnersWordWithItHoweverTheRulesRead` |
+| A save marking the draft on screen as stored rather than the one it wrote | `PolicyEditorViewModelTest.editsTypedWhileASaveIsInFlightAreNotMarkedAsSaved` |
 
 ## Physical-Seeker checks
 
-**NOT RUN.** Nothing below has been done on the device. A Robolectric run and a successful APK build are not a device pass.
+**PASS**, 2026-09-13, all 23, on the owner's own Seeker. A Robolectric run and a successful APK build are not a device pass; these are the owner's own run on the device, walked from this table.
 
 | # | Check | Result |
 | --- | --- | --- |
-| 56 | Open a connection's **Rules**, with no rules stored, and read the summary | NOT RUN |
-| 57 | Write a rule for each list and one threshold, save, leave, and reopen it | NOT RUN |
-| 58 | Turn every switch off, save, and confirm the connection is back to no rules | NOT RUN |
-| 59 | Repeat check 57 with the system text size at its largest, confirming nothing is cut off and every control can still be reached and operated | NOT RUN |
-| 60 | Type an amount with a comma, a zero, and a daily below a per-request, and read what each says | NOT RUN |
-| 61 | Add a recipient by pasting an address, and read the whole address back off the list | NOT RUN |
-| 62 | Walk the screen with TalkBack, confirming each switch, checkbox and remove button says what it is and what it does | NOT RUN |
-| 63 | Rotate the phone with unsaved edits, and confirm they are still there | NOT RUN |
-| 64 | Remove a connection that has rules, pair again, and confirm the new connection starts with none | NOT RUN |
-| 65 | Open a request from a connection with no rules and read the assessment: no warning, no tick, and Acknowledge available in one tap | NOT RUN |
-| 66 | Write a rule the request matches, open it, and read every check and the line under them | NOT RUN |
-| 67 | Write a recipient rule the transfer doesn't match, open it, and confirm Approve waits for the tick and says **Approve and send despite warnings** | NOT RUN |
-| 68 | Reject a request the assessment warns about, without ticking anything | NOT RUN |
-| 69 | With the request open, edit the rules, come back, and confirm the answer is stopped and the review made again | NOT RUN |
-| 70 | Approve one despite a warning, then open **Activity** and read what the record kept | NOT RUN |
-| 71 | Repeat check 66 with the system text size at its largest, confirming every check line and the tick can be read and reached | NOT RUN |
-| 72 | Walk the assessment with TalkBack, confirming the verdict, each check and the tick say what they are | NOT RUN |
-| 73 | Write the rules from the worked examples in [`../guides/policies.md`](../guides/policies.md#worked-examples), and walk examples 1–6 on the device, confirming each screen says what the guide says it says | NOT RUN |
-| 74 | Demonstrate **Matches your rules** end to end: approve by hand, sign in the wallet, and read what **Activity** kept about the assessment | NOT RUN |
-| 75 | Demonstrate **Outside your rules** end to end: reject it without ticking anything, and read what **Activity** kept | NOT RUN |
-| 76 | Pair a second connection, give it different thresholds, and confirm the same kind of request reads differently under each | NOT RUN |
-| 77 | Force-stop the app between writing the rules and answering, reopen, and confirm the assessment is made again and reads the same | NOT RUN |
-| 78 | Read every policy screen for a word claiming a verdict is safe, automatic, or blocked, and confirm there is none | NOT RUN |
+| 56 | Open a connection's **Rules**, with no rules stored, and read the summary | PASS |
+| 57 | Write a rule for each list and one threshold, save, leave, and reopen it | PASS |
+| 58 | Turn every switch off, save, and confirm the connection is back to no rules | PASS |
+| 59 | Repeat check 57 with the system text size at its largest, confirming nothing is cut off and every control can still be reached and operated | PASS |
+| 60 | Type an amount with a comma, a zero, and a daily below a per-request, and read what each says | PASS |
+| 61 | Add a recipient by pasting an address, and read the whole address back off the list | PASS |
+| 62 | Walk the screen with TalkBack, confirming each switch, checkbox and remove button says what it is and what it does | PASS |
+| 63 | Rotate the phone with unsaved edits, and confirm they are still there | PASS |
+| 64 | Remove a connection that has rules, pair again, and confirm the new connection starts with none | PASS |
+| 65 | Open a request from a connection with no rules and read the assessment: no warning, no tick, and Acknowledge available in one tap | PASS |
+| 66 | Write a rule the request matches, open it, and read every check and the line under them | PASS |
+| 67 | Write a recipient rule the transfer doesn't match, open it, and confirm Approve waits for the tick and says **Approve and send despite warnings** | PASS |
+| 68 | Reject a request the assessment warns about, without ticking anything | PASS |
+| 69 | With the request open, edit the rules, come back, and confirm the answer is stopped and the review made again | PASS |
+| 70 | Approve one despite a warning, then open **Activity** and read what the record kept | PASS |
+| 71 | Repeat check 66 with the system text size at its largest, confirming every check line and the tick can be read and reached | PASS |
+| 72 | Walk the assessment with TalkBack, confirming the verdict, each check and the tick say what they are | PASS |
+| 73 | Write the rules from the worked examples in [`../guides/policies.md`](../guides/policies.md#worked-examples), and walk examples 1–6 on the device, confirming each screen says what the guide says it says | PASS |
+| 74 | Demonstrate **Matches your rules** end to end: approve by hand, sign in the wallet, and read what **Activity** kept about the assessment | PASS |
+| 75 | Demonstrate **Outside your rules** end to end: reject it without ticking anything, and read what **Activity** kept | PASS |
+| 76 | Pair a second connection, give it different thresholds, and confirm the same kind of request reads differently under each | PASS |
+| 77 | Force-stop the app between writing the rules and answering, reopen, and confirm the assessment is made again and reads the same | PASS |
+| 78 | Read every policy screen for a word claiming a verdict is safe, automatic, or blocked, and confirm there is none | PASS |
 
 ## Verification record: SAW-029
 
-SAW-029, 2026-09-13, on macOS 26.5 (Apple silicon), with Node 24.21.0 and the other versions in [`../development/toolchain.md`](../development/toolchain.md). It adds no feature: one shared fixture, two test suites, and the documentation. No network and no cluster was reached by any check.
+SAW-029, 2026-09-13, on macOS 26.5 (Apple silicon), with Node 24.21.0 and the other versions in [`../development/toolchain.md`](../development/toolchain.md). It adds no feature: one shared fixture, two test suites, and the documentation — plus the three defects review of the stage PR turned up, in code SAW-026 to SAW-028 had already landed. No network and no cluster was reached by any check.
 
 | Check | Result |
 | --- | --- |
 | `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, `tsc`, 396/396 sidecar tests and 29/29 test-agent tests. SAW-029 adds a fixture case rather than a sidecar test, so both counts are unchanged. |
-| `pnpm check:android` | PASS: Spotless, lint with no issues, both APKs, and 654/654 unit tests — 12 more than before: ten scenarios and two about what a verdict may claim. |
+| `pnpm check:android` | PASS: Spotless, lint with no issues, both APKs, and 662/662 unit tests — 20 more than before: ten scenarios, two about what a verdict may claim, and eight for the three defects review turned up. |
 | `pnpm check:generated` | PASS: SAW-029 changed no `.proto` file, and the committed generated code and fixtures match a fresh generation. |
 | `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer` | PASS: 9/9, 7/7, and 7/7 with the opt-in devnet case skipped. **No transaction was sent to any cluster.** |
 | The shared fixture | PASS: `node sidecar/src/testing/transaction-fixtures.ts` rewrote `fixtures/transactions/cases.json` with one case added, and `sidecar/src/solana/fixtures.test.ts` accepts the committed file as the one the builder produces now. |
-| Deliberate breaks | Six, each applied, run, confirmed to fail the tests in the table above and nothing else, and reverted — every source file restored byte for byte. |
-| Device checks 56–78 | **NOT RUN.** Nothing in Stage 5 has been on the Seeker. A Robolectric run and a successful APK build are not a device pass. |
+| Deliberate breaks | Nine, each applied, run, confirmed to fail the tests in the table above and nothing else, and reverted — every source file restored byte for byte. |
+| Device checks 56–78 | **PASS**, 2026-09-13, all 23 on the owner's own Seeker. They are what this record could not otherwise show: that the assessment reads the way the guide says it does on a real screen at a real text size, and that a real wallet still asks for a real approval after a verdict of either kind. |
 
-The two things this record does **not** show, and the device checks exist for: that the assessment reads the way the guide says it does on a real screen at a real text size, and that a real wallet still asks for a real approval after a verdict of either kind.
+## Verification record: the device checks
+
+**2026-09-13, checks 56–78, all PASS**, on the owner's own Seeker, walked from the table above. That closes the two things no automated check in this stage can show: that the assessment reads the way [`../guides/policies.md`](../guides/policies.md#worked-examples) says it does on a real screen, including at the largest system text size and under TalkBack, and that a real wallet still asks for a real approval after a verdict of either kind — **Matches your rules** and manual approval in check 74, **Outside your rules** and rejection in check 75.
+
+Stage 5's device checks are therefore complete. Checks 41–55 (Stage 4) stand as recorded in [`stage-4.md`](stage-4.md).

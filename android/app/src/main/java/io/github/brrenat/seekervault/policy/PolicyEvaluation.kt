@@ -255,8 +255,16 @@ fun assetLabel(asset: PolicyAsset): String =
  */
 class PolicyEvaluator(
     private val policies: PolicyStore,
-    /** The owner's own records, read afresh each time: the counters are what this app did. */
-    private val records: () -> List<ActivityRecord>,
+    /**
+     * The owner's own records, read afresh each time: the counters are what this app did.
+     *
+     * **Null when the history isn't known** — it hasn't been read off the disk yet, or reading it
+     * failed. That is not the same as a day with nothing in it, and the difference decides whether
+     * a daily threshold can be applied at all. An empty list here means the app looked and there
+     * was nothing; null means it couldn't look, and a threshold measured against a total nobody
+     * read would report the day as empty and pass anything (docs/policy.md#counters).
+     */
+    private val records: () -> List<ActivityRecord>?,
     private val now: () -> Instant = Instant::now,
     /** The phone's time zone, read at the moment of the assessment. */
     private val zone: () -> ZoneId = ZoneId::systemDefault,
@@ -264,9 +272,9 @@ class PolicyEvaluator(
     /** The local day the phone is in. */
     fun today(): LocalDate = now().atZone(zone()).toLocalDate()
 
-    /** What [scope] has moved today, as far as this app's own records go. */
-    fun spentToday(scope: SpendScope): DailyTotal =
-        dailyTotal(spendsOf(records()), scope, today(), zone())
+    /** What [scope] has moved today, or null when the history isn't known. */
+    fun spentToday(scope: SpendScope): DailyTotal? =
+        records()?.let { dailyTotal(spendsOf(it), scope, today(), zone()) }
 
     /** The verdict on [facts], under the rules and the records as they stand now. */
     fun evaluate(facts: RequestFacts): PolicyDecision =

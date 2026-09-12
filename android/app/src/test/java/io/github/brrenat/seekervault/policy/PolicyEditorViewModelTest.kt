@@ -9,6 +9,7 @@ import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -16,6 +17,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -208,6 +210,31 @@ class PolicyEditorViewModelTest {
         // The draft is kept, so the owner doesn't lose what they typed.
         assertTrue(editor.state.value.draft.restrictActions)
         assertTrue(editor.state.value.changed)
+    }
+
+    @Test
+    fun editsTypedWhileASaveIsInFlightAreNotMarkedAsSaved() {
+        // The form stays interactive while the write runs, so what was written and what is on
+        // screen can differ by the time it finishes. Only what actually reached the disk counts as
+        // stored; otherwise the later edits read as saved and closing the screen loses them.
+        val slow = StandardTestDispatcher(scheduler)
+        val editor = PolicyEditorViewModel(store, { at }, slow)
+        editor.open(CONNECTION)
+        scheduler.advanceUntilIdle()
+        editor.edit(editor.state.value.draft.copy(restrictActions = true))
+
+        editor.save()
+        // Typed while the write is still in the air.
+        editor.edit(editor.state.value.draft.copy(restrictRecipients = true))
+        scheduler.advanceUntilIdle()
+
+        assertTrue(editor.state.value.draft.restrictRecipients)
+        assertFalse(editor.state.value.stored.restrictRecipients)
+        assertTrue("the later edit is still unsaved", editor.state.value.changed)
+        // And what is on disk is what was written, not what was typed after it.
+        val stored = (store.get(CONNECTION) as StoredPolicy.Policy).policy
+        assertNotNull(stored.actions)
+        assertNull(stored.recipients)
     }
 
     @Test

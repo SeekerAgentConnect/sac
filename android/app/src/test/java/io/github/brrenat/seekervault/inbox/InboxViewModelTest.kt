@@ -52,6 +52,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -1520,6 +1521,28 @@ class InboxViewModelTest {
                 .decode(transferCase("changed_recipient").getString("transaction"))
         viewModel.prepare(key, force = true)
 
+        assertNull(viewModel.state.value.acknowledged[key])
+    }
+
+    @Test
+    fun aTransactionPreparedAgainTakesTheOwnersWordWithItHoweverTheRulesRead() {
+        // The same bytes, prepared again. The version, the hash and the blockhash are the
+        // sidecar's to change, and a priority fee it raised is real value leaving the wallet that
+        // no threshold counts — so what the rules make of it can be word for word the same and it
+        // is still not the transaction the owner said they wanted to go ahead with.
+        val (key, _) = pendingTransfer()
+        rules(key.connectionId, recipients = Allowlist.of(OTHER_WALLET))
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        val first = checkNotNull(viewModel.state.value.assessments[key])
+        viewModel.acknowledge(key, true)
+        assertNotNull(viewModel.state.value.acknowledged[key])
+
+        viewModel.prepare(key, force = true)
+
+        val second = checkNotNull(viewModel.state.value.assessments[key])
+        assertEquals("the rules read the same", first.decision, second.decision)
+        assertNotEquals("and it is a different preparation", first.facts, second.facts)
         assertNull(viewModel.state.value.acknowledged[key])
     }
 

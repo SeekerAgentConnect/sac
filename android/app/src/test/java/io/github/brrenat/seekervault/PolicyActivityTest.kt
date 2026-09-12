@@ -18,6 +18,7 @@ import io.github.brrenat.seekervault.policy.PolicyAction
 import io.github.brrenat.seekervault.policy.PolicyAsset
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.policy.RECIPIENTS
+import io.github.brrenat.seekervault.policy.SpendScope
 import io.github.brrenat.seekervault.policy.storage.StoredPolicy
 import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
@@ -26,6 +27,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -161,6 +163,26 @@ class PolicyActivityTest {
         // Back on the connection, and the editor opens again on what is stored: nothing.
         compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().performClick()
         compose.onNodeWithText(app.getString(R.string.policy_summary_none)).assertExists()
+    }
+
+    @Test
+    fun theAppsOwnEvaluatorTreatsAnUnreadHistoryAsUnknownRatherThanAsNothingSpent() {
+        // The history is read off the disk asynchronously and a read can fail, so the evaluator
+        // the app wires up has to tell "nothing here" from "nobody has looked". Wired the other
+        // way, every daily threshold would pass on a cold start (docs/policy.md#counters).
+        val connection = pair()
+        val scope =
+            SpendScope(
+                connection.id,
+                "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW",
+                PolicyAsset.sol(Network.NETWORK_MAINNET),
+            )
+        assertFalse(app.activityLog.loaded.value)
+
+        assertNull(app.policyEvaluator.spentToday(scope))
+
+        app.activityLog.load()
+        assertEquals(0UL, checkNotNull(app.policyEvaluator.spentToday(scope)).confirmed)
     }
 
     private companion object {

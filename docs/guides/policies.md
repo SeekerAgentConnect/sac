@@ -9,6 +9,7 @@ Before this, pair the phone ([`pairing.md`](pairing.md)). Rules are about reques
 - **They are your own note to yourself.** They live on this phone, in this connection's own file, and nowhere else. The sidecar is never sent them. The agent cannot read them and cannot change them.
 - **They approve nothing.** When everything matches, the review says *allowed* — which means the request matched what you wrote down, not that anything has been approved. You still approve by hand in the app and again in your wallet.
 - **They refuse nothing.** A request outside the rules is shown to you with the reasons, and you may go ahead anyway. There is no setting that makes the app turn a request down on its own.
+- **A threshold can only count what this app did.** Until this app has read its own history off the phone — and if that read fails — there is no day's total at all, and **Most per day** says *could not be checked* rather than passing as though nothing had been spent.
 - **A threshold is not a spending cap.** The day's counters are a record of what went through *this app*. They see nothing you did in your wallet directly, nothing another app did with the same wallet, and nothing on chain. No number here stops a transaction. [What a counter cannot see](#what-a-counter-cannot-see) says exactly what that leaves out.
 
 What *does* stop a request is different and comes first: a prepared transaction whose bytes disagree with the request, or that the phone can't read whole, has no Approve button at all ([`transfers.md`](transfers.md)). No rule can soften that, and no rule makes it stricter.
@@ -122,7 +123,7 @@ When something is outside your rules, or couldn't be checked, the Approve button
 
 **Reject never waits for anything.** Saying no is always available in one tap.
 
-What you tick is for the reasons in front of you, not for the request. If the transaction is read again, or you edit the rules, or the day's total moves, that is a different assessment — the tick clears, and the reasons are there to read again.
+What you tick is for the reasons in front of you *and* for the transaction they are about. If the transaction is read again, or you edit the rules, or the day's total moves, that is a different thing to have agreed to — the tick clears, and the reasons are there to read again. A transaction prepared again clears it even when the reasons read exactly the same: the new one can carry a different priority fee, which is real money leaving your wallet that no threshold here counts.
 
 **A connection with no rules never asks you to tick.** Every request under it is *Outside your rules* for want of any, which is not a warning about anything; a phone that asked you to tick past that on every request would be teaching you to tick without reading. Rules that are stored and can't be read do ask, because there you did write something and this app can't tell you what.
 

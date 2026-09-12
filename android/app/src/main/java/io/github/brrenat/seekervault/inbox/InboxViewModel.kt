@@ -132,7 +132,26 @@ data class RequestAssessment(
     val facts: RequestFacts,
     /** When it was made. */
     val at: Instant,
-)
+) {
+    /** What going ahead anyway would be consent to: the reasons, and the thing they are about. */
+    val consent: Consent
+        get() = Consent(decision, facts)
+}
+
+/**
+ * What an acknowledgement is given for (SAW-028).
+ *
+ * The reasons the owner read, and the preparation they read them about. Both, because either one
+ * changing makes it a different thing to have consented to — and the two do not always change
+ * together: a transaction prepared again can carry another blockhash, another priority fee, or
+ * another version while what the rules make of it is word for word the same, and a rule the owner
+ * edits can leave this request's every check exactly as it was. What the owner said yes to is this
+ * assessment of this preparation.
+ *
+ * The moment it was made is deliberately not part of it. The same reasons about the same bytes,
+ * read again a second later, are the same reasons.
+ */
+data class Consent(val decision: PolicyDecision, val facts: RequestFacts)
 
 /** Everything the inbox screens show. */
 data class InboxUiState(
@@ -154,11 +173,12 @@ data class InboxUiState(
     /** What the rules make of each request the owner has opened (SAW-028). */
     val assessments: Map<RequestKey, RequestAssessment> = emptyMap(),
     /**
-     * The assessment the owner said they want to go ahead past, per request. It is the decision
-     * itself and not a flag, because consent is to the reasons that were on screen: a different
-     * assessment is a different thing to consent to, and this stops matching it.
+     * The assessment the owner said they want to go ahead past, per request. It is the [Consent]
+     * itself and not a flag, because consent is to the reasons that were on screen and to the
+     * preparation they were about: a different assessment, or a transaction read again, is a
+     * different thing to consent to, and this stops matching it.
      */
-    val acknowledged: Map<RequestKey, PolicyDecision> = emptyMap(),
+    val acknowledged: Map<RequestKey, Consent> = emptyMap(),
 )
 
 /**
@@ -197,7 +217,7 @@ class InboxViewModel(
         val preparations: Map<RequestKey, Preparation> = emptyMap(),
         val checking: Set<RequestKey> = emptySet(),
         val assessments: Map<RequestKey, RequestAssessment> = emptyMap(),
-        val acknowledged: Map<RequestKey, PolicyDecision> = emptyMap(),
+        val acknowledged: Map<RequestKey, Consent> = emptyMap(),
     )
 
     private val activity = MutableStateFlow(Activity())
@@ -290,16 +310,17 @@ class InboxViewModel(
      * The owner says they have read the warnings and want to go ahead anyway, or takes it back.
      *
      * What is kept is the assessment itself, not a tick: consent is to the reasons that were on
-     * screen, so an assessment that changes afterwards leaves nothing consented to.
+     * screen and to the preparation they were about, so either changing afterwards leaves nothing
+     * consented to.
      */
     fun acknowledge(key: RequestKey, accepted: Boolean) {
-        val decision = activity.value.assessments[key]?.decision ?: return
+        val consent = activity.value.assessments[key]?.consent ?: return
         activity.update {
             it.copy(
                 problem = if (it.problemKey == key) null else it.problem,
                 problemKey = if (it.problemKey == key) null else it.problemKey,
                 acknowledged =
-                    if (accepted) it.acknowledged + (key to decision) else it.acknowledged - key,
+                    if (accepted) it.acknowledged + (key to consent) else it.acknowledged - key,
             )
         }
     }
@@ -320,7 +341,7 @@ class InboxViewModel(
             it.copy(
                 assessments = it.assessments + (key to assessment),
                 acknowledged =
-                    if (ticked != null && ticked != assessment.decision) it.acknowledged - key
+                    if (ticked != null && ticked != assessment.consent) it.acknowledged - key
                     else it.acknowledged,
             )
         }
@@ -341,13 +362,13 @@ class InboxViewModel(
      * (docs/security.md#verification-versus-advisory-rules).
      */
     private suspend fun cleared(key: RequestKey): RequestAssessment? {
-        val shown = activity.value.assessments[key]?.decision
+        val shown = activity.value.assessments[key]?.consent
         val fresh = assess(key) ?: return null
-        if (shown != null && shown != fresh.decision) {
+        if (shown != null && shown != fresh.consent) {
             problem(key, SigningProblem.RulesChanged)
             return null
         }
-        if (fresh.decision.warns && activity.value.acknowledged[key] != fresh.decision) {
+        if (fresh.decision.warns && activity.value.acknowledged[key] != fresh.consent) {
             problem(key, SigningProblem.NotAcknowledged)
             return null
         }

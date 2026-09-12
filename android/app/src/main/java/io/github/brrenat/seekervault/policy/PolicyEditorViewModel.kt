@@ -127,7 +127,11 @@ class PolicyEditorViewModel(
         val state = _state.value
         val connectionId = state.connectionId ?: return
         if (state.saving || !state.loaded || state.unreadable != null) return
-        val review = state.draft.review(now())
+        // The draft that is about to be written, held apart from the one on screen: the form stays
+        // interactive while a slow write runs, and marking whatever is typed by the time it
+        // finishes as "stored" would lose those edits without a word.
+        val writing = state.draft
+        val review = writing.review(now())
         val policy =
             when (review) {
                 is DraftReview.Ready -> review.policy
@@ -155,7 +159,7 @@ class PolicyEditorViewModel(
                 current.copy(
                     saving = false,
                     replacing = false,
-                    stored = current.draft,
+                    stored = writing,
                     storedAt = policy?.updatedAt,
                     message = if (policy == null) PolicyMessage.Removed else PolicyMessage.Saved,
                 )

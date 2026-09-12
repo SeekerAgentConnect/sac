@@ -150,6 +150,14 @@ Every rule in the MVP is advisory, thresholds included.
 - A counter is a record of what went through **this app**, not a spending cap. It sees nothing the owner did in their wallet directly, and nothing any other app did with the same wallet.
 - Nothing here is enforced on chain. The wallet and the network do not know these rules exist.
 
+### A day nobody has read
+
+A counter is derived from the owner's own Activity records, which are read off the disk asynchronously and may fail to be read at all. **An empty list of records and a history nobody has read are not the same thing**, and the difference decides whether a daily threshold means anything: measured against an unread day, every request would read as though nothing had been spent, and every daily threshold would pass.
+
+So the evaluator is handed records that can be *absent*, not merely empty. Until the history has been read — and again after a read that fails — there is no day's total, the daily check is `daily_total_unverified`, and the request is UNDER_RESTRICTIONS. A history that was read and holds nothing is a day with nothing in it, and passes on its own terms.
+
+This is the same rule as everywhere else here: a fact the phone couldn't establish is null, and null never passes a check.
+
 ### Re-evaluation
 
 There is no stored verdict. `PolicyEvaluator` (`policy/PolicyEvaluation.kt`) re-reads the connection's rules from disk and the app's own records on every call, so asking again immediately before the owner proceeds is the whole of re-evaluating — and a verdict read a minute ago is never the one acted on, because there is nothing kept to act on.
@@ -200,7 +208,11 @@ Nothing is said by colour alone. A reader who sees no colour, or who hears the s
 
 A warning the owner can tap straight past is a warning that teaches them to tap past warnings. So an affirmative answer to a request the assessment warns about takes a deliberate step: a checkbox saying they have read the warnings and want to go ahead anyway, next to the button that does it, and the button says what it would be doing. Rejecting never asks for anything — saying no is the safe answer.
 
-**What they agree to is the assessment, not the request.** The tick is bound to the exact `PolicyDecision` it was given for. A new preparation, edited rules, or a moved counter produce a different assessment, and a different assessment is a different thing to agree to: the tick goes, and the reasons are there to be read again.
+**What they agree to is the assessment, not the request.** The tick is bound to a `Consent` — the exact `PolicyDecision` it was given for *and* the `RequestFacts` it was about. Edited rules or a moved counter change the decision; a transaction prepared again changes the facts. Either is a different thing to agree to: the tick goes, and the reasons are there to be read again.
+
+**Both halves, because the two don't always change together.** A rule the owner edits can leave this request's every check exactly as it was, and a transaction prepared again can carry another blockhash, another version, or another priority fee while what the rules make of it is word for word the same — and a raised priority fee is real value leaving the wallet that no threshold counts ([known limits](#known-limits)). Comparing decisions alone would carry a tick given for one preparation over to another. What the owner said yes to is *this assessment of this preparation*.
+
+The moment an assessment was made is deliberately not part of consent. The same reasons about the same bytes, read again a second later, are the same reasons.
 
 **Having no rules at all is not a warning.** Every request on a phone whose owner has written no rules is `UNDER_RESTRICTIONS` for want of any, and asking them to tick past that on every request would make the tick a ritual. `PolicyDecision.warns` is `UNDER_RESTRICTIONS` for any other reason — rules this build can't read included, because there the owner did write something and this build can't say what.
 

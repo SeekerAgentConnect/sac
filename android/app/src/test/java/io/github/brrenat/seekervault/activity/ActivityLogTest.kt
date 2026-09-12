@@ -11,10 +11,13 @@ import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
 import java.io.File
+import java.io.IOException
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -33,6 +36,41 @@ class ActivityLogTest {
     private val store by lazy { ActivityStore(dir) }
     private val now = Instant.parse("2026-09-11T12:05:00Z")
     private val log by lazy { ActivityLog(store) { now } }
+
+    @Test
+    fun theHistoryIsNotKnownUntilItHasBeenReadOffTheDisk() {
+        // Anything that counts what this phone has done has to tell "nothing here" from "nobody
+        // has looked". An empty list before a read is the second, and a daily threshold measured
+        // against it would report the day as empty (docs/policy.md#counters).
+        assertFalse(log.loaded.value)
+        assertEquals(emptyList<ActivityRecord>(), log.records.value)
+
+        log.load()
+
+        assertTrue(log.loaded.value)
+    }
+
+    @Test
+    fun aReadThatFailsLeavesTheHistoryUnknownRatherThanEmpty() {
+        File(folder.root, "files").mkdirs()
+        // A file where the directory has to go: the history is there and can't be listed.
+        dir.writeText("in the way")
+
+        assertThrows(IOException::class.java) { log.load() }
+
+        assertFalse(log.loaded.value)
+    }
+
+    @Test
+    fun clearingIsAHistoryTheOwnerKnowsIsEmpty() {
+        log.load()
+        log.record(result(transferRequest()), connection())
+
+        log.clear()
+
+        assertTrue(log.loaded.value)
+        assertEquals(emptyList<ActivityRecord>(), log.records.value)
+    }
 
     @Test
     fun keepsTheAssessmentTheOwnerReadThroughEveryLaterWriteOfTheRecord() {

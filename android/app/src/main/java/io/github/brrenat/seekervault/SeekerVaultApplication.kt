@@ -77,7 +77,12 @@ class SeekerVaultApplication : Application() {
      * screen is always one that was just made. It reads, and does nothing else.
      */
     val policyEvaluator: PolicyEvaluator by lazy {
-        PolicyEvaluator(policyStore, records = { activityLog.records.value })
+        PolicyEvaluator(
+            policyStore,
+            // Null until the history has actually been read, and again if a read fails. A day's
+            // total that nobody could read is reported as unverified rather than as nothing spent.
+            records = { if (activityLog.loaded.value) activityLog.records.value else null },
+        )
     }
 
     /**

@@ -39,12 +39,22 @@ class ActivityLog(
     // a note about a screen, not a verdict to act on: nothing reads it back out to decide anything.
     private val shown = ConcurrentHashMap<RequestKey, ReviewedPolicy>()
 
+    private val _loaded = MutableStateFlow(false)
+
     /** Every record, newest first. */
     val records: StateFlow<List<ActivityRecord>> = _records.asStateFlow()
+
+    /**
+     * Whether the history has been read off the disk. Until it has — and after a read that failed —
+     * [records] is not the owner's history but what this process happens to have seen, and anything
+     * that counts what the phone has done must treat it as unknown rather than as none (SAW-026).
+     */
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
 
     /** Reads what is stored. A store that can't be read leaves the list as it was, and throws. */
     fun load() {
         _records.value = store.list()
+        _loaded.value = true
     }
 
     /**
@@ -85,6 +95,8 @@ class ActivityLog(
         store.clear()
         shown.clear()
         _records.value = emptyList()
+        // Cleared is read: the owner emptied it themselves, and an empty history is a known one.
+        _loaded.value = true
     }
 
     private companion object {

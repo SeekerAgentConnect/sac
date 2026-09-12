@@ -196,7 +196,7 @@ fun SeekerVaultApp(
                     assessment = inboxState.assessments[key],
                     acknowledged =
                         inboxState.acknowledged[key] != null &&
-                            inboxState.acknowledged[key] == inboxState.assessments[key]?.decision,
+                            inboxState.acknowledged[key] == inboxState.assessments[key]?.consent,
                     onAcknowledge = { inbox.acknowledge(key, it) },
                     onBack = pop,
                 )
