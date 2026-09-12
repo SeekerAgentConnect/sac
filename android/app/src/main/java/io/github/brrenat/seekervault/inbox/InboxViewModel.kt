@@ -15,6 +15,7 @@ import io.github.brrenat.seekervault.connections.Inbox
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.connections.messageBytes
+import io.github.brrenat.seekervault.connections.resultDetail
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.connections.toOutcome
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
@@ -526,9 +527,13 @@ class InboxViewModel(
                         "The owner's wallet changed before it could sign, so nothing was signed."
                     )
                 is SignResult.Failed ->
+                    // What the wallet said is its own text, of a length it decides: it is cut to
+                    // what the protocol takes, so this answer can always be delivered.
                     SigningOutcome.Failed(
-                        listOfNotNull("The wallet could not sign", result.message)
-                            .joinToString(": ")
+                        resultDetail(
+                            listOfNotNull("The wallet could not sign", result.message)
+                                .joinToString(": ")
+                        )
                     )
             }
     }

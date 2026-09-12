@@ -124,6 +124,20 @@ sealed interface SendResult {
 }
 
 /**
+ * What the wallet answered when it was asked to sign: the [result], and the authorization it
+ * reported while answering.
+ *
+ * Mobile Wallet Adapter reauthorizes this app at the start of every wallet session, and the wallet
+ * may hand back a replacement authorization. [authToken] is the one to keep from now on, whatever
+ * the wallet then did with the message: it is null when the wallet reported none, and it is a
+ * secret like any other, so it never leaves the phone.
+ */
+data class SigningAnswer(val result: SignResult, val authToken: String? = null) {
+    override fun toString() =
+        "SigningAnswer(result=$result, authToken=${if (authToken == null) "none" else "<redacted>"})"
+}
+
+/**
  * The phone's boundary to the installed wallet (docs/architecture.md#the-wallet-adapter-boundary).
  * The app talks to a wallet only through this interface, so the screens and the repository can be
  * tested without one. [MwaWalletAdapter] is the real implementation, over Mobile Wallet Adapter.
@@ -147,13 +161,14 @@ interface WalletAdapter {
     /**
      * Asks the wallet to sign exactly [message] with [wallet]'s account, using the authorization
      * [authToken] from the owner's earlier connection. It is called only after the owner has
-     * approved the request on this phone.
+     * approved the request on this phone, and it opens the wallet once: the answer carries both
+     * what the wallet did and the authorization it reported, so nothing has to ask again.
      */
     suspend fun signMessage(
         message: ByteString,
         wallet: SelectedWallet,
         authToken: String,
-    ): SignResult
+    ): SigningAnswer
 
     /**
      * Asks the wallet to sign exactly [transaction] with [wallet]'s account and send it, using the

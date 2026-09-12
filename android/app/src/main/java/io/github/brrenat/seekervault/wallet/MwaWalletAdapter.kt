@@ -44,26 +44,34 @@ class MwaWalletAdapter(
         message: ByteString,
         wallet: SelectedWallet,
         authToken: String,
-    ): SignResult {
-        val activity = sender() ?: return SignResult.Failed(NO_ACTIVITY)
+    ): SigningAnswer {
+        val activity = sender() ?: return SigningAnswer(SignResult.Failed(NO_ACTIVITY))
         val account =
             decodeBase58(wallet.address)?.takeIf { it.size == PUBLIC_KEY_BYTES }
-                ?: return SignResult.Failed("the selected wallet isn't an address")
+                ?: return SigningAnswer(SignResult.Failed("the selected wallet isn't an address"))
         val adapter =
             adapters(identity).apply {
                 // The same chain the owner connected on, so the wallet reauthorizes as it did then.
                 blockchain = wallet.network.blockchain()
                 this.authToken = authToken
             }
+        // The wallet reauthorizes this app at the start of the session, before it is asked for a
+        // signature, and it may replace this phone's authorization then. It is read here, inside
+        // the one session the owner sees, so a signature the wallet then declines still carries it
+        // and the wallet is never opened a second time just to learn it.
+        var refreshed: String? = null
         val result =
-            adapter.transact(activity) {
+            adapter.transact(activity) { authorization ->
+                refreshed = tokenOf(authorization)
                 signMessagesDetached(arrayOf(message.toByteArray()), arrayOf(account))
             }
-        return when (result) {
-            is TransactionResult.Success -> signed(result.payload, wallet.address)
-            is TransactionResult.NoWalletFound -> SignResult.NoWallet
-            is TransactionResult.Failure -> classifySigning(result.e)
-        }
+        val outcome =
+            when (result) {
+                is TransactionResult.Success -> signed(result.payload, wallet.address)
+                is TransactionResult.NoWalletFound -> SignResult.NoWallet
+                is TransactionResult.Failure -> classifySigning(result.e)
+            }
+        return SigningAnswer(outcome, refreshed)
     }
 
     override suspend fun signAndSendTransaction(
@@ -116,10 +124,8 @@ class MwaWalletAdapter(
             if (account.publicKey.size != PUBLIC_KEY_BYTES) {
                 return WalletResult.Failed("the wallet returned an address of the wrong size")
             }
-            val token = auth.authToken
-            if (token.isNullOrEmpty()) {
-                return WalletResult.Failed("the wallet returned no authorization")
-            }
+            val token =
+                tokenOf(auth) ?: return WalletResult.Failed("the wallet returned no authorization")
             return WalletResult.Connected(
                 WalletAccount(
                     address = encodeBase58(account.publicKey),
@@ -132,6 +138,10 @@ class MwaWalletAdapter(
 
         const val PUBLIC_KEY_BYTES = 32
         const val SIGNATURE_BYTES = 64
+
+        /** The authorization an answer carries, or null when the wallet reported none. */
+        fun tokenOf(auth: AuthorizationResult?): String? =
+            auth?.authToken?.takeIf { it.isNotEmpty() }
 
         /**
          * The wallet's answer, checked before it's believed: one signed message, signed by the

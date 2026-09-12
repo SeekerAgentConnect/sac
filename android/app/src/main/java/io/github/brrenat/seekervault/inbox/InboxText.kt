@@ -159,46 +159,76 @@ fun messagePreview(request: ActionRequest): MessagePreview? {
             hasHidden = false,
         )
     }
+    val display = visibleText(message.text)
     return MessagePreview(
-        display = visibleText(message.text),
+        display = display,
         bytes = bytes,
         isText = true,
-        hasHidden = message.text.any(::isHidden),
+        // Whatever the preview had to mark is something the owner would not otherwise have seen.
+        hasHidden = display != message.text,
     )
 }
 
 /**
  * The text with every character that would otherwise be invisible made visible: control characters
- * as their Control Pictures symbol, and zero-width, bidirectional, and non-breaking characters as
- * their code point. A line break is kept as a line break and marked, so the message still reads the
- * way it was written. Nothing else is changed: this is for display only, and the wallet signs the
- * original bytes.
+ * as their Control Pictures symbol, and anything else [isHidden] finds as its code point. A line
+ * break is kept as a line break and marked, so the message still reads the way it was written.
+ * Nothing else is changed: this is for display only, and the wallet signs the original bytes.
  */
 fun visibleText(text: String): String = buildString {
-    for (char in text) {
+    var index = 0
+    while (index < text.length) {
+        // By code point, so that a character written as a surrogate pair is one character here and
+        // one beyond the basic plane, such as a tag character, can't slip through as two halves.
+        val code = text.codePointAt(index)
+        index += Character.charCount(code)
         when {
-            char == '\n' -> append("\u240A\n")
-            char == '\r' -> append('\u240D')
-            char == '\t' -> append('\u2409')
-            char.code < 0x20 -> append((0x2400 + char.code).toChar())
-            char.code == 0x7F -> append('\u2421')
-            isHidden(char) -> append("<U+%04X>".format(char.code))
-            else -> append(char)
+            code == '\n'.code -> append("\u240A\n")
+            code == '\r'.code -> append('\u240D')
+            code == '\t'.code -> append('\u2409')
+            code < 0x20 -> append((0x2400 + code).toChar())
+            code == 0x7F -> append('\u2421')
+            isHidden(code) -> append("<U+%04X>".format(code))
+            else -> appendCodePoint(code)
         }
     }
 }
 
-/** Whether a character takes no visible space, or looks like an ordinary space but isn't one. */
-fun isHidden(char: Char): Boolean =
-    char.code < 0x20 ||
-        char.code == 0x7F ||
-        char == '\u00A0' || // no-break space
-        char == '\u00AD' || // soft hyphen
-        char.code in 0x200B..0x200F || // zero-width and directional marks
-        char.code in 0x202A..0x202E || // bidirectional overrides
-        char.code in 0x2060..0x2064 ||
-        char.code in 0x2066..0x2069 ||
-        char == '\uFEFF' // byte order mark
+/**
+ * Whether a code point takes no visible space, or looks like an ordinary space but isn't one.
+ *
+ * It asks Unicode rather than listing the characters that came to mind: every control and format
+ * code point is invisible, and so is every unassigned or private-use one, whose appearance this
+ * phone can't know. A code point this phone's Unicode tables don't know yet is marked rather than
+ * shown, which is the safe way round for a message the owner is about to have their wallet sign.
+ */
+fun isHidden(codePoint: Int): Boolean =
+    when (Character.getType(codePoint).toByte()) {
+        Character.CONTROL,
+        Character.FORMAT, // zero-width, directional marks and overrides, the byte order mark
+        Character.PRIVATE_USE,
+        Character.SURROGATE, // only ever an unpaired half here
+        Character.UNASSIGNED,
+        Character.LINE_SEPARATOR,
+        Character.PARAGRAPH_SEPARATOR -> true
+        // Every other space than the ordinary one, such as a no-break or an ideographic space.
+        Character.SPACE_SEPARATOR -> codePoint != ' '.code
+        else -> isInvisibleLetterOrMark(codePoint)
+    }
+
+/**
+ * The code points that are invisible although Unicode files them as letters or marks: the Hangul
+ * fillers, and the variation selectors, which change the character before them without showing
+ * anything themselves.
+ */
+private fun isInvisibleLetterOrMark(codePoint: Int): Boolean =
+    codePoint == 0x115F ||
+        codePoint == 0x1160 ||
+        codePoint == 0x3164 ||
+        codePoint == 0xFFA0 ||
+        codePoint in 0x180B..0x180D ||
+        codePoint in 0xFE00..0xFE0F ||
+        codePoint in 0xE0100..0xE01EF
 
 @Composable
 fun actionText(request: ActionRequest): String =

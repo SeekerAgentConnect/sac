@@ -22,6 +22,12 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
     private var nextSend: (ByteString) -> SendResult = { SendResult.NoWallet }
 
     /**
+     * The authorization the wallet reports while it signs, as a real one does when it replaces the
+     * app's. Null means it reported none, and the phone keeps what it had.
+     */
+    var refreshedAuthorization: String? = null
+
+    /**
      * Runs after a signing is recorded and before it answers, so a test can hold the wallet open
      * the way the owner deciding in it does, or make something happen while it is in front.
      */
@@ -67,10 +73,10 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
         message: ByteString,
         wallet: SelectedWallet,
         authToken: String,
-    ): SignResult {
+    ): SigningAnswer {
         signings += Triple(message, wallet, authToken)
         beforeSigning()
-        return nextSignature(message)
+        return SigningAnswer(nextSignature(message), refreshedAuthorization)
     }
 
     /** The next sign-and-send answers with [result], whatever it is handed. */

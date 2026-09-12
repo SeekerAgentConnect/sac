@@ -296,12 +296,67 @@ class WalletRepositoryTest {
     }
 
     @Test
+    fun keepsAnAuthorizationTheWalletReplacesWhileSigning() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET, authToken = SECRET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        val publications = server.publications
+        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        // The wallet reauthorizes this app as it signs, and hands back another authorization.
+        adapter.refreshedAuthorization = REFRESHED
+
+        val message = ByteString.copyFromUtf8("Sign in to Example")
+        assertTrue(repository.sign(message, selected) is SignResult.Signed)
+
+        // The one it replaced went to the wallet; the replacement is what this phone now keeps.
+        assertEquals(SECRET, adapter.signings.single().third)
+        assertEquals(REFRESHED, store.authorization())
+        // The owner's selection is untouched, and no sidecar was told anything new about it.
+        assertEquals(selected, repository.wallet.value)
+        assertEquals(selected, store.selected())
+        assertEquals(WALLET, server.wallet?.wallet)
+        assertEquals(Network.NETWORK_DEVNET, server.wallet?.network)
+        assertEquals(publications, server.publications)
+
+        // The next signing offers the replacement, and so does a repository that starts from the
+        // files this phone stored, the way the app does when it is opened again.
+        repository.sign(message, selected)
+        assertEquals(REFRESHED, adapter.signings[1].third)
+        val next = WalletRepository(store, adapter, connections, io = Dispatchers.Unconfined)
+        next.load()
+        assertEquals(selected, next.wallet.value)
+        next.sign(message, checkNotNull(next.wallet.value))
+        assertEquals(REFRESHED, adapter.signings[2].third)
+    }
+
+    @Test
+    fun keepsTheReplacedAuthorizationWhenTheOwnerDeclinesTheSigning() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET, authToken = SECRET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        adapter.answerSigning(SignResult.Declined)
+        adapter.refreshedAuthorization = REFRESHED
+
+        assertEquals(SignResult.Declined, repository.sign(ByteString.copyFromUtf8("x"), selected))
+
+        // Declining says something about the message, not about this phone's authorization: the
+        // replacement the wallet issued is still good, and the wallet is still connected.
+        assertEquals(REFRESHED, store.authorization())
+        assertEquals(selected, repository.wallet.value)
+        assertEquals(WALLET, server.wallet?.wallet)
+    }
+
+    @Test
     fun forgetsAnAuthorizationTheWalletRefusesWhileSigning() = runBlocking {
         pair()
         adapter.answerConnected(WALLET, authToken = SECRET)
         repository.connect(WalletNetwork.Devnet)
         val selected = checkNotNull(repository.wallet.value)
         adapter.answerSigning(SignResult.AuthorizationExpired)
+        // A refused authorization is refused, whatever else the wallet reported with it.
+        adapter.refreshedAuthorization = REFRESHED
 
         assertEquals(
             SignResult.AuthorizationExpired,
@@ -405,6 +460,7 @@ class WalletRepositoryTest {
         const val OTHER_URL = "http://127.0.0.1:8081"
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
         const val SECRET = "authorization-the-wallet-issued-0123456789"
+        const val REFRESHED = "authorization-the-wallet-issued-later-9876543210"
         const val OTHER_WALLET = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
         val REVIEWED =
             SelectedWallet(

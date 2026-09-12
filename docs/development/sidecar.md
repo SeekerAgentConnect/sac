@@ -175,10 +175,10 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 
 ### vault_sign_message
 
-`vault_sign_message` queues a message for the owner's wallet to sign: `{wallet, message | message_base64, idempotency_key, note?, expires_in_seconds?}`, answered at once with the request as PENDING. Run it with `pnpm agent sign "<text>"`.
+`vault_sign_message` queues a message for the owner's wallet to sign: `{wallet, message, idempotency_key, note?, expires_in_seconds?}`, answered at once with the request as PENDING. Run it with `pnpm agent sign "<text>"`.
 
 - **It creates a request and nothing else.** No wallet is contacted until the owner approves it on their phone. Being stored is not approval and not a signature.
-- **The message is taken one way or the other:** `message` as text, whose UTF-8 encoding is signed, or `message_base64` as bytes, signed as they are. Both together, or neither, is `INVALID_PARAMETERS`. 1 to 4096 bytes.
+- **The message is text:** `message`, whose UTF-8 encoding is signed as it is. 1 to 4096 bytes; empty is `INVALID_PARAMETERS`. There is no public way to queue bytes that aren't text, so the owner can always read what they are approving. `SignMessageAction` keeps a `data` form in the contract for a later stage, and no tool served here creates one.
 - **The wallet must be the owner's.** Another one is `WALLET_MISMATCH`, and none connected is `WALLET_NOT_CONNECTED`.
 - **The result carries the signed bytes.** A COMPLETED request has `signature` (base58), `wallet`, and `signed_message_base64`, so the agent verifies the signature itself. The sidecar verifies it too, before accepting it from the phone, and refuses anything that isn't that wallet's signature over those bytes. It signs nothing: see [message results](../protocol.md#message-results) and [`docs/guides/message-signing.md`](../guides/message-signing.md).
 

@@ -10,6 +10,7 @@ Before this, pair the phone ([`pairing.md`](pairing.md)) and connect your wallet
 - **It moves no money and sends nothing to the network.** No transaction exists, and nothing appears on chain. Transfers are a different action, and a later task.
 - **Nothing is signed without you.** The request waits on your phone until you tap **Approve and sign**, and only then does the app open your wallet. Until you do, no wallet is opened, no key is touched, and the agent is told the request is `PENDING`.
 - **The sidecar can't sign.** It holds no key. It stores the request, and afterwards checks that the signature really is your wallet's, over the message it stored.
+- **An agent can only ask for text.** `vault_sign_message` takes the message as text, and its UTF-8 bytes are what your wallet signs. There is no way to queue bytes that aren't text, so you can always read what you are approving.
 
 ## The agent asks
 
@@ -38,7 +39,7 @@ The request appears in **Pending requests** the next time you open the app, or w
 | **Signs with** | The wallet and network you connected |
 | **The agent's note** | Its own words, unverified, shown apart from the message |
 
-**Invisible characters are marked.** A line break shows as `␊`, a tab as `␉`, a carriage return as `␍`; a zero-width space, a right-to-left override, or a no-break space shows as its code point, such as `<U+200B>`. If the message has any, the screen says so under it. Nothing can hide in what you approve, and the app changes nothing about the message itself: your wallet signs the original bytes.
+**Invisible characters are marked.** A line break shows as `␊`, a tab as `␉`, a carriage return as `␍`; anything else that would take no space at all, or that looks like an ordinary space but isn't one — a zero-width space, a right-to-left override, a no-break space, a variation selector — shows as its code point, such as `<U+200B>`. The app asks Unicode what is invisible rather than checking a list of usual suspects, and a character it doesn't recognize is marked rather than shown. If the message has any, the screen says so under it. Nothing can hide in what you approve, and the app changes nothing about the message itself: your wallet signs the original bytes.
 
 Then either:
 

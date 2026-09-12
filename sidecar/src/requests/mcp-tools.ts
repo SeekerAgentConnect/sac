@@ -264,7 +264,9 @@ const SIGN_MESSAGE_DESCRIPTION =
   "signature against those bytes yourself. REJECTED means the owner or the wallet declined, " +
   "EXPIRED that the deadline passed, and FAILED that the wallet could not sign. A signature " +
   "proves the owner's wallet signed those bytes; it moves no funds and sends nothing on chain. " +
-  "The message is signed exactly as given, never trimmed, normalized, or re-encoded. `wallet` " +
+  "The message is text, and its UTF-8 encoding is signed exactly as given, never trimmed, " +
+  "normalized, or re-encoded; there is no way to ask for bytes that aren't text, because the " +
+  "owner reviews what they sign. `wallet` " +
   "must be the one vault_get_address returns. A retry with the same idempotency_key and the same " +
   "message returns the same request instead of queueing another. Errors start with a code: " +
   "INVALID_PARAMETERS, IDEMPOTENCY_CONFLICT, NOT_PAIRED, WALLET_NOT_CONNECTED, WALLET_MISMATCH, " +
@@ -483,15 +485,8 @@ function registerSignMessageTool(
           ),
         message: z
           .string()
-          .optional()
           .describe(
-            `The message as text. Its UTF-8 encoding is what gets signed, exactly as given: 1 to ${MAX_MESSAGE_BYTES} bytes. Give either this or message_base64, not both.`,
-          ),
-        message_base64: z
-          .string()
-          .optional()
-          .describe(
-            `The message as bytes, in standard base64, signed as they are: 1 to ${MAX_MESSAGE_BYTES} bytes. Use it only for a message that isn't text; the owner sees text far better.`,
+            `The message as text. Its UTF-8 encoding is what gets signed, exactly as given: 1 to ${MAX_MESSAGE_BYTES} bytes, and never empty.`,
           ),
         idempotency_key: z
           .string()
@@ -519,17 +514,10 @@ function registerSignMessageTool(
         openWorldHint: false,
       },
     },
-    ({
-      wallet,
-      message,
-      message_base64,
-      idempotency_key,
-      note,
-      expires_in_seconds,
-    }) =>
+    ({ wallet, message, idempotency_key, note, expires_in_seconds }) =>
       answer(() => {
         const { request, created } = store.create({
-          action: signMessageAction(wallet, message, message_base64),
+          action: signMessageAction(wallet, message),
           agentNote: note ?? "",
           idempotencyKey: idempotency_key,
           expiresInSeconds: expires_in_seconds,
@@ -674,48 +662,18 @@ function registerTransferTool(
 }
 
 /**
- * The action for one of the two message forms. Exactly one must be given: an agent that sends
- * both, or neither, is refused rather than having one silently chosen for it.
+ * The action for a message the owner can read. Stage 3 signs text and nothing else: the request
+ * carries the message as text, so the phone can show the owner exactly what they are approving
+ * (docs/guides/message-signing.md). SignMessageAction still has a `data` form for a later stage,
+ * and no tool served here can create one.
  */
-function signMessageAction(
-  wallet: string,
-  text: string | undefined,
-  base64: string | undefined,
-): Action {
-  if ((text === undefined) === (base64 === undefined)) {
-    throw new RequestFailure(
-      RequestError.INVALID_PARAMETERS,
-      "give either message or message_base64, not both and not neither",
-    );
-  }
-  if (text !== undefined) {
-    return create(ActionSchema, {
-      kind: {
-        case: "signMessage",
-        value: { wallet, content: { case: "text", value: text } },
-      },
-    });
-  }
-  const data = decodeBase64(base64 ?? "");
-  if (data === undefined) {
-    throw new RequestFailure(
-      RequestError.INVALID_PARAMETERS,
-      "message_base64 is not standard base64",
-    );
-  }
+function signMessageAction(wallet: string, text: string): Action {
   return create(ActionSchema, {
     kind: {
       case: "signMessage",
-      value: { wallet, content: { case: "data", value: data } },
+      value: { wallet, content: { case: "text", value: text } },
     },
   });
-}
-
-/** Standard base64, strictly: anything Buffer would quietly ignore is refused instead. */
-function decodeBase64(text: string): Uint8Array | undefined {
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text)) return undefined;
-  const bytes = Buffer.from(text, "base64");
-  return bytes.toString("base64") === text ? bytes : undefined;
 }
 
 /** vault_request_ack: queues a wallet-free acknowledgement. Not a financial action. */

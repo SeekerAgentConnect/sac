@@ -339,3 +339,32 @@
   exercise error handling, and every automated test uses it; the stage is accepted only when the
   owner's own Seeker signs by hand. The verification record therefore has two tables, automated and
   physical, and the physical one is entirely NOT RUN.
+
+## 2026-09-12 — The wallet's refreshed authorization, and text-only signing
+
+- **The signing answer carries the authorization, rather than the adapter exposing it.** Mobile
+  Wallet Adapter reauthorizes this app at the start of every session and may replace its token, and
+  `TransactionResult.Failure` carries no `AuthorizationResult`. The alternatives were reading
+  `MobileWalletAdapter.authToken` back after the call, which depends on the library updating its own
+  field, or a second wallet session, which would ask the owner twice. Instead `signMessage` answers
+  with a `SigningAnswer`, and `MwaWalletAdapter` reads the `AuthorizationResult` that `transact`
+  hands its block, before asking for the signature. A declined signature therefore still carries a
+  working authorization, and the boundary stays one call per interaction.
+- **A replacement is stored, and the selection isn't touched.** `store.put` writes the selection and
+  the authorization together, so the repository passes the selection back unchanged: the wallet,
+  address, and network the owner reviewed can't move because a token did, and nothing is published.
+- **A storage failure while keeping a replacement is swallowed, deliberately.** The signing outcome
+  matters more than the newer token: with the old one the next signing is refused and the owner
+  connects the wallet again, which is exactly what an expired authorization already does. Throwing,
+  as `connect` does, would have lost a signature the owner had just approved.
+- **`vault_sign_message` takes text only, and the protobuf keeps its `data` form.** SEE-24 scoped the
+  first signing tool to messages the owner can read, and `message_base64` let an agent queue bytes
+  nobody can review. Removing the field from the protocol was the alternative; it would be a
+  contract change for a field a later stage wants, so the field stays and no tool served here can
+  create one. `messageBytes` still handles both forms, and the phone still renders a `data` message,
+  so nothing has to be rewritten when a later stage needs it.
+- **Invisible characters are found by Unicode category, not by a list.** The hand-written ranges
+  missed U+061C and every tag character, and worked on chars, so a supplementary code point arrived
+  as two surrogate halves. `Character.getType` over code points is the same question asked of the
+  platform's own tables, and a code point those tables don't know is marked rather than shown: for
+  bytes the owner is about to sign, the safe way round is to over-mark.

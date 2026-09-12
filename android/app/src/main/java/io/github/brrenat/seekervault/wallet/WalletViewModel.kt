@@ -61,6 +61,9 @@ class WalletViewModel(
     // Whether the app has left the foreground since it last published on opening.
     private var hidden = false
 
+    // The usable connections this screen has already seen, so a new one can be told at once.
+    private var known = emptySet<String>()
+
     init {
         viewModelScope.launch {
             repository.wallet.collect { selected ->
@@ -72,6 +75,14 @@ class WalletViewModel(
         viewModelScope.launch {
             connections.connections.collect { list ->
                 _state.update { it.copy(connections = list) }
+                // The owner pairs a sidecar without leaving the app, so waiting for the next
+                // return to the foreground would leave it answering WALLET_NOT_CONNECTED while
+                // this screen says every connection was told. Nothing is published before the
+                // stored wallet has been read; opening the app publishes to all of them anyway.
+                val usable = list.filter { it.usable }.map { it.id }.toSet()
+                val fresh = usable - known
+                known = usable
+                if (fresh.isNotEmpty() && _state.value.loaded) publish()
             }
         }
         viewModelScope.launch {
