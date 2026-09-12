@@ -4,14 +4,21 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.Answer
+import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionRepository
 import io.github.brrenat.seekervault.connections.Delivery
+import io.github.brrenat.seekervault.connections.GatewayException
 import io.github.brrenat.seekervault.connections.Inbox
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.connections.messageBytes
 import io.github.brrenat.seekervault.connections.signMessage
+import io.github.brrenat.seekervault.connections.toOutcome
+import io.github.brrenat.seekervault.request.v1.PreparedTransaction
+import io.github.brrenat.seekervault.transactions.TransferInspection
+import io.github.brrenat.seekervault.transactions.inspectTransfer
+import io.github.brrenat.seekervault.transactions.transfer
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SignResult
 import io.github.brrenat.seekervault.wallet.WalletRepository
@@ -36,6 +43,27 @@ enum class SigningProblem {
     Changed,
 }
 
+/**
+ * A transfer's prepared transaction, as far as this phone has got with it. Nothing here is stored:
+ * a preparation is only good while its blockhash is, so it lives for as long as the screen does and
+ * is fetched again next time (docs/security.md#inspecting-a-transfer).
+ */
+sealed interface Preparation {
+    /** The sidecar is building one. */
+    data object Running : Preparation
+
+    /** One arrived, and the phone read it. [inspection] is what the bytes say, not the sidecar. */
+    data class Ready(
+        val prepared: PreparedTransaction,
+        val inspection: TransferInspection,
+        /** The wallet it was checked against; null when none was connected. */
+        val wallet: SelectedWallet?,
+    ) : Preparation
+
+    /** The sidecar couldn't be asked, or wouldn't build one. */
+    data class Failed(val outcome: CheckOutcome, val detail: String? = null) : Preparation
+}
+
 /** Everything the inbox screens show. */
 data class InboxUiState(
     val connections: List<Connection> = emptyList(),
@@ -49,6 +77,8 @@ data class InboxUiState(
     /** Why the last approval didn't reach the wallet, and which request it was about. */
     val problem: SigningProblem? = null,
     val problemKey: RequestKey? = null,
+    /** Each transfer the owner has opened, and what this phone made of its transaction. */
+    val preparations: Map<RequestKey, Preparation> = emptyMap(),
 )
 
 /**
@@ -70,6 +100,7 @@ class InboxViewModel(
         val sending: Set<RequestKey> = emptySet(),
         val problem: SigningProblem? = null,
         val problemKey: RequestKey? = null,
+        val preparations: Map<RequestKey, Preparation> = emptyMap(),
     )
 
     private val activity = MutableStateFlow(Activity())
@@ -88,6 +119,7 @@ class InboxViewModel(
                     now.sending,
                     now.problem,
                     now.problemKey,
+                    now.preparations,
                 )
             }
             .stateIn(
@@ -180,6 +212,38 @@ class InboxViewModel(
             } finally {
                 activity.update { it.copy(sending = it.sending - key) }
             }
+        }
+    }
+
+    /**
+     * Fetches a fresh transaction for a PENDING transfer and reads it here. It runs when the owner
+     * opens the request, and again only when they ask: each call makes the sidecar build a new
+     * version, and every version has to be reviewed on its own.
+     *
+     * The inspection is done against the transaction's own bytes. What the sidecar says it built is
+     * not consulted, and the agent's note never is.
+     */
+    fun prepare(key: RequestKey, force: Boolean = false) {
+        val existing = activity.value.preparations[key]
+        if (existing == Preparation.Running) return
+        if (!force && existing != null) return
+        val request = repository.inbox.value.pendingRequest(key) ?: return
+        if (request.transfer() == null) return
+        activity.update { it.copy(preparations = it.preparations + (key to Preparation.Running)) }
+        viewModelScope.launch {
+            val outcome =
+                try {
+                    val prepared = repository.prepare(key)
+                    val selected = wallet.wallet.value
+                    Preparation.Ready(
+                        prepared,
+                        inspectTransfer(request, prepared, selected),
+                        selected,
+                    )
+                } catch (e: GatewayException) {
+                    Preparation.Failed(e.kind.toOutcome(), e.message)
+                }
+            activity.update { it.copy(preparations = it.preparations + (key to outcome)) }
         }
     }
 

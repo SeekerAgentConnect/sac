@@ -119,6 +119,66 @@ class StageBoundaryTest {
     }
 
     @Test
+    fun readingATransactionStaysInOnePackageAndOnlyReads() {
+        // SAW-020: the phone reads a transfer's own bytes so the owner's review doesn't depend on
+        // the server's description of them. That reading is worth keeping in one place, and worth
+        // keeping free of anything that could build, sign, or send: it is a parser.
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        val decoding = Regex("""decodeTransaction|findProgramAddress|\bisOnCurve\b""")
+        val transactions = File(main, "java/io/github/brrenat/seekervault/transactions")
+        val outside =
+            sources
+                .filterNot { it.startsWith(transactions) }
+                .filter { decoding.containsMatchIn(it.readText()) }
+                .map { it.name }
+        assertEquals(emptyList<String>(), outside)
+        assertTrue(transactions.isDirectory)
+        // The parser holds no key and makes none: it turns bytes into facts and nothing else.
+        val keys = Regex("""KeyPairGenerator|PrivateKey|Signature\.getInstance|\bsign\(""")
+        assertEquals(
+            emptyList<String>(),
+            transactions
+                .walk()
+                .filter { it.extension == "kt" }
+                .filter { keys.containsMatchIn(it.readText()) }
+                .map { it.name }
+                .toList(),
+        )
+    }
+
+    @Test
+    fun theTransactionTheOwnerReviewsIsReadByThisAppsOwnParser() {
+        // The Mobile Wallet Adapter client already brings a Solana SDK and a crypto provider onto
+        // this classpath, so keeping them off is not the question. The question is what reads the
+        // bytes the owner approves, and SAW-020 answers it here on purpose
+        // (docs/security.md#inspecting-a-transfer): a parser that refuses anything it cannot
+        // account for byte for byte, rather than a general-purpose decoder whose job is to parse
+        // what it can. A file that starts importing one instead has changed that answer.
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        val sdk =
+            Regex(
+                """^import (com\.solana\.transaction|com\.solana\.serialization|""" +
+                    """com\.solana\.programs|org\.sol4k)\.""",
+                RegexOption.MULTILINE,
+            )
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { sdk.containsMatchIn(it.readText()) }.map { it.name },
+        )
+        // It is on the classpath, so a check that only proved it absent would prove nothing.
+        assertTrue(
+            runCatching {
+                Class.forName(
+                    "com.solana.serialization.TransactionDecoder",
+                    false,
+                    javaClass.classLoader,
+                )
+            }
+                .isSuccess
+        )
+    }
+
+    @Test
     fun theWalletClientIsOnTheClasspathFromSaw015() {
         // The check below must fail for a library that is missing, so prove it finds one that is
         // there: the Mobile Wallet Adapter client the app now drives the wallet with.
@@ -157,13 +217,15 @@ class StageBoundaryTest {
 
     @Test
     fun nothingSpendsSwapsOrAsksForABiometricOfItsOwn() {
-        // SAW-018 closes Stage 3, which is signing and nothing else. No transaction is built or
-        // sent, there is no swap, and the app asks for no authentication of its own: the owner taps
-        // Approve and sign, and their wallet app decides for itself what it needs before signing.
-        // Transfers and swaps are Stages 4 and 6; the task that adds one changes this.
+        // SAW-020 lets the app read a transfer's bytes, and nothing more. It still builds no
+        // transaction, signs none, sends none, and reaches no chain: reading is `transactions/`,
+        // and every byte it reads came from a sidecar over the connection the owner paired.
+        // Approving a transfer through the wallet is SAW-021, and swaps are Stage 6; the task that
+        // adds one changes this.
         val spending =
             Regex(
                 """signTransactions|signAndSendTransactions|sendTransaction|""" +
+                    """sendRawTransaction|simulateTransaction|getLatestBlockhash|""" +
                     """mainnet-beta|clusterApiUrl|solana\.com"""
             )
         val ownAuthentication =
@@ -181,6 +243,7 @@ class StageBoundaryTest {
         assertEquals(emptyList<String>(), hits(ownAuthentication))
         // The scan reads the real sources, so a line that did match would be found.
         assertTrue(hits(Regex("signMessage")).isNotEmpty())
+        assertTrue(hits(Regex("decodeTransaction")).isNotEmpty())
         assertEquals(
             emptyList<String>(),
             listOf("androidx.biometric.BiometricPrompt", "androidx.biometric.BiometricManager")

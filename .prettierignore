@@ -3,3 +3,6 @@ pnpm-lock.yaml
 .claude/
 android/
 **/gen/
+# Written by `node sidecar/src/testing/transaction-fixtures.ts`; its own test checks it byte for
+# byte, so reformatting it here would only make the two disagree.
+fixtures/transactions/

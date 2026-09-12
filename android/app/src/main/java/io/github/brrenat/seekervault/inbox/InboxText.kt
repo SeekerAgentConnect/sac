@@ -17,8 +17,14 @@ import io.github.brrenat.seekervault.connections.messageBytes
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.SignMessageAction
+import io.github.brrenat.seekervault.transactions.Finding
+import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
+import io.github.brrenat.seekervault.transactions.TransferFacts
+import io.github.brrenat.seekervault.transactions.Verdict
+import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -48,6 +54,15 @@ object InboxTags {
     const val SEND_AGAIN = "sendAgain"
     const val SENDING = "sending"
     const val GONE = "requestGone"
+
+    /** The phone's own verdict on a transfer's transaction (SAW-020). */
+    const val TRANSFER_VERDICT = "transferVerdict"
+    const val TRANSFER_FINDINGS = "transferFindings"
+    const val TRANSFER_DERIVED = "transferDerived"
+    const val TRANSFER_CHECKING = "transferChecking"
+    const val TRANSFER_FAILED = "transferFailed"
+    const val TRANSFER_AGAIN = "transferAgain"
+    const val TRANSFER_NO_APPROVAL = "transferNoApproval"
 
     fun item(key: RequestKey) = "request:${key.connectionId}/${key.requestId}"
 
@@ -307,4 +322,68 @@ fun resultSummary(result: LocalResult): String {
         Delivery.Superseded -> stringResource(R.string.summary_superseded, answer)
         Delivery.Undeliverable -> stringResource(R.string.summary_undeliverable, answer)
     }
+}
+
+/**
+ * What the phone made of a transfer's transaction, in words (SAW-020). Every one of these comes
+ * from the bytes the wallet would sign; the sidecar's account of them is shown apart, and labelled
+ * as the server's.
+ */
+@StringRes
+fun verdictText(verdict: Verdict): Int =
+    when (verdict) {
+        Verdict.Verified -> R.string.transfer_verdict_verified
+        Verdict.Unverified -> R.string.transfer_verdict_unverified
+        Verdict.Invalid -> R.string.transfer_verdict_invalid
+    }
+
+@StringRes
+fun findingText(finding: Finding): Int =
+    when (finding) {
+        Finding.HashMismatch -> R.string.finding_hash_mismatch
+        Finding.Malformed -> R.string.finding_malformed
+        Finding.UnsupportedVersion -> R.string.finding_unsupported_version
+        Finding.AddressTableLookup -> R.string.finding_address_table_lookup
+        Finding.AlreadySigned -> R.string.finding_already_signed
+        Finding.FeePayerNotTheWallet -> R.string.finding_fee_payer
+        Finding.ExtraSigner -> R.string.finding_extra_signer
+        Finding.NoWallet -> R.string.finding_no_wallet
+        Finding.OtherWallet -> R.string.finding_other_wallet
+        Finding.NetworkMismatch -> R.string.finding_network_mismatch
+        Finding.NoTransfer -> R.string.finding_no_transfer
+        Finding.ExtraTransfer -> R.string.finding_extra_transfer
+        Finding.RecipientMismatch -> R.string.finding_recipient_mismatch
+        Finding.AmountMismatch -> R.string.finding_amount_mismatch
+        Finding.MintMismatch -> R.string.finding_mint_mismatch
+        Finding.SourceNotOwnersAccount -> R.string.finding_source_account
+        Finding.DestinationNotRecipientsAccount -> R.string.finding_destination_account
+        Finding.AccountCreationForSomeoneElse -> R.string.finding_creation_for_someone_else
+        Finding.UnrecognizedInstruction -> R.string.finding_unrecognized
+        Finding.UnreadableValueInstruction -> R.string.finding_unreadable_value
+    }
+
+/**
+ * The amount, with its base units always alongside it. The readable form is a convenience; the base
+ * units are the number the transaction actually carries, and the one to compare against a request.
+ */
+@Composable
+fun amountText(facts: TransferFacts): String =
+    stringResource(
+        if (facts.mint == null) R.string.transfer_amount_sol else R.string.transfer_amount_token,
+        formatBaseUnits(facts.amount, facts.decimals),
+        facts.amount.toString(),
+    )
+
+/** The sidecar's own estimate of what the transfer costs, which is not something bytes can show. */
+@Composable
+fun estimateText(prepared: PreparedTransaction): String {
+    val fee = formatBaseUnits(prepared.feeLamports.toULong(), LAMPORT_DECIMALS)
+    val rent = prepared.rentLamports.toULong()
+    return if (rent == 0UL) stringResource(R.string.transfer_estimate_fee, fee)
+    else
+        stringResource(
+            R.string.transfer_estimate_fee_and_rent,
+            fee,
+            formatBaseUnits(rent, LAMPORT_DECIMALS),
+        )
 }

@@ -1,0 +1,488 @@
+{
+  "note": "Built by sidecar/src/testing/transaction-fixtures.ts and decoded by the phone's TransactionFixturesTest. Run `node sidecar/src/testing/transaction-fixtures.ts` to rebuild.",
+  "cases": [
+    {
+      "name": "sol_transfer",
+      "description": "A plain SOL transfer: one System instruction, the owner's wallet as the only signer.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABAwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAQICAAEMAgAAAAD5ApUAAAAAAA==",
+      "contentHash": "ncGlnaMOXejHrdm1oSQ1bBwxNf4DyBKSU2cZw0xMMKM=",
+      "version": 1,
+      "verdict": "verified",
+      "findings": [],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "token_transfer_existing_account",
+      "description": "An SPL token transfer to a recipient who already has a token account.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "1500000",
+        "tokenMint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQACBQsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLdSZCIoktoJLeIQkOag3Q8j4W6JCc9sO3Y07z78KGVbOa4FWKe7ogWTZDxVB3ZwtYh0Kcg5OxW77b/ngphxeEhwbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEBAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAEDBAEEAgAKDGDjFgAAAAAABgA=",
+      "contentHash": "UgCBKDoWn3KK/9RcPAAEWv0mExrpmgyMF8lQBuHGGU0=",
+      "version": 1,
+      "verdict": "verified",
+      "findings": [],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": "BRaBtTRHkDev24SQxFMAFrPkm8Ko35otdYbkjKdUrqwt",
+        "amount": "1500000",
+        "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
+        "decimals": 6,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "token_transfer_creates_account",
+      "description": "The recipient has no token account yet, so the transaction also creates one.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "1500000",
+        "tokenMint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAFCAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLmuBVinu6IFk2Q8VQd2cLWIdCnIOTsVu+2/54KYcXhId1JkIiiS2gkt4hCQ5qDdDyPhbokJz2w7djTvPvwoZVs4yXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkBAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAIDBgABBAUGBwEBBwQCBQEACgxg4xYAAAAAAAYA",
+      "contentHash": "pPvKXxapzqnqnqveKqiO8RvSkY+rcFw5PLeLAfw1fMg=",
+      "version": 1,
+      "verdict": "verified",
+      "findings": [],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": "BRaBtTRHkDev24SQxFMAFrPkm8Ko35otdYbkjKdUrqwt",
+        "amount": "1500000",
+        "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
+        "decimals": 6,
+        "createsRecipientAccount": true
+      }
+    },
+    {
+      "name": "token_transfer_max_amount",
+      "description": "The largest amount a u64 holds, which no floating-point path could carry.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "18446744073709551615",
+        "tokenMint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAFCAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLmuBVinu6IFk2Q8VQd2cLWIdCnIOTsVu+2/54KYcXhId1JkIiiS2gkt4hCQ5qDdDyPhbokJz2w7djTvPvwoZVs4yXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkBAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAIDBgABBAUGBwEBBwQCBQEACgz//////////wYA",
+      "contentHash": "wH5RSz8jxHyd1ggbY4yWjiLqEVMCkrkrfOu2mUlh4Kg=",
+      "version": 1,
+      "verdict": "verified",
+      "findings": [],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": "BRaBtTRHkDev24SQxFMAFrPkm8Ko35otdYbkjKdUrqwt",
+        "amount": "18446744073709551615",
+        "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
+        "decimals": 6,
+        "createsRecipientAccount": true
+      }
+    },
+    {
+      "name": "token_transfer_zero_decimals",
+      "description": "A mint with no decimals: the amount reads the same in base units and whole tokens.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "7",
+        "tokenMint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAFCAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLmuBVinu6IFk2Q8VQd2cLWIdCnIOTsVu+2/54KYcXhId1JkIiiS2gkt4hCQ5qDdDyPhbokJz2w7djTvPvwoZVs4yXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkBAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAIDBgABBAUGBwEBBwQCBQEACgwHAAAAAAAAAAAA",
+      "contentHash": "V9P/r3xpkG42LWWFdN3CoSw4Uv6EsJ9VSK0qjcGkc6A=",
+      "version": 1,
+      "verdict": "verified",
+      "findings": [],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": "BRaBtTRHkDev24SQxFMAFrPkm8Ko35otdYbkjKdUrqwt",
+        "amount": "7",
+        "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
+        "decimals": 0,
+        "createsRecipientAccount": true
+      }
+    },
+    {
+      "name": "fake_ticker_in_the_note",
+      "description": "The agent's note names a well-known ticker; the transfer is of an unrelated mint. The phone shows the mint address and base units, and never a name, so there is nothing for the note to contradict.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "1500000",
+        "tokenMint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
+        "note": "Sending 1.5 USDC to the treasury"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAFCAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLmuBVinu6IFk2Q8VQd2cLWIdCnIOTsVu+2/54KYcXhId1JkIiiS2gkt4hCQ5qDdDyPhbokJz2w7djTvPvwoZVs4yXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkBAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAIDBgABBAUGBwEBBwQCBQEACgxg4xYAAAAAAAYA",
+      "contentHash": "pPvKXxapzqnqnqveKqiO8RvSkY+rcFw5PLeLAfw1fMg=",
+      "version": 1,
+      "verdict": "verified",
+      "findings": [],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": "BRaBtTRHkDev24SQxFMAFrPkm8Ko35otdYbkjKdUrqwt",
+        "amount": "1500000",
+        "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
+        "decimals": 6,
+        "createsRecipientAccount": true
+      }
+    },
+    {
+      "name": "changed_recipient",
+      "description": "A transaction that pays somebody else, presented against the original request.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABAwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAQICAAEMAgAAAAD5ApUAAAAAAA==",
+      "contentHash": "lT/L1PLsvnfOHPz760YSlQX0RHL2oX3UlDBVCxAjjB4=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "RecipientMismatch"
+      ],
+      "facts": {
+        "recipient": "3yS1JFVT284y8z1LC9MRoWxZjzFrdoD5axKsZiyMsfC7",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "changed_amount",
+      "description": "The same recipient, a larger amount than the owner was asked to approve.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABAwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAQICAAEMAgAAAAB/PjYCAAAAAA==",
+      "contentHash": "SXVPLfzJAkzkPmsmstCcP5+G15M978C1NnjCp7xqDTM=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "AmountMismatch"
+      ],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "9500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "changed_mint",
+      "description": "A different token from the one the request names, to the right recipient.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "1500000",
+        "tokenMint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAFCAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLE4WJ6biaYPr99nnpmFCfjd+9ffxizctjahY1nElhR8co0ZqLjflgGZxIcpPx2TyI3sdteAC0h6Bxo6tvINYnEIyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhY3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkBAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAIDBgABBAUGBwEBBwQCBQEACgxg4xYAAAAAAAYA",
+      "contentHash": "IVVhDeKYcim1kUvMQdyOJwLKrh5fjpD0ZvrCRHz8TOE=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "AccountCreationForSomeoneElse",
+        "DestinationNotRecipientsAccount",
+        "MintMismatch",
+        "SourceNotOwnersAccount"
+      ],
+      "facts": {
+        "recipient": null,
+        "destinationAccount": "2KCrDdGVSktPjEfdHP7YLMym2PHRqv6LyJ4xELgxfhUA",
+        "amount": "1500000",
+        "mint": "4iYFsZcZXQLTfykuzRwY19SxRja53Vm6jSf6CuTx6Kjt",
+        "decimals": 6,
+        "createsRecipientAccount": true
+      }
+    },
+    {
+      "name": "extra_transfer",
+      "description": "The transfer the owner approved, and a second one to somebody else alongside it.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABBAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyACAwIAAQwCAAAAAPkClQAAAAADAgACDAIAAAABAAAAAAAAAAA=",
+      "contentHash": "R2VUjP0O2rAsIOYsLeaEtsUSeiA6/6/2I/wshOonqNU=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "ExtraTransfer"
+      ],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "extra_signer",
+      "description": "Another account would have to sign as well, so the owner's approval would carry somebody else's.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAIBAgULCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCywsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyACAwIAAgwCAAAAAPkClQAAAAAEAQEAAA==",
+      "contentHash": "UMMCGJQIDrV3FQsvCDtonzdzyENcYXvgOOgTDKHfF2Q=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "ExtraSigner",
+        "UnrecognizedInstruction"
+      ],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "wrong_fee_payer",
+      "description": "Someone else pays and signs, which is not the wallet the request is bound to.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAIAAQQsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAQMCAQIMAgAAAAD5ApUAAAAAAA==",
+      "contentHash": "GimPAzbbv1a53RNyGHOHs3iL2NPl6v63W3+tLiRIloM=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "ExtraSigner",
+        "FeePayerNotTheWallet"
+      ],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "token_delegate_alongside_the_transfer",
+      "description": "An SPL Token Approve rides along with the transfer. The token program is one a transfer may call, which is exactly why a program's name is not permission for every instruction it offers: this one hands the account to a delegate.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "1500000",
+        "tokenMint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQADBgsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLdSZCIoktoJLeIQkOag3Q8j4W6JCc9sO3Y07z78KGVbOa4FWKe7ogWTZDxVB3ZwtYh0Kcg5OxW77b/ngphxeEhwbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAgMEAQQCAAoMYOMWAAAAAAAGAwMBBQAJBEBCDwAAAAAAAA==",
+      "contentHash": "o2F2OpDBhzxlpUBobjDmvLNiBx8ewMFSY+m/YZOs9v0=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "UnreadableValueInstruction"
+      ],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": "BRaBtTRHkDev24SQxFMAFrPkm8Ko35otdYbkjKdUrqwt",
+        "amount": "1500000",
+        "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
+        "decimals": 6,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "unknown_program_alongside_the_transfer",
+      "description": "A memo-like instruction from a program the phone doesn't read. The transfer itself matches, but the review doesn't cover the whole transaction.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQACBAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyACAgIAAQwCAAAAAPkClQAAAAADAAVoZWxsbwA=",
+      "contentHash": "ChoHvESx4n6wquE6qXNWunKe2khBGxvARH6xlXe7EXU=",
+      "version": 1,
+      "verdict": "unverified",
+      "findings": [
+        "UnrecognizedInstruction"
+      ],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "compute_budget_priority_fee",
+      "description": "A compute-budget price the owner would also pay. It is read, not merely tolerated.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQACBAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYDBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyACAgAJA6hhAAAAAAAAAwIAAQwCAAAAAPkClQAAAAAA",
+      "contentHash": "hiPOMmH3K2Hkcw5bIZjzz+g64GZeinTM4pgVuNxyfgs=",
+      "version": 1,
+      "verdict": "verified",
+      "findings": [],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "already_signed",
+      "description": "A signature slot is already filled, so this is not an unsigned transaction to review.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBweAAQABAwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAQICAAEMAgAAAAD5ApUAAAAAAA==",
+      "contentHash": "68G75TTWAlz/5NapzNSkPnPIAYKypAXvoQUTFYkKs1g=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "AlreadySigned"
+      ],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "legacy_message",
+      "description": "A legacy message, which has no version byte. It reads the same way and is judged the same.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEDCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyABAgIAAQwCAAAAAPkClQAAAAA=",
+      "contentHash": "sY7B9iHYElmlz0gDo7PLHbd5ITKLuLwc/R3GIBRxk60=",
+      "version": 1,
+      "verdict": "verified",
+      "findings": [],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    },
+    {
+      "name": "truncated",
+      "description": "The last byte is missing, so a length runs past the end of the input.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABAwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAQICAAEMAgAAAAD5ApUAAAAA",
+      "contentHash": "0QHTMADRlBcb9tv4McsXx6Arm/6a2MMX7F4CFnW3i1A=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "Malformed"
+      ],
+      "facts": null
+    },
+    {
+      "name": "trailing_bytes",
+      "description": "A well-formed transaction with something appended. Content nobody read is exactly what must not be approved.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABAwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAQICAAEMAgAAAAD5ApUAAAAAAAA=",
+      "contentHash": "BsMM0yvRfGejxKUuPD52dzNT6N8NR0NJVEwSGHuSiDg=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "Malformed"
+      ],
+      "facts": null
+    },
+    {
+      "name": "content_hash_mismatch",
+      "description": "The bytes are sound, but the sidecar's own hash isn't theirs: the preparation doesn't even agree with itself.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABAwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAQICAAEMAgAAAAD5ApUAAAAAAA==",
+      "contentHash": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "HashMismatch"
+      ],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "createsRecipientAccount": false
+      }
+    }
+  ]
+}
