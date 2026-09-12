@@ -72,7 +72,7 @@ sequenceDiagram
 
 **The sidecar is the commit point.** `ConnectionRepository.approveTransfer` returns only once the sidecar has accepted the approval and moved the request to PROCESSING. An approval it didn't accept is deleted rather than kept: nothing was approved anywhere, no wallet was opened, the request is still the sidecar's, and the owner reviews a fresh preparation. That is why an approved transfer with no wallet answer can only mean one thing — the wallet had it — which is what makes reporting UNKNOWN honest.
 
-**Nothing unverified reaches the wallet.** Only a preparation whose inspection came back `Verified` is offered for approval at all, and `InboxViewModel.approveTransfer` checks it again before sending anything. This is input validation, not a policy verdict, and the two are judged in that order: validation decides what is executable, and a policy can only add reasons to read ([`policy.md`](policy.md#precedence)). SAW-025 defines the rules and the verdict; until SAW-026 and SAW-028 apply them, the review screen says "Not evaluated" rather than ALLOWED.
+**Nothing unverified reaches the wallet.** Only a preparation whose inspection came back `Verified` is offered for approval at all, and `InboxViewModel.approveTransfer` checks it again before sending anything. This is input validation, not a policy verdict, and the two are judged in that order: validation decides what is executable, and a policy can only add reasons to read ([`policy.md`](policy.md#precedence)). SAW-025 defines the rules and the verdict and SAW-026 applies them to a request; until SAW-028 puts the result on screen, the review says "Not evaluated" rather than ALLOWED.
 
 ## Trust boundaries
 
@@ -81,6 +81,8 @@ sequenceDiagram
 - **The sidecar is trusted to relay, not to sign.** The phone parses each prepared transaction itself, and the approval names that transaction's exact hash. A sidecar that swapped the transaction after the review couldn't get it approved.
 - **Policies stay on the phone.** The sidecar never receives the policy or its assessment, so an agent can't learn or change the rules through it. They are stored per connection, and one connection's rules are never read for another ([`policy.md`](policy.md)).
 - **A policy advises; it never decides.** Input validation settles what is executable, and it is judged before any policy is consulted. A policy can only add reasons for the owner to read: there is no `BLOCKED`, and no rule can make a preparation the phone couldn't read whole approvable (SAW-025).
+- **An assessment is made of facts the phone read itself.** The asset, the amount, the recipient and the programs come out of the transaction's own bytes, and the chain from the wallet the owner connected. Nothing an agent wrote is an input, and a transaction the phone couldn't account for whole is never `ALLOWED` however well the rest matched (SAW-026).
+- **A counter is what this app did, not what the wallet holds.** Daily totals come from the owner's own Activity records, per connection, wallet, asset and chain. They see nothing done in the wallet directly or by another app, they enforce nothing on chain, and what the chain confirmed is never mixed with what it hasn't ([`policy.md`](policy.md#counters)).
 
 ## Where state lives
 
@@ -94,7 +96,8 @@ sequenceDiagram
 | The owner's wallet selection, and the wallet's authorization token | The phone: the selection in `filesDir`, the authorization encrypted in `noBackupFilesDir` | SAW-015 |
 | The wallet binding each sidecar publishes to agents | The sidecar's SQLite database, on its connection | SAW-015 |
 | The rules the owner set for a connection | The phone, one file per connection in `filesDir` | SAW-025 |
-| Assessments and daily counters | The phone | Stage 5 |
+| Assessments | Nowhere — computed on demand from the rules and the records, never stored | SAW-026 |
+| Daily counters | The phone, derived from the Activity records in `filesDir` | SAW-026 |
 | Keys | Seed Vault Wallet | Stage 3 |
 
 ## Two flows

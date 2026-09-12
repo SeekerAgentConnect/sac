@@ -138,8 +138,10 @@ class StageBoundaryTest {
         assertTrue(policy.isDirectory)
         val sources = policy.walk().filter { it.extension == "kt" }.toList()
         assertTrue(sources.isNotEmpty())
-        // What it reaches for in the rest of the app: the connection ID rule, the protocol's
-        // networks, and the address rule. Nothing that opens a wallet, a connection, or a socket.
+        // What it reaches for in the rest of the app, and every one of them is a read: the
+        // connection ID rule, the protocol's requests and networks, what the phone read out of a
+        // transaction's own bytes (SAW-020), the owner's own record of what this app did (SAW-023),
+        // and the address rule. Nothing that opens a wallet, a connection, or a socket.
         val reaches =
             sources
                 .flatMap { it.readLines() }
@@ -151,8 +153,16 @@ class StageBoundaryTest {
                 .sorted()
         assertEquals(
             listOf(
+                "io.github.brrenat.seekervault.activity.ActivityKind",
+                "io.github.brrenat.seekervault.activity.ActivityOutcome",
+                "io.github.brrenat.seekervault.activity.ActivityRecord",
                 "io.github.brrenat.seekervault.connections.isConnectionId",
+                "io.github.brrenat.seekervault.request.v1.Action",
+                "io.github.brrenat.seekervault.request.v1.ActionRequest",
                 "io.github.brrenat.seekervault.request.v1.Network",
+                "io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS",
+                "io.github.brrenat.seekervault.transactions.TransferInspection",
+                "io.github.brrenat.seekervault.transactions.formatBaseUnits",
                 "io.github.brrenat.seekervault.wallet.isSolanaAddress",
             ),
             reaches,

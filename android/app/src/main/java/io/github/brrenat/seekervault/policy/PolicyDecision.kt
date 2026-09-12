@@ -82,6 +82,12 @@ enum class PolicyReason(val code: String) {
      * The day's total isn't known — a record was unreadable — so the daily rule can't be applied.
      */
     DailyTotalUnverified("daily_total_unverified"),
+    /**
+     * The phone couldn't account for the whole transaction, so the assessment is withheld whatever
+     * the rules made of the part it did read (SAW-026). This is not a check's reason: it is the
+     * reason there is no verdict, and it outranks a match.
+     */
+    RequestUnverified("request_unverified"),
 }
 
 /** One check's result, with what it read, for the screen to show beside the verdict. */

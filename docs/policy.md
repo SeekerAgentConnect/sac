@@ -2,7 +2,7 @@
 
 The rules the owner sets for one connection, and how a request is assessed against them. The rules live on the phone; the assessment is something the owner reads. Neither reaches an agent, and neither decides anything on its own.
 
-Stage 5 builds this in four steps. **SAW-025, the model and the evaluation semantics, is what this page describes and what exists today.** The evaluation of a real request and its daily counters is SAW-026, the editor is SAW-027, and the request-review screen is SAW-028. Until those land, no policy can be created on the phone, and the review screen says "Not evaluated" as it has since Stage 4.
+Stage 5 builds this in four steps. **SAW-025 defined the model and the semantics, and SAW-026 made the phone apply them: a real request is assessed against a stored policy, and the day's spending is counted from the app's own records.** The editor the owner writes a policy in is SAW-027, and the request-review screen that shows the assessment is SAW-028. Until those land, nothing on the phone can create a policy and nothing displays a verdict, so every connection is still assessed as having no rules and the review screen says "Not evaluated" as it has since Stage 4.
 
 ## What a policy is
 
@@ -61,6 +61,25 @@ A connection with no policy, and a policy with nothing configured, come to the s
 
 Nothing configured is not a match. A policy that asks nothing of a request has said nothing about it, and saying nothing must never read as approval. This is the default state of every connection, and it will stay the default until the owner writes a rule.
 
+## What is evaluated
+
+A policy is applied to facts the phone established for itself, and to nothing else. The facts are a `RequestFacts` (`policy/RequestFacts.kt`), and every field in it has a source:
+
+| Fact | Read from |
+| --- | --- |
+| the kind of action | the structured request: `ack`, `sign_message`, `transfer`, `swap` |
+| the asset, the amount, the recipient, the programs called | the prepared transaction's own bytes, decoded on the phone (SAW-020) |
+| the chain | the wallet the owner connected on this phone |
+| whether the whole transaction was read | how many instructions the phone accounted for |
+
+**Nothing an agent wrote is an input.** Not the description, not the memo, not a ticker in a note, and not the sidecar's account of what it built. An agent that renames a transfer changes nothing about how it is assessed, because none of the words reach the assessment.
+
+A fact the phone could not establish is absent, and an absent fact never passes a check. The clearest case is a token transfer's recipient: an address the tokens are sent to is not yet a wallet that receives them, and only a transaction that has the chain vouch for the destination account establishes one. Without that, the recipient is unknown, and a recipient rule comes back `recipient_unverified` rather than matching an address.
+
+### An action that moves nothing
+
+An acknowledgement and a message signature move no asset, reach no recipient, and call no program. They satisfy the rules about what moves by doing nothing with any of them: those checks pass, with `nothing moves` recorded as what they read. The rules that *are* about them — the action list — apply as usual.
+
 ## Evaluation semantics
 
 One conjunction of the checks the owner configured. There is no scripting language, no expression tree, no node canvas, and no order of precedence to learn.
@@ -104,6 +123,14 @@ An assessment that checked nothing is never a safe one, and the two ways of havi
 | `no_policy_configured` | The owner has written no rules for this connection |
 | `policy_unreadable` | Rules are stored and this build could not read them |
 
+### A verdict withheld
+
+There is one thing that outranks a match. **A transaction the phone could not account for whole is never `ALLOWED`**, however well the part it did read matched the rules. The verdict is withheld, and the reason is `request_unverified`.
+
+This holds for any arrangement of rules, including rules written to match that exact transfer down to the base unit, and including a policy whose only rule is about the kind of action. The argument is short: no rule was written about what is in the gap, so matching everything outside the gap establishes nothing about it. A request that is under restrictions already keeps the reasons it already has; `request_unverified` exists to withhold a match, not to pile on.
+
+Such a preparation has no Approve button either ([precedence](#precedence)), so this is the assessment agreeing with the refusal rather than the thing that causes it.
+
 ### Precedence
 
 There is one rule, and it runs in one direction.
@@ -120,6 +147,73 @@ Every rule in the MVP is advisory, thresholds included.
 - A warning can be overridden by the owner, deliberately, in the app (SAW-028 gives it its own step).
 - A counter is a record of what went through **this app**, not a spending cap. It sees nothing the owner did in their wallet directly, and nothing any other app did with the same wallet.
 - Nothing here is enforced on chain. The wallet and the network do not know these rules exist.
+
+### Re-evaluation
+
+There is no stored verdict. `PolicyEvaluator` (`policy/PolicyEvaluation.kt`) re-reads the connection's rules from disk and the app's own records on every call, so asking again immediately before the owner proceeds is the whole of re-evaluating — and a verdict read a minute ago is never the one acted on, because there is nothing kept to act on.
+
+That matters at three moments: the policy may have been edited since the review opened, the day's counters may have moved, and a transfer is re-prepared as its blockhash expires. Each new preparation is new bytes and is read again from scratch.
+
+## Counters
+
+What this app has moved today, counted from the owner's own Activity records (`activity/`, SAW-023) — the record of what this phone did, which outlives the answer the sidecar was owed.
+
+### What a counter is counted for
+
+One counter is one `SpendScope`: **a connection, a wallet, an asset, and the chain the asset is on.** All four matter, and separating them is not a detail:
+
+- **Two connections using one wallet count apart.** A daily threshold is a rule about one agent, not about the wallet; one agent using up the day's allowance must not silently spend another's.
+- **Two wallets spending one mint count apart.** The money comes out of different places.
+- **One mint on two chains is two things to spend**, so devnet play money is never counted against a mainnet threshold.
+
+### Confirmed, and not yet settled
+
+Two numbers, kept apart, and never added together and called spending:
+
+| Number | What it holds |
+| --- | --- |
+| `confirmed` | The chain confirmed the transaction. The money moved. |
+| `unresolved` | The wallet was handed the transaction and nobody has established what came of it: in flight, landed, or dropped. |
+
+The threshold warning is made from `projected` — the two of them plus the request in hand — and the reason it shows says which part is which: `11 of 10 today — 4 confirmed, 6 not yet settled, 1 now`. Including the unresolved part is deliberate: it may already be spent, and telling the owner they have room they may not have is the one answer that costs them money. Naming it separately is equally deliberate: it may not be spent, and calling it spending would be a claim the app can't support.
+
+`projected` saturates at the largest base-unit amount there is rather than wrapping round to a small one. A total that saturated is fit to show and not to compare with, so a threshold is checked by how much room is left instead of by the sum.
+
+### What counts, and what doesn't
+
+| Outcome | Counts as |
+| --- | --- |
+| confirmed | `confirmed` |
+| sent, unknown | `unresolved` |
+| the owner answered and the wallet's reply hasn't come back | `unresolved` |
+| the answer never reached the server, or the request had moved on, **and the wallet signed** | `unresolved` |
+| rejected, declined in the wallet, the wallet couldn't sign | nothing. A rejection is not a transfer |
+| the chain ran the transaction and it failed | nothing. The fee was paid; the transfer didn't happen |
+| an acknowledgement, a message signature | nothing. They move no asset |
+
+### Counted once
+
+A movement is counted once, by **the transaction's signature when there is one, and otherwise by the request it belongs to**. So a request prepared three times, answered, re-sent after a failed delivery, and status-checked ten times is one payment; and two records that carry one signature are one payment. Where two records disagree, the one that knows the most wins: the chain's word settles what the phone's guess couldn't.
+
+### The day a counter counts
+
+**A day is a local day: midnight to midnight where the phone is**, because that is the day the owner means when they set a daily threshold.
+
+The day a movement falls in is worked out when the counters are read, from the instant the owner answered. Two consequences, both intended:
+
+- **A record is never rewritten to move it between days,** and a status checked the next morning doesn't walk yesterday's payment into today. The moment the owner answered is the moment that counts, and it doesn't move.
+- **A phone carried into another time zone reads its own history in the zone it is in now.** A payment can therefore move into the previous or the next day. The counters are a question about where the phone is, and answering it in a zone the owner left would be stranger than the shift.
+
+### Known limits
+
+A counter is a floor on the day's spending, never a ceiling. It does not see:
+
+- anything the owner did in their wallet app directly, or in any other app using the same wallet;
+- anything that happened before this app was installed, or after its records were cleared;
+- fees — network fees and priority fees are not counted against an asset's threshold, only the amount the transfer moves;
+- the chain. Nothing here is enforced anywhere but on this screen, and no number here stops a transaction.
+
+And one movement can be counted as exposure that never happened: an `unresolved` amount whose transaction was dropped stays in the day's projection until something settles it. That direction is chosen on purpose — over-reporting exposure warns, under-reporting it misleads.
 
 ## Storage
 
@@ -160,12 +254,23 @@ A connection whose rules can't be read is never treated as a connection with non
 
 `seekervault/request/v1/request.proto` carries a `PolicyEvaluation` message with an assessment, reason strings, and the prepared version it was computed from. It is the shape of an assessment, and it stays on the phone: no RPC sends one, and the sidecar has no field to put one in ([`protocol.md`](protocol.md#lifecycle)). The reason strings are the codes above.
 
+## Test fixtures
+
+`android/app/src/test/java/.../policy/PolicyFixtures.kt` holds the table every assessment is held to. Each case is a policy, the facts of one request, the day's counters, and the verdict with every reason code it must carry, and `PolicyFixturesTest` runs all of them. A rule that only exists in a test's prose can be argued with; a rule in that table either holds for every case or fails one. The table also asserts that every reason code a request can produce appears in at least one case, so a new reason has to be given a case before it can be returned.
+
+The facts themselves are checked against real transactions rather than invented ones: `RequestFactsTest` reads `fixtures/transactions/cases.json` — the transfers the sidecar actually builds ([transaction fixtures](testing/transaction-fixtures.md)) — inspects them the way the review screen does, and assesses what comes out.
+
 ## Where the code is
 
 | File | What it holds |
 | --- | --- |
 | `policy/Policy.kt` | `ConnectionPolicy`, `Allowlist`, `PolicyAsset`, `AssetLimits`, `PolicyAction`, and `policyProblems` |
 | `policy/PolicyDecision.kt` | `PolicyAssessment`, `PolicyCheck`, `PolicyCheckStatus`, `PolicyReason`, `PolicyDecision`, `assess`, and `noPolicy` |
+| `policy/RequestFacts.kt` | `RequestFacts`, and `policyFacts`, which reads them off a request and its inspection |
+| `policy/PolicyEvaluation.kt` | `evaluate`, the six checks, and `PolicyEvaluator` |
+| `policy/DailySpending.kt` | `SpendScope`, `SpendStatus`, `Spend`, `DailyTotal`, `spendsOf`, and `dailyTotal` |
 | `policy/storage/PolicyStore.kt` | The document, its versions, and `StoredPolicy` |
 
-Tests: `policy/PolicyTest`, `policy/PolicyDecisionTest`, and `policy/storage/PolicyStoreTest`. `StageBoundaryTest` keeps the package unable to act: it may reach the connection ID rule, the protocol's networks, and the address rule, and nothing that opens a wallet, a connection, or a socket.
+Tests: `policy/PolicyTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, and `policy/storage/PolicyStoreTest`.
+
+`StageBoundaryTest` keeps the package unable to act. Everything it may reach into is a read — the connection ID rule, the protocol's requests and networks, what the phone read out of a transaction's bytes, the owner's own activity records, and the address rule — and it may reach nothing that opens a wallet, a connection, or a socket.
