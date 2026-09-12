@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.policy.PolicyTags
 
 /**
  * The Connection details screen: what the phone knows about one connection, and the refresh,
@@ -56,6 +57,7 @@ fun ConnectionDetailsScreen(
     onMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
     onPendingRequests: (() -> Unit)? = null,
+    onRules: (() -> Unit)? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(message, snackbar, onMessageShown)
@@ -109,6 +111,19 @@ fun ConnectionDetailsScreen(
                     modifier = Modifier.testTag(ConnectionsTags.RENAME),
                 ) {
                     Text(stringResource(R.string.rename))
+                }
+            }
+            // The rules the owner set for this connection (SAW-027). They are reachable whatever
+            // state the connection is in: a connection that can't be reached is exactly when the
+            // owner may want to read what they had asked of it.
+            if (onRules != null) {
+                OutlinedButton(
+                    onClick = onRules,
+                    modifier =
+                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            .testTag(PolicyTags.RULES),
+                ) {
+                    Text(stringResource(R.string.policy_rules))
                 }
             }
             if (onPendingRequests != null && connection.usable) {

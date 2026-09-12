@@ -2,7 +2,7 @@
 
 The rules the owner sets for one connection, and how a request is assessed against them. The rules live on the phone; the assessment is something the owner reads. Neither reaches an agent, and neither decides anything on its own.
 
-Stage 5 builds this in four steps. **SAW-025 defined the model and the semantics, and SAW-026 made the phone apply them: a real request is assessed against a stored policy, and the day's spending is counted from the app's own records.** The editor the owner writes a policy in is SAW-027, and the request-review screen that shows the assessment is SAW-028. Until those land, nothing on the phone can create a policy and nothing displays a verdict, so every connection is still assessed as having no rules and the review screen says "Not evaluated" as it has since Stage 4.
+Stage 5 builds this in four steps. **SAW-025 defined the model and the semantics, SAW-026 made the phone apply them — a real request is assessed against a stored policy, and the day's spending is counted from the app's own records — and SAW-027 gave the owner the editor to write one in** ([`guides/policies.md`](guides/policies.md)). The request-review screen that shows the assessment is SAW-028. Until it lands a verdict is computed and never displayed, so the review screen still says "Not evaluated" as it has since Stage 4.
 
 ## What a policy is
 
@@ -54,6 +54,8 @@ The same holds for an amount: no `perOperation` is no threshold, and it is not a
 | `ZeroLimit` | See above: that is an empty list, written confusingly |
 | `DailyBelowPerOperation` | The per-operation limit could never bind, so one of the two numbers is a mistake |
 | `LimitForUnlistedAsset` | The asset check fails first, so the threshold could never be reached and the owner would be reading a number that means nothing |
+
+The editor can't type most of these. It validates an address before it is added to a list, it hangs thresholds off the asset rows so a limit for an unlisted asset can't be written at all, and it refuses to save an amount it couldn't read. `policyProblems` stays the store's own guard rather than the screen's: what the app refuses to write, it refuses to read back.
 
 ## Defaults
 
@@ -153,6 +155,34 @@ Every rule in the MVP is advisory, thresholds included.
 There is no stored verdict. `PolicyEvaluator` (`policy/PolicyEvaluation.kt`) re-reads the connection's rules from disk and the app's own records on every call, so asking again immediately before the owner proceeds is the whole of re-evaluating — and a verdict read a minute ago is never the one acted on, because there is nothing kept to act on.
 
 That matters at three moments: the policy may have been edited since the review opened, the day's counters may have moved, and a transfer is re-prepared as its blockhash expires. Each new preparation is new bytes and is read again from scratch.
+
+## The editor
+
+`PolicyEditorScreen` (`policy/PolicyEditorScreen.kt`), reached from a connection's details. Stock Material 3 — switches, checkboxes, radio buttons, chips, text fields, lists, Save and Cancel — and nothing else. There is no expression builder and no node canvas, because the model behind it is one conjunction of allowlists and thresholds, and pretending otherwise would be showing the owner a language they don't have.
+
+`PolicyDraft` (`policy/PolicyDraft.kt`) is the form: text as it is being typed, including text that isn't a number yet. `review` is the one place a draft becomes a `ConnectionPolicy`, and it produces one only when the store would accept it.
+
+### Absent is not empty, on screen
+
+Each list has a switch of its own, and the section says in words which of the three states it is in — not checked, checked with a list, or checked with nothing in it. This is the distinction the whole model turns on, so it is never left to the shape of a blank control.
+
+### Thresholds hang off the asset
+
+There is one list of assets, and each asset row carries its own per-operation and daily fields. The "only these assets may move" switch decides whether that same list also restricts. Written this way, `LimitForUnlistedAsset` is structurally impossible rather than an error to report.
+
+### Units
+
+**SOL is typed in SOL**, whose nine decimal places this app knows for certain. **A token is typed in that mint's own base units**, because the phone cannot establish a mint's decimal count without a transaction that carries it and must not invent one: a guess three places out is a threshold out by a factor of a thousand. Erring this way errs strict — an owner who types `10` meaning ten tokens gets a threshold far below what they meant, which produces a warning they didn't expect rather than a payment they didn't want.
+
+Every field shows the exact base-unit number it will store, under the field, as it is typed. The conversion shifts digits and never multiplies, so no floating-point type comes between what was typed and what the chain will see.
+
+### Saving
+
+A draft that configures nothing **removes** the connection's rules rather than storing a document that says nothing: the two are assessed identically, so there is nothing to keep. A connection's rules are also removed when the connection is.
+
+### Rules that can't be read
+
+The editor does not open a blank form over a `StoredPolicy.Unreadable`. It says what was found and offers **Start over from no rules**, which the owner presses on purpose — an empty form saved on top would delete rules they set and never saw.
 
 ## Counters
 
@@ -269,8 +299,12 @@ The facts themselves are checked against real transactions rather than invented 
 | `policy/RequestFacts.kt` | `RequestFacts`, and `policyFacts`, which reads them off a request and its inspection |
 | `policy/PolicyEvaluation.kt` | `evaluate`, the six checks, and `PolicyEvaluator` |
 | `policy/DailySpending.kt` | `SpendScope`, `SpendStatus`, `Spend`, `DailyTotal`, `spendsOf`, and `dailyTotal` |
+| `policy/PolicyDraft.kt` | `PolicyDraft`, `AssetDraft`, `readAmount`, and `review` |
+| `policy/PolicyEditorViewModel.kt` | `PolicyUiState`, and load, edit, save, remove, start over |
+| `policy/PolicyEditorScreen.kt` | The editor itself |
+| `policy/PolicyText.kt` | `PolicyTags`, the owner's words for each rule, and the plain-language summary |
 | `policy/storage/PolicyStore.kt` | The document, its versions, and `StoredPolicy` |
 
-Tests: `policy/PolicyTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, and `policy/storage/PolicyStoreTest`.
+Tests: `policy/PolicyTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage.
 
-`StageBoundaryTest` keeps the package unable to act. Everything it may reach into is a read — the connection ID rule, the protocol's requests and networks, what the phone read out of a transaction's bytes, the owner's own activity records, and the address rule — and it may reach nothing that opens a wallet, a connection, or a socket.
+`StageBoundaryTest` keeps the package unable to act — the editor included. Everything it may reach into is a read: the connection ID rule, the protocol's requests and networks, what the phone read out of a transaction's bytes, the owner's own activity records, the address rule, and the app's own strings, back button, and date format. It may reach nothing that opens a wallet, a connection, or a socket.

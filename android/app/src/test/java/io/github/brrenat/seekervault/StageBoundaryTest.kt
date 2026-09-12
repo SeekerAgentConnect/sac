@@ -133,7 +133,8 @@ class StageBoundaryTest {
     fun aPolicyDecidesNothingAndNeverLeavesThePhone() {
         // SAW-025 opens Stage 5. A policy is the owner's own note about one connection: no agent
         // can read it or change it, and it settles nothing by itself. The package that holds it is
-        // kept without any means of acting or speaking, so that stays true as the stage is built.
+        // kept without any means of acting or speaking, so that stays true as the stage is built —
+        // the editor the owner writes the rules on (SAW-027) included.
         val policy = File(main, "java/io/github/brrenat/seekervault/policy")
         assertTrue(policy.isDirectory)
         val sources = policy.walk().filter { it.extension == "kt" }.toList()
@@ -141,7 +142,9 @@ class StageBoundaryTest {
         // What it reaches for in the rest of the app, and every one of them is a read: the
         // connection ID rule, the protocol's requests and networks, what the phone read out of a
         // transaction's own bytes (SAW-020), the owner's own record of what this app did (SAW-023),
-        // and the address rule. Nothing that opens a wallet, a connection, or a socket.
+        // and the address rule. SAW-027 added the editor, so three more: the app's strings, its
+        // back button, and its date format. Nothing that opens a wallet, a connection, or a socket
+        // — the screen the owner writes the rules on can't act on them either.
         val reaches =
             sources
                 .flatMap { it.readLines() }
@@ -153,9 +156,12 @@ class StageBoundaryTest {
                 .sorted()
         assertEquals(
             listOf(
+                "io.github.brrenat.seekervault.R",
                 "io.github.brrenat.seekervault.activity.ActivityKind",
                 "io.github.brrenat.seekervault.activity.ActivityOutcome",
                 "io.github.brrenat.seekervault.activity.ActivityRecord",
+                "io.github.brrenat.seekervault.connections.BackButton",
+                "io.github.brrenat.seekervault.connections.formatInstant",
                 "io.github.brrenat.seekervault.connections.isConnectionId",
                 "io.github.brrenat.seekervault.request.v1.Action",
                 "io.github.brrenat.seekervault.request.v1.ActionRequest",

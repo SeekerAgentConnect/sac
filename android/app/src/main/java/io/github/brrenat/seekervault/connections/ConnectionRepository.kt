@@ -4,6 +4,7 @@ import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
@@ -78,6 +79,12 @@ class ConnectionRepository(
      * because it is not part of answering: a phone without one still answers, sends, and settles.
      */
     private val history: ActivityLog? = null,
+    /**
+     * The owner's rules for each connection (SAW-027). Optional for the same reason [history] is: a
+     * phone with none still pairs, answers, and removes. Nothing here reads a policy — the rules
+     * are the owner's own note, and this only makes sure a removed connection's note goes with it.
+     */
+    private val rules: PolicyStore? = null,
     private val deviceName: String,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -729,12 +736,13 @@ class ConnectionRepository(
     }
 
     /**
-     * Removes the connection from this phone only: its credential first, then its answers and its
-     * metadata.
+     * Removes the connection from this phone only: its credential first, then its answers, the
+     * rules the owner wrote for it, and its metadata.
      */
     suspend fun remove(id: String) = locked {
         vault.delete(id)
         results.deleteConnection(id)
+        rules?.delete(id)
         store.delete(id)
         _inbox.update { it.copy(pending = it.pending - id) }
         publish()

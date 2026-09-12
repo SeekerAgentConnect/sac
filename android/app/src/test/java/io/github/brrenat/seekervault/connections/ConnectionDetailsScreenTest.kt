@@ -17,6 +17,7 @@ import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.VPS
+import io.github.brrenat.seekervault.policy.PolicyTags
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -51,6 +52,7 @@ class ConnectionDetailsScreenTest {
                 onConfirmRemove = { calls += "confirm remove" },
                 onDismissDisconnect = { calls += "dismiss" },
                 onMessageShown = {},
+                onRules = { calls += "rules" },
             )
         }
     }
@@ -86,6 +88,15 @@ class ConnectionDetailsScreenTest {
         compose.onNodeWithTag(ConnectionsTags.DISCONNECT).assertDoesNotExist()
         compose.onNodeWithTag(ConnectionsTags.REMOVE).performScrollTo().performClick()
         assertEquals(listOf("disconnect"), calls)
+    }
+
+    @Test
+    fun offersTheConnectionsRulesWhateverStateItIsIn() {
+        // A connection the server stopped accepting is exactly when the owner may want to read
+        // what they had asked of it, so the rules are reachable when nothing else is.
+        show(VPS)
+        compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().performClick()
+        assertEquals(listOf("rules"), calls)
     }
 
     @Test

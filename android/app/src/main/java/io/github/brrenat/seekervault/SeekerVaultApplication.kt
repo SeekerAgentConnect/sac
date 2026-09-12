@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
+import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.wallet.MwaWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletRepository
@@ -64,6 +65,12 @@ class SeekerVaultApplication : Application() {
     }
 
     /**
+     * The rules the owner set for each connection (docs/policy.md#storage), in `filesDir`. Nothing
+     * here is encrypted, because a policy holds no credential and no key.
+     */
+    val policyStore: PolicyStore by lazy { PolicyStore(File(filesDir, "policies")) }
+
+    /**
      * The phone's connections and their requests (docs/security.md#local-storage-and-recovery):
      * metadata and answers in `filesDir`, and credentials, encrypted, in `noBackupFilesDir`.
      */
@@ -74,12 +81,17 @@ class SeekerVaultApplication : Application() {
             results = ResultStore(File(filesDir, "results")),
             gateway = connectionGateway(),
             history = activityLog,
+            // A connection's rules go when the connection does.
+            rules = policyStore,
             deviceName = Build.MODEL,
             io = connectionIo,
         )
     }
 
-    /** Where storage and network calls run. Tests replace it, to run them in step. */
+    /**
+     * Where storage and network calls run — the connections' and the policy editor's alike. Tests
+     * replace it, to run them in step.
+     */
     var connectionIo: CoroutineDispatcher = Dispatchers.IO
 
     /**

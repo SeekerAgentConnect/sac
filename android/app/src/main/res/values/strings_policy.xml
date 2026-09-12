@@ -1,0 +1,115 @@
+<resources>
+    <string name="policy_rules">Rules</string>
+    <string name="policy_title">Rules for %1$s</string>
+    <string name="policy_loading">Reading this connection\'s rules…</string>
+    <string name="policy_intro">These rules are your own note about what this agent is expected to ask for. They approve nothing and refuse nothing. You approve every request by hand here and again in your wallet, whether the rules match it or not.</string>
+    <string name="policy_saved_at">Last saved %1$s.</string>
+    <string name="policy_never_saved">No rules saved yet.</string>
+
+    <string name="policy_summary_title">What these rules say</string>
+    <string name="policy_summary_none">Nothing is checked. Every request from this connection is shown as under restrictions, with the reason that no rules are configured.</string>
+    <string name="policy_summary_removes">Nothing is checked any more. Saving removes this connection\'s rules.</string>
+    <string name="policy_summary_actions">May ask for: %1$s.</string>
+    <string name="policy_summary_actions_empty">May ask for nothing at all.</string>
+    <string name="policy_summary_assets">Only these may move: %1$s.</string>
+    <string name="policy_summary_assets_empty">No asset may move.</string>
+    <string name="policy_summary_recipients">May pay: %1$s.</string>
+    <string name="policy_summary_recipients_empty">May pay nobody.</string>
+    <string name="policy_summary_programs">May call: %1$s.</string>
+    <string name="policy_summary_programs_empty">May call no program.</string>
+    <string name="policy_summary_per_operation">At most %1$s of %2$s per request.</string>
+    <string name="policy_summary_daily">At most %1$s of %2$s a day, counted from what went through this app.</string>
+    <string name="policy_base_units">%1$s base units</string>
+    <string name="policy_summary_unchecked">Not checked: %1$s. A request that matches everything above still says nothing about these.</string>
+    <string name="policy_summary_manual">Allowed and under restrictions both need your hand on the wallet. Neither is an approval, and neither stops anything.</string>
+
+    <string name="policy_check_action">the kind of action</string>
+    <string name="policy_check_asset">which asset moves</string>
+    <string name="policy_check_recipient">who is paid</string>
+    <string name="policy_check_program">which programs are called</string>
+    <string name="policy_check_per_operation">how much per request</string>
+    <string name="policy_check_daily">how much a day</string>
+
+    <string name="policy_section_actions">Actions</string>
+    <string name="policy_switch_actions">Only these actions may be asked for</string>
+    <string name="policy_actions_off">Not checked. This connection may ask for any kind of action, and the review says the kind of action was not covered.</string>
+    <string name="policy_actions_on">Checked. A kind of action that is not ticked is outside the rules.</string>
+    <string name="policy_actions_empty">Nothing is ticked, so every request is outside the rules. That is a rule, not a blank.</string>
+    <string name="policy_action_ack">Acknowledge text</string>
+    <string name="policy_action_sign_message">Sign a message</string>
+    <string name="policy_action_transfer">Transfer funds</string>
+    <string name="policy_action_swap">Swap</string>
+    <string name="policy_action_ack_short">acknowledgements</string>
+    <string name="policy_action_sign_message_short">message signatures</string>
+    <string name="policy_action_transfer_short">transfers</string>
+    <string name="policy_action_swap_short">swaps</string>
+
+    <string name="policy_section_assets">Assets and thresholds</string>
+    <string name="policy_switch_assets">Only these assets may move</string>
+    <string name="policy_assets_off">Not checked. Any asset may move. The thresholds below still apply to the assets they name.</string>
+    <string name="policy_assets_on">Checked. An asset that is not listed is outside the rules.</string>
+    <string name="policy_assets_empty">Nothing is listed, so no asset may move. That is a rule, not a blank.</string>
+    <string name="policy_assets_none">No asset listed. Add one to set a threshold for it.</string>
+    <string name="policy_add_asset">Add an asset</string>
+    <string name="policy_asset_remove">Remove %1$s</string>
+    <string name="policy_per_operation_sol">Most per request, in SOL</string>
+    <string name="policy_daily_sol">Most per day, in SOL</string>
+    <string name="policy_per_operation_units">Most per request, in base units</string>
+    <string name="policy_daily_units">Most per day, in base units</string>
+    <string name="policy_amount_stored">Stored as %1$s base units.</string>
+    <string name="policy_amount_none">No threshold. Blank is not a threshold of zero.</string>
+    <string name="policy_amount_not_a_number">Type a plain number, such as 1.5. No sign, no exponent, no spaces and no commas.</string>
+    <string name="policy_amount_too_precise">%1$s has at most %2$d decimal places.</string>
+    <string name="policy_amount_too_large">Larger than the largest amount a transfer can carry, which is %1$s base units.</string>
+    <string name="policy_amount_zero">A threshold of zero is not a rule. To allow nothing, leave the asset off the list.</string>
+    <string name="policy_daily_below">The daily threshold is below the per-request one, so the per-request one could never be reached.</string>
+    <string name="policy_token_units">This app cannot establish how many decimal places a mint has without a transaction that carries it, so a token\'s thresholds are typed in that mint\'s own base units.</string>
+
+    <string name="policy_section_recipients">Recipients</string>
+    <string name="policy_switch_recipients">Only these wallets may receive funds</string>
+    <string name="policy_recipients_off">Not checked. Funds may go anywhere, and the review says the recipient was not covered.</string>
+    <string name="policy_recipients_on">Checked. A payment to a wallet that is not listed is outside the rules.</string>
+    <string name="policy_recipients_empty">Nothing is listed, so no wallet may be paid. That is a rule, not a blank.</string>
+    <string name="policy_recipient_field">Wallet address</string>
+    <string name="policy_recipient_note">Write the wallet that owns the funds, never a token account. The phone works the owner out of the transaction itself.</string>
+
+    <string name="policy_section_programs">Programs</string>
+    <string name="policy_switch_programs">Only these programs may be called</string>
+    <string name="policy_programs_off">Not checked. The transaction may call anything, and the review says the programs were not covered.</string>
+    <string name="policy_programs_on">Checked. A transaction that calls a program which is not listed is outside the rules.</string>
+    <string name="policy_programs_empty">Nothing is listed, so no program may be called. That is a rule, not a blank.</string>
+    <string name="policy_program_field">Program address</string>
+    <string name="policy_program_note">Every program the transaction calls is checked, the compute budget program included.</string>
+
+    <string name="policy_add">Add</string>
+    <string name="policy_remove">Remove</string>
+    <string name="policy_remove_entry">Remove %1$s</string>
+    <string name="policy_address_invalid">Not a Solana address. An address is base58 for 32 bytes.</string>
+    <string name="policy_address_listed">Already listed.</string>
+
+    <string name="policy_asset_sol">Native SOL</string>
+    <string name="policy_asset_token">A token</string>
+    <string name="policy_mint_field">Mint address</string>
+    <string name="policy_network_field">Chain</string>
+    <string name="policy_network_mainnet">mainnet</string>
+    <string name="policy_network_devnet">devnet</string>
+    <string name="policy_network_testnet">testnet</string>
+    <string name="policy_asset_dialog_title">Add an asset</string>
+
+    <string name="policy_save">Save</string>
+    <string name="policy_cancel">Cancel</string>
+    <string name="policy_saved">Rules saved.</string>
+    <string name="policy_removed">Rules removed. This connection has none.</string>
+    <string name="policy_save_failed">Could not save. The rules on this phone are unchanged.</string>
+    <string name="policy_discard_title">Leave without saving?</string>
+    <string name="policy_discard_text">What you changed here has not been saved.</string>
+    <string name="policy_discard">Discard</string>
+    <string name="policy_keep_editing">Keep editing</string>
+
+    <string name="policy_unreadable_title">These rules cannot be read</string>
+    <string name="policy_unreadable_damaged">Rules are stored for this connection and this app cannot read the file.</string>
+    <string name="policy_unreadable_newer">Rules are stored for this connection by a later version of this app. Showing them here would show fewer rules than were set.</string>
+    <string name="policy_unreadable_unknown">The stored rules name something this version has no name for.</string>
+    <string name="policy_unreadable_text">Every request from this connection is shown as under restrictions until this is settled. Starting over replaces what is stored, and nothing here can show you what you are replacing.</string>
+    <string name="policy_start_over">Start over from no rules</string>
+</resources>

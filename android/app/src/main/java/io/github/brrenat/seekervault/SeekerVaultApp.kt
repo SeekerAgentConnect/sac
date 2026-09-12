@@ -30,14 +30,16 @@ import io.github.brrenat.seekervault.inbox.RequestGoneScreen
 import io.github.brrenat.seekervault.inbox.inboxCounts
 import io.github.brrenat.seekervault.live.LiveCommandRoute
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
+import io.github.brrenat.seekervault.policy.PolicyEditorScreen
+import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.wallet.WalletScreen
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 import java.time.Instant
 
 /**
- * The app's screens: Connections first, then a connection's details, Add connection, Pending
- * requests and Request details, Activity and one record, Wallet, and the Stage 1 live test. The
- * back stack is a list of route strings, so it survives rotation and process death; no route
+ * The app's screens: Connections first, then a connection's details, its Rules, Add connection,
+ * Pending requests and Request details, Activity and one record, Wallet, and the Stage 1 live test.
+ * The back stack is a list of route strings, so it survives rotation and process death; no route
  * carries a secret.
  */
 @Composable
@@ -46,6 +48,7 @@ fun SeekerVaultApp(
     inbox: InboxViewModel,
     wallet: WalletViewModel,
     history: ActivityViewModel,
+    policy: PolicyEditorViewModel,
     live: LiveCommandViewModel,
 ) {
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.CONNECTIONS)) }
@@ -56,6 +59,7 @@ fun SeekerVaultApp(
     val inboxState by inbox.state.collectAsStateWithLifecycle()
     val walletState by wallet.state.collectAsStateWithLifecycle()
     val historyState by history.state.collectAsStateWithLifecycle()
+    val policyState by policy.state.collectAsStateWithLifecycle()
     val route = stack.last()
     when {
         route == Routes.CONNECTIONS -> {
@@ -119,7 +123,33 @@ fun SeekerVaultApp(
         }
         route.startsWith(Routes.DETAILS) -> {
             val id = route.removePrefix(Routes.DETAILS)
-            ConnectionDetailsRoute(connections, state, id, pop) { push(Routes.INBOX_FOR + id) }
+            ConnectionDetailsRoute(
+                viewModel = connections,
+                state = state,
+                id = id,
+                onBack = pop,
+                onPendingRequests = { push(Routes.INBOX_FOR + id) },
+                onRules = { push(Routes.POLICY + id) },
+            )
+        }
+        route.startsWith(Routes.POLICY) -> {
+            val id = route.removePrefix(Routes.POLICY)
+            val close = {
+                policy.close()
+                pop()
+            }
+            PolicyEditorScreen(
+                label = state.connections.firstOrNull { it.id == id }?.label.orEmpty(),
+                state = policyState,
+                onEdit = policy::edit,
+                onStartOver = policy::startOver,
+                onSave = policy::save,
+                onMessageShown = policy::messageShown,
+                onClose = close,
+            )
+            // The rules are read from disk when the screen opens. Opening the connection that is
+            // already open keeps unsaved edits, so a rotation doesn't throw them away.
+            LaunchedEffect(id) { policy.open(id) }
         }
         route == Routes.INBOX || route.startsWith(Routes.INBOX_FOR) ->
             PendingRequestsScreen(
@@ -181,6 +211,7 @@ private object Routes {
     const val ACTIVITY = "activity"
     const val RECORD = "record/"
     const val DETAILS = "details/"
+    const val POLICY = "policy/"
     const val INBOX = "inbox"
     const val INBOX_FOR = "inbox/"
     const val REQUEST = "request/"
@@ -193,6 +224,7 @@ private fun ConnectionDetailsRoute(
     id: String,
     onBack: () -> Unit,
     onPendingRequests: () -> Unit,
+    onRules: () -> Unit,
 ) {
     val connection = state.connections.firstOrNull { it.id == id }
     if (connection == null) {
@@ -216,6 +248,7 @@ private fun ConnectionDetailsRoute(
         onDismissDisconnect = viewModel::dismissDisconnect,
         onMessageShown = viewModel::messageShown,
         onPendingRequests = onPendingRequests,
+        onRules = onRules,
     )
 }
 
