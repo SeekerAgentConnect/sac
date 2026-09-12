@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Activity: the owner's own record of what this phone did (SAW-023). -->
+    <string name="activity_title">Activity</string>
+    <string name="activity_row">Activity</string>
+    <string name="activity_row_none">Nothing recorded yet</string>
+    <plurals name="activity_row_count">
+        <item quantity="one">%1$d recorded action</item>
+        <item quantity="other">%1$d recorded actions</item>
+    </plurals>
+    <string name="activity_empty">Nothing here yet. Every request you answer is recorded, and the record stays after the request itself is gone.</string>
+    <string name="activity_unreadable">The history couldn\'t be read from this phone just now. What is shown is what it last read; nothing has been changed or removed.</string>
+    <string name="activity_clear">Clear</string>
+    <string name="activity_clear_title">Clear the activity history?</string>
+    <string name="activity_clear_body">This removes every record on this phone, including the transfers. It changes nothing on any network and nothing on any server: a transaction that went through stays on the network, and the explorer still has it.</string>
+    <string name="activity_clear_confirm">Clear history</string>
+    <string name="activity_details_title">Record</string>
+    <string name="activity_gone">This record is no longer on this phone.</string>
+    <string name="activity_link_failed">Nothing on this phone could open that link. The signature is above, and any explorer will take it.</string>
+
+    <string name="activity_kind_ack">Acknowledgement</string>
+    <string name="activity_kind_message">Message signature</string>
+    <string name="activity_kind_transfer">Transfer</string>
+    <string name="activity_kind_other">Request</string>
+
+    <string name="activity_outcome_waiting">Answered, waiting to be sent</string>
+    <string name="activity_outcome_acknowledged">Acknowledged</string>
+    <string name="activity_outcome_rejected">Rejected</string>
+    <string name="activity_outcome_declined">Declined in the wallet</string>
+    <string name="activity_outcome_message_signed">Message signed</string>
+    <string name="activity_outcome_sent">Sent, not confirmed yet</string>
+    <string name="activity_outcome_confirmed">Confirmed on the network</string>
+    <string name="activity_outcome_chain_failed">Failed on the network</string>
+    <string name="activity_outcome_not_signed">Not signed</string>
+    <string name="activity_outcome_unknown">Outcome unknown</string>
+    <string name="activity_outcome_not_delivered">Never reached the server</string>
+    <string name="activity_outcome_superseded">The request had already ended</string>
+
+    <string name="activity_cluster_mainnet">Solana mainnet</string>
+    <string name="activity_cluster_devnet">Solana devnet</string>
+    <string name="activity_cluster_testnet">Solana testnet</string>
+    <string name="activity_cluster_unknown">No network recorded</string>
+
+    <string name="activity_amount_sol">%1$s SOL (%2$s lamports) to %3$s</string>
+    <string name="activity_amount_units">%1$s base units to %2$s</string>
+    <string name="activity_amount_token">%1$s base units of the token %2$s to %3$s</string>
+
+    <string name="activity_field_source">Asked by</string>
+    <string name="activity_field_server">Server</string>
+    <string name="activity_field_cluster">Network</string>
+    <string name="activity_field_wallet">Paid from</string>
+    <string name="activity_field_recipient">To</string>
+    <string name="activity_field_amount">Amount</string>
+    <string name="activity_field_asset">Asset</string>
+    <string name="activity_field_asset_sol">SOL</string>
+    <string name="activity_field_answered">Answered</string>
+    <string name="activity_field_signature">Transaction ID</string>
+    <string name="activity_field_message_signature">Signature</string>
+    <string name="activity_field_request">Request</string>
+    <string name="activity_not_a_payment">This is a signature over a message, not a payment. Nothing was sent, no network has it, and no explorer can show it.</string>
+    <string name="activity_explorer">View on Solana Explorer</string>
+    <string name="activity_explorer_note">The explorer opens in your browser. This app makes no connection to it.</string>
+    <string name="activity_checked_with">Checked with %1$s</string>
+    <string name="activity_summary">%1$s · %2$s</string>
+</resources>

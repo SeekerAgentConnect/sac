@@ -116,6 +116,7 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 | The owner's answers, each with the request it answered (SAW-013), and for an approved transfer the version, content hash, and exact bytes they approved (SAW-021) | `filesDir/results/<connection ID>/<request ID>.json`, one file per answer. A settled answer is kept for a week, and one that's waiting to be sent is kept until it's settled. | App-private storage; an answer holds no secret, and an approved transaction is unsigned bytes the sidecar built |
 | The wallet the owner selected: its address, network, label, and when they chose it (SAW-015) | `filesDir/wallet/wallet.json` | App-private storage; a public address holds no secret, and it's published to every paired sidecar |
 | The wallet's authorization token for this app (SAW-015) | `noBackupFilesDir/wallet/wallet-authorization` | AES-256-GCM under the same Android Keystore key, with its own associated data |
+| The owner's own record of what this phone did (SAW-023): who asked, the terms they reviewed, the network, the outcome, and the signature | `filesDir/activity/<connection ID>/<request ID>.json`, one file per request, written atomically. Nothing prunes it. | App-private storage; it holds public addresses, amounts, and outcomes, and no credential, key, or transaction bytes |
 
 - **The credential key lives in the Android Keystore** (`seekervault.credentials.v1`), created on first use. Its material never leaves the Keystore, so it can't be exported, backed up, or moved to another device. It protects credentials; it isn't a wallet key.
 - **Each credential file is bound to its connection.** The connection ID is the cipher's associated data, so a file copied under another connection's name doesn't decrypt. One file holds `1 || IV length || IV || ciphertext and tag`, and every write uses a fresh IV.
@@ -124,6 +125,9 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 - **The app logs nothing about connections,** and its screens show the URL, the IDs, and the status, never the credential or the token.
 - **An answer is written before it's sent,** so a crash or a lost response can't lose it. It goes only to the sidecar the request came from, keyed by both IDs, because two sidecars can use the same request ID. Removing a connection deletes its answers.
 - **A credential the sidecar rejects is deleted.** When a refresh gets `UNAUTHENTICATED`, the app marks the connection revoked, deletes its credential, and never sends it again.
+- **The record outlives the answer, on purpose.** An answer is what the sidecar is owed, and it goes when it has been settled for a week or when its connection is removed. A record of what was spent is the owner's, and removing the agent that asked for a payment doesn't erase the payment. Nothing else deletes a record: the owner clears the history themselves, from the Activity screen, and that is the only way one goes.
+- **A record is written only for something that happened.** An approved transfer the sidecar never accepted opened no wallet and moved nothing, so it is removed rather than recorded (SAW-021).
+- **The history holds nothing a record shouldn't.** Public addresses, base units, a cluster, an outcome, and a signature. Not the approved transaction's bytes, not a credential, not a wallet authorization. A history that can't be read says so rather than reading as an empty one.
 
 | What happened | What the phone shows | What to do |
 | --- | --- | --- |
@@ -153,6 +157,12 @@ The wallet signs **and sends** a transfer, so the rules around it are tighter th
 - **The wallet is handed the stored bytes.** They are written to disk before it opens, so a sidecar that rebuilt the transaction in between cannot substitute one, and a rotation or a restart cannot change what is signed.
 - **One wallet interaction at a time,** and one per approval. What the wallet did is stored before it is sent, and every retry reaches a sidecar, never a wallet.
 - **An outcome nobody knows is reported as UNKNOWN.** A wallet that reports it signed but did not submit, a session that ended without an answer, or an app killed while the wallet had the transaction all leave it unknown rather than failed. A signed transaction can still land, and the phone never asks again.
+
+### The record, and the one address outside the phone (SAW-023)
+
+- **The explorer is a link the owner follows, not a request this app makes.** A record of a sent transfer offers the public explorer on its own cluster; tapping it hands the address to whatever app opens links. The app opens no connection to it, and has no chain endpoint of any kind. `StageBoundaryTest` proves it from the sources: the address is written in one file, that file holds no HTTP client, and the app's HTTP clients exist only in the two sidecar transports and the one client they share.
+- **A signature is never presented as more than it is.** A message signature and a transaction ID are both 64 bytes. Which one a record holds comes from the kind of request, never from the signature itself, so a signed message gets no explorer link and the screen says in words that it moved nothing and is on no network.
+- **A transfer's cluster is part of the record, always.** The same signature on another cluster is another transaction, or nothing. A record with no cluster gets no link rather than a guessed one.
 
 ### Confirming a transfer (SAW-022)
 

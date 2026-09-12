@@ -35,6 +35,8 @@ export const ExitCode = {
   CANCELLED: 7,
   INVALID_TEXT: 8,
   REFUSED: 9,
+  UNSETTLED: 10,
+  BAD_OUTCOME: 11,
 } as const;
 export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
 
@@ -202,9 +204,56 @@ export interface RequestView {
   readonly expires_at: string;
   readonly updated_at: string;
   readonly wallet?: string;
+  readonly network?: string;
   readonly signature?: string;
   readonly signed_message_base64?: string;
   readonly detail?: string;
+  readonly confirmation?: string;
+  readonly slot?: number;
+  readonly chain_error?: string;
+  readonly checked_at?: string;
+  readonly checked_with?: string;
+}
+
+/** The clusters a request can name, and how an explorer names each one. */
+const CLUSTERS: Readonly<Record<string, string | undefined>> = {
+  // Explorer's default, which takes no cluster parameter.
+  mainnet: undefined,
+  devnet: "devnet",
+  testnet: "testnet",
+};
+
+/**
+ * Where to read a transaction on the public explorer, or undefined when there is nothing to read
+ * there. A signature over a message is not a transaction: it moves nothing, it reaches no cluster,
+ * and no explorer has it. Linking one as if it were a payment is the mistake this guards against,
+ * so the action decides, not the presence of a signature.
+ */
+export function explorerUrl(view: RequestView): string | undefined {
+  if (view.action !== "transfer" && view.action !== "swap") return undefined;
+  if (view.signature === undefined || view.network === undefined) {
+    return undefined;
+  }
+  if (!(view.network in CLUSTERS)) return undefined;
+  const cluster = CLUSTERS[view.network];
+  const query = cluster === undefined ? "" : `?cluster=${cluster}`;
+  return `https://explorer.solana.com/tx/${view.signature}${query}`;
+}
+
+/** The states that are settled and good, and those that are settled and not. */
+const SUCCEEDED = new Set(["CONFIRMED", "COMPLETED"]);
+const FAILED = new Set(["REJECTED", "CANCELLED", "EXPIRED", "FAILED"]);
+
+/**
+ * The exit code for a request's state: 0 once it ended the way it was asked for, BAD_OUTCOME once
+ * it ended any other way, and UNSETTLED while no outcome is established. UNKNOWN counts as
+ * unsettled on purpose — it is the one state that means nobody knows, and a script that treats it
+ * as a failure is a script that re-sends money.
+ */
+export function outcomeExitCode(status: string): ExitCode {
+  if (SUCCEEDED.has(status)) return ExitCode.OK;
+  if (FAILED.has(status)) return ExitCode.BAD_OUTCOME;
+  return ExitCode.UNSETTLED;
 }
 
 /** The owner's wallet as vault_get_address returns it (docs/protocol.md#agent-api-mcp). */

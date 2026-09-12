@@ -2,6 +2,11 @@ package io.github.brrenat.seekervault.inbox
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.activity.ActivityKind
+import io.github.brrenat.seekervault.activity.ActivityLog
+import io.github.brrenat.seekervault.activity.ActivityOutcome
+import io.github.brrenat.seekervault.activity.explorerUrl
+import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.ConnectionRepository
 import io.github.brrenat.seekervault.connections.Delivery
@@ -55,12 +60,14 @@ class InboxViewModelTest {
     private val server = gateway.serve(URL)
     private val other = gateway.serve(OTHER_URL)
     private val key = softwareKey()
+    private val history by lazy { ActivityLog(ActivityStore(File(folder.root, "activity"))) }
     private val repository by lazy {
         ConnectionRepository(
             store = ConnectionStore(File(folder.root, "connections")),
             vault = CredentialVault(File(folder.root, "credentials")) { key },
             results = ResultStore(File(folder.root, "results")),
             gateway = gateway,
+            history = history,
             deviceName = "Seeker",
             io = Dispatchers.Unconfined,
         )
@@ -943,6 +950,53 @@ class InboxViewModelTest {
         // And nothing was asked of the wallet, and no second result was sent.
         assertEquals(sendings, adapter.sendings.size)
         assertEquals(submits, gateway.submits.size)
+    }
+
+    @Test
+    fun theHistoryKeepsTheTransferItsClusterAndItsTransactionId() {
+        // The owner's own record of a payment, written on the way through and nowhere else
+        // (SAW-023). It carries the cluster, because a signature without one names nothing.
+        val (key, viewModel) = sentTransfer()
+        val sent = history.records.value.single { it.requestId == key.requestId }
+        assertEquals(ActivityKind.Transfer, sent.kind)
+        assertEquals(ActivityOutcome.Sent, sent.outcome)
+        assertEquals(WalletNetwork.Devnet.network, sent.transfer?.network)
+        assertTrue(sent.signatureIsTransaction)
+        assertTrue(explorerUrl(sent).orEmpty().endsWith("?cluster=devnet"))
+
+        server.putOnChain(
+            key.connectionId,
+            key.requestId,
+            FakeConnectionGateway.Server.Confirmed(
+                RequestState.REQUEST_STATE_CONFIRMED,
+                "The approved transaction succeeded on chain in slot 4242.",
+            ),
+        )
+        viewModel.checkStatus(key)
+        // Checking twice is one thing that happened, not two.
+        viewModel.checkStatus(key)
+
+        val records = history.records.value.filter { it.requestId == key.requestId }
+        assertEquals(1, records.size)
+        assertEquals(ActivityOutcome.Confirmed, records.single().outcome)
+        assertEquals("rpc.test.invalid", records.single().checkedWith)
+        assertEquals(sent.signature, records.single().signature)
+    }
+
+    @Test
+    fun theHistoryNeverCallsASignedMessageAPayment() {
+        val (request, selected) = readyToSign()
+        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 3 }))
+        viewModel().approve(request, selected)
+
+        val record = history.records.value.single { it.requestId == request.requestId }
+        assertEquals(ActivityKind.MessageSignature, record.kind)
+        assertEquals(ActivityOutcome.MessageSigned, record.outcome)
+        assertNotNull(record.signature)
+        // There is a signature and there is no payment: no cluster, no transaction, no link.
+        assertFalse(record.signatureIsTransaction)
+        assertNull(record.transfer)
+        assertNull(explorerUrl(record))
     }
 
     @Test

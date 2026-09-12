@@ -1,6 +1,9 @@
 package io.github.brrenat.seekervault.connections
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.activity.ActivityLog
+import io.github.brrenat.seekervault.activity.ActivityOutcome
+import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
@@ -37,12 +40,16 @@ class ConnectionRepositoryTest {
     private var key: () -> SecretKey = softwareKey().let { key -> { key } }
     private var clock = Instant.parse("2026-09-11T12:00:00Z")
 
-    private fun repository() =
+    private fun history() =
+        ActivityLog(ActivityStore(File(folder.root, "files/activity"))) { clock }
+
+    private fun repository(log: ActivityLog = history()) =
         ConnectionRepository(
             store = ConnectionStore(File(folder.root, "files/connections")),
             vault = CredentialVault(File(folder.root, "no_backup/credentials")) { key() },
             results = ResultStore(File(folder.root, "files/results")),
             gateway = gateway,
+            history = log,
             deviceName = "Seeker",
             now = { clock },
             io = Dispatchers.Unconfined,
@@ -84,6 +91,36 @@ class ConnectionRepositoryTest {
             setOf(URL_B),
             gateway.sent.filter { it.second == credentialB }.map { it.first }.toSet(),
         )
+    }
+
+    @Test
+    fun recordsWhatThisPhoneDidOnceAndKeepsItAfterTheAnswerIsGone() = runBlocking {
+        // The record is the owner's, and it outlives the answer the sidecar was owed: an answer is
+        // dropped a week after it settles, and a record is not (SAW-023).
+        val log = history()
+        val repository = repository(log)
+        val a = repository.pair(serverA.issue(URL_A))
+        val pending = serverA.addPending(a.id)
+        repository.refresh(a.id)
+        val key = RequestKey(a.id, pending.ref.requestId)
+        repository.answer(key, Answer.Acknowledge)
+        assertEquals(1, log.records.value.size)
+        assertEquals(ActivityOutcome.Acknowledged, log.records.value.single().outcome)
+        assertEquals("a.example.com", log.records.value.single().source)
+
+        // Sending the answer again is the same thing happening again, not a second thing.
+        repository.deliver(key)
+        repository.deliver(key)
+        assertEquals(1, log.records.value.size)
+
+        // A week later, on a restart: the answer is pruned and the record is read back whole.
+        clock = clock.plusSeconds(8 * 86_400)
+        val reopened = history()
+        repository(reopened).load()
+        reopened.load()
+        assertNull(ResultStore(File(folder.root, "files/results")).get(a.id, key.requestId))
+        assertEquals(1, reopened.records.value.size)
+        assertEquals(ActivityOutcome.Acknowledged, reopened.records.value.single().outcome)
     }
 
     @Test
