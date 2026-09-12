@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.transactions.Finding
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
 import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.SendResult
 import io.github.brrenat.seekervault.wallet.SignResult
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import io.github.brrenat.seekervault.wallet.WalletRepository
@@ -612,6 +613,292 @@ class InboxViewModelTest {
 
         assertNull(viewModel.state.value.preparations[request])
         assertTrue(gateway.preparations.isEmpty())
+    }
+
+    // --- Approving a transfer through the wallet (SAW-021) ---
+
+    /** A transfer read and inspected, ready for the owner to decide on. */
+    private fun reviewedTransfer(
+        caseName: String = "sol_transfer"
+    ): Triple<RequestKey, InboxViewModel, Preparation.Ready> {
+        val (key, _) = pendingTransfer(caseName)
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        return Triple(key, viewModel, viewModel.state.value.preparations[key] as Preparation.Ready)
+    }
+
+    @Test
+    fun approvingHandsTheWalletExactlyTheBytesThatWereReviewed() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 7 }))
+
+        viewModel.approveTransfer(key, reviewed)
+
+        // The approval goes first and names the version and hash of what was on screen.
+        val approval = gateway.submits.first().second
+        assertTrue(approval.hasApproval())
+        assertEquals(reviewed.prepared.version, approval.approval.preparedVersion)
+        assertEquals(reviewed.prepared.contentHash, approval.approval.contentHash)
+        // Then the wallet, with those bytes and no others.
+        assertEquals(reviewed.prepared.transaction, adapter.sendings.single().first)
+        // And what the wallet did is reported as a submission, not as a message signature.
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.TRANSACTION_SUBMISSION,
+            ),
+            submitted(),
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_SUBMITTED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        assertEquals(
+            SigningOutcome.Sent(ByteString.copyFrom(ByteArray(64) { 7 })),
+            viewModel.state.value.inbox.result(key)?.signing,
+        )
+    }
+
+    @Test
+    fun theWalletGetsTheApprovedBytesEvenWhenTheServerHasBuiltANewerVersionSince() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 3 }))
+        // The sidecar builds something else the moment the approval arrives. The owner approved
+        // the transaction they read, and that is the one the wallet is handed.
+        gateway.beforeSubmit = {
+            gateway.transactions[key] = "a different transaction".toByteArray()
+        }
+
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(reviewed.prepared.transaction, adapter.sendings.single().first)
+    }
+
+    @Test
+    fun aSecondTapNeverOpensTheWalletTwice() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        val release = CompletableDeferred<Unit>()
+        adapter.beforeSending = { release.await() }
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 5 }))
+
+        viewModel.approveTransfer(key, reviewed)
+        assertEquals(setOf(key), viewModel.state.value.sending)
+        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransfer(key, reviewed)
+        release.complete(Unit)
+
+        assertEquals(1, adapter.sendings.size)
+        assertEquals(1, gateway.submits.count { it.second.hasApproval() })
+        // And once it is answered, tapping again does nothing at all.
+        viewModel.approveTransfer(key, reviewed)
+        assertEquals(1, adapter.sendings.size)
+    }
+
+    @Test
+    fun aStalePreparationIsRefusedAndReadAgainRatherThanApproved() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        // The sidecar prepares a new version, as it does whenever anyone asks: the owner's
+        // approval of the old one names a version that is no longer the latest.
+        runBlocking { repository.prepare(key) }
+
+        viewModel.approveTransfer(key, reviewed)
+
+        // Nothing reached the wallet, and nothing is stored as an approval.
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertNull(viewModel.state.value.inbox.result(key))
+        assertEquals(
+            RequestState.REQUEST_STATE_PENDING,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        assertEquals(SigningProblem.Stale, viewModel.state.value.problem)
+        // And it has been read again, so the owner reviews the version that exists now.
+        val now = viewModel.state.value.preparations[key] as Preparation.Ready
+        assertEquals(3, now.prepared.version)
+    }
+
+    @Test
+    fun aVersionReadAgainWhileTheOwnerWasLookingIsNotTheOneTheyApprove() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        viewModel.prepare(key, force = true)
+
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(SigningProblem.NotVerified, viewModel.state.value.problem)
+    }
+
+    @Test
+    fun aTransactionThisPhoneCouldNotAccountForNeverReachesTheWallet() {
+        val (key, viewModel, reviewed) = reviewedTransfer("changed_amount")
+        assertFalse(reviewed.inspection.approvable)
+
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(SigningProblem.NotVerified, viewModel.state.value.problem)
+    }
+
+    @Test
+    fun aWalletOtherThanTheOneOnScreenStopsTheApproval() {
+        val (key, viewModel, held) = reviewedTransfer()
+        // The screen showed another wallet than the phone holds now. The transaction is the same
+        // one, and that is not enough: they approve a wallet as much as a transaction.
+        val reviewed =
+            held.copy(
+                wallet =
+                    SelectedWallet(
+                        address = OTHER_WALLET,
+                        network = WalletNetwork.Devnet,
+                        selectedAt = java.time.Instant.EPOCH,
+                    )
+            )
+
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(SigningProblem.Changed, viewModel.state.value.problem)
+    }
+
+    @Test
+    fun connectingAnotherWalletTakesTheTransferOffThisPhoneEntirely() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        adapter.answerConnected(OTHER_WALLET)
+        runBlocking { wallet.connect(WalletNetwork.Devnet) }
+
+        // The sidecar cancelled it when the new binding was published, so there is nothing left to
+        // approve, and the approval of what they reviewed goes nowhere.
+        viewModel.approveTransfer(key, reviewed)
+
+        assertNull(viewModel.state.value.inbox.pendingRequest(key))
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(
+            RequestState.REQUEST_STATE_CANCELLED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
+    @Test
+    fun anApprovalTheServerNeverTookOpensNoWalletAndIsNotKept() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        server.failure = GatewayException.Kind.Unreachable
+
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        // Nothing is stored, so the transfer is the owner's to review and approve again.
+        assertNull(viewModel.state.value.inbox.result(key))
+        assertEquals(SigningProblem.NotApproved, viewModel.state.value.problem)
+        assertEquals(
+            RequestState.REQUEST_STATE_PENDING,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
+    @Test
+    fun aLostWalletCallbackIsUnknownAndTheWalletIsNeverAskedAgain() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        // The app goes away while the transaction is with the wallet: the answer never arrives.
+        val never = CompletableDeferred<Unit>()
+        adapter.beforeSending = { never.await() }
+        viewModel.approveTransfer(key, reviewed)
+        assertEquals(1, adapter.sendings.size)
+
+        // Coming back to the foreground with nothing in flight here settles it.
+        val next = viewModel()
+        next.onAppVisible()
+
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.UNKNOWN_OUTCOME,
+            ),
+            submitted(),
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_UNKNOWN,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        // No second wallet call, then or ever: an unknown outcome is not a retry.
+        assertEquals(1, adapter.sendings.size)
+        next.sendAgain(key)
+        assertEquals(1, adapter.sendings.size)
+    }
+
+    @Test
+    fun aWalletThatCannotSayWhetherItSentLeavesTheOutcomeUnknown() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        adapter.answerSending(SendResult.Unknown("the session ended"))
+
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.UNKNOWN_OUTCOME,
+            ),
+            submitted(),
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_UNKNOWN,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
+    @Test
+    fun decliningInTheWalletRejectsTheTransferAndSendsNothing() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        adapter.answerSending(SendResult.Declined)
+
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.REJECTION,
+            ),
+            submitted(),
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_REJECTED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
+    @Test
+    fun rejectingATransferInTheAppNeverTouchesTheWallet() {
+        val (key, viewModel, _) = reviewedTransfer()
+
+        viewModel.answer(key, Answer.Reject)
+
+        assertEquals(listOf(SubmitResultRequest.ResultCase.REJECTION), submitted())
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(
+            RequestState.REQUEST_STATE_REJECTED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
+    @Test
+    fun theTransactionsIdIsSentAgainAfterALostResponseWithoutAskingTheWalletTwice() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 8 }))
+        adapter.beforeSending = { server.loseNextResponse = true }
+
+        viewModel.approveTransfer(key, reviewed)
+        assertEquals(Delivery.Waiting, viewModel.state.value.inbox.result(key)?.delivery)
+
+        viewModel.sendAgain(key)
+
+        assertEquals(Delivery.Accepted, viewModel.state.value.inbox.result(key)?.delivery)
+        assertEquals(
+            RequestState.REQUEST_STATE_SUBMITTED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        assertEquals(1, adapter.sendings.size)
     }
 
     private companion object {

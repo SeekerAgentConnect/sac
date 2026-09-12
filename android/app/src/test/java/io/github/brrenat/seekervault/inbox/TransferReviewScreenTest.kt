@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.inbox
 
 import android.content.Context
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -38,8 +39,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The review screen for a transfer (SAW-020): what the owner is shown comes from the transaction,
- * the server's numbers are labelled as the server's, and the agent's note sits apart from both.
+ * The review screen for a transfer (SAW-020, SAW-021): what the owner is shown comes from the
+ * transaction, the server's numbers are labelled as the server's, the agent's note sits apart from
+ * both, and Approve is offered only for a transaction this phone read whole.
  */
 @RunWith(AndroidJUnit4::class)
 class TransferReviewScreenTest {
@@ -47,6 +49,7 @@ class TransferReviewScreenTest {
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private var prepareAgain = 0
+    private var approvals = 0
 
     private val cases =
         JSONObject(
@@ -108,7 +111,11 @@ class TransferReviewScreenTest {
             selectedAt = Instant.parse("2026-09-12T12:00:00Z"),
         )
 
-    private fun show(case: JSONObject, preparation: Preparation?) = compose.setContent {
+    private fun show(
+        case: JSONObject,
+        preparation: Preparation?,
+        wallet: SelectedWallet? = walletFor(case),
+    ) = compose.setContent {
         SeekerVaultTheme {
             RequestDetailsScreen(
                 request = requestOf(case),
@@ -120,9 +127,10 @@ class TransferReviewScreenTest {
                 onApprove = {},
                 onSendAgain = {},
                 onBack = {},
-                wallet = walletFor(case),
+                wallet = wallet,
                 preparation = preparation,
                 onPrepareAgain = { prepareAgain++ },
+                onApproveTransfer = { approvals++ },
             )
         }
     }
@@ -235,14 +243,58 @@ class TransferReviewScreenTest {
     }
 
     @Test
-    fun saysThatApprovingIsNotBuiltYetInsteadOfOfferingIt() {
+    fun offersApprovalOnlyForATransactionItReadWholeAndFoundToMatch() {
         val case = case("sol_transfer")
         show(case, readyFrom(case))
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().performClick()
+        assertEquals(1, approvals)
+    }
+
+    @Test
+    fun offersNoApprovalForATransactionThatDoesNotMatchTheRequest() {
+        val case = case("changed_amount")
+        show(case, readyFrom(case))
+        // No button that would refuse: nothing this phone can't account for is put to a wallet.
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertDoesNotExist()
         compose
-            .onNodeWithTag(InboxTags.TRANSFER_NO_APPROVAL)
+            .onNodeWithTag(InboxTags.TRANSFER_POLICY)
             .performScrollTo()
-            .assertTextEquals(context.getString(R.string.transfer_approval_later))
-        compose.onNodeWithTag(InboxTags.APPROVE).assertDoesNotExist()
+            .assertTextEquals(context.getString(R.string.transfer_not_approvable))
+    }
+
+    @Test
+    fun offersNoApprovalForATransactionItCouldNotReadWhole() {
+        // Unverified, not invalid: the transfer itself matches, and an unread instruction still
+        // stops it. A review with a gap in it is not a review.
+        val case = case("unknown_program_alongside_the_transfer")
+        show(case, readyFrom(case))
+        compose
+            .onNodeWithTag(InboxTags.TRANSFER_VERDICT)
+            .assertTextEquals(context.getString(R.string.transfer_verdict_unverified))
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertDoesNotExist()
+    }
+
+    @Test
+    fun saysPoliciesAreNotEvaluatedRatherThanCallingItAllowed() {
+        val case = case("sol_transfer")
+        show(case, readyFrom(case))
+        field("policy")
+            .performScrollTo()
+            .assertTextContains(
+                context.getString(R.string.transfer_policy_not_evaluated),
+                substring = true,
+            )
+    }
+
+    @Test
+    fun cannotApproveWithoutAWalletToPayWith() {
+        val case = case("sol_transfer")
+        show(case, readyFrom(case), wallet = null)
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().assertIsNotEnabled()
+        compose
+            .onNodeWithTag(InboxTags.SIGNING_PROBLEM)
+            .performScrollTo()
+            .assertTextEquals(context.getString(R.string.transfer_no_wallet))
     }
 
     @Test

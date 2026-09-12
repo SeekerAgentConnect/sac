@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.connections.storage
 import android.util.AtomicFile
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.Answer
+import io.github.brrenat.seekervault.connections.ApprovedTransaction
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.LocalResult
@@ -96,10 +97,11 @@ class ResultStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        // 2 adds an approval's signing outcome (SAW-016), and 3 adds the outcome the phone never
-        // learned (SAW-017). An older file is read as it was: a version 1 file can only hold an
+        // 2 adds an approval's signing outcome (SAW-016), 3 adds the outcome the phone never
+        // learned (SAW-017), and 4 adds the transaction an approved transfer is bound to
+        // (SAW-021). An older file is read as it was: a version 1 file can only hold an
         // acknowledgement or a rejection, neither of which has a signing outcome at all.
-        const val VERSION = 3
+        const val VERSION = 4
         const val OLDEST_VERSION = 1
 
         fun encode(result: LocalResult): String =
@@ -113,9 +115,37 @@ class ResultStore(private val dir: File) {
                 .put("delivery", result.delivery.name)
                 .put("approved", result.approved)
                 .putOpt("signing", result.signing?.let(::encodeSigning))
+                .putOpt("approvedTransaction", result.approvedTransaction?.let(::encodeApproved))
                 .putOpt("lastFailure", result.lastFailure?.name)
                 .putOpt("settledAt", result.settledAt?.toString())
                 .toString()
+
+        /**
+         * The approved transaction, as it was reviewed. It holds no secret: it is unsigned bytes
+         * the sidecar built and this phone read, and its whole purpose is to still be here, byte
+         * for byte, when the wallet is handed it.
+         */
+        fun encodeApproved(approved: ApprovedTransaction): JSONObject =
+            JSONObject()
+                .put("version", approved.version)
+                .put(
+                    "contentHash",
+                    Base64.getEncoder().encodeToString(approved.contentHash.toByteArray()),
+                )
+                .put(
+                    "transaction",
+                    Base64.getEncoder().encodeToString(approved.transaction.toByteArray()),
+                )
+
+        fun decodeApproved(json: JSONObject?): ApprovedTransaction? = json?.let {
+            ApprovedTransaction(
+                version = it.getInt("version"),
+                contentHash =
+                    ByteString.copyFrom(Base64.getDecoder().decode(it.getString("contentHash"))),
+                transaction =
+                    ByteString.copyFrom(Base64.getDecoder().decode(it.getString("transaction"))),
+            )
+        }
 
         fun encodeSigning(outcome: SigningOutcome): JSONObject =
             when (outcome) {
@@ -123,6 +153,14 @@ class ResultStore(private val dir: File) {
                     JSONObject()
                         .put("outcome", "Signed")
                         // The signature is public, like the address: it proves what the wallet did.
+                        .put(
+                            "signature",
+                            Base64.getEncoder().encodeToString(outcome.signature.toByteArray()),
+                        )
+                is SigningOutcome.Sent ->
+                    JSONObject()
+                        .put("outcome", "Sent")
+                        // The transaction's ID on chain, which is public the moment it is sent.
                         .put(
                             "signature",
                             Base64.getEncoder().encodeToString(outcome.signature.toByteArray()),
@@ -138,6 +176,10 @@ class ResultStore(private val dir: File) {
             when (json?.getString("outcome")) {
                 "Signed" ->
                     SigningOutcome.Signed(
+                        ByteString.copyFrom(Base64.getDecoder().decode(json.getString("signature")))
+                    )
+                "Sent" ->
+                    SigningOutcome.Sent(
                         ByteString.copyFrom(Base64.getDecoder().decode(json.getString("signature")))
                     )
                 "Declined" -> SigningOutcome.Declined
@@ -167,6 +209,7 @@ class ResultStore(private val dir: File) {
                 // Absent from answers stored before it existed, which then count from answeredAt.
                 settledAt =
                     json.optString("settledAt").takeIf { it.isNotEmpty() }?.let(Instant::parse),
+                approvedTransaction = decodeApproved(json.optJSONObject("approvedTransaction")),
             )
         }
     }

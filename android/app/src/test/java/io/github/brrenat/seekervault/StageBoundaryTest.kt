@@ -217,15 +217,15 @@ class StageBoundaryTest {
 
     @Test
     fun nothingSpendsSwapsOrAsksForABiometricOfItsOwn() {
-        // SAW-020 lets the app read a transfer's bytes, and nothing more. It still builds no
-        // transaction, signs none, sends none, and reaches no chain: reading is `transactions/`,
-        // and every byte it reads came from a sidecar over the connection the owner paired.
-        // Approving a transfer through the wallet is SAW-021, and swaps are Stage 6; the task that
-        // adds one changes this.
+        // SAW-021 lets the owner approve a transfer, and the wallet sign and send it. That is the
+        // one line lifted, and it is lifted in one file: `MwaWalletAdapter`, which hands the
+        // wallet bytes a sidecar built and this phone read. The app still builds no transaction,
+        // makes no signature of its own, and reaches no chain — it has no RPC endpoint at all, and
+        // couldn't broadcast or simulate anything if it wanted to. Swaps are Stage 6.
         val spending =
             Regex(
-                """signTransactions|signAndSendTransactions|sendTransaction|""" +
-                    """sendRawTransaction|simulateTransaction|getLatestBlockhash|""" +
+                """signTransactions\b|sendTransaction|sendRawTransaction|""" +
+                    """simulateTransaction|getLatestBlockhash|""" +
                     """mainnet-beta|clusterApiUrl|solana\.com"""
             )
         val ownAuthentication =
@@ -241,6 +241,12 @@ class StageBoundaryTest {
         }
         assertEquals(emptyList<String>(), hits(spending))
         assertEquals(emptyList<String>(), hits(ownAuthentication))
+        // Signing and sending is the wallet's, reached from one file and no other. The app asks;
+        // the wallet signs and submits.
+        assertEquals(
+            listOf("MwaWalletAdapter.kt"),
+            hits(Regex("signAndSendTransactions")).map { it.substringBefore(':') }.distinct(),
+        )
         // The scan reads the real sources, so a line that did match would be found.
         assertTrue(hits(Regex("signMessage")).isNotEmpty())
         assertTrue(hits(Regex("decodeTransaction")).isNotEmpty())

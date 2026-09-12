@@ -35,12 +35,44 @@ flowchart LR
     Mwa --> Wallet["Seed Vault Wallet"]
 ```
 
-- **`WalletAdapter` has three operations,** `connect(network, authToken)`, `disconnect(authToken)`, and `signMessage(message, wallet, authToken)` (SAW-016). Each answers with one of a small set of outcomes: connected or signed, no wallet, declined, the authorization expired, the network isn't served, or a failure. The tests drive a `FakeWalletAdapter`, so no wallet app and no activity are needed to cover every outcome.
+- **`WalletAdapter` has four operations,** `connect(network, authToken)`, `disconnect(authToken)`, `signMessage(message, wallet, authToken)` (SAW-016), and `signAndSendTransaction(transaction, wallet, authToken)` (SAW-021). Each answers with one of a small set of outcomes: connected, signed, or sent; no wallet, declined, the authorization expired, the network isn't served, or a failure. Sending has one more, `Unknown`, because a transaction can reach the network and a message can't: see [Approval binding](#approval-binding). The tests drive a `FakeWalletAdapter`, so no wallet app and no activity are needed to cover every outcome.
 - **`MwaWalletAdapter` is the only file that imports the Mobile Wallet Adapter client.** It runs the wallet from the activity's `ActivityResultSender`, which `MainActivity` registers in `onCreate` and clears in `onDestroy`. There is no dedicated wallet activity and no foreground service. A rotation destroys one activity and creates another, so the adapter waits briefly for the next screen's sender rather than failing a call the owner just started, and only the activity that registered a sender clears it (SAW-017).
 - **The app never creates a wallet or holds a key.** It learns a public address and a wallet authorization token. The address goes to each paired sidecar; the authorization stays on the phone, encrypted under the Keystore key, and never reaches a sidecar, a log, or a backup.
 - **The binding is explicit.** The owner picks the network, and the app publishes exactly the address and network the wallet returned. A sidecar with no binding answers `vault_get_address` with `WALLET_NOT_CONNECTED`; it never generates an address.
 - **Signing is reached only through the owner's tap (SAW-016).** The inbox stores the approval, sends it, and only then calls `WalletRepository.sign`, which asks the wallet for the selection the owner reviewed and refuses anything else. The signature comes back through the same boundary, and the sidecar verifies it against the request's wallet; see [`protocol.md`](protocol.md#message-results).
-- **One wallet call per request, and delivery is separate from it (SAW-017).** `InboxViewModel.approve` is the only caller of `sign`; what the wallet did is stored before it's sent, and `ConnectionRepository.deliver`, which every retry goes through, reaches a sidecar and never a wallet. An answer that never arrived is recorded as unresolved and reported as a failure; see [`testing/wallet-lifecycle.md`](testing/wallet-lifecycle.md).
+- **One wallet call per request, and delivery is separate from it (SAW-017).** `InboxViewModel.approve` and `InboxViewModel.approveTransfer` are the only callers of `sign` and `signAndSend`; what the wallet did is stored before it's sent, and `ConnectionRepository.deliver`, which every retry goes through, reaches a sidecar and never a wallet. An answer that never arrived is recorded as unresolved; see [`testing/wallet-lifecycle.md`](testing/wallet-lifecycle.md).
+- **One wallet interaction at a time.** Every operation takes `WalletRepository`'s lock, so a signature asked for while a transaction is in front of the owner waits its turn rather than opening a second wallet screen.
+
+### Approval binding
+
+A transfer reaches the wallet only through the owner's explicit approval of the preparation this phone inspected and showed them (SAW-021). Four things are bound together, and all four are checked before anything happens.
+
+```mermaid
+sequenceDiagram
+    participant Owner
+    participant Phone
+    participant Sidecar
+    participant Wallet
+    Phone->>Sidecar: PrepareRequest
+    Sidecar-->>Phone: PreparedTransaction v(n)
+    Phone->>Phone: decode and cross-check (SAW-020)
+    Owner->>Phone: Approve
+    Phone->>Phone: store {v(n), content_hash, the bytes}
+    Phone->>Sidecar: SubmitResult{approval}
+    Sidecar-->>Phone: PROCESSING
+    Phone->>Wallet: signAndSendTransactions(the stored bytes)
+    Wallet-->>Phone: signature, declined, or nothing
+    Phone->>Sidecar: SubmitResult{submission | rejection | failure | unknown}
+```
+
+- **The request**, by connection and request ID.
+- **The preparation**, by `version` and `content_hash`. The sidecar refuses an approval that doesn't name the latest version, that carries another hash, or whose blockhash window has almost run out, with `STALE_PREPARATION`. The phone then reads the request again and the owner reviews the new version; an approval is never carried over to a transaction they didn't see.
+- **The wallet and network**, checked against the selection the screen showed and the one the phone holds now. Either having changed stops the approval.
+- **The bytes**, stored on the phone before the wallet is opened. `signAndSendTransactions` is handed those bytes, never bytes fetched again, so a sidecar that rebuilt the transaction in between can't substitute one.
+
+**The sidecar is the commit point.** `ConnectionRepository.approveTransfer` returns only once the sidecar has accepted the approval and moved the request to PROCESSING. An approval it didn't accept is deleted rather than kept: nothing was approved anywhere, no wallet was opened, the request is still the sidecar's, and the owner reviews a fresh preparation. That is why an approved transfer with no wallet answer can only mean one thing — the wallet had it — which is what makes reporting UNKNOWN honest.
+
+**Nothing unverified reaches the wallet.** Only a preparation whose inspection came back `Verified` is offered for approval at all, and `InboxViewModel.approveTransfer` checks it again before sending anything. This is input validation, not a policy verdict: policies are Stage 5, and until they exist the review screen says "Not evaluated" rather than ALLOWED.
 
 ## Trust boundaries
 
@@ -83,7 +115,7 @@ These hold across the components, and every stage keeps them:
 7. **Exact values.** Amounts are integer base-unit strings, and messages are signed as the exact bytes sent.
 8. **The wallet is the owner's, and explicit.** The app and the sidecar never create a wallet or hold a key. A wallet action is stored only for the wallet and network the owner selected, and an agent that asks for an address when none is connected gets `WALLET_NOT_CONNECTED`.
 9. **The wallet is asked only after the owner approves.** No wallet call happens while a request is PENDING, and a signature is accepted only if it verifies against the request's wallet over the request's own bytes.
-10. **One interaction, one reported outcome.** The wallet is asked once per request; what it did is stored on the phone before it's sent; sending it again never reaches the wallet; and a repeated result returns the same terminal request. An answer the phone never received is reported as unresolved, never as a success (SAW-017).
+10. **One interaction, one reported outcome.** The wallet is asked once per request; what it did is stored on the phone before it's sent; sending it again never reaches the wallet; and a repeated result returns the same terminal request. An answer the phone never received is reported as unresolved, never as a success (SAW-017). For a message that means FAILED, because nothing could have been broadcast. For a transfer it means UNKNOWN, because the wallet may have sent it, and the phone never asks a second time (SAW-021).
 
 ## Stages
 
@@ -92,7 +124,7 @@ These hold across the components, and every stage keeps them:
 | 1 | The live diagnostic flow: the MCP endpoint, the Android live-test screen, and the test agent |
 | 2 | The durable contract (SAW-009), storage and the async MCP tools (SAW-010), pairing (SAW-011), multiple connections (SAW-012), and the pending inbox (SAW-013) |
 | 3 | Mobile Wallet Adapter and the wallet binding (SAW-015), manual message signing (SAW-016), and the wallet lifecycle with reliable result delivery (SAW-017) |
-| 4 | Transfers, on-phone transaction parsing, and on-chain confirmation |
+| 4 | Transfer requests and fresh preparation (SAW-019), the phone's own inspection of the bytes (SAW-020), manual approval through the wallet (SAW-021), and on-chain confirmation (SAW-022) |
 | 5 | Policies |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |

@@ -12,6 +12,9 @@ import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.executionFailure
 import io.github.brrenat.seekervault.request.v1.messageSignature
 import io.github.brrenat.seekervault.request.v1.submitResultRequest
+import io.github.brrenat.seekervault.request.v1.transactionSubmission
+import io.github.brrenat.seekervault.request.v1.unknownOutcome
+import io.github.brrenat.seekervault.transactions.transfer
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.time.Duration
@@ -56,6 +59,9 @@ data class Inbox(
  * - An answer is stored before it's sent, and sent again until the sidecar settles it.
  * - An approved message takes two sends: the owner's approval, and then what the wallet did. The
  *   wallet is asked only in between, and only by the caller (SAW-016).
+ * - An approved transfer takes the same two sends, but the first one commits: [approveTransfer]
+ *   returns only once the sidecar has accepted the approval, and an approval it did not accept is
+ *   removed rather than kept, so the wallet is never opened for one (SAW-021).
  * - Nothing is answered unless the owner answers: fetching only reads.
  *
  * Network calls run outside the lock; each storage change runs under it.
@@ -96,10 +102,15 @@ class ConnectionRepository(
             .filter { it.delivery != Delivery.Waiting && (it.settledAt ?: it.answeredAt) < cutoff }
             .forEach { results.delete(it.connectionId, it.requestId) }
         publish()
-        // The app closed while a message was with the wallet: whatever the wallet did, this phone
-        // never learned it, so the approval is settled as unresolved rather than left open.
+        // The app closed while an action was with the wallet: whatever the wallet did, this phone
+        // never learned it, so the approval is settled as unresolved rather than left open. An
+        // approved transfer the sidecar never accepted is a different thing: the wallet is opened
+        // only after it does, so that one was never asked anything, and it is dropped instead.
+        uncommittedApprovals().forEach { results.delete(it.connectionId, it.requestId) }
         abandonedSignings(emptySet()).forEach {
-            results.put(it.copy(signing = SigningOutcome.Unresolved(APP_CLOSED)))
+            results.put(
+                it.copy(signing = SigningOutcome.Unresolved(it.lostDetail(appClosed = true)))
+            )
         }
         publish()
     }
@@ -113,8 +124,14 @@ class ConnectionRepository(
      */
     suspend fun resolveAbandonedSignings(except: Set<RequestKey>): List<RequestKey> {
         val abandoned = locked {
+            // An approval the sidecar never accepted was never put to the wallet, so it is dropped
+            // rather than settled: the request is still the sidecar's, and still the owner's to
+            // review afresh.
+            uncommittedApprovals().forEach { results.delete(it.connectionId, it.requestId) }
             abandonedSignings(except)
-                .map { it.copy(signing = SigningOutcome.Unresolved(WALLET_LOST)) }
+                .map {
+                    it.copy(signing = SigningOutcome.Unresolved(it.lostDetail(appClosed = false)))
+                }
                 .onEach(results::put)
                 .also { if (it.isNotEmpty()) publish() }
         }
@@ -128,8 +145,17 @@ class ConnectionRepository(
             it.answer == Answer.Approve &&
                 it.signing == null &&
                 it.delivery == Delivery.Waiting &&
-                it.key !in except
+                it.key !in except &&
+                !it.uncommittedTransfer
         }
+
+    /**
+     * Approved transfers the sidecar never accepted. Nothing was asked of the wallet for one, and
+     * its request is still the sidecar's to hand back, so it is removed rather than reported: the
+     * owner sees it pending again and reviews the preparation as it is then.
+     */
+    private fun uncommittedApprovals(): List<LocalResult> =
+        results.list().filter { it.uncommittedTransfer && it.delivery == Delivery.Waiting }
 
     /**
      * Pairs with [code]'s sidecar and stores the new connection. Throws [GatewayException] if the
@@ -306,6 +332,86 @@ class ConnectionRepository(
     }
 
     /**
+     * The owner's approval of a transfer, which is the commit point before the wallet is opened
+     * (docs/architecture.md#approval-binding). [approved] is the exact transaction they reviewed,
+     * and it is written to this phone before anything is sent, so the bytes the wallet is handed
+     * are the bytes that were approved.
+     *
+     * It returns the stored answer only once the sidecar has accepted the approval, which is when
+     * the request is PROCESSING and the wallet may be asked. Anything else removes the approval
+     * again: nothing was approved anywhere, the request stays the sidecar's, and the owner reviews
+     * a fresh preparation rather than carrying this decision over to another transaction. It
+     * reaches no wallet itself.
+     */
+    suspend fun approveTransfer(key: RequestKey, approved: ApprovedTransaction): ApprovalOutcome {
+        val mutex = sending.computeIfAbsent(key) { Mutex() }
+        return try {
+            mutex.withLock { commit(key, approved) }
+        } finally {
+            sending.computeIfPresent(key) { _, running -> running.takeIf { it.isLocked } }
+        }
+    }
+
+    private suspend fun commit(key: RequestKey, approved: ApprovedTransaction): ApprovalOutcome {
+        val existing = locked { results.get(key.connectionId, key.requestId) }
+        if (existing != null) {
+            // One answer per request: an approval already stored is the one that counts.
+            return if (existing.approved) ApprovalOutcome.Accepted(existing)
+            else ApprovalOutcome.Refused(CheckOutcome.Failed)
+        }
+        val connection =
+            find(key.connectionId)?.takeIf { it.usable }
+                ?: return ApprovalOutcome.Refused(CheckOutcome.Failed)
+        val credential = withContext(io) { vault.get(key.connectionId) }
+        if (credential == null) {
+            forgetCredential(key.connectionId)
+            return ApprovalOutcome.Refused(CheckOutcome.Failed)
+        }
+        val stored =
+            locked {
+                val request = _inbox.value.pendingRequest(key) ?: return@locked null
+                if (request.transfer() == null) return@locked null
+                LocalResult(
+                        key.connectionId,
+                        key.requestId,
+                        Answer.Approve,
+                        now(),
+                        request,
+                        approvedTransaction = approved,
+                    )
+                    .also {
+                        results.put(it)
+                        publish()
+                    }
+            } ?: return ApprovalOutcome.Refused(CheckOutcome.Failed)
+        return try {
+            gateway.submitResult(
+                connection.serverUrl,
+                credential,
+                submitResultRequest {
+                    ref = stored.request.ref
+                    approval = approved.toApproval()
+                },
+            )
+            markApproved(stored)?.let { ApprovalOutcome.Accepted(it) }
+                ?: ApprovalOutcome.Refused(CheckOutcome.Failed)
+        } catch (e: GatewayException) {
+            // Nothing was approved, so nothing is kept. The wallet was never opened.
+            locked {
+                results.delete(key.connectionId, key.requestId)
+                publish()
+            }
+            if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(key.connectionId)
+            when (e.kind) {
+                GatewayException.Kind.StalePreparation -> ApprovalOutcome.Stale
+                GatewayException.Kind.InvalidState ->
+                    ApprovalOutcome.Superseded(e.request ?: stored.request)
+                else -> ApprovalOutcome.Refused(e.kind.toOutcome(), e.message)
+            }
+        }
+    }
+
+    /**
      * Records what the wallet did with an approved message, and sends it. The first outcome stored
      * stands: a later one changes nothing, so a signature can't be replaced by anything else.
      */
@@ -399,6 +505,13 @@ class ConnectionRepository(
             // The owner's approval goes first: the sidecar takes the wallet's result only for a
             // request the approval has already moved to PROCESSING.
             if (current.answer == Answer.Approve && !current.approved) {
+                // An approved transfer that reaches here was never committed, so there is nothing
+                // to send: approveTransfer removes such an approval, and load() cleans up one a
+                // crash left behind. Sending it now would approve a transaction nobody reviewed
+                // afresh.
+                if (current.uncommittedTransfer) {
+                    return settle(current, Delivery.Undeliverable, current.request)
+                }
                 val approval =
                     current.request.messageApproval()
                         ?: return settle(current, Delivery.Undeliverable, current.request)
@@ -577,12 +690,36 @@ class ConnectionRepository(
         const val APP_CLOSED = "The app closed before the wallet answered, so nothing was signed."
         const val WALLET_LOST =
             "The wallet's answer never reached this phone, so nothing was signed."
+        // A transfer can't say that: the wallet may have sent the transaction before it went.
+        const val APP_CLOSED_SENDING =
+            "The app closed while the transaction was with the wallet, so this phone never " +
+                "learned whether it was sent."
+        const val WALLET_LOST_SENDING =
+            "The wallet's answer never reached this phone, so it never learned whether the " +
+                "transaction was sent."
+
+        /**
+         * What an outcome this phone never learned means, which depends on what was with the
+         * wallet.
+         */
+        fun LocalResult.lostDetail(appClosed: Boolean): String =
+            when {
+                request.transfer() != null ->
+                    if (appClosed) APP_CLOSED_SENDING else WALLET_LOST_SENDING
+                appClosed -> APP_CLOSED
+                else -> WALLET_LOST
+            }
 
         /** Which answers a request can be given: the owner can always refuse. */
         fun Answer.applies(request: ActionRequest) =
             when (this) {
                 Answer.Acknowledge -> request.action.hasAck()
-                Answer.Reject -> request.action.hasAck() || request.signMessage() != null
+                Answer.Reject ->
+                    request.action.hasAck() ||
+                        request.signMessage() != null ||
+                        request.transfer() != null
+                // A transfer is approved through approveTransfer, which binds the approval to the
+                // preparation the owner reviewed; there is nothing to approve without one.
                 Answer.Approve -> request.signMessage() != null
             }
 
@@ -594,6 +731,7 @@ class ConnectionRepository(
          */
         fun submissionFor(result: LocalResult): SubmitResultRequest? {
             val requestRef = result.request.ref
+            val transfer = result.request.transfer() != null
             return when (result.answer) {
                 Answer.Acknowledge ->
                     submitResultRequest {
@@ -615,6 +753,13 @@ class ConnectionRepository(
                                     signature = outcome.signature
                                 }
                             }
+                        is SigningOutcome.Sent ->
+                            submitResultRequest {
+                                ref = requestRef
+                                transactionSubmission = transactionSubmission {
+                                    signature = outcome.signature
+                                }
+                            }
                         SigningOutcome.Declined ->
                             submitResultRequest {
                                 ref = requestRef
@@ -625,13 +770,21 @@ class ConnectionRepository(
                                 ref = requestRef
                                 executionFailure = executionFailure { detail = outcome.detail }
                             }
-                        // Nothing reached this phone, so nothing was signed and nothing is in
-                        // doubt: the agent is told the request failed, never that it succeeded.
+                        // For a message, nothing reached this phone, so nothing was signed and
+                        // nothing is in doubt: the agent is told the request failed. For a
+                        // transfer, the wallet may have sent the transaction, and an outcome
+                        // nobody knows is reported as unknown rather than guessed at.
                         is SigningOutcome.Unresolved ->
-                            submitResultRequest {
-                                ref = requestRef
-                                executionFailure = executionFailure { detail = outcome.detail }
-                            }
+                            if (transfer)
+                                submitResultRequest {
+                                    ref = requestRef
+                                    unknownOutcome = unknownOutcome { detail = outcome.detail }
+                                }
+                            else
+                                submitResultRequest {
+                                    ref = requestRef
+                                    executionFailure = executionFailure { detail = outcome.detail }
+                                }
                     }
             }
         }

@@ -7,14 +7,21 @@ memory, the network can drop, and the sidecar can restart. None of that may inve
 ask the wallet twice, lose one this phone holds, or let one connection's reply settle another
 connection's request.
 
+From SAW-021 the same holds for a transfer, where the wallet signs **and sends**, with one
+difference that runs through everything below: a message that never came back was never signed,
+because nothing about a message reaches a network. A transaction that never came back may be on
+chain. So the two are reported differently, and neither is guessed at.
+
 This page is what is checked automatically, what only the Seeker can show, and the record of both.
 
 ## The rules this keeps
 
-- **The wallet is asked once.** Only `InboxViewModel.approve` reaches the wallet, and only after the
-  sidecar has accepted the owner's approval. Everything that sends a result afterwards —
-  a refresh, **Send again**, a retry after a lost response — goes through
-  `ConnectionRepository.deliver`, which talks to the sidecar and never to a wallet.
+- **The wallet is asked once.** Only `InboxViewModel.approve` and `InboxViewModel.approveTransfer`
+  reach the wallet, and only after the sidecar has accepted the owner's approval. Everything that
+  sends a result afterwards — a refresh, **Send again**, a retry after a lost response — goes
+  through `ConnectionRepository.deliver`, which talks to the sidecar and never to a wallet.
+- **One wallet interaction at a time.** Every wallet call takes `WalletRepository`'s lock, so a
+  second request can't open a wallet screen while the owner is deciding in the first.
 - **What the wallet did is stored before it is sent.** `recordSigning` writes the signature to
   `filesDir/results/` and only then submits it. A dead network, a lost response, or a closed app
   after that point costs nothing: the next send delivers what is already on disk.
@@ -24,10 +31,21 @@ This page is what is checked automatically, what only the Seeker can show, and t
   and ends the request; a sidecar that couldn't be reached leaves the answer waiting on the phone,
   with what went wrong shown under it.
 - **An answer this phone never received is unresolved, never success.** If the app dies while the
-  message is with the wallet, or the wallet never answers, the approval is settled as
-  `SigningOutcome.Unresolved`: the screen says this phone never learned what the wallet did, and
-  the sidecar is told the request failed. Nothing was broadcast, so a signature that never reached
-  this phone exists nowhere. The wallet is not asked again.
+  action is with the wallet, or the wallet never answers, the approval is settled as
+  `SigningOutcome.Unresolved` and the screen says this phone never learned what the wallet did.
+  What the sidecar is told depends on what was with the wallet. For a **message**, FAILED: nothing
+  was broadcast, so a signature that never reached this phone exists nowhere. For a **transfer**,
+  UNKNOWN: the wallet may have signed and sent it, and a transaction that may be on chain must
+  never be reported as one that isn't. Either way the wallet is not asked again, and UNKNOWN is
+  not an invitation to retry.
+- **An approval the sidecar didn't take is not an approval (SAW-021).** A transfer's approval is
+  sent before the wallet is opened, and the wallet is opened only once the sidecar accepts it. An
+  approval it refused as stale, or that never reached it, is deleted from the phone: nothing was
+  approved anywhere, the request stays PENDING on the sidecar, and the owner reviews a fresh
+  preparation. That is what makes "approved, no wallet answer" mean exactly one thing.
+- **Nothing unread reaches the wallet.** Only a preparation whose own inspection came back
+  `Verified` (SAW-020) can be approved, checked once when the button is offered and again when it
+  is tapped.
 - **A reply belongs to its connection.** An answer is keyed by connection ID and request ID, it is
   sent to that connection's own URL with that connection's own credential, and the sidecar refuses
   a reference that names a request another connection owns.
@@ -53,6 +71,21 @@ This page is what is checked automatically, what only the Seeker can show, and t
 | Every outcome across a restart of the app's storage, including the unresolved one | `ResultStoreTest` |
 | Repeated `SubmitResult`, for an approval and for a signature, before and after a sidecar restart | `sidecar/src/storage/request-store.test.ts` |
 | A result naming another connection's request is refused | `sidecar/src/storage/request-store.test.ts`, "keeps the phone to its own connection's requests" |
+| **Transfers (SAW-021)** | |
+| The approval names the reviewed version and hash, the wallet gets exactly those bytes, and the result is a transaction submission | `InboxViewModelTest.approvingHandsTheWalletExactlyTheBytesThatWereReviewed` |
+| A sidecar that rebuilt the transaction after the approval doesn't change what the wallet signs | `InboxViewModelTest.theWalletGetsTheApprovedBytesEvenWhenTheServerHasBuiltANewerVersionSince` |
+| Double taps: three taps while the wallet is in front produce one approval and one wallet call | `InboxViewModelTest.aSecondTapNeverOpensTheWalletTwice` |
+| A stale preparation is refused, nothing is stored, nothing reaches the wallet, and it is read again | `InboxViewModelTest.aStalePreparationIsRefusedAndReadAgainRatherThanApproved` |
+| A version read again while the owner was looking is not the one they approve | `InboxViewModelTest.aVersionReadAgainWhileTheOwnerWasLookingIsNotTheOneTheyApprove` |
+| A transaction the phone couldn't account for never reaches the wallet, in the model and in the screen | `InboxViewModelTest.aTransactionThisPhoneCouldNotAccountForNeverReachesTheWallet`, `TransferReviewScreenTest.offersNoApprovalFor…` |
+| A switched wallet, and a wallet other than the one on screen, stop the approval | `InboxViewModelTest.aWalletOtherThanTheOneOnScreenStopsTheApproval`, `…connectingAnotherWalletTakesTheTransferOffThisPhoneEntirely` |
+| An approval the sidecar never took opens no wallet and is not kept | `InboxViewModelTest.anApprovalTheServerNeverTookOpensNoWalletAndIsNotKept` |
+| A lost wallet callback settles as UNKNOWN, and no second wallet call happens, then or on **Send again** | `InboxViewModelTest.aLostWalletCallbackIsUnknownAndTheWalletIsNeverAskedAgain` |
+| A wallet that can't say whether it sent leaves the outcome UNKNOWN | `InboxViewModelTest.aWalletThatCannotSayWhetherItSentLeavesTheOutcomeUnknown` |
+| Declining in the wallet is a rejection; rejecting in the app never touches the wallet | `InboxViewModelTest.decliningInTheWalletRejectsTheTransfer…`, `…rejectingATransferInTheAppNeverTouchesTheWallet` |
+| Activity recreation while the wallet has the transaction | `InboxActivityTest.aRotationWhileTheWalletHasTheTransactionKeepsTheApprovalAndAsksItOnlyOnce` |
+| One wallet interaction at a time | `WalletRepositoryTest.runsOneWalletInteractionAtATime` |
+| The approved transaction survives a restart of the app's storage | `ResultStoreTest.keepsTheTransactionAnApprovedTransferIsBoundToAcrossARestart` |
 
 ### What the automated checks deliberately can't show
 
@@ -84,6 +117,42 @@ Have `pnpm agent sign "…"` and `pnpm agent get <id>` ready on the computer tha
 | 12 | Pair a second sidecar, have both ask for a signature, and approve one | Only that one is answered. The other stays PENDING on its own sidecar, and nothing was sent to it. |
 | 13 | Ask for a signature, tap **Approve and sign**, and, while the wallet is in front, change the wallet on the **Wallet** screen afterwards | Whatever the wallet answered is reported for the wallet that was reviewed, or the request is reported as not signed. No signature is ever attributed to the new wallet. |
 | 14 | Check the sidecar's log and database | Each request has one terminal state and one outcome. No token, credential, or wallet authorization appears anywhere. |
+
+### Transfers (SAW-021)
+
+Run these on **devnet** with a funded devnet wallet, and never on mainnet. Have
+`pnpm agent transfer …` and `pnpm agent get <id>` ready. Record PASS, FAIL, or NOT RUN.
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 15 | Ask for a small devnet transfer and open it | The screen reads the transaction here: amount in base units, recipient, the wallet that pays, the blockhash, "Not evaluated" for policy, and the server's fee estimate labelled as the server's. |
+| 16 | Tap **Read it again**, then **Approve and send** | The wallet opens with the version now on screen. The approval reached the sidecar first: the agent reads PROCESSING while the wallet is in front. |
+| 17 | Approve in the wallet | The app shows the transaction's ID, and the agent reads SUBMITTED with the same signature. Exactly one transaction appears on chain. |
+| 18 | Ask for another, tap **Approve and send**, and tap again the instant the screen comes back | One wallet prompt, one transaction, one submission. |
+| 19 | Ask for another and decline in the wallet | The agent reads REJECTED. Nothing is on chain. |
+| 20 | Ask for another, open it, wait for the blockhash window to run down (about a minute past `estimated_expiry`), then approve | Nothing reaches the wallet. The app says the server has a newer transaction and has read it again; the agent still reads PENDING. |
+| 21 | Ask for another, tap **Approve and send**, and force-stop the app while the wallet is in front | Reopen: the app says it never learned what the wallet did, and the agent reads UNKNOWN, not FAILED and not SUBMITTED. The wallet is never asked again. |
+| 22 | Look the fee payer up on a devnet explorer for the request in step 21 | Either the transaction is there or it isn't. Either way the app and the agent still say UNKNOWN rather than guessing, and no second transaction was sent. Settling UNKNOWN from the chain is SAW-022. |
+| 23 | Ask for another, turn on airplane mode, and tap **Approve and send** | Nothing opens the wallet. The app says nothing was approved and it can be approved again. |
+| 24 | Ask for another and change the wallet on the **Wallet** screen while the review is open | The request is cancelled by the sidecar, and the screen says so. No approval is possible. |
+
+## Verification record: SAW-021
+
+Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
+[`toolchain.md`](../development/toolchain.md).
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, `tsc`, 362/362 sidecar tests, and 27/27 test agent tests |
+| `pnpm check:generated` | PASS: SAW-021 changed no `.proto` file, and the committed generated code and fixtures match a fresh generation |
+| `pnpm test:hello` | PASS: 9/9 Stage 1 acceptance cases |
+| `pnpm test:queue` | PASS: 7/7 Stage 2 acceptance cases |
+| `pnpm check:android` | PASS: Spotless, 365/365 unit tests (24 more than before), Android lint with no issues, and the debug and instrumentation APKs |
+| The wallet is handed the approved bytes | PASS: `FakeWalletAdapter` records every call's exact bytes, and they are the stored approval's even when the sidecar rebuilt the transaction meanwhile |
+| No wallet call before the sidecar accepts the approval | PASS: an unreachable sidecar and a stale preparation each leave `sendings` empty, and store nothing |
+| A lost wallet callback is UNKNOWN | PASS: `unknown_outcome` reaches the sidecar, the request is UNKNOWN, and `Send again` opens no wallet |
+| Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>Dropping `WalletRepository`'s lock failed `runsOneWalletInteractionAtATime`.</li><li>Fetching the transaction again instead of using the approved bytes failed seven transfer tests, including `approvingHandsTheWalletExactlyTheBytesThatWereReviewed`.</li><li>Reporting an unresolved transfer as an execution failure failed both UNKNOWN tests.</li><li>Treating a refused approval as accepted failed `anApprovalTheServerNeverTookOpensNoWalletAndIsNotKept` and `aStalePreparationIsRefusedAndReadAgainRatherThanApproved`.</li><li>Offering **Approve and send** whatever the verdict failed both `offersNoApprovalFor…` screen tests.</li><li>Naming `signAndSendTransactions` outside `MwaWalletAdapter` failed `StageBoundaryTest.nothingSpendsSwapsOrAsksForABiometricOfItsOwn`.</li></ul> |
+| The owner's checks on the Seeker, steps 15 to 24 | NOT RUN: no device was attached, and no transaction was ever sent to any cluster |
 
 ## Verification record: SAW-017
 

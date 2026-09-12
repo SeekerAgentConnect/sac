@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.Answer
+import io.github.brrenat.seekervault.connections.ApprovalOutcome
+import io.github.brrenat.seekervault.connections.ApprovedTransaction
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionRepository
@@ -20,6 +22,7 @@ import io.github.brrenat.seekervault.transactions.TransferInspection
 import io.github.brrenat.seekervault.transactions.inspectTransfer
 import io.github.brrenat.seekervault.transactions.transfer
 import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.SendResult
 import io.github.brrenat.seekervault.wallet.SignResult
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import java.time.Duration
@@ -41,6 +44,22 @@ enum class SigningProblem {
     OtherWallet,
     /** The connected wallet isn't the one on screen any more: the request needs another review. */
     Changed,
+    /**
+     * The transaction on screen isn't the one this phone holds any more, or this phone couldn't
+     * account for all of it. Nothing that failed its own inspection is put to a wallet: that is
+     * input validation, not a policy verdict (SAW-020).
+     */
+    NotVerified,
+    /**
+     * The sidecar refused the approval because a newer preparation exists, or because this one can
+     * no longer land. It has been read again, and the new version needs its own review.
+     */
+    Stale,
+    /**
+     * The approval never reached the sidecar, so nothing was approved and no wallet was opened. The
+     * transfer can be approved again once the server answers.
+     */
+    NotApproved,
 }
 
 /**
@@ -247,6 +266,83 @@ class InboxViewModel(
         }
     }
 
+    /**
+     * The owner's approval of a transfer (docs/guides/transfers.md). [reviewed] is the preparation
+     * the screen showed them, and everything is checked against it before anything happens: the
+     * same preparation this phone still holds, one its own inspection passed, and the wallet they
+     * saw. Then, in this order, the approval is stored, the sidecar accepts it, and only then is
+     * the wallet asked — with the bytes from the stored approval, never with bytes fetched again.
+     */
+    fun approveTransfer(key: RequestKey, reviewed: Preparation.Ready?) {
+        val inbox = repository.inbox.value
+        if (key in activity.value.sending || inbox.result(key) != null) return
+        val request = inbox.pendingRequest(key) ?: return
+        val transfer = request.transfer() ?: return
+        val held = activity.value.preparations[key]
+        // What they reviewed must be what this phone holds now: a version read again while they
+        // were reading is a different transaction, and has to be reviewed on its own.
+        if (
+            reviewed == null ||
+                held !is Preparation.Ready ||
+                held.prepared != reviewed.prepared ||
+                !reviewed.inspection.approvable
+        ) {
+            return problem(key, SigningProblem.NotVerified)
+        }
+        val selected = wallet.wallet.value
+        val mismatch =
+            when {
+                selected == null -> SigningProblem.NoWallet
+                reviewed.wallet == null ||
+                    selected.address != reviewed.wallet.address ||
+                    selected.network != reviewed.wallet.network -> SigningProblem.Changed
+                transfer.wallet != selected.address -> SigningProblem.OtherWallet
+                else -> null
+            }
+        if (mismatch != null || selected == null) return problem(key, mismatch)
+        val approved =
+            ApprovedTransaction(
+                version = reviewed.prepared.version,
+                contentHash = reviewed.prepared.contentHash,
+                transaction = reviewed.prepared.transaction,
+            )
+        activity.update {
+            it.copy(sending = it.sending + key, problem = null, problemKey = null)
+        }
+        viewModelScope.launch {
+            try {
+                when (val outcome = repository.approveTransfer(key, approved)) {
+                    is ApprovalOutcome.Accepted -> {
+                        // A wallet that never answers leaves the outcome unknown rather than open:
+                        // it may have sent the transaction, and this phone must not say otherwise.
+                        val sent =
+                            withTimeoutOrNull(walletTimeout.toMillis()) {
+                                wallet.signAndSend(approved.transaction, selected)
+                            }
+                        repository.recordSigning(
+                            key,
+                            sent?.let(::outcomeOf) ?: SigningOutcome.Unresolved(NO_ANSWER_SENDING),
+                        )
+                    }
+                    // Nothing was approved: read the transfer again so the owner reviews the
+                    // preparation as it is now, rather than the one that has gone.
+                    ApprovalOutcome.Stale -> {
+                        problem(key, SigningProblem.Stale)
+                        prepare(key, force = true)
+                    }
+                    is ApprovalOutcome.Superseded -> Unit // the inbox shows where it went
+                    is ApprovalOutcome.Refused -> problem(key, SigningProblem.NotApproved)
+                }
+            } finally {
+                activity.update { it.copy(sending = it.sending - key) }
+            }
+        }
+    }
+
+    private fun problem(key: RequestKey, problem: SigningProblem?) = activity.update {
+        it.copy(problem = problem, problemKey = key)
+    }
+
     fun problemShown() = activity.update { it.copy(problem = null, problemKey = null) }
 
     /**
@@ -276,12 +372,51 @@ class InboxViewModel(
         val WALLET_TIMEOUT: Duration = Duration.ofMinutes(10)
         const val NO_ANSWER =
             "The wallet didn't answer, so nothing reached this phone and nothing was signed."
+        // The same silence means something else for a transaction: the wallet may have sent it.
+        const val NO_ANSWER_SENDING =
+            "The wallet didn't answer, so this phone never learned whether the transaction was sent."
 
         /**
          * What the wallet said, as this phone records it. A signature is kept only if it is over
          * exactly the bytes that were sent: a wallet that signed anything else has signed nothing
          * this request asked for.
          */
+        /**
+         * What the wallet said about a transaction, as this phone records it. Only an outcome the
+         * wallet stated is recorded as one: anything else is unresolved, because a transaction that
+         * may have been sent must never be reported as one that wasn't.
+         */
+        fun outcomeOf(result: SendResult): SigningOutcome =
+            when (result) {
+                is SendResult.Sent -> SigningOutcome.Sent(result.signature)
+                SendResult.Declined -> SigningOutcome.Declined
+                SendResult.NoWallet ->
+                    SigningOutcome.Failed("No wallet app answered on this phone.")
+                SendResult.AuthorizationExpired ->
+                    SigningOutcome.Failed(
+                        "The wallet no longer accepts this phone's authorization, so nothing was sent."
+                    )
+                SendResult.NotConnected ->
+                    SigningOutcome.Failed("No wallet is connected on the phone any more.")
+                SendResult.Changed ->
+                    SigningOutcome.Failed(
+                        "The owner's wallet changed before it could sign, so nothing was sent."
+                    )
+                is SendResult.Failed ->
+                    SigningOutcome.Failed(
+                        listOfNotNull("The wallet could not send this", result.message)
+                            .joinToString(": ")
+                    )
+                is SendResult.Unknown ->
+                    SigningOutcome.Unresolved(
+                        listOfNotNull(
+                                "This phone can't tell whether the transaction was sent",
+                                result.message,
+                            )
+                            .joinToString(": ")
+                    )
+            }
+
         fun outcomeOf(result: SignResult, asked: ByteString): SigningOutcome =
             when (result) {
                 is SignResult.Signed ->

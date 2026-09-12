@@ -48,8 +48,9 @@ import java.time.Instant
  * stored outcome instead of the buttons.
  *
  * A message is shown complete, with every invisible character marked, together with the wallet and
- * network that would sign it (docs/guides/message-signing.md). Nothing reaches the wallet until the
- * owner taps Approve.
+ * network that would sign it (docs/guides/message-signing.md). A transfer is shown as this phone
+ * read its transaction, with Approve offered only for one the phone could account for whole
+ * (docs/guides/transfers.md). Nothing reaches the wallet until the owner taps Approve.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +73,8 @@ fun RequestDetailsScreen(
     preparation: Preparation? = null,
     /** Asks the sidecar to build a new version and reads that one instead. */
     onPrepareAgain: () -> Unit = {},
+    /** Approves the transfer as the screen shows it, which opens the wallet (SAW-021). */
+    onApproveTransfer: () -> Unit = {},
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -187,8 +190,18 @@ fun RequestDetailsScreen(
                     )
                 }
             }
-            if (request.transfer() != null) {
-                TransferReview(preparation, onPrepareAgain)
+            val transfer = request.transfer()
+            if (transfer != null) {
+                TransferReview(
+                    preparation = preparation,
+                    wallet = wallet,
+                    request = request,
+                    answered = result != null,
+                    sending = sending,
+                    signingProblem = signingProblem,
+                    onPrepareAgain = onPrepareAgain,
+                    onApprove = onApproveTransfer,
+                )
             }
             if (request.agentNote.isNotEmpty()) {
                 // Shown apart from the request itself: the agent wrote it, and nothing checked it.
@@ -216,7 +229,11 @@ fun RequestDetailsScreen(
                     modifier = Modifier.padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (message == null) {
+                    if (transfer != null) {
+                        // A transfer's Approve sits in the review above, next to the facts it
+                        // approves. Only Reject belongs down here with the other answers.
+                        Unit
+                    } else if (message == null) {
                         Button(
                             onClick = { onAnswer(Answer.Acknowledge) },
                             enabled = !sending,
@@ -258,16 +275,26 @@ fun RequestDetailsScreen(
 }
 
 /**
- * What this phone read out of the transfer's own transaction
- * (docs/security.md#inspecting-a-transfer).
+ * What this phone read out of the transfer's own transaction, and the owner's decision about it
+ * (docs/security.md#inspecting-a-transfer, docs/guides/transfers.md).
  *
  * The order on screen is the order of trust: the verdict first, then the facts the bytes establish,
  * then what could not be established, and only then the server's own numbers, labelled as theirs.
  * The agent's note is rendered by the caller, further down and marked unverified, so that nothing
- * it says can sit next to a fact and borrow its weight.
+ * it says can sit next to a fact and borrow its weight. Approve comes last, under everything it
+ * approves, and only for a transaction this phone could account for whole.
  */
 @Composable
-private fun TransferReview(preparation: Preparation?, onPrepareAgain: () -> Unit) {
+private fun TransferReview(
+    preparation: Preparation?,
+    wallet: SelectedWallet?,
+    request: ActionRequest,
+    answered: Boolean,
+    sending: Boolean,
+    signingProblem: SigningProblem?,
+    onPrepareAgain: () -> Unit,
+    onApprove: () -> Unit,
+) {
     when (preparation) {
         null,
         Preparation.Running ->
@@ -354,6 +381,15 @@ private fun TransferReview(preparation: Preparation?, onPrepareAgain: () -> Unit
                     }
                 }
             }
+            // The wallet that would pay and sign, as this phone holds it now, so the owner
+            // approves a wallet and a network they can see rather than one they last set.
+            Field(
+                R.string.request_field_signs_with,
+                wallet?.let {
+                    stringResource(R.string.signing_wallet, it.address, networkText(it.network))
+                } ?: request.transfer()?.wallet.orEmpty(),
+                "signsWith",
+            )
             // The fee can't be read out of a transaction: it depends on the network. It is the
             // server's number, and it is labelled as one rather than mixed in with the facts.
             Field(
@@ -361,19 +397,60 @@ private fun TransferReview(preparation: Preparation?, onPrepareAgain: () -> Unit
                 estimateText(preparation.prepared),
                 "estimate",
             )
+            // Policies are Stage 5. Until they exist this says so, rather than implying that
+            // anything here was measured against a rule and allowed.
+            Field(
+                R.string.request_field_policy,
+                stringResource(R.string.transfer_policy_not_evaluated),
+                "policy",
+            )
             OutlinedButton(
                 onClick = onPrepareAgain,
+                enabled = !sending,
                 modifier = Modifier.padding(horizontal = 16.dp).testTag(InboxTags.TRANSFER_AGAIN),
             ) {
                 Text(stringResource(R.string.transfer_prepare_again))
             }
-            // SAW-021 adds approving one. Until it lands the screen says so plainly rather than
-            // offering a button that would do nothing.
-            Text(
-                stringResource(R.string.transfer_approval_later),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_NO_APPROVAL),
-            )
+            if (!answered) {
+                if (inspection.approvable) {
+                    // The only thing that opens the wallet, and only for a transaction this phone
+                    // read whole and found to match the request.
+                    Button(
+                        onClick = onApprove,
+                        enabled = !sending && wallet != null,
+                        modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_APPROVE),
+                    ) {
+                        Text(stringResource(R.string.approve_and_send))
+                    }
+                    if (wallet == null) {
+                        Text(
+                            stringResource(R.string.transfer_no_wallet),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier =
+                                Modifier.padding(horizontal = 16.dp)
+                                    .testTag(InboxTags.SIGNING_PROBLEM),
+                        )
+                    }
+                } else {
+                    // No button at all rather than one that refuses: nothing this phone could not
+                    // account for is ever put in front of a wallet.
+                    Text(
+                        stringResource(R.string.transfer_not_approvable),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_POLICY),
+                    )
+                }
+            }
+            if (signingProblem != null) {
+                Text(
+                    stringResource(problemText(signingProblem)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                )
+            }
         }
     }
 }
