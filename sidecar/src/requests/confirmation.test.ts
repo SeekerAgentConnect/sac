@@ -17,6 +17,7 @@ import {
   Network,
   RequestState,
 } from "../gen/seekervault/request/v1/request_pb.js";
+import { GENESIS_HASHES } from "../solana/network.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
 import {
   FakeChain,
@@ -336,6 +337,78 @@ describe("confirming a sent transfer", () => {
     for (const line of logs) {
       assert.ok(!line.includes(`${secret.host}/`), line);
     }
+  });
+});
+
+/**
+ * The database outlives the process, and SOLANA_RPC_URL does not. A restart that points the same
+ * stored requests at another cluster must not let that cluster's block height read as "the
+ * transaction expired, and nothing was spent" — which is a settled, terminal, and false answer
+ * about money that may well have moved.
+ */
+describe("a restart with the RPC on another cluster", () => {
+  let wrongChain: FakeChain;
+  let wrongEndpoint: FakeRpc;
+  let restarted: Sidecar;
+
+  before(async () => {
+    wrongChain = new FakeChain();
+    // Mainnet, where this devnet transfer's signature does not exist, and whose block height is
+    // long past the window the approved transaction named.
+    wrongChain.genesisHashValue = GENESIS_HASHES.get(Network.MAINNET) ?? "";
+    wrongChain.height = 10_000_000n;
+    wrongEndpoint = await startFakeRpc(wrongChain);
+  });
+
+  after(async () => {
+    await restarted.close();
+    await wrongEndpoint.close();
+  });
+
+  it("settles nothing, and says which cluster it was pointed at", async () => {
+    const sent = await send();
+    // The same database, a new process, another cluster.
+    restarted = await startSidecar({
+      host: "127.0.0.1",
+      port: 0,
+      mcpToken: MCP_TOKEN,
+      phoneToken: PHONE_TOKEN,
+      liveCommandTimeoutSeconds: 1,
+      databasePath,
+      requestTtlSeconds: 86_400,
+      pendingLimit: 100,
+      solanaRpcUrl: wrongEndpoint.url,
+    });
+
+    const { request } = await requestClient(
+      restarted.url,
+      paired.phoneToken,
+    ).checkStatus({ ref: sent.ref });
+
+    assert.equal(
+      request?.state,
+      RequestState.SUBMITTED,
+      "another cluster's silence is not this transfer's expiry",
+    );
+    assert.match(request?.outcome?.confirmation?.detail ?? "", /mainnet/);
+    assert.match(
+      request?.outcome?.confirmation?.detail ?? "",
+      /nothing here has been settled/,
+    );
+    assert.equal(request?.outcome?.confirmation?.matchesApproval, false);
+    // Nothing about the transaction was read at all: not its status, not the transaction under
+    // it, and above all not the block height.
+    assert.deepEqual(wrongChain.calls, ["getGenesisHash"]);
+  });
+
+  it("settles the transfer again once the RPC is back on its own cluster", async () => {
+    const sent = await send();
+    chain.land(sent.signature, {
+      slot: 99n,
+      commitment: "finalized",
+      transaction: sent.onChain,
+    });
+    assert.equal((await check(sent)).state, RequestState.CONFIRMED);
   });
 });
 

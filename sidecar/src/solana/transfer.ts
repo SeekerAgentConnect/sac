@@ -237,7 +237,8 @@ async function solTransfer(
 
 /**
  * A token moves between associated token accounts: the owner's own, which must already hold
- * enough, and the recipient's, which this creates when it doesn't exist yet.
+ * enough, and the recipient's, which the transaction creates when it doesn't exist yet and has
+ * the chain vouch for when it does.
  */
 async function tokenTransfer(
   rpc: ChainReader,
@@ -276,12 +277,8 @@ async function tokenTransfer(
 
   const destination = associatedTokenAddress(recipient, mint);
   const destinationAccount = await rpc.account(destination.toBase58());
-  const instructions: TransactionInstruction[] = [];
   let rentLamports = 0n;
   if (destinationAccount === undefined) {
-    instructions.push(
-      createAssociatedTokenAccount(wallet, destination, recipient, mint),
-    );
     rentLamports = await rpc.rentExemption(TOKEN_ACCOUNT_BYTES);
   } else {
     tokenAccount(
@@ -292,13 +289,21 @@ async function tokenTransfer(
       "the recipient's",
     );
   }
-  instructions.push(
+  // CreateIdempotent goes in whether or not the account exists yet, and costs nothing when it
+  // does. It is what makes the destination's owner a fact the chain checks: the
+  // associated-token-account program re-derives the address, reads the account, and fails the
+  // whole transaction unless it is the recipient's for this mint. The phone cannot read a chain,
+  // and a classic SPL account's authority can be handed to somebody else after its address was
+  // derived, so without this instruction an address is only an address
+  // (docs/security.md#inspecting-a-transfer).
+  const instructions: TransactionInstruction[] = [
+    createAssociatedTokenAccount(wallet, destination, recipient, mint),
     transferChecked(
       { source, mint, destination, authority: wallet },
       amount,
       decimals,
     ),
-  );
+  ];
   return { instructions, rentLamports };
 }
 

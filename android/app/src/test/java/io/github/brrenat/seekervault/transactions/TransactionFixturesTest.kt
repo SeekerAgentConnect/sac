@@ -92,9 +92,9 @@ class TransactionFixturesTest {
             )
             assertEquals("$name decimals", expected.getInt("decimals"), facts.decimals)
             assertEquals(
-                "$name createsRecipientAccount",
-                expected.getBoolean("createsRecipientAccount"),
-                facts.createsRecipientAccount,
+                "$name ensuresRecipientAccount",
+                expected.getBoolean("ensuresRecipientAccount"),
+                facts.ensuresRecipientAccount,
             )
         }
     }
@@ -140,6 +140,29 @@ class TransactionFixturesTest {
             ),
             approvable,
         )
+    }
+
+    /**
+     * The case that derivation alone would get wrong. A classic SPL token account's authority can
+     * be handed to somebody else after its address was derived, so a destination that derives
+     * correctly proves only what the account is called. What proves whose it is now is the
+     * associated-account instruction in the transaction itself, which the chain enforces.
+     */
+    @Test
+    fun aDerivedAddressAloneNeverEstablishesWhoReceivesTheTokens() {
+        val unchecked = inspect(case("token_destination_authority_changed"))
+        val vouched = inspect(case("token_transfer_existing_account"))
+        // The very same destination account, in both.
+        assertEquals(vouched.facts?.destinationAccount, unchecked.facts?.destinationAccount)
+        assertEquals(listOf(Finding.DestinationOwnerUnchecked), unchecked.findings)
+        assertEquals(Verdict.Invalid, unchecked.verdict)
+        assertTrue("an unestablished owner is not approvable", !unchecked.approvable)
+        assertEquals("no wallet may be named for it", null, unchecked.facts?.recipient)
+        assertTrue(!checkNotNull(unchecked.facts).ensuresRecipientAccount)
+        // And with the instruction that has the chain check it, the same transfer is verified.
+        assertEquals(Verdict.Verified, vouched.verdict)
+        assertTrue(checkNotNull(vouched.facts).ensuresRecipientAccount)
+        assertNotNull(vouched.facts?.recipient)
     }
 
     @Test

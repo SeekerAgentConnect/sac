@@ -33,6 +33,10 @@ jobs:
       - run: pnpm test:hello
       # The Stage 2 acceptance scenario: two sidecar processes with throwaway databases.
       - run: pnpm test:queue
+      # The Stage 4 transfer scenario, against a fake Solana JSON-RPC endpoint on loopback. Its one
+      # live-network case is opt-in and stays off here: SEEKER_VAULT_NETWORK_CHECKS is not set, so
+      # CI reaches no cluster and spends nothing (docs/testing/stage-4.md).
+      - run: pnpm test:transfer
       - run: pnpm check:generated
       - run: pnpm build
 

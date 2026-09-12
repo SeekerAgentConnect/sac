@@ -21,12 +21,12 @@
         "amount": "2500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     },
     {
       "name": "token_transfer_existing_account",
-      "description": "An SPL token transfer to a recipient who already has a token account.",
+      "description": "An SPL token transfer to a recipient who already has a token account. The idempotent associated-account instruction is there all the same: it costs nothing, and it is what has the chain confirm the account is still the recipient's.",
       "request": {
         "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
         "network": "devnet",
@@ -34,8 +34,8 @@
         "amount": "1500000",
         "tokenMint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL"
       },
-      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQACBQsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLdSZCIoktoJLeIQkOag3Q8j4W6JCc9sO3Y07z78KGVbOa4FWKe7ogWTZDxVB3ZwtYh0Kcg5OxW77b/ngphxeEhwbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEBAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAEDBAEEAgAKDGDjFgAAAAAABgA=",
-      "contentHash": "UgCBKDoWn3KK/9RcPAAEWv0mExrpmgyMF8lQBuHGGU0=",
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAFCAsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLmuBVinu6IFk2Q8VQd2cLWIdCnIOTsVu+2/54KYcXhId1JkIiiS2gkt4hCQ5qDdDyPhbokJz2w7djTvPvwoZVs4yXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkBAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAIDBgABBAUGBwEBBwQCBQEACgxg4xYAAAAAAAYA",
+      "contentHash": "pPvKXxapzqnqnqveKqiO8RvSkY+rcFw5PLeLAfw1fMg=",
       "version": 1,
       "verdict": "verified",
       "findings": [],
@@ -45,7 +45,7 @@
         "amount": "1500000",
         "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
         "decimals": 6,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": true
       }
     },
     {
@@ -69,7 +69,7 @@
         "amount": "1500000",
         "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
         "decimals": 6,
-        "createsRecipientAccount": true
+        "ensuresRecipientAccount": true
       }
     },
     {
@@ -93,7 +93,7 @@
         "amount": "18446744073709551615",
         "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
         "decimals": 6,
-        "createsRecipientAccount": true
+        "ensuresRecipientAccount": true
       }
     },
     {
@@ -117,7 +117,7 @@
         "amount": "7",
         "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
         "decimals": 0,
-        "createsRecipientAccount": true
+        "ensuresRecipientAccount": true
       }
     },
     {
@@ -142,7 +142,7 @@
         "amount": "1500000",
         "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
         "decimals": 6,
-        "createsRecipientAccount": true
+        "ensuresRecipientAccount": true
       }
     },
     {
@@ -167,7 +167,7 @@
         "amount": "2500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     },
     {
@@ -192,7 +192,7 @@
         "amount": "9500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     },
     {
@@ -221,7 +221,7 @@
         "amount": "1500000",
         "mint": "4iYFsZcZXQLTfykuzRwY19SxRja53Vm6jSf6CuTx6Kjt",
         "decimals": 6,
-        "createsRecipientAccount": true
+        "ensuresRecipientAccount": true
       }
     },
     {
@@ -246,7 +246,7 @@
         "amount": "2500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     },
     {
@@ -272,7 +272,7 @@
         "amount": "2500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     },
     {
@@ -298,7 +298,7 @@
         "amount": "2500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     },
     {
@@ -311,8 +311,8 @@
         "amount": "1500000",
         "tokenMint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL"
       },
-      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQADBgsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLdSZCIoktoJLeIQkOag3Q8j4W6JCc9sO3Y07z78KGVbOa4FWKe7ogWTZDxVB3ZwtYh0Kcg5OxW77b/ngphxeEhwbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAgMEAQQCAAoMYOMWAAAAAAAGAwMBBQAJBEBCDwAAAAAAAA==",
-      "contentHash": "o2F2OpDBhzxlpUBobjDmvLNiBx8ewMFSY+m/YZOs9v0=",
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAGCQsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLmuBVinu6IFk2Q8VQd2cLWIdCnIOTsVu+2/54KYcXhId1JkIiiS2gkt4hCQ5qDdDyPhbokJz2w7djTvPvwoZVs4yXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKksLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAwMGAAEEBQYHAQEHBAIFAQAKDGDjFgAAAAAABgcDAggACQRAQg8AAAAAAAA=",
+      "contentHash": "1hZQez92vc/YPBQOvC9ypJRx+MVwb4x847V5He009PU=",
       "version": 1,
       "verdict": "invalid",
       "findings": [
@@ -324,7 +324,33 @@
         "amount": "1500000",
         "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
         "decimals": 6,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": true
+      }
+    },
+    {
+      "name": "token_destination_authority_changed",
+      "description": "The destination is exactly the address the recipient's associated token account derives to, and the transaction does nothing to establish that it is still theirs. A classic SPL token account's authority can be handed to somebody else after the address was derived, so the phone can name the account and nobody behind it.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "1500000",
+        "tokenMint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQACBQsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLdSZCIoktoJLeIQkOag3Q8j4W6JCc9sO3Y07z78KGVbOa4FWKe7ogWTZDxVB3ZwtYh0Kcg5OxW77b/ngphxeEhwbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEBAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fIAEDBAEEAgAKDGDjFgAAAAAABgA=",
+      "contentHash": "UgCBKDoWn3KK/9RcPAAEWv0mExrpmgyMF8lQBuHGGU0=",
+      "version": 1,
+      "verdict": "invalid",
+      "findings": [
+        "DestinationOwnerUnchecked"
+      ],
+      "facts": {
+        "recipient": null,
+        "destinationAccount": "BRaBtTRHkDev24SQxFMAFrPkm8Ko35otdYbkjKdUrqwt",
+        "amount": "1500000",
+        "mint": "3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL",
+        "decimals": 6,
+        "ensuresRecipientAccount": false
       }
     },
     {
@@ -349,7 +375,7 @@
         "amount": "2500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     },
     {
@@ -372,7 +398,7 @@
         "amount": "2500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     },
     {
@@ -397,7 +423,7 @@
         "amount": "2500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     },
     {
@@ -420,7 +446,7 @@
         "amount": "2500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     },
     {
@@ -481,7 +507,7 @@
         "amount": "2500000000",
         "mint": null,
         "decimals": 9,
-        "createsRecipientAccount": false
+        "ensuresRecipientAccount": false
       }
     }
   ]

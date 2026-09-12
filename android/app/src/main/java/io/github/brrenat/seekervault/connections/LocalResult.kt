@@ -115,6 +115,13 @@ data class LocalResult(
      * becomes PROCESSING and the wallet may be asked. Only for [Answer.Approve].
      */
     val approved: Boolean = false,
+    /**
+     * True when the approval was sent and this phone never learned whether the sidecar took it: the
+     * connection dropped, or the response was lost. The sidecar may well have moved the request to
+     * PROCESSING, so the approval is kept, and the next delivery asks the sidecar what became of it
+     * rather than guessing (SAW-021). No wallet was opened either way.
+     */
+    val approvalUncertain: Boolean = false,
     /** The wallet's answer to an approved message or transfer; null until it has given one. */
     val signing: SigningOutcome? = null,
     /**
@@ -128,12 +135,20 @@ data class LocalResult(
         get() = RequestKey(connectionId, requestId)
 
     /**
-     * An approved transfer the sidecar hasn't accepted. The wallet is opened only once it has, so
-     * this one was never asked anything: nothing is signed, nothing is sent, and nothing is owed to
-     * the agent. It is removed rather than reported (SAW-021).
+     * An approved transfer the sidecar demonstrably hasn't accepted. The wallet is opened only once
+     * it has, so this one was never asked anything: nothing is signed, nothing is sent, and nothing
+     * is owed to the agent. It is removed rather than reported (SAW-021).
+     *
+     * An approval whose fate this phone never learned ([approvalUncertain]) is not one of these:
+     * dropping it would leave the sidecar holding a PROCESSING request that nothing can ever
+     * settle.
      */
     val uncommittedTransfer: Boolean
-        get() = answer == Answer.Approve && approvedTransaction != null && !approved
+        get() =
+            answer == Answer.Approve &&
+                approvedTransaction != null &&
+                !approved &&
+                !approvalUncertain
 
     /**
      * Whether asking the sidecar again could still change what this says (SAW-022). A transfer the

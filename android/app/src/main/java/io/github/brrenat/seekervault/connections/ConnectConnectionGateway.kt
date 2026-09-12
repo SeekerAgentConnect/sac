@@ -31,6 +31,7 @@ import java.security.cert.CertificateException
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import okhttp3.OkHttpClient
 
@@ -79,8 +80,12 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
                 requestId = key.requestId
             }
         }
+        // Preparing reads a chain: the mint, both token accounts, the blockhash, the fee. The
+        // sidecar bounds the whole of that, and this deadline is set above its bound, so the
+        // phone never reports a failure for work the sidecar is still doing (sidecar
+        // solana/rpc.ts).
         return call {
-            RequestServiceClient(protocolClient(serverUrl))
+            RequestServiceClient(protocolClient(serverUrl, CHAIN_TIMEOUT))
                 .prepareRequest(request, bearer(credential))
         }
             .prepared
@@ -106,8 +111,10 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
                 requestId = key.requestId
             }
         }
+        // Checking reads a chain too, so it gets the same deadline as preparing.
         return call {
-            RequestServiceClient(protocolClient(serverUrl)).checkStatus(request, bearer(credential))
+            RequestServiceClient(protocolClient(serverUrl, CHAIN_TIMEOUT))
+                .checkStatus(request, bearer(credential))
         }
             .request
     }
@@ -138,7 +145,7 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
         }
     }
 
-    private fun protocolClient(serverUrl: String) =
+    private fun protocolClient(serverUrl: String, timeout: Duration = TIMEOUT) =
         ProtocolClient(
             httpClient = ConnectOkHttpClient(httpClient),
             config =
@@ -146,7 +153,7 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
                     host = serverUrl,
                     serializationStrategy = GoogleJavaLiteProtobufStrategy(),
                     networkProtocol = NetworkProtocol.CONNECT,
-                    timeoutOracle = simpleTimeouts(unaryTimeout = 15.seconds, streamTimeout = null),
+                    timeoutOracle = simpleTimeouts(unaryTimeout = timeout, streamTimeout = null),
                 ),
         )
 
@@ -169,6 +176,16 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
 
     private companion object {
         const val PAGE_SIZE = 100
+
+        /** What a call that only reads the sidecar's own database gets. */
+        val TIMEOUT = 15.seconds
+
+        /**
+         * What a call the sidecar answers by reading a chain gets. The sidecar gives one such
+         * operation 20 seconds however many endpoint calls it makes, so this leaves room for the
+         * request and the response on top of that bound rather than racing it.
+         */
+        val CHAIN_TIMEOUT = 30.seconds
 
         fun classify(error: Throwable): GatewayException {
             val causes = causesOf(error)

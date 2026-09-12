@@ -184,6 +184,48 @@ export class RequestStore {
   }
 
   /**
+   * The request an idempotency key already stands for, or undefined when the key is free. It
+   * applies exactly the rules {@link create} does — a key reused with different parameters fails
+   * with IDEMPOTENCY_CONFLICT here too — and stores nothing.
+   *
+   * A tool that reads the chain before it stores a request asks this first, so a retry is answered
+   * with the original request whether or not an endpoint is reachable and whatever the asset looks
+   * like now. `create` resolves the key again under its own transaction, so this is a shortcut,
+   * never the decision (requests/mcp-tools.ts).
+   */
+  replayOf(idempotencyKey: string, action: Action): ActionRequest | undefined {
+    const reason =
+      invalidIdempotencyKeyReason(idempotencyKey) ??
+      invalidActionReason(action);
+    if (reason !== undefined) {
+      throw new RequestFailure(RequestError.INVALID_PARAMETERS, reason);
+    }
+    const fingerprint = actionFingerprint(action);
+    return transaction(this.#db, () => {
+      this.#expireOverdue(this.#now());
+      const record = this.#db
+        .prepare(
+          "SELECT request_id, fingerprint FROM idempotency_keys WHERE idempotency_key = ?",
+        )
+        .get(idempotencyKey);
+      if (record === undefined) return undefined;
+      const decision = resolveIdempotency(
+        {
+          requestId: text(record.request_id),
+          fingerprint: text(record.fingerprint),
+        },
+        fingerprint,
+      );
+      if (decision.kind === "conflict") {
+        throw idempotencyConflict(idempotencyKey, decision.requestId);
+      }
+      return decision.kind === "replay"
+        ? this.#find(decision.requestId)
+        : undefined;
+    });
+  }
+
+  /**
    * Stores a new request for the active connection, or answers a retry. The same idempotency key
    * with the same action returns the original request as it is now. With a different action, it
    * fails with IDEMPOTENCY_CONFLICT. Storing a request isn't approval: the owner decides later,
@@ -224,10 +266,7 @@ export class RequestStore {
         return { request: this.#find(decision.requestId), created: false };
       }
       if (decision.kind === "conflict") {
-        throw new RequestFailure(
-          RequestError.IDEMPOTENCY_CONFLICT,
-          `idempotency_key "${request.idempotencyKey}" was already used for request ${decision.requestId} with different parameters`,
-        );
+        throw idempotencyConflict(request.idempotencyKey, decision.requestId);
       }
       const connectionId = this.activeConnection();
       if (connectionId === undefined) {
@@ -846,6 +885,17 @@ function invalidLifetimeReason(
     seconds <= MAX_EXPIRES_IN_SECONDS
     ? undefined
     : `expires_in_seconds must be a whole number from ${MIN_EXPIRES_IN_SECONDS} to ${MAX_EXPIRES_IN_SECONDS}`;
+}
+
+/** The one refusal an idempotency key reused for different parameters gets, wherever it is seen. */
+function idempotencyConflict(
+  idempotencyKey: string,
+  requestId: string,
+): RequestFailure {
+  return new RequestFailure(
+    RequestError.IDEMPOTENCY_CONFLICT,
+    `idempotency_key "${idempotencyKey}" was already used for request ${requestId} with different parameters`,
+  );
 }
 
 function requireUuid(field: string, value: string): void {

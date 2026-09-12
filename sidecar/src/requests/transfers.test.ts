@@ -18,6 +18,7 @@ import {
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { startSidecar, type Sidecar } from "../server.ts";
 import {
+  ASSOCIATED_TOKEN_PROGRAM,
   TOKEN_2022_PROGRAM,
   associatedTokenAddress,
 } from "../solana/addresses.ts";
@@ -145,6 +146,31 @@ describe("vault_transfer", () => {
     const first = await ask({ idempotency_key: key });
     const again = await ask({ idempotency_key: key });
     assert.equal(again.request_id, first.request_id);
+  });
+
+  it("answers a repeat before it reads the chain, so a dead endpoint still replays", async () => {
+    const mint = new PublicKey(Uint8Array.from({ length: 32 }, () => 88));
+    chain.put(mint, mintAccount({ decimals: 6, supply: 1_000_000n }));
+    const key = `transfer-replay-${++keys}`;
+    const first = await ask({
+      idempotency_key: key,
+      token_mint: mint.toBase58(),
+    });
+
+    chain.unavailable = "the endpoint is down";
+    try {
+      const again = await ask({
+        idempotency_key: key,
+        token_mint: mint.toBase58(),
+      });
+      assert.equal(
+        again.request_id,
+        first.request_id,
+        "a retry gets its request back, not the state of an endpoint",
+      );
+    } finally {
+      chain.unavailable = undefined;
+    }
   });
 
   it("refuses a changed retry under a used idempotency key", async () => {
@@ -354,6 +380,61 @@ describe("PrepareRequest", () => {
       prepared?.transaction ?? new Uint8Array(),
     );
     assert.equal(tx.message.compiledInstructions.length, 2);
+  });
+
+  it("has the chain vouch for a token account that already exists, and charges no rent", async () => {
+    chain.put(MINT, mintAccount({ decimals: 6, supply: 1_000_000_000n }));
+    chain.put(
+      associatedTokenAddress(new PublicKey(wallet), MINT),
+      tokenAccount({ mint: MINT, owner: wallet, amount: 9_000_000n }),
+    );
+    const destination = associatedTokenAddress(RECIPIENT, MINT);
+    chain.put(
+      destination,
+      tokenAccount({ mint: MINT, owner: RECIPIENT, amount: 0n }),
+    );
+    const view = await ask({ token_mint: MINT.toBase58(), amount: "1500000" });
+    const { prepared } = await phone().prepareRequest({ ref: refOf(view) });
+
+    assert.equal(prepared?.rentLamports, 0n, "nothing is created, so no rent");
+    const tx = VersionedTransaction.deserialize(
+      prepared?.transaction ?? new Uint8Array(),
+    );
+    // The idempotent create is in the transaction all the same: it is what makes the
+    // destination's owner something the chain checks, rather than something an address implies.
+    assert.equal(tx.message.compiledInstructions.length, 2);
+    const [create] = tx.message.compiledInstructions;
+    assert.equal(
+      tx.message.staticAccountKeys[create?.programIdIndex ?? -1]?.toBase58(),
+      ASSOCIATED_TOKEN_PROGRAM.toBase58(),
+    );
+    assert.deepEqual(Array.from(create?.data ?? new Uint8Array()), [1]);
+  });
+
+  it("refuses a destination whose token account belongs to somebody else now", async () => {
+    chain.put(MINT, mintAccount({ decimals: 6, supply: 1_000_000_000n }));
+    chain.put(
+      associatedTokenAddress(new PublicKey(wallet), MINT),
+      tokenAccount({ mint: MINT, owner: wallet, amount: 9_000_000n }),
+    );
+    // The address still derives from the recipient; the authority behind it does not.
+    chain.put(
+      associatedTokenAddress(RECIPIENT, MINT),
+      tokenAccount({
+        mint: MINT,
+        owner: new PublicKey(Uint8Array.from({ length: 32 }, () => 44)),
+        amount: 0n,
+      }),
+    );
+    const view = await ask({ token_mint: MINT.toBase58(), amount: "1500000" });
+    const error = await phone()
+      .prepareRequest({ ref: refOf(view) })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+    assert.ok(error instanceof ConnectError);
+    assert.equal(error.code, Code.InvalidArgument);
   });
 
   it("has nothing to prepare for a request without a transaction", async () => {

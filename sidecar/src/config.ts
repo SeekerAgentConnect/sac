@@ -9,6 +9,7 @@
 import { fileURLToPath } from "node:url";
 
 import { invalidServerUrlReason, normalizeServerUrl } from "./pairing/uri.ts";
+import { CHAIN_BUDGET_MS } from "./solana/rpc.ts";
 import {
   MAX_EXPIRES_IN_SECONDS,
   MIN_EXPIRES_IN_SECONDS,
@@ -92,7 +93,11 @@ const MAX_PAIRING_TOKEN_TTL_SECONDS = 3600;
 /** How long one Solana RPC call may take unless SOLANA_RPC_TIMEOUT_MS says otherwise. */
 export const DEFAULT_SOLANA_RPC_TIMEOUT_MS = 10_000;
 const MIN_SOLANA_RPC_TIMEOUT_MS = 1000;
-const MAX_SOLANA_RPC_TIMEOUT_MS = 60_000;
+/**
+ * No single call may be given longer than a whole chain-backed operation gets, because the phone
+ * waits on one unary RPC for the operation and gives up at its own deadline (solana/rpc.ts).
+ */
+const MAX_SOLANA_RPC_TIMEOUT_MS = CHAIN_BUDGET_MS;
 
 export function loadSidecarConfig(env: Env): SidecarConfig & {
   readonly demoTools: boolean;

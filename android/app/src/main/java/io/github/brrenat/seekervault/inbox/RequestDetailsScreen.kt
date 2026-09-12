@@ -376,7 +376,7 @@ private fun TransferReview(
                 }
                 facts.mint?.let { Field(R.string.request_field_token, it, "token") }
                 Field(R.string.request_field_pays_fee, facts.payer, "paysFee")
-                if (facts.createsRecipientAccount) {
+                if (facts.ensuresRecipientAccount) {
                     Field(
                         R.string.request_field_creates,
                         stringResource(R.string.transfer_creates_account),

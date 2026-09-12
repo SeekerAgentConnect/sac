@@ -290,6 +290,7 @@ Not every sidecar-driven transition in it has an implementation yet. SAW-022 imp
 - **`PrepareRequest` builds a fresh unsigned transaction** for a PENDING transfer or swap. The transaction is built at review time rather than at creation, because its blockhash expires. Each call returns a new version, numbered from 1.
 - **The phone parses the transaction itself** and checks it against the request, rather than trusting the sidecar's description. Stage 4 adds the parsing, and Stage 5 the policy check.
 - **An approval names exactly what the wallet will sign:** the version, and the SHA-256 `content_hash` of the transaction's bytes. The sidecar accepts it only for the latest version, with the matching hash, and only while at least 15 seconds of that version's blockhash window are left. Otherwise it answers `STALE_PREPARATION`, and the phone prepares again and shows the user the new version.
+- **The phone applies the same 15 seconds again, at the wallet.** Acceptance and the wallet call are not the same moment: the phone serializes wallet interactions, and the owner may be in the wallet app with something else in between. So it checks the window once more with the wallet lock held, immediately before it calls `signAndSendTransactions`, and asks the wallet nothing if the window has closed ([`docs/security.md`](security.md#approving-a-transfer-saw-021)).
 - **A message approval** has `prepared_version` 0 and the SHA-256 of the message's exact bytes.
 - **An `ack` or `sign_message` request has nothing to prepare,** and `PrepareRequest` answers it with `INVALID_PARAMETERS`.
 - **A request the owner has already answered gets no new version.** Preparing anything but a PENDING request answers `INVALID_STATE`, so no second approval can be collected.
@@ -300,13 +301,14 @@ The sidecar builds a transfer itself, from the chain and the stored action. Noth
 
 | | Native SOL | Classic SPL token |
 | --- | --- | --- |
-| **Instructions** | System `Transfer` | Associated Token Account `CreateIdempotent`, only when the recipient has no account yet, then SPL Token `TransferChecked` |
+| **Instructions** | System `Transfer` | Associated Token Account `CreateIdempotent`, always, then SPL Token `TransferChecked` |
 | **Amount** | Lamports | The mint's base units, with the decimals the sidecar read from the mint |
 | **Accounts** | The wallet, and the recipient | The wallet's and the recipient's associated token accounts, the mint, and the wallet as the authority |
 | **Refused** | A recipient that is a token account or an executable program | A Token-2022 mint, an NFT (no decimals and a supply of one), a mint that isn't initialized, a missing or frozen token account, a balance smaller than the amount, or a recipient given as a token account rather than its owner |
 
 - **The transaction is version 0 (`VersionedTransaction`), with no address lookup tables,** so every account it touches is written in it. The wallet is the fee payer and the only required signer, and every signature slot is empty: the sidecar holds no key and never fills one.
 - **Decimals, token accounts, and the blockhash come from the chain,** never from a ticker, a name, or the agent. The associated token account is derived from the owner and the mint.
+- **`CreateIdempotent` is in every token transfer, whether or not the account exists.** It costs nothing when it does, and it is what makes the destination's current owner a fact the chain checks: the associated-account program re-derives the address, reads the account, and fails the whole transaction unless its owner and mint are the recipient's. The phone reaches no chain, and a classic SPL token account's authority can be handed to somebody else after its address was derived, so without this instruction an address is only an address ([`docs/security.md`](security.md#inspecting-a-transfer)).
 - **`fee_lamports`** is the endpoint's estimate for this exact message, or the base fee per signature when it won't price one. **`rent_lamports`** is what the recipient's new token account costs, and 0 when none is created; the owner is shown both apart from the amount.
 - **The network is checked before anything is built.** The sidecar compares the endpoint's genesis hash with the request's network, so a mainnet request is never prepared against devnet, or the other way round.
 - **The endpoint is configured as `SOLANA_RPC_URL`.** Without one, the sidecar serves no `vault_transfer`, leaves `transfer` out of `vault_get_capabilities`, and answers `PrepareRequest` for a transfer with `CHAIN_UNAVAILABLE`. The URL may carry an API key, so it never reaches a log or an error message.
@@ -355,7 +357,7 @@ A transfer succeeds only as CONFIRMED. The wallet's `transaction_submission` say
 - the **agent**, every time it reads a SUBMITTED transfer with `vault_get_request`. At most one chain check per request every two seconds, so a tight polling loop gets the stored answer in between.
 - the **owner**, through `RequestService.CheckStatus` from the phone. That one always checks: they asked.
 
-**What one check does.** It reads `getSignatureStatuses` for the reported signature, and, when there is a confirmed or finalized status, `getTransaction` for the transaction itself.
+**What one check does.** It reads `getGenesisHash` and compares it with the network the request is bound to. Only then does it read `getSignatureStatuses` for the reported signature, and, when there is a confirmed or finalized status, `getTransaction` for the transaction itself.
 
 | What the endpoint says | Where the request goes |
 | --- | --- |
@@ -366,10 +368,12 @@ A transfer succeeds only as CONFIRMED. The wallet's `transaction_submission` say
 | No status, the window has passed, and a search of the ledger itself still finds nothing | FAILED: it can no longer land, and nothing was spent |
 | The transaction under that signature isn't the approved one | Unchanged, and `matches_approval` is false |
 | The endpoint timed out, refused, or answered nonsense | Unchanged, and the attempt is recorded |
+| The endpoint serves another cluster, or one the sidecar doesn't know | Unchanged, and the confirmation says which cluster it was pointed at |
 
 The rules behind it:
 
 - **A confirmed result is checked against the approved bytes.** The sidecar fetches the transaction the chain holds under that signature and compares it with the exact `PreparedTransaction` the approval named, over the message — everything the signatures cover. A wallet's signature fills the slots the approved bytes leave empty, so that part differs and nothing else may. A transaction it can't take apart is not a match.
+- **The endpoint has to be serving the request's own cluster.** The database outlives the process and `SOLANA_RPC_URL` does not, so a restart can point stored requests at another chain. There, the signature is absent and the block height is somebody else's — which together read exactly like "the transaction expired, and nothing was spent". That is a terminal answer about money that may well have moved, so the genesis hash is compared first, the same way a preparation compares it, and a mismatch settles nothing at all: no status, no transaction, and above all no block height is read.
 - **A missing status is never proof.** A signature drops out of a node's status cache after a while, and an endpoint that didn't answer has said nothing at all. Only the approved transaction's own blockhash window closing, together with a search of the ledger that still finds nothing, means it can never land ([R9](https://solana.com/developers/cookbook/transactions/confirmation)).
 - **A check settles a request or leaves it exactly as it was.** It never moves one backward, never returns one to PENDING, and never opens a wallet. A finished request is left alone, whatever the chain says later.
 - **The result rests on one endpoint.** `Outcome.confirmation.endpoint` is the host of the configured `SOLANA_RPC_URL` — the host and nothing else, because the URL can carry an API key. There is no second opinion behind a CONFIRMED or a FAILED transfer, and the agent (`checked_with`) and the owner are both told whose word it is.

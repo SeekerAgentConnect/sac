@@ -153,7 +153,9 @@ The owner's wallet belongs to the wallet app, not to seeker-vault (SAW-015; [`do
 The wallet signs **and sends** a transfer, so the rules around it are tighter than around a message ([`docs/architecture.md`](architecture.md#approval-binding), [`docs/guides/transfers.md`](guides/transfers.md)).
 
 - **Only a transaction this phone read whole can be approved.** A preparation whose inspection came back anything but `Verified` has no Approve button, and the check is made again when one is tapped. This is input validation, not a policy verdict.
-- **The sidecar is the commit point.** The approval, naming the version and content hash, is sent first; the wallet is opened only once the sidecar accepts it. An approval it refuses, or that never reaches it, is deleted from the phone: nothing was approved, and the owner reviews a fresh preparation.
+- **The sidecar is the commit point.** The approval, naming the version and content hash, is sent first; the wallet is opened only once the sidecar accepts it. An approval the sidecar refuses, or that never left the phone, is deleted there: nothing was approved, and the owner reviews a fresh preparation.
+- **An approval nobody answered is kept, not guessed at.** A dropped connection or a lost response is not a refusal: the sidecar may hold the request as PROCESSING, and only the phone can ever settle that. So the approval stays on the phone, marked as unanswered, and the next delivery *reads* the request rather than sending the approval again. Still PENDING means it never arrived, and the approval is dropped; PROCESSING means it did, and since the wallet is opened only for an approval the sidecar answered, the sidecar is told that nothing was signed and nothing was sent, so the request ends instead of waiting for a wallet forever.
+- **The window is checked again at the wallet, not only at the sidecar.** The sidecar refuses an approval with less than 15 seconds of its blockhash window left, but acceptance and the wallet call are different moments: one wallet interaction runs at a time, and the wait for that lock can outlast the window. The phone takes the lock first, checks the window, commits the approval, and checks the window once more immediately before `signAndSendTransactions`. A transaction that can no longer land is never put in front of the wallet — before the commit the owner simply reviews a fresh preparation, and after it the sidecar is told that nothing was sent.
 - **The wallet is handed the stored bytes.** They are written to disk before it opens, so a sidecar that rebuilt the transaction in between cannot substitute one, and a rotation or a restart cannot change what is signed.
 - **One wallet interaction at a time,** and one per approval. What the wallet did is stored before it is sent, and every retry reaches a sidecar, never a wallet.
 - **An outcome nobody knows is reported as UNKNOWN.** A wallet that reports it signed but did not submit, a session that ended without an answer, or an app killed while the wallet had the transaction all leave it unknown rather than failed. A signed transaction can still land, and the phone never asks again.
@@ -168,6 +170,7 @@ The wallet signs **and sends** a transfer, so the rules around it are tighter th
 
 Whether a sent transaction succeeded is read from the chain, and only by the sidecar ([`docs/protocol.md`](protocol.md#confirmation)).
 
+- **The endpoint must be serving the request's own cluster.** Before a signature status, a transaction, a block height, or an expiry is read as evidence, the sidecar compares the endpoint's genesis hash with the network the request is bound to — the same check a preparation makes. This matters at a restart: the database outlives the process and `SOLANA_RPC_URL` does not, and on another cluster the signature is missing and the block height is somebody else's, which together look exactly like "it expired and nothing was spent". A mismatched or unknown cluster settles nothing — not FAILED, not CONFIRMED, not anything — and the confirmation says which cluster the endpoint was pointed at.
 - **A result is checked against the approved bytes.** Before a transfer is reported CONFIRMED, the sidecar fetches the transaction the chain holds under the reported signature and compares its message with the exact `PreparedTransaction` the approval named. A signature naming anything else settles nothing, and is disclosed as not matching rather than reported either way.
 - **The trust is named.** The whole answer rests on one configured endpoint. `Outcome.confirmation.endpoint`, the agent's `checked_with`, and the phone's "Checked with …" line all carry its **host only**: `SOLANA_RPC_URL` can hold an API key, so the URL never reaches a log, an error, or a stored record.
 - **A check can settle a request or leave it alone, and nothing else.** It opens no wallet, signs nothing, sends nothing, and never moves a request backward or back to PENDING. A request that has finished is left as it is, whatever a later look says.
@@ -203,17 +206,39 @@ never changes, and against the wallet the owner selected. Nothing the sidecar sa
 transaction is consulted, and the agent's note is rendered apart from the facts and labelled as
 unverified.
 
-**It reads nothing from a chain, and needs to.** For the shapes Stage 4 supports, no lookup adds
-anything:
+**It reads nothing from a chain, and says what that costs.** The phone has no RPC endpoint of any
+kind (`StageBoundaryTest` proves it from the sources), so every claim below is either read out of the
+bytes or enforced by a program on chain when the transaction runs. Nothing rests on the sidecar's
+word.
 
-- **A token account's owner is derived, not fetched.** The address of an associated token account is
-  fixed by its owner and its mint, so the phone computes it and compares. If the destination in the
-  instruction is not that address, the bytes prove nothing about who receives the tokens, and the
-  review says exactly that rather than naming a recipient it cannot support.
+- **Where SOL goes is in the instruction.** The System `Transfer` names the receiving account
+  outright, so the owner's own address is the fact.
+- **Where tokens go is in the instruction; whose that account is, is not.** An address alone
+  establishes nothing about ownership. A classic SPL token account's authority can be changed with
+  `SetAuthority` after its address was derived, so an account that still derives from the recipient
+  and the mint may belong to somebody else entirely by the time the transfer runs. Deriving the
+  address and comparing it is necessary, and it is not sufficient.
+- **So the transaction has to make the chain check it.** Every token transfer the sidecar builds
+  carries the associated-account `CreateIdempotent` instruction, whether or not the account exists.
+  That program re-derives the address, reads the account, and fails the whole transaction unless its
+  owner and its mint are the recipient's. The phone requires that instruction — for this recipient,
+  this mint, this account, paid by this wallet — before it will name a recipient at all. Without it
+  the review reports that nothing establishes who would receive the tokens, and the preparation is
+  **not approvable**.
 - **`TransferChecked` carries the decimals, and the token program enforces them.** A wrong value
   makes the transaction fail on chain, so reading the amount with them is safe.
 - **No name is ever shown.** A token appears as its mint address and its base units. There is no
   ticker, so there is no ticker to fake — in the request, in the note, or anywhere else.
+
+**What RPC trust this requires.** None, on the phone's side. The sidecar reads a chain to build the
+transaction, and its readings are convenience, not evidence: the mint's decimals are re-enforced by
+the token program, the destination's ownership is re-enforced by the associated-account program, the
+network by the genesis-hash check before the build, and the amount, recipient, payer, and signer set
+by the bytes the phone read itself. A sidecar that lies about any of them produces a transaction that
+either fails the phone's inspection or fails on chain. What a dishonest or misconfigured endpoint can
+still do is refuse to build, build against a cluster it misreports the genesis hash for, or misstate
+the fee and rent estimate — which is why those two are shown under the server's name and apart from
+the facts.
 
 **What it will not do.**
 
@@ -238,8 +263,9 @@ anything:
   be read out of a transaction, so it is shown under the server's name and apart from the facts.
 - **The network is checked against the wallet, not against the bytes.** A transaction does not say
   which cluster it is for. The phone checks that the request's network is the one the owner selected
-  their wallet for; the sidecar separately refuses to build against an endpoint whose genesis hash
-  is another cluster's ([transfers](protocol.md#transfers-saw-019)).
+  their wallet for; the sidecar separately refuses to build, and refuses to settle, against an
+  endpoint whose genesis hash is another cluster's ([transfers](protocol.md#transfers-saw-019),
+  [confirmation](protocol.md#confirmation)).
 - **Only the supported shapes are covered.** Anything else is reported as unread, which is the
   honest answer, rather than as safe.
 

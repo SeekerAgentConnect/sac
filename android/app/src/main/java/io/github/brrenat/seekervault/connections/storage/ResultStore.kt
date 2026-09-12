@@ -99,9 +99,10 @@ class ResultStore(private val dir: File) {
         const val SUFFIX = ".json"
         // 2 adds an approval's signing outcome (SAW-016), 3 adds the outcome the phone never
         // learned (SAW-017), and 4 adds the transaction an approved transfer is bound to
-        // (SAW-021). An older file is read as it was: a version 1 file can only hold an
-        // acknowledgement or a rejection, neither of which has a signing outcome at all.
-        const val VERSION = 4
+        // (SAW-021), and 5 adds whether an approval's fate is unknown to this phone. An older
+        // file is read as it was: a version 1 file can only hold an acknowledgement or a
+        // rejection, neither of which has a signing outcome at all.
+        const val VERSION = 5
         const val OLDEST_VERSION = 1
 
         fun encode(result: LocalResult): String =
@@ -114,6 +115,7 @@ class ResultStore(private val dir: File) {
                 .put("request", Base64.getEncoder().encodeToString(result.request.toByteArray()))
                 .put("delivery", result.delivery.name)
                 .put("approved", result.approved)
+                .put("approvalUncertain", result.approvalUncertain)
                 .putOpt("signing", result.signing?.let(::encodeSigning))
                 .putOpt("approvedTransaction", result.approvedTransaction?.let(::encodeApproved))
                 .putOpt("lastFailure", result.lastFailure?.name)
@@ -200,6 +202,7 @@ class ResultStore(private val dir: File) {
                     ActionRequest.parseFrom(Base64.getDecoder().decode(json.getString("request"))),
                 delivery = Delivery.valueOf(json.getString("delivery")),
                 approved = json.optBoolean("approved"),
+                approvalUncertain = json.optBoolean("approvalUncertain"),
                 signing = decodeSigning(json.optJSONObject("signing")),
                 lastFailure =
                     json

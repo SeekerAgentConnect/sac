@@ -21,6 +21,16 @@ import kotlinx.coroutines.withContext
 class WalletStorageException(cause: Throwable) : Exception(cause.message, cause)
 
 /**
+ * The wallet, for a caller that already holds the one wallet lock through
+ * [WalletRepository.withWallet]. It carries no state of its own: it is the permission to reach the
+ * wallet, handed out once per lock.
+ */
+interface WalletSession {
+    /** The same call as [WalletRepository.signAndSend], with the lock already held. */
+    suspend fun signAndSend(transaction: ByteString, reviewed: SelectedWallet): SendResult
+}
+
+/**
  * The wallet the owner selected, and what every paired sidecar knows about it
  * (docs/guides/wallet-setup.md).
  * - Connecting asks the installed wallet through [adapter], stores the selection, and publishes it
@@ -138,19 +148,46 @@ class WalletRepository(
      */
     suspend fun signAndSend(transaction: ByteString, reviewed: SelectedWallet): SendResult =
         lock.withLock {
-            val selected = _wallet.value ?: return@withLock SendResult.NotConnected
-            if (selected.address != reviewed.address || selected.network != reviewed.network) {
-                return@withLock SendResult.Changed
-            }
-            val authorization =
-                withContext(io) { store.authorization() } ?: return@withLock SendResult.NotConnected
-            val result = adapter.signAndSendTransaction(transaction, selected, authorization)
-            if (result == SendResult.AuthorizationExpired) {
-                withContext(io) { store.clear() }
-                setWallet(null)
-            }
-            result
+            send(transaction, reviewed)
         }
+
+    /**
+     * Runs [block] holding the one wallet lock, and lets it reach the wallet through the
+     * [WalletSession] it is handed.
+     *
+     * A transfer needs this because the lock is where the waiting happens: another wallet
+     * interaction can hold it for as long as the owner is in the wallet app, and a prepared
+     * transaction's blockhash window closes while it waits. Approving and checking that the
+     * approval can still land have to happen on this side of that wait, not before it, or the
+     * wallet is handed bytes that can no longer be included (docs/guides/transfers.md).
+     */
+    suspend fun <T> withWallet(block: suspend (WalletSession) -> T): T = lock.withLock {
+        block(session)
+    }
+
+    private val session =
+        object : WalletSession {
+            override suspend fun signAndSend(
+                transaction: ByteString,
+                reviewed: SelectedWallet,
+            ): SendResult = send(transaction, reviewed)
+        }
+
+    // The body of signAndSend, with the lock already held.
+    private suspend fun send(transaction: ByteString, reviewed: SelectedWallet): SendResult {
+        val selected = _wallet.value ?: return SendResult.NotConnected
+        if (selected.address != reviewed.address || selected.network != reviewed.network) {
+            return SendResult.Changed
+        }
+        val authorization =
+            withContext(io) { store.authorization() } ?: return SendResult.NotConnected
+        val result = adapter.signAndSendTransaction(transaction, selected, authorization)
+        if (result == SendResult.AuthorizationExpired) {
+            withContext(io) { store.clear() }
+            setWallet(null)
+        }
+        return result
+    }
 
     /** Tells the wallet, forgets the selection and its authorization, and publishes "no wallet". */
     suspend fun disconnect() = lock.withLock {

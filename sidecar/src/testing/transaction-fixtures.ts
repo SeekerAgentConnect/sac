@@ -31,7 +31,12 @@ import {
   Network,
   type TransferAction,
 } from "../gen/seekervault/request/v1/request_pb.js";
-import { TOKEN_PROGRAM, associatedTokenAddress } from "../solana/addresses.ts";
+import {
+  ASSOCIATED_TOKEN_PROGRAM,
+  SYSTEM_PROGRAM,
+  TOKEN_PROGRAM,
+  associatedTokenAddress,
+} from "../solana/addresses.ts";
 import { buildTransfer } from "../solana/transfer.ts";
 import {
   FakeChain,
@@ -84,7 +89,8 @@ export interface FixtureFacts {
   readonly amount: string;
   readonly mint: string | null;
   readonly decimals: number;
-  readonly createsRecipientAccount: boolean;
+  /** Whether the transaction has the chain vouch for the recipient's token account. */
+  readonly ensuresRecipientAccount: boolean;
 }
 
 export interface FixtureCase {
@@ -261,26 +267,28 @@ function solFacts(amount: string, recipient = RECIPIENT): FixtureFacts {
     amount,
     mint: null,
     decimals: 9,
-    createsRecipientAccount: false,
+    ensuresRecipientAccount: false,
   };
 }
 
 function tokenFacts(
   amount: string,
-  createsRecipientAccount: boolean,
+  ensuresRecipientAccount: boolean,
   decimals = 6,
   mint: PublicKey = MINT,
 ): FixtureFacts {
   const destination = associatedTokenAddress(RECIPIENT, mint);
   return {
-    // The destination proves an owner only when it derives from one; a mint the request doesn't
-    // name derives a different account, and then the bytes name no wallet at all.
-    recipient: mint === MINT ? RECIPIENT.toBase58() : null,
+    // A wallet is named only when the transaction itself has the chain check whose account the
+    // destination is. A mint the request doesn't name derives a different account, and then the
+    // associated-account instruction vouches for somebody else's.
+    recipient:
+      mint === MINT && ensuresRecipientAccount ? RECIPIENT.toBase58() : null,
     destinationAccount: destination.toBase58(),
     amount,
     mint: mint.toBase58(),
     decimals,
-    createsRecipientAccount,
+    ensuresRecipientAccount,
   };
 }
 
@@ -298,12 +306,14 @@ export async function transactionFixtures(): Promise<FixtureFile> {
     ),
     await built(
       "token_transfer_existing_account",
-      "An SPL token transfer to a recipient who already has a token account.",
+      "An SPL token transfer to a recipient who already has a token account. The idempotent " +
+        "associated-account instruction is there all the same: it costs nothing, and it is what " +
+        "has the chain confirm the account is still the recipient's.",
       tokenTransfer,
       {
         verdict: "verified",
         findings: [],
-        facts: tokenFacts("1500000", false),
+        facts: tokenFacts("1500000", true),
       },
       { chain: chainWith({ destination: true }) },
     ),
@@ -469,6 +479,7 @@ export async function transactionFixtures(): Promise<FixtureFile> {
         "it offers: this one hands the account to a delegate.",
       requestOf(tokenTransfer),
       [
+        createIdempotentInstruction(),
         transferCheckedInstruction(),
         new TransactionInstruction({
           programId: TOKEN_PROGRAM,
@@ -488,6 +499,20 @@ export async function transactionFixtures(): Promise<FixtureFile> {
       {
         verdict: "invalid",
         findings: ["UnreadableValueInstruction"],
+        facts: tokenFacts("1500000", true),
+      },
+    ),
+    crafted(
+      "token_destination_authority_changed",
+      "The destination is exactly the address the recipient's associated token account derives " +
+        "to, and the transaction does nothing to establish that it is still theirs. A classic " +
+        "SPL token account's authority can be handed to somebody else after the address was " +
+        "derived, so the phone can name the account and nobody behind it.",
+      requestOf(tokenTransfer),
+      [transferCheckedInstruction()],
+      {
+        verdict: "invalid",
+        findings: ["DestinationOwnerUnchecked"],
         facts: tokenFacts("1500000", false),
       },
     ),
@@ -625,6 +650,23 @@ export async function transactionFixtures(): Promise<FixtureFile> {
       "TransactionFixturesTest. Run `node sidecar/src/testing/transaction-fixtures.ts` to rebuild.",
     cases,
   };
+}
+
+/** The associated-account CreateIdempotent the sidecar puts in front of every token transfer. */
+function createIdempotentInstruction(): TransactionInstruction {
+  const destination = new PublicKey(associatedTokenAddress(RECIPIENT, MINT));
+  return new TransactionInstruction({
+    programId: ASSOCIATED_TOKEN_PROGRAM,
+    keys: [
+      { pubkey: WALLET, isSigner: true, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true },
+      { pubkey: RECIPIENT, isSigner: false, isWritable: false },
+      { pubkey: MINT, isSigner: false, isWritable: false },
+      { pubkey: SYSTEM_PROGRAM, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([1]),
+  });
 }
 
 /** SPL Token TransferChecked, as the sidecar builds it, for the crafted cases. */

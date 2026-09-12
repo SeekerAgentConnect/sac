@@ -14,7 +14,11 @@ import {
   type PreparedTransaction,
   type RequestRef,
 } from "../gen/seekervault/request/v1/request_pb.js";
-import { ChainUnavailable, type ChainReader } from "../solana/rpc.ts";
+import {
+  ChainUnavailable,
+  withChainBudget,
+  type ChainReader,
+} from "../solana/rpc.ts";
 import {
   UnsupportedTransfer,
   assertSupportedAsset,
@@ -41,7 +45,7 @@ export class TransactionPreparer {
    */
   async checkAsset(asset: Asset | undefined): Promise<void> {
     try {
-      await assertSupportedAsset(this.#rpc, asset);
+      await withChainBudget(() => assertSupportedAsset(this.#rpc, asset));
     } catch (error) {
       throw chainFailure(error);
     }
@@ -69,7 +73,11 @@ export class TransactionPreparer {
       );
     }
     try {
-      const built = await buildTransfer(this.#rpc, kind.value, this.#now());
+      // The whole build runs under one budget: the phone waits on a single unary RPC for it, and
+      // a preparation it never sees must not be built or stored (solana/rpc.ts).
+      const built = await withChainBudget(() =>
+        buildTransfer(this.#rpc, kind.value, this.#now()),
+      );
       return this.#store.storePrepared(connectionId, ref, built);
     } catch (error) {
       throw chainFailure(error, request);
