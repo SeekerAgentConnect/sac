@@ -47,3 +47,10 @@ fun decodeBase58(text: String): ByteArray? {
     val leadingZeros = text.takeWhile { it == ALPHABET[0] }.length
     return ByteArray(leadingZeros) + body
 }
+
+/**
+ * Whether [text] is a Solana address: base58 for exactly 32 bytes. The sidecar's `isAddress` in
+ * `requests/action.ts` reads an address the same way, so the phone accepts into a policy exactly
+ * what the sidecar would accept into a request.
+ */
+fun isSolanaAddress(text: String): Boolean = decodeBase58(text)?.size == 32

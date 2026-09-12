@@ -4,6 +4,19 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 
 ## Current milestone
 
+**Stage 5: Local policy builder and advisory classifications.** The owner sets rules for each connection — which actions an agent may ask for, which assets may move, who may receive them, which programs may be called, and how much may go per request and per day — and the phone assesses each request against them and shows the result with its reasons. The rules stay on the phone: no agent can read them or change them, and neither verdict decides anything. Every request still needs the owner's hand, on the phone and in their wallet.
+
+**Status:** in progress. SAW-025 has landed: the model, the evaluation semantics, and the per-connection storage exist and are tested ([`docs/policy.md`](docs/policy.md)). Nothing is wired up yet — no policy can be created on the phone, and the review screen still says "Not evaluated", as it has since Stage 4. SAW-026 evaluates a real request and counts the day's totals, SAW-027 builds the editor, and SAW-028 puts the assessment on the review screen.
+
+| Task | Status |
+| --- | --- |
+| SAW-025: the policy model and evaluation semantics | Done. A policy is a per-connection document held only on the phone: allowlists of actions, assets (each on one network), recipients, and programs, plus per-operation and daily thresholds in the asset's own base units. An absent list is not an empty one — the first configures no check, the second allows nothing — and neither a missing policy nor an unreadable one is ever `ALLOWED`. Assessment is one conjunction of the configured checks, with a stable reason code for each failure and each thing the phone couldn't verify; checks nobody configured are reported as coverage gaps, apart from the verdict. There is no `BLOCKED` and no automatic approval, and input validation is judged before any policy and never softened by one. See [`docs/policy.md`](docs/policy.md). |
+| SAW-026: deterministic evaluation and daily counters | Not started. |
+| SAW-027: the policy editor | Not started. |
+| SAW-028: policy results in request review | Not started. |
+
+## Stage 4
+
 **Stage 4: Transfers.** An agent can ask to send SOL or a classic SPL token; the sidecar builds a fresh unsigned transaction, the phone reads it itself, and the owner approves it by hand, at which point their own wallet signs and sends it. The sidecar then follows the signature to the chain and reports the transfer as confirmed or failed, checked against the exact bytes the owner approved. It holds no key and cannot broadcast, and the app builds nothing and reaches no chain.
 
 **Status:** accepted on **devnet**. Every task is done and every automated check passes, and on 2026-09-12 **Hermes asked for a transfer and the owner approved it on the physical Seeker**: one real SOL transfer through Seed Vault Wallet, approved by hand in the app and in the wallet, finalized on devnet in slot 497322461. The owner also ran the Stage 4 device checks 31 to 55. The record is in [`docs/testing/stage-4.md`](docs/testing/stage-4.md#verification-record-saw-024). **Nothing here has ever pointed at mainnet.**

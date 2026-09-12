@@ -72,14 +72,15 @@ sequenceDiagram
 
 **The sidecar is the commit point.** `ConnectionRepository.approveTransfer` returns only once the sidecar has accepted the approval and moved the request to PROCESSING. An approval it didn't accept is deleted rather than kept: nothing was approved anywhere, no wallet was opened, the request is still the sidecar's, and the owner reviews a fresh preparation. That is why an approved transfer with no wallet answer can only mean one thing — the wallet had it — which is what makes reporting UNKNOWN honest.
 
-**Nothing unverified reaches the wallet.** Only a preparation whose inspection came back `Verified` is offered for approval at all, and `InboxViewModel.approveTransfer` checks it again before sending anything. This is input validation, not a policy verdict: policies are Stage 5, and until they exist the review screen says "Not evaluated" rather than ALLOWED.
+**Nothing unverified reaches the wallet.** Only a preparation whose inspection came back `Verified` is offered for approval at all, and `InboxViewModel.approveTransfer` checks it again before sending anything. This is input validation, not a policy verdict, and the two are judged in that order: validation decides what is executable, and a policy can only add reasons to read ([`policy.md`](policy.md#precedence)). SAW-025 defines the rules and the verdict; until SAW-026 and SAW-028 apply them, the review screen says "Not evaluated" rather than ALLOWED.
 
 ## Trust boundaries
 
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
 - **The agent is untrusted input.** Its parameters are validated before they're stored. Its note is shown apart from the verified parameters, and the phone checks the actual transaction, not the agent's description of it.
 - **The sidecar is trusted to relay, not to sign.** The phone parses each prepared transaction itself, and the approval names that transaction's exact hash. A sidecar that swapped the transaction after the review couldn't get it approved.
-- **Policies stay on the phone.** The sidecar never receives the policy or its assessment, so an agent can't learn or change the rules through it.
+- **Policies stay on the phone.** The sidecar never receives the policy or its assessment, so an agent can't learn or change the rules through it. They are stored per connection, and one connection's rules are never read for another ([`policy.md`](policy.md)).
+- **A policy advises; it never decides.** Input validation settles what is executable, and it is judged before any policy is consulted. A policy can only add reasons for the owner to read: there is no `BLOCKED`, and no rule can make a preparation the phone couldn't read whole approvable (SAW-025).
 
 ## Where state lives
 
@@ -92,7 +93,8 @@ sequenceDiagram
 | Results not yet acknowledged | The phone, until the sidecar acknowledges them | SAW-013 |
 | The owner's wallet selection, and the wallet's authorization token | The phone: the selection in `filesDir`, the authorization encrypted in `noBackupFilesDir` | SAW-015 |
 | The wallet binding each sidecar publishes to agents | The sidecar's SQLite database, on its connection | SAW-015 |
-| Policies, assessments, and daily counters | The phone | Stage 5 |
+| The rules the owner set for a connection | The phone, one file per connection in `filesDir` | SAW-025 |
+| Assessments and daily counters | The phone | Stage 5 |
 | Keys | Seed Vault Wallet | Stage 3 |
 
 ## Two flows
@@ -126,7 +128,7 @@ These hold across the components, and every stage keeps them:
 | 2 | The durable contract (SAW-009), storage and the async MCP tools (SAW-010), pairing (SAW-011), multiple connections (SAW-012), and the pending inbox (SAW-013) |
 | 3 | Mobile Wallet Adapter and the wallet binding (SAW-015), manual message signing (SAW-016), and the wallet lifecycle with reliable result delivery (SAW-017) |
 | 4 | Transfer requests and fresh preparation (SAW-019), the phone's own inspection of the bytes (SAW-020), manual approval through the wallet (SAW-021), and on-chain confirmation (SAW-022) |
-| 5 | Policies |
+| 5 | The policy model and its evaluation semantics (SAW-025), deterministic evaluation and daily counters (SAW-026), the editor (SAW-027), and the assessment on the review screen (SAW-028) |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
 | 8 | Release checks |
