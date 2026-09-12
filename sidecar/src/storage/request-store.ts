@@ -51,6 +51,7 @@ import {
 import {
   canTransition,
   decideResult,
+  unpreparableReason,
   type ActionKind,
 } from "../requests/lifecycle.ts";
 
@@ -113,6 +114,17 @@ export interface PendingQuery {
   readonly connectionId: string;
   readonly pageSize: number;
   readonly pageToken: string;
+}
+
+/** A freshly built transaction, as the chain client returns it (solana/transfer.ts). */
+export interface NewPreparation {
+  readonly transaction: Uint8Array;
+  readonly contentHash: Uint8Array;
+  readonly lastValidBlockHeight: bigint;
+  /** When the blockhash is expected to expire, in epoch milliseconds. */
+  readonly estimatedExpiryMs: number;
+  readonly feeLamports: bigint;
+  readonly rentLamports: bigint;
 }
 
 /** What PublishWallet changed: the binding as stored, and the requests it cancelled. */
@@ -386,6 +398,7 @@ export class RequestStore {
         current,
         submission,
         this.#latestPrepared(requestId),
+        now,
       );
       if (!decision.ok) {
         throw new RequestFailure(decision.error, decision.message, current);
@@ -405,6 +418,66 @@ export class RequestStore {
         .run(requestId, requestId, result, current.state, decision.to, now);
       return { request: this.#find(requestId), duplicate: false };
     });
+  }
+
+  /**
+   * Records a freshly built transaction as the request's next version, and returns it. Building
+   * reads the chain, so it happens outside this call; what happens here is the part that must be
+   * atomic — checking that the request still accepts a preparation, and numbering the version.
+   *
+   * Each preparation supersedes the last: an approval of an earlier version is refused from now
+   * on (lifecycle.ts), so the owner always approves what they last reviewed.
+   */
+  storePrepared(
+    connectionId: string,
+    ref: RequestRef | undefined,
+    built: NewPreparation,
+  ): PreparedTransaction {
+    const requestId = requireRef(connectionId, ref);
+    return transaction(this.#db, () => {
+      const now = this.#now();
+      this.#expireOverdue(now);
+      const current = this.#find(requestId, connectionId);
+      const reason = unpreparableReason(current);
+      if (reason !== undefined) {
+        throw new RequestFailure(reason.error, reason.message, current);
+      }
+      const version = (this.#latestPrepared(requestId)?.version ?? 0) + 1;
+      const prepared = create(PreparedTransactionSchema, {
+        ref: { connectionId, requestId },
+        version,
+        transaction: built.transaction,
+        contentHash: built.contentHash,
+        preparedAt: timestampFromMs(now),
+        lastValidBlockHeight: built.lastValidBlockHeight,
+        estimatedExpiry: timestampFromMs(built.estimatedExpiryMs),
+        feeLamports: built.feeLamports,
+        rentLamports: built.rentLamports,
+      });
+      this.#db
+        .prepare(
+          `INSERT INTO prepared_transactions (request_id, version, prepared, created_at_ms)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(
+          requestId,
+          version,
+          toBinary(PreparedTransactionSchema, prepared),
+          now,
+        );
+      return prepared;
+    });
+  }
+
+  /** The request's newest prepared transaction, or undefined when it has none. */
+  latestPrepared(
+    connectionId: string,
+    ref: RequestRef | undefined,
+  ): PreparedTransaction | undefined {
+    const requestId = requireRef(connectionId, ref);
+    // #find refuses another connection's request, so a reference can't reach one.
+    this.#find(requestId, connectionId);
+    return this.#latestPrepared(requestId);
   }
 
   /** The most PENDING requests one connection may have, for vault_get_capabilities. */

@@ -107,6 +107,16 @@ public enum RequestError
    * <code>REQUEST_ERROR_WALLET_NOT_CONNECTED = 10;</code>
    */
   REQUEST_ERROR_WALLET_NOT_CONNECTED(10),
+  /**
+   * <pre>
+   * The sidecar couldn't read the chain: no RPC endpoint is configured, or the one configured
+   * didn't answer. Nothing was created, and nothing was prepared. It says nothing about the
+   * request itself, so the same call can be retried once the endpoint answers again.
+   * </pre>
+   *
+   * <code>REQUEST_ERROR_CHAIN_UNAVAILABLE = 11;</code>
+   */
+  REQUEST_ERROR_CHAIN_UNAVAILABLE(11),
   UNRECOGNIZED(-1),
   ;
 
@@ -200,6 +210,16 @@ public enum RequestError
    * <code>REQUEST_ERROR_WALLET_NOT_CONNECTED = 10;</code>
    */
   public static final int REQUEST_ERROR_WALLET_NOT_CONNECTED_VALUE = 10;
+  /**
+   * <pre>
+   * The sidecar couldn't read the chain: no RPC endpoint is configured, or the one configured
+   * didn't answer. Nothing was created, and nothing was prepared. It says nothing about the
+   * request itself, so the same call can be retried once the endpoint answers again.
+   * </pre>
+   *
+   * <code>REQUEST_ERROR_CHAIN_UNAVAILABLE = 11;</code>
+   */
+  public static final int REQUEST_ERROR_CHAIN_UNAVAILABLE_VALUE = 11;
 
 
   @java.lang.Override
@@ -233,6 +253,7 @@ public enum RequestError
       case 8: return REQUEST_ERROR_STALE_PREPARATION;
       case 9: return REQUEST_ERROR_UNAUTHENTICATED;
       case 10: return REQUEST_ERROR_WALLET_NOT_CONNECTED;
+      case 11: return REQUEST_ERROR_CHAIN_UNAVAILABLE;
       default: return null;
     }
   }

@@ -1,8 +1,9 @@
 /**
- * Stage boundaries on the Node side (AGENTS.md). There's no wallet library, and nothing creates
- * keys. The sidecar stores durable requests (SAW-010): only src/storage/ imports the file system
- * or SQLite, and only it runs SQL. These checks fail when that changes before the stage that changes it on
- * purpose.
+ * Stage boundaries on the Node side (AGENTS.md). Nothing creates keys and nothing signs. The
+ * sidecar stores durable requests (SAW-010): only src/storage/ imports the file system or SQLite,
+ * and only it runs SQL. SAW-019 lets it read a chain, and only from src/solana/, to build a
+ * transfer the owner reviews; it still sends nothing. These checks fail when that changes before
+ * the stage that changes it on purpose.
  */
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -23,11 +24,47 @@ function shippedSources(): string[] {
 }
 
 describe("stage boundary", () => {
-  it("installs no wallet library", () => {
+  it("installs no wallet library beyond the chain client SAW-019 builds with", () => {
+    // @solana/web3.js and the packages it pulls in are address maths, message compilation, and
+    // codecs. No wallet, no wallet adapter, and no key management library is installed.
     const lockfile = readFileSync(join(ROOT, "pnpm-lock.yaml"), "utf8");
+    const solana = [
+      ...new Set(
+        [...lockfile.matchAll(/@solana\/[a-z0-9.-]+/g)].map((match) =>
+          match[0].toString(),
+        ),
+      ),
+    ].sort();
+    assert.deepEqual(solana, [
+      "@solana/buffer-layout",
+      "@solana/codecs-core",
+      "@solana/codecs-numbers",
+      "@solana/errors",
+      "@solana/web3.js",
+    ]);
     assert.doesNotMatch(
       lockfile,
-      /['\s/](@solana|@solana-mobile|@coral-xyz|@metaplex-foundation)\//,
+      /['\s/](@solana-mobile|@coral-xyz|@metaplex-foundation)\//,
+    );
+  });
+
+  it("imports the chain client only in src/solana", () => {
+    // Everything that knows how to reach a cluster lives in one directory, so there is one place
+    // to read before trusting what the sidecar can do on a network.
+    const chain = /from "@solana\/web3\.js"/;
+    const outside = shippedSources().filter(
+      (file) =>
+        !relative(SRC, file).startsWith("solana/") &&
+        chain.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      outside.map((file) => relative(ROOT, file)),
+      [],
+    );
+    assert.match(
+      readFileSync(join(SRC, "solana/transfer.ts"), "utf8"),
+      chain,
+      "solana/transfer.ts is where a transaction is compiled",
     );
   });
 
@@ -101,16 +138,17 @@ describe("stage boundary", () => {
     );
   });
 
-  it("serves nothing that spends, swaps, or needs a key of an agent's own", () => {
-    // SAW-018 closes Stage 3, which is signing and nothing else. The tools an agent can call are
-    // named here on purpose: a transfer or a swap tool is Stage 4's and Stage 6's work, and until
-    // then no agent can ask for one. Nothing reaches a chain RPC, so nothing can be broadcast, and
-    // no agent has a key: an agent authenticates with the bearer token the owner issued it.
+  it("serves nothing that swaps, sends, or needs a key of an agent's own", () => {
+    // The tools an agent can call are named here on purpose. SAW-019 adds vault_transfer, which
+    // only stores a request; a swap tool is Stage 6's work, and until then no agent can ask for
+    // one. No agent has a key either: an agent authenticates with the bearer token the owner
+    // issued it.
     const known = [
       "DISPLAY_COMMAND_TOOL",
       "GET_ADDRESS_TOOL",
       "GET_CAPABILITIES_TOOL",
       "SIGN_MESSAGE_TOOL",
+      "TRANSFER_TOOL",
       "REQUEST_ACK_TOOL",
       "GET_REQUEST_TOOL",
       "CANCEL_REQUEST_TOOL",
@@ -131,15 +169,36 @@ describe("stage boundary", () => {
       [],
     );
 
-    // No chain client, no broadcast, and no key of the sidecar's or an agent's.
+    // Nothing broadcasts, nothing signs, nothing swaps, and no key is the sidecar's or an
+    // agent's. The sidecar reads the chain (SAW-019) and hands the unsigned bytes to the owner's
+    // wallet; sending is the wallet's, and confirmation is SAW-022's work.
     const spending =
-      /mainnet-beta|clusterApiUrl|sendRawTransaction|sendTransaction|getLatestBlockhash|jup\.ag|\bprivateKey\b|\bsecretKey\b|\bkeypair\b/i;
+      /sendRawTransaction|sendTransaction|sendAndConfirm|signTransaction|signAllTransactions|requestAirdrop|jup\.ag|\bKeypair\b|\bprivateKey\b|\bsecretKey\b|\bkeypair\b/i;
     const hits = shippedSources().filter((file) =>
       spending.test(readFileSync(file, "utf8")),
     );
     assert.deepEqual(
       hits.map((file) => relative(ROOT, file)),
       [],
+    );
+
+    // The chain client's methods are named here too: every one of them only reads.
+    const methods = [
+      ...readFileSync(join(SRC, "solana/rpc.ts"), "utf8").matchAll(
+        /"(get[A-Za-z]+)"/g,
+      ),
+    ].map((match) => match[1] ?? "");
+    assert.deepEqual(
+      [...new Set(methods)].sort(),
+      [
+        "getAccountInfo",
+        "getBlockHeight",
+        "getFeeForMessage",
+        "getGenesisHash",
+        "getLatestBlockhash",
+        "getMinimumBalanceForRentExemption",
+      ],
+      "the chain client asks for nothing but these reads",
     );
   });
 });

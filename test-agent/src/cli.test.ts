@@ -17,6 +17,12 @@ import {
   pairPhone,
   requestClient,
 } from "../../sidecar/src/testing/clients.ts";
+import {
+  FakeChain,
+  startFakeRpc,
+  walletAccount,
+  type FakeRpc,
+} from "../../sidecar/src/testing/chain.ts";
 import { temporaryDatabasePath } from "../../sidecar/src/testing/process.ts";
 import { testWallet } from "../../sidecar/src/testing/wallet.ts";
 import { Network } from "../../sidecar/src/gen/seekervault/request/v1/request_pb.js";
@@ -519,5 +525,96 @@ describe("pnpm agent", () => {
         assert.ok(!output.includes(secret), output);
       }
     }
+  });
+});
+
+// `pnpm agent transfer`, against a sidecar with a chain endpoint. The chain is a local fake, so
+// nothing reaches a real cluster; the CLI still only queues a request, and signs and sends nothing.
+describe("pnpm agent transfer", () => {
+  let queue: Sidecar;
+  let databasePath: string;
+  let chain: FakeChain;
+  let endpoint: FakeRpc;
+  let wallet: string;
+
+  before(async () => {
+    chain = new FakeChain();
+    endpoint = await startFakeRpc(chain);
+    databasePath = temporaryDatabasePath();
+    queue = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        mcpToken: MCP_TOKEN,
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 30,
+        databasePath,
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
+        solanaRpcUrl: endpoint.url,
+      },
+      { log: () => undefined },
+    );
+    const phone = await pairPhone(queue.url, databasePath);
+    wallet = testWallet().address;
+    await requestClient(queue.url, phone.phoneToken).publishWallet({
+      connectionId: phone.connectionId,
+      binding: { wallet, network: Network.DEVNET },
+    });
+    chain.put(WALLET, walletAccount());
+  });
+
+  after(async () => {
+    await queue.close();
+    await endpoint.close();
+  });
+
+  it("lists transfer among the sidecar's operations", async () => {
+    const { code, stdout } = await agent(["capabilities"], envFor(queue));
+    assert.equal(code, 0);
+    const view = JSON.parse(stdout) as { operations: string[] };
+    assert.deepEqual(view.operations, ["sign_message", "transfer"]);
+  });
+
+  it("queues a SOL transfer as PENDING, without signing or sending anything", async () => {
+    const { code, stdout, stderr } = await agent(
+      ["transfer", WALLET, "2500000", "--key", "cli-transfer-1"],
+      envFor(queue),
+    );
+    assert.equal(code, 0);
+    const view = JSON.parse(stdout) as Record<string, unknown>;
+    assert.equal(view.action, "transfer");
+    assert.equal(view.status, "PENDING");
+    assert.equal(view.terminal, false);
+    assert.equal(view.wallet, wallet);
+    assert.equal(view.signature, undefined);
+    assert.match(stderr, /nothing is signed or sent until they approve/);
+
+    // The same key returns the same request rather than queueing a second payment.
+    const again = await agent(
+      ["transfer", WALLET, "2500000", "--key", "cli-transfer-1"],
+      envFor(queue),
+    );
+    assert.equal(again.code, 0);
+    assert.equal(
+      (JSON.parse(again.stdout) as Record<string, unknown>).request_id,
+      view.request_id,
+    );
+  });
+
+  it("exits 9 when the sidecar refuses the transfer", async () => {
+    const { code, stdout, stderr } = await agent(
+      ["transfer", WALLET, "0", "--key", "cli-transfer-zero"],
+      envFor(queue),
+    );
+    assert.equal(code, 9);
+    assert.equal(stdout, "");
+    assert.match(stderr, /^INVALID_PARAMETERS: /m);
+  });
+
+  it("exits 2 without both a recipient and an amount", async () => {
+    const { code, stderr } = await agent(["transfer", WALLET], envFor(queue));
+    assert.equal(code, 2);
+    assert.match(stderr, /Usage: pnpm agent/);
   });
 });

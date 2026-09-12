@@ -181,12 +181,16 @@ class RequestProtocolFixturesTest {
                 ref = refOf(TRANSFER_ID)
                 version = UInt.MAX_VALUE.toInt()
                 lastValidBlockHeight = ULong.MAX_VALUE.toLong()
+                feeLamports = ULong.MAX_VALUE.toLong()
+                rentLamports = ULong.MAX_VALUE.toLong()
             },
         )
         // Kotlin reads uint32 and uint64 as a signed Int and Long: convert before comparing them.
         val parsed = PreparedTransaction.parseFrom(bytes("PreparedTransaction/max_values"))
         assertEquals(-1L, parsed.lastValidBlockHeight)
         assertEquals(ULong.MAX_VALUE, parsed.lastValidBlockHeight.toULong())
+        assertEquals(ULong.MAX_VALUE, parsed.feeLamports.toULong())
+        assertEquals(ULong.MAX_VALUE, parsed.rentLamports.toULong())
         assertEquals(UInt.MAX_VALUE, parsed.version.toUInt())
     }
 
@@ -433,6 +437,10 @@ class RequestProtocolFixturesTest {
             preparedAt = at("2026-09-11T12:02:30Z")
             lastValidBlockHeight = 412_345_678L
             estimatedExpiry = at("2026-09-11T12:03:30Z")
+            // What the owner pays besides the amount: the network fee, and the rent for the
+            // recipient's new token account (SAW-019).
+            feeLamports = 5_000L
+            rentLamports = 2_039_280L
         }
 
         fun request(
