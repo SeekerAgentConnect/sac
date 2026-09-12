@@ -278,6 +278,7 @@ private fun approvedText(result: LocalResult): String {
                 else R.string.status_declined_in_wallet
             )
         is SigningOutcome.Failed -> stringResource(R.string.status_not_signed, outcome.detail)
+        is SigningOutcome.Unresolved -> stringResource(R.string.status_unresolved, outcome.detail)
     }
 }
 
@@ -292,6 +293,7 @@ private fun answerSummary(result: LocalResult): Int =
                 is SigningOutcome.Signed -> R.string.answer_signed
                 SigningOutcome.Declined -> R.string.answer_declined_in_wallet
                 is SigningOutcome.Failed -> R.string.answer_not_signed
+                is SigningOutcome.Unresolved -> R.string.answer_unresolved
             }
     }
 

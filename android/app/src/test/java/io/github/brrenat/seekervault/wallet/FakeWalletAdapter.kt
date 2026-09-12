@@ -18,6 +18,12 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
 
     private var nextSignature: (ByteString) -> SignResult = { SignResult.NoWallet }
 
+    /**
+     * Runs after a signing is recorded and before it answers, so a test can hold the wallet open
+     * the way the owner deciding in it does, or make something happen while it is in front.
+     */
+    var beforeSigning: suspend () -> Unit = {}
+
     fun answer(result: WalletResult) {
         next = { result }
     }
@@ -57,6 +63,7 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
         authToken: String,
     ): SignResult {
         signings += Triple(message, wallet, authToken)
+        beforeSigning()
         return nextSignature(message)
     }
 }

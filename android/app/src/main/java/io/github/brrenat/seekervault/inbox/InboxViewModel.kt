@@ -15,6 +15,7 @@ import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SignResult
 import io.github.brrenat.seekervault.wallet.WalletRepository
+import java.time.Duration
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Why the app didn't ask the wallet to sign. Nothing was approved and nothing was sent. */
 enum class SigningProblem {
@@ -56,6 +58,12 @@ data class InboxUiState(
 class InboxViewModel(
     private val repository: ConnectionRepository,
     private val wallet: WalletRepository,
+    /**
+     * How long the app waits for the wallet before it gives up on an approval. It is the owner's
+     * own time in the wallet app, so it is generous; a wallet that never answers at all must still
+     * not hold a request open for the rest of the session.
+     */
+    private val walletTimeout: Duration = WALLET_TIMEOUT,
 ) : ViewModel() {
     private data class Activity(
         val refreshing: Boolean = false,
@@ -161,7 +169,14 @@ class InboxViewModel(
                 // sidecar refused, because the request had moved on, is finished.
                 if (stored.delivery != Delivery.Waiting) return@launch
                 val bytes = message.messageBytes()
-                repository.recordSigning(key, outcomeOf(wallet.sign(bytes, selected), bytes))
+                // A wallet that never answers leaves the request unresolved rather than open: the
+                // signature, if there ever was one, reached nothing and no one.
+                val signed =
+                    withTimeoutOrNull(walletTimeout.toMillis()) { wallet.sign(bytes, selected) }
+                repository.recordSigning(
+                    key,
+                    signed?.let { outcomeOf(it, bytes) } ?: SigningOutcome.Unresolved(NO_ANSWER),
+                )
             } finally {
                 activity.update { it.copy(sending = it.sending - key) }
             }
@@ -169,6 +184,16 @@ class InboxViewModel(
     }
 
     fun problemShown() = activity.update { it.copy(problem = null, problemKey = null) }
+
+    /**
+     * The app is in the foreground again, which includes coming back from the wallet app. Any
+     * approval whose wallet answer this phone never received is settled as unresolved (SAW-017):
+     * the app died in the wallet, or the wallet never answered. The signings still in flight here
+     * are left alone, and nothing is ever sent to the wallet a second time.
+     */
+    fun onAppVisible() {
+        viewModelScope.launch { repository.resolveAbandonedSignings(activity.value.sending) }
+    }
 
     /** Sends a waiting answer again now. */
     fun sendAgain(key: RequestKey) {
@@ -184,6 +209,10 @@ class InboxViewModel(
     }
 
     private companion object {
+        val WALLET_TIMEOUT: Duration = Duration.ofMinutes(10)
+        const val NO_ANSWER =
+            "The wallet didn't answer, so nothing reached this phone and nothing was signed."
+
         /**
          * What the wallet said, as this phone records it. A signature is kept only if it is over
          * exactly the bytes that were sent: a wallet that signed anything else has signed nothing

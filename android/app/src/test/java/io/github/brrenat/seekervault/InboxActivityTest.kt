@@ -10,12 +10,16 @@ import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.inbox.InboxTags
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
+import io.github.brrenat.seekervault.wallet.WalletNetwork
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -39,6 +43,7 @@ class InboxActivityTest {
     private val server = gateway.serve(URL)
     private val other = gateway.serve(OTHER_URL)
     private val key = softwareKey()
+    private val adapter = FakeWalletAdapter()
     private var scenario: ActivityScenario<MainActivity>? = null
 
     @Before
@@ -46,6 +51,7 @@ class InboxActivityTest {
         app.connectionGateway = { gateway }
         app.credentialKey = { key }
         app.connectionIo = Dispatchers.Unconfined
+        app.walletAdapter = { adapter }
     }
 
     @After fun close() = scenario?.close() ?: Unit
@@ -131,7 +137,57 @@ class InboxActivityTest {
             .assertDoesNotExist()
     }
 
+    @Test
+    fun aRotationWhileTheWalletHasTheMessageKeepsTheRequestAndItsSignature() {
+        val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
+        adapter.answerConnected(WALLET)
+        runBlocking { app.walletRepository.connect(WalletNetwork.Mainnet) }
+        val request = server.addPendingMessage(connection.id, WALLET, "Sign in to Example")
+        val key = RequestKey(connection.id, request.ref.requestId)
+        val signature = ByteString.copyFrom(ByteArray(64) { 6 })
+        val release = CompletableDeferred<Unit>()
+        adapter.signWith(signature)
+        adapter.beforeSigning = { release.await() }
+        val scenario = launch()
+
+        compose.onNodeWithTag(ConnectionsTags.INBOX).performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).performClick()
+        compose.onNodeWithTag(InboxTags.APPROVE).performScrollTo().performClick()
+        compose.waitForIdle()
+        // The approval has gone, and the message is with the wallet.
+        assertEquals(1, adapter.signings.size)
+        assertEquals(
+            RequestState.REQUEST_STATE_PROCESSING,
+            server.stateOf(connection.id, request.ref.requestId),
+        )
+
+        // The screen is recreated while the wallet has it, as a rotation does.
+        scenario.recreate()
+        compose.waitForIdle()
+
+        // The request is still there, and the wallet was not asked a second time.
+        compose.onNodeWithTag(InboxTags.STATUS).assertExists()
+        assertEquals(1, adapter.signings.size)
+        assertEquals(
+            RequestState.REQUEST_STATE_PROCESSING,
+            server.stateOf(connection.id, request.ref.requestId),
+        )
+
+        release.complete(Unit)
+        compose.waitForIdle()
+
+        compose
+            .onNodeWithTag(InboxTags.STATUS)
+            .assertTextEquals(app.getString(R.string.status_signed))
+        assertEquals(1, adapter.signings.size)
+        assertEquals(
+            RequestState.REQUEST_STATE_COMPLETED,
+            server.stateOf(connection.id, request.ref.requestId),
+        )
+    }
+
     private companion object {
+        const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
         const val URL = "https://mac.tailnet.ts.net"
         const val OTHER_URL = "https://vps.example.com"
     }

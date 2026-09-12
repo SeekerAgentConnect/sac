@@ -96,9 +96,10 @@ class ResultStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        // 2 adds an approval's signing outcome (SAW-016). A version 1 file is read as it was: it
-        // can only hold an acknowledgement or a rejection, neither of which has one.
-        const val VERSION = 2
+        // 2 adds an approval's signing outcome (SAW-016), and 3 adds the outcome the phone never
+        // learned (SAW-017). An older file is read as it was: a version 1 file can only hold an
+        // acknowledgement or a rejection, neither of which has a signing outcome at all.
+        const val VERSION = 3
         const val OLDEST_VERSION = 1
 
         fun encode(result: LocalResult): String =
@@ -129,6 +130,8 @@ class ResultStore(private val dir: File) {
                 SigningOutcome.Declined -> JSONObject().put("outcome", "Declined")
                 is SigningOutcome.Failed ->
                     JSONObject().put("outcome", "Failed").put("detail", outcome.detail)
+                is SigningOutcome.Unresolved ->
+                    JSONObject().put("outcome", "Unresolved").put("detail", outcome.detail)
             }
 
         fun decodeSigning(json: JSONObject?): SigningOutcome? =
@@ -139,6 +142,7 @@ class ResultStore(private val dir: File) {
                     )
                 "Declined" -> SigningOutcome.Declined
                 "Failed" -> SigningOutcome.Failed(json.getString("detail"))
+                "Unresolved" -> SigningOutcome.Unresolved(json.getString("detail"))
                 else -> null
             }
 

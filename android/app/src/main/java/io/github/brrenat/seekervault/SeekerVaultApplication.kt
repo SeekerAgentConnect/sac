@@ -23,8 +23,14 @@ import io.github.brrenat.seekervault.wallet.WalletRepository
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
 import javax.crypto.SecretKey
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 
 class SeekerVaultApplication : Application() {
@@ -69,16 +75,29 @@ class SeekerVaultApplication : Application() {
      * The Mobile Wallet Adapter sender of the activity that is on screen. MWA runs the wallet from
      * an Activity, so [MainActivity] registers one in `onCreate` and clears it in `onDestroy`;
      * there is no separate wallet activity and no foreground service.
+     *
+     * A rotation destroys the activity and creates another, which leaves a moment with no sender at
+     * all. [walletSender] waits that moment out instead of failing an approval the owner just gave
+     * (SAW-017), and only the activity that registered a sender clears it, so a screen closing
+     * behind a newer one can't take the newer one's sender away.
      */
-    private var walletSender: ActivityResultSender? = null
+    private val senders = MutableStateFlow<Pair<ComponentActivity, ActivityResultSender>?>(null)
 
     fun attachWalletActivity(activity: ComponentActivity) {
-        walletSender = ActivityResultSender(activity)
+        senders.value = activity to ActivityResultSender(activity)
     }
 
-    fun detachWalletActivity() {
-        walletSender = null
+    fun detachWalletActivity(activity: ComponentActivity) {
+        senders.update { current -> current?.takeIf { it.first !== activity } }
     }
+
+    /**
+     * The sender on screen, waiting up to [SENDER_WAIT] for one while a screen is being replaced.
+     */
+    suspend fun walletSender(): ActivityResultSender? =
+        withTimeoutOrNull(SENDER_WAIT.inWholeMilliseconds) {
+            senders.filterNotNull().first().second
+        }
 
     /** How the app reaches the installed wallet. Tests replace it with a fake adapter. */
     var walletAdapter: () -> WalletAdapter = {
@@ -88,7 +107,7 @@ class SeekerVaultApplication : Application() {
                 iconUri = ICON_URI.toUri(),
                 identityName = getString(R.string.app_name),
             ),
-            sender = { walletSender },
+            sender = ::walletSender,
         )
     }
 
@@ -119,5 +138,10 @@ class SeekerVaultApplication : Application() {
         // wallet can't verify the identity and says so; that's honest, not a claim of trust.
         const val IDENTITY_URI = "https://github.com/brrenat/SeekerAgentWallet"
         const val ICON_URI = "favicon.ico"
+
+        /**
+         * How long a wallet call waits for the next screen's sender while one is replacing another.
+         */
+        val SENDER_WAIT = 5.seconds
     }
 }

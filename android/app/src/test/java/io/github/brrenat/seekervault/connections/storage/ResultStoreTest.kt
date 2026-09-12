@@ -68,6 +68,7 @@ class ResultStoreTest {
                 SigningOutcome.Signed(ByteString.copyFrom(ByteArray(64) { it.toByte() })),
                 SigningOutcome.Declined,
                 SigningOutcome.Failed("The wallet is locked."),
+                SigningOutcome.Unresolved("The wallet's answer never reached this phone."),
             )) {
             val signed = approved.copy(approved = true, signing = outcome)
             store.put(signed)
@@ -81,7 +82,7 @@ class ResultStoreTest {
         val old = result(A, answer = Answer.Reject, delivery = Delivery.Accepted)
         store.put(old)
         val file = File(File(dir, A), "$SAME_REQUEST.json")
-        file.writeText(file.readText().replace("\"version\":2", "\"version\":1"))
+        file.writeText(file.readText().replace("\"version\":3", "\"version\":1"))
         val read = ResultStore(dir).get(A, SAME_REQUEST)
         assertEquals(Answer.Reject, read?.answer)
         assertEquals(Delivery.Accepted, read?.delivery)

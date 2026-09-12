@@ -232,6 +232,14 @@ class RequestDetailsScreenTest {
         status(R.string.status_not_signed, "The wallet is locked.")
     }
 
+    @Test
+    fun saysThePhoneNeverLearnedWhatTheWalletDid() {
+        showApproved(SigningOutcome.Unresolved("The app closed before the wallet answered."))
+        status(R.string.status_unresolved, "The app closed before the wallet answered.")
+        // It never says signed, and it offers nothing that would ask the wallet again.
+        compose.onNodeWithTag(InboxTags.APPROVE).assertDoesNotExist()
+    }
+
     private fun result(request: ActionRequest, delivery: Delivery) =
         LocalResult(
             HOME.id,

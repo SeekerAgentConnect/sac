@@ -67,6 +67,7 @@
     <string name="status_declined_in_wallet">You declined in the wallet. Nothing was signed.</string>
     <string name="status_to_send_declined_in_wallet">You declined in the wallet. Nothing was signed. Your answer is saved on this phone, and is sent when the server can be reached.</string>
     <string name="status_not_signed">Nothing was signed. %1$s</string>
+    <string name="status_unresolved">This phone never learned what the wallet did. %1$s No signature reached this phone, and nothing was sent to the network.</string>
     <string name="problem_no_wallet">No wallet is connected on this phone, so nothing can be signed. Connect one on the Wallet screen.</string>
     <string name="problem_other_wallet">This request names another wallet than the one you connected. It can only be rejected.</string>
     <string name="problem_wallet_changed">Your wallet changed while you were reviewing this. Check the request again before approving it.</string>
@@ -79,6 +80,7 @@
     <string name="answer_signed">Signed</string>
     <string name="answer_declined_in_wallet">Declined in the wallet</string>
     <string name="answer_not_signed">Not signed</string>
+    <string name="answer_unresolved">Not signed: no answer from the wallet</string>
     <string name="summary_waiting">%1$s, waiting to be sent</string>
     <string name="summary_superseded">%1$s too late: the request had moved on</string>
     <string name="summary_undeliverable">%1$s, can\'t be sent</string>
