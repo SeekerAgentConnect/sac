@@ -135,6 +135,7 @@ class TransactionFixturesTest {
                 "token_transfer_max_amount",
                 "token_transfer_zero_decimals",
                 "fake_ticker_in_the_note",
+                "note_disagrees_with_the_amount",
                 "compute_budget_priority_fee",
                 "legacy_message",
             ),

@@ -326,6 +326,23 @@ A connection whose rules can't be read is never treated as a connection with non
 
 The facts themselves are checked against real transactions rather than invented ones: `RequestFactsTest` reads `fixtures/transactions/cases.json` — the transfers the sidecar actually builds ([transaction fixtures](testing/transaction-fixtures.md)) — inspects them the way the review screen does, and assesses what comes out.
 
+## Scenarios
+
+`PolicyScenarioTest` is the whole path in one place (SAW-029): bytes the sidecar really built, inspected the way the review screen inspects them, against rules read off a real store on disk, with the day counted from the owner's own Activity records. Each scenario asserts four things, and a scenario that stops doing what it is named for fails rather than changing quietly:
+
+| | |
+| --- | --- |
+| The classification | ALLOWED or UNDER_RESTRICTIONS |
+| The exact reason codes | In order. A verdict with the wrong reasons is a wrong verdict, and the codes are what a stored assessment carries |
+| The checks it doesn't cover | So a match is never read as a statement about a parameter nobody wrote a rule for |
+| What no rule decides | Whether input validation leaves the transfer approvable at all, and whether the review asks the owner to go past a warning on purpose |
+
+The scenarios are a transfer inside every rule; one request over the per-request threshold; today's total plus this request over the daily one; a recipient the owner never wrote down; an instruction nobody read beside a transfer that matches; and three where the agent's own words are the only thing wrong — a note saying a tenth of what the instruction carries, a familiar ticker on an unrelated mint, and an allowed program carrying an operation that isn't the transfer.
+
+The last two of those are the pair worth reading together. A transfer the rules warn about is exactly as approvable as it was; a transfer that matches every rule the owner wrote — the program list included — has no Approve button at all, because a program's name is not permission for every instruction it offers. The suite asserts that both exist, so the demonstration can't be lost.
+
+Each scenario is also run through a second connection that has written no rules, and again off a new store over the same directory, which is what the next launch has. And `PolicyWordingTest` holds every policy-facing string to what a verdict may claim: nothing here is called safe, secure, automatic, blocked, or guaranteed.
+
 ## Where the code is
 
 | File | What it holds |
@@ -344,6 +361,6 @@ The facts themselves are checked against real transactions rather than invented 
 | `inbox/InboxViewModel.kt` | `RequestAssessment`, when an assessment is made, and the re-read before an answer |
 | `activity/ActivityRecord.kt` | `ReviewedPolicy`, the snapshot kept with the record |
 
-Tests: `policy/PolicyTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`.
+Tests: `policy/PolicyTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyScenarioTest`, `policy/PolicyWordingTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`.
 
 `StageBoundaryTest` keeps the package unable to act — the editor included. Everything it may reach into is a read: the connection ID rule, the protocol's requests and networks, what the phone read out of a transaction's bytes, the owner's own activity records, the address rule, and the app's own strings, back button, and date format. It may reach nothing that opens a wallet, a connection, or a socket.

@@ -1,6 +1,6 @@
 # Stage 5 tests
 
-Stage 5 is local policies and advisory classifications. SAW-025 defined the model and the evaluation semantics, SAW-026 made the phone apply them to a real request and count the day's spending, SAW-027 gave the owner the Rules screen to write a policy on, and SAW-028 put the assessment on the request-review screen, with a deliberate step before an answer it warns about ([`../guides/policies.md`](../guides/policies.md)).
+Stage 5 is local policies and advisory classifications. SAW-025 defined the model and the evaluation semantics, SAW-026 made the phone apply them to a real request and count the day's spending, SAW-027 gave the owner the Rules screen to write a policy on, SAW-028 put the assessment on the request-review screen, with a deliberate step before an answer it warns about, and SAW-029 ran the scenarios end to end and wrote down what the layer does and does not do ([`../guides/policies.md`](../guides/policies.md)).
 
 Nothing in this stage reaches a network, opens a wallet, or spends anything. Every check below runs on the JVM or under Robolectric, apart from the physical-Seeker checks at the bottom, which have not been run.
 
@@ -43,6 +43,20 @@ These cover SAW-028:
 | The stored snapshot | The codes kept with the record, carried through every later write of it, a record written before there was one, a code this build has no name for, and the whole of it on Activity details | `ActivityLogTest`, `ActivityStoreTest`, `ActivityDetailsScreenTest` |
 | Nothing leaves the phone | No reason code, no verdict code, and nothing the rules name in anything submitted to the sidecar | `InboxViewModelTest`, `StageBoundaryTest` |
 
+These cover SAW-029:
+
+| Area | What the tests cover | Where |
+| --- | --- | --- |
+| The scenarios | Six requests against one connection's rules, each from a transaction the sidecar really built and against rules read off a real store on disk: a transfer inside every rule, one request over the per-request threshold, today's total over the daily one, a recipient the owner never wrote down, an instruction nobody read beside a transfer that matches, and an allowed program carrying an operation that isn't the transfer | `PolicyScenarioTest` |
+| Both halves of every verdict | The classification *and* the exact reason codes, in order, *and* the checks the assessment doesn't cover — for every scenario, so a verdict with the wrong reasons fails as a wrong verdict | `PolicyScenarioTest` |
+| The agent's own words | A note saying a tenth of what the instruction carries reaching the same decision, byte for byte, as the same transaction with no note; and a familiar ticker beside an unrelated mint being outside the asset rule all the same | `PolicyScenarioTest`, `RequestFactsTest` |
+| What no rule decides | The pair: a request the rules warn about that is exactly as approvable as it was, and one that matches every rule the owner wrote — the program list included — with no Approve button at all. The suite asserts both exist, so the demonstration can't be lost | `PolicyScenarioTest` |
+| Two connections | Every scenario read again under a second connection that wrote no rules, two connections whose different thresholds read the same transfer differently, and one connection's day never counted against the other's | `PolicyScenarioTest`, `PolicyEvaluatorTest` |
+| After a restart | Every scenario reaching the identical decision off a new store over the same directory, which is what the next launch has | `PolicyScenarioTest` |
+| The counters' honest limit | A payment this app never recorded being absent from the day's total, and the same amount moved through the app crossing the threshold | `PolicyScenarioTest`, `DailySpendingTest` |
+| Staying local | Assessing a scenario three times leaving the stored file byte for byte and timestamp for timestamp as it was, and nothing a verdict produces carrying an address or a number from the rules | `PolicyScenarioTest` |
+| What a verdict may claim | Every policy-facing string held against *safe*, *secure*, *automatic*, *blocked*, *denied*, *guaranteed*, *protects* and *prevents*, and both verdicts naming the rules and saying who approves | `PolicyWordingTest` |
+
 ### Deliberate breaks
 
 Each of these was made on purpose, run, and reverted, to check that the test that should fail does ([`../../AGENTS.md`](../../AGENTS.md)):
@@ -61,6 +75,12 @@ Each of these was made on purpose, run, and reverted, to check that the test tha
 | Approve enabled with a warning unticked | `PolicyReviewScreenTest.theAnswerWaitsForTheOwnersWordAndTheButtonSaysWhatItWouldDo`, `TransferReviewScreenTest.aTransferOutsideTheRulesWaitsForTheOwnersWordBeforeItCanBeApproved` |
 | A matching policy putting back the Approve button input validation took away | `TransferReviewScreenTest.noRuleEverPutsBackTheApproveButtonInputValidationTookAway` |
 | A file that speaks to a sidecar importing a policy | `StageBoundaryTest.aPolicyDecidesNothingAndNeverLeavesThePhone` |
+| A daily threshold compared against this request alone, ignoring today's total | 13 cases: three in `PolicyEvaluationTest`, four in `PolicyEvaluatorTest`, `PolicyFixturesTest.everyCaseReachesTheVerdictItNames`, and five in `PolicyScenarioTest` |
+| An unread instruction downgraded to a coverage gap when every configured rule matched | Seven cases: two in `PolicyEvaluationTest`, `PolicyFixturesTest.everyCaseReachesTheVerdictItNames`, `RequestFactsTest.unknownCoverageCannotProduceAllowedHoweverWellTheRestMatches`, and three in `PolicyScenarioTest` |
+| A transaction with an instruction nobody read left approvable | Six cases: `PolicyScenarioTest.everyScenarioReachesItsVerdictAndSaysExactlyWhy` and `.theRulesNeverDecideWhetherATransferCanBeApproved`, `RequestFactsTest.aTransactionWithAnInstructionNobodyReadIsNotFullyRead`, two in `TransactionFixturesTest`, and `TransferReviewScreenTest.offersNoApprovalForATransactionItCouldNotReadWhole` |
+| Every connection's rules written to one file | 20 cases, across `PolicyStoreTest`, `PolicyEditorViewModelTest`, `PolicyActivityTest`, `PolicyEvaluatorTest`, and three in `PolicyScenarioTest` |
+| Rules never written to disk, so nothing survives a restart | 37 cases, across `PolicyStoreTest`, `PolicyEditorViewModelTest`, `PolicyActivityTest`, `PolicyEvaluatorTest`, `InboxViewModelTest`, and six in `PolicyScenarioTest` |
+| The words *safe to approve* added to the ALLOWED verdict | `PolicyWordingTest.noVerdictIsCalledSafeAutomaticOrBlocked` |
 
 ## Physical-Seeker checks
 
@@ -85,3 +105,25 @@ Each of these was made on purpose, run, and reverted, to check that the test tha
 | 70 | Approve one despite a warning, then open **Activity** and read what the record kept | NOT RUN |
 | 71 | Repeat check 66 with the system text size at its largest, confirming every check line and the tick can be read and reached | NOT RUN |
 | 72 | Walk the assessment with TalkBack, confirming the verdict, each check and the tick say what they are | NOT RUN |
+| 73 | Write the rules from the worked examples in [`../guides/policies.md`](../guides/policies.md#worked-examples), and walk examples 1–6 on the device, confirming each screen says what the guide says it says | NOT RUN |
+| 74 | Demonstrate **Matches your rules** end to end: approve by hand, sign in the wallet, and read what **Activity** kept about the assessment | NOT RUN |
+| 75 | Demonstrate **Outside your rules** end to end: reject it without ticking anything, and read what **Activity** kept | NOT RUN |
+| 76 | Pair a second connection, give it different thresholds, and confirm the same kind of request reads differently under each | NOT RUN |
+| 77 | Force-stop the app between writing the rules and answering, reopen, and confirm the assessment is made again and reads the same | NOT RUN |
+| 78 | Read every policy screen for a word claiming a verdict is safe, automatic, or blocked, and confirm there is none | NOT RUN |
+
+## Verification record: SAW-029
+
+SAW-029, 2026-09-13, on macOS 26.5 (Apple silicon), with Node 24.21.0 and the other versions in [`../development/toolchain.md`](../development/toolchain.md). It adds no feature: one shared fixture, two test suites, and the documentation. No network and no cluster was reached by any check.
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, `tsc`, 396/396 sidecar tests and 29/29 test-agent tests. SAW-029 adds a fixture case rather than a sidecar test, so both counts are unchanged. |
+| `pnpm check:android` | PASS: Spotless, lint with no issues, both APKs, and 654/654 unit tests — 12 more than before: ten scenarios and two about what a verdict may claim. |
+| `pnpm check:generated` | PASS: SAW-029 changed no `.proto` file, and the committed generated code and fixtures match a fresh generation. |
+| `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer` | PASS: 9/9, 7/7, and 7/7 with the opt-in devnet case skipped. **No transaction was sent to any cluster.** |
+| The shared fixture | PASS: `node sidecar/src/testing/transaction-fixtures.ts` rewrote `fixtures/transactions/cases.json` with one case added, and `sidecar/src/solana/fixtures.test.ts` accepts the committed file as the one the builder produces now. |
+| Deliberate breaks | Six, each applied, run, confirmed to fail the tests in the table above and nothing else, and reverted — every source file restored byte for byte. |
+| Device checks 56–78 | **NOT RUN.** Nothing in Stage 5 has been on the Seeker. A Robolectric run and a successful APK build are not a device pass. |
+
+The two things this record does **not** show, and the device checks exist for: that the assessment reads the way the guide says it does on a real screen at a real text size, and that a real wallet still asks for a real approval after a verdict of either kind.

@@ -146,6 +146,30 @@
       }
     },
     {
+      "name": "note_disagrees_with_the_amount",
+      "description": "The agent's note says a tenth of what the instruction carries. The request and the transaction agree, so the transfer is sound; the prose is not evidence about either, and the base units the phone shows — and a threshold compares — are the instruction's own.",
+      "request": {
+        "wallet": "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn",
+        "network": "devnet",
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "amount": "2500000000",
+        "note": "Sending 0.25 SOL for the test run"
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABAwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gAQICAAEMAgAAAAD5ApUAAAAAAA==",
+      "contentHash": "ncGlnaMOXejHrdm1oSQ1bBwxNf4DyBKSU2cZw0xMMKM=",
+      "version": 1,
+      "verdict": "verified",
+      "findings": [],
+      "facts": {
+        "recipient": "2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z",
+        "destinationAccount": null,
+        "amount": "2500000000",
+        "mint": null,
+        "decimals": 9,
+        "ensuresRecipientAccount": false
+      }
+    },
+    {
       "name": "changed_recipient",
       "description": "A transaction that pays somebody else, presented against the original request.",
       "request": {

@@ -9,7 +9,7 @@ Before this, pair the phone ([`pairing.md`](pairing.md)). Rules are about reques
 - **They are your own note to yourself.** They live on this phone, in this connection's own file, and nowhere else. The sidecar is never sent them. The agent cannot read them and cannot change them.
 - **They approve nothing.** When everything matches, the review says *allowed* — which means the request matched what you wrote down, not that anything has been approved. You still approve by hand in the app and again in your wallet.
 - **They refuse nothing.** A request outside the rules is shown to you with the reasons, and you may go ahead anyway. There is no setting that makes the app turn a request down on its own.
-- **A threshold is not a spending cap.** The day's counters are a record of what went through *this app*. They see nothing you did in your wallet directly, nothing another app did with the same wallet, and nothing on chain. No number here stops a transaction.
+- **A threshold is not a spending cap.** The day's counters are a record of what went through *this app*. They see nothing you did in your wallet directly, nothing another app did with the same wallet, and nothing on chain. No number here stops a transaction. [What a counter cannot see](#what-a-counter-cannot-see) says exactly what that leaves out.
 
 What *does* stop a request is different and comes first: a prepared transaction whose bytes disagree with the request, or that the phone can't read whole, has no Approve button at all ([`transfers.md`](transfers.md)). No rule can soften that, and no rule makes it stricter.
 
@@ -143,6 +143,118 @@ If they changed while you were reading — you edited them, or a transfer settle
 When you answer, the assessment you read is kept with the record in **Activity**: the verdict, the reasons, which checks nothing covered, and whether you went ahead anyway.
 
 It keeps what you were told, never what you wrote. No threshold and no address from your rules is copied into the history — those are stored once, where you set them. Nothing about either reaches the server.
+
+## Worked examples
+
+One connection, one set of rules, and six requests against them. These are the scenarios the tests run (`PolicyScenarioTest`, [`docs/policy.md`](../policy.md#scenarios)), against transactions the sidecar really builds, so what is below is what the app does — not a sketch of it.
+
+### The rules
+
+On the connection's **Rules** screen:
+
+| | |
+| --- | --- |
+| **Actions** | On. **Transfer funds** ticked, nothing else. |
+| **Assets** | On. Native SOL on devnet. **Most per request** `5` SOL, **Most per day** `10` SOL. The field reads back `5000000000` and `10000000000` base units as you type them. |
+| **Recipients** | On. One address: `2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z`. |
+| **Programs** | On. One: `11111111111111111111111111111111`, the system program, which is what a plain SOL transfer calls. |
+
+The summary at the top reads them back and ends with the line that never changes. **Save.**
+
+### 1. A transfer inside every rule
+
+The agent asks to send 2.5 SOL to that address. Under the transaction's own details, **What your rules make of this** says:
+
+> **Matches your rules**
+>
+> Action — Matched — transfer
+> Asset — Matched — SOL on devnet
+> Recipient — Matched — 2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z
+> Programs — Matched — 11111111111111111111111111111111
+> Most per request — Matched — 2.5 of 5
+> Most per day — Matched — 2.5 of 10 today — 0 confirmed, 0 not yet settled, 2.5 now
+>
+> Whatever this says, it approves nothing and stops nothing. Both verdicts need your approval here, and your wallet will ask you again.
+
+Nothing is left uncovered, so there is no uncovered line. There is no box to tick: **Approve and send** is one tap, and it is your tap. *Matches your rules* did not approve anything, and the wallet will ask you again.
+
+### 2. Over the per-request threshold — going ahead anyway
+
+Same request, with **Most per request** set to `1` SOL instead:
+
+> **Outside your rules**
+>
+> Most per request — Outside the rules — 2.5 of 1
+
+The other five lines still say *Matched*, and the one that didn't says what it read and what it was compared against. The button now reads **Approve and send despite warnings** and is unavailable until you tick:
+
+> ☐ I have read the warnings above and want to go ahead anyway
+
+Tick it and the button becomes available. Nothing else changed: the same transaction, to the same address, for the same amount. What you agreed to is the reasons in front of you, so if the transaction is read again or you edit the rules, the tick clears and the reasons are there to read again.
+
+### 3. Over the daily threshold
+
+**Most per request** `3` SOL, **Most per day** `3` SOL, and this app already sent 1 SOL to somebody today from the same wallet:
+
+> Most per day — Outside the rules — 3.5 of 3 today — 1 confirmed, 0 not yet settled, 2.5 now
+
+The line shows the whole sum, including the part that is only projected. **The 1 SOL is what *this app* moved.** Anything you sent from your wallet app directly is not in that number and cannot be — see [what a counter cannot see](#what-a-counter-cannot-see) below.
+
+### 4. A recipient you never wrote down — rejecting
+
+The agent asks to send to an address that is not on your list:
+
+> **Outside your rules**
+>
+> Recipient — Outside the rules — 3yS1JFVT284y8z1LC9MRoWxZjzFrdoD5axKsZiyMsfC7
+
+The whole address is there, wrapped rather than shortened, so you can see it is not the one you wrote down rather than being shown a prefix that looks like it.
+
+**Reject** is one tap and never waits for a tick. You do not have to explain yourself to the screen, and nothing is ticked on the way out.
+
+Either way, the assessment you read goes into **Activity** with the record, and it is there that each reason is spelled out in a sentence — *That recipient is not on your list.* — rather than only as the line you read here.
+
+### 5. A note that disagrees with the transaction
+
+The agent's note says *Sending 0.25 SOL for the test run*. The instruction carries 2.5 SOL — ten times that. With **Most per request** at `1` SOL:
+
+> Most per request — Outside the rules — 2.5 of 1
+
+**The note changed nothing, because nothing reads it.** Every number on the review — the amount at the top, the base units, the threshold comparison, the day's total — comes from the transaction's own bytes. The note is shown where an agent's words are shown, as the agent's words. The same is true of a ticker: a note saying *USDC* beside a mint address that isn't USDC's changes nothing either, because the review names the mint and never a ticker.
+
+### 6. Every rule matched, and no Approve button
+
+A token transfer that calls only programs on your list, to a recipient on your list, for an asset on your list — and the transaction also carries an instruction handing your token account to a delegate:
+
+> **Outside your rules**
+>
+> *This phone could not account for the whole transaction. What the rest of it matched says nothing about the part that was not read.*
+>
+> Action — Matched — transfer
+> Asset — Matched — 3EKkiwNLWqoUbzFkPrmKbtUB4EweE6f4STzevYUmezeL on devnet
+> Recipient — Matched — 2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z
+> Programs — Matched — ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL, TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+> Most per request — No rule set
+> Most per day — No rule set
+>
+> Nothing was checked for: Most per request, Most per day. Nothing above says anything about those.
+
+Every check the owner configured matched, program list included, **and there is no Approve button at all** — above the rules, the transaction's own details say the phone could not read all of it. There is no tick that brings the button back. A program's name is not permission for every instruction that program offers, and a rule that named it is not a statement about the instruction nobody read.
+
+This pairs with example 2, and the pair is the whole point: a request the rules warn about is exactly as approvable as it was, and a request that matches every rule you wrote can be unapprovable. The rules and the verification are different things, and only one of them decides.
+
+## What a counter cannot see
+
+**Most per day** counts what went through this app and nothing else. It cannot see:
+
+- anything you sent from your wallet app directly, or from any other app using the same wallet;
+- anything before this app was installed, or after **Activity** was cleared;
+- network and priority fees, which are not counted against an asset's threshold;
+- the chain. No number here is enforced anywhere, and none of it stops a transaction.
+
+So the number is a floor on the day's spending, never a ceiling. A day that reads *0.5 of 10 today* means this app moved half a SOL — not that half a SOL left the wallet.
+
+It errs in one direction on purpose. A transfer handed to your wallet that this app never learned the outcome of is counted as *not yet settled* and stays in the day's projection. It may already be spent, and it may have been dropped; over-reporting what is at stake warns you, and under-reporting it misleads you.
 
 ## See also
 
