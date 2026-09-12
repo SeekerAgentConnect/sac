@@ -12,6 +12,7 @@ import io.github.brrenat.seekervault.request.v1.action
 import io.github.brrenat.seekervault.request.v1.actionRequest
 import io.github.brrenat.seekervault.request.v1.asset
 import io.github.brrenat.seekervault.request.v1.requestRef
+import io.github.brrenat.seekervault.request.v1.signMessageAction
 import io.github.brrenat.seekervault.request.v1.transferAction
 import java.security.SecureRandom
 import java.time.Instant
@@ -95,6 +96,32 @@ class FakeConnectionGateway : ConnectionGateway {
         }
             .also { pending.getOrPut(connectionId) { mutableListOf() } += it }
 
+        /**
+         * Stores a PENDING sign_message, which is bound to a wallet but to no network (SAW-016).
+         */
+        fun addPendingMessage(
+            connectionId: String,
+            wallet: String,
+            text: String = "Sign in to Example",
+            requestId: String = UUID.randomUUID().toString(),
+            expiresAt: Instant = Instant.now().plusSeconds(86_400),
+        ): ActionRequest = actionRequest {
+            ref = requestRef {
+                this.connectionId = connectionId
+                this.requestId = requestId
+            }
+            action = action {
+                signMessage = signMessageAction {
+                    this.wallet = wallet
+                    this.text = text
+                }
+            }
+            state = RequestState.REQUEST_STATE_PENDING
+            createdAt = timestamp { seconds = Instant.now().epochSecond }
+            this.expiresAt = timestamp { seconds = expiresAt.epochSecond }
+        }
+            .also { pending.getOrPut(connectionId) { mutableListOf() } += it }
+
         /** Cancels a PENDING request, as the agent does with `vault_cancel_request`. */
         fun cancel(connectionId: String, requestId: String) {
             val request =
@@ -119,8 +146,9 @@ class FakeConnectionGateway : ConnectionGateway {
                     ?.firstOrNull { it.ref.requestId == requestId }
                     ?.let { RequestState.REQUEST_STATE_PENDING }
 
-        // The lifecycle for acks: acknowledgement → COMPLETED, rejection → REJECTED, and a repeat
-        // of the accepted result returns the request unchanged.
+        // The lifecycle this fake serves: an ack is acknowledged or rejected, and a message is
+        // approved (PROCESSING) and then settled by what the wallet did. A repeat of the accepted
+        // result returns the request unchanged.
         fun apply(connectionId: String, submission: SubmitResultRequest): ActionRequest {
             val requestId = submission.ref.requestId
             val key = "$connectionId/$requestId"
@@ -132,6 +160,15 @@ class FakeConnectionGateway : ConnectionGateway {
                             RequestState.REQUEST_STATE_COMPLETED
                         SubmitResultRequest.ResultCase.REJECTION ->
                             RequestState.REQUEST_STATE_REJECTED
+                        // An approval doesn't end a message request: it hands it to the wallet.
+                        SubmitResultRequest.ResultCase.APPROVAL ->
+                            if (waiting.action.hasSignMessage())
+                                RequestState.REQUEST_STATE_PROCESSING
+                            else
+                                throw GatewayException(
+                                    GatewayException.Kind.Rejected,
+                                    "nothing to approve",
+                                )
                         else ->
                             throw GatewayException(GatewayException.Kind.Rejected, "not for acks")
                     }
@@ -145,6 +182,28 @@ class FakeConnectionGateway : ConnectionGateway {
                 settled[connectionId]?.get(requestId)
                     ?: throw GatewayException(GatewayException.Kind.NotFound, "no such request")
             if (accepted[key] == submission.resultCase) return now
+            // An approved message is PROCESSING, and what the wallet did settles it.
+            if (now.state == RequestState.REQUEST_STATE_PROCESSING) {
+                val state =
+                    when (submission.resultCase) {
+                        SubmitResultRequest.ResultCase.MESSAGE_SIGNATURE ->
+                            RequestState.REQUEST_STATE_COMPLETED
+                        SubmitResultRequest.ResultCase.REJECTION ->
+                            RequestState.REQUEST_STATE_REJECTED
+                        SubmitResultRequest.ResultCase.EXECUTION_FAILURE ->
+                            RequestState.REQUEST_STATE_FAILED
+                        else ->
+                            throw GatewayException(
+                                GatewayException.Kind.InvalidState,
+                                "not from PROCESSING",
+                                request = now,
+                            )
+                    }
+                val after = now.toBuilder().setState(state).build()
+                settled.getValue(connectionId)[requestId] = after
+                accepted[key] = submission.resultCase
+                return after
+            }
             throw GatewayException(GatewayException.Kind.InvalidState, "moved on", request = now)
         }
     }
@@ -245,10 +304,9 @@ class FakeConnectionGateway : ConnectionGateway {
         server.publications++
         if (binding == server.wallet) return emptyList()
         server.wallet = binding
-        // The sidecar cancels the PENDING requests the new binding no longer fits. The fake queues
-        // only acks, which no binding covers, so nothing is cancelled unless a test says otherwise.
+        // The sidecar cancels the PENDING requests the new binding no longer fits.
         val unfitting =
-            server.pending[id].orEmpty().filter { !it.action.hasAck() }.map { it.ref.requestId }
+            server.pending[id].orEmpty().filterNot { fits(it, binding) }.map { it.ref.requestId }
         unfitting.forEach { server.cancel(id, it) }
         return unfitting
     }
@@ -273,6 +331,19 @@ class FakeConnectionGateway : ConnectionGateway {
         if (id != connectionId) throw GatewayException(GatewayException.Kind.NotFound, "no such")
         return id
     }
+
+    /** Whether a binding covers a request, the way the sidecar's rule does. */
+    private fun fits(request: ActionRequest, binding: WalletBinding?): Boolean =
+        when {
+            request.action.hasAck() -> true
+            binding == null -> false
+            // A signature over bytes has no network, so only the wallet has to match.
+            request.action.hasSignMessage() -> request.action.signMessage.wallet == binding.wallet
+            request.action.hasTransfer() ->
+                request.action.transfer.wallet == binding.wallet &&
+                    request.action.transfer.network == binding.network
+            else -> false
+        }
 
     companion object {
         /** A PENDING ack request with its connection's and its own ID. */

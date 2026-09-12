@@ -112,7 +112,10 @@ fun SeekerVaultApp(
                     sending = key in inboxState.sending,
                     now = Instant.now(),
                     onAnswer = { inbox.answer(key, it) },
+                    onApprove = { inbox.approve(key, inboxState.wallet) },
                     onSendAgain = { inbox.sendAgain(key) },
+                    wallet = inboxState.wallet,
+                    signingProblem = inboxState.problem.takeIf { inboxState.problemKey == key },
                     onBack = pop,
                 )
             }

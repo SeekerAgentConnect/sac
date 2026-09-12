@@ -24,14 +24,16 @@ export const DISPLAY_COMMAND_TOOL = "vault_display_command";
 function instructionsFor(demoTools: boolean): string {
   return [
     "seeker-vault puts an agent's requests in front of the owner on their Seeker phone.",
+    "Every request waits for the owner to approve it by hand; vault_get_capabilities says what this sidecar actually serves.",
     "vault_display_command is a live diagnostic: it shows text on the open live-test screen and waits for the owner's OK.",
+    "vault_get_address reads the wallet the owner connected, and vault_sign_message asks that wallet to sign a message, returning at once with a request_id.",
     ...(demoTools
       ? [
           "vault_request_ack, a development and demo tool, queues text for the owner to acknowledge later, and returns at once with a request_id.",
         ]
       : []),
     "Read a request's outcome later with vault_get_request, and withdraw a pending one with vault_cancel_request.",
-    "Nothing here signs or sends transactions.",
+    "The sidecar holds no keys and signs nothing itself: the owner's own wallet signs, and nothing here sends a transaction.",
   ].join(" ");
 }
 

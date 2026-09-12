@@ -45,6 +45,24 @@ describe("stage boundary", () => {
     );
   });
 
+  it("signs nothing in the sidecar, and only verifies", () => {
+    // SAW-016 lets the sidecar check an Ed25519 signature the owner's wallet made. Making one is
+    // a different thing, and stays impossible here: there is no key to make it with.
+    const signing = /\bcreateSign\b|\bsign\s*\(/;
+    const hits = shippedSources().filter((file) =>
+      signing.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      hits.map((file) => relative(ROOT, file)),
+      [],
+    );
+    assert.match(
+      readFileSync(join(SRC, "requests/signature.ts"), "utf8"),
+      /\bverify\s*\(/,
+      "requests/signature.ts verifies signatures, and that is all it does",
+    );
+  });
+
   it("imports the file system and SQLite only in src/storage", () => {
     const sources = shippedSources();
     const outside = sources.filter(

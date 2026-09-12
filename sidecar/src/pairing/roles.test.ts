@@ -176,6 +176,8 @@ const MCP_METHODS: ReadonlyArray<{
   ...[
     "vault_display_command",
     "vault_get_address",
+    "vault_get_capabilities",
+    "vault_sign_message",
     "vault_request_ack",
     "vault_get_request",
     "vault_cancel_request",

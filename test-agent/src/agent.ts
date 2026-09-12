@@ -16,6 +16,8 @@ import {
 
 export const DISPLAY_COMMAND_TOOL = "vault_display_command";
 export const GET_ADDRESS_TOOL = "vault_get_address";
+export const GET_CAPABILITIES_TOOL = "vault_get_capabilities";
+export const SIGN_MESSAGE_TOOL = "vault_sign_message";
 export const REQUEST_ACK_TOOL = "vault_request_ack";
 export const GET_REQUEST_TOOL = "vault_get_request";
 export const CANCEL_REQUEST_TOOL = "vault_cancel_request";
@@ -198,7 +200,9 @@ export interface RequestView {
   readonly created_at: string;
   readonly expires_at: string;
   readonly updated_at: string;
+  readonly wallet?: string;
   readonly signature?: string;
+  readonly signed_message_base64?: string;
   readonly detail?: string;
 }
 
@@ -222,6 +226,33 @@ export async function getAddress(client: Client): Promise<AddressView> {
     );
   }
   return view as unknown as AddressView;
+}
+
+/** What the sidecar says it can do, as vault_get_capabilities returns it. */
+export interface CapabilitiesView {
+  readonly approval: string;
+  readonly signing: string;
+  readonly operations: readonly string[];
+  readonly wallet_connected: boolean;
+  readonly max_message_bytes: number;
+  readonly max_note_bytes: number;
+  readonly max_pending_requests: number;
+  readonly min_expires_in_seconds: number;
+  readonly max_expires_in_seconds: number;
+}
+
+/** Reads what this sidecar serves. It takes no input, and the sidecar always answers it. */
+export async function getCapabilities(
+  client: Client,
+): Promise<CapabilitiesView> {
+  const view = await callView(client, GET_CAPABILITIES_TOOL, {});
+  if (view.approval !== "manual" || !Array.isArray(view.operations)) {
+    throw new AgentFailure(
+      ExitCode.FAILURE,
+      `${GET_CAPABILITIES_TOOL} returned no capabilities`,
+    );
+  }
+  return view as unknown as CapabilitiesView;
 }
 
 /**

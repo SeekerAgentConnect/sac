@@ -1,11 +1,13 @@
 package io.github.brrenat.seekervault.connections.storage
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.LocalResult
+import io.github.brrenat.seekervault.connections.SigningOutcome
 import java.io.File
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -54,6 +56,37 @@ class ResultStoreTest {
             )
         store.put(settled)
         assertEquals(settled, ResultStore(dir).get(A, SAME_REQUEST))
+    }
+
+    @Test
+    fun keepsAnApprovalAndWhateverTheWalletDidAcrossARestart() {
+        val approved = result(A, answer = Answer.Approve)
+        store.put(approved)
+        assertEquals(approved, ResultStore(dir).get(A, SAME_REQUEST))
+        for (outcome in
+            listOf(
+                SigningOutcome.Signed(ByteString.copyFrom(ByteArray(64) { it.toByte() })),
+                SigningOutcome.Declined,
+                SigningOutcome.Failed("The wallet is locked."),
+            )) {
+            val signed = approved.copy(approved = true, signing = outcome)
+            store.put(signed)
+            assertEquals(signed, ResultStore(dir).get(A, SAME_REQUEST))
+        }
+    }
+
+    @Test
+    fun readsAnAnswerStoredBeforeApprovalsExisted() {
+        // A version 1 file: an acknowledgement or a rejection, with no approval in it.
+        val old = result(A, answer = Answer.Reject, delivery = Delivery.Accepted)
+        store.put(old)
+        val file = File(File(dir, A), "$SAME_REQUEST.json")
+        file.writeText(file.readText().replace("\"version\":2", "\"version\":1"))
+        val read = ResultStore(dir).get(A, SAME_REQUEST)
+        assertEquals(Answer.Reject, read?.answer)
+        assertEquals(Delivery.Accepted, read?.delivery)
+        assertEquals(false, read?.approved)
+        assertNull(read?.signing)
     }
 
     @Test

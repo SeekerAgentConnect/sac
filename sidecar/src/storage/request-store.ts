@@ -407,10 +407,27 @@ export class RequestStore {
     });
   }
 
+  /** The most PENDING requests one connection may have, for vault_get_capabilities. */
+  get pendingLimit(): number {
+    return this.#pendingLimit;
+  }
+
   /** The connection's wallet binding, or undefined when no wallet is connected. */
   wallet(connectionId: string): WalletBinding | undefined {
     requireUuid("connection_id", connectionId);
     return this.#walletOf(connectionId);
+  }
+
+  /**
+   * The paired phone's wallet binding, or undefined when no phone is paired or no wallet is
+   * connected. Unlike `activeWallet`, it asks rather than demands: vault_get_capabilities reports
+   * either state instead of failing.
+   */
+  connectedWallet(): WalletBinding | undefined {
+    const connectionId = this.activeConnection();
+    return connectionId === undefined
+      ? undefined
+      : this.#walletOf(connectionId);
   }
 
   /** The paired phone's wallet binding, for the agent (vault_get_address). */

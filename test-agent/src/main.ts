@@ -7,18 +7,22 @@ import {
   ExitCode,
   GET_REQUEST_TOOL,
   REQUEST_ACK_TOOL,
+  SIGN_MESSAGE_TOOL,
   displayCommand,
   getAddress,
+  getCapabilities,
   listTools,
   requestTool,
   requireTool,
   withMcpSession,
+  type RequestView,
 } from "./agent.ts";
 import {
   AgentConfigError,
   CLIENT_TIMEOUT_MARGIN_SECONDS,
   loadAgentConfig,
 } from "./config.ts";
+import { verifyMessageSignature } from "./verify.ts";
 
 const USAGE = `Usage: pnpm agent <command> [options]
 
@@ -27,6 +31,10 @@ Commands:
                    Prints the acknowledgement {"id":"...","result":"OK"} on stdout.
   address          Print the wallet the owner selected on their phone and its network
                    (vault_get_address), as JSON. It fails if they've connected none.
+  capabilities     Print what the sidecar can actually do (vault_get_capabilities), as JSON.
+  sign <text>      Ask the owner's wallet to sign the text (vault_sign_message). Prints the
+                   request, PENDING, as JSON; it doesn't wait for the owner. Read it back
+                   with get, which checks the signature itself.
   ack <text>       Queue text for the owner to acknowledge later (vault_request_ack, a demo
                    tool that the sidecar serves only with MCP_DEMO_TOOLS=true). Prints the
                    request, PENDING, as JSON; it doesn't wait for the owner.
@@ -35,9 +43,10 @@ Commands:
   tools            List the MCP server's tools as JSON.
 
 Options:
-  --key <key>      ack: the idempotency key. Default: a new one, printed on stderr.
-  --note <text>    ack: a note for the owner, shown apart from the text.
-  --expires <s>    ack: seconds until the request expires, 60 to 604800.
+  --key <key>      ack, sign: the idempotency key. Default: a new one, printed on stderr.
+  --note <text>    ack, sign: a note for the owner, shown apart from the text.
+  --expires <s>    ack, sign: seconds until the request expires, 60 to 604800.
+  --wallet <addr>  sign: the wallet to sign with. Default: the one vault_get_address returns.
   --timeout <s>    hello: client timeout in seconds; default LIVE_COMMAND_TIMEOUT_SECONDS + ${CLIENT_TIMEOUT_MARGIN_SECONDS}.
   -h, --help       Show this help.
 
@@ -51,6 +60,8 @@ Exit codes: 0 OK, 1 unexpected result, 2 usage or configuration, 3 connection,
 const ARITY: Readonly<Record<string, readonly [number, number]>> = {
   hello: [0, 1],
   address: [0, 0],
+  capabilities: [0, 0],
+  sign: [1, 1],
   ack: [1, 1],
   get: [1, 1],
   cancel: [1, 1],
@@ -77,6 +88,22 @@ function printError(text: string): void {
   process.stderr.write(`${redact(text)}\n`);
 }
 
+/**
+ * A request with `signature_verified` added, for a signed message. The agent checks the signature
+ * itself, against the wallet and the exact bytes the sidecar returned; it never assumes one it was
+ * handed is good.
+ */
+function checked(view: RequestView): Record<string, unknown> {
+  const { wallet, signature, signed_message_base64: signed } = view;
+  if (wallet === undefined || signature === undefined || signed === undefined) {
+    return { ...view };
+  }
+  return {
+    ...view,
+    signature_verified: verifyMessageSignature(wallet, signed, signature),
+  };
+}
+
 function wholeSeconds(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   return /^\d+$/.test(value) ? Number(value) : 0;
@@ -91,6 +118,7 @@ async function main(argv: string[]): Promise<number> {
       options: {
         timeout: { type: "string" },
         key: { type: "string" },
+        wallet: { type: "string" },
         note: { type: "string" },
         expires: { type: "string" },
         help: { type: "boolean", short: "h" },
@@ -159,6 +187,34 @@ async function main(argv: string[]): Promise<number> {
           print(JSON.stringify(await getAddress(client)));
           return;
         }
+        case "capabilities": {
+          print(JSON.stringify(await getCapabilities(client)));
+          return;
+        }
+        case "sign": {
+          // Without --wallet, the agent reads the owner's wallet first, the way any agent should:
+          // there is no address to assume, and naming another one is refused.
+          const wallet =
+            parsed.values.wallet ?? (await getAddress(client)).wallet;
+          const key = parsed.values.key ?? `sign-${randomUUID()}`;
+          if (parsed.values.key === undefined) {
+            printError(`idempotency key: ${key}`);
+          }
+          const args: Record<string, unknown> = {
+            wallet,
+            message: rest[0],
+            idempotency_key: key,
+          };
+          if (parsed.values.note !== undefined) args.note = parsed.values.note;
+          if (expires !== undefined) args.expires_in_seconds = expires;
+          printError(
+            "The owner reviews it on their Seeker; nothing is signed until they approve.",
+          );
+          print(
+            JSON.stringify(await requestTool(client, SIGN_MESSAGE_TOOL, args)),
+          );
+          return;
+        }
         case "ack": {
           await requireTool(
             client,
@@ -182,17 +238,15 @@ async function main(argv: string[]): Promise<number> {
           return;
         }
         case "get":
-        case "cancel":
-          print(
-            JSON.stringify(
-              await requestTool(
-                client,
-                command === "get" ? GET_REQUEST_TOOL : CANCEL_REQUEST_TOOL,
-                { request_id: rest[0] },
-              ),
-            ),
+        case "cancel": {
+          const view = await requestTool(
+            client,
+            command === "get" ? GET_REQUEST_TOOL : CANCEL_REQUEST_TOOL,
+            { request_id: rest[0] },
           );
+          print(JSON.stringify(checked(view)));
           return;
+        }
         default: {
           const text = rest[0] ?? "Hello Seeker";
           printError(

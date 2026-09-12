@@ -106,7 +106,9 @@ SAW-011 adds [pairing](#pairing) and [separate roles](#roles). The operator show
 
 SAW-013 adds the phone's inbox, and SAW-014 validates the workflow end to end ([`docs/testing/stage-2.md`](testing/stage-2.md)).
 
-SAW-015 opens Stage 3 with [the wallet binding](#the-wallet-binding): the phone publishes the wallet the owner selected, and agents read it with `vault_get_address`. Creating a wallet action now checks it: `WALLET_NOT_CONNECTED` when the owner has connected none, and `WALLET_MISMATCH` when the action names another wallet or network. The tools that create wallet actions, and `PrepareRequest` for a transfer or swap, still arrive with Stages 3, 4, and 6.
+SAW-015 opens Stage 3 with [the wallet binding](#the-wallet-binding): the phone publishes the wallet the owner selected, and agents read it with `vault_get_address`. Creating a wallet action now checks it: `WALLET_NOT_CONNECTED` when the owner has connected none, and `WALLET_MISMATCH` when the action names another wallet or network.
+
+SAW-016 adds the first wallet action, `sign_message`: `vault_sign_message` creates the request, the owner approves it by hand on the phone, the wallet signs, and the sidecar verifies the signature before it accepts it ([message results](#message-results); [`docs/guides/message-signing.md`](guides/message-signing.md)). `vault_get_capabilities` says what a sidecar actually serves. The tools for transfers and swaps, and `PrepareRequest`, still arrive with Stages 4 and 6.
 
 ```mermaid
 sequenceDiagram
@@ -315,26 +317,40 @@ A `SubmitResult` carries one result:
 | `execution_failure {detail}` | PROCESSING, UNKNOWN | FAILED | sign_message, transfer, swap |
 | `unknown_outcome {detail}` | PROCESSING | UNKNOWN | sign_message, transfer, swap |
 
-- **Signatures are 64 bytes, and hashes 32.** From Stage 3 on, the sidecar verifies each signature against the request's wallet before it accepts it.
+- **Signatures are 64 bytes, and hashes 32.** From SAW-016 on, the sidecar verifies a `message_signature` against the request's wallet and its exact bytes before it accepts it; see [message results](#message-results).
 - **Repeating an accepted result has no further effect.** The sidecar returns the request as it is, so the phone can retry after a lost response. The phone stores each result before it sends it, and sends it again on each refresh until the sidecar answers (SAW-013; [`docs/guides/pending-requests.md`](guides/pending-requests.md)).
 - **Any other result for a request that has moved on** gets `INVALID_STATE`, with the request as it is now.
 
 `decideResult` implements this table and the approval binding. SAW-010 adds storage, duplicate detection, and transactions around it.
+
+### Message results
+
+A `sign_message` request is the one wallet action with no transaction: it produces a signature, and nothing reaches the network (SAW-016).
+
+- **The signed bytes are the request's own.** `messageBytes` is the text's UTF-8 encoding, or the `data` as it is. Nothing is trimmed, normalized, or re-encoded anywhere along the way, so the agent's bytes, the bytes the phone shows, the bytes the wallet signs, and the bytes the sidecar verifies against are all one and the same.
+- **The approval binds to them.** The phone sends `approval {prepared_version: 0, content_hash: SHA-256(message bytes)}` before it invokes the wallet, and the sidecar refuses any other hash with `INVALID_PARAMETERS`. A different message is a different request, and a changed wallet cancels the request it no longer fits, so an approval can never carry over to something else.
+- **The sidecar verifies the signature.** `message_signature.signature` must be the request's `wallet`'s Ed25519 signature over exactly those bytes (`requests/signature.ts`), or the submission is refused with `INVALID_PARAMETERS` and the request stays where it was. The sidecar holds no key and signs nothing itself: a Solana address is an Ed25519 public key, which is all verifying needs.
+- **What the agent gets back** is `signature` (base58), `wallet`, and `signed_message_base64`, the exact bytes. An agent verifies the signature against those bytes rather than re-deriving the encoding.
+- **A message signing is never UNKNOWN.** Nothing is broadcast, so a signature the phone never received doesn't exist anywhere: the phone reports `execution_failure`, and the request is FAILED. The `PROCESSING → UNKNOWN` transition stays in the table for transfers and swaps, which can be in doubt.
+- **A signature is not a transfer.** It moves nothing and settles nothing; the phone says so on the review screen, and `vault_sign_message` says so to the agent.
 
 ### Agent API (MCP)
 
 | Tool | Stage | Input | Result |
 | --- | --- | --- | --- |
 | `vault_request_ack` | SAW-010; development and demo only, served with `MCP_DEMO_TOOLS=true` (SAW-014) | `text`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
-| `vault_sign_message` | 3 | `wallet`, `message` (text) or `message_base64` (bytes), `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
+| `vault_sign_message` | SAW-016 | `wallet`, `message` (text) or `message_base64` (bytes), `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_transfer` | 4 | `wallet`, `network`, `recipient`, `asset`, `amount`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_swap` | 6 | `wallet`, `network`, `input_asset`, `output_asset`, `input_amount`, `slippage_bps`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_get_address` | SAW-015 | Nothing | The owner's wallet: `wallet`, `network`, `bound_at` |
+| `vault_get_capabilities` | SAW-016 | Nothing | What this sidecar serves: `approval`, `signing`, `operations`, `wallet_connected`, and the limits |
 | `vault_get_request` | SAW-010 | `request_id` | The request as it is now |
 | `vault_cancel_request` | SAW-010 | `request_id` | The request, CANCELLED |
 
 - **A creation tool answers at once,** with the request ID and PENDING. Unlike `vault_display_command`, it never waits for the user. A stored request isn't an approved one.
 - **`vault_request_ack` is served only with `MCP_DEMO_TOOLS=true`.** Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The other tools are always served.
+- **`vault_sign_message` takes the message one way or the other,** as `message` (text, whose UTF-8 encoding is signed) or `message_base64` (bytes, signed as they are), never both and never neither. 1 to 4096 bytes. It creates the request and nothing more: no wallet is contacted until the owner approves it on their phone, and the result carries `signed_message_base64` ([message results](#message-results)).
+- **`vault_get_capabilities` is read-only, always served, and never fails.** It says `approval: "manual"` — the owner decides every request, and no agent can ask for anything else — and `signing: "wallet"`, since the owner's own wallet signs and the sidecar holds no key. `operations` lists only what this sidecar serves now, so an agent treats anything missing from it as unavailable rather than trying it.
 - **`vault_get_address` is read-only and always served.** It fails with `NOT_PAIRED` when no phone is paired, and `WALLET_NOT_CONNECTED` when the owner has connected no wallet. There is no fallback address: the sidecar never makes one. The owner can change or disconnect the wallet at any time, so agents read it again rather than caching it. Its result is `{"wallet": "...", "network": "devnet", "bound_at": "2026-09-12T09:30:00.000Z"}`.
 - **`network`** is `"mainnet"`, `"devnet"`, or `"testnet"`.
 - **`asset`, `input_asset`, and `output_asset`** are `"SOL"` or a token's mint address.
@@ -361,7 +377,9 @@ Every tool returns the same view in `structuredContent`:
 }
 ```
 
+- **`wallet`** is the address a wallet action is bound to.
 - **`signature`** (base58) appears once there is one.
+- **`signed_message_base64`** carries a signed message's exact bytes, so the agent verifies the signature against them.
 - **`detail`** is display text that explains a REJECTED, CANCELLED, EXPIRED, FAILED, or UNKNOWN request.
 - **Timestamps** are RFC 3339 in UTC, with milliseconds.
 - **Errors keep the Stage 1 format:** `isError: true`, text `"<CODE>: <message>"`, and no `structuredContent`.
@@ -439,7 +457,7 @@ Each credential opens one role:
 | `RequestService`: `ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, `PublishWallet` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `LiveCommandService`: `WatchCommands`, `AcknowledgeCommand` (Stage 1) | `unauthenticated` | `unauthenticated` | `unauthenticated` | Yes | `unauthenticated` |
 
-- **Only the paired phone can prepare, review, or answer a request, or publish a wallet,** and only for its own connection. No MCP tool pairs, prepares, submits a result, revokes, or changes the wallet, so an agent can't act as the phone. `vault_get_address` only reads what the phone published.
+- **Only the paired phone can prepare, review, or answer a request, or publish a wallet,** and only for its own connection. No MCP tool pairs, prepares, approves, submits a result, revokes, or changes the wallet, so an agent can't act as the phone. `vault_sign_message` only stores a request for the owner to decide; `vault_get_address` and `vault_get_capabilities` only read.
 - **`PHONE_TOKEN` is the Stage 1 development credential.** It opens the live diagnostic and nothing else.
 - **`GET /healthz` needs no credential.**
 - `sidecar/src/pairing/roles.test.ts` checks every cell, and every new RPC or tool joins that test.

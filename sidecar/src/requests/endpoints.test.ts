@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { after, before, describe, it } from "node:test";
 
@@ -28,11 +29,16 @@ import {
   type TestPhone,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
+import { testWallet } from "../testing/wallet.ts";
+import { decodeBase58 } from "./action.ts";
+import { verifySignature } from "./signature.ts";
 import {
   CANCEL_REQUEST_TOOL,
   GET_ADDRESS_TOOL,
+  GET_CAPABILITIES_TOOL,
   GET_REQUEST_TOOL,
   REQUEST_ACK_TOOL,
+  SIGN_MESSAGE_TOOL,
   type RequestView,
 } from "./mcp-tools.ts";
 
@@ -162,8 +168,10 @@ describe("durable requests over MCP and Connect", () => {
         CANCEL_REQUEST_TOOL,
         "vault_display_command",
         GET_ADDRESS_TOOL,
+        GET_CAPABILITIES_TOOL,
         GET_REQUEST_TOOL,
         REQUEST_ACK_TOOL,
+        SIGN_MESSAGE_TOOL,
       ].sort(),
     );
     assert.match(
@@ -185,7 +193,9 @@ describe("durable requests over MCP and Connect", () => {
           CANCEL_REQUEST_TOOL,
           "vault_display_command",
           GET_ADDRESS_TOOL,
+          GET_CAPABILITIES_TOOL,
           GET_REQUEST_TOOL,
+          SIGN_MESSAGE_TOOL,
         ].sort(),
       );
       assert.doesNotMatch(
@@ -498,6 +508,167 @@ describe("durable requests over MCP and Connect", () => {
       }),
       connectFailure(Code.InvalidArgument, RequestError.INVALID_PARAMETERS),
     );
+  });
+
+  it("says what it can do, and never promises an operation it doesn't serve", async () => {
+    const view = viewOf(
+      await callTool(agent, GET_CAPABILITIES_TOOL, {}),
+    ) as unknown as Record<string, unknown>;
+    assert.equal(view.approval, "manual");
+    assert.equal(view.signing, "wallet");
+    // The demo tool is on for this sidecar, so ack is served here too; transfer and swap are
+    // not implemented, and must not be advertised.
+    assert.deepEqual(view.operations, ["ack", "sign_message"]);
+    assert.equal(view.wallet_connected, false);
+    assert.equal(view.max_message_bytes, 4096);
+    assert.equal(view.min_expires_in_seconds, 60);
+    await phone().publishWallet({
+      connectionId: paired.connectionId,
+      binding: { wallet: WALLET, network: Network.DEVNET },
+    });
+    try {
+      const connected = viewOf(
+        await callTool(agent, GET_CAPABILITIES_TOOL, {}),
+      ) as unknown as Record<string, unknown>;
+      assert.equal(connected.wallet_connected, true);
+    } finally {
+      await phone().publishWallet({ connectionId: paired.connectionId });
+    }
+  });
+
+  it("signs a message only after the owner approves, and returns the signed bytes", async () => {
+    const signer = testWallet();
+    // Decomposed e-acute and a CRLF: bytes that any normalization would change.
+    const message = "Sign in to Example\r\ne\u{301}";
+    const bytes = new TextEncoder().encode(message);
+    await phone().publishWallet({
+      connectionId: paired.connectionId,
+      binding: { wallet: signer.address, network: Network.DEVNET },
+    });
+    try {
+      // Another wallet than the owner's is refused before anything is stored.
+      const mismatch = await callTool(agent, SIGN_MESSAGE_TOOL, {
+        wallet: WALLET,
+        message,
+        idempotency_key: `sign-${++keys}`,
+      });
+      assert.equal(errorCode(mismatch), "WALLET_MISMATCH");
+
+      const created = viewOf(
+        await callTool(agent, SIGN_MESSAGE_TOOL, {
+          wallet: signer.address,
+          message,
+          idempotency_key: `sign-${++keys}`,
+          note: "Logging in to Example",
+        }),
+      );
+      assert.equal(created.action, "sign_message");
+      assert.equal(created.status, "PENDING");
+      assert.equal(created.wallet, signer.address);
+      assert.equal(created.signature, undefined);
+      assert.equal(created.signed_message_base64, undefined);
+
+      // The phone approves exactly what the owner reviewed, then reports the wallet's signature.
+      const ref = refOf(created);
+      const approved = await phone().submitResult({
+        ref,
+        result: {
+          case: "approval",
+          value: {
+            preparedVersion: 0,
+            contentHash: createHash("sha256").update(bytes).digest(),
+          },
+        },
+      });
+      assert.equal(approved.request?.state, RequestState.PROCESSING);
+      // A signature over anything but the request's own bytes is refused, and the request stays
+      // where it was: the sidecar checks it rather than taking the phone's word.
+      await assert.rejects(
+        phone().submitResult({
+          ref,
+          result: {
+            case: "messageSignature",
+            value: { signature: signer.sign(`${message} `) },
+          },
+        }),
+        connectFailure(Code.InvalidArgument, RequestError.INVALID_PARAMETERS),
+      );
+      assert.equal((await read(created.request_id)).status, "PROCESSING");
+
+      const completed = await phone().submitResult({
+        ref,
+        result: {
+          case: "messageSignature",
+          value: { signature: signer.sign(bytes) },
+        },
+      });
+      assert.equal(completed.request?.state, RequestState.COMPLETED);
+
+      const view = await read(created.request_id);
+      assert.equal(view.status, "COMPLETED");
+      assert.equal(view.terminal, true);
+      assert.equal(view.wallet, signer.address);
+      assert.equal(
+        view.signed_message_base64,
+        Buffer.from(bytes).toString("base64"),
+      );
+      // What the agent gets back is enough to check the signature on its own: the address, the
+      // exact bytes, and the signature, with no re-encoding of the message anywhere.
+      const signature = decodeBase58(view.signature ?? "");
+      assert.ok(signature !== undefined);
+      assert.equal(
+        verifySignature(
+          view.wallet ?? "",
+          Uint8Array.from(
+            Buffer.from(view.signed_message_base64 ?? "", "base64"),
+          ),
+          signature,
+        ),
+        true,
+      );
+    } finally {
+      await phone().publishWallet({ connectionId: paired.connectionId });
+    }
+  });
+
+  it("takes a message as text or as bytes, and refuses anything else", async () => {
+    const signer = testWallet();
+    await phone().publishWallet({
+      connectionId: paired.connectionId,
+      binding: { wallet: signer.address, network: Network.DEVNET },
+    });
+    try {
+      const data = Buffer.from([0, 1, 2, 250, 255]);
+      const created = viewOf(
+        await callTool(agent, SIGN_MESSAGE_TOOL, {
+          wallet: signer.address,
+          message_base64: data.toString("base64"),
+          idempotency_key: `sign-${++keys}`,
+        }),
+      );
+      assert.equal(created.status, "PENDING");
+      for (const [fields, reason] of [
+        [
+          { message: "a", message_base64: "YQ==" },
+          /either message or message_base64/,
+        ],
+        [{}, /either message or message_base64/],
+        [{ message_base64: "not base64!" }, /not standard base64/],
+        [{ message: "" }, /message is empty/],
+        [{ message: "x".repeat(4097) }, /the limit is 4096/],
+      ] as const) {
+        const refused = await callTool(agent, SIGN_MESSAGE_TOOL, {
+          wallet: signer.address,
+          idempotency_key: `sign-${++keys}`,
+          ...fields,
+        });
+        assert.equal(errorCode(refused), "INVALID_PARAMETERS");
+        const [content] = refused.content;
+        assert.match(content?.type === "text" ? content.text : "", reason);
+      }
+    } finally {
+      await phone().publishWallet({ connectionId: paired.connectionId });
+    }
   });
 
   it("reports unknown and malformed request IDs to the agent", async () => {

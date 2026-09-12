@@ -30,6 +30,7 @@ import {
   type ActionKind,
   type ResultCase,
 } from "./lifecycle.ts";
+import { testWallet } from "../testing/wallet.ts";
 
 const NOON = Date.UTC(2026, 8, 11, 12); // 2026-09-11T12:00:00Z
 const DEADLINE = NOON + 60_000;
@@ -37,7 +38,9 @@ const REF = {
   connectionId: "5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f",
   requestId: "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c",
 };
-const WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW";
+// A throwaway wallet, so a message_signature can carry a signature the sidecar really verifies.
+const SIGNER = testWallet();
+const WALLET = SIGNER.address;
 const RECIPIENT = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh";
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const MESSAGE = "Sign in to Example\r\ne\u{301}"; // decomposed e-acute, which NFC would change
@@ -449,7 +452,10 @@ describe("decideResult", () => {
       assert.deepEqual(
         decideResult(
           request("signMessage", state),
-          submission({ case: "messageSignature", value: { signature } }),
+          submission({
+            case: "messageSignature",
+            value: { signature: SIGNER.sign(MESSAGE) },
+          }),
         ),
         { ok: true, to: RequestState.COMPLETED },
       );
@@ -487,6 +493,51 @@ describe("decideResult", () => {
         }),
       ),
       { ok: true, to: RequestState.UNKNOWN },
+    );
+  });
+
+  it("refuses a message signature that isn't this wallet's, over these bytes", () => {
+    const other = testWallet();
+    const refusal = {
+      ok: false,
+      error: RequestError.INVALID_PARAMETERS,
+      message: `message_signature.signature isn't ${WALLET}'s signature of this request's message`,
+    };
+    // Another wallet's signature, however valid it is in itself.
+    assert.deepEqual(
+      decideResult(
+        request("signMessage", RequestState.PROCESSING),
+        submission({
+          case: "messageSignature",
+          value: { signature: other.sign(MESSAGE) },
+        }),
+      ),
+      refusal,
+    );
+    // The right wallet, over bytes that aren't the request's: a trailing newline, and the NFC
+    // form of the same text, are both different messages.
+    for (const message of [`${MESSAGE}\n`, MESSAGE.normalize("NFC")]) {
+      assert.deepEqual(
+        decideResult(
+          request("signMessage", RequestState.PROCESSING),
+          submission({
+            case: "messageSignature",
+            value: { signature: SIGNER.sign(message) },
+          }),
+        ),
+        refusal,
+      );
+    }
+    // 64 bytes that are no signature at all.
+    assert.deepEqual(
+      decideResult(
+        request("signMessage", RequestState.PROCESSING),
+        submission({
+          case: "messageSignature",
+          value: { signature: new Uint8Array(64).fill(7) },
+        }),
+      ),
+      refusal,
     );
   });
 

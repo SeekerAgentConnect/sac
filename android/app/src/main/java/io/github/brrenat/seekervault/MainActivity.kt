@@ -38,7 +38,8 @@ class MainActivity : ComponentActivity() {
     private val inbox: InboxViewModel by viewModels {
         viewModelFactory {
             initializer {
-                InboxViewModel((application as SeekerVaultApplication).connectionRepository)
+                val app = application as SeekerVaultApplication
+                InboxViewModel(app.connectionRepository, app.walletRepository)
             }
         }
     }
