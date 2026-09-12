@@ -546,6 +546,23 @@ export declare type PreparedTransaction = Message<"seekervault.request.v1.Prepar
    * @generated from field: google.protobuf.Timestamp estimated_expiry = 7;
    */
   estimatedExpiry?: Timestamp | undefined;
+
+  /**
+   * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+   * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+   *
+   * @generated from field: uint64 fee_lamports = 8;
+   */
+  feeLamports: bigint;
+
+  /**
+   * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+   * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+   * comes back only if the account is ever closed. The phone shows it apart from the amount.
+   *
+   * @generated from field: uint64 rent_lamports = 9;
+   */
+  rentLamports: bigint;
 };
 
 /**
@@ -870,6 +887,15 @@ export enum RequestError {
    * @generated from enum value: REQUEST_ERROR_WALLET_NOT_CONNECTED = 10;
    */
   WALLET_NOT_CONNECTED = 10,
+
+  /**
+   * The sidecar couldn't read the chain: no RPC endpoint is configured, or the one configured
+   * didn't answer. Nothing was created, and nothing was prepared. It says nothing about the
+   * request itself, so the same call can be retried once the endpoint answers again.
+   *
+   * @generated from enum value: REQUEST_ERROR_CHAIN_UNAVAILABLE = 11;
+   */
+  CHAIN_UNAVAILABLE = 11,
 }
 
 /**

@@ -287,9 +287,28 @@ The table is `TRANSITIONS` in `lifecycle.ts`, and its tests spell out each kind'
 
 - **`PrepareRequest` builds a fresh unsigned transaction** for a PENDING transfer or swap. The transaction is built at review time rather than at creation, because its blockhash expires. Each call returns a new version, numbered from 1.
 - **The phone parses the transaction itself** and checks it against the request, rather than trusting the sidecar's description. Stage 4 adds the parsing, and Stage 5 the policy check.
-- **An approval names exactly what the wallet will sign:** the version, and the SHA-256 `content_hash` of the transaction's bytes. The sidecar accepts it only for the latest version, with the matching hash, before that version's blockhash expires. Otherwise it answers `STALE_PREPARATION`, and the phone prepares again and shows the user the new version.
+- **An approval names exactly what the wallet will sign:** the version, and the SHA-256 `content_hash` of the transaction's bytes. The sidecar accepts it only for the latest version, with the matching hash, and only while at least 15 seconds of that version's blockhash window are left. Otherwise it answers `STALE_PREPARATION`, and the phone prepares again and shows the user the new version.
 - **A message approval** has `prepared_version` 0 and the SHA-256 of the message's exact bytes.
 - **An `ack` or `sign_message` request has nothing to prepare,** and `PrepareRequest` answers it with `INVALID_PARAMETERS`.
+- **A request the owner has already answered gets no new version.** Preparing anything but a PENDING request answers `INVALID_STATE`, so no second approval can be collected.
+
+#### Transfers (SAW-019)
+
+The sidecar builds a transfer itself, from the chain and the stored action. Nothing about it comes from the agent beyond the action's own fields, and no instruction the agent wrote is ever included: the shape of the transaction is fixed here.
+
+| | Native SOL | Classic SPL token |
+| --- | --- | --- |
+| **Instructions** | System `Transfer` | Associated Token Account `CreateIdempotent`, only when the recipient has no account yet, then SPL Token `TransferChecked` |
+| **Amount** | Lamports | The mint's base units, with the decimals the sidecar read from the mint |
+| **Accounts** | The wallet, and the recipient | The wallet's and the recipient's associated token accounts, the mint, and the wallet as the authority |
+| **Refused** | A recipient that is a token account or an executable program | A Token-2022 mint, an NFT (no decimals and a supply of one), a mint that isn't initialized, a missing or frozen token account, a balance smaller than the amount, or a recipient given as a token account rather than its owner |
+
+- **The transaction is version 0 (`VersionedTransaction`), with no address lookup tables,** so every account it touches is written in it. The wallet is the fee payer and the only required signer, and every signature slot is empty: the sidecar holds no key and never fills one.
+- **Decimals, token accounts, and the blockhash come from the chain,** never from a ticker, a name, or the agent. The associated token account is derived from the owner and the mint.
+- **`fee_lamports`** is the endpoint's estimate for this exact message, or the base fee per signature when it won't price one. **`rent_lamports`** is what the recipient's new token account costs, and 0 when none is created; the owner is shown both apart from the amount.
+- **The network is checked before anything is built.** The sidecar compares the endpoint's genesis hash with the request's network, so a mainnet request is never prepared against devnet, or the other way round.
+- **The endpoint is configured as `SOLANA_RPC_URL`.** Without one, the sidecar serves no `vault_transfer`, leaves `transfer` out of `vault_get_capabilities`, and answers `PrepareRequest` for a transfer with `CHAIN_UNAVAILABLE`. The URL may carry an API key, so it never reaches a log or an error message.
+- **A failed preparation changes nothing.** The request stays PENDING and can be prepared again; only a transient failure (`CHAIN_UNAVAILABLE`) is worth retrying as it is.
 
 ### Phone API
 
@@ -342,7 +361,7 @@ A `sign_message` request is the one wallet action with no transaction: it produc
 | --- | --- | --- | --- |
 | `vault_request_ack` | SAW-010; development and demo only, served with `MCP_DEMO_TOOLS=true` (SAW-014) | `text`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_sign_message` | SAW-016 | `wallet`, `message` (text) or `message_base64` (bytes), `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
-| `vault_transfer` | 4 | `wallet`, `network`, `recipient`, `asset`, `amount`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
+| `vault_transfer` | SAW-019; served only with `SOLANA_RPC_URL` set | `wallet`, `network`, `recipient`, `amount`, `token_mint?`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_swap` | 6 | `wallet`, `network`, `input_asset`, `output_asset`, `input_amount`, `slippage_bps`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_get_address` | SAW-015 | Nothing | The owner's wallet: `wallet`, `network`, `bound_at` |
 | `vault_get_capabilities` | SAW-016 | Nothing | What this sidecar serves: `approval`, `signing`, `operations`, `wallet_connected`, and the limits |
@@ -354,9 +373,10 @@ A `sign_message` request is the one wallet action with no transaction: it produc
 - **`vault_sign_message` takes the message one way or the other,** as `message` (text, whose UTF-8 encoding is signed) or `message_base64` (bytes, signed as they are), never both and never neither. 1 to 4096 bytes. It creates the request and nothing more: no wallet is contacted until the owner approves it on their phone, and the result carries `signed_message_base64` ([message results](#message-results)).
 - **`vault_get_capabilities` is read-only, always served, and never fails.** It says `approval: "manual"` — the owner decides every request, and no agent can ask for anything else — and `signing: "wallet"`, since the owner's own wallet signs and the sidecar holds no key. `operations` lists only what this sidecar serves now, so an agent treats anything missing from it as unavailable rather than trying it.
 - **`vault_get_address` is read-only and always served.** It fails with `NOT_PAIRED` when no phone is paired, and `WALLET_NOT_CONNECTED` when the owner has connected no wallet. There is no fallback address: the sidecar never makes one. The owner can change or disconnect the wallet at any time, so agents read it again rather than caching it. Its result is `{"wallet": "...", "network": "devnet", "bound_at": "2026-09-12T09:30:00.000Z"}`.
+- **`vault_transfer` creates the request and nothing else.** No transaction is built, signed, or sent when it is called; the sidecar only reads the mint, so an agent hears at once about a token it can't send. The owner sees the request when they next open the app, and the transaction is built then ([transfers](#transfers-saw-019)). It is served only when the sidecar has a chain endpoint; without one it is absent from `tools/list` and from `operations`.
 - **`network`** is `"mainnet"`, `"devnet"`, or `"testnet"`.
-- **`asset`, `input_asset`, and `output_asset`** are `"SOL"` or a token's mint address.
-- **Amounts are strings.**
+- **`token_mint`** names a classic SPL token; leaving it out sends native SOL. `asset`, `input_asset`, and `output_asset` in `proto/` hold the same choice.
+- **Amounts are strings, always in base units:** lamports for SOL, and the mint's base units for a token. Never a human-readable decimal.
 - **`expires_in_seconds` is optional, from 60 to 604800.** Without it, the sidecar's `REQUEST_TTL_SECONDS` applies, which is a day unless configured.
 - **Sizes are bounded:**
   - An ack's text follows the Stage 1 text rules, and a note is at most 1024 UTF-8 bytes.
@@ -406,7 +426,8 @@ IDEMPOTENCY_CONFLICT: idempotency_key "deploy-2026-09-11" was already used for r
 | `WALLET_NOT_CONNECTED` | The owner has no wallet connected on their phone (SAW-015) | Tool error | Not used |
 | `PENDING_LIMIT` | The connection already has the most PENDING requests allowed (SAW-010) | Tool error | Not used |
 | `INVALID_STATE` | The state doesn't allow the operation: for example, cancelling a PROCESSING request, or approving a CANCELLED one | Tool error | `failed_precondition` |
-| `STALE_PREPARATION` | The approval isn't for the latest version, its hash differs, or the version's blockhash has expired | Not used | `failed_precondition` |
+| `STALE_PREPARATION` | The approval isn't for the latest version, its hash differs, or the version's blockhash has expired or is about to | Not used | `failed_precondition` |
+| `CHAIN_UNAVAILABLE` | No chain endpoint is configured, or the one configured didn't answer. Nothing was created and nothing was prepared (SAW-019) | Tool error | `unavailable` |
 | `UNAUTHENTICATED` | The token is missing, wrong, revoked, or for the other role; or the pairing token is unknown, expired, or used | HTTP 401 | `unauthenticated` |
 
 Every Connect error from `PairingService` and `RequestService` carries a `RequestErrorDetail`, which connect-es reads with `findDetails` and connect-kotlin with `unpackedDetails`. It holds the error and, for `INVALID_STATE` and `STALE_PREPARATION`, the request as it is now. The phone can then show what happened, rather than guess from the Connect code.

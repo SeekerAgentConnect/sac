@@ -4,6 +4,17 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 
 ## Current milestone
 
+**Stage 4: Transfers.** The sidecar can take an agent's request to send SOL or a classic SPL token, and build the fresh unsigned transaction the owner reviews. It signs nothing and sends nothing: the owner's own wallet does both, and the phone's inspection, approval, and confirmation come with the tasks after this one.
+
+**Status:** in progress.
+
+| Task | Status |
+| --- | --- |
+| SAW-019: transfer requests and fresh transaction preparation | Done. An agent asks with `vault_transfer`, in base units, and gets a stored `PENDING` request; nothing is built or sent then. When the phone asks, the sidecar reads the chain — the mint's decimals, both token accounts, a fresh blockhash — and builds one unsigned transaction as a new version, with its hash, its fee, and the rent for a token account it creates. Every preparation supersedes the last, so an old approval can't be reused. Token-2022 mints, NFTs, token accounts given as recipients, and an endpoint on the wrong network are refused by name. `SOLANA_RPC_URL` configures the endpoint; without one there is no transfer tool at all. See [`docs/guides/transfers.md`](docs/guides/transfers.md). |
+| SAW-020 to SAW-024 | Not started: the phone's own inspection of the bytes, approval through the wallet, on-chain confirmation, integration tests and local history, and the real-device transfer. |
+
+## Stage 3
+
 **Stage 3: The wallet.** The app connects the wallet the owner already has, through Mobile Wallet Adapter, publishes the address and network it selected to every paired sidecar, and has that wallet sign messages the owner reviewed and approved by hand. A signature moves no funds: nothing spends yet.
 
 **Status:** every Stage 3 task is written, and every automated check passes. The stage is **not accepted**: it needs the owner's own Seeker with Seed Vault Wallet, and those checks are NOT RUN. See [`docs/testing/stage-3.md`](docs/testing/stage-3.md#the-owners-checks-on-the-seeker) and [`docs/testing/wallet-lifecycle.md`](docs/testing/wallet-lifecycle.md#the-owners-checks-on-the-seeker).
@@ -103,6 +114,7 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm agent ack <text>`, `get <id>`, `cancel <id>` | Queues an acknowledgement for the owner, reads a request back, or withdraws one, through the durable MCP tools. Each prints the request as JSON. See [`test-agent/README.md`](test-agent/README.md). | Works; needs a paired phone, and `ack` needs `MCP_DEMO_TOOLS=true` |
 | `pnpm agent address` | Prints the wallet the owner connected on their phone, and its network, through `vault_get_address`. See [`docs/guides/wallet-setup.md`](docs/guides/wallet-setup.md). | Works; exits 9 with `WALLET_NOT_CONNECTED` until the owner connects one |
 | `pnpm agent sign <text>` | Asks the owner's wallet to sign the text, through `vault_sign_message`. It prints the request as PENDING; the owner approves it on the phone, and `pnpm agent get <id>` reads the signature back and verifies it. See [`docs/guides/message-signing.md`](docs/guides/message-signing.md). | Works; needs a connected wallet |
+| `pnpm agent transfer <to> <amount>` | Asks the owner to send `<amount>` base units to `<to>`, through `vault_transfer`; `--mint <address>` sends an SPL token instead of SOL. It prints the request as PENDING, and builds, signs, and sends nothing. See [`docs/guides/transfers.md`](docs/guides/transfers.md). | Works; needs a connected wallet and `SOLANA_RPC_URL` |
 | `pnpm agent capabilities` | Prints what the sidecar serves, through `vault_get_capabilities`: manual approval, the operations it implements, and the limits. | Works |
 | `pnpm test:hello` | Runs the Stage 1 acceptance suite on a simulated device: the real CLI, the sidecar as a separate process, and a test client as the phone. With `--device`, it runs the round trip on the attached device or emulator instead: the app's UI test taps OK while the CLI sends over MCP. See [`docs/testing/stage-1.md`](docs/testing/stage-1.md). | Works; `--device` needs a device or an emulator |
 | `pnpm test:queue` | Runs the Stage 2 acceptance scenario: the real CLI, two sidecars as separate processes that restart, and a test client as the phone. See [`docs/testing/stage-2.md`](docs/testing/stage-2.md#the-acceptance-scenario-saw-014). | Works |
