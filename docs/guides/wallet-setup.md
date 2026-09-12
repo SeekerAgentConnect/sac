@@ -117,21 +117,21 @@ Connect again from the Wallet screen. Choosing another account, or another netwo
 
 ## The wallet under test
 
-The wallet is not part of this repository, so what it does is recorded rather than assumed. Fill this in from your own device when you run the checks in [`../testing/stage-3.md`](../testing/stage-3.md#the-owners-checks-on-the-seeker).
+The wallet is not part of this repository, so what it does is recorded rather than assumed. This is the owner's own device, from the checks in [`../testing/stage-3.md`](../testing/stage-3.md#the-owners-checks-on-the-seeker) and [`../testing/stage-4.md`](../testing/stage-4.md#the-owners-checks-one-real-transfer), run on 2026-09-12. Fill in your own when you run them.
 
 | | Recorded |
 | --- | --- |
 | Wallet app | Seed Vault Wallet |
-| Version tested | **NOT RUN**: no Seeker was attached during verification |
-| Device and Android version | **NOT RUN** |
-| Network path the wallet accepted (Mainnet / Devnet / Testnet) | **NOT RUN**: step 9 of the owner's checks records it |
-| What the wallet shows while signing a message | **NOT RUN**: step 19 records it |
-| Network the wallet accepted for a **transfer** | **NOT RUN**: check 41 of [`../testing/stage-4.md`](../testing/stage-4.md#the-owners-checks-one-real-transfer) records it |
-| What the wallet shows while signing a **transaction** | **NOT RUN**: check 48 records it |
+| Version tested | **Not captured.** The checks were run on 2026-09-12; the wallet's version string wasn't written down. |
+| Device and Android version | Solana Mobile Seeker, Android 16 (API 36), as read over adb in the [Stage 1 record](../testing/stage-1.md#acceptance-report-saw-008) |
+| Network path the wallet accepted (Mainnet / Devnet / Testnet) | **Devnet**, 2026-09-12, at step 9 of the owner's checks. Mainnet and testnet weren't tried. |
+| What the wallet shows while signing a message | **Not captured.** The owner signed by hand on 2026-09-12; step 19 is where the wording goes when someone writes it down. |
+| Network the wallet accepted for a **transfer** | **Devnet**, 2026-09-12, at check 41. The transfer that followed was finalized on devnet. |
+| What the wallet shows while signing a **transaction** | **Not captured.** The owner approved in the wallet on 2026-09-12 and the app came back with the transaction's ID; check 48 is where the wording goes. |
 
 Nothing in this stage needs funds on any of those networks. A message signature is not a transaction: no balance is read, nothing is broadcast, and an empty account signs exactly as well as a funded one.
 
-Stage 4 is where that changes. Sending a transfer needs funds on whichever network the wallet actually serves, and which one that is has still not been established on a device. The walkthrough is [`transfers.md`](transfers.md#your-first-transfer-step-by-step), and the rule it keeps is that a mainnet check is the owner's own deliberate choice, with a deliberately small amount: nothing in this repository points at a cluster by itself.
+Stage 4 is where that changes. Sending a transfer needs funds on whichever network the wallet actually serves, and on this device that is **devnet**, where faucet funds cost nothing. The walkthrough is [`transfers.md`](transfers.md#your-first-transfer-step-by-step), and the rule it keeps is that a mainnet check is the owner's own deliberate choice, with a deliberately small amount: nothing in this repository points at a cluster by itself, and nothing here has pointed at mainnet.
 
 ### A development wallet is not the check
 

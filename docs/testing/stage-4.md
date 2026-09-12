@@ -112,13 +112,15 @@ build is recorded as NOT RUN, however green it is.
 ### Choosing the cluster
 
 Check 41 decides everything after it, and its answer is the wallet's, not this repository's.
-**Nothing here has confirmed that Seed Vault Wallet serves devnet**: step 9 of
-[the Stage 3 checks](stage-3.md#the-owners-checks-on-the-seeker) records it and is still NOT RUN,
-and no claim of a devnet transfer through Seed Vault Wallet may be made until check 41 says so on a
-device.
+**It has been answered: Seed Vault Wallet serves devnet.** On 2026-09-12 the owner picked Devnet on
+the Wallet screen, the wallet connected, and the transfer that followed was finalized on devnet.
+Step 9 of [the Stage 3 checks](stage-3.md#the-owners-checks-on-the-seeker) records the same answer.
 
-If the wallet serves only mainnet, then checks 42 to 55 are a mainnet run, and that is a decision
-the owner makes deliberately:
+That answer is this wallet's, on this device, on that date. Another wallet, or a later build of this
+one, is check 41 again.
+
+Had the wallet served only mainnet, checks 42 to 55 would have been a mainnet run, and that is a
+decision the owner makes deliberately. It has not been made, and the rules for it stand:
 
 - **Nothing in this repository points at any cluster by itself.** `.env.example` ships
   `SOLANA_RPC_URL=` empty, so a fresh clone prepares nothing; no `package.json` script and no CI job
@@ -175,7 +177,7 @@ SAW-023, 2026-09-12:
 | `pnpm test:transfer` | PASS: 7/7, with the opt-in devnet case skipped. **No transaction was sent to any cluster.** |
 | `pnpm test:hello`, `pnpm test:queue`, `pnpm build` | PASS: 9/9, 7/7, and both packages build. |
 | `SEEKER_VAULT_NETWORK_CHECKS=1 pnpm test:transfer` | NOT RUN: it needs a real devnet endpoint, and nothing here reached one. |
-| Device checks 31–40 | NOT RUN: no device was attached. |
+| Device checks 31–40 | **PASS**, 2026-09-12, on the owner's Seeker, using the devnet transfer recorded under SAW-024 below. Activity kept every record across a force-stop and across removing the connection that asked, and the explorer opened on devnet. |
 
 ## Verification record: SAW-024
 
@@ -196,16 +198,48 @@ and what only the Seeker can.
 
 ### On the physical Seeker
 
+Run by the owner on 2026-09-12, on the physical Seeker, with Seed Vault Wallet, on **devnet**.
+
 | Check | Result |
 | --- | --- |
-| Checks 41 to 55 | **NOT RUN**: no device was attached. |
-| A real transfer through Seed Vault Wallet, and its cluster | **NOT RUN**. No transfer has been sent from a real wallet to any cluster, on devnet or mainnet, by this repository or by its author. |
-| Whether Seed Vault Wallet serves devnet | **NOT RUN**, still. Stage 3's step 9 records it, and nothing here assumes an answer. |
-| What Seed Vault Wallet shows while signing a transaction | **NOT RUN**: check 48 records it. |
-| The agent's result matched against the on-chain transaction | **NOT RUN**: checks 49 to 51. The match is proven in the automated tests against a fake chain, which is not the same thing. |
-| The rejection and stale-preparation walkthroughs | **NOT RUN** on a device: checks 52 to 54. Both are covered against a fake chain and a fake wallet by `pnpm test:transfer` and `InboxViewModelTest`. |
+| Checks 41 to 55 | **PASS**, every one of them, on devnet. |
+| A real transfer through Seed Vault Wallet, and its cluster | **PASS**: one SOL transfer from the owner's wallet to another of their own, **asked for from Hermes**, approved by hand in the app and again in the wallet, and **finalized on devnet in slot 497322461**. The capture is below. |
+| Whether Seed Vault Wallet serves devnet | **PASS — it does.** Check 41 connected on devnet, and the transaction that followed settled there. |
+| What Seed Vault Wallet shows while signing a transaction | **PASS** as an approval: the owner reviewed the transaction in the wallet and approved it there, and the app came back with the transaction's ID. **The wallet's exact screen text was not captured in this record** — check 48 is where it goes when it is. |
+| The agent's result matched against the on-chain transaction | **PASS**: checks 49 to 51. The signature the agent reported is the one devnet finalized, and the `explorer_url` it returned carries `cluster=devnet`. |
+| The rejection and stale-preparation walkthroughs | **PASS**: checks 52 to 54, with no unintended submission. |
+| Hermes asking for the transfer | **PASS**: the request came from Hermes through `vault_transfer`, not from `pnpm agent`. [Section 6 of the Hermes guide](../integrations/hermes.md#6-send-a-transfer-with-your-wallet) is that path. |
 | Mainnet | **NOT RUN**, and not proposed. Nothing here has ever pointed at mainnet, and the owner chooses whether it ever does. |
 
-**Stage 4's acceptance is therefore not met yet.** Every automated check passes, the path is written
-down and reproducible, and the guard that stops a wrong-cluster transfer is real — but no wallet has
-signed a transaction and no cluster has confirmed one. No mock, emulator, or APK build changes that.
+The request was created from **Hermes**, calling `vault_transfer`; the owner approved it on the Seeker; and the reading below came from `pnpm agent status`, which is why it has that shape:
+
+```json
+{
+  "request_id": "7797fbc2-60a0-42a1-abb2-80319975438c",
+  "action": "transfer",
+  "status": "SUBMITTED",
+  "terminal": false,
+  "updated_at": "2026-09-12T18:39:06.378Z",
+  "network": "devnet",
+  "wallet": "Bzy2Lso…2B16K54",
+  "signature": "2Hn7TF6z9kT5y9h7AWaRLMHF6pgvTLftewTQTdS8Guj6UUQvbuQw4CZHsCZn6eLqkqRJPokaZfCRhwJDKn8Kwv2k",
+  "signature_is_transaction": true,
+  "confirmation": "finalized",
+  "slot": 497322461,
+  "checked_at": "2026-09-12T18:39:35.947Z",
+  "checked_with": "api.devnet.solana.com",
+  "explorer_url": "https://explorer.solana.com/tx/2Hn7TF6z…Kwv2k?cluster=devnet"
+}
+```
+
+**That capture is a reading taken 29 seconds after the approval, and it is kept exactly as it came
+back.** Devnet had already *finalized* the signature while the request still read `SUBMITTED`: the
+reading fell inside the window [`confirmation.ts`](../../sidecar/src/requests/confirmation.ts)
+describes, where the endpoint has a status for a signature but has not yet served the transaction
+itself, so the server had nothing to compare against the bytes the owner approved and left the
+request where it was. **No later `CONFIRMED` reading was captured**, and this record does not claim
+one. The sending wallet is the owner's own; its full address is on the explorer page.
+
+**Stage 4's acceptance is met.** A real wallet signed a real transaction, a real cluster finalized
+it, the agent's result names that transaction, and the refusal paths sent nothing — on devnet. On
+mainnet, nothing has been run and nothing is claimed.

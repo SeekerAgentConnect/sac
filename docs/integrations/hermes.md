@@ -206,7 +206,7 @@ These IDs come from the verification run, where a test client tapped **Acknowled
 
 Connect the wallet first ([`../guides/wallet-setup.md`](../guides/wallet-setup.md)). Without one, the tool fails with `WALLET_NOT_CONNECTED`, and no address is invented.
 
-> **Not yet run with Hermes.** Unlike sections 3 and 4, the results below aren't from a recorded Hermes session: the wallet tools have only been driven by `pnpm agent` and the automated tests, which is where these shapes come from. Running them through Hermes on the Seeker is [step 24 of the owner's checks](../testing/stage-3.md#the-hermes-round-trip-saw-018), and stays NOT RUN until the owner does it.
+> **Run with Hermes on 2026-09-12.** The owner drove the wallet tools from Hermes on the physical Seeker and answered on the phone: [steps 24 to 31 of the owner's checks](../testing/stage-3.md#the-hermes-round-trip-saw-018) are recorded as PASS. The exact JSON below still comes from `pnpm agent` and the automated tests rather than from that session's transcript, so read it as the shape of an answer, not as a transcript.
 
 1. **Read what this sidecar serves**, once per session, before asking for anything:
 
@@ -292,12 +292,12 @@ offered at all, `vault_get_capabilities` leaves `transfer` out of `operations`, 
 `Unknown tool`. Add `vault_transfer` to the `include` list in [section 1](#1-add-the-server-entry)
 as well, or Hermes won't call it even when the sidecar serves it.
 
-> **Not yet run with Hermes.** As in section 5, the results below aren't from a recorded Hermes
-> session: `vault_transfer` has only been driven by `pnpm agent` and the automated tests, against a
-> fake chain on loopback. **No wallet has ever sent a transaction for this repository, and no
-> cluster has confirmed one** — not through Hermes, not through `pnpm agent`, and not on devnet. The
-> device script is [`../testing/stage-4.md`](../testing/stage-4.md#the-real-wallet-transfer-saw-024),
-> and it is NOT RUN.
+> **Run with Hermes on 2026-09-12.** The owner asked for a transfer from Hermes, approved it by hand
+> on the Seeker, and their wallet sent it: one SOL transfer **finalized on devnet**, recorded in
+> [`../testing/stage-4.md`](../testing/stage-4.md#verification-record-saw-024). That is the whole
+> point of this section, and it has now been done end to end. The exact JSON below still comes from
+> `pnpm agent` and the automated tests rather than from that session's transcript, so read it as the
+> shape of an answer. **Nothing has ever been sent on mainnet.**
 
 1. **Read what this sidecar serves**, every session, before asking for anything:
 

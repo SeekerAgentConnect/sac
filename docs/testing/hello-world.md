@@ -50,7 +50,7 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`docs/d
 | Credentials in output | PASS: no token appeared in any test or live output |
 | Deliberate breaks | Each break was caught; see the list below. |
 | `pnpm build`, `pnpm check:generated`, `pnpm check:android` | PASS |
-| Physical Seeker: tap OK and inspect the returned payload | NOT RUN: no device was attached during verification |
+| Physical Seeker: tap OK and inspect the returned payload | **PASS** for the flow, 2026-09-12: the Seeker showed the command and the owner tapped OK, in [the Stage 1 owner check](stage-1.md#owner-run-hermes-check). That run drove it from Hermes; the test agent's own device run, `pnpm test:hello --device`, is still NOT RUN. |
 
 The deliberate breaks:
 

@@ -211,7 +211,7 @@ Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
 | No wallet call before the sidecar accepts the approval | PASS: an unreachable sidecar and a stale preparation each leave `sendings` empty, and store nothing |
 | A lost wallet callback is UNKNOWN | PASS: `unknown_outcome` reaches the sidecar, the request is UNKNOWN, and `Send again` opens no wallet |
 | Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>Dropping `WalletRepository`'s lock failed `runsOneWalletInteractionAtATime`.</li><li>Fetching the transaction again instead of using the approved bytes failed seven transfer tests, including `approvingHandsTheWalletExactlyTheBytesThatWereReviewed`.</li><li>Reporting an unresolved transfer as an execution failure failed both UNKNOWN tests.</li><li>Treating a refused approval as accepted failed `anApprovalTheServerRefusedOpensNoWalletAndIsNotKept` and `aStalePreparationIsRefusedAndReadAgainRatherThanApproved`.</li><li>Offering **Approve and send** whatever the verdict failed both `offersNoApprovalFor…` screen tests.</li><li>Naming `signAndSendTransactions` outside `MwaWalletAdapter` failed `StageBoundaryTest.nothingSpendsSwapsOrAsksForABiometricOfItsOwn`.</li></ul> |
-| The owner's checks on the Seeker, steps 15 to 24 | NOT RUN: no device was attached, and no transaction was ever sent to any cluster |
+| The owner's checks on the Seeker, steps 15 to 24 | **PASS**, 2026-09-12, on **devnet**: one real transfer asked for by Hermes, approved by hand in the app and in the wallet. The record is in [`stage-4.md`](stage-4.md#verification-record-saw-024). |
 
 ## Verification record: SAW-022
 
@@ -229,7 +229,7 @@ Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
 | Silence settles nothing | PASS: a timeout, a missing status inside the window, and a status without a transaction each leave the request where it was |
 | No chain method beyond reading | PASS: `stage-boundary.test.ts` names every JSON-RPC method the client calls, and the two new ones are `getSignatureStatuses` and `getTransaction` |
 | Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards. They are listed with their failures in the SEE-31 record. |
-| The owner's checks on the Seeker, steps 25 to 30 | NOT RUN: no device was attached, and no transaction was ever sent to any cluster |
+| The owner's checks on the Seeker, steps 25 to 30 | **PASS**, 2026-09-12, on **devnet**, against the same transfer. |
 
 ## Verification record: SAW-017
 
@@ -247,4 +247,4 @@ Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
 | A reply for one connection can't complete another's request | PASS, on both sides: the phone sends only to the connection's own URL with its own credential, and the sidecar refuses a reference naming another connection's request |
 | Repeated `SubmitResult` returns the same terminal result | PASS, for an approval and a signature, and after reopening the database |
 | Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>Settling no abandoned signing failed `settlesAnApprovalTheWalletNeverAnsweredWhenTheAppComesBackToTheForeground` and `settlesAnApprovalWhoseAnswerNeverArrivedWhenTheAppComesBack`.</li><li>Dropping the wallet timeout failed `givesUpOnAWalletThatNeverAnswersAtAll`.</li><li>Ignoring the sidecar's stored results failed the four repeat tests, including the restart one.</li></ul> |
-| The owner's checks on the Seeker, steps 1 to 14 | NOT RUN: no device was attached |
+| The owner's checks on the Seeker, steps 1 to 14 | **PASS**, 2026-09-12 |

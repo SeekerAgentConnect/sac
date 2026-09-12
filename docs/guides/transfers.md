@@ -174,11 +174,11 @@ tap **Connect wallet**.
   only real-wallet path is mainnet: read [If your wallet serves only
   mainnet](#if-your-wallet-serves-only-mainnet) before going on.
 
-Which networks a wallet offers is a property of that wallet and its version, not of this app. **This
-repository has not confirmed that Seed Vault Wallet serves devnet**, and assumes nothing: step 9 of
-[the Stage 3 checks](../testing/stage-3.md#the-owners-checks-on-the-seeker) is where the answer is
-recorded, and it is still NOT RUN. Write what your device does into [the wallet under
-test](wallet-setup.md#the-wallet-under-test).
+Which networks a wallet offers is a property of that wallet and its version, not of this app. On the
+owner's Seeker, on 2026-09-12, **Seed Vault Wallet connected on devnet**, and the transfer that
+followed was finalized there — [the wallet under test](wallet-setup.md#the-wallet-under-test) records
+it. That is one wallet on one device on one date, so the app still assumes nothing and step 1 is
+still worth doing: write what your own device does into the same table.
 
 **2. Point the sidecar at the same cluster.** In the root `.env`:
 
