@@ -304,6 +304,31 @@ anything: it leaves your answer waiting on the phone.
 These are about what happens after your wallet sends a transaction; the whole flow is in
 [`transfers.md`](transfers.md).
 
+### It says "The server has a newer transaction for this request"
+
+Nothing was approved and your wallet was not opened. A Solana transaction is only valid for about a
+minute or two, and your approval binds to one exact version of one exact transaction. If the review
+sat open long enough for that window to run down, or the server built a newer version meanwhile,
+the old approval can no longer be used — so it isn't.
+
+The screen has already asked for a new version. **Review the one now on screen**: it is a different
+transaction, with a different blockhash, and it deserves the same look as the first. Then tap
+**Approve and send** again. The request is still `PENDING` on the server, nothing was signed, and
+nothing reached the network.
+
+### The transfer failed on chain and the reason mentions lamports
+
+There wasn't enough SOL. **Nothing checks your balance before you approve**: the sidecar reads no
+balance at all, so the amount, the network fee, and the rent for a token account it creates are all
+paid — or not — when the transaction runs on chain.
+
+You need the amount, plus the fee (usually about 5000 lamports), plus about 0.002 SOL of rent when
+the recipient has no account for that token yet. The review screen shows the fee and the rent before
+you approve; what it can't show is what you hold.
+
+Fund the account and have the agent ask again. The failed attempt still cost its fee, and nothing
+here builds a replacement transaction for you.
+
 ### It says "Your wallet sent this transaction… not been confirmed on the network yet"
 
 Sending is not succeeding. Your wallet handed the transaction to the network and gave it back an

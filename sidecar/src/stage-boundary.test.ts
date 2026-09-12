@@ -6,7 +6,7 @@
  * the stage that changes it on purpose.
  */
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -203,5 +203,121 @@ describe("stage boundary", () => {
       ],
       "the chain client asks for nothing but these reads",
     );
+  });
+});
+
+/**
+ * Nothing this repository ships, installs, or runs by itself points at a real cluster (SAW-024).
+ * A transfer needs SOLANA_RPC_URL, and the owner is the only one who ever sets it: a fresh clone
+ * prepares no transaction at all, no script and no CI job supplies an endpoint, and the one check
+ * that reaches a real network is behind an environment variable and only reads. These checks are
+ * what makes "no default spends real funds" a fact rather than a promise.
+ */
+describe("spending nothing by default", () => {
+  /** A real cluster's JSON-RPC endpoint, a faucet, or the call that asks one for money. */
+  const CLUSTER =
+    /api\.(mainnet-beta|devnet|testnet)\.solana\.com|faucet\.solana\.com|requestAirdrop|\bairdrop\b/gi;
+
+  /** Whether `text` names one, without carrying the global regexp's own position around. */
+  function names(text: string): boolean {
+    CLUSTER.lastIndex = 0;
+    return CLUSTER.test(text);
+  }
+
+  /** Every package.json in the workspace: the root's and each directory's under it. */
+  function manifests(): { path: string; json: Record<string, unknown> }[] {
+    const directories = [
+      ROOT,
+      ...readdirSync(ROOT, { withFileTypes: true })
+        .filter(
+          (entry) =>
+            entry.isDirectory() &&
+            !entry.name.startsWith(".") &&
+            entry.name !== "node_modules",
+        )
+        .map((entry) => join(ROOT, entry.name)),
+    ];
+    return directories
+      .map((directory) => join(directory, "package.json"))
+      .filter((path) => existsSync(path))
+      .map((path) => ({
+        path: relative(ROOT, path),
+        json: JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>,
+      }));
+  }
+
+  it("ships no endpoint in .env.example, so a fresh clone prepares nothing", () => {
+    const example = readFileSync(join(ROOT, ".env.example"), "utf8");
+    assert.match(
+      example,
+      /^SOLANA_RPC_URL=\r?$/m,
+      ".env.example must leave SOLANA_RPC_URL empty: the owner chooses the cluster, and without " +
+        "one the sidecar serves no vault_transfer at all",
+    );
+    // A cluster may be named in a comment, as this one's is, to say what an endpoint looks like.
+    // What must never appear is one as a value: that would be a cluster nobody chose.
+    const assigned = example
+      .split("\n")
+      .filter((line) => /^[A-Z][A-Z0-9_]*=./.test(line))
+      .filter((line) => names(line));
+    assert.deepEqual(assigned, []);
+  });
+
+  it("runs no script that supplies an endpoint or asks for funds", () => {
+    const packages = manifests();
+    assert.ok(packages.length >= 3, "found the workspace's package.json files");
+    const offenders = packages.flatMap(({ path, json }) =>
+      Object.entries((json.scripts ?? {}) as Record<string, string>)
+        .filter(
+          ([, command]) => names(command) || command.includes("SOLANA_RPC_URL"),
+        )
+        .map(([name]) => `${path}: ${name}`),
+    );
+    assert.deepEqual(offenders, []);
+  });
+
+  it("runs no CI job that supplies an endpoint or asks for funds", () => {
+    const directory = join(ROOT, ".github/workflows");
+    const workflows = readdirSync(directory).filter((name) =>
+      /\.ya?ml$/.test(name),
+    );
+    assert.ok(workflows.length > 0, "found the workflows");
+    const offenders = workflows.filter((name) => {
+      const text = readFileSync(join(directory, name), "utf8");
+      return names(text) || text.includes("SOLANA_RPC_URL");
+    });
+    assert.deepEqual(offenders, []);
+  });
+
+  it("names no cluster endpoint in any shipped sidecar source", () => {
+    // The endpoint comes from the environment or the sidecar has none. A default here would be a
+    // cluster nobody chose, and a hosted URL can carry an API key besides.
+    const hits = shippedSources().filter((file) =>
+      /solana\.com/.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      hits.map((file) => relative(ROOT, file)),
+      [],
+    );
+  });
+
+  it("keeps the one check that reaches a real network behind its variable", () => {
+    // It reads devnet's genesis hash and stops at a refusal, so it needs no funds; the gate is
+    // what keeps it out of `pnpm test:transfer`, `pnpm check`, and CI.
+    const acceptance = readFileSync(
+      join(ROOT, "test-agent/src/stage4.acceptance.ts"),
+      "utf8",
+    );
+    const gate = acceptance.indexOf(
+      'skip: process.env.SEEKER_VAULT_NETWORK_CHECKS !== "1"',
+    );
+    assert.ok(gate > 0, "the opt-in describe is skipped without the variable");
+    CLUSTER.lastIndex = 0;
+    for (const match of acceptance.matchAll(CLUSTER)) {
+      assert.ok(
+        (match.index ?? 0) > gate,
+        `a real cluster is named at index ${String(match.index)}, before the opt-in gate`,
+      );
+    }
   });
 });

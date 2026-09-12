@@ -1,6 +1,6 @@
 # Stage 4 tests
 
-Stage 4 is the first stage where funds can move. SAW-019 stores a transfer request and builds the unsigned transaction, SAW-020 teaches the phone to read that transaction itself, SAW-021 lets the owner approve one and their wallet sign and send it, SAW-022 follows it to the network, and SAW-023 closes the stage: the regression tests for that whole path, and the owner's own record of what was done.
+Stage 4 is the first stage where funds can move. SAW-019 stores a transfer request and builds the unsigned transaction, SAW-020 teaches the phone to read that transaction itself, SAW-021 lets the owner approve one and their wallet sign and send it, SAW-022 follows it to the network, SAW-023 adds the regression tests for that whole path and the owner's own record of what was done, and SAW-024 closes the stage: the walkthrough for sending a real transfer from the Seeker, and the honest account of what has and has not been run on one.
 
 SAW-017's lifecycle questions — rotation, backgrounding, a killed process, a restarted sidecar — have their own page, [`wallet-lifecycle.md`](wallet-lifecycle.md), which also carries the device checks for SAW-021 and SAW-022.
 
@@ -88,7 +88,79 @@ Record PASS, FAIL, or NOT RUN for each. An emulator or a successful APK build ne
 | 39 | Tap **Clear**, then **Cancel** | Nothing is removed. |
 | 40 | Tap **Clear**, then **Clear history** | Activity is empty. The transaction is still on the explorer. |
 
-## Verification record
+## The real-wallet transfer (SAW-024)
+
+Everything above this line runs against a fake chain, a fake wallet, or both. SAW-024 is the part
+that can't: one transfer, from the owner's own Seeker, through Seed Vault Wallet, onto a real
+cluster. The owner's walkthrough is [`../guides/transfers.md`](../guides/transfers.md#your-first-transfer-step-by-step);
+the checks below are the same path written as a test script.
+
+### Three kinds of coverage, kept apart
+
+| | What it proves | What it can't |
+| --- | --- | --- |
+| **The automated checks** (`pnpm check`, `pnpm check:android`, `pnpm test:transfer`) | The whole path, every branch of it, deterministically: the builder, the phone's parser, the approval, the submission, the confirmation, the record | Nothing about a real wallet or a real cluster. The chain is `FakeChain`; the wallet is a key pair in the test process, or `FakeWalletAdapter`. |
+| **The opt-in devnet check** (`SEEKER_VAULT_NETWORK_CHECKS=1`) | That the sidecar reads a **real** cluster's genesis hash and refuses a transfer bound to another network | Nothing past that refusal. It reads, needs no funds, and never reaches a transaction. |
+| **The owner's checks below** | That Seed Vault Wallet signs and sends what it was handed, and that the result the agent reads is the transaction on chain | Nothing automatically. Each one is run by hand and recorded. |
+
+**A development wallet never stands in for the third row.** A mock, an emulator, or a successful APK
+build is recorded as NOT RUN, however green it is.
+
+### Choosing the cluster
+
+Check 41 decides everything after it, and its answer is the wallet's, not this repository's.
+**Nothing here has confirmed that Seed Vault Wallet serves devnet**: step 9 of
+[the Stage 3 checks](stage-3.md#the-owners-checks-on-the-seeker) records it and is still NOT RUN,
+and no claim of a devnet transfer through Seed Vault Wallet may be made until check 41 says so on a
+device.
+
+If the wallet serves only mainnet, then checks 42 to 55 are a mainnet run, and that is a decision
+the owner makes deliberately:
+
+- **Nothing in this repository points at any cluster by itself.** `.env.example` ships
+  `SOLANA_RPC_URL=` empty, so a fresh clone prepares nothing; no `package.json` script and no CI job
+  sets it; and the one check that touches a real network reads devnet behind
+  `SEEKER_VAULT_NETWORK_CHECKS`. `sidecar/src/stage-boundary.test.ts`, "spending nothing by
+  default", fails if any of that changes.
+- **The amount is deliberately small** — 100000 lamports, 0.0001 SOL — and goes to a second account
+  in the owner's own wallet, so the worst case is a network fee.
+- **Once is the whole check.** A second confirmed mainnet transfer proves nothing more.
+
+### The owner's checks: one real transfer
+
+These continue the numbering from check 40. They assume checks 15 to 30 in
+[`wallet-lifecycle.md`](wallet-lifecycle.md#transfers-saw-021) have been run, or are run alongside
+them — those cover approving, sending, and confirming; these cover choosing the network, checking
+the addresses, matching the result against the chain, and proving that a refusal sent nothing.
+
+Record PASS, FAIL, or NOT RUN for each, with the cluster.
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 41 | On the **Wallet** screen, pick **Devnet** and tap **Connect wallet** | Record what the wallet does. Either it connects, and everything below is devnet; or the app says "The wallet doesn't serve this network", and the only real-wallet path is mainnet. Write the answer into [the wallet under test](../guides/wallet-setup.md#the-wallet-under-test). |
+| 42 | Put that cluster's endpoint in `SOLANA_RPC_URL`, restart the sidecar, and run `pnpm agent capabilities` | `operations` contains `transfer`. Without an endpoint it doesn't, and nothing below can run. |
+| 43 | Point `SOLANA_RPC_URL` at a **different** cluster from the wallet's, and open a pending transfer on the phone | The app says the endpoint serves another network. No transaction is prepared, nothing is signed, and nothing is spent. Put the right endpoint back. |
+| 44 | Fund the wallet on that cluster: `solana airdrop 1 <address> --url <endpoint>` on devnet or testnet; on mainnet, your own funds | The wallet shows a balance. Nothing in this repository requests an airdrop; this is your own command. |
+| 45 | Compare the sending address in three places: `pnpm agent address`, the app's **Wallet** screen, and the account in Seed Vault Wallet | All three are the same address, character for character, on the same network. |
+| 46 | Copy a second account of your own out of the wallet as the recipient, and run `pnpm agent transfer <recipient> 100000 --wallet <address> --network <cluster> --key device-001` | `PENDING`, with that wallet. **Seed Vault Wallet does not open, and the phone shows no prompt of its own.** |
+| 47 | Open the request on the phone | The recipient is the address you copied, character for character; the amount reads 100000 base units; the wallet that pays is the one from check 45; the fee, and any rent, are labelled as the server's estimate; policy says "Not evaluated". |
+| 48 | Tap **Approve and send**, and approve in the wallet | Record what Seed Vault Wallet shows while it asks — whether it displays the recipient and the amount. The app comes back with the transaction's ID. |
+| 49 | Run `pnpm agent status <id>` until it settles | `SUBMITTED` first, then `CONFIRMED` with `signature`, `confirmation`, `slot`, `checked_with`, and an `explorer_url` carrying the cluster from check 41. Record the signature and the cluster. |
+| 50 | Open that `explorer_url` | The explorer names that cluster. The amount, the recipient, and the fee payer are the ones from check 47, and the signature is the one the app showed in check 48. **All three have to agree**: the app, the agent, and the explorer. |
+| 51 | Look your own address up on the same explorer and count the transactions it sent | Exactly one, and it is the one from check 50. |
+| 52 | Ask for another transfer and tap **Reject** on the phone | No wallet opens at all. The agent reads `REJECTED`. |
+| 53 | Ask for another, tap **Approve and send**, and decline inside Seed Vault Wallet | The app says you declined and nothing was signed. The agent reads `REJECTED`, not `FAILED`. Count your address's transactions again: **still exactly one**, from check 51. |
+| 54 | Ask for another, open it, leave it for two or three minutes, then tap **Approve and send** | "The server has a newer transaction for this request…". Nothing reaches the wallet, the agent still reads `PENDING`, and a new version is on screen. Approve **that** one, and it goes through. The request has one transaction, not two, and your address now has two in total. |
+| 55 | If you hold an SPL token on that cluster: transfer some to an address that holds none of it, then repeat the same transfer to the same address | The first review shows "and … SOL for the new token account"; the second shows only the fee. Both confirm, and the recipient's token account exists afterwards. |
+
+Check 43 costs nothing and is worth running first: it is the guard that makes a wrong endpoint a
+refusal rather than a transfer on the wrong cluster.
+
+The unknown-result path is checks 21 and 22 in
+[`wallet-lifecycle.md`](wallet-lifecycle.md#transfers-saw-021), and what to do about one is in
+[the guide](../guides/transfers.md#when-it-doesnt-go-as-planned). It is not repeated here.
+
+## Verification record: SAW-023
 
 SAW-023, 2026-09-12:
 
@@ -101,3 +173,36 @@ SAW-023, 2026-09-12:
 | `pnpm test:hello`, `pnpm test:queue`, `pnpm build` | PASS: 9/9, 7/7, and both packages build. |
 | `SEEKER_VAULT_NETWORK_CHECKS=1 pnpm test:transfer` | NOT RUN: it needs a real devnet endpoint, and nothing here reached one. |
 | Device checks 31–40 | NOT RUN: no device was attached. |
+
+## Verification record: SAW-024
+
+SAW-024, 2026-09-12. It adds no feature, so the two halves are kept apart: what a machine checked,
+and what only the Seeker can.
+
+### Automated
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, `tsc`, 389/389 sidecar tests (5 more than before), and 29/29 test-agent tests. |
+| `pnpm check:generated` | PASS: SAW-024 changed no `.proto` file, and the committed generated code and fixtures match a fresh generation. |
+| `pnpm check:android` | PASS: Spotless, lint, both APKs, and 421/421 unit tests — the same 421 as before, because SAW-024 changed no Kotlin. |
+| `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer`, `pnpm build` | PASS: 9/9, 7/7, 7/7 with the opt-in devnet case skipped, and both packages build. **No transaction was sent to any cluster.** |
+| `SEEKER_VAULT_NETWORK_CHECKS=1 pnpm test:transfer` | NOT RUN: it needs a real devnet endpoint, and nothing here reached one. |
+| Nothing spends by default | PASS: five new checks in `sidecar/src/stage-boundary.test.ts` read `.env.example`, every workspace `package.json`, the CI workflows, the sidecar's shipped sources, and the acceptance suite. |
+| Deliberate breaks | Each break failed its own check and nothing else, and each file was restored from the index afterwards:<ul><li>`SOLANA_RPC_URL=https://api.mainnet-beta.solana.com` in `.env.example` failed "ships no endpoint in .env.example".</li><li>A `test:devnet` script setting the same variable failed "runs no script that supplies an endpoint or asks for funds".</li><li>An `env: SOLANA_RPC_URL:` on a CI step failed "runs no CI job that supplies an endpoint or asks for funds".</li><li>A `DEFAULT_ENDPOINT` constant in `sidecar/src/solana/rpc.ts` failed "names no cluster endpoint in any shipped sidecar source".</li><li>A comment naming `api.devnet.solana.com` above the opt-in gate failed "keeps the one check that reaches a real network behind its variable".</li></ul> |
+
+### On the physical Seeker
+
+| Check | Result |
+| --- | --- |
+| Checks 41 to 55 | **NOT RUN**: no device was attached. |
+| A real transfer through Seed Vault Wallet, and its cluster | **NOT RUN**. No transfer has been sent from a real wallet to any cluster, on devnet or mainnet, by this repository or by its author. |
+| Whether Seed Vault Wallet serves devnet | **NOT RUN**, still. Stage 3's step 9 records it, and nothing here assumes an answer. |
+| What Seed Vault Wallet shows while signing a transaction | **NOT RUN**: check 48 records it. |
+| The agent's result matched against the on-chain transaction | **NOT RUN**: checks 49 to 51. The match is proven in the automated tests against a fake chain, which is not the same thing. |
+| The rejection and stale-preparation walkthroughs | **NOT RUN** on a device: checks 52 to 54. Both are covered against a fake chain and a fake wallet by `pnpm test:transfer` and `InboxViewModelTest`. |
+| Mainnet | **NOT RUN**, and not proposed. Nothing here has ever pointed at mainnet, and the owner chooses whether it ever does. |
+
+**Stage 4's acceptance is therefore not met yet.** Every automated check passes, the path is written
+down and reproducible, and the guard that stops a wrong-cluster transfer is real — but no wallet has
+signed a transaction and no cluster has confirmed one. No mock, emulator, or APK build changes that.
