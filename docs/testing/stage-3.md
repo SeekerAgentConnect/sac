@@ -4,6 +4,8 @@ Stage 3 brings the wallet in. SAW-015 is its first task: the app connects the wa
 
 SAW-017 is about what happens around that trip to the wallet — rotation, backgrounding, a killed process, a dead network, a restarted sidecar — and has its own page: [`wallet-lifecycle.md`](wallet-lifecycle.md).
 
+SAW-018 closes the stage. It adds no feature: it writes the owner-facing walkthrough ([`../guides/wallet-setup.md`](../guides/wallet-setup.md)), gives Hermes and the test agent the commands for creating a signing request and reading its result back ([`../integrations/hermes.md`](../integrations/hermes.md#5-sign-a-message-with-your-wallet)), confirms that nothing in this stage needs funds, swaps, agent keys, or a biometric of the app's own, and records what passed, what failed, and what was not run — automated checks and physical-Seeker checks kept apart.
+
 ## Automated checks
 
 `pnpm check` runs the sidecar's and the test agent's tests, and `pnpm check:android` runs the app's JVM and Robolectric tests. CI runs both.
@@ -35,9 +37,20 @@ These cover SAW-016:
 | What the owner sees | The complete message with control characters, zero-width, bidirectional, and no-break characters marked; the byte count; a 4096-byte message shown whole; bytes as hex; the signing wallet and network; and every outcome | `MessagePreviewTest`, `RequestDetailsScreenTest` |
 | The phone's storage | An approval and each signing outcome across a restart, and an answer written before approvals existed | `ResultStoreTest` |
 
+These cover SAW-018:
+
+| Area | What the tests cover | Where |
+| --- | --- | --- |
+| No spending, and no swap | Every MCP tool the sidecar registers is one of the seven named ones, so no tool creates a transfer or a swap; no shipped source reaches a chain RPC or broadcasts anything | `sidecar/src/stage-boundary.test.ts`, `endpoints.test.ts` |
+| No agent key | No shipped sidecar source holds a private key, a secret key, or a keypair: an agent authenticates with the bearer token the owner issued it | `sidecar/src/stage-boundary.test.ts` |
+| No biometric of the app's own | The app calls no `BiometricPrompt`, `BiometricManager`, `FingerprintManager`, `KeyguardManager`, or device-credential intent, requires no user authentication on its Keystore key, and has no biometric library on the classpath; the wallet decides for itself what it asks for | `StageBoundaryTest.nothingSpendsSwapsOrAsksForABiometricOfItsOwn` |
+| No transaction on the phone | The app calls no `signTransactions`, `signAndSendTransactions`, or `sendTransaction`, and names no RPC host | `StageBoundaryTest`, and the same test's positive control proves the scan reads the real sources |
+
 ### What the automated checks deliberately can't show
 
 Every wallet outcome above comes from `FakeWalletAdapter`. No test starts a real wallet app: Mobile Wallet Adapter needs an installed wallet and a real activity association, so the wallet's own behaviour is the owner's check below. In particular, **which networks the installed wallet serves is a property of that wallet**, and this repository must not assume Seed Vault Wallet exposes a devnet switch.
+
+**A development wallet never stands in for the acceptance check.** `FakeWalletAdapter` may exercise error handling — no wallet installed, a declined authorization, an unsupported network, a wallet that couldn't sign — and it does. Stage 3 is accepted only when the owner's own Seeker, with Seed Vault Wallet, connects and signs by hand ([R8](https://docs.solanamobile.com/get-started/development-setup)). A mock, an emulator, or a successful APK build is recorded as NOT RUN.
 
 For SAW-016 this also means **no automated test has ever seen a real signature from Seed Vault Wallet**. The signatures in the sidecar's tests are made with a throwaway Ed25519 key in the test process, which proves the verification but not the wallet. Whether the installed wallet signs a message at all, and what it shows the owner while doing it, is steps 16 to 23 below.
 
@@ -80,6 +93,38 @@ Connect the wallet again first, so there is one to sign with.
 | 22 | Ask for one more, and change the wallet on the **Wallet** screen before approving | The request disappears from Pending requests, cancelled by the sidecar, and the agent reads CANCELLED. Nothing was signed. |
 | 23 | Check the sidecar's log and database again | The signature and the address are there; no seed phrase, private key, or wallet authorization token is, anywhere. |
 
+### The Hermes round trip (SAW-018)
+
+Steps 16 to 23 drive the sidecar with `pnpm agent`, which is the repository's own client. These drive it with a real agent instead, which is what the stage is for. Set Hermes up first: [`../integrations/hermes.md`](../integrations/hermes.md). Keep verbose tool output on, so each result is visible rather than only the model's summary.
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 24 | In a Hermes session, ask it to call `vault_get_capabilities` | `"approval":"manual"`, `"signing":"wallet"`, `"wallet_connected":true`, and `operations` containing `sign_message` and no transfer or swap. |
+| 25 | Ask it to call `vault_get_address` | The wallet and network the app shows, character for character. |
+| 26 | Ask it to call `vault_sign_message` with that wallet, the message `Sign in to example.com\nNonce: 4711`, and an idempotency key you choose | It answers at once with a `request_id` and `PENDING`. **Seed Vault Wallet does not open, and the phone shows no prompt of its own.** |
+| 27 | Send the same prompt again, unchanged | The same `request_id` comes back. The sidecar logs that it returned the request for its idempotency key, and stores nothing new. |
+| 28 | On the Seeker, open the request, check the message and the byte count, and tap **Approve and sign** | Seed Vault Wallet opens. Record what it shows: whether it displays the message itself. |
+| 29 | Approve in the wallet | The app says your wallet signed it. |
+| 30 | Ask Hermes to call `vault_get_request` with that `request_id` | `COMPLETED`, `"terminal":true`, with `wallet`, `signature`, and `signed_message_base64`. |
+| 31 | Verify that signature yourself: `pnpm agent get <request_id>` on the sidecar's machine | `"signature_verified":true`, from a verifier that shares no code with the sidecar's. A model saying "signed" is not a signature; this is. |
+| 32 | Ask for another signature through Hermes, and tap **Reject** on the phone | No wallet opens. Hermes reads `REJECTED` with `"detail":"The owner rejected the request."` |
+| 33 | Ask for one more, tap **Approve and sign**, and decline inside Seed Vault Wallet | The app says you declined and nothing was signed. Hermes reads `REJECTED`, not `FAILED`. |
+
+Record Hermes's own version with the result, and the wallet's version in [the wallet under test](../guides/wallet-setup.md#the-wallet-under-test). A session transcript, including every tool call and result, comes from `hermes sessions export <file>`.
+
+## What this stage never needs
+
+Stage 3 signs messages. A message signature is not a transaction: nothing is built, priced, or broadcast, and no balance is read. So none of the following is needed, and each is checked rather than promised.
+
+| | Why not, and where it's checked |
+| --- | --- |
+| **Funds** | Nothing reads a balance or sends anything to a network. An empty account signs exactly as well as a funded one, on any network the wallet serves. `sidecar/src/stage-boundary.test.ts` fails if any shipped source names an RPC host or a broadcast API, and `StageBoundaryTest` fails if the app does. |
+| **Swaps, or any transfer** | The sidecar registers seven MCP tools and no more, none of which creates a transfer or a swap; `endpoints.test.ts` pins the exact set, in demo mode and out of it. The protocol knows both kinds, and the sidecar refuses them, but no tool can ask for one until Stages 4 and 6. |
+| **A key of the agent's own** | An agent authenticates with the bearer token the owner issued it, compared as a hash in constant time. No shipped sidecar source holds a private key, a secret key, or a keypair, and none creates one. |
+| **A custom biometric** | The app asks for no authentication of its own: the owner taps **Approve and sign**, and the wallet app decides for itself whether it wants a PIN, a fingerprint, or a face before signing. The app uses no `BiometricPrompt`, `BiometricManager`, `FingerprintManager`, or device-credential intent, its Keystore key sets no `setUserAuthenticationRequired`, and no biometric library is on the classpath. |
+
+Mainnet is the app's default network because it's the one a Seeker owner actually has a wallet on, and connecting on it still spends nothing. Devnet and Testnet are offered for the same reason they always were: the wallet may or may not serve them, and step 9 records which.
+
 ## Verification record: SAW-015
 
 Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in [`toolchain.md`](../development/toolchain.md).
@@ -116,3 +161,36 @@ Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in [`toolch
 | Rejection, wallet rejection, Unicode, long messages, and a request that moved on | PASS, in `InboxViewModelTest`, `MessagePreviewTest`, and `endpoints.test.ts` |
 | Real signing on the Seeker with Seed Vault Wallet | NOT RUN: no device was attached. The steps are 16 to 23 in [the owner's checks](#message-signing-saw-016) above. |
 | What Seed Vault Wallet shows while signing a message | NOT RUN: only the device can show it. Step 19 records it. |
+
+## Verification record: SAW-018
+
+Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
+[`toolchain.md`](../development/toolchain.md). SAW-018 is documentation and verification, so the two halves are kept apart: what a machine checked, and what only the owner's Seeker can.
+
+### Automated
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, `tsc`, 283/283 sidecar tests (one more than before), and 23/23 test agent tests |
+| `pnpm check:generated` | PASS: SAW-018 changed no `.proto` file, and the committed generated code and fixtures match a fresh generation |
+| `pnpm test:hello` | PASS: 9/9 Stage 1 acceptance cases |
+| `pnpm test:queue` | PASS: 7/7 Stage 2 acceptance cases |
+| `pnpm check:android` | PASS: Spotless, 294/294 unit tests (one more than before), Android lint with no issues, and the debug and instrumentation APKs |
+| No funds and no swap | PASS: `sidecar/src/stage-boundary.test.ts` finds no chain RPC host and no broadcast API in any shipped source, and every registered MCP tool is one of the seven named ones; `StageBoundaryTest` finds no transaction API in the app |
+| No agent key | PASS: no private key, secret key, or keypair in any shipped sidecar source; agents authenticate with the owner's bearer token, compared as a hash in constant time |
+| No custom biometrics | PASS: `StageBoundaryTest` finds no biometric, fingerprint, or device-credential API in the app, and no biometric library on the classpath. The wallet asks for whatever it wants; this app asks for nothing. |
+| Deliberate breaks | Each break failed the matching test, and each file was restored byte for byte afterwards:<ul><li>An RPC host in `mcp-tools.ts` failed the sidecar's new boundary test.</li><li>Registering a tool under an unlisted name failed it too, naming the tool.</li><li>A `BiometricPrompt` mention in `InboxViewModel.kt`, and a `sendTransaction` mention in `MwaWalletAdapter.kt`, each failed `nothingSpendsSwapsOrAsksForABiometricOfItsOwn`.</li></ul> |
+
+### On the physical Seeker
+
+| Check | Result |
+| --- | --- |
+| The owner's checks, steps 1 to 15 (connect, address, network, disconnect) | NOT RUN: no device was attached |
+| Message signing by hand, steps 16 to 23 | NOT RUN: no device was attached |
+| The Hermes round trip, steps 24 to 31 | NOT RUN: no device was attached, and the wallet tools have never been driven by Hermes |
+| Rejection at the app and at the wallet, steps 32 and 33 | NOT RUN |
+| The wallet lifecycle checks, steps 1 to 14 of [`wallet-lifecycle.md`](wallet-lifecycle.md#the-owners-checks-on-the-seeker) | NOT RUN |
+| Seed Vault Wallet's version, and the network path it serves | NOT RUN: only the device can say. [The wallet under test](../guides/wallet-setup.md#the-wallet-under-test) is where it is recorded. |
+| What Seed Vault Wallet shows while signing | NOT RUN: step 19 and step 28 record it |
+
+**Stage 3's acceptance is therefore not met yet.** Everything a machine can check passes, and the guide is reproducible; the owner's own wallet has still not signed anything. No mock, emulator, or APK build changes that.

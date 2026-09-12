@@ -314,3 +314,28 @@
   request ID, goes to that connection's own URL with its own credential, and the sidecar refuses a
   reference naming another connection's request. The task added the end-to-end checks: the same
   request ID on two servers, answered on one only.
+
+## SAW-018 — the wallet setup guide and the Stage 3 device checks (SEE-26)
+
+- **The task adds no behaviour, so it adds tests instead of prose where it can.** "This stage needs no
+  funds, swaps, agent keys, or custom biometrics" is the kind of claim that rots silently, so it is a
+  boundary test on each side rather than a sentence: the sidecar's pins every registered MCP tool to
+  the seven that exist and fails on a chain RPC, a broadcast API, or any key material in a shipped
+  source; the app's fails on a transaction API, a biometric or device-credential API, or a biometric
+  library on the classpath. Each scan carries a positive control, so it can't pass by finding nothing.
+- **The app asks for no authentication of its own, on purpose.** The owner taps **Approve and sign**,
+  and the wallet decides whether it wants a PIN, a fingerprint, or a face. Adding a second prompt
+  would teach the owner to approve twice for one action, and would put this app in the business of
+  guarding a key it doesn't hold.
+- **The Hermes signing section says where its results come from.** Sections 3 and 4 of that page are
+  recorded Hermes runs; the wallet tools have only been driven by `pnpm agent` and the automated
+  tests. Rather than dress those up as a Hermes transcript, the section is marked as not yet run and
+  the owner's device script covers it. A plausible transcript would have been indistinguishable from
+  a fake one.
+- **The wallet's version and network path are a table to fill in, not a claim.** Which networks Seed
+  Vault Wallet serves, and what it shows while signing, are properties of the installed wallet, so
+  the guide records them from the device rather than asserting them here.
+- **A development wallet is explicitly not the acceptance check (R8).** `FakeWalletAdapter` may
+  exercise error handling, and every automated test uses it; the stage is accepted only when the
+  owner's own Seeker signs by hand. The verification record therefore has two tables, automated and
+  physical, and the physical one is entirely NOT RUN.
