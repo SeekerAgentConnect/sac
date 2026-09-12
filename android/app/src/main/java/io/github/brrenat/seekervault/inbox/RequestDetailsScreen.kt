@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Answer
@@ -147,11 +146,7 @@ fun RequestDetailsScreen(
                 ListItem(
                     overlineContent = { Text(stringResource(R.string.request_field_message)) },
                     headlineContent = {
-                        Text(
-                            message.display,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.testTag(InboxTags.MESSAGE),
-                        )
+                        Text(message.display, modifier = Modifier.testTag(InboxTags.MESSAGE))
                     },
                 )
                 Field(

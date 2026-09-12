@@ -169,6 +169,21 @@ class WalletViewModelTest {
     }
 
     @Test
+    fun tellsAConnectionPairedWhileTheScreenIsOpen() {
+        val model = viewModel()
+        adapter.answerConnected(WALLET)
+        model.connect()
+        // No connection yet, so there was nothing to tell.
+        assertNull(server.wallet)
+
+        // The owner pairs without leaving the app, so the new sidecar is told straight away
+        // rather than after the app has been hidden and shown again.
+        pair()
+        assertEquals(WALLET, server.wallet?.wallet)
+        assertEquals(emptyList<Any>(), model.state.value.unpublished)
+    }
+
+    @Test
     fun tellsAConnectionPairedLaterWhenTheAppComesBack() {
         val model = viewModel()
         adapter.answerConnected(WALLET)

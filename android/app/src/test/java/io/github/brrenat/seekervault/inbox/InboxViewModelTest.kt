@@ -12,6 +12,7 @@ import io.github.brrenat.seekervault.connections.ConnectionRepository
 import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.GatewayException
+import io.github.brrenat.seekervault.connections.MAX_DETAIL_BYTES
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.connections.softwareKey
@@ -319,6 +320,36 @@ class InboxViewModelTest {
         assertEquals(
             "The wallet could not sign: the wallet is locked",
             (outcome as SigningOutcome.Failed).detail,
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_FAILED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+    }
+
+    @Test
+    fun cutsAWalletMessageTheSidecarWouldRefuse() {
+        val (key, selected) = readyToSign()
+        // The wallet's text is the wallet's own, of whatever length it likes. A detail over the
+        // protocol's 1024 bytes would be refused, and this phone never replaces a stored outcome,
+        // so the request would stay PROCESSING with nothing able to settle it.
+        adapter.answerSigning(SignResult.Failed("é".repeat(2000)))
+        val viewModel = viewModel()
+
+        viewModel.approve(key, selected)
+
+        val outcome = viewModel.state.value.inbox.result(key)?.signing
+        val detail = (outcome as SigningOutcome.Failed).detail
+        assertTrue("$detail", detail.startsWith("The wallet could not sign: é"))
+        assertTrue("${detail.length}", detail.toByteArray(Charsets.UTF_8).size <= MAX_DETAIL_BYTES)
+        // Cut between characters, so what is stored is still the text the wallet sent.
+        assertFalse(detail.endsWith("\uFFFD"))
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.EXECUTION_FAILURE,
+            ),
+            submitted(),
         )
         assertEquals(
             RequestState.REQUEST_STATE_FAILED,

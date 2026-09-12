@@ -53,6 +53,12 @@ This page is what is checked automatically, what only the Seeker can show, and t
   chain under that signature is byte for byte the one the approval named, and an endpoint that
   didn't answer, a status that isn't there yet, and a signature naming something else all leave the
   request exactly as it was. Nothing anywhere builds a replacement transaction.
+- **The authorization the wallet hands back is the one kept.** A wallet reauthorizes this app at
+  the start of every session and may replace this phone's token; the replacement is read from
+  inside that same session, so a signing the owner declines still leaves the phone holding a
+  working authorization, and the wallet is never opened again just to ask for one. The selected
+  wallet, its address, and its network don't change with it, and a token the wallet refuses is
+  forgotten as before.
 - **A reply belongs to its connection.** An answer is keyed by connection ID and request ID, it is
   sent to that connection's own URL with that connection's own credential, and the sidecar refuses
   a reference that names a request another connection owns.
@@ -75,6 +81,8 @@ This page is what is checked automatically, what only the Seeker can show, and t
 | A reply for one connection never settles another's, with the same request ID on both | `InboxViewModelTest.neverSettlesAnotherConnectionsRequestWithThisOnesReply`, `InboxTest.keepsIdenticalRequestIdsOnTwoServersApart` |
 | Rotation: the activity is recreated while the wallet holds the message, and the request, the approval, and the signing survive it | `InboxActivityTest` |
 | Wallet cancellation stays a rejection; a wallet that couldn't sign stays a failure | `InboxViewModelTest.recordsAWalletThatDeclined`, `…CouldNotSign` |
+| A wallet message too long for the protocol is cut before it is stored, so the answer can always be delivered | `InboxViewModelTest.cutsAWalletMessageTheSidecarWouldRefuse` |
+| An authorization the wallet replaces while signing is kept, used by the next signing and after a reload, and kept when the owner declines; one it refuses is still forgotten | `WalletRepositoryTest.keepsAnAuthorizationTheWalletReplacesWhileSigning`, `…keepsTheReplacedAuthorizationWhenTheOwnerDeclinesTheSigning`, `…forgetsAnAuthorizationTheWalletRefusesWhileSigning` |
 | Every outcome across a restart of the app's storage, including the unresolved one | `ResultStoreTest` |
 | Repeated `SubmitResult`, for an approval and for a signature, before and after a sidecar restart | `sidecar/src/storage/request-store.test.ts` |
 | A result naming another connection's request is refused | `sidecar/src/storage/request-store.test.ts`, "keeps the phone to its own connection's requests" |

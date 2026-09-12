@@ -119,7 +119,7 @@ class WalletRepository(
      * still be [reviewed]: the one they saw when they approved. A selection that has changed, or
      * gone, is reported without asking the wallet anything, so nothing is ever signed for a wallet
      * or network the owner didn't review. An authorization the wallet refuses is forgotten, the
-     * same way connecting does.
+     * same way connecting does, and one it replaces is kept.
      */
     suspend fun sign(message: ByteString, reviewed: SelectedWallet): SignResult = lock.withLock {
         val selected = _wallet.value ?: return@withLock SignResult.NotConnected
@@ -128,12 +128,40 @@ class WalletRepository(
         }
         val authorization =
             withContext(io) { store.authorization() } ?: return@withLock SignResult.NotConnected
-        val result = adapter.signMessage(message, selected, authorization)
-        if (result == SignResult.AuthorizationExpired) {
+        val answer = adapter.signMessage(message, selected, authorization)
+        if (answer.result == SignResult.AuthorizationExpired) {
             withContext(io) { store.clear() }
             setWallet(null)
+            return@withLock answer.result
         }
-        result
+        // The wallet may replace this phone's authorization while it signs, and the replacement is
+        // what the next signing has to use, whatever the wallet then did with the message: a
+        // declined signature carries a perfectly good one. The selection stays exactly as it is,
+        // so the wallet, address, and network the owner reviewed don't change, and the token goes
+        // no further than [store].
+        keepRefreshed(selected, answer.authToken, offered = authorization)
+        answer.result
+    }
+
+    /**
+     * Replaces the stored authorization when the wallet handed back a new one. If this phone can't
+     * store it, the wallet's answer still stands: the next signing is refused with the old
+     * authorization, and the owner connects the wallet again, which is what an expired one does
+     * anyway.
+     */
+    private suspend fun keepRefreshed(
+        selected: SelectedWallet,
+        refreshed: String?,
+        offered: String,
+    ) {
+        if (refreshed == null || refreshed == offered) return
+        try {
+            withContext(io) { store.put(selected, refreshed) }
+        } catch (e: GeneralSecurityException) {
+            // Kept as it was; see above.
+        } catch (e: IOException) {
+            // Kept as it was; see above.
+        }
     }
 
     /**

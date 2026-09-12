@@ -77,6 +77,27 @@ sealed interface SigningOutcome {
     data class Unresolved(val detail: String) : SigningOutcome
 }
 
+/**
+ * The longest detail a result may carry, in UTF-8 bytes (docs/protocol.md). The sidecar refuses a
+ * longer one with INVALID_PARAMETERS.
+ */
+const val MAX_DETAIL_BYTES = 1024
+
+/**
+ * A detail the sidecar will accept: valid Unicode of at most [MAX_DETAIL_BYTES] UTF-8 bytes, cut on
+ * a character boundary. A wallet's own message is text this phone didn't write and hasn't measured,
+ * and an answer the sidecar refuses would be sent again for ever: the outcome stored for an
+ * approval is never replaced, so the request would stay PROCESSING with nothing able to settle it.
+ */
+fun resultDetail(text: String): String {
+    val bytes = text.toByteArray(Charsets.UTF_8)
+    // Encoding replaces an unpaired surrogate with '?', which the sidecar's Unicode check wants.
+    if (bytes.size <= MAX_DETAIL_BYTES) return String(bytes, Charsets.UTF_8)
+    var end = MAX_DETAIL_BYTES
+    while (end > 0 && (bytes[end].toInt() and 0xC0) == 0x80) end--
+    return String(bytes, 0, end, Charsets.UTF_8)
+}
+
 /** Where an answer stands between this phone and its sidecar. */
 enum class Delivery {
     /** Kept on the phone until the sidecar confirms it, and sent again on each refresh. */
