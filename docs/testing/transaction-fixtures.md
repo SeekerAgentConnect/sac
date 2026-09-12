@@ -22,7 +22,7 @@ report, and the facts it must read out of the bytes.
   "version": 1,
   "verdict": "invalid",
   "findings": ["RecipientMismatch"],
-  "facts": { "recipient": "…", "destinationAccount": null, "amount": "2500000000", "mint": null, "decimals": 9, "createsRecipientAccount": false }
+  "facts": { "recipient": "…", "destinationAccount": null, "amount": "2500000000", "mint": null, "decimals": 9, "ensuresRecipientAccount": false }
 }
 ```
 
@@ -33,7 +33,12 @@ report, and the facts it must read out of the bytes.
   `changed_recipient` the two differ, which is the point: `facts.recipient` is who the transaction
   really pays.
 - **`recipient` is null when the bytes establish no wallet** — for a token, when the destination
-  account doesn't derive from the recipient the request names.
+  account doesn't derive from the recipient the request names, and also when it does derive but
+  nothing in the transaction has the chain confirm the account is still theirs.
+- **`ensuresRecipientAccount` is the transaction's own proof of the destination,** true only when it
+  carries the associated-account instruction for the recipient *and the mint the request names*. A
+  transaction for another mint carries that instruction for a different account, which vouches for
+  somebody else, so the fact is false there however honest the instruction looks.
 - **Amounts are strings,** so a value above 2^53 can't lose its last digits on either side.
 - **`findings` are sorted by name,** so the phone can compare its own list directly.
 
