@@ -9,9 +9,10 @@ import org.w3c.dom.Element
 
 /**
  * The stage boundary (AGENTS.md): no wallet keys, nothing that runs in the background, and storage
- * only in the two storage packages: connection metadata and Keystore-encrypted credentials in
- * `connections/storage/` (SAW-012), and the owner's wallet selection and its authorization in
- * `wallet/storage/` (SAW-015). Nothing is backed up. SAW-015 lifted the "no wallet library" limit
+ * only in the storage packages: connection metadata and Keystore-encrypted credentials in
+ * `connections/storage/` (SAW-012), the owner's wallet selection and its authorization in
+ * `wallet/storage/` (SAW-015), and the owner's own record of what this phone did in
+ * `activity/storage/` (SAW-023). Nothing is backed up. SAW-015 lifted the "no wallet library" limit
  * for the Mobile Wallet Adapter client, on purpose: the app drives the wallet the owner already
  * has. It still holds no wallet key of its own, and Seed Vault's own SDK stays out. These checks
  * fail when a limit is crossed early; the stage that lifts one changes them.
@@ -99,6 +100,7 @@ class StageBoundaryTest {
             listOf(
                 File(main, "java/io/github/brrenat/seekervault/connections/storage"),
                 File(main, "java/io/github/brrenat/seekervault/wallet/storage"),
+                File(main, "java/io/github/brrenat/seekervault/activity/storage"),
             )
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         fun inStorage(file: File) = storagePackages.any { file.startsWith(it) }
@@ -216,6 +218,40 @@ class StageBoundaryTest {
     }
 
     @Test
+    fun theExplorerIsALinkAndNeverAConnection() {
+        // SAW-023 puts one address outside this phone into the app: the public block explorer, so
+        // the owner can read a transfer they made. It is handed to whatever app opens links, and
+        // this app fetches nothing from it. Two things prove that rather than assert it:
+        //
+        // 1. the address is written in one file, `Explorer.kt`, which holds no HTTP client, and
+        // 2. the app's own HTTP clients exist only where they talk to a sidecar.
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        val explorer = Regex("""explorer\.solana\.com""")
+        assertEquals(
+            listOf("Explorer.kt"),
+            sources.filter { explorer.containsMatchIn(it.readText()) }.map { it.name },
+        )
+        val http = Regex("""OkHttpClient|HttpURLConnection|openConnection\(|Retrofit""")
+        assertEquals(
+            emptyList<String>(),
+            sources
+                .filter { it.name == "Explorer.kt" }
+                .filter { http.containsMatchIn(it.readText()) }
+                .map { it.name },
+        )
+        // The sidecar transports and the one client they share, and nothing else. A new file here
+        // is a new host this app talks to, and has to be read as one.
+        assertEquals(
+            listOf(
+                "ConnectConnectionGateway.kt",
+                "ConnectLiveCommandTransport.kt",
+                "SeekerVaultApplication.kt",
+            ),
+            sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.sorted(),
+        )
+    }
+
+    @Test
     fun nothingSpendsSwapsOrAsksForABiometricOfItsOwn() {
         // SAW-021 lets the owner approve a transfer, and the wallet sign and send it. That is the
         // one line lifted, and it is lifted in one file: `MwaWalletAdapter`, which hands the
@@ -230,7 +266,7 @@ class StageBoundaryTest {
             Regex(
                 """signTransactions\b|sendTransaction|sendRawTransaction|""" +
                     """simulateTransaction|getLatestBlockhash|""" +
-                    """mainnet-beta|clusterApiUrl|solana\.com"""
+                    """mainnet-beta|clusterApiUrl|api\.[a-z-]*solana\.com"""
             )
         val ownAuthentication =
             Regex(

@@ -425,6 +425,8 @@ The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. Th
 
 `pnpm test:queue` runs the Stage 2 acceptance scenario (SAW-014) with two sidecar processes that restart; see [`docs/testing/stage-2.md`](../testing/stage-2.md#the-acceptance-scenario-saw-014), which also holds its report. `src/testing/process.ts` starts the processes, with `MCP_DEMO_TOOLS` if asked. `src/testing/clock.ts`, loaded with `--import`, runs a restarted process's clock ahead, for time that passed while it was down.
 
+`pnpm test:transfer` runs the Stage 4 acceptance scenario (SAW-023): one sidecar process, the test agent's CLI as another, the Connect phone client as the phone, a throwaway key pair as the wallet, and `src/testing/chain.ts`'s `startFakeRpc` as the chain. `startSidecarProcess` takes a `solanaRpcUrl` so a spawned sidecar reads it. **Nothing in that run reaches a cluster and nothing in it spends anything**; the one case that talks to devnet reads, needs no funds, and is skipped unless `SEEKER_VAULT_NETWORK_CHECKS=1`. See [`docs/testing/stage-4.md`](../testing/stage-4.md).
+
 ## Verification record: SAW-003
 
 Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolchain.md`](toolchain.md).

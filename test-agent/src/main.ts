@@ -12,7 +12,9 @@ import {
   displayCommand,
   getAddress,
   getCapabilities,
+  explorerUrl,
   listTools,
+  outcomeExitCode,
   requestTool,
   requireTool,
   withMcpSession,
@@ -38,13 +40,18 @@ Commands:
                    with get, which checks the signature itself.
   transfer <to> <amount>
                    Ask the owner to send <amount> base units to <to> (vault_transfer):
-                   lamports for SOL, or the mint's base units with --mint. Prints the
+                   lamports for SOL, or the mint's base units with --mint. --wallet and
+                   --network are both required, and neither is guessed. Prints the
                    request, PENDING, as JSON; nothing is built, signed, or sent here.
-                   Read it back with get.
+                   Read it back with get or status.
   ack <text>       Queue text for the owner to acknowledge later (vault_request_ack, a demo
                    tool that the sidecar serves only with MCP_DEMO_TOOLS=true). Prints the
                    request, PENDING, as JSON; it doesn't wait for the owner.
   get <id>         Print a request as it is now (vault_get_request).
+  status <id>      Print what became of a request: its state, what the server last read
+                   from the chain, and, for a transfer that was sent, the explorer link
+                   for its cluster. Exit 0 once it ended as asked, 10 while no outcome is
+                   established, 11 once it ended any other way.
   cancel <id>      Withdraw a PENDING request (vault_cancel_request).
   tools            List the MCP server's tools as JSON.
 
@@ -53,8 +60,9 @@ Options:
                    stderr. Reuse it to retry without sending twice.
   --note <text>    ack, sign, transfer: a note for the owner, shown apart from the text.
   --expires <s>    ack, sign, transfer: seconds until the request expires, 60 to 604800.
-  --wallet <addr>  sign, transfer: the wallet to pay with. Default: the one
-                   vault_get_address returns.
+  --wallet <addr>  sign: the wallet to sign with; default the one vault_get_address
+                   returns. transfer: required, and never defaulted.
+  --network <name> transfer: required. mainnet, devnet, or testnet.
   --mint <addr>    transfer: the SPL token's mint. Default: native SOL.
   --timeout <s>    hello: client timeout in seconds; default LIVE_COMMAND_TIMEOUT_SECONDS + ${CLIENT_TIMEOUT_MARGIN_SECONDS}.
   -h, --help       Show this help.
@@ -63,7 +71,8 @@ Environment (the root .env, or the shell, which takes precedence):
   MCP_URL, MCP_TOKEN, LIVE_COMMAND_TIMEOUT_SECONDS
 
 Exit codes: 0 OK, 1 unexpected result, 2 usage or configuration, 3 connection,
-4 OFFLINE, 5 BUSY, 6 TIMEOUT, 7 CANCELLED, 8 INVALID_TEXT, 9 refused by the sidecar.`;
+4 OFFLINE, 5 BUSY, 6 TIMEOUT, 7 CANCELLED, 8 INVALID_TEXT, 9 refused by the sidecar,
+10 status: no outcome established yet, 11 status: it ended badly.`;
 
 // How many positional arguments each command takes.
 const ARITY: Readonly<Record<string, readonly [number, number]>> = {
@@ -74,6 +83,7 @@ const ARITY: Readonly<Record<string, readonly [number, number]>> = {
   transfer: [2, 2],
   ack: [1, 1],
   get: [1, 1],
+  status: [1, 1],
   cancel: [1, 1],
   tools: [0, 0],
 };
@@ -114,6 +124,48 @@ function checked(view: RequestView): Record<string, unknown> {
   };
 }
 
+/** The clusters a transfer may name. The sidecar refuses any that isn't the owner's. */
+const NETWORKS = ["mainnet", "devnet", "testnet"];
+
+/**
+ * What became of a request, as a script wants to read it: its state, what the server last read
+ * from the chain, and where to see the transaction. `signature_is_transaction` is the field that
+ * keeps the two kinds of signature apart. A signed message carries a signature too, and it is not
+ * a payment: nothing was sent, no cluster has it, and there is no explorer link for it.
+ */
+function statusOf(view: RequestView): Record<string, unknown> {
+  const sent = view.action === "transfer" || view.action === "swap";
+  const url = explorerUrl(view);
+  return {
+    request_id: view.request_id,
+    action: view.action,
+    status: view.status,
+    terminal: view.terminal,
+    updated_at: view.updated_at,
+    ...(view.network === undefined ? {} : { network: view.network }),
+    ...(view.wallet === undefined ? {} : { wallet: view.wallet }),
+    ...(view.signature === undefined
+      ? {}
+      : {
+          signature: view.signature,
+          signature_is_transaction: sent,
+        }),
+    ...(view.confirmation === undefined
+      ? {}
+      : { confirmation: view.confirmation }),
+    ...(view.slot === undefined ? {} : { slot: view.slot }),
+    ...(view.chain_error === undefined
+      ? {}
+      : { chain_error: view.chain_error }),
+    ...(view.checked_at === undefined ? {} : { checked_at: view.checked_at }),
+    ...(view.checked_with === undefined
+      ? {}
+      : { checked_with: view.checked_with }),
+    ...(view.detail === undefined ? {} : { detail: view.detail }),
+    ...(url === undefined ? {} : { explorer_url: url }),
+  };
+}
+
 function wholeSeconds(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   return /^\d+$/.test(value) ? Number(value) : 0;
@@ -129,6 +181,7 @@ async function main(argv: string[]): Promise<number> {
         timeout: { type: "string" },
         key: { type: "string" },
         wallet: { type: "string" },
+        network: { type: "string" },
         mint: { type: "string" },
         note: { type: "string" },
         expires: { type: "string" },
@@ -175,7 +228,33 @@ async function main(argv: string[]): Promise<number> {
     printError("--expires must be a whole number of seconds.");
     return ExitCode.USAGE;
   }
+  // A spending request names every part of itself. The CLI refuses an incomplete one here, before
+  // it opens a session, so nothing reaches the sidecar that the owner would have to review.
+  if (command === "transfer") {
+    if (
+      parsed.values.wallet === undefined ||
+      parsed.values.network === undefined
+    ) {
+      printError(
+        "transfer needs --wallet and --network; read them with `pnpm agent address` and pass " +
+          "them, rather than letting a payment pick its own wallet or cluster.",
+      );
+      return ExitCode.USAGE;
+    }
+    if (!NETWORKS.includes(parsed.values.network)) {
+      printError(`--network must be one of ${NETWORKS.join(", ")}.`);
+      return ExitCode.USAGE;
+    }
+    if (!/^[1-9]\d*$/.test(rest[1] ?? "")) {
+      printError(
+        "<amount> is in the asset's base units: a whole number above zero, lamports for SOL. " +
+          "A decimal such as 1.5 is not one.",
+      );
+      return ExitCode.USAGE;
+    }
+  }
 
+  let outcome: ExitCode = ExitCode.OK;
   try {
     await withMcpSession(config.mcpUrl, config.mcpToken, async (client) => {
       switch (command) {
@@ -227,16 +306,18 @@ async function main(argv: string[]): Promise<number> {
           return;
         }
         case "transfer": {
-          // The owner's wallet and network come from the sidecar, never from a guess: a request
-          // for another one is refused, and the amount is always in base units.
-          const binding = await getAddress(client);
+          // Every part of a spending request is named here, and none of it is guessed. The wallet
+          // and the network are the two that decide whose money moves and on which cluster, so a
+          // transfer that doesn't name them is refused rather than filled in from
+          // vault_get_address. The sidecar refuses a wallet or network that isn't the owner's, so
+          // naming them wrong fails the request instead of sending anything.
           const key = parsed.values.key ?? `transfer-${randomUUID()}`;
           if (parsed.values.key === undefined) {
             printError(`idempotency key: ${key}`);
           }
           const args: Record<string, unknown> = {
-            wallet: parsed.values.wallet ?? binding.wallet,
-            network: binding.network,
+            wallet: parsed.values.wallet,
+            network: parsed.values.network,
             recipient: rest[0],
             amount: rest[1],
             idempotency_key: key,
@@ -284,6 +365,14 @@ async function main(argv: string[]): Promise<number> {
           print(JSON.stringify(checked(view)));
           return;
         }
+        case "status": {
+          const view = await requestTool(client, GET_REQUEST_TOOL, {
+            request_id: rest[0],
+          });
+          print(JSON.stringify(statusOf(view)));
+          outcome = outcomeExitCode(view.status);
+          return;
+        }
         default: {
           const text = rest[0] ?? "Hello Seeker";
           printError(
@@ -297,7 +386,7 @@ async function main(argv: string[]): Promise<number> {
         }
       }
     });
-    return ExitCode.OK;
+    return outcome;
   } catch (error) {
     if (!(error instanceof AgentFailure)) throw error;
     printError(error.message);

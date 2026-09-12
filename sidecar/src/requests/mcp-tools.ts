@@ -77,6 +77,15 @@ const LEVEL_NAMES: ReadonlyMap<ConfirmationLevel, (typeof LEVELS)[number]> =
     [ConfirmationLevel.FINALIZED, "finalized"],
   ]);
 
+const NETWORKS = ["mainnet", "devnet", "testnet"] as const;
+
+/** The Network value each name stands for; `networkName` writes them the same way. */
+const NETWORK_VALUES: Readonly<Record<(typeof NETWORKS)[number], Network>> = {
+  mainnet: Network.MAINNET,
+  devnet: Network.DEVNET,
+  testnet: Network.TESTNET,
+};
+
 /** A request as agents see it: every tool returns this in structuredContent. */
 export interface RequestView {
   readonly request_id: string;
@@ -87,6 +96,8 @@ export interface RequestView {
   readonly expires_at: string;
   readonly updated_at: string;
   readonly wallet?: string;
+  /** The network a wallet action names; absent for an action that names none. */
+  readonly network?: (typeof NETWORKS)[number];
   readonly signature?: string;
   readonly signed_message_base64?: string;
   readonly detail?: string;
@@ -115,6 +126,12 @@ const VIEW_SCHEMA = {
     .string()
     .optional()
     .describe("The wallet the request is bound to, for a wallet action."),
+  network: z
+    .enum(NETWORKS)
+    .optional()
+    .describe(
+      "The cluster the request is bound to, for an action that names one. A signature belongs to one cluster and to no other; read it before writing an explorer link.",
+    ),
   signature: z
     .string()
     .optional()
@@ -153,15 +170,6 @@ const VIEW_SCHEMA = {
     .describe(
       "The host of the single Solana RPC endpoint this result rests on. CONFIRMED and FAILED are that one endpoint's word, checked against the exact transaction the owner approved.",
     ),
-};
-
-const NETWORKS = ["mainnet", "devnet", "testnet"] as const;
-
-/** The Network value each name stands for; `networkName` writes them the same way. */
-const NETWORK_VALUES: Readonly<Record<(typeof NETWORKS)[number], Network>> = {
-  mainnet: Network.MAINNET,
-  devnet: Network.DEVNET,
-  testnet: Network.TESTNET,
 };
 
 /** The owner's wallet as agents see it: a public address, never a key. */
@@ -771,8 +779,12 @@ export function requestView(request: ActionRequest): RequestView {
   const kind = action?.kind.case ?? "ack";
   const { outcome } = request;
   const signed = outcome !== undefined && outcome.signature.length > 0;
-  const wallet =
-    action === undefined ? undefined : actionBinding(action)?.wallet;
+  const binding = action === undefined ? undefined : actionBinding(action);
+  const wallet = binding?.wallet;
+  // A transfer's network, which says which cluster its signature belongs to. A message names
+  // none: nothing about it reaches a cluster.
+  const network =
+    binding?.network === undefined ? undefined : networkName(binding.network);
   return {
     request_id: idOf(request),
     action: kind === "signMessage" ? "sign_message" : kind,
@@ -782,6 +794,9 @@ export function requestView(request: ActionRequest): RequestView {
     expires_at: iso(request.expiresAt),
     updated_at: iso(request.updatedAt),
     ...(wallet === undefined ? {} : { wallet }),
+    ...(network === undefined
+      ? {}
+      : { network: network as RequestView["network"] }),
     ...(signed ? { signature: encodeBase58(outcome.signature) } : {}),
     // Exactly the bytes the wallet signed: the sidecar accepted the signature only after
     // verifying it against them (docs/protocol.md#message-results).

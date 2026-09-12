@@ -1,6 +1,6 @@
 # Send SOL or a token
 
-An agent can ask you to send SOL or a classic SPL token from the wallet you connected. This guide covers the whole path up to the moment your wallet sends it: how a transfer request is stored, how the transaction is built, what your phone makes of it, and what your approval binds. Following the transaction to confirmation comes with the task after this one.
+An agent can ask you to send SOL or a classic SPL token from the wallet you connected. This guide covers the whole path: how a transfer request is stored, how the transaction is built, what your phone makes of it, what your approval binds, how the transaction is followed to the network, and what your phone keeps as the record of it.
 
 Before this, pair the phone ([`pairing.md`](pairing.md)) and connect your wallet ([`wallet-setup.md`](wallet-setup.md)).
 
@@ -36,13 +36,17 @@ $ pnpm agent capabilities
 $ pnpm agent address
 {"wallet":"G4bAtd9o…","network":"devnet","bound_at":"2026-09-12T09:30:00.000Z"}
 
-$ pnpm agent transfer 3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh 25000000
+$ pnpm agent transfer 3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh 25000000 \
+    --wallet G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW --network devnet
 idempotency key: transfer-1f0a…
 The owner reviews it on their Seeker; nothing is signed or sent until they approve.
 {"request_id":"f7e6d5c4-…","action":"transfer","status":"PENDING","wallet":"G4bAtd9o…",…}
 ```
 
-For a token, add its mint: `pnpm agent transfer <recipient> 1500000 --mint EPjFWdd5…`. Hermes and other agents call the MCP tool `vault_transfer` for the same thing; it answers at once with a request ID and never waits for you.
+For a token, add its mint: `--mint EPjFWdd5…`. Hermes and other agents call the MCP tool `vault_transfer` for the same thing; it answers at once with a request ID and never waits for you.
+
+- **`--wallet` and `--network` are required, and the test agent fills in neither.** A payment names the wallet it comes from and the cluster it goes out on, or it isn't sent. Read both with `pnpm agent address` and pass them (SAW-023).
+- **The amount is a whole number of base units.** `1.5` is refused before the call is made: a decimal is the mistake that sends a billionth of what was meant.
 
 - **The recipient is a wallet address,** never a token account. For a token, the sidecar finds the recipient's associated token account itself, and creates one if they have none.
 - **A retry with the same idempotency key returns the same request,** so a repeated call can't pay twice. A retry that changes the amount or the recipient is refused with `IDEMPOTENCY_CONFLICT`.
@@ -127,6 +131,30 @@ Three things are worth knowing about that answer:
 
 An `UNKNOWN` transfer is the one case nothing here can settle: no ID ever reached this phone, so there is nothing to look up. [`troubleshooting.md`](troubleshooting.md#a-transfer-whose-outcome-is-unknown) says how to find out from your wallet's own history.
 
+A script can read the same answer with its own exit code:
+
+```console
+$ pnpm --silent agent status f7e6d5c4-…
+{"request_id":"f7e6d5c4-…","action":"transfer","status":"CONFIRMED","terminal":true,"network":"devnet",
+ "signature":"5Yb4Dn9m…","signature_is_transaction":true,"confirmation":"finalized","slot":310000001,
+ "checked_with":"api.devnet.solana.com",
+ "explorer_url":"https://explorer.solana.com/tx/5Yb4Dn9m…?cluster=devnet"}
+```
+
+It exits 0 once the request ended the way it was asked for, 10 while no outcome is established — `PENDING`, `PROCESSING`, `SUBMITTED`, and `UNKNOWN` alike — and 11 once it ended any other way. `UNKNOWN` counts as unsettled on purpose: a script that treats it as a failure is a script that pays twice.
+
+## The Activity record
+
+Every request you answer is written to **Activity**, reachable from the Connections screen. It is your own record, and it is not the answer the server is owed: an answer is dropped a week after it settles and when you remove its connection, and a record is not.
+
+Each record holds who asked, the terms you reviewed — the wallet, the recipient, the amount in base units, the asset — the network, how it ended, and the signature.
+
+- **The network is on every transfer, always.** A signature means nothing without it: the same 64 bytes on another cluster are another transaction, or none at all.
+- **A message signature is never shown as a payment.** A signed message carries a 64-byte signature too, and the record says in words that it moved nothing, that no network has it, and that no explorer can show it. There is no link on one.
+- **View on Solana Explorer** hands the address to your browser, on the record's own cluster. The app itself opens no connection to the explorer or to any chain; the only hosts it talks to are the sidecars you paired it with.
+- **Amounts are kept in base units.** SOL is also shown the readable way, because its decimals are fixed. A token's decimals belong to its mint and are read fresh when you review a transfer; a count stored months ago could show you the wrong amount, so the record keeps the number the transaction actually carried.
+- **Clear** removes every record on this phone, after asking. It changes nothing on any network and nothing on any server: a transaction that went through stays on the network.
+
 ## Where this stops for now
 
-SAW-019 built the transaction, SAW-020 taught the phone to read it, SAW-021 lets you approve one and have your wallet send it, and SAW-022 follows it to the network. Policies (Stage 5) and swaps (Stage 6) come later; until then every transfer is one you approved by hand.
+SAW-019 built the transaction, SAW-020 taught the phone to read it, SAW-021 lets you approve one and have your wallet send it, SAW-022 follows it to the network, and SAW-023 keeps the record and gives the whole path its regression tests ([`../testing/stage-4.md`](../testing/stage-4.md)). Policies (Stage 5) and swaps (Stage 6) come later; until then every transfer is one you approved by hand.

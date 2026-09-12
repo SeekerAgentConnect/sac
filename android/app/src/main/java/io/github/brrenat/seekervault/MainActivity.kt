@@ -12,6 +12,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import io.github.brrenat.seekervault.activity.ActivityViewModel
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
@@ -44,6 +45,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val history: ActivityViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                ActivityViewModel((application as SeekerVaultApplication).activityLog)
+            }
+        }
+    }
+
     private val wallet: WalletViewModel by viewModels {
         viewModelFactory {
             initializer {
@@ -59,7 +68,11 @@ class MainActivity : ComponentActivity() {
         // registered before the activity is started.
         (application as SeekerVaultApplication).attachWalletActivity(this)
         enableEdgeToEdge()
-        setContent { SeekerVaultTheme { SeekerVaultApp(connections, inbox, wallet, viewModel) } }
+        setContent {
+            SeekerVaultTheme {
+                SeekerVaultApp(connections, inbox, wallet, history, viewModel)
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -75,6 +88,9 @@ class MainActivity : ComponentActivity() {
         // settled here rather than left waiting (docs/testing/wallet-lifecycle.md).
         inbox.onAppVisible()
         wallet.onAppVisible()
+        // The history is read again when the app comes back: an answer settled while it was away
+        // changed a record.
+        history.refresh()
     }
 
     override fun onStop() {

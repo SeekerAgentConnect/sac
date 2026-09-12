@@ -436,7 +436,8 @@ Every tool returns the same view in `structuredContent`:
 ```
 
 - **`wallet`** is the address a wallet action is bound to.
-- **`signature`** (base58) appears once there is one.
+- **`network`** is the cluster an action names — `"mainnet"`, `"devnet"`, or `"testnet"` — and is absent for one that names none. A signature belongs to one cluster and to no other, so an agent reads it before writing an explorer link (SAW-023). A `sign_message` request has no network at all: nothing about it reaches a cluster.
+- **`signature`** (base58) appears once there is one. It is a transaction's ID on chain for a transfer or a swap, and a signature over bytes for a message — which is not a transaction, is on no cluster, and is on no explorer.
 - **`signed_message_base64`** carries a signed message's exact bytes, so the agent verifies the signature against them.
 - **`detail`** is display text that explains a REJECTED, CANCELLED, EXPIRED, FAILED, or UNKNOWN request.
 - **`confirmation`**, **`slot`**, **`chain_error`**, **`checked_at`**, and **`checked_with`** say what the chain was asked about a sent transaction, and when ([confirmation](#confirmation)). `checked_with` is the host of the one endpoint whose word a CONFIRMED or FAILED transfer rests on.
