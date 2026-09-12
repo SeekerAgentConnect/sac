@@ -16,6 +16,7 @@ import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.inbox.InboxTags
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletNetwork
@@ -182,6 +183,77 @@ class InboxActivityTest {
         assertEquals(1, adapter.signings.size)
         assertEquals(
             RequestState.REQUEST_STATE_COMPLETED,
+            server.stateOf(connection.id, request.ref.requestId),
+        )
+    }
+
+    @Test
+    fun aRotationWhileTheWalletHasTheTransactionKeepsTheApprovalAndAsksItOnlyOnce() {
+        val case =
+            org.json
+                .JSONObject(
+                    checkNotNull(javaClass.getResourceAsStream("/transactions/cases.json")).use {
+                        it.readBytes().decodeToString()
+                    }
+                )
+                .getJSONArray("cases")
+                .let { cases ->
+                    (0 until cases.length())
+                        .map { cases.getJSONObject(it) }
+                        .first { it.getString("name") == "sol_transfer" }
+                }
+        val fields = case.getJSONObject("request")
+        val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
+        adapter.answerConnected(fields.getString("wallet"))
+        runBlocking { app.walletRepository.connect(WalletNetwork.Devnet) }
+        val request =
+            server.addPendingTransfer(
+                connection.id,
+                fields.getString("wallet"),
+                Network.NETWORK_DEVNET,
+                recipient = fields.getString("recipient"),
+                amount = fields.getString("amount"),
+            )
+        val key = RequestKey(connection.id, request.ref.requestId)
+        gateway.transactions[key] =
+            java.util.Base64.getDecoder().decode(case.getString("transaction"))
+        val release = CompletableDeferred<Unit>()
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 2 }))
+        adapter.beforeSending = { release.await() }
+        val scenario = launch()
+
+        compose.onNodeWithTag(ConnectionsTags.INBOX).performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().performClick()
+        compose.waitForIdle()
+
+        // The approval was accepted before the wallet was opened, and the wallet got the bytes.
+        assertEquals(
+            RequestState.REQUEST_STATE_PROCESSING,
+            server.stateOf(connection.id, request.ref.requestId),
+        )
+        assertEquals(1, adapter.sendings.size)
+        assertEquals(
+            gateway.transactions.getValue(key).toList(),
+            adapter.sendings.single().first.toByteArray().toList(),
+        )
+
+        // The screen is recreated while the wallet has it, as a rotation does.
+        scenario.recreate()
+        compose.waitForIdle()
+        assertEquals(1, adapter.sendings.size)
+        assertEquals(
+            RequestState.REQUEST_STATE_PROCESSING,
+            server.stateOf(connection.id, request.ref.requestId),
+        )
+
+        release.complete(Unit)
+        compose.waitForIdle()
+
+        assertEquals(1, adapter.sendings.size)
+        assertEquals(
+            RequestState.REQUEST_STATE_SUBMITTED,
             server.stateOf(connection.id, request.ref.requestId),
         )
     }

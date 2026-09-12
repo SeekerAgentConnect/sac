@@ -45,6 +45,8 @@ class FakeConnectionGateway : ConnectionGateway {
         val pending = mutableMapOf<String, MutableList<ActionRequest>>()
         /** Each connection's requests that left PENDING, by request ID. */
         val settled = mutableMapOf<String, MutableMap<String, ActionRequest>>()
+        /** The latest prepared version per request ID: only that one can be approved. */
+        val preparedVersions = mutableMapOf<String, Int>()
         // The result the sidecar accepted for each settled request, to recognize a repeat.
         private val accepted = mutableMapOf<String, SubmitResultRequest.ResultCase>()
         /** The wallet the phone published, or null when it published none (SAW-015). */
@@ -161,9 +163,10 @@ class FakeConnectionGateway : ConnectionGateway {
                     ?.firstOrNull { it.ref.requestId == requestId }
                     ?.let { RequestState.REQUEST_STATE_PENDING }
 
-        // The lifecycle this fake serves: an ack is acknowledged or rejected, and a message is
-        // approved (PROCESSING) and then settled by what the wallet did. A repeat of the accepted
-        // result returns the request unchanged.
+        // The lifecycle this fake serves: an ack is acknowledged or rejected, and a message or a
+        // transfer is approved (PROCESSING) and then settled by what the wallet did. A transfer's
+        // approval must name the latest prepared version, as the real sidecar requires. A repeat
+        // of the accepted result returns the request unchanged.
         fun apply(connectionId: String, submission: SubmitResultRequest): ActionRequest {
             val requestId = submission.ref.requestId
             val key = "$connectionId/$requestId"
@@ -175,15 +178,29 @@ class FakeConnectionGateway : ConnectionGateway {
                             RequestState.REQUEST_STATE_COMPLETED
                         SubmitResultRequest.ResultCase.REJECTION ->
                             RequestState.REQUEST_STATE_REJECTED
-                        // An approval doesn't end a message request: it hands it to the wallet.
+                        // An approval doesn't end a wallet request: it hands it to the wallet.
                         SubmitResultRequest.ResultCase.APPROVAL ->
-                            if (waiting.action.hasSignMessage())
-                                RequestState.REQUEST_STATE_PROCESSING
-                            else
-                                throw GatewayException(
-                                    GatewayException.Kind.Rejected,
-                                    "nothing to approve",
-                                )
+                            when {
+                                waiting.action.hasSignMessage() ->
+                                    RequestState.REQUEST_STATE_PROCESSING
+                                waiting.action.hasTransfer() -> {
+                                    val latest = preparedVersions[requestId]
+                                    if (submission.approval.preparedVersion != latest) {
+                                        throw GatewayException(
+                                            GatewayException.Kind.StalePreparation,
+                                            "version ${submission.approval.preparedVersion} " +
+                                                "isn't the latest ($latest)",
+                                            request = waiting,
+                                        )
+                                    }
+                                    RequestState.REQUEST_STATE_PROCESSING
+                                }
+                                else ->
+                                    throw GatewayException(
+                                        GatewayException.Kind.Rejected,
+                                        "nothing to approve",
+                                    )
+                            }
                         else ->
                             throw GatewayException(GatewayException.Kind.Rejected, "not for acks")
                     }
@@ -197,20 +214,36 @@ class FakeConnectionGateway : ConnectionGateway {
                 settled[connectionId]?.get(requestId)
                     ?: throw GatewayException(GatewayException.Kind.NotFound, "no such request")
             if (accepted[key] == submission.resultCase) return now
-            // An approved message is PROCESSING, and what the wallet did settles it.
-            if (now.state == RequestState.REQUEST_STATE_PROCESSING) {
+            // An approved message or transfer is PROCESSING, and what the wallet did settles it.
+            // An outcome the phone couldn't determine leaves it UNKNOWN, which a later report can
+            // still settle, exactly as the real lifecycle allows.
+            if (
+                now.state == RequestState.REQUEST_STATE_PROCESSING ||
+                    now.state == RequestState.REQUEST_STATE_UNKNOWN
+            ) {
                 val state =
                     when (submission.resultCase) {
                         SubmitResultRequest.ResultCase.MESSAGE_SIGNATURE ->
                             RequestState.REQUEST_STATE_COMPLETED
+                        SubmitResultRequest.ResultCase.TRANSACTION_SUBMISSION ->
+                            RequestState.REQUEST_STATE_SUBMITTED
                         SubmitResultRequest.ResultCase.REJECTION ->
                             RequestState.REQUEST_STATE_REJECTED
                         SubmitResultRequest.ResultCase.EXECUTION_FAILURE ->
                             RequestState.REQUEST_STATE_FAILED
+                        SubmitResultRequest.ResultCase.UNKNOWN_OUTCOME ->
+                            if (now.state == RequestState.REQUEST_STATE_PROCESSING)
+                                RequestState.REQUEST_STATE_UNKNOWN
+                            else
+                                throw GatewayException(
+                                    GatewayException.Kind.InvalidState,
+                                    "already unknown",
+                                    request = now,
+                                )
                         else ->
                             throw GatewayException(
                                 GatewayException.Kind.InvalidState,
-                                "not from PROCESSING",
+                                "not from ${now.state}",
                                 request = now,
                             )
                     }
@@ -308,6 +341,7 @@ class FakeConnectionGateway : ConnectionGateway {
         }
         // A new version every time, as the real sidecar does: each preparation supersedes the last.
         val version = preparations.merge(key, 1) { old, _ -> old + 1 } ?: 1
+        server.preparedVersions[key.requestId] = version
         val bytes = prepared(key, version)
         return preparedTransaction {
             ref = request.ref

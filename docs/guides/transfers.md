@@ -1,6 +1,6 @@
 # Send SOL or a token
 
-An agent can ask you to send SOL or a classic SPL token from the wallet you connected. This guide covers what happens on the sidecar's side: how a transfer request is stored and how the transaction you will review is built. Reviewing it on the phone, approving it, and watching it land come with the tasks after this one.
+An agent can ask you to send SOL or a classic SPL token from the wallet you connected. This guide covers the whole path up to the moment your wallet sends it: how a transfer request is stored, how the transaction is built, what your phone makes of it, and what your approval binds. Following the transaction to confirmation comes with the task after this one.
 
 Before this, pair the phone ([`pairing.md`](pairing.md)) and connect your wallet ([`wallet-setup.md`](wallet-setup.md)).
 
@@ -79,6 +79,35 @@ The first six leave the request as it is; fix the request, or the wallet, and as
 - **The request's own deadline** (`expires_in_seconds`, a day by default) is how long you have to decide. When it passes, the request is `EXPIRED` and nothing was signed.
 - **The transaction's blockhash window** is roughly a minute or two, and starts when the sidecar builds the transaction. When it runs low, your approval is refused with `STALE_PREPARATION` and the app prepares a new version for you to review. That is deliberate: it is better to review again than to sign something that can no longer land.
 
+## What you see, and what you approve
+
+When you open a pending transfer, the phone asks for a fresh transaction and **reads it here** before showing you anything ([`../security.md`](../security.md#inspecting-a-transfer)). Everything above the divider — the amount in base units, the recipient, the token's mint, the account it goes into, the wallet that pays and signs, the blockhash — is read out of the bytes your wallet would sign. The server's fee and rent estimate is shown apart from those and labelled as the server's, because a fee can't be read out of a transaction. The agent's note sits further down under its own "not verified" label.
+
+- **Policy says "Not evaluated."** Per-connection rules are Stage 5. Until they exist the screen says so rather than calling anything allowed, and every transfer needs your approval either way.
+- **Approve and send appears only for a transaction this phone read whole** and found to match the request. If anything is unread or doesn't match, there is no button at all — not a button that refuses — and you can reject it.
+- **Read it again** asks the server for a new version and reviews that one instead. Each version is reviewed on its own.
+
+Tapping **Approve and send** does three things in this order, and stops at the first that fails:
+
+1. Saves your approval on this phone, with the version, the content hash, and the exact bytes you reviewed.
+2. Sends the approval to the server, which moves the request to `PROCESSING`. Your wallet is not opened until it accepts.
+3. Opens your wallet with the bytes from step 1 — never bytes fetched again — and your wallet signs **and sends** the transaction.
+
+If the server refuses the approval because a newer version exists or the blockhash has run down, nothing is approved, your wallet is not opened, and the phone reads the request again for you to review. An approval is never carried over to a transaction you didn't see.
+
+## What can happen afterwards
+
+| What the wallet does | What you see | What the agent reads |
+| --- | --- | --- |
+| Signs and sends it | The transaction's ID | `SUBMITTED` with that signature |
+| You decline in it | Declined; nothing was sent | `REJECTED` |
+| Refuses before signing | Not sent, with what it said | `FAILED` |
+| Never answers, or the app dies while it has it | This phone never learned what the wallet did | `UNKNOWN` |
+
+`UNKNOWN` is not a failure and not a licence to retry. A signed transaction can land after your phone has stopped listening, so the honest answer is that nobody here knows yet. Your wallet is never asked a second time. Checking the chain and settling `UNKNOWN` is SAW-022.
+
+`SUBMITTED` means your wallet sent it, not that it succeeded on chain — that is a separate question, and also SAW-022.
+
 ## Where this stops for now
 
-SAW-019 covers the sidecar: the request, and the transaction built for review. The phone's own inspection of those bytes, approving them through your wallet, and following the transaction to confirmation come with SAW-020, SAW-021, and SAW-022.
+SAW-019 built the transaction, SAW-020 taught the phone to read it, and SAW-021 lets you approve one and have your wallet send it. Following a sent transaction to confirmation, and settling an `UNKNOWN` outcome from the chain, come with SAW-022.

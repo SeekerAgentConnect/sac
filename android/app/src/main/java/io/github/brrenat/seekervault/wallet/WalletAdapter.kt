@@ -79,6 +79,51 @@ sealed interface SignResult {
 }
 
 /**
+ * What asking the wallet to sign and send a transaction produced (docs/guides/transfers.md). Unlike
+ * a message, a transaction can reach the network, so there is an outcome that is neither success
+ * nor failure: the wallet may have sent it and this phone may never learn so. That outcome is
+ * [Unknown], and it is never treated as a failure that could be tried again.
+ */
+sealed interface SendResult {
+    /**
+     * The wallet signed the transaction and sent it. [signature] is its first signature, which is
+     * its ID on chain. It says the wallet submitted it, not that it succeeded: confirmation is
+     * SAW-022.
+     */
+    data class Sent(val signature: ByteString) : SendResult
+
+    /** No wallet app that speaks Mobile Wallet Adapter is installed. */
+    data object NoWallet : SendResult
+
+    /** The owner declined in the wallet. Nothing was signed, and nothing was sent. */
+    data object Declined : SendResult
+
+    /** The stored authorization no longer works; the owner connects the wallet again. */
+    data object AuthorizationExpired : SendResult
+
+    /**
+     * The wallet refused before it signed anything. [message] is for display, never for parsing.
+     */
+    data class Failed(val message: String?) : SendResult
+
+    /**
+     * Whether the transaction was sent isn't known here: the wallet reported that it signed but
+     * couldn't submit, or the call ended without an answer this phone can read. A signed
+     * transaction stays valid until its blockhash expires, so "not submitted here" is not "never
+     * sent". Nothing is asked of the wallet again on this outcome.
+     */
+    data class Unknown(val message: String?) : SendResult
+
+    /** The app didn't ask the wallet anything: no wallet is connected on this phone. */
+    data object NotConnected : SendResult
+
+    /**
+     * The app didn't ask the wallet anything: the owner's selection isn't the one they reviewed.
+     */
+    data object Changed : SendResult
+}
+
+/**
  * The phone's boundary to the installed wallet (docs/architecture.md#the-wallet-adapter-boundary).
  * The app talks to a wallet only through this interface, so the screens and the repository can be
  * tested without one. [MwaWalletAdapter] is the real implementation, over Mobile Wallet Adapter.
@@ -109,4 +154,16 @@ interface WalletAdapter {
         wallet: SelectedWallet,
         authToken: String,
     ): SignResult
+
+    /**
+     * Asks the wallet to sign exactly [transaction] with [wallet]'s account and send it, using the
+     * authorization [authToken] from the owner's earlier connection. The wallet does the sending:
+     * this app reaches no network of its own, and builds nothing. It is called only after the owner
+     * has approved this exact transaction on this phone, and the sidecar has accepted the approval.
+     */
+    suspend fun signAndSendTransaction(
+        transaction: ByteString,
+        wallet: SelectedWallet,
+        authToken: String,
+    ): SendResult
 }
