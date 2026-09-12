@@ -148,11 +148,13 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`docs/d
 | `pnpm check:android` | PASS: Spotless, 181/181 unit tests (39 new), lint with no issues, and the debug and instrumentation APKs |
 | `pnpm test:hello`, `pnpm check:generated` | PASS: the 9/9 Stage 1 acceptance cases, unchanged, and the generated code is current |
 | Deliberate breaks | NOT RUN (timed out): the run hung during its third break, in `InboxTest`, and was stopped before it reported. The file that break had changed was restored. |
-| Owner-run check on the physical Seeker | NOT RUN: no device was attached. The steps are above. |
+| Owner-run check on the physical Seeker | **PASS**, 2026-09-12: the owner ran the steps above on the physical Seeker — the queued acknowledgement, and the two-sidecar run with restarts, expiry, and revocation. |
 
 ## Acceptance report: SAW-014
 
-**Every automated Stage 2 check passes, from both sides.** The durable workflow survives sidecar and app restarts, expiry, rejection, and revocation. Two connections stay isolated, and the live diagnostic still stores and replays nothing. Hermes's own MCP client created a request and read its result later. The owner-run checks on the physical Seeker are NOT RUN. They close the stage, as the owner's Seeker run closed Stage 1.
+**Every automated Stage 2 check passes, from both sides.** The durable workflow survives sidecar and app restarts, expiry, rejection, and revocation. Two connections stay isolated, and the live diagnostic still stores and replays nothing. Hermes's own MCP client created a request and read its result later.
+
+**The owner-run checks on the physical Seeker were run on 2026-09-12 and passed**, which closes the stage. The Physical Seeker column below was NOT RUN when this report was first written; it records that run now.
 
 ### What was tested
 
@@ -162,21 +164,21 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`docs/d
 | Mac | macOS 26.5.2 (Apple silicon), Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1 on Temurin 21, AGP 9.4.0 |
 | CI | GitHub Actions runs the same checks on the pushed commit, `pnpm test:queue` included. The result is on the pull request. |
 | Hermes | v0.21.1 (2026.9.7), from its release tag `v2026.9.7`, in a scratch Python 3.13 environment with a scratch `HERMES_HOME`. Its MCP client is `mcp` 2.0.0, and the sidecar's is the MCP TypeScript SDK 1.30.0. |
-| Seeker | Not used |
+| Seeker | Not used in the run this report was written from. The owner's own Seeker run followed on 2026-09-12 and is recorded in the Physical Seeker column below. |
 | Credentials | Fixed test tokens, or throwaway random ones. None was printed or recorded. |
 
 ### Results by case
 
 | Case | Agent side (`pnpm test:queue`) | App side (`Stage2AcceptanceTest`) | Physical Seeker |
 | --- | --- | --- | --- |
-| A request queued while the app is closed survives a sidecar restart, and completes once the app opens | PASS, with SIGKILL | PASS, with SIGKILL and SIGTERM | NOT RUN |
-| An answer given while the sidecar is down goes out after the app and the sidecar restart | Not applicable: the test phone keeps no answers | PASS | NOT RUN |
-| Rejection | PASS | PASS | NOT RUN |
-| Expiry while the sidecar is down | PASS: EXPIRED, no longer fetched, and a late answer refused | PASS: the owner's late answer marked superseded | NOT RUN |
-| Revoked pairing | PASS: requests cancelled, the credential refused after a restart, the other sidecar untouched, and pairing again | PASS: the connection marked revoked, its waiting answer undeliverable, and the other connection untouched | NOT RUN |
-| No result read or submitted with another connection's identity | PASS | Not in this test. `ConnectionRepositoryTest` and `InboxTest` check that each credential and answer goes only to its own sidecar. | NOT RUN |
-| The live diagnostic stores and replays nothing | PASS | Not applicable | NOT RUN |
-| Hermes creates a request and reads the result later | PASS with Hermes's own client and a test phone; see below | Not applicable | NOT RUN |
+| A request queued while the app is closed survives a sidecar restart, and completes once the app opens | PASS, with SIGKILL | PASS, with SIGKILL and SIGTERM | **PASS**, 2026-09-12 |
+| An answer given while the sidecar is down goes out after the app and the sidecar restart | Not applicable: the test phone keeps no answers | PASS | **PASS**, 2026-09-12 |
+| Rejection | PASS | PASS | **PASS**, 2026-09-12 |
+| Expiry while the sidecar is down | PASS: EXPIRED, no longer fetched, and a late answer refused | PASS: the owner's late answer marked superseded | **PASS**, 2026-09-12 |
+| Revoked pairing | PASS: requests cancelled, the credential refused after a restart, the other sidecar untouched, and pairing again | PASS: the connection marked revoked, its waiting answer undeliverable, and the other connection untouched | **PASS**, 2026-09-12 |
+| No result read or submitted with another connection's identity | PASS | Not in this test. `ConnectionRepositoryTest` and `InboxTest` check that each credential and answer goes only to its own sidecar. | **PASS**, 2026-09-12 |
+| The live diagnostic stores and replays nothing | PASS | Not applicable | **PASS**, 2026-09-12 |
+| Hermes creates a request and reads the result later | PASS with Hermes's own client and a test phone; see below | Not applicable | **PASS**, 2026-09-12 |
 
 ### The Hermes run
 

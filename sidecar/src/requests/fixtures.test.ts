@@ -144,6 +144,10 @@ describe("cross-runtime request fixtures", () => {
     );
     assert.deepEqual(prepared.contentHash, sha256(prepared.transaction));
     assert.equal(prepared.lastValidBlockHeight, 412_345_678n);
+    // The costs the owner is shown: the network fee, and the rent for the recipient's new
+    // token account.
+    assert.equal(prepared.feeLamports, 5000n);
+    assert.equal(prepared.rentLamports, 2_039_280n);
     const approval = fromBinary(
       SubmitResultRequestSchema,
       binary("SubmitResultRequest/approval"),
@@ -163,6 +167,8 @@ describe("cross-runtime request fixtures", () => {
     );
     assert.equal(prepared.lastValidBlockHeight, 2n ** 64n - 1n);
     assert.equal(prepared.version, 2 ** 32 - 1);
+    assert.equal(prepared.feeLamports, 2n ** 64n - 1n);
+    assert.equal(prepared.rentLamports, 2n ** 64n - 1n);
   });
 
   it("keeps the same request ID under two connections apart", () => {

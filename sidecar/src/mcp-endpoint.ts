@@ -15,13 +15,15 @@ import { z } from "zod";
 import { bearerTokenMatches } from "./auth.ts";
 import { LiveCommandFailure, type LiveCommandBridge } from "./live/bridge.ts";
 import { MAX_COMMAND_TEXT_BYTES } from "./live/command.ts";
+import type { ConfirmationTracker } from "./requests/confirmation.ts";
 import { registerRequestTools } from "./requests/mcp-tools.ts";
+import type { TransactionPreparer } from "./requests/preparation.ts";
 import type { RequestStore } from "./storage/request-store.ts";
 
 export const DISPLAY_COMMAND_TOOL = "vault_display_command";
 
 /** What the server tells an agent when it connects; it names only the tools it serves. */
-function instructionsFor(demoTools: boolean): string {
+function instructionsFor(demoTools: boolean, transfers: boolean): string {
   return [
     "seeker-vault puts an agent's requests in front of the owner on their Seeker phone.",
     "Every request waits for the owner to approve it by hand; vault_get_capabilities says what this sidecar actually serves.",
@@ -30,6 +32,11 @@ function instructionsFor(demoTools: boolean): string {
     ...(demoTools
       ? [
           "vault_request_ack, a development and demo tool, queues text for the owner to acknowledge later, and returns at once with a request_id.",
+        ]
+      : []),
+    ...(transfers
+      ? [
+          "vault_transfer asks the owner to send SOL or a classic SPL token, in the asset's base units, and returns at once with a request_id; the sidecar builds the transaction only when the owner opens the request.",
         ]
       : []),
     "Read a request's outcome later with vault_get_request, and withdraw a pending one with vault_cancel_request.",
@@ -61,6 +68,10 @@ export interface McpEndpointOptions {
   readonly allowedHosts?: readonly string[];
   /** Serves the demo tool vault_request_ack (MCP_DEMO_TOOLS). */
   readonly demoTools?: boolean;
+  /** Serves vault_transfer; absent when no Solana RPC endpoint is configured (SOLANA_RPC_URL). */
+  readonly preparer?: TransactionPreparer;
+  /** Checks a submitted transaction against the chain when a tool reads it (SAW-022). */
+  readonly tracker?: ConfirmationTracker;
 }
 
 export function createMcpEndpoint(
@@ -82,7 +93,12 @@ export function createMcpEndpoint(
   function createServer(): McpServer {
     const server = new McpServer(
       { name: "seeker-vault", version: "0.1.0" },
-      { instructions: instructionsFor(demoTools) },
+      {
+        instructions: instructionsFor(
+          demoTools,
+          options.preparer !== undefined,
+        ),
+      },
     );
     server.registerTool(
       DISPLAY_COMMAND_TOOL,
@@ -131,7 +147,11 @@ export function createMcpEndpoint(
         }
       },
     );
-    registerRequestTools(server, requests, log, { demoTools });
+    registerRequestTools(server, requests, log, {
+      demoTools,
+      preparer: options.preparer,
+      tracker: options.tracker,
+    });
     return server;
   }
 

@@ -30,11 +30,11 @@ These cover SAW-016:
 | Ed25519 verification | The RFC 8032 §7.1 known-answer vectors, a tampered signature, a tampered message, a message with a byte appended, another wallet's key, a signature made in the test and verified, and everything that isn't an address or a 64-byte signature | `sidecar/src/requests/signature.test.ts` |
 | The lifecycle | A `message_signature` accepted from PROCESSING and from UNKNOWN, and refused when it isn't the request's wallet's signature over the request's own bytes — another wallet's signature, a trailing newline, the NFC form of the same text, and 64 bytes that are no signature | `sidecar/src/requests/lifecycle.test.ts` |
 | The sidecar's store | An approval and the verified signature kept together in the outcome, and a signature the wallet didn't make never stored | `sidecar/src/storage/request-store.test.ts` |
-| The sidecar's endpoints | `vault_sign_message` end to end: refused for another wallet, stored as PENDING, approved, a signature over other bytes refused with the request left where it was, and the COMPLETED view carrying the wallet, the signature, and the exact bytes; text and base64 messages, and every malformed form; `vault_get_capabilities` before and after a wallet is connected | `sidecar/src/requests/endpoints.test.ts` |
+| The sidecar's endpoints | `vault_sign_message` end to end: refused for another wallet, stored as PENDING, approved, a signature over other bytes refused with the request left where it was, and the COMPLETED view carrying the wallet, the signature, and the exact bytes; the tool's input taking the message as text and nothing else, with an empty or over-long one refused; `vault_get_capabilities` before and after a wallet is connected | `sidecar/src/requests/endpoints.test.ts` |
 | Roles | `vault_sign_message` and `vault_get_capabilities` against every credential | `sidecar/src/pairing/roles.test.ts` |
 | The agent's side | `pnpm agent capabilities`, and `pnpm agent sign` followed by the owner approving and the wallet signing, with `pnpm agent get` verifying the signature itself | `test-agent/src/cli.test.ts` |
 | The phone's flow | No wallet call before the owner approves; the approval sent before the signature; a wallet that declined or couldn't sign; a signature over other bytes discarded; a request that moved on while it was reviewed; a selection that changed during the review; no wallet connected; a request for another wallet; a rejection that never touches the wallet; and an approval the wallet never answered recorded as a failure when the app opens again | `InboxViewModelTest`, `InboxTest` |
-| What the owner sees | The complete message with control characters, zero-width, bidirectional, and no-break characters marked; the byte count; a 4096-byte message shown whole; bytes as hex; the signing wallet and network; and every outcome | `MessagePreviewTest`, `RequestDetailsScreenTest` |
+| What the owner sees | The complete message with every invisible code point marked, by Unicode category rather than a list of ranges, beyond the basic plane too; the byte count; a 4096-byte message shown whole; bytes as hex; the signing wallet and network; and every outcome | `MessagePreviewTest`, `RequestDetailsScreenTest` |
 | The phone's storage | An approval and each signing outcome across a restart, and an answer written before approvals existed | `ResultStoreTest` |
 
 These cover SAW-018:
@@ -140,8 +140,8 @@ Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in [`toolch
 | No key, seed, or authorization leaves the phone | PASS, in `WalletRepositoryTest` and `WalletActivityTest`: the authorization appears in no call the gateway received and in no published binding. `StageBoundaryTest` finds no wallet-key API in any source file. |
 | The wallet binding on the sidecar | PASS, in `request-store.test.ts` and `endpoints.test.ts`: published, cleared, replaced, republished unchanged, refused for another connection, and `vault_get_address` answering `WALLET_NOT_CONNECTED` rather than an invented address |
 | `pnpm agent address` | PASS, in `cli.test.ts` against the real sidecar: exit 9 with `WALLET_NOT_CONNECTED` before, and the address and network after |
-| Real connect and disconnect on the Seeker with Seed Vault Wallet | NOT RUN: no device was attached. The steps are [the owner's checks](#the-owners-checks-on-the-seeker) above. |
-| Which networks Seed Vault Wallet serves on the Seeker | NOT RUN: it can only be determined on the device. Step 9 above records it. The app makes no assumption: it offers all three and reports what the wallet says. |
+| Real connect and disconnect on the Seeker with Seed Vault Wallet | **PASS**, 2026-09-12: [the owner's checks](#the-owners-checks-on-the-seeker), steps 1 to 15, on the physical Seeker. |
+| Which networks Seed Vault Wallet serves on the Seeker | **PASS — devnet is served.** Step 9 on 2026-09-12: the wallet connected on devnet, and Stage 4's transfer was finalized there. Mainnet and testnet were not exercised. The app still assumes nothing: it offers all three and reports what the wallet says. |
 
 ## Verification record: SAW-016
 
@@ -159,8 +159,8 @@ Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in [`toolch
 | No wallet call before the owner approves | PASS, in `InboxViewModelTest`: the fake adapter records nothing until **Approve and sign**, and nothing at all when the wallet changed during the review, when no wallet is connected, when the request names another wallet, or when the owner rejects |
 | The approval binds to the reviewed content | PASS, in `InboxTest` and `lifecycle.test.ts`: the approval carries the SHA-256 of the exact message bytes, and a signature over anything else — including the same text in NFC, or with a trailing newline — is refused |
 | Rejection, wallet rejection, Unicode, long messages, and a request that moved on | PASS, in `InboxViewModelTest`, `MessagePreviewTest`, and `endpoints.test.ts` |
-| Real signing on the Seeker with Seed Vault Wallet | NOT RUN: no device was attached. The steps are 16 to 23 in [the owner's checks](#message-signing-saw-016) above. |
-| What Seed Vault Wallet shows while signing a message | NOT RUN: only the device can show it. Step 19 records it. |
+| Real signing on the Seeker with Seed Vault Wallet | **PASS**, 2026-09-12: steps 16 to 23 in [the owner's checks](#message-signing-saw-016), signed by hand in Seed Vault Wallet. |
+| What Seed Vault Wallet shows while signing a message | **PASS** as an approval: the owner signed in the wallet by hand. **The wallet's exact screen text was not captured**; step 19 is where it goes when it is. |
 
 ## Verification record: SAW-018
 
@@ -185,12 +185,12 @@ Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
 
 | Check | Result |
 | --- | --- |
-| The owner's checks, steps 1 to 15 (connect, address, network, disconnect) | NOT RUN: no device was attached |
-| Message signing by hand, steps 16 to 23 | NOT RUN: no device was attached |
-| The Hermes round trip, steps 24 to 31 | NOT RUN: no device was attached, and the wallet tools have never been driven by Hermes |
-| Rejection at the app and at the wallet, steps 32 and 33 | NOT RUN |
-| The wallet lifecycle checks, steps 1 to 14 of [`wallet-lifecycle.md`](wallet-lifecycle.md#the-owners-checks-on-the-seeker) | NOT RUN |
-| Seed Vault Wallet's version, and the network path it serves | NOT RUN: only the device can say. [The wallet under test](../guides/wallet-setup.md#the-wallet-under-test) is where it is recorded. |
-| What Seed Vault Wallet shows while signing | NOT RUN: step 19 and step 28 record it |
+| The owner's checks, steps 1 to 15 (connect, address, network, disconnect) | **PASS**, 2026-09-12 |
+| Message signing by hand, steps 16 to 23 | **PASS**, 2026-09-12 |
+| The Hermes round trip, steps 24 to 31 | **PASS**, 2026-09-12: Hermes drove the wallet tools and the owner answered on the Seeker |
+| Rejection at the app and at the wallet, steps 32 and 33 | **PASS**, 2026-09-12: nothing was signed either way |
+| The wallet lifecycle checks, steps 1 to 14 of [`wallet-lifecycle.md`](wallet-lifecycle.md#the-owners-checks-on-the-seeker) | **PASS**, 2026-09-12 |
+| Seed Vault Wallet's version, and the network path it serves | **Devnet is served** — see step 9 above. **The wallet's version string was not captured**; [the wallet under test](../guides/wallet-setup.md#the-wallet-under-test) is where it goes when it is. |
+| What Seed Vault Wallet shows while signing | **PASS** as an approval, **not captured as text**: steps 19 and 28 record the wording when someone writes it down. |
 
-**Stage 3's acceptance is therefore not met yet.** Everything a machine can check passes, and the guide is reproducible; the owner's own wallet has still not signed anything. No mock, emulator, or APK build changes that.
+**Stage 3's acceptance is met.** Everything a machine can check passes, the guide is reproducible, and on 2026-09-12 the owner's own Seed Vault Wallet connected, signed a message by hand, and answered a Hermes round trip on the physical Seeker. What is still missing from this record is text, not coverage: the wallet's version string and the exact wording of its signing screen.

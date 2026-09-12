@@ -26,7 +26,7 @@ class ConnectionsScreenTest {
     private val opened = mutableListOf<String>()
     private val actions = mutableListOf<String>()
 
-    private fun show(state: ConnectionsUiState) = compose.setContent {
+    private fun show(state: ConnectionsUiState, activity: Int? = null) = compose.setContent {
         SeekerVaultTheme {
             ConnectionsScreen(
                 state = state,
@@ -34,8 +34,31 @@ class ConnectionsScreenTest {
                 onAdd = { actions += "add" },
                 onLiveTest = { actions += "live" },
                 onMessageShown = {},
+                activity = activity,
+                onActivity = { actions += "activity" },
             )
         }
+    }
+
+    @Test
+    fun offersTheHistoryWhetherOrNotAnyConnectionIsLeft() {
+        // The record of what this phone did is the owner's, and it doesn't depend on the agent
+        // that asked (SAW-023).
+        show(ConnectionsUiState(loaded = true), activity = 3)
+        compose
+            .onNodeWithTag(ConnectionsTags.ACTIVITY)
+            .assertTextContains(context.getString(R.string.activity_row))
+            .assertTextContains("3", substring = true)
+        compose.onNodeWithTag(ConnectionsTags.ACTIVITY).performClick()
+        assertEquals(listOf("activity"), actions)
+    }
+
+    @Test
+    fun saysWhenNothingHasBeenRecordedYet() {
+        show(ConnectionsUiState(loaded = true), activity = 0)
+        compose
+            .onNodeWithTag(ConnectionsTags.ACTIVITY)
+            .assertTextContains(context.getString(R.string.activity_row_none), substring = true)
     }
 
     @Test

@@ -21,6 +21,7 @@ object ConnectionsTags {
     const val LIVE_TEST = "liveTest"
     const val ADD = "addConnection"
     const val EMPTY = "connectionsEmpty"
+    const val ACTIVITY = "activityRow"
     const val BACK = "back"
     const val STATUS = "connectionStatus"
     const val REFRESH = "refresh"

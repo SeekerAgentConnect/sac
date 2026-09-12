@@ -148,6 +148,14 @@ export declare type Outcome = Message<"seekervault.request.v1.Outcome"> & {
    * @generated from field: string detail = 3;
    */
   detail: string;
+
+  /**
+   * What the sidecar has learned from the chain about signature. Set from the first check on,
+   * for transfers and swaps (SAW-022); absent for actions with no transaction.
+   *
+   * @generated from field: seekervault.request.v1.Confirmation confirmation = 4;
+   */
+  confirmation?: Confirmation | undefined;
 };
 
 /**
@@ -155,6 +163,84 @@ export declare type Outcome = Message<"seekervault.request.v1.Outcome"> & {
  * Use `create(OutcomeSchema)` to create a new message.
  */
 export declare const OutcomeSchema: GenMessage<Outcome>;
+
+/**
+ * Confirmation is what one configured Solana RPC endpoint said about the submitted transaction,
+ * and when. It is evidence, not a second opinion: every field here rests on that one endpoint's
+ * word, which is why `endpoint` names it. The sidecar has no background worker, so this is
+ * updated when the agent reads the request or the owner asks the phone to check
+ * (docs/protocol.md#confirmation).
+ *
+ * @generated from message seekervault.request.v1.Confirmation
+ */
+export declare type Confirmation = Message<"seekervault.request.v1.Confirmation"> & {
+  /**
+   * How far the transaction had got the last time the endpoint was asked.
+   *
+   * @generated from field: seekervault.request.v1.ConfirmationLevel level = 1;
+   */
+  level: ConfirmationLevel;
+
+  /**
+   * The slot the transaction landed in; 0 until the endpoint has seen it.
+   *
+   * @generated from field: uint64 slot = 2;
+   */
+  slot: bigint;
+
+  /**
+   * The chain's own error, when the transaction ran and failed, as the endpoint reported it.
+   * Empty otherwise. Display text, not for parsing; at most 1024 UTF-8 bytes.
+   *
+   * @generated from field: string chain_error = 3;
+   */
+  chainError: string;
+
+  /**
+   * When the sidecar last asked.
+   *
+   * @generated from field: google.protobuf.Timestamp checked_at = 4;
+   */
+  checkedAt?: Timestamp | undefined;
+
+  /**
+   * How many times it has asked, including checks that failed to reach the endpoint.
+   *
+   * @generated from field: uint32 checks = 5;
+   */
+  checks: number;
+
+  /**
+   * The host name of the endpoint that answered, and only the host: the configured URL can carry
+   * an API key. Empty when no endpoint is configured, which is when nothing can be checked.
+   *
+   * @generated from field: string endpoint = 6;
+   */
+  endpoint: string;
+
+  /**
+   * Whether the transaction the endpoint returned for this signature is the one the owner
+   * approved, compared over the transaction's message bytes. A confirmed result is never
+   * reported without this.
+   *
+   * @generated from field: bool matches_approval = 7;
+   */
+  matchesApproval: boolean;
+
+  /**
+   * What the last check found, including why it settled nothing. Display text; at most 1024
+   * UTF-8 bytes.
+   *
+   * @generated from field: string detail = 8;
+   */
+  detail: string;
+};
+
+/**
+ * Describes the message seekervault.request.v1.Confirmation.
+ * Use `create(ConfirmationSchema)` to create a new message.
+ */
+export declare const ConfirmationSchema: GenMessage<Confirmation>;
 
 /**
  * Approval is the user's approval of exactly what they reviewed. The phone sends it before it
@@ -546,6 +632,23 @@ export declare type PreparedTransaction = Message<"seekervault.request.v1.Prepar
    * @generated from field: google.protobuf.Timestamp estimated_expiry = 7;
    */
   estimatedExpiry?: Timestamp | undefined;
+
+  /**
+   * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+   * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+   *
+   * @generated from field: uint64 fee_lamports = 8;
+   */
+  feeLamports: bigint;
+
+  /**
+   * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+   * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+   * comes back only if the account is ever closed. The phone shows it apart from the amount.
+   *
+   * @generated from field: uint64 rent_lamports = 9;
+   */
+  rentLamports: bigint;
 };
 
 /**
@@ -713,6 +816,57 @@ export enum RequestState {
 export declare const RequestStateSchema: GenEnum<RequestState>;
 
 /**
+ * ConfirmationLevel is the commitment the transaction had reached, as getSignatureStatuses
+ * reports it. It is not the request's state: a FINALIZED transaction that failed on chain
+ * leaves the request FAILED.
+ *
+ * @generated from enum seekervault.request.v1.ConfirmationLevel
+ */
+export enum ConfirmationLevel {
+  /**
+   * Nothing has been checked yet.
+   *
+   * @generated from enum value: CONFIRMATION_LEVEL_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * The endpoint has no status for this signature. On its own this is not proof that the
+   * transaction never ran: it may not have landed yet, or may have left the status cache.
+   *
+   * @generated from enum value: CONFIRMATION_LEVEL_NOT_FOUND = 1;
+   */
+  NOT_FOUND = 1,
+
+  /**
+   * A node processed it. Not enough to report a result: a processed transaction can still be
+   * dropped.
+   *
+   * @generated from enum value: CONFIRMATION_LEVEL_PROCESSED = 2;
+   */
+  PROCESSED = 2,
+
+  /**
+   * A supermajority voted on its block.
+   *
+   * @generated from enum value: CONFIRMATION_LEVEL_CONFIRMED = 3;
+   */
+  CONFIRMED = 3,
+
+  /**
+   * Its block is finalized and cannot be rolled back.
+   *
+   * @generated from enum value: CONFIRMATION_LEVEL_FINALIZED = 4;
+   */
+  FINALIZED = 4,
+}
+
+/**
+ * Describes the enum seekervault.request.v1.ConfirmationLevel.
+ */
+export declare const ConfirmationLevelSchema: GenEnum<ConfirmationLevel>;
+
+/**
  * Network is the Solana network a financial action is bound to. The phone signs only with the
  * request's wallet, on the request's network.
  *
@@ -870,6 +1024,15 @@ export enum RequestError {
    * @generated from enum value: REQUEST_ERROR_WALLET_NOT_CONNECTED = 10;
    */
   WALLET_NOT_CONNECTED = 10,
+
+  /**
+   * The sidecar couldn't read the chain: no RPC endpoint is configured, or the one configured
+   * didn't answer. Nothing was created, and nothing was prepared. It says nothing about the
+   * request itself, so the same call can be retried once the endpoint answers again.
+   *
+   * @generated from enum value: REQUEST_ERROR_CHAIN_UNAVAILABLE = 11;
+   */
+  CHAIN_UNAVAILABLE = 11,
 }
 
 /**

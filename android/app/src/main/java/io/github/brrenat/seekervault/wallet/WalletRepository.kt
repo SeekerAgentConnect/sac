@@ -21,6 +21,16 @@ import kotlinx.coroutines.withContext
 class WalletStorageException(cause: Throwable) : Exception(cause.message, cause)
 
 /**
+ * The wallet, for a caller that already holds the one wallet lock through
+ * [WalletRepository.withWallet]. It carries no state of its own: it is the permission to reach the
+ * wallet, handed out once per lock.
+ */
+interface WalletSession {
+    /** The same call as [WalletRepository.signAndSend], with the lock already held. */
+    suspend fun signAndSend(transaction: ByteString, reviewed: SelectedWallet): SendResult
+}
+
+/**
  * The wallet the owner selected, and what every paired sidecar knows about it
  * (docs/guides/wallet-setup.md).
  * - Connecting asks the installed wallet through [adapter], stores the selection, and publishes it
@@ -29,6 +39,8 @@ class WalletStorageException(cause: Throwable) : Exception(cause.message, cause)
  *   way. A sidecar then answers `vault_get_address` with WALLET_NOT_CONNECTED.
  * - Signing asks the wallet for a signature over exact bytes, and only for the selection the owner
  *   reviewed (SAW-016). It is never called before the owner approves.
+ * - Signing and sending hands the wallet an approved transaction, which the wallet signs and
+ *   submits itself (SAW-021). This app reaches no chain, and each of these is one interaction.
  * - The address is public and goes to the sidecars; the wallet's authorization token stays in
  *   [store] and goes nowhere.
  *
@@ -107,7 +119,7 @@ class WalletRepository(
      * still be [reviewed]: the one they saw when they approved. A selection that has changed, or
      * gone, is reported without asking the wallet anything, so nothing is ever signed for a wallet
      * or network the owner didn't review. An authorization the wallet refuses is forgotten, the
-     * same way connecting does.
+     * same way connecting does, and one it replaces is kept.
      */
     suspend fun sign(message: ByteString, reviewed: SelectedWallet): SignResult = lock.withLock {
         val selected = _wallet.value ?: return@withLock SignResult.NotConnected
@@ -116,12 +128,93 @@ class WalletRepository(
         }
         val authorization =
             withContext(io) { store.authorization() } ?: return@withLock SignResult.NotConnected
-        val result = adapter.signMessage(message, selected, authorization)
-        if (result == SignResult.AuthorizationExpired) {
+        val answer = adapter.signMessage(message, selected, authorization)
+        if (answer.result == SignResult.AuthorizationExpired) {
+            withContext(io) { store.clear() }
+            setWallet(null)
+            return@withLock answer.result
+        }
+        // The wallet may replace this phone's authorization while it signs, and the replacement is
+        // what the next signing has to use, whatever the wallet then did with the message: a
+        // declined signature carries a perfectly good one. The selection stays exactly as it is,
+        // so the wallet, address, and network the owner reviewed don't change, and the token goes
+        // no further than [store].
+        keepRefreshed(selected, answer.authToken, offered = authorization)
+        answer.result
+    }
+
+    /**
+     * Replaces the stored authorization when the wallet handed back a new one. If this phone can't
+     * store it, the wallet's answer still stands: the next signing is refused with the old
+     * authorization, and the owner connects the wallet again, which is what an expired one does
+     * anyway.
+     */
+    private suspend fun keepRefreshed(
+        selected: SelectedWallet,
+        refreshed: String?,
+        offered: String,
+    ) {
+        if (refreshed == null || refreshed == offered) return
+        try {
+            withContext(io) { store.put(selected, refreshed) }
+        } catch (e: GeneralSecurityException) {
+            // Kept as it was; see above.
+        } catch (e: IOException) {
+            // Kept as it was; see above.
+        }
+    }
+
+    /**
+     * Asks the wallet to sign exactly [transaction] and send it, with the wallet the owner
+     * selected, which must still be [reviewed] (docs/guides/transfers.md). The checks are the same
+     * ones signing takes, and for the same reason: nothing is ever put in front of the wallet for a
+     * selection the owner didn't review. It is called only after the owner approved this exact
+     * transaction and the sidecar accepted the approval.
+     *
+     * It takes the same lock as every other wallet call, so only one wallet interaction runs at a
+     * time however many screens ask for one.
+     */
+    suspend fun signAndSend(transaction: ByteString, reviewed: SelectedWallet): SendResult =
+        lock.withLock {
+            send(transaction, reviewed)
+        }
+
+    /**
+     * Runs [block] holding the one wallet lock, and lets it reach the wallet through the
+     * [WalletSession] it is handed.
+     *
+     * A transfer needs this because the lock is where the waiting happens: another wallet
+     * interaction can hold it for as long as the owner is in the wallet app, and a prepared
+     * transaction's blockhash window closes while it waits. Approving and checking that the
+     * approval can still land have to happen on this side of that wait, not before it, or the
+     * wallet is handed bytes that can no longer be included (docs/guides/transfers.md).
+     */
+    suspend fun <T> withWallet(block: suspend (WalletSession) -> T): T = lock.withLock {
+        block(session)
+    }
+
+    private val session =
+        object : WalletSession {
+            override suspend fun signAndSend(
+                transaction: ByteString,
+                reviewed: SelectedWallet,
+            ): SendResult = send(transaction, reviewed)
+        }
+
+    // The body of signAndSend, with the lock already held.
+    private suspend fun send(transaction: ByteString, reviewed: SelectedWallet): SendResult {
+        val selected = _wallet.value ?: return SendResult.NotConnected
+        if (selected.address != reviewed.address || selected.network != reviewed.network) {
+            return SendResult.Changed
+        }
+        val authorization =
+            withContext(io) { store.authorization() } ?: return SendResult.NotConnected
+        val result = adapter.signAndSendTransaction(transaction, selected, authorization)
+        if (result == SendResult.AuthorizationExpired) {
             withContext(io) { store.clear() }
             setWallet(null)
         }
-        result
+        return result
     }
 
     /** Tells the wallet, forgets the selection and its authorization, and publishes "no wallet". */

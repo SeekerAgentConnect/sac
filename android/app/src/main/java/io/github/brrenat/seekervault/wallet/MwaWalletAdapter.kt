@@ -9,6 +9,8 @@ import com.solana.mobilewalletadapter.clientlib.Solana
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
 import com.solana.mobilewalletadapter.clientlib.protocol.JsonRpc20Client
 import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient.AuthorizationResult
+import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient.NotSubmittedException
+import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient.SignAndSendTransactionsResult
 import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient.SignMessagesResult
 import com.solana.mobilewalletadapter.common.ProtocolContract
 
@@ -42,25 +44,61 @@ class MwaWalletAdapter(
         message: ByteString,
         wallet: SelectedWallet,
         authToken: String,
-    ): SignResult {
-        val activity = sender() ?: return SignResult.Failed(NO_ACTIVITY)
+    ): SigningAnswer {
+        val activity = sender() ?: return SigningAnswer(SignResult.Failed(NO_ACTIVITY))
         val account =
             decodeBase58(wallet.address)?.takeIf { it.size == PUBLIC_KEY_BYTES }
-                ?: return SignResult.Failed("the selected wallet isn't an address")
+                ?: return SigningAnswer(SignResult.Failed("the selected wallet isn't an address"))
         val adapter =
             adapters(identity).apply {
                 // The same chain the owner connected on, so the wallet reauthorizes as it did then.
                 blockchain = wallet.network.blockchain()
                 this.authToken = authToken
             }
+        // The wallet reauthorizes this app at the start of the session, before it is asked for a
+        // signature, and it may replace this phone's authorization then. It is read here, inside
+        // the one session the owner sees, so a signature the wallet then declines still carries it
+        // and the wallet is never opened a second time just to learn it.
+        var refreshed: String? = null
+        val asked = message.toByteArray()
+        val result =
+            adapter.transact(activity) { authorization ->
+                refreshed = tokenOf(authorization)
+                signMessagesDetached(arrayOf(asked), arrayOf(account))
+            }
+        val outcome =
+            when (result) {
+                is TransactionResult.Success ->
+                    signed(result.payload, wallet.address, account, asked)
+                is TransactionResult.NoWalletFound -> SignResult.NoWallet
+                is TransactionResult.Failure -> classifySigning(result.e)
+            }
+        return SigningAnswer(outcome, refreshed)
+    }
+
+    override suspend fun signAndSendTransaction(
+        transaction: ByteString,
+        wallet: SelectedWallet,
+        authToken: String,
+    ): SendResult {
+        val activity = sender() ?: return SendResult.Failed(NO_ACTIVITY)
+        val adapter =
+            adapters(identity).apply {
+                // The network the owner connected on, which is the request's network: the
+                // inspection refused the transaction otherwise (SAW-020).
+                blockchain = wallet.network.blockchain()
+                this.authToken = authToken
+            }
+        // The bytes go over as they are. This app hands the wallet exactly what the owner
+        // approved, and the wallet signs and submits it; nothing here builds or alters one.
         val result =
             adapter.transact(activity) {
-                signMessagesDetached(arrayOf(message.toByteArray()), arrayOf(account))
+                signAndSendTransactions(arrayOf(transaction.toByteArray()))
             }
         return when (result) {
-            is TransactionResult.Success -> signed(result.payload, wallet.address)
-            is TransactionResult.NoWalletFound -> SignResult.NoWallet
-            is TransactionResult.Failure -> classifySigning(result.e)
+            is TransactionResult.Success -> sent(result.payload)
+            is TransactionResult.NoWalletFound -> SendResult.NoWallet
+            is TransactionResult.Failure -> classifySending(result.e)
         }
     }
 
@@ -71,7 +109,9 @@ class MwaWalletAdapter(
         adapter.disconnect(activity)
     }
 
-    private companion object {
+    // Internal, not private: every one of these checks the wallet's own answer, and each is worth
+    // a test of its own (`MwaWalletAdapterTest`). Nothing here reaches the wallet or the network.
+    internal companion object {
         const val NO_ACTIVITY = "the app's screen closed before the wallet answered"
 
         fun WalletNetwork.blockchain(): Blockchain =
@@ -88,10 +128,8 @@ class MwaWalletAdapter(
             if (account.publicKey.size != PUBLIC_KEY_BYTES) {
                 return WalletResult.Failed("the wallet returned an address of the wrong size")
             }
-            val token = auth.authToken
-            if (token.isNullOrEmpty()) {
-                return WalletResult.Failed("the wallet returned no authorization")
-            }
+            val token =
+                tokenOf(auth) ?: return WalletResult.Failed("the wallet returned no authorization")
             return WalletResult.Connected(
                 WalletAccount(
                     address = encodeBase58(account.publicKey),
@@ -105,12 +143,29 @@ class MwaWalletAdapter(
         const val PUBLIC_KEY_BYTES = 32
         const val SIGNATURE_BYTES = 64
 
+        /** The authorization an answer carries, or null when the wallet reported none. */
+        fun tokenOf(auth: AuthorizationResult?): String? =
+            auth?.authToken?.takeIf { it.isNotEmpty() }
+
         /**
          * The wallet's answer, checked before it's believed: one signed message, signed by the
-         * account that was asked, with a signature of the right size. What it says it signed is
-         * returned as it is, so the caller can compare it with what it sent.
+         * account that was asked, with a signature of the right size — and one that verifies as
+         * [key]'s over exactly [asked]. What it says it signed is returned as it is, so the caller
+         * can compare it with what it sent.
+         *
+         * The signature is verified here because the sidecar verifies every signature it is sent
+         * and refuses anything else with INVALID_PARAMETERS, and the first outcome stored for an
+         * approval stands: believing 64 bytes that aren't a signature would send that answer again
+         * for ever, and leave the request PROCESSING with nothing able to settle it. A wallet whose
+         * answer doesn't verify has failed to sign, which is an outcome both the owner and the
+         * agent can be told once and be done with.
          */
-        fun signed(result: SignMessagesResult?, expected: String): SignResult {
+        fun signed(
+            result: SignMessagesResult?,
+            expected: String,
+            key: ByteArray,
+            asked: ByteArray,
+        ): SignResult {
             val signed =
                 result?.messages?.firstOrNull()
                     ?: return SignResult.Failed("the wallet returned no signed message")
@@ -124,12 +179,66 @@ class MwaWalletAdapter(
             if (signer != null && signer != expected) {
                 return SignResult.Failed("the wallet signed with $signer, not the selected wallet")
             }
+            if (!verifiesSignature(key, asked, signature)) {
+                return SignResult.Failed(
+                    "the wallet's answer is not this wallet's signature over this message"
+                )
+            }
             return SignResult.Signed(
                 message = ByteString.copyFrom(signed.message ?: ByteArray(0)),
                 address = expected,
                 signature = ByteString.copyFrom(signature),
             )
         }
+
+        /**
+         * The wallet's answer about a transaction it sent, checked before it is believed: exactly
+         * one signature, of the right size. The signature is the transaction's ID on chain.
+         */
+        fun sent(result: SignAndSendTransactionsResult?): SendResult {
+            val signatures = result?.signatures
+            // The wallet was given one transaction, so anything but one signature is an answer
+            // this phone can't match to what it asked, and it may still have been sent.
+            if (signatures == null || signatures.size != 1) {
+                return SendResult.Unknown("the wallet returned no signature for this transaction")
+            }
+            val signature = signatures.single()
+            if (signature == null || signature.size != SIGNATURE_BYTES) {
+                return SendResult.Unknown("the wallet returned a signature of the wrong size")
+            }
+            return SendResult.Sent(ByteString.copyFrom(signature))
+        }
+
+        /**
+         * What a failure to sign and send means for the owner. Only the codes that say the wallet
+         * stopped before it signed are failures. Everything else leaves this phone unable to tell
+         * whether the transaction reached the network, and an outcome nobody knows must be reported
+         * as unknown rather than guessed at: a signed transaction stays valid until its blockhash
+         * expires, so "the wallet says it didn't submit it" isn't "it can never land".
+         */
+        fun classifySending(error: Exception?): SendResult =
+            when (remoteCode(error)) {
+                ProtocolContract.ERROR_NOT_SIGNED -> SendResult.Declined
+                ProtocolContract.ERROR_AUTHORIZATION_FAILED -> SendResult.AuthorizationExpired
+                ProtocolContract.ERROR_INVALID_PAYLOADS ->
+                    SendResult.Failed("the wallet would not take this transaction")
+                ProtocolContract.ERROR_TOO_MANY_PAYLOADS ->
+                    SendResult.Failed("the wallet would not take this transaction")
+                ProtocolContract.ERROR_CLUSTER_NOT_SUPPORTED ->
+                    SendResult.Failed("the wallet doesn't serve this network")
+                ProtocolContract.ERROR_NOT_SUBMITTED -> SendResult.Unknown(notSubmitted(error))
+                // No code of the wallet's own: the session ended without an answer, which can
+                // happen on either side of the wallet sending the transaction.
+                else -> SendResult.Unknown(error?.message)
+            }
+
+        /** What the wallet said when it signed a transaction but reported no submission. */
+        fun notSubmitted(error: Exception?): String =
+            generateSequence(error as Throwable?) { it.cause }
+                .filterIsInstance<NotSubmittedException>()
+                .firstOrNull()
+                ?.let { "the wallet signed the transaction but reported that it didn't send it" }
+                ?: error?.message.orEmpty()
 
         /**
          * What a failure to sign means for the owner. The wallet reports a refused signature as

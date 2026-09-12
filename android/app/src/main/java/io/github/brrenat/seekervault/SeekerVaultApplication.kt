@@ -8,6 +8,8 @@ import androidx.core.net.toUri
 import com.connectrpc.okhttp.ConnectOkHttpClient
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
+import io.github.brrenat.seekervault.activity.ActivityLog
+import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.ConnectConnectionGateway
 import io.github.brrenat.seekervault.connections.ConnectionGateway
 import io.github.brrenat.seekervault.connections.ConnectionRepository
@@ -54,6 +56,14 @@ class SeekerVaultApplication : Application() {
     var credentialKey: () -> SecretKey = AndroidKeystoreKey::get
 
     /**
+     * The owner's own record of what this phone did (SAW-023), in `filesDir`. It outlives the
+     * answers: an answer is dropped a week after it settles, and a record is not.
+     */
+    val activityLog: ActivityLog by lazy {
+        ActivityLog(ActivityStore(File(filesDir, "activity")))
+    }
+
+    /**
      * The phone's connections and their requests (docs/security.md#local-storage-and-recovery):
      * metadata and answers in `filesDir`, and credentials, encrypted, in `noBackupFilesDir`.
      */
@@ -63,6 +73,7 @@ class SeekerVaultApplication : Application() {
             vault = CredentialVault(File(noBackupFilesDir, "credentials")) { credentialKey() },
             results = ResultStore(File(filesDir, "results")),
             gateway = connectionGateway(),
+            history = activityLog,
             deviceName = Build.MODEL,
             io = connectionIo,
         )

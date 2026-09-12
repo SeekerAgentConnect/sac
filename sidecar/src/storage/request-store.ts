@@ -23,6 +23,7 @@ import {
   WalletBindingSchema,
   type Action,
   type ActionRequest,
+  type Confirmation,
   type Outcome,
   type PreparedTransaction,
   type RequestRef,
@@ -51,6 +52,7 @@ import {
 import {
   canTransition,
   decideResult,
+  unpreparableReason,
   type ActionKind,
 } from "../requests/lifecycle.ts";
 
@@ -115,6 +117,17 @@ export interface PendingQuery {
   readonly pageToken: string;
 }
 
+/** A freshly built transaction, as the chain client returns it (solana/transfer.ts). */
+export interface NewPreparation {
+  readonly transaction: Uint8Array;
+  readonly contentHash: Uint8Array;
+  readonly lastValidBlockHeight: bigint;
+  /** When the blockhash is expected to expire, in epoch milliseconds. */
+  readonly estimatedExpiryMs: number;
+  readonly feeLamports: bigint;
+  readonly rentLamports: bigint;
+}
+
 /** What PublishWallet changed: the binding as stored, and the requests it cancelled. */
 export interface Published {
   /** Absent when the phone cleared the binding. */
@@ -126,6 +139,18 @@ export interface PendingPage {
   readonly requests: ActionRequest[];
   /** Empty on the last page. */
   readonly nextPageToken: string;
+}
+
+/** What one chain check found, and where it leaves the request (SAW-022). */
+export interface ConfirmationRecord {
+  /** The state the check read, so a request the phone moved meanwhile keeps its own outcome. */
+  readonly from: RequestState;
+  /** Where the check settles the request; absent when it settles nothing. */
+  readonly to?: RequestState;
+  /** What the endpoint answered, and when. */
+  readonly confirmation: Confirmation;
+  /** Outcome.detail, when the check settles the request. */
+  readonly detail?: string;
 }
 
 export class RequestStore {
@@ -156,6 +181,48 @@ export class RequestStore {
       )
       .get();
     return row === undefined ? undefined : text(row.connection_id);
+  }
+
+  /**
+   * The request an idempotency key already stands for, or undefined when the key is free. It
+   * applies exactly the rules {@link create} does — a key reused with different parameters fails
+   * with IDEMPOTENCY_CONFLICT here too — and stores nothing.
+   *
+   * A tool that reads the chain before it stores a request asks this first, so a retry is answered
+   * with the original request whether or not an endpoint is reachable and whatever the asset looks
+   * like now. `create` resolves the key again under its own transaction, so this is a shortcut,
+   * never the decision (requests/mcp-tools.ts).
+   */
+  replayOf(idempotencyKey: string, action: Action): ActionRequest | undefined {
+    const reason =
+      invalidIdempotencyKeyReason(idempotencyKey) ??
+      invalidActionReason(action);
+    if (reason !== undefined) {
+      throw new RequestFailure(RequestError.INVALID_PARAMETERS, reason);
+    }
+    const fingerprint = actionFingerprint(action);
+    return transaction(this.#db, () => {
+      this.#expireOverdue(this.#now());
+      const record = this.#db
+        .prepare(
+          "SELECT request_id, fingerprint FROM idempotency_keys WHERE idempotency_key = ?",
+        )
+        .get(idempotencyKey);
+      if (record === undefined) return undefined;
+      const decision = resolveIdempotency(
+        {
+          requestId: text(record.request_id),
+          fingerprint: text(record.fingerprint),
+        },
+        fingerprint,
+      );
+      if (decision.kind === "conflict") {
+        throw idempotencyConflict(idempotencyKey, decision.requestId);
+      }
+      return decision.kind === "replay"
+        ? this.#find(decision.requestId)
+        : undefined;
+    });
   }
 
   /**
@@ -199,10 +266,7 @@ export class RequestStore {
         return { request: this.#find(decision.requestId), created: false };
       }
       if (decision.kind === "conflict") {
-        throw new RequestFailure(
-          RequestError.IDEMPOTENCY_CONFLICT,
-          `idempotency_key "${request.idempotencyKey}" was already used for request ${decision.requestId} with different parameters`,
-        );
+        throw idempotencyConflict(request.idempotencyKey, decision.requestId);
       }
       const connectionId = this.activeConnection();
       if (connectionId === undefined) {
@@ -386,6 +450,7 @@ export class RequestStore {
         current,
         submission,
         this.#latestPrepared(requestId),
+        now,
       );
       if (!decision.ok) {
         throw new RequestFailure(decision.error, decision.message, current);
@@ -404,6 +469,125 @@ export class RequestStore {
         )
         .run(requestId, requestId, result, current.state, decision.to, now);
       return { request: this.#find(requestId), duplicate: false };
+    });
+  }
+
+  /**
+   * Records a freshly built transaction as the request's next version, and returns it. Building
+   * reads the chain, so it happens outside this call; what happens here is the part that must be
+   * atomic — checking that the request still accepts a preparation, and numbering the version.
+   *
+   * Each preparation supersedes the last: an approval of an earlier version is refused from now
+   * on (lifecycle.ts), so the owner always approves what they last reviewed.
+   */
+  storePrepared(
+    connectionId: string,
+    ref: RequestRef | undefined,
+    built: NewPreparation,
+  ): PreparedTransaction {
+    const requestId = requireRef(connectionId, ref);
+    return transaction(this.#db, () => {
+      const now = this.#now();
+      this.#expireOverdue(now);
+      const current = this.#find(requestId, connectionId);
+      const reason = unpreparableReason(current);
+      if (reason !== undefined) {
+        throw new RequestFailure(reason.error, reason.message, current);
+      }
+      const version = (this.#latestPrepared(requestId)?.version ?? 0) + 1;
+      const prepared = create(PreparedTransactionSchema, {
+        ref: { connectionId, requestId },
+        version,
+        transaction: built.transaction,
+        contentHash: built.contentHash,
+        preparedAt: timestampFromMs(now),
+        lastValidBlockHeight: built.lastValidBlockHeight,
+        estimatedExpiry: timestampFromMs(built.estimatedExpiryMs),
+        feeLamports: built.feeLamports,
+        rentLamports: built.rentLamports,
+      });
+      this.#db
+        .prepare(
+          `INSERT INTO prepared_transactions (request_id, version, prepared, created_at_ms)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(
+          requestId,
+          version,
+          toBinary(PreparedTransactionSchema, prepared),
+          now,
+        );
+      return prepared;
+    });
+  }
+
+  /** The request's newest prepared transaction, or undefined when it has none. */
+  latestPrepared(
+    connectionId: string,
+    ref: RequestRef | undefined,
+  ): PreparedTransaction | undefined {
+    const requestId = requireRef(connectionId, ref);
+    // #find refuses another connection's request, so a reference can't reach one.
+    this.#find(requestId, connectionId);
+    return this.#latestPrepared(requestId);
+  }
+
+  /** One numbered preparation of a request, or undefined when it has no such version. */
+  preparedVersion(
+    requestId: string,
+    version: number,
+  ): PreparedTransaction | undefined {
+    const row = this.#db
+      .prepare(
+        "SELECT prepared FROM prepared_transactions WHERE request_id = ? AND version = ?",
+      )
+      .get(requestId, version);
+    return row === undefined
+      ? undefined
+      : fromBinary(PreparedTransactionSchema, blob(row.prepared));
+  }
+
+  /**
+   * Records what a chain check found, and settles the request when the check established one
+   * (SAW-022). This is the sidecar's own commit point: the phone reports what the wallet did,
+   * and this reports what the chain says became of it.
+   *
+   * The check reads the chain outside the database, so the request may have moved meanwhile. When
+   * it has, nothing is written: the check was about a state the request has left, and the next
+   * one starts from where it is now. A settled request never has its state moved, only its
+   * confirmation kept up to date.
+   */
+  recordConfirmation(
+    requestId: string,
+    record: ConfirmationRecord,
+  ): ActionRequest {
+    requireUuid("request_id", requestId);
+    return transaction(this.#db, () => {
+      const now = this.#now();
+      this.#expireOverdue(now);
+      const current = this.#find(requestId);
+      if (current.state !== record.from) return current;
+      const outcome = copy(current.outcome);
+      outcome.confirmation = record.confirmation;
+      if (record.detail !== undefined) outcome.detail = record.detail;
+      if (record.to === undefined) {
+        // The state didn't change, so updated_at doesn't either: it marks the last state change.
+        this.#db
+          .prepare(
+            "UPDATE requests SET outcome = ? WHERE request_id = ? AND state = ?",
+          )
+          .run(toBinary(OutcomeSchema, outcome), requestId, record.from);
+        return this.#find(requestId);
+      }
+      if (
+        !canTransition(kindOf(current), current.state, record.to, "sidecar")
+      ) {
+        throw new Error(
+          `a chain check may not move ${RequestState[current.state]} to ${RequestState[record.to]}`,
+        );
+      }
+      this.#move(requestId, current.state, record.to, now, outcome);
+      return this.#find(requestId);
     });
   }
 
@@ -701,6 +885,17 @@ function invalidLifetimeReason(
     seconds <= MAX_EXPIRES_IN_SECONDS
     ? undefined
     : `expires_in_seconds must be a whole number from ${MIN_EXPIRES_IN_SECONDS} to ${MAX_EXPIRES_IN_SECONDS}`;
+}
+
+/** The one refusal an idempotency key reused for different parameters gets, wherever it is seen. */
+function idempotencyConflict(
+  idempotencyKey: string,
+  requestId: string,
+): RequestFailure {
+  return new RequestFailure(
+    RequestError.IDEMPOTENCY_CONFLICT,
+    `idempotency_key "${idempotencyKey}" was already used for request ${requestId} with different parameters`,
+  );
 }
 
 function requireUuid(field: string, value: string): void {

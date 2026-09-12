@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.connections
 
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 
@@ -22,6 +23,17 @@ interface ConnectionGateway {
     ): PendingRequests
 
     /**
+     * Asks the sidecar to build a fresh unsigned transaction for one of the connection's PENDING
+     * transfers, and returns it. Each call is a new version, and the phone checks the bytes itself
+     * before the owner sees anything (docs/security.md#inspecting-a-transfer).
+     */
+    suspend fun prepareRequest(
+        serverUrl: String,
+        credential: String,
+        key: RequestKey,
+    ): PreparedTransaction
+
+    /**
      * Sends a result for one of the connection's requests, and returns the request as it is
      * afterwards. Repeating an accepted result changes nothing and returns the request again.
      */
@@ -29,6 +41,17 @@ interface ConnectionGateway {
         serverUrl: String,
         credential: String,
         submission: SubmitResultRequest,
+    ): ActionRequest
+
+    /**
+     * Asks the sidecar what became of a transfer the wallet sent, and returns the request as it is
+     * afterwards. The sidecar reads the chain; this phone signs nothing and sends nothing, and no
+     * wallet is opened (docs/protocol.md#confirmation).
+     */
+    suspend fun checkStatus(
+        serverUrl: String,
+        credential: String,
+        key: RequestKey,
     ): ActionRequest
 
     /**
@@ -76,6 +99,13 @@ class GatewayException(
         NotFound,
         /** `failed_precondition`: the request has moved on, for example the agent cancelled it. */
         InvalidState,
+        /**
+         * `failed_precondition` with STALE_PREPARATION: the approval doesn't name the request's
+         * latest prepared transaction, or that transaction's blockhash has run out. Nothing was
+         * approved. The phone prepares the request again and has the owner review the new version
+         * (docs/architecture.md#approval-binding).
+         */
+        StalePreparation,
         /** TLS failed: the certificate isn't trusted, or it's for another host name. */
         CertificateRejected,
         /** Android's network security policy blocked plain HTTP to this host. */

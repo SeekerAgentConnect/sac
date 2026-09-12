@@ -61,4 +61,25 @@ public interface OutcomeOrBuilder extends
    */
   com.google.protobuf.ByteString
       getDetailBytes();
+
+  /**
+   * <pre>
+   * What the sidecar has learned from the chain about signature. Set from the first check on,
+   * for transfers and swaps (SAW-022); absent for actions with no transaction.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+   * @return Whether the confirmation field is set.
+   */
+  boolean hasConfirmation();
+  /**
+   * <pre>
+   * What the sidecar has learned from the chain about signature. Set from the first check on,
+   * for transfers and swaps (SAW-022); absent for actions with no transaction.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];</code>
+   * @return The confirmation.
+   */
+  io.github.brrenat.seekervault.request.v1.Confirmation getConfirmation();
 }

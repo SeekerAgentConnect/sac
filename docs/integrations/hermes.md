@@ -7,7 +7,7 @@ This page connects [Hermes Agent](https://hermes-agent.nousresearch.com) to the 
 
 It covers Hermes on the Mac and Hermes on a VPS.
 
-> **What has been tested.** Hermes Agent v0.21.1 (2026.9.7) was run with this configuration against the sidecar, including through a forwarded port, and every output below is real. Hermes's own MCP client made the tool calls, without an LLM, and a test client stood in for the phone. On 2026-09-11, the owner also ran the live round trip and reported it passed. That run used their own Hermes on a VPS, reaching the Mac [over Tailscale](#over-a-vpn-you-already-use), and their physical Seeker; see [`docs/testing/stage-1.md`](../testing/stage-1.md). The durable tools were run the same way on 2026-09-11, without a model or the Seeker; see [`docs/testing/stage-2.md`](../testing/stage-2.md#acceptance-report-saw-014). The wallet tools of [section 5](#5-sign-a-message-with-your-wallet) have **not** been run through Hermes: they have only been driven by `pnpm agent` and the automated tests, and that section says so where its results are shown.
+> **What has been tested.** Hermes Agent v0.21.1 (2026.9.7) was run with this configuration against the sidecar, including through a forwarded port, and every output below is real. Hermes's own MCP client made the tool calls, without an LLM, and a test client stood in for the phone. On 2026-09-11, the owner also ran the live round trip and reported it passed. That run used their own Hermes on a VPS, reaching the Mac [over Tailscale](#over-a-vpn-you-already-use), and their physical Seeker; see [`docs/testing/stage-1.md`](../testing/stage-1.md). The durable tools were run the same way on 2026-09-11, without a model or the Seeker; see [`docs/testing/stage-2.md`](../testing/stage-2.md#acceptance-report-saw-014). The wallet tools of [section 5](#5-sign-a-message-with-your-wallet) and [section 6](#6-send-a-transfer-with-your-wallet) have **not** been run through Hermes: they have only been driven by `pnpm agent` and the automated tests, and those sections say so where their results are shown. **No transfer has ever been sent from a real wallet to any cluster** by this repository, through Hermes or otherwise.
 
 ## Before you start
 
@@ -42,6 +42,7 @@ mcp_servers:
           vault_get_address,
           vault_get_capabilities,
           vault_sign_message,
+          vault_transfer,
           vault_request_ack,
           vault_get_request,
           vault_cancel_request,
@@ -63,10 +64,10 @@ What each setting does:
 
 | Setting | Meaning |
 | --- | --- |
-| `url` | The sidecar's MCP endpoint. It listens only on the Mac's loopback address. On a VPS, this is the tunnel's end instead; see [Hermes on a VPS](#6-hermes-on-a-vps). |
+| `url` | The sidecar's MCP endpoint. It listens only on the Mac's loopback address. On a VPS, this is the tunnel's end instead; see [Hermes on a VPS](#7-hermes-on-a-vps). |
 | `Authorization` | Hermes fills in `${MCP_SEEKER_VAULT_API_KEY}` from `~/.hermes/.env`, or from the environment, when it loads the configuration. If the variable is missing, Hermes sends the literal text, and the sidecar refuses the connection. `hermes mcp add` uses the same variable name for a server called `seeker_vault`. |
 | `timeout` | How long Hermes waits for a tool call, in seconds; Hermes's default is 300. Only `vault_display_command` waits for you. Keep this above the sidecar's `LIVE_COMMAND_TIMEOUT_SECONDS` (60 by default), so that the sidecar's own `TIMEOUT` answer arrives first, and below 300, Hermes's fixed HTTP read limit. If you raise `LIVE_COMMAND_TIMEOUT_SECONDS`, raise this too. The durable tools answer at once. |
-| `tools` | The tools Hermes may call, each allowed on purpose:<ul><li>`vault_display_command`: the live diagnostic</li><li>`vault_get_address`: reads the wallet you connected on the phone, and its network (SAW-015). It's read-only, and fails with `WALLET_NOT_CONNECTED` rather than inventing an address.</li><li>`vault_get_capabilities`: says what this sidecar serves, and that approval is always manual (SAW-016)</li><li>`vault_sign_message`: asks your wallet to sign a message (SAW-016). It returns a request ID at once; nothing is signed until you approve it on the phone.</li><li>`vault_request_ack`: queues an acknowledgement. It's a demo tool with no wallet involved, and the sidecar serves it only with `MCP_DEMO_TOOLS=true`.</li><li>`vault_get_request`: reads a request's status by its ID</li><li>`vault_cancel_request`: withdraws a request you haven't answered</li></ul>A tool listed here that the sidecar doesn't serve is missing from the session. The sidecar offers no resources or prompts. |
+| `tools` | The tools Hermes may call, each allowed on purpose:<ul><li>`vault_display_command`: the live diagnostic</li><li>`vault_get_address`: reads the wallet you connected on the phone, and its network (SAW-015). It's read-only, and fails with `WALLET_NOT_CONNECTED` rather than inventing an address.</li><li>`vault_get_capabilities`: says what this sidecar serves, and that approval is always manual (SAW-016)</li><li>`vault_sign_message`: asks your wallet to sign a message (SAW-016). It returns a request ID at once; nothing is signed until you approve it on the phone.</li><li>`vault_transfer`: asks the owner's wallet to send SOL or a classic SPL token (SAW-019). It returns a request ID at once; nothing is built, signed, or sent until they approve it on the phone, and the sidecar serves it only with a `SOLANA_RPC_URL`.</li><li>`vault_request_ack`: queues an acknowledgement. It's a demo tool with no wallet involved, and the sidecar serves it only with `MCP_DEMO_TOOLS=true`.</li><li>`vault_get_request`: reads a request's status by its ID</li><li>`vault_cancel_request`: withdraws a request you haven't answered</li></ul>A tool listed here that the sidecar doesn't serve is missing from the session. The sidecar offers no resources or prompts. |
 
 Leave `trust` unset, which Hermes treats as `full`. With `trust: untrusted`, Hermes asks for approval before every call to a tool that isn't read-only.
 
@@ -102,11 +103,11 @@ hermes mcp test seeker_vault
     vault_cancel_request                 Withdraws a PENDING request so the owner can no longer ...
 ```
 
-Hermes masks the header and shows only its first and last four characters; `xxxx` stands for your token's last four. For errors instead of `✓ Connected`, see [what failures look like](#7-what-failures-look-like).
+Hermes masks the header and shows only its first and last four characters; `xxxx` stands for your token's last four. For errors instead of `✓ Connected`, see [what failures look like](#8-what-failures-look-like).
 
-The output above is from the run on 2026-09-11, before `vault_get_address`, `vault_get_capabilities`, and `vault_sign_message` existed; with the configuration as it is now, the counts are three higher and those three are listed too.
+The output above is from the run on 2026-09-11, before `vault_get_address`, `vault_get_capabilities`, `vault_sign_message`, and `vault_transfer` existed; with the configuration as it is now, the counts are four higher and those four are listed too.
 
-`hermes mcp list` counts the tools in `include`, not the ones the sidecar serves. A sidecar without `MCP_DEMO_TOOLS=true` is still counted in full, but `hermes mcp test` discovers one fewer: every tool but `vault_request_ack`.
+`hermes mcp list` counts the tools in `include`, not the ones the sidecar serves. A sidecar without `MCP_DEMO_TOOLS=true` is still counted in full, but `hermes mcp test` discovers one fewer: every tool but `vault_request_ack`. A sidecar without `SOLANA_RPC_URL` leaves out `vault_transfer` the same way.
 
 Hermes connects to MCP servers when a session starts. After changing the configuration, type `/reload-mcp` in the running session, or start a new session. Do the same if the sidecar wasn't running when the session started: Hermes then tried three times, parked the server, and the session has none of its tools.
 
@@ -205,7 +206,7 @@ These IDs come from the verification run, where a test client tapped **Acknowled
 
 Connect the wallet first ([`../guides/wallet-setup.md`](../guides/wallet-setup.md)). Without one, the tool fails with `WALLET_NOT_CONNECTED`, and no address is invented.
 
-> **Not yet run with Hermes.** Unlike sections 3 and 4, the results below aren't from a recorded Hermes session: the wallet tools have only been driven by `pnpm agent` and the automated tests, which is where these shapes come from. Running them through Hermes on the Seeker is [step 24 of the owner's checks](../testing/stage-3.md#the-hermes-round-trip-saw-018), and stays NOT RUN until the owner does it.
+> **Run with Hermes on 2026-09-12.** The owner drove the wallet tools from Hermes on the physical Seeker and answered on the phone: [steps 24 to 31 of the owner's checks](../testing/stage-3.md#the-hermes-round-trip-saw-018) are recorded as PASS. The exact JSON below still comes from `pnpm agent` and the automated tests rather than from that session's transcript, so read it as the shape of an answer, not as a transcript.
 
 1. **Read what this sidecar serves**, once per session, before asking for anything:
 
@@ -278,7 +279,129 @@ Not every end is a signature, and none of these is an error to retry around.
 | Changed the wallet or the network while the request was waiting | `CANCELLED`: the sidecar withdrew the requests the new binding no longer fits. |
 | Left it unanswered past `expires_at` | `EXPIRED`. |
 
-## 6. Hermes on a VPS
+## 6. Send a transfer with your wallet
+
+`vault_transfer` asks the wallet you connected on the phone to send SOL or a classic SPL token. It's
+a durable request, like `vault_sign_message`: the call answers at once with a request ID, the wallet
+app opens only when you tap **Approve and send** on the Seeker, and your wallet — not the sidecar —
+signs and broadcasts. The whole path, from the owner's side, is
+[`../guides/transfers.md`](../guides/transfers.md).
+
+The sidecar serves this tool only when its `.env` has a `SOLANA_RPC_URL`. Without one it isn't
+offered at all, `vault_get_capabilities` leaves `transfer` out of `operations`, and Hermes reports
+`Unknown tool`. Add `vault_transfer` to the `include` list in [section 1](#1-add-the-server-entry)
+as well, or Hermes won't call it even when the sidecar serves it.
+
+> **Run with Hermes on 2026-09-12.** The owner asked for a transfer from Hermes, approved it by hand
+> on the Seeker, and their wallet sent it: one SOL transfer **finalized on devnet**, recorded in
+> [`../testing/stage-4.md`](../testing/stage-4.md#verification-record-saw-024). That is the whole
+> point of this section, and it has now been done end to end. The exact JSON below still comes from
+> `pnpm agent` and the automated tests rather than from that session's transcript, so read it as the
+> shape of an answer. **Nothing has ever been sent on mainnet.**
+
+1. **Read what this sidecar serves**, every session, before asking for anything:
+
+   ```text
+   Call vault_get_capabilities and report the real result.
+   ```
+
+   ```text
+   {"approval":"manual","signing":"wallet","operations":["ack","sign_message","transfer"],…}
+   ```
+
+   No `transfer` in `operations` means this sidecar can't build one. That is a fact to report, not
+   a thing to work around.
+
+2. **Read the wallet and the network,** rather than remembering them:
+
+   ```text
+   Call vault_get_address and report the real wallet and network.
+   ```
+
+   ```text
+   {"wallet":"G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW","network":"devnet","bound_at":"…"}
+   ```
+
+   Both go into the call below, unchanged. The owner can change either at any time, and a request
+   naming anything else is refused with `WALLET_MISMATCH` and stored nowhere.
+
+3. **Create the request.** The amount is an exact whole number of **base units** — lamports for SOL
+   (1 SOL is 1,000,000,000), the mint's own base units for a token, which the sidecar reads from the
+   mint on chain. There is no decimal form of this field anywhere in the API.
+
+   ```text
+   Call vault_transfer with the wallet "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW", the network
+   "devnet", the recipient "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh", the amount "100000",
+   and the idempotency_key "seeker-check-004". Report the real request_id and status, and don't
+   wait for an answer.
+   ```
+
+   ```text
+   {"request_id":"f7e6d5c4-…","action":"transfer","status":"PENDING","terminal":false,
+    "wallet":"G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW","network":"devnet","created_at":"…",…}
+   ```
+
+   **Nothing has been built, signed, or sent.** No transaction exists yet: it is compiled when the
+   owner opens the request, with a blockhash taken then. The same key with the same terms returns
+   this same request; the same key with a different amount or recipient is refused with
+   `IDEMPOTENCY_CONFLICT`, so a retry can never pay twice.
+
+   For a token, add its `token_mint`. The `recipient` is always a wallet address, never a token account:
+   the sidecar finds or creates the recipient's token account itself.
+
+4. **The owner answers on the Seeker.** They see the transaction read out of its own bytes — amount,
+   recipient, mint, the wallet that pays — and the server's fee and rent estimate beside it. Nothing
+   pushes their decision to Hermes.
+
+5. **Read the outcome.**
+
+   ```text
+   Call vault_get_request with the request_id "f7e6d5c4-…" and report the real status.
+   ```
+
+   ```text
+   {"request_id":"f7e6d5c4-…","action":"transfer","status":"CONFIRMED","terminal":true,
+    "network":"devnet","signature":"5Yb4Dn9m…","confirmation":"finalized","slot":310000001,
+    "checked_with":"api.devnet.solana.com"}
+   ```
+
+   Reading the request is also what makes the sidecar look the signature up on chain, so a model
+   that asks again later gets a newer answer rather than a cached one.
+
+6. **Verify it against the chain, not against the answer.** `signature` and `network` together name
+   one transaction: open `https://explorer.solana.com/tx/<signature>?cluster=devnet` (mainnet takes
+   no `cluster`) and check that the amount, the recipient, and the fee payer are the ones in step 3.
+   `pnpm agent status <request_id>` prints the same link.
+
+   A model saying "sent" is not a transaction, and neither is a `signature` on its own. Count this
+   as passed only when the explorer shows that transaction on that cluster.
+
+### What each status means to an agent
+
+`vault_transfer`'s answer is the start of the story, and three of these are routinely misread.
+
+| Status | What it means | What an agent should do |
+| --- | --- | --- |
+| `PENDING` | Stored. The owner may not have seen it. | Report it as waiting. Ask again later. There is nothing to wait on. |
+| `PROCESSING` | The owner approved it, and the wallet has it. | Wait. Nothing else to do. |
+| `SUBMITTED` | The wallet sent it. **It is not confirmed.** | Read the request again; that check asks the chain. Never treat this as success. |
+| `CONFIRMED` | The transaction on chain under that signature is the one the owner approved, byte for byte. | Done. Terminal. |
+| `FAILED` | It ran and failed, or the wallet refused, or its blockhash expired. `chain_error` says which. | Report it. **Don't build a replacement**: ask the owner to request a new one. |
+| `REJECTED` | The owner said no, in the app or in the wallet. | Report it. Not an error, and not worth retrying. |
+| `UNKNOWN` | The phone never learned what the wallet did. The transaction may be on chain. | **Never retry.** Report it as unknown and let the owner check their wallet's own history. A retry here is how you pay twice. |
+
+### What a transfer refusal looks like
+
+| What happened | What the agent reads |
+| --- | --- |
+| The sidecar has no `SOLANA_RPC_URL` | `Unknown tool: mcp__seeker_vault__vault_transfer` from Hermes, and `transfer` missing from `operations`. Nothing is stored. |
+| The endpoint didn't answer while the owner was reviewing | `CHAIN_UNAVAILABLE`. Nothing about the request is wrong; it stays `PENDING` and the next attempt works. |
+| The request names a wallet or network other than the owner's | `WALLET_MISMATCH`, and nothing is stored. Read `vault_get_address` again. |
+| The same idempotency key with different terms | `IDEMPOTENCY_CONFLICT`. Use a new key for a new transfer. |
+| A Token-2022 mint, an NFT, a token account as the recipient, a frozen account, or too little of the token held | The preparation is refused by name on the phone; the request stays `PENDING` until the owner rejects it or it expires. The reasons are in [`../guides/transfers.md`](../guides/transfers.md#what-it-refuses-and-why). |
+| An amount that isn't a whole number of base units | Refused before anything is stored. There is no rounding anywhere. |
+
+## 7. Hermes on a VPS
 
 In Stage 1, the sidecar listens only on the Mac's loopback address. A Hermes on a VPS reaches it through an SSH reverse tunnel that the Mac opens to the VPS. The VPS needs no public domain, no open port, and no OAuth.
 
@@ -324,7 +447,7 @@ If the Mac and the VPS already share a private VPN that you control, such as Tai
 
 The traffic is plain HTTP inside the VPN's encrypted tunnel. Never bind the forward to a public address.
 
-## 7. What failures look like
+## 8. What failures look like
 
 These are real results from Hermes v0.21.1. "The model sees" is the tool result the model receives.
 

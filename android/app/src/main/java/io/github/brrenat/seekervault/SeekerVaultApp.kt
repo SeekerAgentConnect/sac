@@ -9,7 +9,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.brrenat.seekervault.activity.ActivityDetailsScreen
+import io.github.brrenat.seekervault.activity.ActivityScreen
+import io.github.brrenat.seekervault.activity.ActivityViewModel
+import io.github.brrenat.seekervault.activity.openLink
 import io.github.brrenat.seekervault.connections.AddConnectionRoute
 import io.github.brrenat.seekervault.connections.ConnectionDetailsScreen
 import io.github.brrenat.seekervault.connections.ConnectionsScreen
@@ -19,6 +24,7 @@ import io.github.brrenat.seekervault.connections.InboxSummary
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreen
+import io.github.brrenat.seekervault.inbox.Preparation
 import io.github.brrenat.seekervault.inbox.RequestDetailsScreen
 import io.github.brrenat.seekervault.inbox.RequestGoneScreen
 import io.github.brrenat.seekervault.inbox.inboxCounts
@@ -30,14 +36,16 @@ import java.time.Instant
 
 /**
  * The app's screens: Connections first, then a connection's details, Add connection, Pending
- * requests and Request details, Wallet, and the Stage 1 live test. The back stack is a list of
- * route strings, so it survives rotation and process death; no route carries a secret.
+ * requests and Request details, Activity and one record, Wallet, and the Stage 1 live test. The
+ * back stack is a list of route strings, so it survives rotation and process death; no route
+ * carries a secret.
  */
 @Composable
 fun SeekerVaultApp(
     connections: ConnectionsViewModel,
     inbox: InboxViewModel,
     wallet: WalletViewModel,
+    history: ActivityViewModel,
     live: LiveCommandViewModel,
 ) {
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.CONNECTIONS)) }
@@ -47,6 +55,7 @@ fun SeekerVaultApp(
     val state by connections.state.collectAsStateWithLifecycle()
     val inboxState by inbox.state.collectAsStateWithLifecycle()
     val walletState by wallet.state.collectAsStateWithLifecycle()
+    val historyState by history.state.collectAsStateWithLifecycle()
     val route = stack.last()
     when {
         route == Routes.CONNECTIONS -> {
@@ -61,6 +70,8 @@ fun SeekerVaultApp(
                 onInbox = { push(Routes.INBOX) },
                 wallet = walletState.wallet,
                 onWallet = { push(Routes.WALLET) },
+                activity = historyState.records.size,
+                onActivity = { push(Routes.ACTIVITY) },
             )
         }
         route == Routes.WALLET ->
@@ -80,6 +91,32 @@ fun SeekerVaultApp(
                 onPaired = { stack = stack.dropLast(1) + (Routes.DETAILS + it.id) },
             )
         route == Routes.LIVE -> LiveTestRoute(live)
+        route == Routes.ACTIVITY ->
+            ActivityScreen(
+                state = historyState,
+                onOpen = { push("${Routes.RECORD}${it.connectionId}/${it.requestId}") },
+                onRefresh = history::refresh,
+                onClear = history::clear,
+                onBack = pop,
+            )
+        route.startsWith(Routes.RECORD) -> {
+            val (connectionId, requestId) = route.removePrefix(Routes.RECORD).split('/', limit = 2)
+            val record = historyState.record(RequestKey(connectionId, requestId))
+            if (record == null) {
+                RequestGoneScreen(onBack = pop)
+            } else {
+                val context = LocalContext.current
+                ActivityDetailsScreen(
+                    record = record,
+                    // The link goes to whatever app opens links. This app fetches nothing from it,
+                    // and a phone with nothing to open it with is told so rather than left silent.
+                    onOpenExplorer = { if (!openLink(context, it)) history.linkFailed() },
+                    linkFailed = historyState.linkFailed,
+                    onMessageShown = history::messageShown,
+                    onBack = pop,
+                )
+            }
+        }
         route.startsWith(Routes.DETAILS) -> {
             val id = route.removePrefix(Routes.DETAILS)
             ConnectionDetailsRoute(connections, state, id, pop) { push(Routes.INBOX_FOR + id) }
@@ -116,8 +153,21 @@ fun SeekerVaultApp(
                     onSendAgain = { inbox.sendAgain(key) },
                     wallet = inboxState.wallet,
                     signingProblem = inboxState.problem.takeIf { inboxState.problemKey == key },
+                    preparation = inboxState.preparations[key],
+                    onPrepareAgain = { inbox.prepare(key, force = true) },
+                    onApproveTransfer = {
+                        inbox.approveTransfer(
+                            key,
+                            inboxState.preparations[key] as? Preparation.Ready,
+                        )
+                    },
+                    checking = key in inboxState.checking,
+                    onCheckStatus = { inbox.checkStatus(key) },
                     onBack = pop,
                 )
+                // Opening a transfer fetches a fresh transaction and reads it on this phone. It
+                // is a read and nothing more: no wallet opens until the owner taps Approve.
+                LaunchedEffect(key) { inbox.prepare(key) }
             }
         }
     }
@@ -128,6 +178,8 @@ private object Routes {
     const val ADD = "add"
     const val LIVE = "live"
     const val WALLET = "wallet"
+    const val ACTIVITY = "activity"
+    const val RECORD = "record/"
     const val DETAILS = "details/"
     const val INBOX = "inbox"
     const val INBOX_FOR = "inbox/"

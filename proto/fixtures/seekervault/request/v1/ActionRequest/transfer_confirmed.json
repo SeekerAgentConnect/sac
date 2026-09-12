@@ -24,6 +24,15 @@
       "preparedVersion": 2,
       "contentHash": "Ayvh9s1mGdYwt7jUOtauxSIiheOxOS3fQY3ruYkPdoI="
     },
-    "signature": "yZ1sTYjILaMRLXxssKRlwCwu8+u7k+5TLYEsifXX09LsGTcQuwLUAYO/AZi0vgqil4r4TfByoxEeJqwG0+4Ukw=="
+    "signature": "yZ1sTYjILaMRLXxssKRlwCwu8+u7k+5TLYEsifXX09LsGTcQuwLUAYO/AZi0vgqil4r4TfByoxEeJqwG0+4Ukw==",
+    "confirmation": {
+      "level": "CONFIRMATION_LEVEL_FINALIZED",
+      "slot": "298471553",
+      "checkedAt": "2026-09-11T12:03:07.250Z",
+      "checks": 3,
+      "endpoint": "api.mainnet-beta.solana.com",
+      "matchesApproval": true,
+      "detail": "The approved transaction succeeded on chain in slot 298471553, as api.mainnet-beta.solana.com reports it."
+    }
   }
 }

@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
@@ -47,6 +48,9 @@ fun ConnectionsScreen(
     onInbox: () -> Unit = {},
     wallet: SelectedWallet? = null,
     onWallet: () -> Unit = {},
+    /** How many actions this phone has recorded (SAW-023); null leaves the row out. */
+    activity: Int? = null,
+    onActivity: () -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(state.message, snackbar, onMessageShown)
@@ -85,6 +89,13 @@ fun ConnectionsScreen(
             if (inbox != null && state.connections.isNotEmpty()) {
                 item(key = "inbox") {
                     InboxItem(inbox, onInbox)
+                    HorizontalDivider()
+                }
+            }
+            // The record of what this phone has done stays whether or not a connection does.
+            if (activity != null) {
+                item(key = "activity") {
+                    ActivityItem(activity, onActivity)
                     HorizontalDivider()
                 }
             }
@@ -144,6 +155,20 @@ private fun InboxItem(inbox: InboxSummary, onClick: () -> Unit) {
             )
         },
         modifier = Modifier.clickable(onClick = onClick).testTag(ConnectionsTags.INBOX),
+    )
+}
+
+@Composable
+private fun ActivityItem(recorded: Int, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.activity_row)) },
+        supportingContent = {
+            Text(
+                if (recorded == 0) stringResource(R.string.activity_row_none)
+                else pluralStringResource(R.plurals.activity_row_count, recorded, recorded)
+            )
+        },
+        modifier = Modifier.clickable(onClick = onClick).testTag(ConnectionsTags.ACTIVITY),
     )
 }
 

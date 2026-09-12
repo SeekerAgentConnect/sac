@@ -14,13 +14,16 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { connectNodeAdapter } from "@connectrpc/connect-node";
 
-import type { SidecarConfig } from "./config.ts";
+import { DEFAULT_SOLANA_RPC_TIMEOUT_MS, type SidecarConfig } from "./config.ts";
 import { LiveCommandService } from "./gen/seekervault/live/v1/live_pb.js";
 import { LiveCommandBridge } from "./live/bridge.ts";
 import { createMcpEndpoint } from "./mcp-endpoint.ts";
 import { pairingRoutes } from "./pairing/service.ts";
 import { phoneRoutes } from "./phone-api.ts";
+import { ConfirmationTracker } from "./requests/confirmation.ts";
 import { requestRoutes } from "./requests/phone-service.ts";
+import { TransactionPreparer } from "./requests/preparation.ts";
+import { SolanaRpc } from "./solana/rpc.ts";
 import {
   openDatabase,
   schemaVersion,
@@ -98,6 +101,28 @@ async function serve(
       : "the demo tool vault_request_ack is off; MCP_DEMO_TOOLS=true serves it",
   );
 
+  // Without an endpoint there is no vault_transfer and no preparation: the sidecar offers what it
+  // can actually do. The URL may carry an API key, so only its presence is logged.
+  const timeoutMs = config.solanaRpcTimeoutMs ?? DEFAULT_SOLANA_RPC_TIMEOUT_MS;
+  const endpoint = config.solanaRpcUrl;
+  const chain =
+    endpoint === undefined ? undefined : new SolanaRpc(endpoint, { timeoutMs });
+  const preparer =
+    chain === undefined
+      ? undefined
+      : new TransactionPreparer(requests, chain, now);
+  // The same endpoint says what became of a sent transaction (SAW-022). Nothing checks on its
+  // own: a check runs when the agent reads the request or the owner asks the phone.
+  const tracker =
+    chain === undefined || endpoint === undefined
+      ? undefined
+      : new ConfirmationTracker(requests, chain, endpoint, { now });
+  log(
+    preparer === undefined
+      ? "no Solana RPC endpoint is configured (SOLANA_RPC_URL), so transfers aren't served and nothing can be confirmed on chain"
+      : `transfers are served against the configured Solana RPC endpoint (timeout ${timeoutMs} ms); a sent transaction is confirmed against ${tracker?.endpoint ?? ""}`,
+  );
+
   const bridge = new LiveCommandBridge({
     timeoutSeconds: config.liveCommandTimeoutSeconds,
     log,
@@ -105,12 +130,14 @@ async function serve(
   const mcp = createMcpEndpoint(bridge, requests, config.mcpToken, log, {
     allowedHosts: config.mcpAllowedHosts,
     demoTools: config.demoTools,
+    preparer,
+    tracker,
   });
   const phoneApi = connectNodeAdapter({
     routes: (router) => {
       // The Stage 1 diagnostic keeps its development token; the durable API needs a paired phone.
       phoneRoutes(bridge, config.phoneToken, log)(router);
-      requestRoutes(requests, pairing, log)(router);
+      requestRoutes(requests, pairing, log, preparer, tracker)(router);
       pairingRoutes(pairing, log)(router);
     },
     readMaxBytes: PHONE_API_MAX_MESSAGE_BYTES,

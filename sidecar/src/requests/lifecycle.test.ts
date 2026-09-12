@@ -20,6 +20,7 @@ import {
   type SubmitResultRequest,
 } from "../gen/seekervault/request/v1/service_pb.js";
 import {
+  APPROVAL_MARGIN_MS,
   TRANSITIONS,
   canTransition,
   decideResult,
@@ -27,6 +28,7 @@ import {
   isTerminal,
   resultTarget,
   successState,
+  unpreparableReason,
   type ActionKind,
   type ResultCase,
 } from "./lifecycle.ts";
@@ -656,6 +658,82 @@ describe("decideResult", () => {
         },
       );
     }
+  });
+});
+
+describe("an approval near the blockhash's expiry", () => {
+  const prepared = (estimatedExpiryMs: number) =>
+    create(PreparedTransactionSchema, {
+      ref: REF,
+      version: 2,
+      transaction: Uint8Array.of(1, 2, 3),
+      contentHash: HASH_V2,
+      estimatedExpiry: timestampFromMs(estimatedExpiryMs),
+    });
+  const approve = (estimatedExpiryMs: number, nowMs: number) =>
+    decideResult(
+      request("transfer"),
+      submission({
+        case: "approval",
+        value: { preparedVersion: 2, contentHash: HASH_V2 },
+      }),
+      prepared(estimatedExpiryMs),
+      nowMs,
+    );
+
+  it("is accepted while at least the margin is left", () => {
+    assert.deepEqual(approve(NOON + APPROVAL_MARGIN_MS, NOON), {
+      ok: true,
+      to: RequestState.PROCESSING,
+    });
+  });
+
+  it("is refused once less than the margin is left", () => {
+    for (const left of [APPROVAL_MARGIN_MS - 1, 0, -60_000]) {
+      const decision = approve(NOON + left, NOON);
+      assert.equal(decision.ok, false);
+      assert.equal(
+        decision.ok ? undefined : decision.error,
+        RequestError.STALE_PREPARATION,
+        `${left} ms left`,
+      );
+    }
+  });
+});
+
+describe("unpreparableReason", () => {
+  it("lets a PENDING transfer or swap be prepared", () => {
+    assert.equal(unpreparableReason(request("transfer")), undefined);
+    assert.equal(unpreparableReason(request("swap")), undefined);
+  });
+
+  it("refuses a request the owner has already answered", () => {
+    for (const state of [
+      RequestState.PROCESSING,
+      RequestState.SUBMITTED,
+      RequestState.CONFIRMED,
+      RequestState.REJECTED,
+      RequestState.CANCELLED,
+      RequestState.EXPIRED,
+      RequestState.FAILED,
+      RequestState.UNKNOWN,
+    ]) {
+      assert.deepEqual(unpreparableReason(request("transfer", state)), {
+        error: RequestError.INVALID_STATE,
+        message: `only a PENDING request can be prepared; this one is ${RequestState[state]}`,
+      });
+    }
+  });
+
+  it("refuses an action with no transaction to build", () => {
+    assert.deepEqual(unpreparableReason(request("ack")), {
+      error: RequestError.INVALID_PARAMETERS,
+      message: "ack requests have nothing to prepare",
+    });
+    assert.deepEqual(unpreparableReason(request("signMessage")), {
+      error: RequestError.INVALID_PARAMETERS,
+      message: "sign_message requests have nothing to prepare",
+    });
   });
 });
 

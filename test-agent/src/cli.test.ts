@@ -17,6 +17,12 @@ import {
   pairPhone,
   requestClient,
 } from "../../sidecar/src/testing/clients.ts";
+import {
+  FakeChain,
+  startFakeRpc,
+  walletAccount,
+  type FakeRpc,
+} from "../../sidecar/src/testing/chain.ts";
 import { temporaryDatabasePath } from "../../sidecar/src/testing/process.ts";
 import { testWallet } from "../../sidecar/src/testing/wallet.ts";
 import { Network } from "../../sidecar/src/gen/seekervault/request/v1/request_pb.js";
@@ -202,6 +208,14 @@ describe("pnpm agent ack, get, and cancel", () => {
       { status: "COMPLETED", terminal: true },
     );
 
+    // `status` reports the same outcome with an exit code a script can branch on.
+    const done = await agent(["status", view.request_id], envFor(queue));
+    assert.equal(done.code, 0, done.stderr);
+    assert.equal(
+      (JSON.parse(done.stdout) as { status: string }).status,
+      "COMPLETED",
+    );
+
     const other = JSON.parse(
       (await agent(["ack", "Never mind", "--expires", "3600"], envFor(queue)))
         .stdout,
@@ -210,6 +224,13 @@ describe("pnpm agent ack, get, and cancel", () => {
     assert.equal(cancelled.code, 0, cancelled.stderr);
     assert.equal(
       (JSON.parse(cancelled.stdout) as { status: string }).status,
+      "CANCELLED",
+    );
+    // A withdrawn request ended, and it didn't end the way it was asked for.
+    const gone = await agent(["status", other.request_id], envFor(queue));
+    assert.equal(gone.code, 11);
+    assert.equal(
+      (JSON.parse(gone.stdout) as { status: string }).status,
       "CANCELLED",
     );
   });
@@ -314,12 +335,28 @@ describe("pnpm agent ack, get, and cancel", () => {
     );
     // The agent verified it itself, with its own verifier.
     assert.equal(view.signature_verified, true);
+
+    // The same request through `status`: a message signature is a signature and nothing more.
+    // It names no cluster, it is not a transaction, and it gets no explorer link.
+    const status = await agent(
+      ["status", String(created.request_id)],
+      envFor(queue),
+    );
+    assert.equal(status.code, 0, status.stderr);
+    const settled = JSON.parse(status.stdout) as Record<string, unknown>;
+    assert.equal(settled.status, "COMPLETED");
+    assert.equal(settled.signature, view.signature);
+    assert.equal(settled.signature_is_transaction, false);
+    assert.equal(settled.explorer_url, undefined);
+    assert.equal(settled.network, undefined);
   });
 
   it("exits 2 for missing or extra arguments", async () => {
     for (const args of [
       ["ack"],
       ["get"],
+      ["status"],
+      ["status", "a", "b"],
       ["address", "extra"],
       ["sign"],
       ["capabilities", "extra"],
@@ -519,5 +556,168 @@ describe("pnpm agent", () => {
         assert.ok(!output.includes(secret), output);
       }
     }
+  });
+});
+
+// `pnpm agent transfer`, against a sidecar with a chain endpoint. The chain is a local fake, so
+// nothing reaches a real cluster; the CLI still only queues a request, and signs and sends nothing.
+describe("pnpm agent transfer", () => {
+  let queue: Sidecar;
+  let databasePath: string;
+  let chain: FakeChain;
+  let endpoint: FakeRpc;
+  let wallet: string;
+
+  /** A complete transfer command line: every part of a payment named, none of it guessed. */
+  const spend = (amount: string): string[] => [
+    "transfer",
+    WALLET,
+    amount,
+    "--wallet",
+    wallet,
+    "--network",
+    "devnet",
+  ];
+
+  before(async () => {
+    chain = new FakeChain();
+    endpoint = await startFakeRpc(chain);
+    databasePath = temporaryDatabasePath();
+    queue = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        mcpToken: MCP_TOKEN,
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 30,
+        databasePath,
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
+        solanaRpcUrl: endpoint.url,
+      },
+      { log: () => undefined },
+    );
+    const phone = await pairPhone(queue.url, databasePath);
+    wallet = testWallet().address;
+    await requestClient(queue.url, phone.phoneToken).publishWallet({
+      connectionId: phone.connectionId,
+      binding: { wallet, network: Network.DEVNET },
+    });
+    chain.put(WALLET, walletAccount());
+  });
+
+  after(async () => {
+    await queue.close();
+    await endpoint.close();
+  });
+
+  it("lists transfer among the sidecar's operations", async () => {
+    const { code, stdout } = await agent(["capabilities"], envFor(queue));
+    assert.equal(code, 0);
+    const view = JSON.parse(stdout) as { operations: string[] };
+    assert.deepEqual(view.operations, ["sign_message", "transfer"]);
+  });
+
+  it("queues a SOL transfer as PENDING, without signing or sending anything", async () => {
+    const { code, stdout, stderr } = await agent(
+      [...spend("2500000"), "--key", "cli-transfer-1"],
+      envFor(queue),
+    );
+    assert.equal(code, 0, stderr);
+    const view = JSON.parse(stdout) as Record<string, unknown>;
+    assert.equal(view.action, "transfer");
+    assert.equal(view.status, "PENDING");
+    assert.equal(view.terminal, false);
+    assert.equal(view.wallet, wallet);
+    assert.equal(view.network, "devnet");
+    assert.equal(view.signature, undefined);
+    assert.match(stderr, /nothing is signed or sent until they approve/);
+
+    // The same key returns the same request rather than queueing a second payment.
+    const again = await agent(
+      [...spend("2500000"), "--key", "cli-transfer-1"],
+      envFor(queue),
+    );
+    assert.equal(again.code, 0);
+    assert.equal(
+      (JSON.parse(again.stdout) as Record<string, unknown>).request_id,
+      view.request_id,
+    );
+
+    // Nothing is settled, so `status` says so and exits 10 rather than 0. There is no signature
+    // and no explorer link: the owner hasn't even seen the request yet.
+    const status = await agent(
+      ["status", String(view.request_id)],
+      envFor(queue),
+    );
+    assert.equal(status.code, 10);
+    const waiting = JSON.parse(status.stdout) as Record<string, unknown>;
+    assert.equal(waiting.status, "PENDING");
+    assert.equal(waiting.network, "devnet");
+    assert.equal(waiting.signature, undefined);
+    assert.equal(waiting.explorer_url, undefined);
+  });
+
+  it("exits 9 when the sidecar refuses the transfer", async () => {
+    const { code, stdout, stderr } = await agent(
+      [
+        "transfer",
+        "not-an-address",
+        "2500000",
+        "--wallet",
+        wallet,
+        "--network",
+        "devnet",
+        "--key",
+        "cli-transfer-bad-recipient",
+      ],
+      envFor(queue),
+    );
+    assert.equal(code, 9);
+    assert.equal(stdout, "");
+    assert.match(stderr, /^INVALID_PARAMETERS: /m);
+  });
+
+  it("refuses to pay without being told which wallet and which cluster", async () => {
+    // A payment that picks its own wallet or its own cluster is a payment nobody asked for.
+    // Neither is filled in from vault_get_address, however convenient that would be.
+    for (const args of [
+      ["transfer", WALLET, "2500000"],
+      ["transfer", WALLET, "2500000", "--wallet", WALLET],
+      ["transfer", WALLET, "2500000", "--network", "devnet"],
+    ]) {
+      const { code, stdout, stderr } = await agent(args, envFor(queue));
+      assert.equal(code, 2, args.join(" "));
+      assert.equal(stdout, "");
+      assert.match(stderr, /--wallet and --network/);
+    }
+  });
+
+  it("refuses a cluster it doesn't know and an amount that isn't base units", async () => {
+    const cluster = await agent(
+      ["transfer", WALLET, "2500000", "--wallet", wallet, "--network", "beta"],
+      envFor(queue),
+    );
+    assert.equal(cluster.code, 2);
+    assert.match(cluster.stderr, /--network must be one of/);
+    // A decimal is the mistake that sends a billionth of what was meant, or a billion times it.
+    for (const amount of ["1.5", "0", "-1", "2_500_000", "1e6"]) {
+      const { code, stdout, stderr } = await agent(
+        [...spend(amount)],
+        envFor(queue),
+      );
+      assert.equal(code, 2, amount);
+      assert.equal(stdout, "");
+      assert.match(stderr, /base units/);
+    }
+  });
+
+  it("exits 2 without both a recipient and an amount", async () => {
+    const { code, stderr } = await agent(
+      ["transfer", WALLET, "--wallet", WALLET, "--network", "devnet"],
+      envFor(queue),
+    );
+    assert.equal(code, 2);
+    assert.match(stderr, /Usage: pnpm agent/);
   });
 });

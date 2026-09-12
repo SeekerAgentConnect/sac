@@ -265,11 +265,13 @@ The rules behind the table:
 - **No state moves backward, and nothing leaves a terminal state.** A request never returns to PENDING. Another attempt is a new request, with a new idempotency key.
 - **Approval is the commit point.** The phone reports its approval, which moves the request to PROCESSING, before it invokes the wallet. It invokes the wallet only if the sidecar accepted that approval. The sidecar applies one change to a request at a time, so when the agent's cancellation and the user's approval race, exactly one wins: a cancelled request refuses the approval, and a PROCESSING request can't be cancelled.
 - **Success depends on the kind.** An `ack` or a message succeeds as COMPLETED, because nothing goes on chain. A transfer or swap succeeds only as CONFIRMED: the wallet's submission is SUBMITTED, not success.
-- **UNKNOWN isn't terminal.** It means the wallet may have signed or sent, and the sidecar keeps resolving it. SUBMITTED never becomes UNKNOWN, because by then the sidecar knows the signature and can always check the chain.
+- **UNKNOWN isn't terminal.** It means the wallet may have signed or sent, and the sidecar keeps resolving it. SUBMITTED never becomes UNKNOWN either: both already mean "not settled", and the lifecycle never goes back. When a check can't account for a SUBMITTED transaction — the signature names a transaction nobody approved — the request stays SUBMITTED and its `Outcome.confirmation` says exactly that, rather than moving sideways into another unsettled state. See [confirmation](#confirmation).
 - **Expiry comes first.** At or after `expires_at`, the sidecar moves a PENDING request to EXPIRED before it applies any other operation, so a late approval gets `INVALID_STATE` with the request as EXPIRED. The boundary is Stage 1's: a request is PENDING strictly before `expires_at`.
 - **The sidecar never re-executes on its own.** After a restart it neither rebuilds nor resubmits anything (SAW-010).
 
 The table is `TRANSITIONS` in `lifecycle.ts`, and its tests spell out each kind's table independently.
+
+Not every sidecar-driven transition in it has an implementation yet. SAW-022 implements the three a signature can settle — `SUBMITTED → CONFIRMED`, `SUBMITTED → FAILED`, and expiry — and no more. The rest need the sidecar to find a transaction it was never told the signature of, which would mean searching the wallet's own history; nothing does that today, and nothing pretends to. They stay in the table as what a later stage may implement, not as something the sidecar already does.
 
 ### Two expiries
 
@@ -287,9 +289,30 @@ The table is `TRANSITIONS` in `lifecycle.ts`, and its tests spell out each kind'
 
 - **`PrepareRequest` builds a fresh unsigned transaction** for a PENDING transfer or swap. The transaction is built at review time rather than at creation, because its blockhash expires. Each call returns a new version, numbered from 1.
 - **The phone parses the transaction itself** and checks it against the request, rather than trusting the sidecar's description. Stage 4 adds the parsing, and Stage 5 the policy check.
-- **An approval names exactly what the wallet will sign:** the version, and the SHA-256 `content_hash` of the transaction's bytes. The sidecar accepts it only for the latest version, with the matching hash, before that version's blockhash expires. Otherwise it answers `STALE_PREPARATION`, and the phone prepares again and shows the user the new version.
+- **An approval names exactly what the wallet will sign:** the version, and the SHA-256 `content_hash` of the transaction's bytes. The sidecar accepts it only for the latest version, with the matching hash, and only while at least 15 seconds of that version's blockhash window are left. Otherwise it answers `STALE_PREPARATION`, and the phone prepares again and shows the user the new version.
+- **The phone applies the same 15 seconds again, at the wallet.** Acceptance and the wallet call are not the same moment: the phone serializes wallet interactions, and the owner may be in the wallet app with something else in between. So it checks the window once more with the wallet lock held, immediately before it calls `signAndSendTransactions`, and asks the wallet nothing if the window has closed ([`docs/security.md`](security.md#approving-a-transfer-saw-021)).
 - **A message approval** has `prepared_version` 0 and the SHA-256 of the message's exact bytes.
 - **An `ack` or `sign_message` request has nothing to prepare,** and `PrepareRequest` answers it with `INVALID_PARAMETERS`.
+- **A request the owner has already answered gets no new version.** Preparing anything but a PENDING request answers `INVALID_STATE`, so no second approval can be collected.
+
+#### Transfers (SAW-019)
+
+The sidecar builds a transfer itself, from the chain and the stored action. Nothing about it comes from the agent beyond the action's own fields, and no instruction the agent wrote is ever included: the shape of the transaction is fixed here.
+
+| | Native SOL | Classic SPL token |
+| --- | --- | --- |
+| **Instructions** | System `Transfer` | Associated Token Account `CreateIdempotent`, always, then SPL Token `TransferChecked` |
+| **Amount** | Lamports | The mint's base units, with the decimals the sidecar read from the mint |
+| **Accounts** | The wallet, and the recipient | The wallet's and the recipient's associated token accounts, the mint, and the wallet as the authority |
+| **Refused** | A recipient that is a token account or an executable program | A Token-2022 mint, an NFT (no decimals and a supply of one), a mint that isn't initialized, a missing or frozen token account, a balance smaller than the amount, or a recipient given as a token account rather than its owner |
+
+- **The transaction is version 0 (`VersionedTransaction`), with no address lookup tables,** so every account it touches is written in it. The wallet is the fee payer and the only required signer, and every signature slot is empty: the sidecar holds no key and never fills one.
+- **Decimals, token accounts, and the blockhash come from the chain,** never from a ticker, a name, or the agent. The associated token account is derived from the owner and the mint.
+- **`CreateIdempotent` is in every token transfer, whether or not the account exists.** It costs nothing when it does, and it is what makes the destination's current owner a fact the chain checks: the associated-account program re-derives the address, reads the account, and fails the whole transaction unless its owner and mint are the recipient's. The phone reaches no chain, and a classic SPL token account's authority can be handed to somebody else after its address was derived, so without this instruction an address is only an address ([`docs/security.md`](security.md#inspecting-a-transfer)).
+- **`fee_lamports`** is the endpoint's estimate for this exact message, or the base fee per signature when it won't price one. **`rent_lamports`** is what the recipient's new token account costs, and 0 when none is created; the owner is shown both apart from the amount.
+- **The network is checked before anything is built.** The sidecar compares the endpoint's genesis hash with the request's network, so a mainnet request is never prepared against devnet, or the other way round.
+- **The endpoint is configured as `SOLANA_RPC_URL`.** Without one, the sidecar serves no `vault_transfer`, leaves `transfer` out of `vault_get_capabilities`, and answers `PrepareRequest` for a transfer with `CHAIN_UNAVAILABLE`. The URL may carry an API key, so it never reaches a log or an error message.
+- **A failed preparation changes nothing.** The request stays PENDING and can be prepared again; only a transient failure (`CHAIN_UNAVAILABLE`) is worth retrying as it is.
 
 ### Phone API
 
@@ -301,6 +324,7 @@ The table is `TRANSITIONS` in `lifecycle.ts`, and its tests spell out each kind'
 | `RequestService` | `GetRequest` | Phone credential | One request, in any state |
 | `RequestService` | `PrepareRequest` | Phone credential | A new version of a PENDING transfer's or swap's transaction |
 | `RequestService` | `SubmitResult` | Phone credential | A decision or a wallet result. It returns the request as it is afterwards. |
+| `RequestService` | `CheckStatus` | Phone credential | What became of a sent transaction, read from the chain. It reaches no wallet, and returns the request as it is afterwards (SAW-022). |
 | `RequestService` | `PublishWallet` | Phone credential | The wallet the owner selected, or none. It returns the stored binding and the requests it cancelled (SAW-015). |
 
 Every RPC is unary. The phone fetches when the app opens or comes back to the foreground, when the user selects a connection, or when the user refreshes. Nothing is pushed, and the Stage 1 stream isn't needed. Credentials travel only in `Authorization: Bearer <token>`. [Pairing](#pairing) and [roles](#roles) define them, and [`docs/security.md`](security.md#transport-security) covers TLS.
@@ -324,6 +348,41 @@ A `SubmitResult` carries one result:
 
 `decideResult` implements this table and the approval binding. SAW-010 adds storage, duplicate detection, and transactions around it.
 
+### Confirmation
+
+A transfer succeeds only as CONFIRMED. The wallet's `transaction_submission` says it sent something and names the signature; what became of that signature is a separate question, and SAW-022 is what answers it.
+
+**Nothing runs on its own.** The sidecar has no background worker (AGENTS.md), so its knowledge advances when somebody asks. Two people ask, and both run the same check:
+
+- the **agent**, every time it reads a SUBMITTED transfer with `vault_get_request`. At most one chain check per request every two seconds, so a tight polling loop gets the stored answer in between.
+- the **owner**, through `RequestService.CheckStatus` from the phone. That one always checks: they asked.
+
+**What one check does.** It reads `getGenesisHash` and compares it with the network the request is bound to. Only then does it read `getSignatureStatuses` for the reported signature, and, when there is a confirmed or finalized status, `getTransaction` for the transaction itself.
+
+| What the endpoint says | Where the request goes |
+| --- | --- |
+| Confirmed or finalized, no chain error, and the transaction under it is the approved one | CONFIRMED |
+| The same, with a chain error | FAILED, with the chain's own error kept |
+| `processed` only | Unchanged: a processed transaction can still be dropped |
+| No status, and the approved version's `last_valid_block_height` hasn't passed | Unchanged |
+| No status, the window has passed, and a search of the ledger itself still finds nothing | FAILED: it can no longer land, and nothing was spent |
+| The transaction under that signature isn't the approved one | Unchanged, and `matches_approval` is false |
+| The endpoint timed out, refused, or answered nonsense | Unchanged, and the attempt is recorded |
+| The endpoint serves another cluster, or one the sidecar doesn't know | Unchanged, and the confirmation says which cluster it was pointed at |
+
+The rules behind it:
+
+- **A confirmed result is checked against the approved bytes.** The sidecar fetches the transaction the chain holds under that signature and compares it with the exact `PreparedTransaction` the approval named, over the message — everything the signatures cover. A wallet's signature fills the slots the approved bytes leave empty, so that part differs and nothing else may. A transaction it can't take apart is not a match.
+- **The endpoint has to be serving the request's own cluster.** The database outlives the process and `SOLANA_RPC_URL` does not, so a restart can point stored requests at another chain. There, the signature is absent and the block height is somebody else's — which together read exactly like "the transaction expired, and nothing was spent". That is a terminal answer about money that may well have moved, so the genesis hash is compared first, the same way a preparation compares it, and a mismatch settles nothing at all: no status, no transaction, and above all no block height is read.
+- **A missing status is never proof.** A signature drops out of a node's status cache after a while, and an endpoint that didn't answer has said nothing at all. Only the approved transaction's own blockhash window closing, together with a search of the ledger that still finds nothing, means it can never land ([R9](https://solana.com/developers/cookbook/transactions/confirmation)).
+- **A check settles a request or leaves it exactly as it was.** It never moves one backward, never returns one to PENDING, and never opens a wallet. A finished request is left alone, whatever the chain says later.
+- **The result rests on one endpoint.** `Outcome.confirmation.endpoint` is the host of the configured `SOLANA_RPC_URL` — the host and nothing else, because the URL can carry an API key. There is no second opinion behind a CONFIRMED or a FAILED transfer, and the agent (`checked_with`) and the owner are both told whose word it is.
+- **Nothing replaces a transaction.** A failure on chain, an expired blockhash, and an unaccountable signature are all reported as what they are. The sidecar builds no replacement, and the phone sends nothing to a wallet a second time. Another attempt is a new request, from the agent, approved by the owner.
+- **An UNKNOWN transfer has nothing to look up.** The phone lost the wallet before it reported anything, so no signature exists to ask about. A check says so and changes nothing; it stays UNKNOWN ([`docs/guides/troubleshooting.md`](guides/troubleshooting.md#a-transfer-whose-outcome-is-unknown)).
+- **Without an endpoint, nothing is checked.** A sidecar with no `SOLANA_RPC_URL` serves no transfer to begin with; one that had a request from before answers `CHAIN_UNAVAILABLE` to `CheckStatus`, and the request stays SUBMITTED.
+
+`Outcome.confirmation` carries `level`, `slot`, `chain_error`, `checked_at`, `checks`, `endpoint`, `matches_approval`, and `detail`. It is stored with the request, so a signature and every unsettled attempt survive a restart of the sidecar and of the phone. `requests/confirmation.ts` decides, `storage/request-store.ts` commits, and `solana/confirmation.ts` compares the bytes.
+
 ### Message results
 
 A `sign_message` request is the one wallet action with no transaction: it produces a signature, and nothing reaches the network (SAW-016).
@@ -341,8 +400,8 @@ A `sign_message` request is the one wallet action with no transaction: it produc
 | Tool | Stage | Input | Result |
 | --- | --- | --- | --- |
 | `vault_request_ack` | SAW-010; development and demo only, served with `MCP_DEMO_TOOLS=true` (SAW-014) | `text`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
-| `vault_sign_message` | SAW-016 | `wallet`, `message` (text) or `message_base64` (bytes), `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
-| `vault_transfer` | 4 | `wallet`, `network`, `recipient`, `asset`, `amount`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
+| `vault_sign_message` | SAW-016 | `wallet`, `message` (text), `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
+| `vault_transfer` | SAW-019; served only with `SOLANA_RPC_URL` set | `wallet`, `network`, `recipient`, `amount`, `token_mint?`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_swap` | 6 | `wallet`, `network`, `input_asset`, `output_asset`, `input_amount`, `slippage_bps`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_get_address` | SAW-015 | Nothing | The owner's wallet: `wallet`, `network`, `bound_at` |
 | `vault_get_capabilities` | SAW-016 | Nothing | What this sidecar serves: `approval`, `signing`, `operations`, `wallet_connected`, and the limits |
@@ -351,18 +410,19 @@ A `sign_message` request is the one wallet action with no transaction: it produc
 
 - **A creation tool answers at once,** with the request ID and PENDING. Unlike `vault_display_command`, it never waits for the user. A stored request isn't an approved one.
 - **`vault_request_ack` is served only with `MCP_DEMO_TOOLS=true`.** Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The other tools are always served.
-- **`vault_sign_message` takes the message one way or the other,** as `message` (text, whose UTF-8 encoding is signed) or `message_base64` (bytes, signed as they are), never both and never neither. 1 to 4096 bytes. It creates the request and nothing more: no wallet is contacted until the owner approves it on their phone, and the result carries `signed_message_base64` ([message results](#message-results)).
+- **`vault_sign_message` takes the message as text,** whose UTF-8 encoding is what the wallet signs, exactly as given: 1 to 4096 bytes, never empty. There is no way to ask for bytes that aren't text, because the owner reviews every byte they sign (SAW-016). It creates the request and nothing more: no wallet is contacted until the owner approves it on their phone, and the result carries `signed_message_base64` ([message results](#message-results)).
 - **`vault_get_capabilities` is read-only, always served, and never fails.** It says `approval: "manual"` — the owner decides every request, and no agent can ask for anything else — and `signing: "wallet"`, since the owner's own wallet signs and the sidecar holds no key. `operations` lists only what this sidecar serves now, so an agent treats anything missing from it as unavailable rather than trying it.
 - **`vault_get_address` is read-only and always served.** It fails with `NOT_PAIRED` when no phone is paired, and `WALLET_NOT_CONNECTED` when the owner has connected no wallet. There is no fallback address: the sidecar never makes one. The owner can change or disconnect the wallet at any time, so agents read it again rather than caching it. Its result is `{"wallet": "...", "network": "devnet", "bound_at": "2026-09-12T09:30:00.000Z"}`.
+- **`vault_transfer` creates the request and nothing else.** No transaction is built, signed, or sent when it is called; the sidecar only reads the mint, so an agent hears at once about a token it can't send. The owner sees the request when they next open the app, and the transaction is built then ([transfers](#transfers-saw-019)). It is served only when the sidecar has a chain endpoint; without one it is absent from `tools/list` and from `operations`.
 - **`network`** is `"mainnet"`, `"devnet"`, or `"testnet"`.
-- **`asset`, `input_asset`, and `output_asset`** are `"SOL"` or a token's mint address.
-- **Amounts are strings.**
+- **`token_mint`** names a classic SPL token; leaving it out sends native SOL. `asset`, `input_asset`, and `output_asset` in `proto/` hold the same choice.
+- **Amounts are strings, always in base units:** lamports for SOL, and the mint's base units for a token. Never a human-readable decimal.
 - **`expires_in_seconds` is optional, from 60 to 604800.** Without it, the sidecar's `REQUEST_TTL_SECONDS` applies, which is a day unless configured.
 - **Sizes are bounded:**
   - An ack's text follows the Stage 1 text rules, and a note is at most 1024 UTF-8 bytes.
   - A whole `/mcp` body is at most 64 KiB; a larger one gets 413.
   - Each phone API message is at most 64 KiB; a larger one gets `resource_exhausted`.
-- **An agent polls `vault_get_request` until `terminal` is true.** An UNKNOWN request isn't finished, and the agent must not create a replacement for it.
+- **An agent polls `vault_get_request` until `terminal` is true.** An UNKNOWN request isn't finished, and the agent must not create a replacement for it. Neither is a SUBMITTED one: polling is also what makes the sidecar look, so a transfer reaches CONFIRMED or FAILED because somebody asked ([confirmation](#confirmation)).
 
 Every tool returns the same view in `structuredContent`:
 
@@ -380,9 +440,11 @@ Every tool returns the same view in `structuredContent`:
 ```
 
 - **`wallet`** is the address a wallet action is bound to.
-- **`signature`** (base58) appears once there is one.
+- **`network`** is the cluster an action names — `"mainnet"`, `"devnet"`, or `"testnet"` — and is absent for one that names none. A signature belongs to one cluster and to no other, so an agent reads it before writing an explorer link (SAW-023). A `sign_message` request has no network at all: nothing about it reaches a cluster.
+- **`signature`** (base58) appears once there is one. It is a transaction's ID on chain for a transfer or a swap, and a signature over bytes for a message — which is not a transaction, is on no cluster, and is on no explorer.
 - **`signed_message_base64`** carries a signed message's exact bytes, so the agent verifies the signature against them.
 - **`detail`** is display text that explains a REJECTED, CANCELLED, EXPIRED, FAILED, or UNKNOWN request.
+- **`confirmation`**, **`slot`**, **`chain_error`**, **`checked_at`**, and **`checked_with`** say what the chain was asked about a sent transaction, and when ([confirmation](#confirmation)). `checked_with` is the host of the one endpoint whose word a CONFIRMED or FAILED transfer rests on.
 - **Timestamps** are RFC 3339 in UTC, with milliseconds.
 - **Errors keep the Stage 1 format:** `isError: true`, text `"<CODE>: <message>"`, and no `structuredContent`.
 
@@ -406,7 +468,8 @@ IDEMPOTENCY_CONFLICT: idempotency_key "deploy-2026-09-11" was already used for r
 | `WALLET_NOT_CONNECTED` | The owner has no wallet connected on their phone (SAW-015) | Tool error | Not used |
 | `PENDING_LIMIT` | The connection already has the most PENDING requests allowed (SAW-010) | Tool error | Not used |
 | `INVALID_STATE` | The state doesn't allow the operation: for example, cancelling a PROCESSING request, or approving a CANCELLED one | Tool error | `failed_precondition` |
-| `STALE_PREPARATION` | The approval isn't for the latest version, its hash differs, or the version's blockhash has expired | Not used | `failed_precondition` |
+| `STALE_PREPARATION` | The approval isn't for the latest version, its hash differs, or the version's blockhash has expired or is about to | Not used | `failed_precondition` |
+| `CHAIN_UNAVAILABLE` | No chain endpoint is configured, or the one configured didn't answer. Nothing was created and nothing was prepared (SAW-019) | Tool error | `unavailable` |
 | `UNAUTHENTICATED` | The token is missing, wrong, revoked, or for the other role; or the pairing token is unknown, expired, or used | HTTP 401 | `unauthenticated` |
 
 Every Connect error from `PairingService` and `RequestService` carries a `RequestErrorDetail`, which connect-es reads with `findDetails` and connect-kotlin with `unpackedDetails`. It holds the error and, for `INVALID_STATE` and `STALE_PREPARATION`, the request as it is now. The phone can then show what happened, rather than guess from the Connect code.

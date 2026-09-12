@@ -4,8 +4,13 @@ packages:
 
 # The postinstall only locates the platform binary that pnpm already installs as an
 # optional dependency; bin/buf finds it without running the script.
+# bufferutil and utf-8-validate are ws's optional native accelerators, pulled in by
+# @solana/web3.js. The sidecar opens no websocket, and ws works without them, so their
+# native builds stay off.
 allowBuilds:
   "@bufbuild/buf": false
+  bufferutil: false
+  utf-8-validate: false
 
 catalog:
   # The protoc-gen-es generator and the @bufbuild/protobuf runtime move in lockstep.

@@ -631,29 +631,45 @@ describe("durable requests over MCP and Connect", () => {
     }
   });
 
-  it("takes a message as text or as bytes, and refuses anything else", async () => {
+  it("signs the owner's text and offers no way to queue raw bytes", async () => {
     const signer = testWallet();
     await phone().publishWallet({
       connectionId: paired.connectionId,
       binding: { wallet: signer.address, network: Network.DEVNET },
     });
     try {
-      const data = Buffer.from([0, 1, 2, 250, 255]);
-      const created = viewOf(
-        await callTool(agent, SIGN_MESSAGE_TOOL, {
-          wallet: signer.address,
-          message_base64: data.toString("base64"),
-          idempotency_key: `sign-${++keys}`,
-        }),
+      // The tool takes the message as text and nothing else (SEE-24): the owner reviews exactly
+      // what their wallet signs, so there is no public way to ask for bytes that aren't text.
+      const { tools } = await agent.listTools();
+      const schema = tools.find((tool) => tool.name === SIGN_MESSAGE_TOOL)
+        ?.inputSchema as {
+        properties?: Record<string, unknown>;
+        required?: string[];
+      };
+      assert.deepEqual(Object.keys(schema.properties ?? {}).sort(), [
+        "expires_in_seconds",
+        "idempotency_key",
+        "message",
+        "note",
+        "wallet",
+      ]);
+      assert.ok(schema.required?.includes("message"));
+
+      // An agent that sends bytes instead of text is refused before anything is stored: the
+      // field doesn't exist, and message is required.
+      const bytes = await callTool(agent, SIGN_MESSAGE_TOOL, {
+        wallet: signer.address,
+        message_base64: Buffer.from([0, 1, 2, 250, 255]).toString("base64"),
+        idempotency_key: `sign-${++keys}`,
+      });
+      assert.equal(bytes.isError, true);
+      const [refusal] = bytes.content;
+      assert.match(
+        refusal?.type === "text" ? refusal.text : "",
+        /expected string, received undefined at message/,
       );
-      assert.equal(created.status, "PENDING");
+
       for (const [fields, reason] of [
-        [
-          { message: "a", message_base64: "YQ==" },
-          /either message or message_base64/,
-        ],
-        [{}, /either message or message_base64/],
-        [{ message_base64: "not base64!" }, /not standard base64/],
         [{ message: "" }, /message is empty/],
         [{ message: "x".repeat(4097) }, /the limit is 4096/],
       ] as const) {

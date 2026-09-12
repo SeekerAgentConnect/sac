@@ -46,8 +46,13 @@
     <string name="signing_wallet">%1$s on %2$s</string>
     <string name="acknowledge">Acknowledge</string>
     <string name="approve">Approve and sign</string>
+    <string name="approve_and_send">Approve and send</string>
     <string name="reject">Reject</string>
     <string name="send_again">Send again</string>
+    <string name="check_status">Check status</string>
+    <string name="confirmation_checked">Checked with %1$s. %2$s</string>
+    <string name="confirmation_unchecked">The server has not looked this up on the network yet.</string>
+    <string name="confirmation_trust">A confirmed or failed result is what that one server read from the network.</string>
 
     <string name="status_waiting_for_you">Waiting for your answer.</string>
     <string name="status_sending">Sending your answer…</string>
@@ -64,13 +69,23 @@
     <string name="status_waiting_for_wallet">You approved this. Waiting for the wallet…</string>
     <string name="status_signed">Your wallet signed this. The agent can read the signature.</string>
     <string name="status_to_send_signed">Your wallet signed this. The signature is saved on this phone, and is sent when the server can be reached.</string>
+    <string name="status_sent">Your wallet sent this transaction. Its ID is %1$s. It has not been confirmed on the network yet.</string>
+    <string name="status_confirmed">This transfer went through on the network. Its transaction ID is %1$s.</string>
+    <string name="status_chain_failed">This transaction ran on the network and failed, so the transfer did not happen. %2$s Its ID is %1$s.</string>
+    <string name="status_to_send_sent">Your wallet sent this transaction. Its ID, %1$s, is saved on this phone, and is sent to the server when it can be reached.</string>
     <string name="status_declined_in_wallet">You declined in the wallet. Nothing was signed.</string>
     <string name="status_to_send_declined_in_wallet">You declined in the wallet. Nothing was signed. Your answer is saved on this phone, and is sent when the server can be reached.</string>
     <string name="status_not_signed">Nothing was signed. %1$s</string>
     <string name="status_unresolved">This phone never learned what the wallet did. %1$s No signature reached this phone, and nothing was sent to the network.</string>
+    <string name="status_unknown_transfer">This phone never learned what the wallet did. %1$s The transaction may or may not have been sent, so the server is told the outcome is unknown. Nothing is sent to the wallet again.</string>
     <string name="problem_no_wallet">No wallet is connected on this phone, so nothing can be signed. Connect one on the Wallet screen.</string>
     <string name="problem_other_wallet">This request names another wallet than the one you connected. It can only be rejected.</string>
     <string name="problem_wallet_changed">Your wallet changed while you were reviewing this. Check the request again before approving it.</string>
+    <string name="problem_not_verified">The transaction on screen is not the one this phone holds any more, or this phone could not read all of it. Nothing was approved. Read it again and review the new version.</string>
+    <string name="problem_stale_preparation">The server has a newer transaction for this request, or this one can no longer be sent. Nothing was approved, and it has been read again for you to review.</string>
+    <string name="problem_not_approved">The server could not be reached, so nothing was approved and your wallet was not opened. You can approve it again.</string>
+    <string name="problem_not_sent_yet">The server could not be reached, so your approval is still on this phone and your wallet was not opened. Nothing was signed. The approval is sent again by itself, and what became of it appears under the request.</string>
+    <string name="problem_not_checked">The status could not be checked: the server did not answer, or it could not read the network. Nothing about the transaction has changed, and nothing was sent again.</string>
     <string name="status_last_failure">Last attempt: %1$s</string>
     <string name="status_gone">This request isn\'t pending on this phone. It may have been answered, cancelled, or not fetched yet.</string>
 
@@ -78,10 +93,70 @@
     <string name="answer_rejected">Rejected</string>
     <string name="answer_approved">Approved</string>
     <string name="answer_signed">Signed</string>
+    <string name="answer_sent">Sent to the network</string>
+    <string name="answer_confirmed">Confirmed on the network</string>
+    <string name="answer_chain_failed">Failed on the network</string>
     <string name="answer_declined_in_wallet">Declined in the wallet</string>
     <string name="answer_not_signed">Not signed</string>
     <string name="answer_unresolved">Not signed: no answer from the wallet</string>
+    <string name="answer_unknown">Unknown: no answer from the wallet</string>
     <string name="summary_waiting">%1$s, waiting to be sent</string>
     <string name="summary_superseded">%1$s too late: the request had moved on</string>
     <string name="summary_undeliverable">%1$s, can\'t be sent</string>
+
+    <!-- Reviewing a transfer's own bytes (SAW-020). docs/security.md#inspecting-a-transfer -->
+    <string name="transfer_checking">Reading the transaction on this phone\u2026</string>
+    <string name="transfer_verdict_verified">Checked here: the transaction does exactly what this request says.</string>
+    <string name="transfer_verdict_unverified">This phone could not read all of this transaction, so it is not checked.</string>
+    <string name="transfer_verdict_invalid">Do not approve: the transaction does not match this request.</string>
+    <string name="transfer_derived_here">Everything above was read from the transaction itself on this phone. The server\'s description of it was not used.</string>
+    <string name="transfer_prepare_again">Read it again</string>
+    <string name="transfer_failed">The transaction could not be fetched: %1$s</string>
+    <string name="request_field_sends">Sends</string>
+    <string name="request_field_to">To</string>
+    <string name="request_field_token">Token (by its mint address)</string>
+    <string name="request_field_token_account">Into the token account</string>
+    <string name="request_field_pays_fee">Paid and signed by</string>
+    <string name="request_field_creates">Recipient\'s account</string>
+    <string name="request_field_priority">Priority fee</string>
+    <string name="request_field_instructions">Instructions read</string>
+    <string name="request_field_blockhash">Blockhash</string>
+    <string name="request_field_estimate">The server\'s cost estimate</string>
+    <string name="request_field_policy">Policy</string>
+    <string name="transfer_amount_sol">%1$s SOL (%2$s lamports)</string>
+    <string name="transfer_amount_token">%1$s (%2$s base units)</string>
+    <string name="transfer_recipient_unknown">An account this phone cannot tie to any wallet</string>
+    <string name="transfer_creates_account">Checked as theirs on chain, and created if they have none</string>
+    <string name="transfer_priority_price">%1$s micro-lamports per compute unit</string>
+    <string name="transfer_instructions_read">%1$d of %2$d</string>
+    <string name="transfer_estimate_fee">Network fee about %1$s SOL</string>
+    <string name="transfer_estimate_fee_and_rent">Network fee about %1$s SOL, and %2$s SOL for the new token account</string>
+
+    <!-- Approving a transfer through the wallet (SAW-021). docs/guides/transfers.md -->
+    <string name="transfer_policy_not_evaluated">Not evaluated. Per-connection rules are not built yet, so nothing here was measured against one. Every transfer needs your approval either way.</string>
+    <string name="transfer_not_approvable">This transfer can\'t be approved on this phone. Only a transaction this phone read whole, and found to match the request, is ever handed to your wallet. You can reject it.</string>
+    <string name="transfer_no_wallet">Connect a wallet before approving this. Nothing can be sent until you do.</string>
+
+    <!-- What the phone found wrong with a prepared transaction, or could not account for. -->
+    <string name="finding_hash_mismatch">The server\'s own checksum is not the checksum of the bytes it sent.</string>
+    <string name="finding_malformed">These bytes are not a transaction this phone can read.</string>
+    <string name="finding_unsupported_version">This is a transaction format this phone does not read.</string>
+    <string name="finding_address_table_lookup">The transaction loads accounts from a lookup table, so what it touches cannot be seen here.</string>
+    <string name="finding_already_signed">The transaction already carries a signature. A wallet must be handed an unsigned one.</string>
+    <string name="finding_fee_payer">The account paying and signing is not the wallet this request names.</string>
+    <string name="finding_extra_signer">Somebody else would have to sign as well, so your approval would carry theirs.</string>
+    <string name="finding_no_wallet">No wallet is connected on this phone, so there is nothing to check this against.</string>
+    <string name="finding_other_wallet">This request names a wallet other than the one you connected.</string>
+    <string name="finding_network_mismatch">This request is for another network than the wallet you connected.</string>
+    <string name="finding_no_transfer">The transaction does not contain the transfer this request asks for.</string>
+    <string name="finding_extra_transfer">The transaction moves funds more than once, or moves something else as well.</string>
+    <string name="finding_recipient_mismatch">The transfer goes somewhere other than the recipient this request names.</string>
+    <string name="finding_amount_mismatch">The amount in the transaction is not the amount this request names.</string>
+    <string name="finding_mint_mismatch">The token in the transaction is not the one this request names.</string>
+    <string name="finding_source_account">The tokens would come from an account that is not yours for this token.</string>
+    <string name="finding_destination_account">The tokens would go to an account that is not the recipient\'s for this token.</string>
+    <string name="finding_creation_for_someone_else">A token account would be created for somebody other than the recipient.</string>
+    <string name="finding_destination_owner_unchecked">Nothing in this transaction makes the chain check that the destination token account is still the recipient\'s, so who would receive the tokens cannot be established.</string>
+    <string name="finding_unrecognized">The transaction also runs a program this phone does not read. It is not thereby harmless.</string>
+    <string name="finding_unreadable_value">A program that can move funds is asked to do something this phone does not read. Being a program a transfer may use is no reason to accept every instruction it offers.</string>
 </resources>

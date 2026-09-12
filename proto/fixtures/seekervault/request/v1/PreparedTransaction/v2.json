@@ -8,5 +8,7 @@
   "contentHash": "Ayvh9s1mGdYwt7jUOtauxSIiheOxOS3fQY3ruYkPdoI=",
   "preparedAt": "2026-09-11T12:02:30Z",
   "lastValidBlockHeight": "412345678",
-  "estimatedExpiry": "2026-09-11T12:03:30Z"
+  "estimatedExpiry": "2026-09-11T12:03:30Z",
+  "feeLamports": "5000",
+  "rentLamports": "2039280"
 }

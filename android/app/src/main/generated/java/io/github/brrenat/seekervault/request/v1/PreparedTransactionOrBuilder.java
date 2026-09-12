@@ -93,4 +93,27 @@ public interface PreparedTransactionOrBuilder extends
    * @return The estimatedExpiry.
    */
   com.google.protobuf.Timestamp getEstimatedExpiry();
+
+  /**
+   * <pre>
+   * The sidecar's estimate of the network fee the wallet will pay, in lamports. It's an
+   * estimate: the fee is settled on chain, and a priority fee the wallet adds isn't counted.
+   * </pre>
+   *
+   * <code>uint64 fee_lamports = 8 [json_name = "feeLamports"];</code>
+   * @return The feeLamports.
+   */
+  long getFeeLamports();
+
+  /**
+   * <pre>
+   * Lamports this transaction also spends to give the recipient a token account, or 0 when it
+   * creates none. The wallet pays it on top of fee_lamports, and it stays in that account: it
+   * comes back only if the account is ever closed. The phone shows it apart from the amount.
+   * </pre>
+   *
+   * <code>uint64 rent_lamports = 9 [json_name = "rentLamports"];</code>
+   * @return The rentLamports.
+   */
+  long getRentLamports();
 }

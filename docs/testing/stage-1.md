@@ -78,6 +78,8 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), against the sidecar at `5965a
 
 **Stage 1 is accepted.** Every automated check passes, including the round trip on an emulator in CI. On 2026-09-11, the owner ran the real Hermes → Seeker → OK → Hermes round trip on their Seeker and reported it passed. That is the device acceptance check, and a simulated device or an emulator never closes it.
 
+The owner ran the numbered checks above again on **2026-09-12**, on the same Seeker, alongside the Stage 2, 3, and 4 device checks, and reported them passed. Steps 7 and 8 are VPS-only and stay NOT RUN: the owner's Hermes reaches the Mac over Tailscale, not `ssh -R`.
+
 One optional automated check is still NOT RUN: `pnpm test:hello --device` on the Seeker. To run it, attach and authorize the Seeker. The script must report "the Seeker". Gradle removes the app after the run, so reinstall it with `adb install` afterwards.
 
 ### What was tested
@@ -108,13 +110,15 @@ pnpm test:hello --device   # with one device or emulator attached
 | Case | Simulated device (`pnpm test:hello`) | Emulator (`pnpm test:hello --device` in CI) | Physical Seeker |
 | --- | --- | --- | --- |
 | Happy path: the exact text, then one OK with the same ID | PASS | PASS | PASS, in the owner's Hermes run |
-| App offline: `OFFLINE` at once, and nothing replayed later | PASS | Not covered | NOT RUN |
+| App offline: `OFFLINE` at once, and nothing replayed later | PASS | Not covered | **PASS**, 2026-09-12: check 6 above |
 | A second simultaneous command: `BUSY`, and the first one still completes | PASS | Not covered | NOT RUN |
 | Timeout: `TIMEOUT` at the deadline, and a late OK is refused | PASS | Not covered | NOT RUN |
 | Double tap: one acknowledgement | PASS | PASS: the UI test tapped OK twice, and the sidecar logged one acknowledgement | NOT RUN |
 | Sidecar restart: `CANCELLED` on SIGTERM, and exit code 3 at once on SIGKILL; nothing replayed | PASS | Not covered | NOT RUN |
 | App restart: `CANCELLED`, and the reopened app receives nothing | PASS, simulated by closing the stream | Not covered | NOT RUN |
 | Real Hermes → Seeker → OK → Hermes | Not applicable | Not applicable | PASS, run and reported by the owner on 2026-09-11 |
+
+The rows still marked NOT RUN on the physical Seeker are the ones no numbered owner check covers — BUSY, the timeout, the double tap, and the two restarts. They are covered on a simulated device, in CI, or by Robolectric, and nobody has driven them by hand on the Seeker.
 
 On the app side, `pnpm check:android` also covers these with Robolectric: the double tap, rotation during a command, backgrounding, and every connection and command message.
 

@@ -30,6 +30,9 @@ mcp_servers:
       #   Read-only, and it never fails.
       # - vault_sign_message: asks the owner's wallet to sign a message, and returns its
       #   request_id at once. Nothing is signed until the owner approves it on the phone.
+      # - vault_transfer: asks the owner's wallet to send SOL or a classic SPL token, and returns
+      #   its request_id at once. Nothing is built, signed, or sent until the owner approves it on
+      #   the phone; the sidecar serves it only when its .env has a SOLANA_RPC_URL.
       # - vault_request_ack: queues an acknowledgement and returns its request_id at once. A demo
       #   tool with no wallet involved: the sidecar serves it only with MCP_DEMO_TOOLS=true.
       # - vault_get_request: reads a request's status later, by its request_id.
@@ -40,6 +43,7 @@ mcp_servers:
           vault_get_address,
           vault_get_capabilities,
           vault_sign_message,
+          vault_transfer,
           vault_request_ack,
           vault_get_request,
           vault_cancel_request,

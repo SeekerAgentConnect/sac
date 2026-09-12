@@ -24,6 +24,7 @@ import {
   requestClient,
   type TestPhone,
 } from "../testing/clients.ts";
+import { FakeChain, startFakeRpc, type FakeRpc } from "../testing/chain.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
 import { PairingStore } from "../storage/pairing-store.ts";
 
@@ -36,6 +37,7 @@ let databasePath: string;
 let revoked: TestPhone;
 let phone: TestPhone;
 let pairingToken: string;
+let chain: FakeRpc;
 
 type Role = "agent" | "pairing" | "phone" | "live";
 type Credential = {
@@ -98,6 +100,15 @@ const RPCS: ReadonlyArray<{
       requestClient(sidecar.url, token).submitResult({
         ref: { connectionId: phone.connectionId, requestId: UNKNOWN },
         result: { case: "acknowledgement", value: {} },
+      }),
+  },
+  {
+    name: "RequestService.CheckStatus",
+    role: "phone",
+    // An unknown request: past authentication, this gets NOT_FOUND and checks nothing on chain.
+    call: (token) =>
+      requestClient(sidecar.url, token).checkStatus({
+        ref: { connectionId: phone.connectionId, requestId: UNKNOWN },
       }),
   },
   {
@@ -178,6 +189,7 @@ const MCP_METHODS: ReadonlyArray<{
     "vault_get_address",
     "vault_get_capabilities",
     "vault_sign_message",
+    "vault_transfer",
     "vault_request_ack",
     "vault_get_request",
     "vault_cancel_request",
@@ -230,6 +242,9 @@ async function outcome(call: Promise<unknown>): Promise<Code | "ok"> {
 
 before(async () => {
   databasePath = temporaryDatabasePath();
+  // A chain endpoint, so vault_transfer is served and its credential is checked too. No test here
+  // gets past authentication, so nothing is ever read from it.
+  chain = await startFakeRpc(new FakeChain());
   sidecar = await startSidecar(
     {
       host: "127.0.0.1",
@@ -242,6 +257,7 @@ before(async () => {
       pendingLimit: 100,
       // Every tool the sidecar can serve is in the matrix, the demo tool too.
       demoTools: true,
+      solanaRpcUrl: chain.url,
     },
     { log: (line) => logs.push(line) },
   );
@@ -258,6 +274,7 @@ before(async () => {
 
 after(async () => {
   await sidecar.close();
+  await chain.close();
 });
 
 describe("roles", () => {
