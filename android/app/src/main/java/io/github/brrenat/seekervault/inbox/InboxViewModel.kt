@@ -63,6 +63,13 @@ enum class SigningProblem {
      */
     NotApproved,
     /**
+     * The owner's approval of a message is stored on this phone, and the sidecar hasn't taken it
+     * yet, so no wallet was opened: it is asked only for an approval the sidecar has accepted,
+     * which is the point where the request is PROCESSING there. The approval is sent again by
+     * itself, and what became of it is shown under the request.
+     */
+    NotSentYet,
+    /**
      * The status couldn't be checked: the server didn't answer, or it couldn't read the chain. It
      * says nothing about the transaction, which stands exactly as it did (SAW-022).
      */
@@ -232,6 +239,18 @@ class InboxViewModel(
                 // Only a stored approval that is still on its way leads to the wallet: one the
                 // sidecar refused, because the request had moved on, is finished.
                 if (stored.delivery != Delivery.Waiting) return@launch
+                // And only one the sidecar has taken. That is the point where the request is
+                // PROCESSING there and this signature is the one thing it waits for
+                // (docs/testing/wallet-lifecycle.md). An approval still sitting on this phone —
+                // the server couldn't be reached, or never answered — may belong to a request that
+                // has since been cancelled or expired, and the wallet is not opened for one of
+                // those. It is sent again by itself, and an approval with no wallet answer settles
+                // as unresolved, which tells the agent the request failed rather than leaving it
+                // open for ever.
+                if (!stored.approved) {
+                    problem(key, SigningProblem.NotSentYet)
+                    return@launch
+                }
                 val bytes = message.messageBytes()
                 // A wallet that never answers leaves the request unresolved rather than open: the
                 // signature, if there ever was one, reached nothing and no one.

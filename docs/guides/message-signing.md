@@ -51,6 +51,7 @@ Then either:
 | What the app says | What it means |
 | --- | --- |
 | You approved this. Waiting for the wallet… | The approval is in, and your wallet is being asked |
+| The server could not be reached, so your approval is still on this phone… | Your wallet was not opened: it is asked only for an approval the server has taken, because a request it cancelled or let expire must not reach your wallet. Nothing was signed. The approval is sent again by itself, and the request is reported as failed if the wallet was never asked |
 | Your wallet signed this. The agent can read the signature. | Done |
 | Your wallet signed this. The signature is saved on this phone, and is sent when the server can be reached. | The server was unreachable; it's sent again on the next refresh, and nothing is lost |
 | You declined in the wallet. Nothing was signed. | You said no in the wallet itself |

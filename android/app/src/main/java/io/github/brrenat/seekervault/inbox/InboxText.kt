@@ -269,6 +269,7 @@ fun problemText(problem: SigningProblem): Int =
         SigningProblem.NotVerified -> R.string.problem_not_verified
         SigningProblem.Stale -> R.string.problem_stale_preparation
         SigningProblem.NotApproved -> R.string.problem_not_approved
+        SigningProblem.NotSentYet -> R.string.problem_not_sent_yet
         SigningProblem.NotChecked -> R.string.problem_not_checked
     }
 
