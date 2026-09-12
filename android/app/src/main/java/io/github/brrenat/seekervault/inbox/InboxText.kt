@@ -5,6 +5,7 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
+import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Answer
@@ -25,6 +26,8 @@ import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.TransferFacts
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
+import io.github.brrenat.seekervault.transactions.transfer
+import io.github.brrenat.seekervault.wallet.encodeBase58
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -62,7 +65,10 @@ object InboxTags {
     const val TRANSFER_CHECKING = "transferChecking"
     const val TRANSFER_FAILED = "transferFailed"
     const val TRANSFER_AGAIN = "transferAgain"
-    const val TRANSFER_NO_APPROVAL = "transferNoApproval"
+    /** Approving one through the wallet (SAW-021). */
+    const val TRANSFER_APPROVE = "transferApprove"
+
+    const val TRANSFER_POLICY = "transferPolicy"
 
     fun item(key: RequestKey) = "request:${key.connectionId}/${key.requestId}"
 
@@ -226,11 +232,14 @@ fun problemText(problem: SigningProblem): Int =
         SigningProblem.NoWallet -> R.string.problem_no_wallet
         SigningProblem.OtherWallet -> R.string.problem_other_wallet
         SigningProblem.Changed -> R.string.problem_wallet_changed
+        SigningProblem.NotVerified -> R.string.problem_not_verified
+        SigningProblem.Stale -> R.string.problem_stale_preparation
+        SigningProblem.NotApproved -> R.string.problem_not_approved
     }
 
 /** Whether this app can put [request] in front of the owner for an answer at all. */
 fun isAnswerable(request: ActionRequest): Boolean =
-    request.action.hasAck() || request.signMessage() != null
+    request.action.hasAck() || request.signMessage() != null || request.transfer() != null
 
 /** Whether the owner can still answer [request] on this phone. */
 fun canAnswer(request: ActionRequest, result: LocalResult?, now: Instant): Boolean =
@@ -273,6 +282,9 @@ private fun supersededText(result: LocalResult): Int =
         else -> R.string.status_superseded_other
     }
 
+/** A transaction's ID on chain, the way every explorer and wallet writes it. */
+private fun base58(signature: ByteString): String = encodeBase58(signature.toByteArray())
+
 /** Where an approved message stands: what the wallet did, and whether the server knows yet. */
 @Composable
 private fun approvedText(result: LocalResult): String {
@@ -287,13 +299,25 @@ private fun approvedText(result: LocalResult): String {
         null -> stringResource(R.string.status_waiting_for_wallet)
         is SigningOutcome.Signed ->
             stringResource(if (waiting) R.string.status_to_send_signed else R.string.status_signed)
+        is SigningOutcome.Sent ->
+            stringResource(
+                if (waiting) R.string.status_to_send_sent else R.string.status_sent,
+                base58(outcome.signature),
+            )
         SigningOutcome.Declined ->
             stringResource(
                 if (waiting) R.string.status_to_send_declined_in_wallet
                 else R.string.status_declined_in_wallet
             )
         is SigningOutcome.Failed -> stringResource(R.string.status_not_signed, outcome.detail)
-        is SigningOutcome.Unresolved -> stringResource(R.string.status_unresolved, outcome.detail)
+        // A message that never came back was never signed. A transfer that never came back may
+        // have been sent, and this phone says exactly that rather than either of the easy answers.
+        is SigningOutcome.Unresolved ->
+            stringResource(
+                if (result.request.transfer() != null) R.string.status_unknown_transfer
+                else R.string.status_unresolved,
+                outcome.detail,
+            )
     }
 }
 
@@ -306,9 +330,12 @@ private fun answerSummary(result: LocalResult): Int =
             when (result.signing) {
                 null -> R.string.answer_approved
                 is SigningOutcome.Signed -> R.string.answer_signed
+                is SigningOutcome.Sent -> R.string.answer_sent
                 SigningOutcome.Declined -> R.string.answer_declined_in_wallet
                 is SigningOutcome.Failed -> R.string.answer_not_signed
-                is SigningOutcome.Unresolved -> R.string.answer_unresolved
+                is SigningOutcome.Unresolved ->
+                    if (result.request.transfer() != null) R.string.answer_unknown
+                    else R.string.answer_unresolved
             }
     }
 

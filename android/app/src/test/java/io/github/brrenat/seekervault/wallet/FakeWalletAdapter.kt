@@ -15,14 +15,20 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
     val disconnects = mutableListOf<String>()
     /** Every signing: the bytes, the wallet they were for, and the authorization offered. */
     val signings = mutableListOf<Triple<ByteString, SelectedWallet, String>>()
+    /** Every sign-and-send: the exact transaction bytes, the wallet, and the authorization. */
+    val sendings = mutableListOf<Triple<ByteString, SelectedWallet, String>>()
 
     private var nextSignature: (ByteString) -> SignResult = { SignResult.NoWallet }
+    private var nextSend: (ByteString) -> SendResult = { SendResult.NoWallet }
 
     /**
      * Runs after a signing is recorded and before it answers, so a test can hold the wallet open
      * the way the owner deciding in it does, or make something happen while it is in front.
      */
     var beforeSigning: suspend () -> Unit = {}
+
+    /** The same hold for a transaction the wallet has been handed to sign and send. */
+    var beforeSending: suspend () -> Unit = {}
 
     fun answer(result: WalletResult) {
         next = { result }
@@ -65,5 +71,25 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
         signings += Triple(message, wallet, authToken)
         beforeSigning()
         return nextSignature(message)
+    }
+
+    /** The next sign-and-send answers with [result], whatever it is handed. */
+    fun answerSending(result: SendResult) {
+        nextSend = { result }
+    }
+
+    /** The next sign-and-send succeeds, reporting [signature] as the transaction's ID. */
+    fun sendWith(signature: ByteString) {
+        nextSend = { SendResult.Sent(signature) }
+    }
+
+    override suspend fun signAndSendTransaction(
+        transaction: ByteString,
+        wallet: SelectedWallet,
+        authToken: String,
+    ): SendResult {
+        sendings += Triple(transaction, wallet, authToken)
+        beforeSending()
+        return nextSend(transaction)
     }
 }

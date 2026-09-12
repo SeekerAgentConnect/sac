@@ -4,7 +4,7 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 
 ## Current milestone
 
-**Stage 4: Transfers.** The sidecar can take an agent's request to send SOL or a classic SPL token, and build the fresh unsigned transaction the owner reviews. It signs nothing and sends nothing: the owner's own wallet does both, and the phone's inspection, approval, and confirmation come with the tasks after this one.
+**Stage 4: Transfers.** An agent can ask to send SOL or a classic SPL token; the sidecar builds a fresh unsigned transaction, the phone reads it itself, and the owner approves it by hand, at which point their own wallet signs and sends it. The sidecar holds no key and cannot broadcast, and the app builds nothing and reaches no chain. Following a sent transaction to confirmation comes with the task after this one.
 
 **Status:** in progress.
 
@@ -12,7 +12,8 @@ seeker-vault is an Android app for the Solana Seeker that acts as a control cent
 | --- | --- |
 | SAW-019: transfer requests and fresh transaction preparation | Done. An agent asks with `vault_transfer`, in base units, and gets a stored `PENDING` request; nothing is built or sent then. When the phone asks, the sidecar reads the chain — the mint's decimals, both token accounts, a fresh blockhash — and builds one unsigned transaction as a new version, with its hash, its fee, and the rent for a token account it creates. Every preparation supersedes the last, so an old approval can't be reused. Token-2022 mints, NFTs, token accounts given as recipients, and an endpoint on the wrong network are refused by name. `SOLANA_RPC_URL` configures the endpoint; without one there is no transfer tool at all. See [`docs/guides/transfers.md`](docs/guides/transfers.md). |
 | SAW-020: inspecting transfer bytes on the phone | Done. Opening a transfer fetches a fresh transaction and the phone reads it itself: the amount, the recipient, the token, the signers, and what each instruction does, all out of the bytes the wallet would sign. It derives token accounts rather than looking them up, so nothing has to be fetched and no name can be faked; a token appears as its mint address and base units. A transaction that disagrees with the request, or that the app can't account for byte for byte, is refused and says why. The sidecar's fee estimate and the agent's note are shown apart from the facts, labelled as theirs. See [`docs/security.md`](docs/security.md#inspecting-a-transfer). |
-| SAW-021 to SAW-024 | Not started: approval through the wallet, on-chain confirmation, integration tests and local history, and the real-device transfer. |
+| SAW-021: approving a transfer through the wallet | Done. **Approve and send** is offered only for a transaction the phone read whole and found to match the request, and the approval binds to that preparation's version and content hash, to the wallet, and to the network. The sidecar accepts the approval before any wallet opens, and the wallet is then handed the exact bytes the owner reviewed, which it signs and sends. A stale preparation is refused and read again; an outcome this phone never learned is reported as UNKNOWN, never as a failure or a retry. See [`docs/architecture.md`](docs/architecture.md#approval-binding) and [`docs/guides/transfers.md`](docs/guides/transfers.md). |
+| SAW-022 to SAW-024 | Not started: on-chain confirmation, integration tests and local history, and the real-device transfer. |
 
 ## Stage 3
 

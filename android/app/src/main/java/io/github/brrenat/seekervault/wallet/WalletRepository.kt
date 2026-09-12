@@ -29,6 +29,8 @@ class WalletStorageException(cause: Throwable) : Exception(cause.message, cause)
  *   way. A sidecar then answers `vault_get_address` with WALLET_NOT_CONNECTED.
  * - Signing asks the wallet for a signature over exact bytes, and only for the selection the owner
  *   reviewed (SAW-016). It is never called before the owner approves.
+ * - Signing and sending hands the wallet an approved transaction, which the wallet signs and
+ *   submits itself (SAW-021). This app reaches no chain, and each of these is one interaction.
  * - The address is public and goes to the sidecars; the wallet's authorization token stays in
  *   [store] and goes nowhere.
  *
@@ -123,6 +125,32 @@ class WalletRepository(
         }
         result
     }
+
+    /**
+     * Asks the wallet to sign exactly [transaction] and send it, with the wallet the owner
+     * selected, which must still be [reviewed] (docs/guides/transfers.md). The checks are the same
+     * ones signing takes, and for the same reason: nothing is ever put in front of the wallet for a
+     * selection the owner didn't review. It is called only after the owner approved this exact
+     * transaction and the sidecar accepted the approval.
+     *
+     * It takes the same lock as every other wallet call, so only one wallet interaction runs at a
+     * time however many screens ask for one.
+     */
+    suspend fun signAndSend(transaction: ByteString, reviewed: SelectedWallet): SendResult =
+        lock.withLock {
+            val selected = _wallet.value ?: return@withLock SendResult.NotConnected
+            if (selected.address != reviewed.address || selected.network != reviewed.network) {
+                return@withLock SendResult.Changed
+            }
+            val authorization =
+                withContext(io) { store.authorization() } ?: return@withLock SendResult.NotConnected
+            val result = adapter.signAndSendTransaction(transaction, selected, authorization)
+            if (result == SendResult.AuthorizationExpired) {
+                withContext(io) { store.clear() }
+                setWallet(null)
+            }
+            result
+        }
 
     /** Tells the wallet, forgets the selection and its authorization, and publishes "no wallet". */
     suspend fun disconnect() = lock.withLock {

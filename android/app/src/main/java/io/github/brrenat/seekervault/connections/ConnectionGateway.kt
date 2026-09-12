@@ -88,6 +88,13 @@ class GatewayException(
         NotFound,
         /** `failed_precondition`: the request has moved on, for example the agent cancelled it. */
         InvalidState,
+        /**
+         * `failed_precondition` with STALE_PREPARATION: the approval doesn't name the request's
+         * latest prepared transaction, or that transaction's blockhash has run out. Nothing was
+         * approved. The phone prepares the request again and has the owner review the new version
+         * (docs/architecture.md#approval-binding).
+         */
+        StalePreparation,
         /** TLS failed: the certificate isn't trusted, or it's for another host name. */
         CertificateRejected,
         /** Android's network security policy blocked plain HTTP to this host. */

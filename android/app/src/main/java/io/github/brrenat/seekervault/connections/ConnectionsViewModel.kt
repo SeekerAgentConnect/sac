@@ -282,7 +282,9 @@ class ConnectionsViewModel(
                 GatewayException.Kind.Unreachable -> PairingFailure.Unreachable
                 GatewayException.Kind.NotFound,
                 GatewayException.Kind.BadResponse -> PairingFailure.BadResponse
+                // Neither can come of pairing, which has no request and nothing prepared.
                 GatewayException.Kind.InvalidState,
+                GatewayException.Kind.StalePreparation,
                 GatewayException.Kind.Other -> PairingFailure.Other
             }
     }

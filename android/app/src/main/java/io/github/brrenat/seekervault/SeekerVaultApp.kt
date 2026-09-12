@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.connections.InboxSummary
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreen
+import io.github.brrenat.seekervault.inbox.Preparation
 import io.github.brrenat.seekervault.inbox.RequestDetailsScreen
 import io.github.brrenat.seekervault.inbox.RequestGoneScreen
 import io.github.brrenat.seekervault.inbox.inboxCounts
@@ -118,10 +119,16 @@ fun SeekerVaultApp(
                     signingProblem = inboxState.problem.takeIf { inboxState.problemKey == key },
                     preparation = inboxState.preparations[key],
                     onPrepareAgain = { inbox.prepare(key, force = true) },
+                    onApproveTransfer = {
+                        inbox.approveTransfer(
+                            key,
+                            inboxState.preparations[key] as? Preparation.Ready,
+                        )
+                    },
                     onBack = pop,
                 )
                 // Opening a transfer fetches a fresh transaction and reads it on this phone. It
-                // is a read and nothing more: nothing is approved, and no wallet is opened.
+                // is a read and nothing more: no wallet opens until the owner taps Approve.
                 LaunchedEffect(key) { inbox.prepare(key) }
             }
         }

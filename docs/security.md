@@ -113,7 +113,7 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 | Metadata: the name, the server URL and ID, the device name sent at pairing, when it paired, the last refresh, and any revocation | `filesDir/connections/<connection ID>.json`, one file per connection, written atomically | App-private storage |
 | The phone credential | `noBackupFilesDir/credentials/<connection ID>`, one file per connection | AES-256-GCM under an Android Keystore key |
 | The pairing token | The app's memory, until pairing ends or the owner leaves the screen | Never written to disk or to saved instance state |
-| The owner's answers, each with the request it answered (SAW-013) | `filesDir/results/<connection ID>/<request ID>.json`, one file per answer. A settled answer is kept for a week, and one that's waiting to be sent is kept until it's settled. | App-private storage; an answer holds no secret |
+| The owner's answers, each with the request it answered (SAW-013), and for an approved transfer the version, content hash, and exact bytes they approved (SAW-021) | `filesDir/results/<connection ID>/<request ID>.json`, one file per answer. A settled answer is kept for a week, and one that's waiting to be sent is kept until it's settled. | App-private storage; an answer holds no secret, and an approved transaction is unsigned bytes the sidecar built |
 | The wallet the owner selected: its address, network, label, and when they chose it (SAW-015) | `filesDir/wallet/wallet.json` | App-private storage; a public address holds no secret, and it's published to every paired sidecar |
 | The wallet's authorization token for this app (SAW-015) | `noBackupFilesDir/wallet/wallet-authorization` | AES-256-GCM under the same Android Keystore key, with its own associated data |
 
@@ -143,6 +143,16 @@ The owner's wallet belongs to the wallet app, not to seeker-vault (SAW-015; [`do
 - **A sidecar with no binding says so.** `vault_get_address` fails with `WALLET_NOT_CONNECTED`; no address is generated, and no wallet is created anywhere.
 - **Changing the wallet invalidates what no longer fits.** Publishing another wallet or network cancels the connection's PENDING wallet requests, so nothing queued for the old wallet can still be approved. Disconnecting publishes "no wallet" and cancels them the same way.
 - **The wallet still decides.** The app asks; the wallet prompts the owner and can refuse. A refusal changes nothing on the phone.
+
+### Approving a transfer (SAW-021)
+
+The wallet signs **and sends** a transfer, so the rules around it are tighter than around a message ([`docs/architecture.md`](architecture.md#approval-binding), [`docs/guides/transfers.md`](guides/transfers.md)).
+
+- **Only a transaction this phone read whole can be approved.** A preparation whose inspection came back anything but `Verified` has no Approve button, and the check is made again when one is tapped. This is input validation, not a policy verdict.
+- **The sidecar is the commit point.** The approval, naming the version and content hash, is sent first; the wallet is opened only once the sidecar accepts it. An approval it refuses, or that never reaches it, is deleted from the phone: nothing was approved, and the owner reviews a fresh preparation.
+- **The wallet is handed the stored bytes.** They are written to disk before it opens, so a sidecar that rebuilt the transaction in between cannot substitute one, and a rotation or a restart cannot change what is signed.
+- **One wallet interaction at a time,** and one per approval. What the wallet did is stored before it is sent, and every retry reaches a sidecar, never a wallet.
+- **An outcome nobody knows is reported as UNKNOWN.** A wallet that reports it signed but did not submit, a session that ended without an answer, or an app killed while the wallet had the transaction all leave it unknown rather than failed. A signed transaction can still land, and the phone never asks again.
 
 ### Signing a message (SAW-016)
 

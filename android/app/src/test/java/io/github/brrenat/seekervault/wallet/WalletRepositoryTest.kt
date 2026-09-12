@@ -14,8 +14,12 @@ import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -304,6 +308,93 @@ class WalletRepositoryTest {
             repository.sign(ByteString.copyFromUtf8("x"), selected),
         )
         // Nothing is left to sign with, and every sidecar is told there is no wallet.
+        assertNull(repository.wallet.value)
+        assertNull(store.authorization())
+        assertNull(server.wallet)
+    }
+
+    @Test
+    fun handsTheWalletTheExactTransactionAndTheStoredAuthorization() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET, authToken = SECRET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        val signature = ByteString.copyFrom(ByteArray(64) { 4 })
+        adapter.sendWith(signature)
+
+        val transaction = ByteString.copyFrom(ByteArray(215) { (it * 3).toByte() })
+        val result = repository.signAndSend(transaction, selected)
+
+        assertEquals(SendResult.Sent(signature), result)
+        val asked = adapter.sendings.single()
+        assertEquals(transaction, asked.first)
+        assertEquals(selected, asked.second)
+        assertEquals(SECRET, asked.third)
+        // The wallet's authorization reaches the wallet and nothing else, sidecars included.
+        assertTrue(gateway.sent.none { (_, secret) -> secret == SECRET })
+    }
+
+    @Test
+    fun sendsNothingForASelectionTheOwnerDidNotReview() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        val transaction = ByteString.copyFromUtf8("x")
+        for (reviewed in listOf(REVIEWED, selected.copy(network = WalletNetwork.Mainnet))) {
+            assertEquals(SendResult.Changed, repository.signAndSend(transaction, reviewed))
+        }
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        // And with no wallet at all there is nothing to ask.
+        repository.disconnect()
+        assertEquals(SendResult.NotConnected, repository.signAndSend(transaction, selected))
+        assertEquals(emptyList<Any>(), adapter.sendings)
+    }
+
+    @Test
+    fun runsOneWalletInteractionAtATime() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 1 }))
+        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 2 }))
+        val inTheWallet = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        adapter.beforeSending = {
+            inTheWallet.complete(Unit)
+            release.await()
+        }
+
+        coroutineScope {
+            val sending = launch { repository.signAndSend(ByteString.copyFromUtf8("t"), selected) }
+            inTheWallet.await()
+            // A signature asked for while a transaction is in front of the owner waits its turn:
+            // two wallet screens at once is how one approval signs the other's bytes.
+            val signing = launch { repository.sign(ByteString.copyFromUtf8("m"), selected) }
+            // Let it run as far as it can: without the lock it would reach the wallet right now.
+            repeat(4) { yield() }
+            assertEquals(emptyList<Any>(), adapter.signings)
+            release.complete(Unit)
+            sending.join()
+            signing.join()
+        }
+        assertEquals(1, adapter.sendings.size)
+        assertEquals(1, adapter.signings.size)
+    }
+
+    @Test
+    fun forgetsAnAuthorizationTheWalletRefusesWhileSending() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET, authToken = SECRET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        adapter.answerSending(SendResult.AuthorizationExpired)
+
+        assertEquals(
+            SendResult.AuthorizationExpired,
+            repository.signAndSend(ByteString.copyFromUtf8("x"), selected),
+        )
         assertNull(repository.wallet.value)
         assertNull(store.authorization())
         assertNull(server.wallet)

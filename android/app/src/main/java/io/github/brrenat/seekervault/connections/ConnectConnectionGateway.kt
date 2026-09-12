@@ -12,6 +12,7 @@ import com.connectrpc.simpleTimeouts
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PairingServiceClient
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
+import io.github.brrenat.seekervault.request.v1.RequestError
 import io.github.brrenat.seekervault.request.v1.RequestErrorDetail
 import io.github.brrenat.seekervault.request.v1.RequestServiceClient
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
@@ -154,6 +155,17 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
         fun classify(error: Throwable): GatewayException {
             val causes = causesOf(error)
             val code = causes.firstNotNullOfOrNull { (it as? ConnectException)?.code }
+            // For INVALID_STATE and STALE_PREPARATION, the sidecar sends the request as it is now
+            // (docs/protocol.md#request-errors). Both arrive as failed_precondition, and only the
+            // detail tells them apart: one says the request moved on, the other says the owner
+            // must review a fresh preparation.
+            val detail =
+                causes.filterIsInstance<ConnectException>().firstNotNullOfOrNull { exception ->
+                    runCatching { exception.unpackedDetails(RequestErrorDetail::class) }
+                        .getOrNull()
+                        ?.firstOrNull()
+                }
+            val stale = detail?.error == RequestError.REQUEST_ERROR_STALE_PREPARATION
             val kind =
                 when {
                     // Before the generic IOException: a TLS failure is one too.
@@ -169,18 +181,12 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
                     code == Code.UNAUTHENTICATED -> GatewayException.Kind.Unauthenticated
                     code == Code.INVALID_ARGUMENT -> GatewayException.Kind.Rejected
                     code == Code.NOT_FOUND -> GatewayException.Kind.NotFound
+                    code == Code.FAILED_PRECONDITION && stale ->
+                        GatewayException.Kind.StalePreparation
                     code == Code.FAILED_PRECONDITION -> GatewayException.Kind.InvalidState
                     code == Code.UNAVAILABLE || causes.any { it is IOException } ->
                         GatewayException.Kind.Unreachable
                     else -> GatewayException.Kind.Other
-                }
-            // For INVALID_STATE, the sidecar sends the request as it is now
-            // (docs/protocol.md#request-errors).
-            val detail =
-                causes.filterIsInstance<ConnectException>().firstNotNullOfOrNull { exception ->
-                    runCatching { exception.unpackedDetails(RequestErrorDetail::class) }
-                        .getOrNull()
-                        ?.firstOrNull()
                 }
             return GatewayException(
                 kind,
