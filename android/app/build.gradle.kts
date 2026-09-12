@@ -30,8 +30,12 @@ android {
             java.srcDir("src/main/generated/java")
             kotlin.srcDir("src/main/generated/kotlin")
         }
-        // Cross-runtime protocol fixtures, shared with the sidecar tests.
-        getByName("test") { resources.srcDir("../../proto/fixtures") }
+        // Cross-runtime fixtures, shared with the sidecar tests: the protobuf ones, and the
+        // transfer transactions the sidecar builds and this app decodes (SAW-020).
+        getByName("test") {
+            resources.srcDir("../../proto/fixtures")
+            resources.srcDir("../../fixtures")
+        }
     }
 
     // Robolectric runs the Compose tests on the JVM and needs the app's resources.

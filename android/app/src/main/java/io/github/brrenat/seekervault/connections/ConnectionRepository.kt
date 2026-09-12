@@ -5,6 +5,7 @@ import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.Rejection
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
@@ -348,6 +349,36 @@ class ConnectionRepository(
         } finally {
             // Keep the map to the sends still running.
             sending.computeIfPresent(key) { _, running -> running.takeIf { it.isLocked } }
+        }
+    }
+
+    /**
+     * Asks the connection's sidecar to build a fresh transaction for one of its PENDING transfers.
+     * It only fetches: the bytes are checked, and the owner decides, elsewhere. Nothing is stored,
+     * because a preparation is only good while its blockhash is, and a stale one must never be read
+     * back from disk and shown as current.
+     */
+    suspend fun prepare(key: RequestKey): PreparedTransaction {
+        val connection =
+            find(key.connectionId)?.takeIf { it.usable }
+                ?: throw GatewayException(
+                    GatewayException.Kind.NotFound,
+                    "this connection can't be used",
+                )
+        val credential =
+            withContext(io) { vault.get(key.connectionId) }
+                ?: run {
+                    forgetCredential(key.connectionId)
+                    throw GatewayException(
+                        GatewayException.Kind.Unauthenticated,
+                        "this phone has no credential for the connection any more",
+                    )
+                }
+        return try {
+            gateway.prepareRequest(connection.serverUrl, credential, key)
+        } catch (e: GatewayException) {
+            if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(key.connectionId)
+            throw e
         }
     }
 

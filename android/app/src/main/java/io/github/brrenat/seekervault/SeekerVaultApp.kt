@@ -116,8 +116,13 @@ fun SeekerVaultApp(
                     onSendAgain = { inbox.sendAgain(key) },
                     wallet = inboxState.wallet,
                     signingProblem = inboxState.problem.takeIf { inboxState.problemKey == key },
+                    preparation = inboxState.preparations[key],
+                    onPrepareAgain = { inbox.prepare(key, force = true) },
                     onBack = pop,
                 )
+                // Opening a transfer fetches a fresh transaction and reads it on this phone. It
+                // is a read and nothing more: nothing is approved, and no wallet is opened.
+                LaunchedEffect(key) { inbox.prepare(key) }
             }
         }
     }

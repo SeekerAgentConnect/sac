@@ -84,4 +84,54 @@
     <string name="summary_waiting">%1$s, waiting to be sent</string>
     <string name="summary_superseded">%1$s too late: the request had moved on</string>
     <string name="summary_undeliverable">%1$s, can\'t be sent</string>
+
+    <!-- Reviewing a transfer's own bytes (SAW-020). docs/security.md#inspecting-a-transfer -->
+    <string name="transfer_checking">Reading the transaction on this phone\u2026</string>
+    <string name="transfer_verdict_verified">Checked here: the transaction does exactly what this request says.</string>
+    <string name="transfer_verdict_unverified">This phone could not read all of this transaction, so it is not checked.</string>
+    <string name="transfer_verdict_invalid">Do not approve: the transaction does not match this request.</string>
+    <string name="transfer_derived_here">Everything above was read from the transaction itself on this phone. The server\'s description of it was not used.</string>
+    <string name="transfer_prepare_again">Read it again</string>
+    <string name="transfer_failed">The transaction could not be fetched: %1$s</string>
+    <string name="transfer_approval_later">Approving a transfer is not built yet, so there is nothing to approve here. You can still reject it.</string>
+    <string name="request_field_sends">Sends</string>
+    <string name="request_field_to">To</string>
+    <string name="request_field_token">Token (by its mint address)</string>
+    <string name="request_field_token_account">Into the token account</string>
+    <string name="request_field_pays_fee">Paid and signed by</string>
+    <string name="request_field_creates">Also creates</string>
+    <string name="request_field_priority">Priority fee</string>
+    <string name="request_field_instructions">Instructions read</string>
+    <string name="request_field_blockhash">Blockhash</string>
+    <string name="request_field_estimate">The server\'s cost estimate</string>
+    <string name="transfer_amount_sol">%1$s SOL (%2$s lamports)</string>
+    <string name="transfer_amount_token">%1$s (%2$s base units)</string>
+    <string name="transfer_recipient_unknown">An account this phone cannot tie to any wallet</string>
+    <string name="transfer_creates_account">A token account for the recipient, which they keep</string>
+    <string name="transfer_priority_price">%1$s micro-lamports per compute unit</string>
+    <string name="transfer_instructions_read">%1$d of %2$d</string>
+    <string name="transfer_estimate_fee">Network fee about %1$s SOL</string>
+    <string name="transfer_estimate_fee_and_rent">Network fee about %1$s SOL, and %2$s SOL for the new token account</string>
+
+    <!-- What the phone found wrong with a prepared transaction, or could not account for. -->
+    <string name="finding_hash_mismatch">The server\'s own checksum is not the checksum of the bytes it sent.</string>
+    <string name="finding_malformed">These bytes are not a transaction this phone can read.</string>
+    <string name="finding_unsupported_version">This is a transaction format this phone does not read.</string>
+    <string name="finding_address_table_lookup">The transaction loads accounts from a lookup table, so what it touches cannot be seen here.</string>
+    <string name="finding_already_signed">The transaction already carries a signature. A wallet must be handed an unsigned one.</string>
+    <string name="finding_fee_payer">The account paying and signing is not the wallet this request names.</string>
+    <string name="finding_extra_signer">Somebody else would have to sign as well, so your approval would carry theirs.</string>
+    <string name="finding_no_wallet">No wallet is connected on this phone, so there is nothing to check this against.</string>
+    <string name="finding_other_wallet">This request names a wallet other than the one you connected.</string>
+    <string name="finding_network_mismatch">This request is for another network than the wallet you connected.</string>
+    <string name="finding_no_transfer">The transaction does not contain the transfer this request asks for.</string>
+    <string name="finding_extra_transfer">The transaction moves funds more than once, or moves something else as well.</string>
+    <string name="finding_recipient_mismatch">The transfer goes somewhere other than the recipient this request names.</string>
+    <string name="finding_amount_mismatch">The amount in the transaction is not the amount this request names.</string>
+    <string name="finding_mint_mismatch">The token in the transaction is not the one this request names.</string>
+    <string name="finding_source_account">The tokens would come from an account that is not yours for this token.</string>
+    <string name="finding_destination_account">The tokens would go to an account that is not the recipient\'s for this token.</string>
+    <string name="finding_creation_for_someone_else">A token account would be created for somebody other than the recipient.</string>
+    <string name="finding_unrecognized">The transaction also runs a program this phone does not read. It is not thereby harmless.</string>
+    <string name="finding_unreadable_value">A program that can move funds is asked to do something this phone does not read. Being a program a transfer may use is no reason to accept every instruction it offers.</string>
 </resources>

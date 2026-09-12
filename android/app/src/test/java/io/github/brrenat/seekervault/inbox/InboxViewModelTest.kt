@@ -15,6 +15,8 @@ import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
+import io.github.brrenat.seekervault.transactions.Finding
+import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SignResult
@@ -500,6 +502,116 @@ class InboxViewModelTest {
             RequestState.REQUEST_STATE_REJECTED,
             server.stateOf(key.connectionId, key.requestId),
         )
+    }
+
+    /** A PENDING transfer, and the real transaction bytes the sidecar would hand over for it. */
+    private fun pendingTransfer(
+        caseName: String = "sol_transfer"
+    ): Pair<RequestKey, org.json.JSONObject> = runBlocking {
+        val case = transferCase(caseName)
+        val fields = case.getJSONObject("request")
+        val connection = repository.pair(server.issue(URL))
+        adapter.answerConnected(fields.getString("wallet"))
+        wallet.connect(WalletNetwork.Devnet)
+        val request =
+            server.addPendingTransfer(
+                connection.id,
+                fields.getString("wallet"),
+                io.github.brrenat.seekervault.request.v1.Network.NETWORK_DEVNET,
+                recipient = fields.getString("recipient"),
+                amount = fields.getString("amount"),
+            )
+        repository.refresh(connection.id)
+        val key = RequestKey(connection.id, request.ref.requestId)
+        gateway.transactions[key] =
+            java.util.Base64.getDecoder().decode(case.getString("transaction"))
+        key to case
+    }
+
+    private fun transferCase(name: String): org.json.JSONObject {
+        val cases =
+            org.json
+                .JSONObject(
+                    checkNotNull(javaClass.getResourceAsStream("/transactions/cases.json")).use {
+                        it.readBytes().decodeToString()
+                    }
+                )
+                .getJSONArray("cases")
+        return (0 until cases.length())
+            .map { cases.getJSONObject(it) }
+            .first { it.getString("name") == name }
+    }
+
+    @Test
+    fun openingATransferFetchesItsTransactionAndReadsItHere() {
+        val (key, _) = pendingTransfer()
+        val viewModel = viewModel()
+
+        viewModel.prepare(key)
+
+        val preparation = viewModel.state.value.preparations[key]
+        assertTrue("$preparation", preparation is Preparation.Ready)
+        val ready = preparation as Preparation.Ready
+        assertEquals(Verdict.Verified, ready.inspection.verdict)
+        // The amount came out of the bytes, not out of the request it was checked against.
+        assertEquals(2_500_000_000UL, ready.inspection.facts?.amount)
+        // Reading a transaction answers nothing: no result was ever sent.
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertNull(viewModel.state.value.inbox.result(key))
+    }
+
+    @Test
+    fun readingItAgainAsksForANewVersion() {
+        val (key, _) = pendingTransfer()
+        val viewModel = viewModel()
+
+        viewModel.prepare(key)
+        // Opening it again changes nothing; only asking for it does.
+        viewModel.prepare(key)
+        assertEquals(1, gateway.preparations[key])
+
+        viewModel.prepare(key, force = true)
+        assertEquals(2, gateway.preparations[key])
+    }
+
+    @Test
+    fun refusesATransactionThatPaysSomebodyElse() {
+        val (key, case) = pendingTransfer("changed_recipient")
+        val viewModel = viewModel()
+
+        viewModel.prepare(key)
+
+        val ready = viewModel.state.value.preparations[key] as Preparation.Ready
+        assertEquals(Verdict.Invalid, ready.inspection.verdict)
+        assertTrue(Finding.RecipientMismatch in ready.inspection.findings)
+        assertFalse(ready.inspection.approvable)
+        assertEquals("changed_recipient", case.getString("name"))
+    }
+
+    @Test
+    fun saysSoWhenTheTransactionCouldNotBeFetched() {
+        val (key, _) = pendingTransfer()
+        server.failure = GatewayException.Kind.Unreachable
+        val viewModel = viewModel()
+
+        viewModel.prepare(key)
+
+        assertTrue(viewModel.state.value.preparations[key] is Preparation.Failed)
+        // The request is untouched, so asking again once the sidecar answers still works.
+        server.failure = null
+        viewModel.prepare(key, force = true)
+        assertTrue(viewModel.state.value.preparations[key] is Preparation.Ready)
+    }
+
+    @Test
+    fun preparesNothingForARequestWithNoTransactionToBuild() {
+        val request = pendingRequest()
+        val viewModel = viewModel()
+
+        viewModel.prepare(request)
+
+        assertNull(viewModel.state.value.preparations[request])
+        assertTrue(gateway.preparations.isEmpty())
     }
 
     private companion object {

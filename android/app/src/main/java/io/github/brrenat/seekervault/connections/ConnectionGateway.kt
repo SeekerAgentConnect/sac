@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.connections
 
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 
@@ -20,6 +21,17 @@ interface ConnectionGateway {
         connectionId: String,
         pageToken: String = "",
     ): PendingRequests
+
+    /**
+     * Asks the sidecar to build a fresh unsigned transaction for one of the connection's PENDING
+     * transfers, and returns it. Each call is a new version, and the phone checks the bytes itself
+     * before the owner sees anything (docs/security.md#inspecting-a-transfer).
+     */
+    suspend fun prepareRequest(
+        serverUrl: String,
+        credential: String,
+        key: RequestKey,
+    ): PreparedTransaction
 
     /**
      * Sends a result for one of the connection's requests, and returns the request as it is

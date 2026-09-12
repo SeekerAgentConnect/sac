@@ -159,6 +159,68 @@ The owner's wallet belongs to the wallet app, not to seeker-vault (SAW-015; [`do
 | The wallet doesn't serve the chosen network | "The wallet doesn't serve this network." | Pick a network the wallet offers. |
 | A sidecar couldn't be told | "Couldn't tell N connection(s)…" | Tap "Tell them again" once it's reachable. |
 
+## Inspecting a transfer
+
+The sidecar builds the transaction, and the phone decides whether it is the one the owner was asked
+to approve. Those are two different machines and two different pieces of code on purpose: an
+agent's description, and a sidecar's description, are both claims. The bytes are the thing.
+
+**What the phone establishes from the bytes alone (SAW-020).** It decodes the transaction the wallet
+would sign and reads out of it: the fee payer, every account that must sign, each instruction's
+program and payload, the amount in base units, the recipient, the mint, whether a token account is
+created, and any compute-budget price. It then checks all of that against the stored request, which
+never changes, and against the wallet the owner selected. Nothing the sidecar says about its own
+transaction is consulted, and the agent's note is rendered apart from the facts and labelled as
+unverified.
+
+**It reads nothing from a chain, and needs to.** For the shapes Stage 4 supports, no lookup adds
+anything:
+
+- **A token account's owner is derived, not fetched.** The address of an associated token account is
+  fixed by its owner and its mint, so the phone computes it and compares. If the destination in the
+  instruction is not that address, the bytes prove nothing about who receives the tokens, and the
+  review says exactly that rather than naming a recipient it cannot support.
+- **`TransferChecked` carries the decimals, and the token program enforces them.** A wrong value
+  makes the transaction fail on chain, so reading the amount with them is safe.
+- **No name is ever shown.** A token appears as its mint address and its base units. There is no
+  ticker, so there is no ticker to fake — in the request, in the note, or anywhere else.
+
+**What it will not do.**
+
+- **An instruction it cannot read is never treated as harmless.** The transaction is reported as not
+  fully read, it is not approvable, and the screen says how much of it was covered.
+- **A program a transfer may legitimately use is not a permission for every instruction it
+  offers.** `Approve` and `SetAuthority` belong to the same token program as `TransferChecked`, and
+  hand an account to somebody else. An instruction from a program that can move value and that the
+  phone does not read makes the preparation invalid, not merely uncovered.
+- **Anything it cannot account for byte for byte is refused.** Bytes left over at the end, a length
+  spelled two ways, an instruction index outside the account list, or an address lookup table all
+  end the review. A partly-read transaction is not a reviewed one.
+- **A transaction that already carries a signature is refused.** A wallet is handed something
+  unsigned.
+
+**The limits, stated plainly.**
+
+- **It proves what the transaction does, not what it is worth.** The phone has no prices, and a mint
+  address is not a reputation. That an agent asked for a real token, at a sane amount, to a
+  recipient the owner meant, is the owner's judgement to make.
+- **The network fee is the sidecar's estimate.** A fee depends on the network at the time and cannot
+  be read out of a transaction, so it is shown under the server's name and apart from the facts.
+- **The network is checked against the wallet, not against the bytes.** A transaction does not say
+  which cluster it is for. The phone checks that the request's network is the one the owner selected
+  their wallet for; the sidecar separately refuses to build against an endpoint whose genesis hash
+  is another cluster's ([transfers](protocol.md#transfers-saw-019)).
+- **Only the supported shapes are covered.** Anything else is reported as unread, which is the
+  honest answer, rather than as safe.
+
+**Why the parser is the app's own.** The Mobile Wallet Adapter client already brings a Solana SDK and
+a crypto provider onto the app's classpath, so this is not about dependency count. A general-purpose
+decoder's job is to read what it can; this parser's job is to refuse everything it cannot fully
+account for, which is a different contract. It is about 150 lines, it cannot sign and cannot reach a
+network, and it is checked against transactions the sidecar really builds
+([`docs/testing/transaction-fixtures.md`](testing/transaction-fixtures.md)).
+`StageBoundaryTest` fails if a source file starts importing an SDK decoder instead.
+
 ## Logs and diagnostics
 
 - **No token reaches the log.** Pairing logs connection IDs and error codes only:

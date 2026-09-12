@@ -36,6 +36,8 @@ import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.connections.outcomeText
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.transactions.Verdict
+import io.github.brrenat.seekervault.transactions.transfer
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.networkText
 import java.time.Instant
@@ -66,6 +68,10 @@ fun RequestDetailsScreen(
     wallet: SelectedWallet? = null,
     /** Why the last approval didn't reach the wallet. */
     signingProblem: SigningProblem? = null,
+    /** For a transfer: the prepared transaction and what this phone made of it (SAW-020). */
+    preparation: Preparation? = null,
+    /** Asks the sidecar to build a new version and reads that one instead. */
+    onPrepareAgain: () -> Unit = {},
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -181,6 +187,9 @@ fun RequestDetailsScreen(
                     )
                 }
             }
+            if (request.transfer() != null) {
+                TransferReview(preparation, onPrepareAgain)
+            }
             if (request.agentNote.isNotEmpty()) {
                 // Shown apart from the request itself: the agent wrote it, and nothing checked it.
                 ListItem(
@@ -244,6 +253,127 @@ fun RequestDetailsScreen(
                     Text(stringResource(R.string.send_again))
                 }
             }
+        }
+    }
+}
+
+/**
+ * What this phone read out of the transfer's own transaction
+ * (docs/security.md#inspecting-a-transfer).
+ *
+ * The order on screen is the order of trust: the verdict first, then the facts the bytes establish,
+ * then what could not be established, and only then the server's own numbers, labelled as theirs.
+ * The agent's note is rendered by the caller, further down and marked unverified, so that nothing
+ * it says can sit next to a fact and borrow its weight.
+ */
+@Composable
+private fun TransferReview(preparation: Preparation?, onPrepareAgain: () -> Unit) {
+    when (preparation) {
+        null,
+        Preparation.Running ->
+            Text(
+                stringResource(R.string.transfer_checking),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_CHECKING),
+            )
+        is Preparation.Failed -> {
+            Text(
+                stringResource(R.string.transfer_failed, outcomeText(preparation.outcome)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_FAILED),
+            )
+            OutlinedButton(
+                onClick = onPrepareAgain,
+                modifier = Modifier.padding(horizontal = 16.dp).testTag(InboxTags.TRANSFER_AGAIN),
+            ) {
+                Text(stringResource(R.string.transfer_prepare_again))
+            }
+        }
+        is Preparation.Ready -> {
+            val inspection = preparation.inspection
+            Text(
+                stringResource(verdictText(inspection.verdict)),
+                style = MaterialTheme.typography.bodyLarge,
+                color =
+                    if (inspection.verdict == Verdict.Verified) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_VERDICT),
+            )
+            inspection.facts?.let { facts ->
+                Field(R.string.request_field_sends, amountText(facts), "sends")
+                Field(
+                    R.string.request_field_to,
+                    facts.recipient ?: stringResource(R.string.transfer_recipient_unknown),
+                    "to",
+                )
+                facts.destinationAccount?.let {
+                    Field(R.string.request_field_token_account, it, "tokenAccount")
+                }
+                facts.mint?.let { Field(R.string.request_field_token, it, "token") }
+                Field(R.string.request_field_pays_fee, facts.payer, "paysFee")
+                if (facts.createsRecipientAccount) {
+                    Field(
+                        R.string.request_field_creates,
+                        stringResource(R.string.transfer_creates_account),
+                        "creates",
+                    )
+                }
+                facts.computeUnitPrice?.let {
+                    Field(
+                        R.string.request_field_priority,
+                        stringResource(R.string.transfer_priority_price, it.toString()),
+                        "priority",
+                    )
+                }
+                Field(
+                    R.string.request_field_instructions,
+                    stringResource(
+                        R.string.transfer_instructions_read,
+                        facts.recognizedInstructions,
+                        facts.instructionCount,
+                    ),
+                    "instructions",
+                )
+                Field(R.string.request_field_blockhash, facts.blockhash, "blockhash")
+                Text(
+                    stringResource(R.string.transfer_derived_here),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier =
+                        Modifier.padding(horizontal = 16.dp).testTag(InboxTags.TRANSFER_DERIVED),
+                )
+            }
+            if (inspection.findings.isNotEmpty()) {
+                Column(Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_FINDINGS)) {
+                    inspection.findings.forEach { finding ->
+                        Text(
+                            stringResource(findingText(finding)),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+            // The fee can't be read out of a transaction: it depends on the network. It is the
+            // server's number, and it is labelled as one rather than mixed in with the facts.
+            Field(
+                R.string.request_field_estimate,
+                estimateText(preparation.prepared),
+                "estimate",
+            )
+            OutlinedButton(
+                onClick = onPrepareAgain,
+                modifier = Modifier.padding(horizontal = 16.dp).testTag(InboxTags.TRANSFER_AGAIN),
+            ) {
+                Text(stringResource(R.string.transfer_prepare_again))
+            }
+            // SAW-021 adds approving one. Until it lands the screen says so plainly rather than
+            // offering a button that would do nothing.
+            Text(
+                stringResource(R.string.transfer_approval_later),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_NO_APPROVAL),
+            )
         }
     }
 }
