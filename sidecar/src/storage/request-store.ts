@@ -23,6 +23,7 @@ import {
   WalletBindingSchema,
   type Action,
   type ActionRequest,
+  type Confirmation,
   type Outcome,
   type PreparedTransaction,
   type RequestRef,
@@ -138,6 +139,18 @@ export interface PendingPage {
   readonly requests: ActionRequest[];
   /** Empty on the last page. */
   readonly nextPageToken: string;
+}
+
+/** What one chain check found, and where it leaves the request (SAW-022). */
+export interface ConfirmationRecord {
+  /** The state the check read, so a request the phone moved meanwhile keeps its own outcome. */
+  readonly from: RequestState;
+  /** Where the check settles the request; absent when it settles nothing. */
+  readonly to?: RequestState;
+  /** What the endpoint answered, and when. */
+  readonly confirmation: Confirmation;
+  /** Outcome.detail, when the check settles the request. */
+  readonly detail?: string;
 }
 
 export class RequestStore {
@@ -478,6 +491,65 @@ export class RequestStore {
     // #find refuses another connection's request, so a reference can't reach one.
     this.#find(requestId, connectionId);
     return this.#latestPrepared(requestId);
+  }
+
+  /** One numbered preparation of a request, or undefined when it has no such version. */
+  preparedVersion(
+    requestId: string,
+    version: number,
+  ): PreparedTransaction | undefined {
+    const row = this.#db
+      .prepare(
+        "SELECT prepared FROM prepared_transactions WHERE request_id = ? AND version = ?",
+      )
+      .get(requestId, version);
+    return row === undefined
+      ? undefined
+      : fromBinary(PreparedTransactionSchema, blob(row.prepared));
+  }
+
+  /**
+   * Records what a chain check found, and settles the request when the check established one
+   * (SAW-022). This is the sidecar's own commit point: the phone reports what the wallet did,
+   * and this reports what the chain says became of it.
+   *
+   * The check reads the chain outside the database, so the request may have moved meanwhile. When
+   * it has, nothing is written: the check was about a state the request has left, and the next
+   * one starts from where it is now. A settled request never has its state moved, only its
+   * confirmation kept up to date.
+   */
+  recordConfirmation(
+    requestId: string,
+    record: ConfirmationRecord,
+  ): ActionRequest {
+    requireUuid("request_id", requestId);
+    return transaction(this.#db, () => {
+      const now = this.#now();
+      this.#expireOverdue(now);
+      const current = this.#find(requestId);
+      if (current.state !== record.from) return current;
+      const outcome = copy(current.outcome);
+      outcome.confirmation = record.confirmation;
+      if (record.detail !== undefined) outcome.detail = record.detail;
+      if (record.to === undefined) {
+        // The state didn't change, so updated_at doesn't either: it marks the last state change.
+        this.#db
+          .prepare(
+            "UPDATE requests SET outcome = ? WHERE request_id = ? AND state = ?",
+          )
+          .run(toBinary(OutcomeSchema, outcome), requestId, record.from);
+        return this.#find(requestId);
+      }
+      if (
+        !canTransition(kindOf(current), current.state, record.to, "sidecar")
+      ) {
+        throw new Error(
+          `a chain check may not move ${RequestState[current.state]} to ${RequestState[record.to]}`,
+        );
+      }
+      this.#move(requestId, current.state, record.to, now, outcome);
+      return this.#find(requestId);
+    });
   }
 
   /** The most PENDING requests one connection may have, for vault_get_capabilities. */

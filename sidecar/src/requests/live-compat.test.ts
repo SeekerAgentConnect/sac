@@ -61,6 +61,7 @@ describe("compatibility with the Stage 1 live diagnostic", () => {
         ["GetRequest", "unary"],
         ["PrepareRequest", "unary"],
         ["SubmitResult", "unary"],
+        ["CheckStatus", "unary"],
         ["PublishWallet", "unary"],
       ],
     );

@@ -109,13 +109,14 @@ These hold across the components, and every stage keeps them:
 1. **Manual approval, every time.** An `ALLOWED` assessment still waits for the user.
 2. **Approval binds to content.** The user approves a prepared version and its SHA-256, never just a request ID. The phone invokes the wallet only after the sidecar has accepted that approval.
 3. **One creation per idempotency key.** A retry returns the original request, and changed parameters are refused.
-4. **Uncertain means UNKNOWN.** When an outcome isn't known, the request says so, and nobody retries as if it had failed. A wallet's submission isn't a confirmation.
+4. **Uncertain means UNKNOWN.** When an outcome isn't known, the request says so, and nobody retries as if it had failed. A wallet's submission isn't a confirmation: a transfer succeeds only once the chain says so, checked against the exact bytes the owner approved (SAW-022).
 5. **No automatic re-execution.** A restart never rebuilds or resends a transaction.
 6. **Identity is scoped.** Requests are addressed by connection and request ID together. One connection can't see or answer another's requests.
 7. **Exact values.** Amounts are integer base-unit strings, and messages are signed as the exact bytes sent.
 8. **The wallet is the owner's, and explicit.** The app and the sidecar never create a wallet or hold a key. A wallet action is stored only for the wallet and network the owner selected, and an agent that asks for an address when none is connected gets `WALLET_NOT_CONNECTED`.
 9. **The wallet is asked only after the owner approves.** No wallet call happens while a request is PENDING, and a signature is accepted only if it verifies against the request's wallet over the request's own bytes.
-10. **One interaction, one reported outcome.** The wallet is asked once per request; what it did is stored on the phone before it's sent; sending it again never reaches the wallet; and a repeated result returns the same terminal request. An answer the phone never received is reported as unresolved, never as a success (SAW-017). For a message that means FAILED, because nothing could have been broadcast. For a transfer it means UNKNOWN, because the wallet may have sent it, and the phone never asks a second time (SAW-021).
+10. **Only the chain settles a transaction, and only one endpoint says so.** A sent transaction is CONFIRMED or FAILED because a configured Solana RPC endpoint was asked and its answer was checked against the approved bytes; who was asked is recorded and disclosed. Nothing checks on its own, a check that settles nothing changes nothing, and no failure anywhere produces a replacement transaction (SAW-022).
+11. **One interaction, one reported outcome.** The wallet is asked once per request; what it did is stored on the phone before it's sent; sending it again never reaches the wallet; and a repeated result returns the same terminal request. An answer the phone never received is reported as unresolved, never as a success (SAW-017). For a message that means FAILED, because nothing could have been broadcast. For a transfer it means UNKNOWN, because the wallet may have sent it, and the phone never asks a second time (SAW-021).
 
 ## Stages
 

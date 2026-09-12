@@ -19,6 +19,7 @@ import {
 import { RequestService } from "../gen/seekervault/request/v1/service_pb.js";
 import type { PairingStore } from "../storage/pairing-store.ts";
 import { networkName, type RequestStore } from "../storage/request-store.ts";
+import { checkable, type ConfirmationTracker } from "./confirmation.ts";
 import { RequestFailure } from "./failure.ts";
 import type { TransactionPreparer } from "./preparation.ts";
 
@@ -37,6 +38,8 @@ export function requestRoutes(
   log: (message: string) => void,
   /** Absent when no Solana RPC endpoint is configured, which is when transfers aren't served. */
   preparer?: TransactionPreparer,
+  /** Absent for the same reason: with no endpoint there is no chain to check a signature on. */
+  tracker?: ConfirmationTracker,
 ): (router: ConnectRouter) => void {
   /**
    * Authenticates the paired phone, then runs `work` for its connection, turning a RequestFailure
@@ -124,6 +127,31 @@ export function requestRoutes(
             `request ${current.ref?.requestId ?? ""}: prepared transfer version ${prepared.version}`,
           );
           return { prepared };
+        }),
+
+      checkStatus: (request, context) =>
+        handleAsync(context, async (connectionId) => {
+          const current = store.getForConnection(connectionId, request.ref);
+          if (tracker === undefined) {
+            throw new RequestFailure(
+              RequestError.CHAIN_UNAVAILABLE,
+              "this sidecar has no Solana RPC endpoint configured, so it can check nothing on chain; set SOLANA_RPC_URL",
+              current,
+            );
+          }
+          if (!checkable(current)) {
+            throw new RequestFailure(
+              RequestError.INVALID_STATE,
+              `there is nothing left to check on chain: the request is ${RequestState[current.state]}`,
+              current,
+            );
+          }
+          // The owner asked in person, so this checks however recently the last one ran.
+          const checked = await tracker.settle(current, true);
+          log(
+            `request ${checked.ref?.requestId ?? ""}: checked on chain, now ${RequestState[checked.state]}`,
+          );
+          return { request: checked };
         }),
 
       publishWallet: (request, context) =>

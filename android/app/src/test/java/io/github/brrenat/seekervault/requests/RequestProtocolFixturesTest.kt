@@ -8,6 +8,7 @@ import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Approval
 import io.github.brrenat.seekervault.request.v1.Asset
+import io.github.brrenat.seekervault.request.v1.ConfirmationLevel
 import io.github.brrenat.seekervault.request.v1.ListPendingResponse
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.Outcome
@@ -26,6 +27,7 @@ import io.github.brrenat.seekervault.request.v1.action
 import io.github.brrenat.seekervault.request.v1.actionRequest
 import io.github.brrenat.seekervault.request.v1.approval
 import io.github.brrenat.seekervault.request.v1.asset
+import io.github.brrenat.seekervault.request.v1.confirmation
 import io.github.brrenat.seekervault.request.v1.listPendingResponse
 import io.github.brrenat.seekervault.request.v1.outcome
 import io.github.brrenat.seekervault.request.v1.preparedTransaction
@@ -101,6 +103,19 @@ class RequestProtocolFixturesTest {
                     outcome {
                         approval = APPROVAL_V2
                         signature = SIGNATURE
+                        // What the sidecar read from the chain, and whose word it rests on
+                        // (SAW-022). A confirmed transfer never carries less than this.
+                        confirmation = confirmation {
+                            level = ConfirmationLevel.CONFIRMATION_LEVEL_FINALIZED
+                            slot = 298_471_553L
+                            checkedAt = at("2026-09-11T12:03:07.250Z")
+                            checks = 3
+                            endpoint = "api.mainnet-beta.solana.com"
+                            matchesApproval = true
+                            detail =
+                                "The approved transaction succeeded on chain in slot " +
+                                    "298471553, as api.mainnet-beta.solana.com reports it."
+                        }
                     },
             ),
         )

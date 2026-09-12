@@ -103,6 +103,15 @@ const RPCS: ReadonlyArray<{
       }),
   },
   {
+    name: "RequestService.CheckStatus",
+    role: "phone",
+    // An unknown request: past authentication, this gets NOT_FOUND and checks nothing on chain.
+    call: (token) =>
+      requestClient(sidecar.url, token).checkStatus({
+        ref: { connectionId: phone.connectionId, requestId: UNKNOWN },
+      }),
+  },
+  {
     name: "RequestService.PublishWallet",
     role: "phone",
     // No binding: past authentication, this clears a wallet that was never connected.

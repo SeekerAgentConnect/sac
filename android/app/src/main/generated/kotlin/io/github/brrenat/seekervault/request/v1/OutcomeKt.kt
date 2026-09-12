@@ -126,6 +126,48 @@ public object OutcomeKt {
     public fun clearDetail() {
       _builder.clearDetail()
     }
+
+    /**
+     * ```
+     * What the sidecar has learned from the chain about signature. Set from the first check on,
+     * for transfers and swaps (SAW-022); absent for actions with no transaction.
+     * ```
+     *
+     * `.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];`
+     */
+    public var confirmation: io.github.brrenat.seekervault.request.v1.Confirmation
+      @kotlin.jvm.JvmName("getConfirmation")
+        get() = _builder.confirmation
+      @kotlin.jvm.JvmName("setConfirmation")
+        set(value) {
+        _builder.confirmation = value
+      }
+    /**
+     * ```
+     * What the sidecar has learned from the chain about signature. Set from the first check on,
+     * for transfers and swaps (SAW-022); absent for actions with no transaction.
+     * ```
+     *
+     * `.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];`
+     */
+    public fun clearConfirmation() {
+      _builder.clearConfirmation()
+    }
+    /**
+     * ```
+     * What the sidecar has learned from the chain about signature. Set from the first check on,
+     * for transfers and swaps (SAW-022); absent for actions with no transaction.
+     * ```
+     *
+     * `.seekervault.request.v1.Confirmation confirmation = 4 [json_name = "confirmation"];`
+     * @return Whether the confirmation field is set.
+     */
+    public fun hasConfirmation(): kotlin.Boolean {
+      return _builder.hasConfirmation()
+    }
+
+    public val OutcomeKt.Dsl.confirmationOrNull: io.github.brrenat.seekervault.request.v1.Confirmation?
+      get() = _builder.confirmationOrNull
   }
 }
 public inline fun io.github.brrenat.seekervault.request.v1.Outcome.copy(block: `io.github.brrenat.seekervault.request.v1`.OutcomeKt.Dsl.() -> kotlin.Unit): io.github.brrenat.seekervault.request.v1.Outcome =
@@ -133,4 +175,7 @@ public inline fun io.github.brrenat.seekervault.request.v1.Outcome.copy(block: `
 
 public val io.github.brrenat.seekervault.request.v1.OutcomeOrBuilder.approvalOrNull: io.github.brrenat.seekervault.request.v1.Approval?
   get() = if (hasApproval()) getApproval() else null
+
+public val io.github.brrenat.seekervault.request.v1.OutcomeOrBuilder.confirmationOrNull: io.github.brrenat.seekervault.request.v1.Confirmation?
+  get() = if (hasConfirmation()) getConfirmation() else null
 

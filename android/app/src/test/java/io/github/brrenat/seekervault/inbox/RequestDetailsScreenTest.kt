@@ -24,9 +24,16 @@ import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.NOW
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.request.v1.Asset
+import io.github.brrenat.seekervault.request.v1.ConfirmationLevel
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.action
+import io.github.brrenat.seekervault.request.v1.asset
+import io.github.brrenat.seekervault.request.v1.confirmation
+import io.github.brrenat.seekervault.request.v1.outcome
 import io.github.brrenat.seekervault.request.v1.signMessageAction
+import io.github.brrenat.seekervault.request.v1.transferAction
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.time.Instant
@@ -44,6 +51,7 @@ class RequestDetailsScreenTest {
     private val answers = mutableListOf<Answer>()
     private var sentAgain = 0
     private var approvals = 0
+    private var checks = 0
 
     private fun show(
         request: ActionRequest = REQUEST,
@@ -51,6 +59,7 @@ class RequestDetailsScreenTest {
         sending: Boolean = false,
         wallet: SelectedWallet? = null,
         signingProblem: SigningProblem? = null,
+        checking: Boolean = false,
     ) = compose.setContent {
         SeekerVaultTheme {
             RequestDetailsScreen(
@@ -65,6 +74,8 @@ class RequestDetailsScreenTest {
                 onBack = {},
                 wallet = wallet,
                 signingProblem = signingProblem,
+                checking = checking,
+                onCheckStatus = { checks++ },
             )
         }
     }
@@ -240,6 +251,120 @@ class RequestDetailsScreenTest {
         compose.onNodeWithTag(InboxTags.APPROVE).assertDoesNotExist()
     }
 
+    // --- Following a sent transaction to the chain (SAW-022) ---
+
+    /** A transfer the wallet sent, as the phone stores it once the server has taken the result. */
+    private fun sent(state: RequestState, detail: String = "", endpoint: String = "") =
+        LocalResult(
+            HOME.id,
+            TRANSFER.ref.requestId,
+            Answer.Approve,
+            NOW,
+            TRANSFER.toBuilder()
+                .setState(state)
+                .setOutcome(
+                    outcome {
+                        signature = ByteString.copyFrom(ByteArray(64) { 4 })
+                        this.detail = detail
+                        if (endpoint.isNotEmpty()) {
+                            confirmation = confirmation {
+                                this.endpoint = endpoint
+                                level = ConfirmationLevel.CONFIRMATION_LEVEL_FINALIZED
+                                matchesApproval = true
+                                this.detail = "It succeeded on chain in slot 4242."
+                            }
+                        }
+                    }
+                )
+                .build(),
+            Delivery.Accepted,
+            approved = true,
+            signing = SigningOutcome.Sent(ByteString.copyFrom(ByteArray(64) { 4 })),
+        )
+
+    @Test
+    fun saysATransactionIsSentAndNotConfirmedYet() {
+        show(TRANSFER, sent(RequestState.REQUEST_STATE_SUBMITTED))
+        compose
+            .onNodeWithTag(InboxTags.STATUS)
+            .assertTextContains("not been confirmed", substring = true)
+        // And the owner can ask, without anything going near the wallet.
+        compose.onNodeWithTag(InboxTags.CHECK_STATUS).performScrollTo().performClick()
+        assertEquals(1, checks)
+    }
+
+    @Test
+    fun saysWhoCheckedAConfirmedTransferAndOffersNoFurtherCheck() {
+        show(
+            TRANSFER,
+            sent(
+                RequestState.REQUEST_STATE_CONFIRMED,
+                detail = "The transfer succeeded on chain in slot 4242.",
+                endpoint = "rpc.example.test",
+            ),
+        )
+        compose
+            .onNodeWithTag(InboxTags.STATUS)
+            .assertTextContains("went through on the network", substring = true)
+        // Whose word it is, said plainly: there is no second opinion behind it.
+        compose
+            .onNodeWithTag(InboxTags.CONFIRMATION)
+            .performScrollTo()
+            .assertTextContains("rpc.example.test", substring = true)
+        compose
+            .onNodeWithTag(InboxTags.CONFIRMATION)
+            .assertTextContains(context.getString(R.string.confirmation_trust), substring = true)
+        compose.onNodeWithTag(InboxTags.CHECK_STATUS).assertDoesNotExist()
+    }
+
+    @Test
+    fun saysWhyATransactionFailedOnTheNetwork() {
+        show(
+            TRANSFER,
+            sent(
+                RequestState.REQUEST_STATE_FAILED,
+                detail = "The transaction ran on chain and failed: insufficient funds.",
+                endpoint = "rpc.example.test",
+            ),
+        )
+        compose
+            .onNodeWithTag(InboxTags.STATUS)
+            .assertTextContains("insufficient funds", substring = true)
+        compose.onNodeWithTag(InboxTags.CHECK_STATUS).assertDoesNotExist()
+    }
+
+    @Test
+    fun saysTheServerHasNotLookedYetRatherThanNothing() {
+        show(TRANSFER, sent(RequestState.REQUEST_STATE_SUBMITTED))
+        compose
+            .onNodeWithTag(InboxTags.CONFIRMATION)
+            .performScrollTo()
+            .assertTextContains(
+                context.getString(R.string.confirmation_unchecked),
+                substring = true,
+            )
+    }
+
+    @Test
+    fun saysPlainlyWhenAStatusCheckCouldNotBeMade() {
+        show(
+            TRANSFER,
+            sent(RequestState.REQUEST_STATE_SUBMITTED),
+            signingProblem = SigningProblem.NotChecked,
+        )
+        compose
+            .onNodeWithTag(InboxTags.SIGNING_PROBLEM)
+            .performScrollTo()
+            .assertTextEquals(context.getString(R.string.problem_not_checked))
+    }
+
+    @Test
+    fun disablesTheCheckWhileOneIsRunning() {
+        show(TRANSFER, sent(RequestState.REQUEST_STATE_SUBMITTED), checking = true)
+        compose.onNodeWithTag(InboxTags.CHECK_STATUS).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag(InboxTags.SENDING).assertExists()
+    }
+
     private fun result(request: ActionRequest, delivery: Delivery) =
         LocalResult(
             HOME.id,
@@ -251,6 +376,22 @@ class RequestDetailsScreenTest {
         )
 
     private companion object {
+        val TRANSFER: ActionRequest =
+            FakeConnectionGateway.request(HOME.id, createdAt = NOW.minusSeconds(60))
+                .toBuilder()
+                .setAction(
+                    action {
+                        transfer = transferAction {
+                            wallet = WALLET
+                            network = Network.NETWORK_DEVNET
+                            recipient = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
+                            amount = "2500000000"
+                            asset = asset { nativeSol = Asset.NativeSol.getDefaultInstance() }
+                        }
+                    }
+                )
+                .build()
+
         // Looks like markup and a link, and must be shown exactly as written.
         const val TEXT = "Deploy <b>finished</b> — see https://example.com [ok]"
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"

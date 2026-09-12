@@ -125,6 +125,8 @@ fun SeekerVaultApp(
                             inboxState.preparations[key] as? Preparation.Ready,
                         )
                     },
+                    checking = key in inboxState.checking,
+                    onCheckStatus = { inbox.checkStatus(key) },
                     onBack = pop,
                 )
                 // Opening a transfer fetches a fresh transaction and reads it on this phone. It

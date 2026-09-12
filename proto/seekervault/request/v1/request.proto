@@ -90,6 +90,56 @@ message Outcome {
   // Why the request ended as it did, or why its outcome is UNKNOWN. Display text, not for
   // parsing; at most 1024 UTF-8 bytes.
   string detail = 3;
+  // What the sidecar has learned from the chain about signature. Set from the first check on,
+  // for transfers and swaps (SAW-022); absent for actions with no transaction.
+  Confirmation confirmation = 4;
+}
+
+// Confirmation is what one configured Solana RPC endpoint said about the submitted transaction,
+// and when. It is evidence, not a second opinion: every field here rests on that one endpoint's
+// word, which is why `endpoint` names it. The sidecar has no background worker, so this is
+// updated when the agent reads the request or the owner asks the phone to check
+// (docs/protocol.md#confirmation).
+message Confirmation {
+  // How far the transaction had got the last time the endpoint was asked.
+  ConfirmationLevel level = 1;
+  // The slot the transaction landed in; 0 until the endpoint has seen it.
+  uint64 slot = 2;
+  // The chain's own error, when the transaction ran and failed, as the endpoint reported it.
+  // Empty otherwise. Display text, not for parsing; at most 1024 UTF-8 bytes.
+  string chain_error = 3;
+  // When the sidecar last asked.
+  google.protobuf.Timestamp checked_at = 4;
+  // How many times it has asked, including checks that failed to reach the endpoint.
+  uint32 checks = 5;
+  // The host name of the endpoint that answered, and only the host: the configured URL can carry
+  // an API key. Empty when no endpoint is configured, which is when nothing can be checked.
+  string endpoint = 6;
+  // Whether the transaction the endpoint returned for this signature is the one the owner
+  // approved, compared over the transaction's message bytes. A confirmed result is never
+  // reported without this.
+  bool matches_approval = 7;
+  // What the last check found, including why it settled nothing. Display text; at most 1024
+  // UTF-8 bytes.
+  string detail = 8;
+}
+
+// ConfirmationLevel is the commitment the transaction had reached, as getSignatureStatuses
+// reports it. It is not the request's state: a FINALIZED transaction that failed on chain
+// leaves the request FAILED.
+enum ConfirmationLevel {
+  // Nothing has been checked yet.
+  CONFIRMATION_LEVEL_UNSPECIFIED = 0;
+  // The endpoint has no status for this signature. On its own this is not proof that the
+  // transaction never ran: it may not have landed yet, or may have left the status cache.
+  CONFIRMATION_LEVEL_NOT_FOUND = 1;
+  // A node processed it. Not enough to report a result: a processed transaction can still be
+  // dropped.
+  CONFIRMATION_LEVEL_PROCESSED = 2;
+  // A supermajority voted on its block.
+  CONFIRMATION_LEVEL_CONFIRMED = 3;
+  // Its block is finalized and cannot be rolled back.
+  CONFIRMATION_LEVEL_FINALIZED = 4;
 }
 
 // Approval is the user's approval of exactly what they reviewed. The phone sends it before it

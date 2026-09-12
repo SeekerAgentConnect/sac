@@ -70,6 +70,10 @@ object InboxTags {
 
     const val TRANSFER_POLICY = "transferPolicy"
 
+    /** What the server has checked on chain, and the owner's own way of asking again (SAW-022). */
+    const val CONFIRMATION = "requestConfirmation"
+    const val CHECK_STATUS = "checkStatus"
+
     fun item(key: RequestKey) = "request:${key.connectionId}/${key.requestId}"
 
     fun field(name: String) = "requestField:$name"
@@ -235,6 +239,7 @@ fun problemText(problem: SigningProblem): Int =
         SigningProblem.NotVerified -> R.string.problem_not_verified
         SigningProblem.Stale -> R.string.problem_stale_preparation
         SigningProblem.NotApproved -> R.string.problem_not_approved
+        SigningProblem.NotChecked -> R.string.problem_not_checked
     }
 
 /** Whether this app can put [request] in front of the owner for an answer at all. */
@@ -300,10 +305,11 @@ private fun approvedText(result: LocalResult): String {
         is SigningOutcome.Signed ->
             stringResource(if (waiting) R.string.status_to_send_signed else R.string.status_signed)
         is SigningOutcome.Sent ->
-            stringResource(
-                if (waiting) R.string.status_to_send_sent else R.string.status_sent,
-                base58(outcome.signature),
-            )
+            if (waiting) {
+                stringResource(R.string.status_to_send_sent, base58(outcome.signature))
+            } else {
+                sentText(result, outcome)
+            }
         SigningOutcome.Declined ->
             stringResource(
                 if (waiting) R.string.status_to_send_declined_in_wallet
@@ -321,6 +327,40 @@ private fun approvedText(result: LocalResult): String {
     }
 }
 
+/**
+ * Where a sent transaction stands, which the server learns from the chain and this phone only
+ * repeats (SAW-022). Until it has looked, and whenever it can't settle it, this says sent and no
+ * more: the wallet's word that it sent something is not the network's word that it went through.
+ */
+@Composable
+private fun sentText(result: LocalResult, outcome: SigningOutcome.Sent): String {
+    val id = base58(outcome.signature)
+    return when (result.request.state) {
+        RequestState.REQUEST_STATE_CONFIRMED -> stringResource(R.string.status_confirmed, id)
+        RequestState.REQUEST_STATE_FAILED ->
+            stringResource(R.string.status_chain_failed, id, result.request.outcome.detail)
+        else -> stringResource(R.string.status_sent, id)
+    }
+}
+
+/**
+ * What the server checked on the network, and which endpoint's word it rests on. There is no second
+ * opinion behind a confirmed or failed transfer, and the owner is told whose word it is.
+ */
+@Composable
+fun confirmationText(result: LocalResult): String? {
+    if (result.signing !is SigningOutcome.Sent || result.delivery != Delivery.Accepted) return null
+    val confirmation = result.request.outcome.confirmation
+    if (!result.request.outcome.hasConfirmation() || confirmation.endpoint.isEmpty()) {
+        return stringResource(R.string.confirmation_unchecked)
+    }
+    return stringResource(
+        R.string.confirmation_checked,
+        confirmation.endpoint,
+        confirmation.detail,
+    )
+}
+
 @StringRes
 private fun answerSummary(result: LocalResult): Int =
     when (result.answer) {
@@ -330,7 +370,12 @@ private fun answerSummary(result: LocalResult): Int =
             when (result.signing) {
                 null -> R.string.answer_approved
                 is SigningOutcome.Signed -> R.string.answer_signed
-                is SigningOutcome.Sent -> R.string.answer_sent
+                is SigningOutcome.Sent ->
+                    when (result.request.state) {
+                        RequestState.REQUEST_STATE_CONFIRMED -> R.string.answer_confirmed
+                        RequestState.REQUEST_STATE_FAILED -> R.string.answer_chain_failed
+                        else -> R.string.answer_sent
+                    }
                 SigningOutcome.Declined -> R.string.answer_declined_in_wallet
                 is SigningOutcome.Failed -> R.string.answer_not_signed
                 is SigningOutcome.Unresolved ->

@@ -17,6 +17,7 @@ import io.github.brrenat.seekervault.request.v1.RequestErrorDetail
 import io.github.brrenat.seekervault.request.v1.RequestServiceClient
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
+import io.github.brrenat.seekervault.request.v1.checkStatusRequest
 import io.github.brrenat.seekervault.request.v1.listPendingRequest
 import io.github.brrenat.seekervault.request.v1.pairRequest
 import io.github.brrenat.seekervault.request.v1.prepareRequestRequest
@@ -93,6 +94,23 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
         RequestServiceClient(protocolClient(serverUrl)).submitResult(submission, bearer(credential))
     }
         .request
+
+    override suspend fun checkStatus(
+        serverUrl: String,
+        credential: String,
+        key: RequestKey,
+    ): ActionRequest {
+        val request = checkStatusRequest {
+            ref = requestRef {
+                connectionId = key.connectionId
+                requestId = key.requestId
+            }
+        }
+        return call {
+            RequestServiceClient(protocolClient(serverUrl)).checkStatus(request, bearer(credential))
+        }
+            .request
+    }
 
     override suspend fun publishWallet(
         serverUrl: String,

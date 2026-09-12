@@ -28,7 +28,7 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 | `REQUEST_PENDING_LIMIT` | Optional. The most requests that can wait for the owner at once | 1 to 10000; defaults to 100 |
 | `SIDECAR_PUBLIC_URL` | Optional. The URL that pairing codes carry: where the phone reaches the sidecar | `https://`, or `http://` on `127.0.0.1`, `localhost`, or `[::1]`. No user name, password, query, or fragment, and a port, if given, from 1 to 65535. Defaults to `http://<SIDECAR_HOST>:<SIDECAR_PORT>`, the development URL over `adb reverse`. For a phone on another network, use a trusted TLS endpoint; see [transport security](../security.md#transport-security). |
 | `PAIRING_TOKEN_TTL_SECONDS` | Optional. How long a pairing code works | 60 to 3600; defaults to 600 (10 minutes) |
-| `SOLANA_RPC_URL` | Optional. The Solana JSON-RPC endpoint transfers are prepared against (SAW-019). Without it the sidecar serves no `vault_transfer` and prepares no transaction. | An `http://` or `https://` URL. It may carry an API key, so the sidecar never logs it or puts it in an error message. |
+| `SOLANA_RPC_URL` | Optional. The Solana JSON-RPC endpoint transfers are prepared against (SAW-019), and the one a sent transaction's outcome is read from (SAW-022). Without it the sidecar serves no `vault_transfer`, prepares no transaction, and can confirm nothing. | An `http://` or `https://` URL. It may carry an API key, so the sidecar never logs it or puts it in an error message; only its **host** is recorded, as the endpoint a confirmed or failed transfer's word came from. |
 | `SOLANA_RPC_TIMEOUT_MS` | Optional. How long one chain call may take | 1000 to 60000; defaults to 10000 |
 
 Generate each token with `openssl rand -hex 32`. If the configuration is invalid, the sidecar names every problem and exits with status 1. It never prints a token value.
@@ -186,7 +186,8 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 
 `vault_transfer` queues a transfer of SOL or a classic SPL token: `{wallet, network, recipient, amount, token_mint?, idempotency_key, note?, expires_in_seconds?}`, answered at once with the request as PENDING. Run it with `pnpm agent transfer <recipient> <amount>`, and `--mint <address>` for a token.
 
-- **It is served only with `SOLANA_RPC_URL` set.** Without an endpoint the sidecar couldn't prepare the transaction, so it doesn't offer the tool, leaves `transfer` out of `operations`, and answers `PrepareRequest` for a transfer with `CHAIN_UNAVAILABLE`.
+- **It is served only with `SOLANA_RPC_URL` set.** Without an endpoint the sidecar couldn't prepare the transaction, so it doesn't offer the tool, leaves `transfer` out of `operations`, leaves `confirmed_with` out of the capabilities, and answers `PrepareRequest` and `CheckStatus` for a transfer with `CHAIN_UNAVAILABLE`.
+- **Confirmation runs when somebody asks (SAW-022).** There is no background worker. Reading a SUBMITTED transfer with `vault_get_request` checks the chain, at most once every two seconds per request; `RequestService.CheckStatus` checks whenever the owner asks. Both go through `ConfirmationTracker`, which reports CONFIRMED only when the transaction on chain under the reported signature is byte for byte the one the approval named. See [`docs/protocol.md`](../protocol.md#confirmation).
 - **It creates a request and nothing else.** No transaction is built, signed, or sent. The only thing it reads from the chain is the mint, so an agent hears about an unsupported token before the owner ever sees the request.
 - **`amount` is always base units:** lamports for SOL, or the mint's base units for a token, as decimal digits from 1 to the u64 maximum. The decimals come from the mint at preparation, never from a name or a ticker.
 - **`recipient` is a wallet address,** never a token account; the associated token account is derived, and created when the recipient has none.
@@ -238,7 +239,7 @@ These are the tables at schema version 3:
 | `requests` | Each request: its connection, kind, action (as Protobuf binary), note, state, times, and outcome |
 | `idempotency_keys` | Each key's request and action fingerprint, across the whole sidecar |
 | `results` | Every result the phone submitted and the sidecar accepted, so that a repeat changes nothing |
-| `prepared_transactions` | Prepared transaction versions. It stays empty until transfers arrive in Stage 4. |
+| `prepared_transactions` | Prepared transaction versions. A SUBMITTED transfer's approved version is read back from here when the chain is checked (SAW-022). |
 
 To look inside, run `sqlite3 sidecar/data/sidecar.db "SELECT request_id, kind, state FROM requests"`. States are `RequestState` numbers, from 1 (PENDING) to 10 (UNKNOWN).
 

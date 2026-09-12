@@ -9,6 +9,15 @@ import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.SigningOutcome
+import io.github.brrenat.seekervault.request.v1.Asset
+import io.github.brrenat.seekervault.request.v1.ConfirmationLevel
+import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.request.v1.action
+import io.github.brrenat.seekervault.request.v1.asset
+import io.github.brrenat.seekervault.request.v1.confirmation
+import io.github.brrenat.seekervault.request.v1.outcome
+import io.github.brrenat.seekervault.request.v1.transferAction
 import java.io.File
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -98,6 +107,59 @@ class ResultStoreTest {
         val read = ResultStore(dir).get(A, SAME_REQUEST)
         assertEquals(approved, read)
         assertEquals(bytes, read?.approvedTransaction?.transaction)
+    }
+
+    @Test
+    fun keepsASentTransactionsIdAndWhatTheChainSaidOfItAcrossARestart() {
+        // A signature and an unsettled check both have to survive the app closing: they are the
+        // only record that a transaction exists at all, and nothing here can make one again
+        // (SAW-022).
+        val signature = ByteString.copyFrom(ByteArray(64) { (it + 1).toByte() })
+        val sent =
+            result(A, answer = Answer.Approve, delivery = Delivery.Accepted).let { stored ->
+                stored.copy(
+                    approved = true,
+                    signing = SigningOutcome.Sent(signature),
+                    request =
+                        stored.request
+                            .toBuilder()
+                            .setAction(
+                                action {
+                                    transfer = transferAction {
+                                        wallet = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
+                                        network = Network.NETWORK_DEVNET
+                                        recipient = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
+                                        amount = "2500000000"
+                                        asset = asset {
+                                            nativeSol = Asset.NativeSol.getDefaultInstance()
+                                        }
+                                    }
+                                }
+                            )
+                            .setState(RequestState.REQUEST_STATE_SUBMITTED)
+                            .setOutcome(
+                                outcome {
+                                    this.signature = signature
+                                    confirmation = confirmation {
+                                        level = ConfirmationLevel.CONFIRMATION_LEVEL_NOT_FOUND
+                                        endpoint = "rpc.example.test"
+                                        checks = 2
+                                        detail = "The endpoint has no status for it yet."
+                                    }
+                                }
+                            )
+                            .build(),
+                )
+            }
+        store.put(sent)
+
+        val read = ResultStore(dir).get(A, SAME_REQUEST)
+        assertEquals(sent, read)
+        assertEquals(SigningOutcome.Sent(signature), read?.signing)
+        assertEquals(2, read?.request?.outcome?.confirmation?.checks)
+        assertEquals("rpc.example.test", read?.request?.outcome?.confirmation?.endpoint)
+        // Not settled, so the owner can still ask what became of it.
+        assertEquals(true, read?.awaitingChain)
     }
 
     @Test

@@ -299,6 +299,64 @@ Declining in the wallet itself is a rejection, and the app says "You declined in
 Nothing was signed." A sidecar that couldn't be reached is a different thing and never rejects
 anything: it leaves your answer waiting on the phone.
 
+## Sending a transfer
+
+These are about what happens after your wallet sends a transaction; the whole flow is in
+[`transfers.md`](transfers.md).
+
+### It says "Your wallet sent this transaction… not been confirmed on the network yet"
+
+Sending is not succeeding. Your wallet handed the transaction to the network and gave it back an
+ID; whether it landed is something only the network can say. Tap **Check status** and the server
+looks the ID up on the chain.
+
+That check opens no wallet, signs nothing, and sends nothing a second time. You can tap it as often
+as you like. A transfer usually confirms within a few seconds, so if it stays like this for a
+minute or two, read the next two entries.
+
+### It says "This transaction ran on the network and failed"
+
+The transaction reached the chain and the chain rejected it — the line quotes the network's own
+reason, usually a balance that had changed by the time it landed. **The transfer did not happen**,
+beyond the fee the network charges for trying.
+
+Nothing here builds a replacement. If you still want to send it, have the agent ask again, and
+review the new request as you did the first.
+
+### "The server has not looked this up on the network yet"
+
+The server hasn't been asked yet, or its last look settled nothing. It has no background worker on
+purpose: it checks when you tap **Check status**, or when the agent reads the request. If checking
+keeps failing, the server can't reach its Solana RPC endpoint — check `SOLANA_RPC_URL` in its
+`.env`, and that the machine has a network. **Nothing about your transaction changes while the
+server can't see it.** A server that cannot look is not a transaction that failed.
+
+### A transfer whose outcome is UNKNOWN
+
+The app closed, or the wallet never came back, while the transaction was with it. **This is the one
+case nobody on this phone can settle.** No signature ever reached here, so there is no ID to look
+up — tapping **Check status** will say so.
+
+The transaction may or may not have been sent. To find out:
+
+- Open your wallet app and look at its own history for a transfer matching the amount and
+  recipient.
+- Or look up your wallet address on an explorer for the network the request named.
+
+Whatever you find, **the app will never send it to the wallet again**, and neither will the server.
+If it did not go through and you still want it, have the agent ask again.
+
+### The agent reads SUBMITTED forever, and the status check keeps saying the same thing
+
+If the check reports that the transaction on chain under that signature is not the one you
+approved, then the wallet returned an ID for something else. That is not a confirmation of your
+transfer and not a failure of it: it is a signature the server cannot account for, so it says so
+rather than guessing.
+
+Look the signature up on an explorer to see what it actually is, and check your wallet's own
+history for your transfer. Treat it as a problem with the wallet app, and do not send a
+replacement until you know what happened.
+
 ## Reporting a problem
 
 Include these details, and never `.env` itself:
