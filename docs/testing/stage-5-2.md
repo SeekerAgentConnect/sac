@@ -121,3 +121,32 @@ Run on 2026-09-14 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.
 | `pnpm check:generated` | PASS: generated protocol code and fixtures are current. SAW-051 changes no schema. |
 | Deliberate liveness break | PASS: changing the missed-heartbeat limit from three to four failed `ForegroundUpdateManagerTest.unansweredHeartbeatDeadlineClosesThenReconnectsWithBoundedBackoff`; restoring three passed the focused suites and the complete Android check. |
 | Physical Seeker with Hermes | **NOT RUN.** Automatic appearance while Home/Inbox/Activity remain open, visible outage/recovery status, wallet return, and observed on-device delivery latency still require the Stage 5.2 device run. |
+
+## SAW-052 — periodic WorkManager background synchronization
+
+SAW-052 attaches WorkManager to the same headless unary repository used by manual and foreground recovery. It schedules no stream in the background and grants no new wallet authority.
+
+### Automated coverage
+
+- `BackgroundSynchronizationTest` uses WorkManager 2.11.2 test support and virtual time. It proves scheduling waits until the connection store is known, creates one unique periodic request, requires a connected network, uses the 15-minute minimum repeat and initial delay, configures exponential 30-second retry backoff, carries empty worker input, and is not expedited. A second scheduler instance adopts the same request ID, while revoking the last usable connection cancels it.
+- The real `BackgroundSyncWorker` is constructed with `TestListenableWorkerBuilder` without an Activity or ViewModel. It reloads a manually seeded connection and encrypted credential, fetches a unary snapshot, and leaves the pending request, cursor, and last-success time in `SyncStore`. A transient unreachable result returns WorkManager retry; authentication failure revokes the connection, removes its credential, cancels periodic work, and returns without retry.
+- `BackgroundSyncRunner` skips unary work when every usable foreground stream is live. If even one is unhealthy, it enters the shared path. Certificate/configuration failures and revocation do not cause a tight backoff loop; only transient unreachability does.
+- `SynchronizationRepositoryTest` starts five blocked sidecars and proves only four enter concurrently, then releases them without serializing the set. A separate virtual-time case holds one server past the two-minute overall bound while another completes; the held connection becomes retryable without a wall-clock sleep.
+- `StageBoundaryTest` requires WorkManager on the classpath while continuing to confine its imports to `sync/`. Source still contains no foreground/direct service, `JobScheduler`, alarm, receiver, Firebase/push class, worker input secret, or worker access to preparation, approval, policy decisions, Mobile Wallet Adapter, signing, or sending.
+
+WorkManager's own database preserves the unique request across ordinary process death and reboot. Fifteen minutes is only the configured minimum: network constraints, Doze, app standby, battery restrictions, and vendor policy can defer a run. Android Settings **Force stop** suppresses scheduled work until the owner reopens the app. No automated test claims an exact delivery time.
+
+### Verification record
+
+Run on 2026-09-14 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, AndroidX WorkManager 2.11.2, the pinned Buf CLI 1.72.0, and the existing Android SDK selected through `ANDROID_HOME`. No machine path was written to the repository.
+
+| Check | Result |
+| --- | --- |
+| Focused WorkManager and headless-bound tests | PASS: unique scheduling, constraints, retry, cancellation, worker-only initialization, foreground overlap, four-server concurrency, and virtual two-minute timeout all ran without a 15-minute sleep. |
+| Deliberate schedule-replacement break | PASS: replacing `ExistingPeriodicWorkPolicy.KEEP` with `CANCEL_AND_REENQUEUE` failed `BackgroundSynchronizationTest.uniqueScheduleWaitsForLoadedStateKeepsItsClockAndCancelsWithoutAConnection`; restoring `KEEP` passed the focused suite. |
+| `pnpm check` | PASS: Prettier, Buf format/lint, ESLint, TypeScript, 410/410 sidecar tests, and 29/29 test-agent tests. |
+| `pnpm test:hello` | PASS: all 9 Stage 1 simulated-device cases remain compatible. |
+| `pnpm test:queue` | PASS: all 7 Stage 2 durable unary/MCP queue cases remain compatible. |
+| `pnpm check:android` | PASS: Spotless, 787/787 JVM tests, Android lint, and debug and instrumentation APKs. |
+| `pnpm check:generated` | PASS: generated protocol code and fixtures are current. SAW-052 changes no schema. |
+| Physical Seeker background, screen-off, process-death, and reboot checks | **NOT RUN.** No physical Seeker is attached; actual scheduling delays and the persisted result on reopen remain for the SAW-053 owner run. |

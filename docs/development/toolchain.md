@@ -46,6 +46,7 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | Mobile Wallet Adapter client (`mobile-wallet-adapter-clientlib-ktx`), which the app drives the owner's wallet with (SAW-015). It brings `mobile-wallet-adapter-clientlib` and `mobile-wallet-adapter-common` at the same version. | 2.2.0 | `android/gradle/libs.versions.toml` |
 | OkHttp `mockwebserver3` and `okhttp-tls`, test-only, on the OkHttp version that Connect-Kotlin brings | 5.4.0 | `android/gradle/libs.versions.toml` |
 | AndroidX Lifecycle (`lifecycle-viewmodel-compose`, `lifecycle-runtime-compose`) | 2.11.0 | `android/gradle/libs.versions.toml` |
+| AndroidX WorkManager (`work-runtime-ktx`, plus `work-testing` for JVM tests) | 2.11.2 | `android/gradle/libs.versions.toml` |
 | JUnit | 4.13.2 | `android/gradle/libs.versions.toml` |
 | Robolectric, running the tests on SDK 36 | 4.16.1 | `android/gradle/libs.versions.toml`, `android/app/src/test/resources/robolectric.properties` |
 | AndroidX Test (`core`, `ext:junit`, `runner`) | 1.7.0, 1.3.0, 1.7.0 | `android/gradle/libs.versions.toml` |

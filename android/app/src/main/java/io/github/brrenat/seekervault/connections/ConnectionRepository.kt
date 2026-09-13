@@ -103,7 +103,9 @@ class ConnectionRepository(
 ) : SynchronizationHost {
     private val lock = Mutex()
     private val loading = Mutex()
-    private var loaded = false
+    private val _loaded = MutableStateFlow(false)
+    /** True only after connection metadata and credentials have been reconciled from disk. */
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
     private val _connections = MutableStateFlow<List<Connection>>(emptyList())
     val connections: StateFlow<List<Connection>> = _connections.asStateFlow()
     private val _inbox = MutableStateFlow(Inbox())
@@ -135,7 +137,7 @@ class ConnectionRepository(
      * connection owns, and answers that settled more than a week ago.
      */
     suspend fun load() = loading.withLock {
-        if (loaded) return@withLock
+        if (_loaded.value) return@withLock
         locked {
             val ids = store.list().map { it.id }.toSet()
             vault.ids().filter { it !in ids }.forEach(vault::delete)
@@ -160,7 +162,7 @@ class ConnectionRepository(
             publish()
         }
         synchronization?.load()
-        loaded = true
+        _loaded.value = true
     }
 
     /**

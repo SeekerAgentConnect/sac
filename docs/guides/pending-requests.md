@@ -1,8 +1,8 @@
 # Pending requests
 
-What an agent asks of you arrives on the phone as a **pending request**. You review each one and answer it yourself. The app answers nothing for you, and nothing runs while it's closed.
+What an agent asks of you arrives on the phone as a **pending request**. You review each one and answer it yourself. The app answers nothing for you. While the app is closed, Android may let its bounded periodic worker fetch server state, but that worker cannot approve or open a wallet.
 
-> **Stage 5.2 status:** while the app is open, a configured current sidecar now delivers live request and outcome changes through one persistent stream. Old or unconfigured sidecars keep manual Refresh through the earlier API. Periodic background scheduling arrives later; there is no push notification or automatic wallet action.
+> **Stage 5.2 status:** while the app is open, a configured current sidecar delivers live request and outcome changes through one persistent stream. In the background, one network-constrained WorkManager job periodically uses unary Sync for configured sidecars. Old or unconfigured sidecars keep manual Refresh through the earlier API. There is no push notification or automatic wallet action.
 
 ## Where requests come from
 
@@ -16,7 +16,11 @@ The phone must be paired with the sidecar first ([`pairing.md`](pairing.md)).
 
 The phone reconciles every connection when the app opens or comes back to the foreground, then keeps one live stream to each usable configured sidecar while the app remains open. A new request or changed result appears on Home, Inbox, Request details, and Activity without opening the screen again or tapping **Refresh**. Rotating the phone and moving between screens keep the same stream. Leaving for the wallet closes foreground streams without canceling the wallet action; returning reconciles stored answers and missed server changes before live delivery resumes.
 
-Connection status says whether live delivery is connecting, live, reconnecting, unreachable, revoked, unsupported, or intentionally paused in the background. **Last synced** is shown separately: an older successful sync does not mean a stream is live. **Refresh** remains available and its existing failure text remains actionable. There's no push or background service yet. A request made while the app is closed or in the background appears on the next foreground reconciliation.
+Connection status says whether live delivery is connecting, live, reconnecting, unreachable, revoked, unsupported, or intentionally paused in the background. **Last synced** is shown separately: an older successful sync does not mean a stream is live. **Refresh** remains available and its existing failure text remains actionable.
+
+With at least one usable connection, Android retains one periodic background job. Its configured interval is 15 minutes, which is Android's minimum—not a promise that every request appears within 15 minutes. Doze, battery restrictions, standby, lack of a network, and device policy can defer a run. Android Settings **Force stop** stops scheduled work until you reopen the app. There is no push notification or continuous background connection, so open the app or use **Refresh** when you need the newest state immediately.
+
+A background run reloads stored connections and encrypted credentials, fetches a bounded unary snapshot, retries an answer you already recorded if needed, and saves the resulting requests, Activity outcomes, and last-sync time. It never prepares a transaction, answers a request, approves, opens the wallet, signs, sends, or repeats a transfer.
 
 Requests remain authoritative on the sidecar. The phone keeps the last complete revisioned view so it survives process death. A complete multi-page refresh replaces that cache only after its final page arrives; if paging is interrupted, the preceding complete view remains. Duplicate or stale updates change nothing, while a cursor gap, conflicting revision, damaged cache, or sidecar restart requests a full snapshot. Removing or revoking a connection removes its cached server state, but Activity remains the owner's record.
 

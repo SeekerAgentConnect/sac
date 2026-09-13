@@ -20,6 +20,7 @@ import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -268,6 +269,51 @@ class SynchronizationRepositoryTest {
         assertEquals(CheckOutcome.Unreachable, (outcomes[A] as SynchronizeOutcome.Failed).failure)
         assertTrue(outcomes[B] is SynchronizeOutcome.Updated)
         assertEquals(listOf(B_REQUEST), host.applied.getValue(B).pending.map { it.ref.requestId })
+    }
+
+    @Test
+    fun headlessSyncBoundsConcurrentServersWithoutSerializingThem() = runTest {
+        val ids = listOf(A, B, C, D, E)
+        ids.forEach { id ->
+            host.add(id)
+            transport.pages[id] = ArrayDeque(listOf(snapshot(id, emptyList())))
+        }
+        var active = 0
+        var maximum = 0
+        val fourEntered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        transport.onSync = {
+            active++
+            maximum = maxOf(maximum, active)
+            if (active == 4) fourEntered.complete(Unit)
+            release.await()
+            active--
+        }
+
+        val running = async { repository().synchronizeAll() }
+        fourEntered.await()
+        assertEquals(4, transport.syncCalls.values.sum())
+        release.complete(Unit)
+
+        assertEquals(ids.toSet(), running.await().keys)
+        assertEquals(4, maximum)
+    }
+
+    @Test
+    fun headlessTimeoutIsRetryableAndDoesNotStarveAnotherServer() = runTest {
+        host.add(A)
+        host.add(B)
+        transport.pages[B] = ArrayDeque(listOf(snapshot(B, emptyList())))
+        transport.onSync = { id -> if (id == A) awaitCancellation() }
+
+        val outcomes = repository().synchronizeAll()
+
+        assertEquals(
+            CheckOutcome.Unreachable,
+            (outcomes.getValue(A) as SynchronizeOutcome.Failed).failure,
+        )
+        assertTrue(outcomes.getValue(B) is SynchronizeOutcome.Updated)
+        assertEquals(1, transport.syncCalls[B])
     }
 
     @Test
@@ -556,6 +602,7 @@ class SynchronizationRepositoryTest {
         val discoverCalls = mutableMapOf<String, Int>()
         val syncCalls = mutableMapOf<String, Int>()
         var beforeSync: suspend () -> Unit = {}
+        var onSync: suspend (String) -> Unit = {}
 
         override suspend fun discover(
             serverUrl: String,
@@ -578,6 +625,7 @@ class SynchronizationRepositoryTest {
             syncCalls[id] = syncCalls.getOrDefault(id, 0) + 1
             requests.getOrPut(id) { mutableListOf() } += request
             beforeSync()
+            onSync(id)
             return checkNotNull(pages[id]?.removeFirstOrNull()) { "no page for $id" }
         }
     }
@@ -585,6 +633,9 @@ class SynchronizationRepositoryTest {
     private companion object {
         const val A = "11111111-1111-4111-8111-111111111111"
         const val B = "22222222-2222-4222-8222-222222222222"
+        const val C = "33333333-3333-4333-8333-333333333333"
+        const val D = "44444444-4444-4444-8444-444444444444"
+        const val E = "55555555-5555-4555-8555-555555555555"
         const val A_REQUEST = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         const val B_REQUEST = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
         const val OLD_REQUEST = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"

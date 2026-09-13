@@ -1,7 +1,7 @@
 # seeker-vault — MVP Implementation Plan
 
 **Working name:** `seeker-vault`  
-**Revision:** September 13, 2026. Stage 5.2 adds live foreground observation and eventual background synchronization without automatic wallet action.
+**Revision:** September 14, 2026. Stage 5.2 adds live foreground observation and eventual background synchronization without automatic wallet action.
 
 **Purpose:** a master plan to be broken down into implementation tasks.
 
@@ -34,7 +34,7 @@ docs/          Architecture, protocol, policies, setup, and integrations
 
 **Sidecar:** TypeScript, Node.js, `@connectrpc/connect-node`, `@modelcontextprotocol/sdk`, a Solana SDK, Jupiter API, and a persistent local queue. The sidecar does not store wallet private keys or sign transactions.
 
-**Communication:** the agent uses MCP; the phone uses a separate authenticated API. Stage 2 begins with unary Connect RPCs. Stage 5.2 adds a production bidirectional gRPC stream over HTTP/2 while the app process is foreground and a unary gRPC Sync shared by recovery, Refresh, and WorkManager. Both observe the same durable request store and are scoped per phone connection. Stage 1's diagnostic server stream remains separate, screen-scoped, and unnecessary to the durable workflow.
+**Communication:** the agent uses MCP; the phone uses a separate authenticated API. Stage 2 begins with unary Connect RPCs. Stage 5.2 adds a production bidirectional gRPC stream over HTTP/2 while the app process is foreground and a unary gRPC Sync shared by recovery, Refresh, and WorkManager. The phone retains one connected-network-constrained periodic job with Android's 15-minute minimum interval while it has usable connections; WorkManager may defer it and Force stop suppresses it until the owner reopens the app. Both transports observe the same durable request store and are scoped per phone connection. Stage 1's diagnostic server stream remains separate, screen-scoped, and unnecessary to the durable workflow.
 
 ## 3. Core Workflow
 

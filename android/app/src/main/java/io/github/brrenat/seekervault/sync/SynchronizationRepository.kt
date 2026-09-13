@@ -30,8 +30,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Transient access for one call. Its credential is never printable or persisted. */
 class SyncConnection(val serverUrl: String, val credential: String) {
@@ -126,8 +129,25 @@ class SynchronizationRepository(
     suspend fun synchronizeAll(): Map<String, SynchronizeOutcome> {
         if (!_state.value.loaded) load()
         val ids = host.connectionIds()
+        val permits = Semaphore(MAX_HEADLESS_CONCURRENCY)
         return coroutineScope {
-            ids.associateWith { id -> async { synchronize(id) } }.mapValues { it.value.await() }
+            ids.associateWith { id ->
+                    async {
+                        permits.withPermit {
+                            val outcome =
+                                withTimeoutOrNull(PER_CONNECTION_TIMEOUT_MILLIS) {
+                                    synchronize(id)
+                                }
+                            if (outcome != null) {
+                                outcome
+                            } else {
+                                host.recordFailure(id, CheckOutcome.Unreachable)
+                                SynchronizeOutcome.Failed(CheckOutcome.Unreachable)
+                            }
+                        }
+                    }
+                }
+                .mapValues { it.value.await() }
         }
     }
 
@@ -1031,6 +1051,9 @@ class SynchronizationRepository(
         const val MAX_MESSAGE_BYTES = 65_536
         const val MAX_BUFFERED_EVENTS = 512
         const val MAX_TOMBSTONES = 512
+        const val MAX_HEADLESS_CONCURRENCY = 4
+        // A paginated run is bounded beyond the transport's 30-second deadline for every call.
+        const val PER_CONNECTION_TIMEOUT_MILLIS = 2 * 60 * 1_000L
         val TERMINAL =
             setOf(
                 RequestState.REQUEST_STATE_CONFIRMED,

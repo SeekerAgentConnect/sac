@@ -21,6 +21,7 @@ import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
+import io.github.brrenat.seekervault.sync.BackgroundSyncScheduler
 import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
 import io.github.brrenat.seekervault.sync.ForegroundUpdateManager
 import io.github.brrenat.seekervault.sync.UpdateTransport
@@ -33,7 +34,9 @@ import java.io.File
 import javax.crypto.SecretKey
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -99,19 +102,29 @@ class SeekerVaultApplication : Application() {
      * metadata and answers in `filesDir`, and credentials, encrypted, in `noBackupFilesDir`.
      */
     val connectionRepository: ConnectionRepository by lazy {
-        ConnectionRepository(
-            store = ConnectionStore(File(filesDir, "connections")),
-            vault = CredentialVault(File(noBackupFilesDir, "credentials")) { credentialKey() },
-            results = ResultStore(File(filesDir, "results")),
-            gateway = connectionGateway(),
-            history = activityLog,
-            // A connection's overrides go when it does. Global rules are a separate document.
-            rules = policyStore,
-            deviceName = Build.MODEL,
-            io = connectionIo,
-            syncStore = SyncStore(File(filesDir, "sync")),
-            updateTransport = updateTransport(),
-        )
+        val repository =
+            ConnectionRepository(
+                store = ConnectionStore(File(filesDir, "connections")),
+                vault = CredentialVault(File(noBackupFilesDir, "credentials")) { credentialKey() },
+                results = ResultStore(File(filesDir, "results")),
+                gateway = connectionGateway(),
+                history = activityLog,
+                // A connection's overrides go when it does. Global rules are a separate document.
+                rules = policyStore,
+                deviceName = Build.MODEL,
+                io = connectionIo,
+                syncStore = SyncStore(File(filesDir, "sync")),
+                updateTransport = updateTransport(),
+            )
+        backgroundSync =
+            BackgroundSyncScheduler.create(
+                    context = this,
+                    loaded = repository.loaded,
+                    connections = repository.connections,
+                    scope = CoroutineScope(SupervisorJob() + connectionIo),
+                )
+                .also(BackgroundSyncScheduler::start)
+        repository
     }
 
     /** One foreground owner for every paired sidecar, independent of activities and navigation. */
@@ -122,6 +135,9 @@ class SeekerVaultApplication : Application() {
             dispatcher = connectionIo,
         )
     }
+
+    /** Keeps the scheduler and its application-scoped observer alive with the storage owner. */
+    private var backgroundSync: BackgroundSyncScheduler? = null
 
     /**
      * Where storage and network calls run — the connections' and the policy editor's alike. Tests
