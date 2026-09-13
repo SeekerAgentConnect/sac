@@ -24,7 +24,26 @@ import java.time.ZoneId
  * counts, because the money comes out of different places. And an asset is a mint *on a network*,
  * so devnet play money is never counted against a mainnet threshold.
  */
-data class SpendScope(val connectionId: String, val wallet: String, val asset: PolicyAsset)
+sealed interface DailySpendScope {
+    val wallet: String
+    val asset: PolicyAsset
+}
+
+/** One connection's daily threshold scope. */
+data class SpendScope(
+    val connectionId: String,
+    override val wallet: String,
+    override val asset: PolicyAsset,
+) : DailySpendScope
+
+/** A global daily threshold scope: the same wallet, asset, and chain across every connection. */
+data class GlobalSpendScope(
+    override val wallet: String,
+    override val asset: PolicyAsset,
+) : DailySpendScope
+
+/** A request ID is unique only inside its connection. */
+data class SpendRequest(val connectionId: String, val requestId: String)
 
 /** What the app knows about whether the money actually left. */
 enum class SpendStatus {
@@ -46,6 +65,8 @@ enum class SpendStatus {
 /** One movement the app handled, as the day's counters see it. */
 data class Spend(
     val scope: SpendScope,
+    /** The connection-qualified request whose Activity record supplied this movement. */
+    val request: SpendRequest,
     /**
      * What makes this the same movement and not another: the transaction's signature when there is
      * one, and otherwise the request it belongs to. A request prepared three times, answered,
@@ -67,7 +88,7 @@ data class Spend(
  * for one purpose only — warning about a threshold — and the screen shows both halves beside it.
  */
 data class DailyTotal(
-    val scope: SpendScope,
+    val scope: DailySpendScope,
     val day: LocalDate,
     /** Base units the chain confirmed. */
     val confirmed: ULong,
@@ -95,7 +116,7 @@ data class DailyTotal(
 
     companion object {
         /** Nothing counted: no movement in this scope on this day. */
-        fun none(scope: SpendScope, day: LocalDate): DailyTotal =
+        fun none(scope: DailySpendScope, day: LocalDate): DailyTotal =
             DailyTotal(scope, day, 0UL, 0UL, 0, 0, 0)
     }
 }
@@ -124,6 +145,7 @@ fun spendsOf(records: List<ActivityRecord>): List<Spend> = records.mapNotNull { 
                 wallet = transfer.wallet,
                 asset = PolicyAsset(transfer.network, transfer.mint),
             ),
+        request = SpendRequest(record.connectionId, record.requestId),
         identity = record.signature ?: "${record.connectionId}/${record.requestId}",
         at = record.answeredAt,
         amount = transfer.amount.toULongOrNull(),
@@ -172,23 +194,45 @@ private fun statusOf(record: ActivityRecord): SpendStatus =
  */
 fun dailyTotal(
     spends: List<Spend>,
-    scope: SpendScope,
+    scope: DailySpendScope,
     day: LocalDate,
     zone: ZoneId,
+    /** The request in review is projected below, so an existing record for it is left out here. */
+    excluding: SpendRequest? = null,
+    /** Files the Activity store found but could not read; their scope cannot safely be guessed. */
+    unreadableHistory: Int = 0,
 ): DailyTotal {
+    val excludedIdentities =
+        if (excluding == null) emptySet()
+        else spends.filter { it.request == excluding }.map { it.identity }.toSet()
     val counted =
         spends
-            .filter { it.scope == scope && it.at.atZone(zone).toLocalDate() == day }
+            .filter {
+                it.request != excluding &&
+                    it.identity !in excludedIdentities &&
+                    it.scope.matches(scope)
+            }
             // One movement, counted once. Where two records carry one identity, the one that knows
-            // the most wins: the chain's word settles what the phone's guess couldn't.
+            // the most wins: either chain outcome settles what the phone's guess couldn't. For a
+            // global scope this also deduplicates one signature recorded under two connections.
             .groupBy { it.identity }
             .values
-            .mapNotNull { duplicates -> duplicates.minByOrNull { it.status.ordinal } }
+            .mapNotNull { duplicates ->
+                duplicates.minWithOrNull(
+                    compareBy<Spend> { it.status.resolutionRank }
+                        .thenBy { it.at }
+                        .thenBy { it.request.connectionId }
+                        .thenBy { it.request.requestId }
+                )
+            }
+            // Deduplicate before choosing the day, so one signature cannot appear once on each side
+            // of midnight merely because two connections recorded it at different instants.
+            .filter { it.at.atZone(zone).toLocalDate() == day }
     var confirmed = 0UL
     var unresolved = 0UL
     var confirmedCount = 0
     var unresolvedCount = 0
-    var unreadable = 0
+    var unreadable = unreadableHistory
     for (spend in counted) {
         if (spend.status == SpendStatus.NotSpent) continue
         val amount = spend.amount
@@ -214,3 +258,17 @@ fun dailyTotal(
         unreadable = unreadable,
     )
 }
+
+private fun SpendScope.matches(scope: DailySpendScope): Boolean =
+    wallet == scope.wallet &&
+        asset == scope.asset &&
+        (scope !is SpendScope || connectionId == scope.connectionId)
+
+/** A settled chain result outranks unresolved exposure when duplicate records disagree. */
+private val SpendStatus.resolutionRank: Int
+    get() =
+        when (this) {
+            SpendStatus.Confirmed -> 0
+            SpendStatus.NotSpent -> 1
+            SpendStatus.Unresolved -> 2
+        }

@@ -41,8 +41,13 @@ class ActivityLog(
 
     private val _loaded = MutableStateFlow(false)
 
+    private val _unreadableRecords = MutableStateFlow(0)
+
     /** Every record, newest first. */
     val records: StateFlow<List<ActivityRecord>> = _records.asStateFlow()
+
+    /** Files present in Activity that did not decode during the last complete read. */
+    val unreadableRecords: StateFlow<Int> = _unreadableRecords.asStateFlow()
 
     /**
      * Whether the history has been read off the disk. Until it has — and after a read that failed —
@@ -53,7 +58,12 @@ class ActivityLog(
 
     /** Reads what is stored. A store that can't be read leaves the list as it was, and throws. */
     fun load() {
-        _records.value = store.list()
+        // A failed refresh makes the history unknown again; stale in-memory rows are not a
+        // successful read of what is required for a daily assessment now.
+        _loaded.value = false
+        val snapshot = store.snapshot()
+        _records.value = snapshot.records
+        _unreadableRecords.value = snapshot.unreadableRecords
         _loaded.value = true
     }
 
@@ -95,6 +105,7 @@ class ActivityLog(
         store.clear()
         shown.clear()
         _records.value = emptyList()
+        _unreadableRecords.value = 0
         // Cleared is read: the owner emptied it themselves, and an empty history is a known one.
         _loaded.value = true
     }

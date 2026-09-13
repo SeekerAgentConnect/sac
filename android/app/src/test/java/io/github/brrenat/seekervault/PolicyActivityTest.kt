@@ -191,6 +191,13 @@ class PolicyActivityTest {
 
         app.activityLog.load()
         assertEquals(0UL, checkNotNull(app.policyEvaluator.spentToday(scope)).confirmed)
+
+        val activity = File(app.filesDir, "activity/${connection.id}").apply { mkdirs() }
+        File(activity, "f7e6d5c4-b3a2-4918-8a7f-6e5d4c3b2a19.json").writeText("{ not json")
+        app.activityLog.load()
+        val partial = checkNotNull(app.policyEvaluator.spentToday(scope))
+        assertFalse(partial.known)
+        assertEquals(1, partial.unreadable)
     }
 
     private companion object {

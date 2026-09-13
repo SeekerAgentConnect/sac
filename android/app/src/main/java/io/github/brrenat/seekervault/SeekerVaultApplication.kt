@@ -82,6 +82,7 @@ class SeekerVaultApplication : Application() {
             // Null until the history has actually been read, and again if a read fails. A day's
             // total that nobody could read is reported as unverified rather than as nothing spent.
             records = { if (activityLog.loaded.value) activityLog.records.value else null },
+            unreadableRecords = { activityLog.unreadableRecords.value },
         )
     }
 

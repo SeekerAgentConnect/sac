@@ -19,6 +19,11 @@ import io.github.brrenat.seekervault.transactions.TransferInspection
 data class RequestFacts(
     /** The connection the request came from. A policy is only ever applied to its own. */
     val connectionId: String,
+    /**
+     * The connection-scoped request identity, used only to avoid projecting an existing attempt
+     * twice.
+     */
+    val requestId: String? = null,
     /** The wallet that would pay, read from the transaction; null when the bytes don't say. */
     val wallet: String?,
     /** The kind of action, or null when this build has no name for it. */
@@ -63,9 +68,14 @@ data class RequestFacts(
          * A request that moves nothing: an acknowledgement, or a message signature. There are no
          * bytes to leave unread, so nothing about it is uncovered.
          */
-        fun movesNothing(connectionId: String, action: PolicyAction?): RequestFacts =
+        fun movesNothing(
+            connectionId: String,
+            action: PolicyAction?,
+            requestId: String? = null,
+        ): RequestFacts =
             RequestFacts(
                 connectionId = connectionId,
+                requestId = requestId,
                 wallet = null,
                 action = action,
                 movesValue = false,
@@ -82,9 +92,14 @@ data class RequestFacts(
          * Stage 6 will read, or a preparation that hasn't arrived. Nothing about it is established,
          * so nothing about it can be allowed.
          */
-        fun unread(connectionId: String, action: PolicyAction?): RequestFacts =
+        fun unread(
+            connectionId: String,
+            action: PolicyAction?,
+            requestId: String? = null,
+        ): RequestFacts =
             RequestFacts(
                 connectionId = connectionId,
+                requestId = requestId,
                 wallet = null,
                 action = action,
                 movesValue = true,
@@ -125,25 +140,29 @@ fun policyFacts(
     val action = policyAction(request)
     return when (action) {
         PolicyAction.Acknowledgement,
-        PolicyAction.MessageSignature -> RequestFacts.movesNothing(connectionId, action)
+        PolicyAction.MessageSignature ->
+            RequestFacts.movesNothing(connectionId, action, request.ref.requestId)
         // A swap moves value through a route this stage doesn't read. Stage 6 reads it; until then
         // there is nothing established to check, and an unchecked swap is not an allowed one.
-        PolicyAction.Swap -> RequestFacts.unread(connectionId, action)
-        PolicyAction.Transfer -> transferFacts(connectionId, action, network, inspection)
+        PolicyAction.Swap -> RequestFacts.unread(connectionId, action, request.ref.requestId)
+        PolicyAction.Transfer ->
+            transferFacts(connectionId, request.ref.requestId, action, network, inspection)
         // An action this build has no name for moves value as far as it knows.
-        null -> RequestFacts.unread(connectionId, null)
+        null -> RequestFacts.unread(connectionId, null, request.ref.requestId)
     }
 }
 
 private fun transferFacts(
     connectionId: String,
+    requestId: String,
     action: PolicyAction,
     network: Network,
     inspection: TransferInspection?,
 ): RequestFacts {
-    val facts = inspection?.facts ?: return RequestFacts.unread(connectionId, action)
+    val facts = inspection?.facts ?: return RequestFacts.unread(connectionId, action, requestId)
     return RequestFacts(
         connectionId = connectionId,
+        requestId = requestId,
         wallet = facts.payer.takeIf(String::isNotEmpty),
         action = action,
         movesValue = true,

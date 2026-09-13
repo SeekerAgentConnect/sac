@@ -62,6 +62,18 @@ class ActivityLogTest {
     }
 
     @Test
+    fun aPartialReadReportsWhatWasSkipped() {
+        store.put(record())
+        File(dir, "$CONNECTION/$REQUEST.json").writeText("{ not json")
+
+        log.load()
+
+        assertTrue(log.loaded.value)
+        assertEquals(emptyList<ActivityRecord>(), log.records.value)
+        assertEquals(1, log.unreadableRecords.value)
+    }
+
+    @Test
     fun clearingIsAHistoryTheOwnerKnowsIsEmpty() {
         log.load()
         log.record(result(transferRequest()), connection())
