@@ -270,7 +270,12 @@ fun assess(
     // Nothing configured is not a match. A policy that asks nothing of a request has said nothing
     // about it, and saying nothing must never read as approval.
     if (ran.isEmpty()) {
-        return noPolicy(PolicyReason.NoPolicyConfigured).copy(dailyChecks = dailyChecks)
+        return PolicyDecision(
+            assessment = PolicyAssessment.UnderRestrictions,
+            checks = checks,
+            reason = PolicyReason.NoPolicyConfigured,
+            dailyChecks = dailyChecks,
+        )
     }
     val assessment =
         if (ran.all { it.status == PolicyCheckStatus.Passed }) PolicyAssessment.Allowed

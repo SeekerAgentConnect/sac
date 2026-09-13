@@ -112,6 +112,27 @@ class PolicyDecisionTest {
     }
 
     @Test
+    fun aPolicyThatChecksNothingKeepsExplicitNoCheckSources() {
+        val original =
+            PolicyCheck.entries.map { check ->
+                PolicyCheckResult.notConfigured(
+                    check,
+                    if (check == PolicyCheck.Action) {
+                        RuleSource.ConnectionOverride
+                    } else {
+                        RuleSource.NotConfigured
+                    },
+                )
+            }
+
+        val decision = assess(original)
+
+        assertEquals(PolicyReason.NoPolicyConfigured, decision.reason)
+        assertEquals(original, decision.checks)
+        assertEquals(RuleSource.ConnectionOverride, decision.checks.first().source)
+    }
+
+    @Test
     fun rulesThisBuildCannotReadAreNotTheAbsenceOfRules() {
         val unreadable = noPolicy(PolicyReason.PolicyUnreadable)
         val none = noPolicy(PolicyReason.NoPolicyConfigured)

@@ -405,7 +405,13 @@ private fun ConnectionEditor(
         )
     }
 
-    ConnectionAssets(draft, state.global, review, edit)
+    ConnectionAssets(
+        draft,
+        state.global,
+        globalUnreadable = state.globalUnreadable != null,
+        review = review,
+        onEdit = edit,
+    )
     OverrideSelector(
         title = R.string.policy_section_recipients,
         list = RECIPIENTS,
@@ -628,6 +634,7 @@ private fun OverrideSelector(
 private fun ConnectionAssets(
     draft: ConnectionPolicyDraft,
     global: GlobalPolicy?,
+    globalUnreadable: Boolean,
     review: ConnectionDraftReview,
     onEdit: (ConnectionPolicyDraft) -> Unit,
 ) {
@@ -685,7 +692,7 @@ private fun ConnectionAssets(
             )
         }
     }
-    ConnectionThresholds(draft, global, review, onEdit)
+    ConnectionThresholds(draft, global, globalUnreadable, review, onEdit)
 }
 
 @Composable
@@ -717,6 +724,7 @@ private fun AddPolicyAssetButton(
 private fun ConnectionThresholds(
     draft: ConnectionPolicyDraft,
     global: GlobalPolicy?,
+    globalUnreadable: Boolean,
     review: ConnectionDraftReview,
     onEdit: (ConnectionPolicyDraft) -> Unit,
 ) {
@@ -758,15 +766,17 @@ private fun ConnectionThresholds(
                 inherited != null -> RuleSource.Global
                 else -> RuleSource.NotConfigured
             }
-        Text(
-            stringResource(
-                R.string.policy_effective_per_request,
-                effectivePerOperation?.let { amountText(it, asAsset) }
-                    ?: stringResource(R.string.policy_effective_not_checked),
-                sourceText(effectivePerOperationSource),
-            ),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        )
+        if (local.overridePerOperation || !globalUnreadable) {
+            Text(
+                stringResource(
+                    R.string.policy_effective_per_request,
+                    effectivePerOperation?.let { amountText(it, asAsset) }
+                        ?: stringResource(R.string.policy_effective_not_checked),
+                    sourceText(effectivePerOperationSource),
+                ),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
         Choice(
             R.string.policy_use_global_per_request,
             !local.overridePerOperation,
@@ -801,19 +811,21 @@ private fun ConnectionThresholds(
             if (local.perOperation.isBlank()) Note(R.string.policy_local_per_request_none)
         }
         val globalDaily = global?.limitsFor(asset)?.daily
-        Text(
-            stringResource(
-                R.string.policy_global_daily_context,
-                globalDaily?.let { amountText(it, asAsset) }
-                    ?: stringResource(R.string.policy_effective_not_checked),
-                sourceText(
-                    if (globalDaily == null) RuleSource.NotConfigured else RuleSource.Global
+        if (!globalUnreadable) {
+            Text(
+                stringResource(
+                    R.string.policy_global_daily_context,
+                    globalDaily?.let { amountText(it, asAsset) }
+                        ?: stringResource(R.string.policy_effective_not_checked),
+                    sourceText(
+                        if (globalDaily == null) RuleSource.NotConfigured else RuleSource.Global
+                    ),
                 ),
-            ),
-            modifier =
-                Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    .testTag(PolicyTags.globalDaily(asset)),
-        )
+                modifier =
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        .testTag(PolicyTags.globalDaily(asset)),
+            )
+        }
         Amount(
             tag = PolicyTags.connectionDaily(asset),
             value = local.daily,
