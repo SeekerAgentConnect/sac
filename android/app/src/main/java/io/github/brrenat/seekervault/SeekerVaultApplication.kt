@@ -21,6 +21,9 @@ import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
+import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
+import io.github.brrenat.seekervault.sync.UpdateTransport
+import io.github.brrenat.seekervault.sync.storage.SyncStore
 import io.github.brrenat.seekervault.wallet.MwaWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletRepository
@@ -51,6 +54,9 @@ class SeekerVaultApplication : Application() {
 
     /** How connections reach their sidecars. Tests replace it before the first activity starts. */
     var connectionGateway: () -> ConnectionGateway = { ConnectConnectionGateway(httpClient) }
+
+    /** The durable update endpoint. It shares the process HTTP client but never a credential. */
+    var updateTransport: () -> UpdateTransport = { ConnectUpdateTransport(httpClient) }
 
     /**
      * The key that encrypts phone credentials. Tests replace it, since Robolectric has no Keystore.
@@ -102,6 +108,8 @@ class SeekerVaultApplication : Application() {
             rules = policyStore,
             deviceName = Build.MODEL,
             io = connectionIo,
+            syncStore = SyncStore(File(filesDir, "sync")),
+            updateTransport = updateTransport(),
         )
     }
 

@@ -2,7 +2,7 @@
 
 What an agent asks of you arrives on the phone as a **pending request**. You review each one and answer it yourself. The app answers nothing for you, and nothing runs while it's closed.
 
-> **Stage 5.2 status:** SAW-048 defines and tests the future live-update and bounded-sync protocol, but it does not change this screen yet. This build still fetches at the moments described below. Later Stage 5.2 tickets will adopt the new transport without adding push notifications or automatic wallet actions.
+> **Stage 5.2 status:** a configured current sidecar now uses the persistent bounded Sync path whenever this build fetches. Old or unconfigured sidecars keep manual Refresh through the earlier API. Foreground live updates and periodic background scheduling arrive in the next tickets; this ticket adds no push notification or automatic wallet action.
 
 ## Where requests come from
 
@@ -15,6 +15,8 @@ The phone must be paired with the sidecar first ([`pairing.md`](pairing.md)).
 ## When the phone fetches
 
 The phone fetches a connection's requests at three moments: when the app opens or comes back to the foreground, when you open that connection, and when you tap **Refresh**. Rotating the phone doesn't fetch. There's no push and no background service. A request made while the app is closed or in the background shows up the next time you open it.
+
+Requests remain authoritative on the sidecar. The phone keeps the last complete revisioned view so it survives process death. A complete multi-page refresh replaces that cache only after its final page arrives; if paging is interrupted, the preceding complete view remains. Duplicate or stale updates change nothing, while a cursor gap, conflicting revision, damaged cache, or sidecar restart requests a full snapshot. Removing or revoking a connection removes its cached server state, but Activity remains the owner's record.
 
 ## Reviewing a request
 

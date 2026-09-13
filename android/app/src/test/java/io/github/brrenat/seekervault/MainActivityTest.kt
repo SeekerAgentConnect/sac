@@ -14,6 +14,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.live.FakeSidecar
 import io.github.brrenat.seekervault.live.LiveCommandTags
@@ -42,6 +43,7 @@ class MainActivityTest {
     fun launch() {
         app.liveCommandTransports = sidecar
         app.connectionGateway = { FakeConnectionGateway() }
+        app.updateTransport = { LegacyUpdateTransport() }
         app.credentialKey = softwareKey().let { key -> { key } }
         scenario = ActivityScenario.launch(MainActivity::class.java)
         // The app opens on Connections; the live test is one tap away.

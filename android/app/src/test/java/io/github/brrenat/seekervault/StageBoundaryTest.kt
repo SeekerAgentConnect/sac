@@ -464,5 +464,25 @@ class StageBoundaryTest {
                     runCatching { Class.forName(name, false, javaClass.classLoader) }.isSuccess
                 },
         )
+
+        // SAW-050's automatic path can observe and retry an answer already on disk. Its package
+        // has no way to prepare, approve, sign, send, or even open Mobile Wallet Adapter, so adding
+        // synchronization cannot increase the wallet execution count.
+        val sync = File(main, "java/io/github/brrenat/seekervault/sync")
+        val automaticAction =
+            Regex(
+                """MwaWalletAdapter|WalletAdapter|prepareRequest|approveTransfer|""" +
+                    """signAndSendTransactions|signMessage"""
+            )
+        assertTrue(sync.isDirectory)
+        assertEquals(
+            emptyList<String>(),
+            sync
+                .walk()
+                .filter { it.extension == "kt" }
+                .filter { automaticAction.containsMatchIn(withoutComments(it)) }
+                .map { it.name }
+                .toList(),
+        )
     }
 }
