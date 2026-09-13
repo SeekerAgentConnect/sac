@@ -3,10 +3,12 @@ package io.github.brrenat.seekervault.connections
 import android.content.ClipData
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -42,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +60,8 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,6 +83,7 @@ import io.github.brrenat.seekervault.ui.SeekerCard
 import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.networkText
+import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -353,26 +359,51 @@ private fun RequestCarousel(
         }
         if (requests.isNotEmpty()) {
             val carouselState = rememberLazyListState()
-            LazyRow(
-                state = carouselState,
-                flingBehavior = rememberSnapFlingBehavior(carouselState),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                itemsIndexed(
-                    requests,
-                    key = { _, request ->
-                        "${request.ref.connectionId}/${request.ref.requestId}"
-                    },
-                ) { index, request ->
-                    val source = connections.firstOrNull { it.id == request.ref.connectionId }
-                    RequestTile(
-                        request = request,
-                        source = source,
-                        assessment = requestAssessments[request.key],
-                        active = index == carouselState.firstVisibleItemIndex,
-                        onOpen = { onOpen(request.key) },
-                    )
+            val activeIndex by
+                remember(carouselState) {
+                    derivedStateOf {
+                        val layout = carouselState.layoutInfo
+                        layout.visibleItemsInfo
+                            .minByOrNull { item ->
+                                val centeredOffset =
+                                    SnapPosition.Center.position(
+                                        layout.viewportSize.width,
+                                        item.size,
+                                        layout.beforeContentPadding,
+                                        layout.afterContentPadding,
+                                        item.index,
+                                        layout.totalItemsCount,
+                                    )
+                                abs(item.offset - centeredOffset)
+                            }
+                            ?.index ?: 0
+                    }
+                }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val tileWidth = 204.dp
+                val edgePadding = ((maxWidth - tileWidth) / 2).coerceAtLeast(16.dp)
+                LazyRow(
+                    state = carouselState,
+                    flingBehavior = rememberSnapFlingBehavior(carouselState, SnapPosition.Center),
+                    contentPadding = PaddingValues(horizontal = edgePadding),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.CAROUSEL),
+                ) {
+                    itemsIndexed(
+                        requests,
+                        key = { _, request ->
+                            "${request.ref.connectionId}/${request.ref.requestId}"
+                        },
+                    ) { index, request ->
+                        val source = connections.firstOrNull { it.id == request.ref.connectionId }
+                        RequestTile(
+                            request = request,
+                            source = source,
+                            assessment = requestAssessments[request.key],
+                            active = index == activeIndex,
+                            onOpen = { onOpen(request.key) },
+                        )
+                    }
                 }
             }
             Text(
@@ -474,7 +505,10 @@ private fun RequestTile(
         if (active) MaterialTheme.colorScheme.onPrimaryContainer
         else MaterialTheme.colorScheme.onSurfaceVariant
     SeekerCard(
-        modifier = Modifier.size(width = 204.dp, height = 192.dp),
+        modifier =
+            Modifier.size(width = 204.dp, height = 192.dp)
+                .testTag(ConnectionsTags.request(request.key))
+                .semantics { selected = active },
         color =
             if (active) MaterialTheme.colorScheme.primaryContainer
             else MaterialTheme.colorScheme.surfaceContainer,

@@ -61,10 +61,13 @@ object ConnectionsTags {
     const val WALLET = "walletRow"
     const val WALLET_COPY = "walletCopy"
     const val PENDING = "pendingRequests"
+    const val CAROUSEL = "requestCarousel"
     const val GLOBAL_RULES = "globalRules"
     const val LIST = "connectionsList"
 
     fun item(id: String) = "connection:$id"
+
+    fun request(key: RequestKey) = "request:${key.connectionId}/${key.requestId}"
 
     fun field(name: String) = "field:$name"
 }

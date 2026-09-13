@@ -6,7 +6,7 @@ SEE-64 is a presentation-only pass over the Android app. The complete Linear des
 
 - system-following light and dark Material 3 colour, type, and shape tokens;
 - opaque-only shared cards, buttons, dialogs, sheets, transient messages, and navigation, with zero tonal or shadow elevation;
-- a Home dashboard with a scroll-reactive app bar and snapping request carousel;
+- a Home dashboard with a scroll-reactive app bar and a centre-snapping request carousel whose active tile follows the viewport centre;
 - persistent Home, Requests, Wallet, and Activity navigation;
 - connection, request, policy, and Activity details presented as a bottom-sheet stack;
 - content-hugging acknowledgement and signature reviews, with pinned v4 actions and compact advisory verdict cards;
@@ -27,10 +27,10 @@ Run on 2026-09-13 with Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1, Kotlin 2.4.0,
 | `pnpm check` | PASS — Prettier, Buf format/lint, ESLint, both TypeScript type checks, 396 sidecar tests, and 29 test-agent tests |
 | `pnpm test:hello` | PASS — all 9 Stage 1 simulated-device acceptance cases |
 | `pnpm test:queue` | PASS — all 7 Stage 2 two-sidecar acceptance cases |
-| `ANDROID_HOME=… pnpm check:android` | PASS — Spotless, all 746 Android unit tests, Android lint, debug APK, and instrumentation APK |
+| `ANDROID_HOME=… pnpm check:android` | PASS — Spotless, all 747 Android unit tests, Android lint, debug APK, and instrumentation APK |
 | `pnpm check:generated` | PASS — protocol code and fixtures are current; this UI ticket changes neither |
 | `pnpm build` | PASS — sidecar and test-agent TypeScript builds |
-| Android unit suite | PASS — 746 tests, including exact theme tokens/opacity, the opaque-only source guard, Home carousel structure and connection-scoped keys, persistent navigation, sheet routes, and updated screen behavior |
+| Android unit suite | PASS — 747 tests, including exact theme tokens/opacity, the opaque-only source guard, Home carousel centring and connection-scoped keys, persistent navigation, sheet routes, and updated screen behavior |
 | Opaque-surface source audit | PASS — no alpha colour, transparent colour, gradient, non-zero shadow/tonal elevation, blur, or graphics-layer use in app UI source |
 | `git diff --check` | PASS |
 

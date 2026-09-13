@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.connections
 
 import android.content.Context
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -109,6 +111,32 @@ class ConnectionsScreenTest {
 
         compose.waitForIdle()
         compose.onNodeWithText("First request").assertExists()
+    }
+
+    @Test
+    fun requestCarouselCentersAndFocusesTheSnappedItem() {
+        val requests =
+            listOf(
+                FakeConnectionGateway.request(HOME.id, "request-1", "First"),
+                FakeConnectionGateway.request(HOME.id, "request-2", "Second"),
+                FakeConnectionGateway.request(HOME.id, "request-3", "Third"),
+            )
+        show(
+            state = ConnectionsUiState(connections = listOf(HOME), loaded = true),
+            inbox = InboxSummary(waitingForYou = requests.size, toSend = 0),
+            requests = requests,
+        )
+
+        compose.onNodeWithTag(ConnectionsTags.CAROUSEL).performScrollToIndex(1)
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(ConnectionsTags.request(requests[0].key)).assertIsNotSelected()
+        val focused =
+            compose.onNodeWithTag(ConnectionsTags.request(requests[1].key)).assertIsSelected()
+        val railBounds =
+            compose.onNodeWithTag(ConnectionsTags.CAROUSEL).fetchSemanticsNode().boundsInRoot
+        val focusedBounds = focused.fetchSemanticsNode().boundsInRoot
+        assertEquals(railBounds.center.x, focusedBounds.center.x, 1f)
     }
 
     @Test
