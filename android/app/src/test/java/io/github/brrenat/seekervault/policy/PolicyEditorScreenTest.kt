@@ -7,8 +7,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -263,6 +265,16 @@ class PolicyEditorScreenTest {
         openAsset()
         type(PolicyTags.daily(0), "0.06")
         assertEquals(listOf("0.06"), draft.assets.map { it.daily })
+    }
+
+    @Test
+    fun theChainThatIsChosenIsSaidInSemanticsAndNotOnlyInColour() {
+        open()
+        click(PolicyTags.ADD_ASSET)
+        compose.onNodeWithTag(PolicyTags.network(Network.NETWORK_MAINNET)).assertIsSelected()
+        compose.onNodeWithTag(PolicyTags.network(Network.NETWORK_DEVNET)).assertIsNotSelected()
+        compose.onNodeWithTag(PolicyTags.network(Network.NETWORK_DEVNET)).performClick()
+        compose.onNodeWithTag(PolicyTags.network(Network.NETWORK_DEVNET)).assertIsSelected()
     }
 
     @Test

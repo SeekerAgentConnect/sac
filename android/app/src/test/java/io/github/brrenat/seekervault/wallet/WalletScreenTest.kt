@@ -2,6 +2,8 @@ package io.github.brrenat.seekervault.wallet
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -38,6 +40,21 @@ class WalletScreenTest {
                 onBack = { actions += "back" },
             )
         }
+    }
+
+    @Test
+    fun theNetworkThatIsChosenIsSaidInSemanticsAndNotOnlyInColour() {
+        // A chip that marks the chosen network only by its colours tells a TalkBack user nothing,
+        // and tells a colour-blind one nothing either — before a wallet is connected on it.
+        show(WalletUiState(network = WalletNetwork.Devnet))
+        compose
+            .onNodeWithTag(WalletTags.network(WalletNetwork.Devnet))
+            .performScrollTo()
+            .assertIsSelected()
+        compose
+            .onNodeWithTag(WalletTags.network(WalletNetwork.Mainnet))
+            .performScrollTo()
+            .assertIsNotSelected()
     }
 
     @Test

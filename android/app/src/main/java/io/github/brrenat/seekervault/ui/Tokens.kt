@@ -158,6 +158,30 @@ object Motion {
     fun <T> springBack(): FiniteAnimationSpec<T> = tween(SPRING_BACK_MILLIS, easing = Ease)
 }
 
+/**
+ * The review panel's own measurements. They are as much part of the design as a radius is, and a
+ * screen that wrote them inline would be a second place to tune them from.
+ */
+object PanelSize {
+    /** How far the panel is held off the top and bottom of the frame. */
+    val Margin = 78.dp
+
+    /** The bar that says the panel can be pushed away. */
+    val HandleWidth = 40.dp
+    val HandleHeight = 4.dp
+
+    /** The circles either side of the pager. */
+    val PagerButton = 32.dp
+
+    /** One dot per waiting request, and the wider one for the request being read. */
+    val Dot = 6.dp
+    val ActiveDot = 18.dp
+
+    /** How far back the panel steps while the wallet is being asked. */
+    const val STACKED_SCALE = 0.93f
+    val StackedLift = (-24).dp
+}
+
 /** How far a gesture has to go before it means something. */
 object Gesture {
     /** A swipe row answers past this, and springs back under it. */

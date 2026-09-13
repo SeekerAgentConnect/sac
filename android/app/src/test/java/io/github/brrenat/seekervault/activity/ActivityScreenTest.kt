@@ -2,10 +2,12 @@ package io.github.brrenat.seekervault.activity
 
 import android.content.Context
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
@@ -37,6 +39,20 @@ class ActivityScreenTest {
                 onBack = {},
             )
         }
+    }
+
+    @Test
+    fun aLongHistoryComposesOnlyTheRowsOnScreen() {
+        // The store never prunes, so the list is lazy: a phone with a year of records must not
+        // measure a year of rows to open Activity.
+        val many = (0 until 200).map { record(requestId = "request-$it") }
+        show(ActivityUiState(records = many, loaded = true))
+        compose.onNodeWithTag(ActivityTags.item(many.first())).assertExists()
+        compose.onNodeWithTag(ActivityTags.item(many.last())).assertDoesNotExist()
+        compose
+            .onNodeWithTag(ActivityTags.LIST)
+            .performScrollToNode(hasTestTag(ActivityTags.item(many.last())))
+        compose.onNodeWithTag(ActivityTags.item(many.last())).assertExists()
     }
 
     @Test

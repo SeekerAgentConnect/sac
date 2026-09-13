@@ -1,21 +1,16 @@
 package io.github.brrenat.seekervault.wallet
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -24,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.ui.CardDivider
+import io.github.brrenat.seekervault.ui.ChoiceChip
 import io.github.brrenat.seekervault.ui.GlassCard
 import io.github.brrenat.seekervault.ui.GlassScreen
 import io.github.brrenat.seekervault.ui.Glyph
@@ -32,7 +28,6 @@ import io.github.brrenat.seekervault.ui.MonoText
 import io.github.brrenat.seekervault.ui.Nocturne
 import io.github.brrenat.seekervault.ui.PillButton
 import io.github.brrenat.seekervault.ui.PillTone
-import io.github.brrenat.seekervault.ui.Radius
 import io.github.brrenat.seekervault.ui.SectionLabel
 import io.github.brrenat.seekervault.ui.Space
 import io.github.brrenat.seekervault.ui.TabBar
@@ -168,22 +163,12 @@ fun WalletScreen(
 private fun NetworkChoice(state: WalletUiState, onChoose: (WalletNetwork) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(Space.Sm)) {
         for (network in WalletNetwork.entries) {
-            val on = state.network == network
-            Text(
-                networkText(network),
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (on) Nocturne.Accent100 else Nocturne.Neutral400,
-                modifier =
-                    Modifier.clip(RoundedCornerShape(Radius.Pill))
-                        .background(if (on) Nocturne.accent(0.20f) else Nocturne.text(0.06f))
-                        .border(
-                            1.dp,
-                            if (on) Nocturne.accent(0.46f) else Nocturne.text(0.12f),
-                            RoundedCornerShape(Radius.Pill),
-                        )
-                        .clickable(enabled = !state.busy) { onChoose(network) }
-                        .padding(horizontal = Space.Md, vertical = Space.Sm)
-                        .testTag(WalletTags.network(network)),
+            ChoiceChip(
+                label = networkText(network),
+                selected = state.network == network,
+                onSelect = { onChoose(network) },
+                enabled = !state.busy,
+                modifier = Modifier.testTag(WalletTags.network(network)),
             )
         }
     }

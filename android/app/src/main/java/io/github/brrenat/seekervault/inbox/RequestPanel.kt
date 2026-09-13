@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.inbox
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,6 +52,7 @@ import io.github.brrenat.seekervault.ui.Glass
 import io.github.brrenat.seekervault.ui.Glyph
 import io.github.brrenat.seekervault.ui.Motion
 import io.github.brrenat.seekervault.ui.Nocturne
+import io.github.brrenat.seekervault.ui.PanelSize
 import io.github.brrenat.seekervault.ui.Radius
 import io.github.brrenat.seekervault.ui.Space
 import io.github.brrenat.seekervault.ui.Tag
@@ -100,8 +102,18 @@ fun RequestPanel(
     // The wallet is being asked. The panel steps back and the sheet comes up in front of it.
     val signable = request.transfer() != null || messagePreview(request) != null
     val handingOff = signable && key in state.sending
-    val scale by animateFloatAsState(if (handingOff) 0.93f else 1f, Motion.panel(), label = "panel")
-    val lift by animateFloatAsState(if (handingOff) -24f else 0f, Motion.panel(), label = "lift")
+    val scale by
+        animateFloatAsState(
+            if (handingOff) PanelSize.STACKED_SCALE else 1f,
+            Motion.panel(),
+            label = "panel",
+        )
+    val lift by
+        animateDpAsState(
+            if (handingOff) PanelSize.StackedLift else 0.dp,
+            Motion.panel(),
+            label = "lift",
+        )
 
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -112,14 +124,14 @@ fun RequestPanel(
                 .padding(
                     start = Space.Edge,
                     end = Space.Edge,
-                    top = top + 78.dp,
-                    bottom = bottom + 78.dp,
+                    top = top + PanelSize.Margin,
+                    bottom = bottom + PanelSize.Margin,
                 )
                 .offset { IntOffset(dx.value.toInt(), dy.value.toInt()) }
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
-                    translationY = lift * density.density
+                    translationY = lift.toPx()
                     // The further sideways the panel is dragged, the less of it there is: the
                     // owner can see they are leaving this request before they have left it.
                     alpha = (1f - abs(dx.value) / 420f).coerceAtLeast(0.4f)
@@ -266,8 +278,8 @@ private fun Pager(at: Int, of: Int, onPrevious: () -> Unit, onNext: () -> Unit) 
         ) {
             repeat(of) { index ->
                 Box(
-                    Modifier.width(if (index == at) 18.dp else 6.dp)
-                        .height(6.dp)
+                    Modifier.width(if (index == at) PanelSize.ActiveDot else PanelSize.Dot)
+                        .height(PanelSize.Dot)
                         .clip(CircleShape)
                         .background(if (index == at) Nocturne.Accent300 else Nocturne.text(0.18f))
                 )
@@ -297,7 +309,7 @@ private fun PagerButton(
     tag: String,
 ) {
     Box(
-        Modifier.size(32.dp)
+        Modifier.size(PanelSize.PagerButton)
             .clip(CircleShape)
             .background(Nocturne.text(if (enabled) 0.09f else 0.04f))
             .clickable(enabled = enabled, onClick = onClick)

@@ -33,6 +33,7 @@ in every system setting.
 | Type | `TypeScale`, `nocturneTypography` | 34 headline down to 11 pill, tight tracking on display sizes |
 | Motion | `Motion` | One easing, `cubic-bezier(.2,.8,.2,1)`; 300ms panel and sheet, 240ms tiles and veils, 220ms toggles |
 | Gestures | `Gesture` | The distances a finger has to travel before anything means something |
+| The review panel | `PanelSize` | Its margin in the frame, the grab handle, the pager's buttons and dots, and how far back it steps while the wallet is asked |
 
 Two of these carry a decision rather than a value:
 
@@ -67,7 +68,7 @@ two around a scrolling body; the body's bottom padding clears the tab bar.
 ## Controls
 
 `Controls.kt` and `Dialogs.kt`. Pills instead of buttons (`PillButton`, four tones), `TextLink`,
-`Tag`, the 46 × 28 `GlassSwitch`, the 22dp `GlassCheck` and `GlassRadio`, `IconChip`,
+`Tag`, `ChoiceChip`, the 46 × 28 `GlassSwitch`, the 22dp `GlassCheck` and `GlassRadio`, `IconChip`,
 `InitialsChip`, `MonoText`, `GlassField` and `GlassDialog`.
 
 Three rules they all keep:
@@ -75,8 +76,11 @@ Three rules they all keep:
 1. **Nothing is said by colour alone.** "Under restrictions" is a *dashed* border and a warning
    mark and words; a field with a problem is a dashed border and a line of words. A reader who sees
    no colour at all, or hears the screen rather than seeing it, is told the same things.
-2. **A control that is off says so.** Every pill and link writes `disabled()` into its semantics
-   rather than only dimming.
+2. **A control that is off, or chosen, says so.** Every pill and link writes `disabled()` into its
+   semantics rather than only dimming, and `ChoiceChip` — the network on the Wallet screen, the
+   chain in the Add-an-asset dialog — is `selectable` with a radio button's role and marks the
+   chosen one with a tick as well as with the accent. The network a wallet connects on is not a
+   detail to leave to colour.
 3. **A label and its value are one thing.** Fact rows merge their semantics, so a screen reader
    announces "Server, http://127.0.0.1:8080" and not two unrelated fragments.
 

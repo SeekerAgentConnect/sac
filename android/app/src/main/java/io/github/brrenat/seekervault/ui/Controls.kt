@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -201,6 +203,64 @@ fun Tag(
             Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(13.dp))
         }
         Text(text, style = MaterialTheme.typography.labelSmall, color = ink, maxLines = 1)
+    }
+}
+
+/**
+ * A chip that is one of a few choices: a network, a chain.
+ *
+ * It carries the choice in its semantics (`selectable`, with a radio button's role) and marks the
+ * chosen one with a tick as well as with the accent, because a chip that says "this is the one"
+ * only in colour says it to nobody who cannot see the colour — and the network a wallet connects on
+ * is not a detail to leave ambiguous.
+ */
+@Composable
+fun ChoiceChip(
+    label: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val shape = RoundedCornerShape(Radius.Pill)
+    val alpha = if (enabled) 1f else 0.45f
+    Row(
+        modifier
+            .clip(shape)
+            .background(
+                if (selected) Nocturne.accent(0.20f * alpha) else Nocturne.text(0.06f * alpha),
+                shape,
+            )
+            .border(
+                1.dp,
+                if (selected) Nocturne.accent(0.46f * alpha) else Nocturne.text(0.12f * alpha),
+                shape,
+            )
+            .selectable(
+                selected = selected,
+                enabled = enabled,
+                role = Role.RadioButton,
+                onClick = onSelect,
+            )
+            .padding(horizontal = Space.Md, vertical = Space.Sm),
+        horizontalArrangement = Arrangement.spacedBy(Space.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (selected) {
+            Icon(
+                Glyph.Acknowledge,
+                contentDescription = null,
+                tint = Nocturne.Accent100.copy(alpha = alpha),
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color =
+                if (selected) Nocturne.Accent100.copy(alpha = alpha)
+                else Nocturne.Neutral400.copy(alpha = alpha),
+        )
     }
 }
 

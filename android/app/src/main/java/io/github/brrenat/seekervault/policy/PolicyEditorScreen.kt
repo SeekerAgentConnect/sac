@@ -43,6 +43,7 @@ import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.policy.storage.UnreadableReason
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.ui.CardDivider
+import io.github.brrenat.seekervault.ui.ChoiceChip
 import io.github.brrenat.seekervault.ui.GlassCard
 import io.github.brrenat.seekervault.ui.GlassCheck
 import io.github.brrenat.seekervault.ui.GlassDialog
@@ -562,7 +563,12 @@ private fun AddAsset(listed: List<AssetDraft>, onAdd: (AssetDraft) -> Unit, onDi
         SectionLabel(stringResource(R.string.policy_network_field))
         Row(horizontalArrangement = Arrangement.spacedBy(Space.Sm)) {
             for (option in POLICY_NETWORKS) {
-                ChainChip(option, network == option) { network = option }
+                ChoiceChip(
+                    label = networkText(option),
+                    selected = network == option,
+                    onSelect = { network = option },
+                    modifier = Modifier.testTag(PolicyTags.network(option)),
+                )
             }
         }
         SectionLabel(stringResource(R.string.policy_thresholds_optional))
@@ -591,21 +597,6 @@ private fun AddAsset(listed: List<AssetDraft>, onAdd: (AssetDraft) -> Unit, onDi
             problem?.let { Note(stringResource(it)) }
         }
     }
-}
-
-@Composable
-private fun ChainChip(network: Network, selected: Boolean, onSelect: () -> Unit) {
-    Text(
-        networkText(network),
-        style = MaterialTheme.typography.bodyMedium,
-        color = if (selected) Nocturne.Accent100 else Nocturne.Neutral400,
-        modifier =
-            Modifier.clip(RoundedCornerShape(Radius.Pill))
-                .background(if (selected) Nocturne.accent(0.20f) else Nocturne.text(0.06f))
-                .clickable(onClick = onSelect)
-                .padding(horizontal = Space.Md, vertical = Space.Sm)
-                .testTag(PolicyTags.network(network)),
-    )
 }
 
 @Composable
