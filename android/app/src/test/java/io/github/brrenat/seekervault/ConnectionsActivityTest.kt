@@ -65,28 +65,40 @@ class ConnectionsActivityTest {
     fun pairsRenamesAndKeepsTheSecretsOffScreenAndOutOfBackups() {
         val scenario = launch()
         val code = server.issue(URL)
-        compose.onNodeWithTag(ConnectionsTags.EMPTY).assertExists()
-        compose.onNodeWithTag(ConnectionsTags.ADD).performClick()
-        compose.onNodeWithTag(ConnectionsTags.CODE_FIELD).performTextInput(text(code))
-        compose.onNodeWithTag(ConnectionsTags.CONTINUE).performClick()
-        compose.onNodeWithTag(ConnectionsTags.PAIR).performClick()
+        compose.onNodeWithTag(ConnectionsTags.EMPTY).performScrollTo().assertExists()
+        compose.onNodeWithTag(ConnectionsTags.ADD).performScrollTo().performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.CODE_FIELD)
+            .performScrollTo()
+            .performTextInput(text(code))
+        compose.onNodeWithTag(ConnectionsTags.CONTINUE).performScrollTo().performClick()
+        compose.onNodeWithTag(ConnectionsTags.PAIR).performScrollTo().performClick()
 
         // The new connection's details replace the Add screen, and survive a rotation.
         val id = server.connections.keys.single()
         val credential = server.connections.getValue(id)
-        compose.onNodeWithTag(ConnectionsTags.field("connectionId")).assertTextContains(id)
+        compose
+            .onNodeWithTag(ConnectionsTags.field("connectionId"))
+            .performScrollTo()
+            .assertTextContains(id)
         compose.onNodeWithText(app.getString(R.string.message_paired, HOST)).assertExists()
         // Let the snackbar go, so it doesn't cover the buttons below.
         compose.mainClock.advanceTimeBy(10_000)
         compose.onNodeWithText(app.getString(R.string.message_paired, HOST)).assertDoesNotExist()
         scenario.recreate()
-        compose.onNodeWithTag(ConnectionsTags.field("connectionId")).assertTextContains(id)
+        compose
+            .onNodeWithTag(ConnectionsTags.field("connectionId"))
+            .performScrollTo()
+            .assertTextContains(id)
 
         compose.onNodeWithTag(ConnectionsTags.RENAME).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.LABEL_FIELD).performTextReplacement("Home Mac")
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()
         compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
-        compose.onNodeWithTag(ConnectionsTags.item(id)).assertTextContains("Home Mac")
+        compose
+            .onNodeWithTag(ConnectionsTags.item(id))
+            .performScrollTo()
+            .assertTextContains("Home Mac")
 
         for (secret in listOf(code.token, credential)) {
             compose
@@ -106,10 +118,10 @@ class ConnectionsActivityTest {
     fun disconnectingReturnsToTheListWithoutTheConnection() {
         val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
         launch()
-        compose.onNodeWithTag(ConnectionsTags.item(connection.id)).performClick()
+        compose.onNodeWithTag(ConnectionsTags.item(connection.id)).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.DISCONNECT).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()
-        compose.onNodeWithTag(ConnectionsTags.EMPTY).assertExists()
+        compose.onNodeWithTag(ConnectionsTags.EMPTY).performScrollTo().assertExists()
         compose.onNodeWithText(app.getString(R.string.message_disconnected, HOST)).assertExists()
         assertEquals(setOf(connection.id), server.revoked)
         assertFalse(File(app.noBackupFilesDir, "credentials/${connection.id}").exists())

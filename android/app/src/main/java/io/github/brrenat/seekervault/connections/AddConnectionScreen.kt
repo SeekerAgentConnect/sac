@@ -8,28 +8,21 @@ import android.provider.Settings
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -38,15 +31,31 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.ui.CardDivider
+import io.github.brrenat.seekervault.ui.GlassCard
+import io.github.brrenat.seekervault.ui.GlassField
+import io.github.brrenat.seekervault.ui.GlassScreen
+import io.github.brrenat.seekervault.ui.Glyph
+import io.github.brrenat.seekervault.ui.MonoText
+import io.github.brrenat.seekervault.ui.Nocturne
+import io.github.brrenat.seekervault.ui.PillButton
+import io.github.brrenat.seekervault.ui.PillTone
+import io.github.brrenat.seekervault.ui.Radius
+import io.github.brrenat.seekervault.ui.SectionLabel
+import io.github.brrenat.seekervault.ui.Space
 
 /** Where the camera stands on the Add connection screen. */
 enum class CameraAccess {
@@ -127,7 +136,6 @@ fun AddConnectionRoute(
 }
 
 /** The Add connection screen: scan or enter a code, then confirm the server. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddConnectionScreen(
     pairing: PairingState,
@@ -144,48 +152,38 @@ fun AddConnectionScreen(
     scanner: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.add_title)) },
-                navigationIcon = { BackButton(onBack) },
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier =
-                Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            when (pairing) {
-                is PairingState.Confirm ->
-                    ConfirmServer(pairing.confirmation, null, false, onConfirm, onCancel)
-                is PairingState.Pairing ->
-                    ConfirmServer(pairing.confirmation, null, true, onConfirm, onCancel)
-                is PairingState.Failed ->
-                    ConfirmServer(pairing.confirmation, pairing.failure, false, onConfirm, onCancel)
-                is PairingState.Idle,
-                is PairingState.Invalid,
-                is PairingState.Paired ->
-                    EnterCode(
-                        problem = (pairing as? PairingState.Invalid)?.problem,
-                        codeDraft = codeDraft,
-                        camera = camera,
-                        onScan = onScan,
-                        onStopScanning = onStopScanning,
-                        onOpenSettings = onOpenSettings,
-                        onCodeDraftChange = onCodeDraftChange,
-                        onCode = onCode,
-                        scanner = scanner,
-                    )
-            }
+    GlassScreen(
+        title = stringResource(R.string.add_title),
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        when (pairing) {
+            is PairingState.Confirm ->
+                ConfirmServer(pairing.confirmation, null, false, onConfirm, onCancel)
+            is PairingState.Pairing ->
+                ConfirmServer(pairing.confirmation, null, true, onConfirm, onCancel)
+            is PairingState.Failed ->
+                ConfirmServer(pairing.confirmation, pairing.failure, false, onConfirm, onCancel)
+            is PairingState.Idle,
+            is PairingState.Invalid,
+            is PairingState.Paired ->
+                EnterCode(
+                    problem = (pairing as? PairingState.Invalid)?.problem,
+                    codeDraft = codeDraft,
+                    camera = camera,
+                    onScan = onScan,
+                    onStopScanning = onStopScanning,
+                    onOpenSettings = onOpenSettings,
+                    onCodeDraftChange = onCodeDraftChange,
+                    onCode = onCode,
+                    scanner = scanner,
+                )
         }
     }
 }
 
 @Composable
-private fun EnterCode(
+private fun ColumnScope.EnterCode(
     problem: PairingCodeProblem?,
     codeDraft: String,
     camera: CameraAccess,
@@ -196,78 +194,138 @@ private fun EnterCode(
     onCode: (String) -> Unit,
     scanner: @Composable () -> Unit,
 ) {
-    Text(stringResource(R.string.add_instructions))
+    GlassCard {
+        Text(
+            stringResource(R.string.add_instructions),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Nocturne.Neutral300,
+        )
+        Box(
+            Modifier.clip(RoundedCornerShape(Radius.Chip))
+                .background(Nocturne.bg(0.5f))
+                .padding(horizontal = Space.Md, vertical = Space.Sm)
+        ) {
+            Text(
+                PAIR_COMMAND,
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                color = Nocturne.Accent300,
+            )
+        }
+    }
     when (camera) {
         CameraAccess.Scanning -> {
-            scanner()
-            Text(stringResource(R.string.scan_hint))
-            OutlinedButton(
-                onClick = onStopScanning,
-                modifier = Modifier.testTag(ConnectionsTags.STOP_SCAN),
+            // The viewfinder, lit by the accent, with the app's own frame inset into it.
+            Box(
+                Modifier.fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(Nocturne.accent(0.10f))
+                    .border(1.dp, Nocturne.accent(0.40f), RoundedCornerShape(26.dp))
             ) {
-                Text(stringResource(R.string.stop_scanning))
+                scanner()
             }
+            Text(
+                stringResource(R.string.scan_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = Nocturne.Neutral500,
+            )
+            PillButton(
+                stringResource(R.string.stop_scanning),
+                onStopScanning,
+                tone = PillTone.Ghost,
+                modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.STOP_SCAN),
+            )
         }
         CameraAccess.Denied -> {
-            Text(
-                stringResource(R.string.camera_denied),
-                modifier = Modifier.testTag(ConnectionsTags.CAMERA_DENIED),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = onScan,
-                    modifier = Modifier.testTag(ConnectionsTags.SCAN),
-                ) {
-                    Text(stringResource(R.string.scan_qr))
-                }
-                TextButton(
-                    onClick = onOpenSettings,
-                    modifier = Modifier.testTag(ConnectionsTags.OPEN_SETTINGS),
-                ) {
-                    Text(stringResource(R.string.open_settings))
-                }
+            GlassCard {
+                Text(
+                    stringResource(R.string.camera_denied),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Nocturne.Neutral300,
+                    modifier = Modifier.testTag(ConnectionsTags.CAMERA_DENIED),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.Sm)) {
+                PillButton(
+                    stringResource(R.string.scan_qr),
+                    onScan,
+                    icon = Glyph.Scan,
+                    modifier = Modifier.weight(1f).testTag(ConnectionsTags.SCAN),
+                )
+                PillButton(
+                    stringResource(R.string.open_settings),
+                    onOpenSettings,
+                    tone = PillTone.Ghost,
+                    modifier = Modifier.weight(1f).testTag(ConnectionsTags.OPEN_SETTINGS),
+                )
             }
         }
         CameraAccess.Unavailable ->
-            Text(
-                stringResource(R.string.no_camera),
-                modifier = Modifier.testTag(ConnectionsTags.NO_CAMERA),
-            )
-        CameraAccess.Idle ->
-            Button(onClick = onScan, modifier = Modifier.testTag(ConnectionsTags.SCAN)) {
-                Text(stringResource(R.string.scan_qr))
+            GlassCard {
+                Text(
+                    stringResource(R.string.no_camera),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Nocturne.Neutral300,
+                    modifier = Modifier.testTag(ConnectionsTags.NO_CAMERA),
+                )
             }
+        CameraAccess.Idle ->
+            PillButton(
+                stringResource(R.string.scan_qr),
+                onScan,
+                tone = PillTone.Accent,
+                icon = Glyph.Scan,
+                modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.SCAN),
+            )
     }
     if (problem != null) {
         Text(
             problemText(problem),
-            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Nocturne.Danger,
             modifier = Modifier.testTag(ConnectionsTags.CODE_PROBLEM),
         )
     }
-    HorizontalDivider()
-    OutlinedTextField(
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Space.Md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f).height(1.dp).background(Nocturne.text(0.12f)))
+        Text(
+            stringResource(R.string.add_or),
+            style = MaterialTheme.typography.bodySmall,
+            color = Nocturne.Neutral600,
+        )
+        Box(Modifier.weight(1f).height(1.dp).background(Nocturne.text(0.12f)))
+    }
+    GlassField(
         value = codeDraft,
         onValueChange = onCodeDraftChange,
-        label = { Text(stringResource(R.string.code_label)) },
-        placeholder = { Text(stringResource(R.string.code_placeholder)) },
-        isError = problem != null,
+        label = stringResource(R.string.code_label),
+        placeholder = stringResource(R.string.code_placeholder),
+        problem = if (problem != null) problemText(problem) else null,
+        singleLine = false,
         minLines = 2,
         keyboardOptions =
             KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
-        modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.CODE_FIELD),
+        modifier = Modifier.testTag(ConnectionsTags.CODE_FIELD),
     )
-    Button(
-        onClick = { onCode(codeDraft) },
+    PillButton(
+        stringResource(R.string.continue_pairing),
+        { onCode(codeDraft) },
         enabled = codeDraft.isNotBlank(),
-        modifier = Modifier.testTag(ConnectionsTags.CONTINUE),
-    ) {
-        Text(stringResource(R.string.continue_pairing))
-    }
+        modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.CONTINUE),
+    )
+    Text(
+        stringResource(R.string.confirm_trust),
+        style = MaterialTheme.typography.bodySmall,
+        color = Nocturne.Neutral500,
+    )
 }
 
 @Composable
-private fun ConfirmServer(
+private fun ColumnScope.ConfirmServer(
     confirmation: Confirmation,
     failure: PairingFailure?,
     pairing: Boolean,
@@ -275,68 +333,91 @@ private fun ConfirmServer(
     onCancel: () -> Unit,
 ) {
     val code = confirmation.code
-    Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.titleLarge)
+    Text(
+        stringResource(R.string.confirm_title),
+        style = MaterialTheme.typography.headlineSmall,
+        color = Nocturne.Text,
+    )
     // What the phone will contact, so a code can't pair with another host unnoticed. The token
     // itself is never shown.
-    OutlinedCard(Modifier.fillMaxWidth()) {
-        ListItem(
-            overlineContent = { Text(stringResource(R.string.field_server)) },
-            headlineContent = { Text(code.serverUrl) },
-            modifier = Modifier.testTag(ConnectionsTags.CONFIRM_SERVER),
-        )
-        ListItem(
-            overlineContent = { Text(stringResource(R.string.field_server_id)) },
-            headlineContent = { Text(code.serverId) },
-        )
+    GlassCard(spacing = 0.dp) {
+        Column(
+            Modifier.fillMaxWidth()
+                .padding(vertical = Space.Md)
+                .testTag(ConnectionsTags.CONFIRM_SERVER)
+                .semantics(mergeDescendants = true) {}
+        ) {
+            SectionLabel(stringResource(R.string.field_server))
+            MonoText(code.serverUrl)
+        }
+        CardDivider()
+        Column(Modifier.fillMaxWidth().padding(vertical = Space.Md)) {
+            SectionLabel(stringResource(R.string.field_server_id))
+            MonoText(code.serverId)
+        }
     }
     if (code.serverUrl.startsWith("http://")) {
-        Text(stringResource(R.string.confirm_development))
+        Text(
+            stringResource(R.string.confirm_development),
+            style = MaterialTheme.typography.bodySmall,
+            color = Nocturne.Neutral500,
+        )
     }
     confirmation.sameServer.forEach {
         Text(
             stringResource(R.string.confirm_same_server, it.label),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Nocturne.Neutral300,
             modifier = Modifier.testTag(ConnectionsTags.CONFIRM_NOTE),
         )
     }
     confirmation.sameAddress.forEach {
         Text(
             stringResource(R.string.confirm_same_address, it.label),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Nocturne.Neutral300,
             modifier = Modifier.testTag(ConnectionsTags.CONFIRM_NOTE),
         )
     }
-    Text(stringResource(R.string.confirm_trust), style = MaterialTheme.typography.bodySmall)
+    Text(
+        stringResource(R.string.confirm_trust),
+        style = MaterialTheme.typography.bodySmall,
+        color = Nocturne.Neutral500,
+    )
     if (failure != null) {
         Text(
             failureText(failure, code.serverUrl),
-            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Nocturne.Danger,
             modifier = Modifier.testTag(ConnectionsTags.PAIRING_FAILURE),
         )
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.Sm)) {
         val retry = failure == PairingFailure.Unreachable || failure == PairingFailure.Other
         if (failure == null || retry) {
-            Button(
-                onClick = onConfirm,
+            PillButton(
+                stringResource(
+                    when {
+                        pairing -> R.string.pairing_in_progress
+                        retry -> R.string.try_again
+                        else -> R.string.pair
+                    }
+                ),
+                onConfirm,
+                tone = PillTone.Accent,
                 enabled = !pairing,
-                modifier = Modifier.testTag(ConnectionsTags.PAIR),
-            ) {
-                Text(
-                    stringResource(
-                        when {
-                            pairing -> R.string.pairing_in_progress
-                            retry -> R.string.try_again
-                            else -> R.string.pair
-                        }
-                    )
-                )
-            }
+                modifier = Modifier.weight(1f).testTag(ConnectionsTags.PAIR),
+            )
         }
-        OutlinedButton(
-            onClick = onCancel,
+        PillButton(
+            stringResource(R.string.cancel),
+            onCancel,
+            tone = PillTone.Ghost,
             enabled = !pairing,
-            modifier = Modifier.testTag(ConnectionsTags.CANCEL_PAIRING),
-        ) {
-            Text(stringResource(R.string.cancel))
-        }
+            modifier = Modifier.weight(1f).testTag(ConnectionsTags.CANCEL_PAIRING),
+        )
     }
 }
+
+/** The command the owner runs on the computer that runs the sidecar. */
+private const val PAIR_COMMAND = "pnpm pair"

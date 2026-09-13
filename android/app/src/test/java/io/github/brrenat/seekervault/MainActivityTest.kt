@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -50,7 +51,7 @@ class MainActivityTest {
 
     private fun connectAndReceive() {
         compose.onNodeWithTag(LiveCommandTags.PHONE_TOKEN).performTextInput("p".repeat(64))
-        compose.onNodeWithTag(LiveCommandTags.CONNECT).performClick()
+        compose.onNodeWithTag(LiveCommandTags.CONNECT).performScrollTo().performClick()
         compose.runOnIdle {
             sidecar.stream.ready()
             sidecar.stream.send(command(expiresAt = Instant.now().plusSeconds(600)))
@@ -68,7 +69,7 @@ class MainActivityTest {
         compose.onNodeWithTag(LiveCommandTags.COMMAND_TEXT).assertTextEquals("Hello Seeker")
         assertEquals(1, sidecar.streams.size)
         assertTrue(sidecar.stream.open)
-        compose.onNodeWithTag(LiveCommandTags.OK).performClick()
+        compose.onNodeWithTag(LiveCommandTags.OK).performScrollTo().performClick()
         scenario.recreate()
         assertCommandStatus(R.string.command_acknowledged)
         compose.onNodeWithTag(LiveCommandTags.OK).assertIsNotEnabled()
@@ -81,8 +82,8 @@ class MainActivityTest {
         connectAndReceive()
         val answer = CompletableDeferred<Unit>()
         sidecar.onAcknowledge = { answer.await() }
-        compose.onNodeWithTag(LiveCommandTags.OK).performClick()
-        compose.onNodeWithTag(LiveCommandTags.OK).performClick()
+        compose.onNodeWithTag(LiveCommandTags.OK).performScrollTo().performClick()
+        compose.onNodeWithTag(LiveCommandTags.OK).performScrollTo().performClick()
         assertCommandStatus(R.string.command_sending)
         compose.runOnIdle { answer.complete(Unit) }
         assertCommandStatus(R.string.command_acknowledged)

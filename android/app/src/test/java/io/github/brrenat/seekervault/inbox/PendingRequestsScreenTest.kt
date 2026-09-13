@@ -9,11 +9,11 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
@@ -23,6 +23,7 @@ import io.github.brrenat.seekervault.connections.Inbox
 import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.ui.SeekerVaultTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -39,6 +40,7 @@ class PendingRequestsScreenTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val opened = mutableListOf<RequestKey>()
     private var refreshes = 0
+    private val answered = mutableListOf<Pair<RequestKey, Answer>>()
 
     private fun show(state: InboxUiState, connectionId: String? = null) = compose.setContent {
         SeekerVaultTheme {
@@ -48,22 +50,25 @@ class PendingRequestsScreenTest {
                 now = NOW,
                 onOpen = { opened += it },
                 onRefresh = { refreshes++ },
+                onAnswer = { key, answer -> answered += key to answer },
                 onBack = {},
             )
         }
     }
 
     @Test
-    fun showsEachRequestWithItsSourceActionAgeAndExpiry() {
+    fun showsEachRequestWithItsSourceAndWhatIsAtStake() {
         show(STATE)
         compose.onNodeWithTag(InboxTags.SECTION_PENDING).assertExists()
         compose
             .onNodeWithTag(InboxTags.item(PENDING.key))
-            .assertTextContains("Home Mac")
+            .assertTextContains("Home Mac", substring = true)
             .assertTextContains("Deploy finished")
-            .assertTextContains(context.getString(R.string.action_ack), substring = true)
-            .assertTextContains(relativeTime(PENDING.createdAt.instant(), NOW), substring = true)
-        compose.onNodeWithTag(InboxTags.item(PENDING.key)).performClick()
+            .assertTextContains(
+                context.getString(R.string.stake_acknowledge),
+                substring = true,
+            )
+        compose.onNodeWithTag(InboxTags.item(PENDING.key)).performScrollTo().performClick()
         assertEquals(listOf(PENDING.key), opened)
     }
 

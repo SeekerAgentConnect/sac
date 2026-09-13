@@ -5,11 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.brrenat.seekervault.activity.ActivityViewModel
@@ -17,6 +12,7 @@ import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
+import io.github.brrenat.seekervault.ui.SeekerVaultTheme
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 
 class MainActivity : ComponentActivity() {
@@ -119,13 +115,4 @@ class MainActivity : ComponentActivity() {
             wallet.onAppHidden()
         }
     }
-}
-
-/** Stock Material 3 with its baseline light and dark color schemes. */
-@Composable
-fun SeekerVaultTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
-        content = content,
-    )
 }

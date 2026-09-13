@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The redesigned chrome and the screens it holds (SEE-57). -->
+<resources>
+    <string name="tab_home">Home</string>
+    <string name="tab_requests">Requests</string>
+    <string name="tab_wallet">Wallet</string>
+    <string name="tab_activity">Activity</string>
+
+    <!-- Home. -->
+    <string name="home_title">Seeker Agent Connect</string>
+    <string name="home_subtitle">Your agents ask; you answer</string>
+    <string name="home_waiting">Waiting for you</string>
+    <string name="home_see_all">%1$d · see all</string>
+    <string name="home_nothing_waiting">Nothing is waiting for you</string>
+    <string name="home_nothing_waiting_text">A paired server\'s requests appear here when the app opens, when you open a connection, or when you refresh.</string>
+    <string name="home_servers">Paired servers</string>
+    <string name="home_wallet_card_title">Connect your wallet</string>
+    <string name="home_wallet_card_text">Agents can\'t ask for anything that needs a wallet until you connect one. The wallet keeps its keys; this app only asks it.</string>
+
+    <!-- What is at stake in a request, in three words on a tile. -->
+    <string name="stake_transfer">funds move</string>
+    <string name="stake_signature">a signature</string>
+    <string name="stake_acknowledge">nothing moves</string>
+    <string name="stake_unknown">not known here</string>
+    <plurals name="carousel_bytes">
+        <item quantity="one">%1$d byte</item>
+        <item quantity="other">%1$d bytes</item>
+    </plurals>
+    <string name="carousel_acknowledge">Still here?</string>
+    <string name="carousel_source">%1$s · %2$s</string>
+
+    <!-- Requests. -->
+    <string name="requests_title">Requests</string>
+    <string name="requests_waiting_swipe">Waiting for you · swipe a row</string>
+    <string name="requests_answered">Answered</string>
+    <string name="requests_to_send">Waiting to be sent</string>
+    <string name="swipe_approve">Approve · wallet</string>
+    <string name="swipe_acknowledge">Acknowledge</string>
+    <string name="swipe_reject">Reject</string>
+    <string name="swipe_read_first">Read it, then approve</string>
+
+    <!-- The rule pill on a request row. -->
+    <string name="rule_pill_within">In rules</string>
+    <string name="rule_pill_restricted">Restricted</string>
+
+    <!-- The review panel. -->
+    <string name="review_pager">%1$d of %2$d</string>
+    <string name="review_previous">Previous request</string>
+    <string name="review_next">Next request</string>
+    <string name="review_leave_waiting">Expires %1$s. Swipe down to leave it waiting.</string>
+    <string name="review_local_check_transfer">Checked on this phone: the transaction does exactly what this request says. The server\'s description of it was not used.</string>
+    <string name="review_local_check_signature">This is the whole of what your wallet would sign, read on this phone. It moves no funds and sends nothing to the network.</string>
+    <string name="review_local_check_acknowledge">Nothing moves and nothing is signed. The agent is told you read it, and that is all.</string>
+
+    <!-- The hand-off to the wallet app. -->
+    <string name="handoff_wallet">Your wallet app</string>
+    <string name="handoff_other_app">Another app</string>
+    <string name="handoff_title_sign">Your wallet is being asked to sign</string>
+    <string name="handoff_title_send">Your wallet is being asked to sign and send</string>
+    <string name="handoff_keys">The wallet holds the keys. Seeker Agent Connect only asked; what happens next is decided there.</string>
+    <string name="handoff_waiting">Waiting for the wallet…</string>
+    <string name="handoff_close">Close</string>
+
+    <!-- Activity. -->
+    <string name="activity_footer">Every request you answer is recorded here, and the record stays after the request itself is gone.</string>
+
+    <!-- Connection details. -->
+    <string name="connection_pending">Connected · %1$d pending</string>
+    <string name="connection_its_requests">Its requests</string>
+    <string name="connection_rules_note">What this agent is expected to ask for. Rules classify a request during review; they never approve or block one.</string>
+    <string name="connection_rules_summary_none">Nothing is checked</string>
+    <string name="connection_rules_summary">Checked: %1$s</string>
+    <string name="connection_danger">Disconnecting revokes this phone\'s credential on the server and cancels its pending requests.</string>
+
+    <!-- Add connection. -->
+    <string name="add_or">or</string>
+</resources>

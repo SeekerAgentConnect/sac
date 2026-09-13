@@ -1,142 +1,201 @@
 package io.github.brrenat.seekervault.activity
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ListItem
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.connections.BackButton
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.formatInstant
+import io.github.brrenat.seekervault.ui.CardDivider
+import io.github.brrenat.seekervault.ui.GlassCard
+import io.github.brrenat.seekervault.ui.GlassDialog
+import io.github.brrenat.seekervault.ui.GlassScreen
+import io.github.brrenat.seekervault.ui.Glyph
+import io.github.brrenat.seekervault.ui.IconChip
+import io.github.brrenat.seekervault.ui.Nocturne
+import io.github.brrenat.seekervault.ui.Radius
+import io.github.brrenat.seekervault.ui.Space
+import io.github.brrenat.seekervault.ui.TabBar
+import io.github.brrenat.seekervault.ui.TextLink
 
 /**
  * Activity: what this phone has done, newest first (docs/guides/transfers.md#the-activity-record).
  * It reads the record and nothing else — no request is answered here, no server is called, and no
- * wallet is opened. Stock Material 3 only.
+ * wallet is opened.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActivityScreen(
     state: ActivityUiState,
     onOpen: (RequestKey) -> Unit,
     onRefresh: () -> Unit,
     onClear: () -> Unit,
-    onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
+    tabs: TabBar? = null,
 ) {
     var confirming by rememberSaveable { mutableStateOf(false) }
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.activity_title)) },
-                navigationIcon = { BackButton(onBack) },
-                actions = {
-                    TextButton(
-                        onClick = onRefresh,
-                        modifier = Modifier.testTag(ActivityTags.REFRESH),
-                    ) {
-                        Text(stringResource(R.string.refresh))
-                    }
-                    if (state.records.isNotEmpty()) {
-                        TextButton(
-                            onClick = { confirming = true },
-                            modifier = Modifier.testTag(ActivityTags.CLEAR),
-                        ) {
-                            Text(stringResource(R.string.activity_clear))
-                        }
-                    }
-                },
+    GlassScreen(
+        title = stringResource(R.string.activity_title),
+        onBack = onBack,
+        headerAction = {
+            TextLink(
+                stringResource(R.string.refresh),
+                onRefresh,
+                Modifier.testTag(ActivityTags.REFRESH),
             )
+            if (state.records.isNotEmpty()) {
+                TextLink(
+                    stringResource(R.string.activity_clear),
+                    { confirming = true },
+                    Modifier.testTag(ActivityTags.CLEAR),
+                )
+            }
         },
-    ) { innerPadding ->
-        LazyColumn(contentPadding = innerPadding, modifier = Modifier.testTag(ActivityTags.LIST)) {
-            // A history that couldn't be read says so and shows what it has. It is the owner's
-            // record, and half of it is worth more than a screen that refuses to open.
-            if (state.unreadable) {
-                item(key = "unreadable") {
-                    Text(
-                        stringResource(R.string.activity_unreadable),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(16.dp).testTag(ActivityTags.UNREADABLE),
-                    )
-                }
-            }
-            if (state.loaded && state.records.isEmpty()) {
-                item(key = "empty") {
-                    Text(
-                        stringResource(R.string.activity_empty),
-                        modifier = Modifier.padding(16.dp).testTag(ActivityTags.EMPTY),
-                    )
-                }
-            }
-            items(state.records, key = { "${it.connectionId}/${it.requestId}" }) { record ->
-                RecordItem(record, onOpen)
-                HorizontalDivider()
+        tabs = tabs,
+        modifier = modifier,
+    ) {
+        // A history that couldn't be read says so and shows what it has. It is the owner's
+        // record, and half of it is worth more than a screen that refuses to open.
+        if (state.unreadable) {
+            GlassCard {
+                Text(
+                    stringResource(R.string.activity_unreadable),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Nocturne.Danger,
+                    modifier = Modifier.testTag(ActivityTags.UNREADABLE),
+                )
             }
         }
+        if (state.loaded && state.records.isEmpty()) {
+            GlassCard {
+                Text(
+                    stringResource(R.string.activity_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Nocturne.Neutral400,
+                    modifier = Modifier.testTag(ActivityTags.EMPTY),
+                )
+            }
+        }
+        if (state.records.isNotEmpty()) {
+            GlassCard(
+                padding = Space.Sm,
+                spacing = 0.dp,
+                modifier = Modifier.testTag(ActivityTags.LIST),
+            ) {
+                state.records.forEachIndexed { index, record ->
+                    if (index > 0) CardDivider()
+                    RecordRow(record, newest = index == 0, onOpen = onOpen)
+                }
+            }
+        }
+        Text(
+            stringResource(R.string.activity_footer),
+            style = MaterialTheme.typography.bodySmall,
+            color = Nocturne.Neutral500,
+        )
     }
     if (confirming) {
-        AlertDialog(
-            onDismissRequest = { confirming = false },
-            title = { Text(stringResource(R.string.activity_clear_title)) },
-            text = { Text(stringResource(R.string.activity_clear_body)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirming = false
-                        onClear()
-                    },
-                    modifier = Modifier.testTag(ActivityTags.CONFIRM_CLEAR),
-                ) {
-                    Text(stringResource(R.string.activity_clear_confirm))
-                }
+        GlassDialog(
+            title = stringResource(R.string.activity_clear_title),
+            onDismiss = { confirming = false },
+            confirm = stringResource(R.string.activity_clear_confirm),
+            onConfirm = {
+                confirming = false
+                onClear()
             },
-            dismissButton = {
-                TextButton(onClick = { confirming = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
+            confirmTag = ActivityTags.CONFIRM_CLEAR,
+        ) {
+            Text(
+                stringResource(R.string.activity_clear_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Nocturne.Neutral300,
+            )
+        }
     }
 }
 
+/** One thing this phone did: what it was, what became of it, and when. */
 @Composable
-private fun RecordItem(record: ActivityRecord, onOpen: (RequestKey) -> Unit) {
-    ListItem(
-        overlineContent = { Text(record.source) },
-        headlineContent = {
-            Text(operationText(record), maxLines = 2, overflow = TextOverflow.Ellipsis)
-        },
-        supportingContent = {
+private fun RecordRow(record: ActivityRecord, newest: Boolean, onOpen: (RequestKey) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(Radius.InnerTight))
+            .then(if (newest) Modifier.background(Nocturne.accent(0.10f)) else Modifier)
+            .clickable { onOpen(record.key) }
+            .padding(Space.Sm)
+            .testTag(ActivityTags.item(record))
+            .semantics(mergeDescendants = true) {},
+        horizontalArrangement = Arrangement.spacedBy(Space.Md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconChip(
+            recordIcon(record),
+            contentDescription = null,
+            size = 38.dp,
+            accent = newest,
+        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                operationText(record),
+                style = MaterialTheme.typography.titleMedium,
+                color = Nocturne.Text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 stringResource(
                     R.string.activity_summary,
                     stringResource(outcomeText(record.outcome)),
                     formatInstant(record.answeredAt),
-                )
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Nocturne.Neutral500,
             )
-        },
-        modifier = Modifier.clickable { onOpen(record.key) }.testTag(ActivityTags.item(record)),
-    )
+            Text(
+                record.source,
+                style = MaterialTheme.typography.bodySmall,
+                color = Nocturne.Neutral600,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
+
+/** The mark on a record: what kind of thing it was, or that it ended badly. */
+private fun recordIcon(record: ActivityRecord) =
+    when {
+        record.outcome in FAILED_OUTCOMES -> Glyph.Warning
+        record.kind == ActivityKind.Transfer -> Glyph.Transfer
+        record.kind == ActivityKind.MessageSignature -> Glyph.Signature
+        else -> Glyph.Acknowledge
+    }
+
+private val FAILED_OUTCOMES =
+    setOf(
+        ActivityOutcome.ChainFailed,
+        ActivityOutcome.NotSigned,
+        ActivityOutcome.Unknown,
+        ActivityOutcome.NotDelivered,
+        ActivityOutcome.Superseded,
+    )

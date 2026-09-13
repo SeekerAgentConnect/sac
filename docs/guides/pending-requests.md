@@ -16,21 +16,34 @@ The phone fetches a connection's requests at three moments: when the app opens o
 
 ## Reviewing a request
 
-1. On **Connections**, tap **Pending requests**, the first row. Or open a connection and tap **Pending requests** there for only that connection's.
+1. Tap **Requests** in the tab bar. Or open a connection and tap **Its requests** there for only that connection's. **Home** also shows what is waiting as a row of cards you can drag through; the cards browse and nothing more — tapping one opens it.
 2. The list has up to three parts:
-   - **Waiting for you:** requests you haven't answered. Each shows the connection it came from, the action, how long ago the agent made it, and when it expires.
+   - **Waiting for you · swipe a row:** requests you haven't answered. Each shows the connection it came from, what is at stake in three words, and — once the rules have been applied to it — whether it is in your rules or under restrictions.
    - **Waiting to be sent:** your answers that haven't reached the server yet.
    - **Answered:** your answers that the server confirmed.
 
    A connection the phone couldn't reach is named at the top, with the reason. The list then shows what the phone already had.
-3. Tap a request. **Request details** shows:
+3. Tap a request. The **review** opens over the list, so you keep your place. It shows:
+   - what kind of request it is, and what is at stake
    - the connection and server it came from
-   - the action
    - the message, exactly as the agent sent it
    - the agent's note, separately, because nobody checked it
+   - what your own rules make of it
    - when it was made and when it expires
    - its request ID
+
+   Drag it sideways to move between the requests that are waiting, and downwards — or tap beside it — to put it back without answering. With more than one waiting, the dots at the top say which one you are on.
 4. Tap **Acknowledge** or **Reject**. Both buttons stay disabled while your answer is sent, so a second tap does nothing.
+
+### Answering with a swipe
+
+A row in **Requests** answers under your finger, and the two directions are deliberately not equal:
+
+- **Swipe left to reject.** Any request, always. Refusing needs nothing read, and it reaches no wallet.
+- **Swipe right on an acknowledgement** to acknowledge it outright. Nothing moves and nothing is signed, so there is nothing else to read.
+- **Swipe right on anything that would reach your wallet** — a transfer or a message — and it *opens the review* instead of answering. The transaction has not been built yet at that point, and the message's bytes are not on the row: the wallet is never skipped, and neither is reading what you would be signing.
+
+A swipe that stops short springs back and answers nothing. If you use a screen reader, the same two answers are offered on each row as actions, without a gesture.
 
 ## What happens to your answer
 

@@ -14,10 +14,10 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.VPS
 import io.github.brrenat.seekervault.policy.PolicyTags
+import io.github.brrenat.seekervault.ui.SeekerVaultTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test

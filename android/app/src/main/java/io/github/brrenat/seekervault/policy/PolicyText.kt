@@ -23,6 +23,8 @@ object PolicyTags {
     const val ASSET_TOKEN = "policyAssetToken"
     const val MINT_FIELD = "policyMintField"
     const val DIALOG_ADD = "policyDialogAdd"
+    const val DIALOG_PER_REQUEST = "policyDialogPerRequest"
+    const val DIALOG_DAILY = "policyDialogDaily"
     const val DIALOG_CANCEL = "policyDialogCancel"
     const val DISCARD = "policyDiscard"
     const val KEEP_EDITING = "policyKeepEditing"
@@ -140,61 +142,45 @@ fun amountText(baseUnits: ULong, asset: AssetDraft): String =
 @Composable
 fun summaryLines(draft: PolicyDraft): List<String> {
     val lines = mutableListOf<String>()
-    if (draft.restrictActions) {
-        // Named in the order the checkboxes are in, so the summary reads back what was ticked.
-        val names = mutableListOf<String>()
-        for (action in PolicyAction.entries) {
-            if (action in draft.actions) names += actionsText(action)
-        }
-        lines +=
-            if (names.isEmpty()) stringResource(R.string.policy_summary_actions_empty)
-            else stringResource(R.string.policy_summary_actions, names.joinToString())
-    }
-    if (draft.restrictAssets) {
-        lines +=
-            if (draft.assets.isEmpty()) stringResource(R.string.policy_summary_assets_empty)
-            else
-                stringResource(
-                    R.string.policy_summary_assets,
-                    draft.assets.joinToString { assetLabel(it.asset) },
-                )
-    }
-    if (draft.restrictRecipients) {
-        lines +=
-            if (draft.recipients.isEmpty()) stringResource(R.string.policy_summary_recipients_empty)
-            else stringResource(R.string.policy_summary_recipients, draft.recipients.joinToString())
-    }
-    if (draft.restrictPrograms) {
-        lines +=
-            if (draft.programs.isEmpty()) stringResource(R.string.policy_summary_programs_empty)
-            else stringResource(R.string.policy_summary_programs, draft.programs.joinToString())
-    }
-    for (asset in draft.assets) {
-        (readAmount(asset.perOperation, asset.decimals) as? AmountEntry.Amount)?.let {
-            lines +=
-                stringResource(
-                    R.string.policy_summary_per_operation,
-                    amountText(it.baseUnits, asset),
-                    assetLabel(asset.asset),
-                )
-        }
-        (readAmount(asset.daily, asset.decimals) as? AmountEntry.Amount)?.let {
-            lines +=
-                stringResource(
-                    R.string.policy_summary_daily,
-                    amountText(it.baseUnits, asset),
-                    assetLabel(asset.asset),
-                )
-        }
-    }
-    if (lines.isEmpty()) lines += stringResource(R.string.policy_summary_none)
+    val checked = checkedText(draft)
+    lines +=
+        if (checked.isEmpty()) stringResource(R.string.policy_summary_none)
+        else stringResource(R.string.policy_summary_checked, joinWithAnd(checked))
     val unchecked = uncheckedText(draft)
     if (unchecked.isNotEmpty()) {
-        lines += stringResource(R.string.policy_summary_unchecked, unchecked.joinToString())
+        lines += stringResource(R.string.policy_summary_unchecked, joinWithAnd(unchecked))
     }
+    // A threshold binds the asset it names whether or not the asset list is a check at all, which
+    // is the one thing about this screen that is not read off the switches.
+    val limited =
+        draft.assets.count {
+            readAmount(it.perOperation, it.decimals) is AmountEntry.Amount ||
+                readAmount(it.daily, it.decimals) is AmountEntry.Amount
+        }
+    if (limited == 1) lines += stringResource(R.string.policy_summary_limit_one)
+    if (limited > 1) lines += stringResource(R.string.policy_summary_limit_many, limited)
     lines += stringResource(R.string.policy_summary_manual)
     return lines
 }
+
+/** The checks this draft does configure, named in the owner's terms. */
+@Composable
+private fun checkedText(draft: PolicyDraft): List<String> {
+    val names = mutableListOf<String>()
+    if (draft.restrictActions) names += stringResource(R.string.policy_check_action)
+    if (draft.restrictAssets) names += stringResource(R.string.policy_check_asset)
+    if (draft.restrictRecipients) names += stringResource(R.string.policy_check_recipient)
+    if (draft.restrictPrograms) names += stringResource(R.string.policy_check_program)
+    return names
+}
+
+/** "a, b and c": the list read the way it would be said. */
+private fun joinWithAnd(names: List<String>): String =
+    when (names.size) {
+        0 -> ""
+        1 -> names.single()
+        else -> "${names.dropLast(1).joinToString()} and ${names.last()}"
+    }
 
 /** The checks this draft configures none of, named in the owner's terms. */
 @Composable

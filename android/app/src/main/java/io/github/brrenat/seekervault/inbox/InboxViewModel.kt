@@ -307,6 +307,26 @@ class InboxViewModel(
     }
 
     /**
+     * The same, for everything that is waiting, so a row in the list can say what the rules make of
+     * it before it is opened (SEE-57).
+     *
+     * A request whose facts need a transaction this phone has not read is left out on purpose. It
+     * is not "under restrictions" — nothing has been read about it yet, and a row that said
+     * otherwise would be making a claim the review would then contradict. Reading a transaction
+     * asks the server for one, and a list is not a reason to ask for eight.
+     */
+    fun reviewPending() {
+        val inbox = repository.inbox.value
+        val keys =
+            inbox.pendingKeys().filter { key ->
+                val request = inbox.pendingRequest(key) ?: return@filter false
+                request.transfer() == null || activity.value.preparations[key] is Preparation.Ready
+            }
+        if (keys.isEmpty()) return
+        viewModelScope.launch { keys.forEach { assess(it) } }
+    }
+
+    /**
      * The owner says they have read the warnings and want to go ahead anyway, or takes it back.
      *
      * What is kept is the assessment itself, not a tick: consent is to the reasons that were on

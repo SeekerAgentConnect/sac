@@ -300,6 +300,8 @@ Two different things on the review screen look, at a glance, like the same kind 
 
 **Neither one approves.** `ALLOWED` means the parameters matched what the owner wrote down. The owner still approves by hand in the app, and their wallet asks them again.
 
+**And no gesture answers for something nobody has read.** The Requests list answers under a finger (SEE-57), and the two directions are not equal: a left swipe rejects anything, a right swipe acknowledges an acknowledgement — which moves nothing and signs nothing — and a right swipe on a transfer or a message *opens the review* rather than approving. A transfer has no transaction until the review asks for one, so there is nothing a list could hand a wallet; a message's bytes are not on the row. The rule the review exists to keep — that only a transaction this phone read whole is ever put in front of a wallet — is not one a shortcut may step around.
+
 The assessment the owner read is kept with their own record of what they did, as codes ([`policy.md`](policy.md#the-stored-snapshot)). The rules never reach the sidecar, and neither does the assessment: no RPC carries one, and `StageBoundaryTest` holds the files that speak to a sidecar to having never heard of a policy.
 
 ## Logs and diagnostics

@@ -7,10 +7,20 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.inbox.InboxTags
+import io.github.brrenat.seekervault.inbox.InboxUiState
+import io.github.brrenat.seekervault.inbox.key
+import io.github.brrenat.seekervault.ui.ChromeTags
+import io.github.brrenat.seekervault.ui.Glyph
+import io.github.brrenat.seekervault.ui.SeekerVaultTheme
+import io.github.brrenat.seekervault.ui.Tab
+import io.github.brrenat.seekervault.ui.TabBar
+import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -25,17 +35,35 @@ class ConnectionsScreenTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val opened = mutableListOf<String>()
     private val actions = mutableListOf<String>()
+    private val openedRequests = mutableListOf<RequestKey>()
 
-    private fun show(state: ConnectionsUiState, activity: Int? = null) = compose.setContent {
+    private fun show(
+        state: ConnectionsUiState,
+        inbox: InboxUiState = InboxUiState(),
+        wallet: SelectedWallet? = null,
+    ) = compose.setContent {
         SeekerVaultTheme {
             ConnectionsScreen(
                 state = state,
+                inboxState = inbox,
                 onOpen = { opened += it },
+                onOpenRequest = { openedRequests += it },
                 onAdd = { actions += "add" },
                 onLiveTest = { actions += "live" },
                 onMessageShown = {},
-                activity = activity,
-                onActivity = { actions += "activity" },
+                wallet = wallet,
+                tabs =
+                    TabBar(
+                        tabs =
+                            listOf(
+                                Tab("Home", Glyph.Home, ChromeTags.HOME),
+                                Tab("Requests", Glyph.Requests, ChromeTags.REQUESTS),
+                                Tab("Wallet", Glyph.Wallet, ChromeTags.WALLET),
+                                Tab("Activity", Glyph.Activity, ChromeTags.ACTIVITY),
+                            ),
+                        selected = 0,
+                        onSelect = { actions += "tab:$it" },
+                    ),
             )
         }
     }
@@ -43,22 +71,66 @@ class ConnectionsScreenTest {
     @Test
     fun offersTheHistoryWhetherOrNotAnyConnectionIsLeft() {
         // The record of what this phone did is the owner's, and it doesn't depend on the agent
-        // that asked (SAW-023).
-        show(ConnectionsUiState(loaded = true), activity = 3)
-        compose
-            .onNodeWithTag(ConnectionsTags.ACTIVITY)
-            .assertTextContains(context.getString(R.string.activity_row))
-            .assertTextContains("3", substring = true)
-        compose.onNodeWithTag(ConnectionsTags.ACTIVITY).performClick()
-        assertEquals(listOf("activity"), actions)
+        // that asked (SAW-023). Since SEE-57 it is a tab of its own rather than a row in a list,
+        // so it is reachable from every root without a connection existing at all.
+        show(ConnectionsUiState(loaded = true))
+        compose.onNodeWithTag(ChromeTags.ACTIVITY).performClick()
+        assertEquals(listOf("tab:3"), actions)
     }
 
     @Test
-    fun saysWhenNothingHasBeenRecordedYet() {
-        show(ConnectionsUiState(loaded = true), activity = 0)
+    fun theCarouselShowsWhatIsWaitingAndOpensItWithoutAnsweringIt() {
+        // Home browses. Tapping a tile opens the review; nothing on the carousel answers anything,
+        // which is why it has no controls of its own (SEE-57).
+        val request = FakeConnectionGateway.request(HOME.id, WAITING_ID, "Deploy finished")
+        show(
+            ConnectionsUiState(connections = listOf(HOME), loaded = true),
+            InboxUiState(
+                connections = listOf(HOME),
+                inbox = Inbox(pending = mapOf(HOME.id to listOf(request))),
+            ),
+            wallet = CONNECTED,
+        )
+        compose.onNodeWithTag(InboxTags.CAROUSEL).assertExists()
         compose
-            .onNodeWithTag(ConnectionsTags.ACTIVITY)
-            .assertTextContains(context.getString(R.string.activity_row_none), substring = true)
+            .onNodeWithTag(InboxTags.tile(request.key))
+            .performScrollTo()
+            .assertTextContains("Deploy finished", substring = true)
+            .assertTextContains(context.getString(R.string.stake_acknowledge), substring = true)
+            .performClick()
+        assertEquals(listOf(request.key), openedRequests)
+        compose.onNodeWithTag(InboxTags.SEE_ALL).assertExists()
+    }
+
+    @Test
+    fun saysSoWhenNothingIsWaiting() {
+        show(ConnectionsUiState(connections = listOf(HOME), loaded = true))
+        compose.onNodeWithText(context.getString(R.string.home_nothing_waiting)).assertExists()
+        compose.onNodeWithTag(InboxTags.CAROUSEL).assertDoesNotExist()
+    }
+
+    @Test
+    fun asksForAWalletUntilThereIsOneAndThenStopsAsking() {
+        show(ConnectionsUiState(connections = listOf(HOME), loaded = true))
+        compose.onNodeWithTag(ConnectionsTags.WALLET).performScrollTo().assertExists()
+    }
+
+    @Test
+    fun aConnectedWalletTakesTheCardAwayAndNamesItsNetworkInTheHeader() {
+        show(ConnectionsUiState(connections = listOf(HOME), loaded = true), wallet = CONNECTED)
+        compose.onNodeWithTag(ConnectionsTags.WALLET).assertDoesNotExist()
+        compose
+            .onNodeWithTag(ChromeTags.TAG)
+            .assertTextContains(
+                context.getString(R.string.wallet_network_devnet),
+                substring = true,
+            )
+    }
+
+    @Test
+    fun marksTheRequestsTabWhenSomethingIsWaiting() {
+        show(ConnectionsUiState(connections = listOf(HOME), loaded = true))
+        compose.onNodeWithTag(ChromeTags.PENDING_DOT).assertDoesNotExist()
     }
 
     @Test
@@ -67,16 +139,15 @@ class ConnectionsScreenTest {
         compose
             .onNodeWithTag(ConnectionsTags.item(HOME.id))
             .assertTextContains("Home Mac")
-            .assertTextContains("mac.tailnet.ts.net")
             .assertTextContains(context.getString(R.string.connection_status_ok, 2))
         compose
             .onNodeWithTag(ConnectionsTags.item(VPS.id))
-            .assertTextContains("vps.example.com:8443")
+            .assertTextContains("VPS")
             .assertTextContains(context.getString(R.string.connection_status_revoked))
         compose
             .onNodeWithTag(ConnectionsTags.item(LAPTOP.id))
             .assertTextContains(context.getString(R.string.connection_status_certificate))
-        compose.onNodeWithTag(ConnectionsTags.item(VPS.id)).performClick()
+        compose.onNodeWithTag(ConnectionsTags.item(VPS.id)).performScrollTo().performClick()
         assertEquals(listOf(VPS.id), opened)
         compose.onNodeWithTag(ConnectionsTags.EMPTY).assertDoesNotExist()
     }
@@ -87,7 +158,7 @@ class ConnectionsScreenTest {
         compose
             .onNodeWithTag(ConnectionsTags.EMPTY)
             .assertTextEquals(context.getString(R.string.connections_empty))
-        compose.onNodeWithTag(ConnectionsTags.ADD).performClick()
+        compose.onNodeWithTag(ConnectionsTags.ADD).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.LIVE_TEST).performClick()
         assertEquals(listOf("add", "live"), actions)
     }
@@ -113,6 +184,13 @@ class ConnectionsScreenTest {
     }
 
     companion object {
+        private const val WAITING_ID = "c1f1b8a6-4e2d-4f31-9a0b-16f6a1d4a2b8"
+        private val CONNECTED =
+            SelectedWallet(
+                address = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW",
+                network = WalletNetwork.Devnet,
+                selectedAt = Instant.parse("2026-09-12T10:00:00Z"),
+            )
         private val PAIRED = Instant.parse("2026-09-11T12:00:00Z")
         val HOME =
             Connection(

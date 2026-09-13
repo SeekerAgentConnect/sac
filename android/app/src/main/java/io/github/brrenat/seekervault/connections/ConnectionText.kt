@@ -1,14 +1,9 @@
 package io.github.brrenat.seekervault.connections
 
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import io.github.brrenat.seekervault.R
 import java.time.Instant
@@ -22,7 +17,9 @@ object ConnectionsTags {
     const val ADD = "addConnection"
     const val EMPTY = "connectionsEmpty"
     const val ACTIVITY = "activityRow"
-    const val BACK = "back"
+
+    /** The header's back button, which the app's own chrome draws (SEE-57). */
+    const val BACK = io.github.brrenat.seekervault.ui.ChromeTags.BACK
     const val STATUS = "connectionStatus"
     const val REFRESH = "refresh"
     const val RENAME = "rename"
@@ -148,15 +145,5 @@ fun MessageEffect(message: ConnectionMessage?, host: SnackbarHostState, onShown:
             host.showSnackbar(text)
             onShown()
         }
-    }
-}
-
-@Composable
-fun BackButton(onBack: () -> Unit) {
-    IconButton(onClick = onBack, modifier = Modifier.testTag(ConnectionsTags.BACK)) {
-        Icon(
-            painterResource(R.drawable.ic_arrow_back),
-            contentDescription = stringResource(R.string.back),
-        )
     }
 }

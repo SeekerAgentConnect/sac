@@ -70,11 +70,13 @@ class InboxActivityTest {
         // Opening the app fetched the request, and answered nothing.
         compose
             .onNodeWithTag(ConnectionsTags.INBOX)
+            .performScrollTo()
             .assertTextContains(app.getString(R.string.inbox_row_waiting, 1))
             .performClick()
         assertTrue(gateway.submits.isEmpty())
         compose
             .onNodeWithTag(InboxTags.item(key))
+            .performScrollTo()
             .assertTextContains("Deploy finished")
             .performClick()
         compose
@@ -90,10 +92,11 @@ class InboxActivityTest {
             server.stateOf(connection.id, request.ref.requestId),
         )
 
-        // Back in the list it's answered; reopened, it shows the outcome, not the buttons.
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
+        // Back in the list it's answered; reopened, it shows the outcome, not the buttons. The
+        // review is a layer over the list, so tapping beside it is how it is left (SEE-57).
+        compose.onNodeWithTag(InboxTags.PANEL_VEIL).performClick()
         compose.onNodeWithTag(InboxTags.SECTION_ANSWERED).assertExists()
-        compose.onNodeWithTag(InboxTags.item(key)).performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).performScrollTo().performClick()
         scenario.recreate()
         compose
             .onNodeWithTag(InboxTags.STATUS)
@@ -117,6 +120,7 @@ class InboxActivityTest {
         scenario.moveToState(Lifecycle.State.RESUMED)
         compose
             .onNodeWithTag(ConnectionsTags.INBOX)
+            .performScrollTo()
             .assertTextContains(app.getString(R.string.inbox_row_waiting, 1))
         assertTrue(gateway.submits.isEmpty())
     }
@@ -128,7 +132,7 @@ class InboxActivityTest {
         val mine = server.addPending(home.id, text = "For home")
         val theirs = other.addPending(vps.id, text = "For the VPS")
         launch()
-        compose.onNodeWithTag(ConnectionsTags.item(home.id)).performClick()
+        compose.onNodeWithTag(ConnectionsTags.item(home.id)).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.PENDING).performScrollTo().performClick()
         compose
             .onNodeWithTag(InboxTags.item(RequestKey(home.id, mine.ref.requestId)))
@@ -151,8 +155,8 @@ class InboxActivityTest {
         adapter.beforeSigning = { release.await() }
         val scenario = launch()
 
-        compose.onNodeWithTag(ConnectionsTags.INBOX).performClick()
-        compose.onNodeWithTag(InboxTags.item(key)).performClick()
+        compose.onNodeWithTag(ConnectionsTags.INBOX).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).performScrollTo().performClick()
         compose.onNodeWithTag(InboxTags.APPROVE).performScrollTo().performClick()
         compose.waitForIdle()
         // The approval has gone, and the message is with the wallet.
@@ -222,8 +226,8 @@ class InboxActivityTest {
         adapter.beforeSending = { release.await() }
         val scenario = launch()
 
-        compose.onNodeWithTag(ConnectionsTags.INBOX).performClick()
-        compose.onNodeWithTag(InboxTags.item(key)).performClick()
+        compose.onNodeWithTag(ConnectionsTags.INBOX).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).performScrollTo().performClick()
         compose.waitForIdle()
         compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().performClick()
         compose.waitForIdle()

@@ -40,8 +40,24 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
 
 ## UI
 
-- Use stock Jetpack Compose and Material 3 components with default styling.
-- No custom theme, colors, typography, illustrations, animations, or branding.
+**SEE-57 replaced the "stock Material 3 only" rule.** The app now has one design system, Nocturne,
+and the rule is that it has exactly one (`docs/wiki/design-system.md`).
+
+- **Every colour, radius, space, blur, type size and duration lives in `ui/`**, and no screen
+  invents one. A value written into a screen is the bug; the token it should have used is the fix.
+- **The `ui/` package can draw and can do nothing else.** It imports the app's own strings and
+  nothing else from this app, and holds no repository, gateway, wallet, store or view model.
+  `StageBoundaryTest.theDesignSystemDrawsAndDoesNothingElse` holds that line, which is why the
+  policy editor may draw with it without the policy package gaining a way to act.
+- **The theme is dark and the same in every system setting.** The design is a lit dark ground with
+  translucent chrome; a light ground would be a different design, not a recolouring.
+- **Nothing is said by colour alone.** A warning is a dashed border, a mark and words. A control
+  that is off writes `disabled()` into its semantics. A label and its value merge, so a screen
+  reader hears one fact rather than two fragments.
+- **Layering is not optional; blur is.** Where the platform gives no backdrop blur, a surface falls
+  back to a flat translucent fill of the same value — it never stops being a layer.
+- **Identifiers are monospace and shortened only in the middle.** `truncateMiddle` is the one
+  implementation.
 
 ## Tests and checks
 

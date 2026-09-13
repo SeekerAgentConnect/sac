@@ -41,6 +41,8 @@ One list of assets, each with the two thresholds that are about it.
 - **Most per request** is the largest amount one request may move.
 - **Most per day** is the largest amount this app may move in a local day. It is counted from the app's own records ([`docs/policy.md`](../policy.md#counters)).
 
+Both can be set in the **Add an asset** dialog as you add it, and changed afterwards: tap the asset's row to fold its two fields open. A listed asset's row says its limits — `0.005 per request · 0.05 a day` — or that it has none.
+
 ### Units
 
 **SOL is typed in SOL.** 1.5 means one and a half SOL, and the field says, as you type, that it will be stored as `1500000000` base units. That number is the one the rule is actually compared against, so you can always see it.
@@ -91,12 +93,14 @@ If this app finds rules it can't read — a file written by a later version, a r
 
 ## What the summary tells you
 
-The summary at the top is the whole policy read back in plain language, not a highlight of it:
+The card at the top, **What these rules say**, reads the whole policy back in plain language:
 
-- every list that is a check, and what is in it;
-- every threshold, in the units it was typed in;
-- **which checks nothing covers.** *Allowed* is never a statement about a parameter no rule was written for, so the summary names the ones the assessment leaves out;
-- and the line that never changes: **allowed and under restrictions both need your hand on the wallet.** Neither is an approval, and neither stops anything.
+- **what is checked** — the sections whose switch is on, named the way the review names them;
+- **what is not checked**, with the line that goes with it: a request that matches everything above still says nothing about these. *Within the rules you set* is never a statement about a parameter no rule was written for;
+- **how many assets carry a spending limit**, because a limit applies to the asset it names whether or not the asset switch is on;
+- and the line that never changes: **within rules and under restrictions both need your hand on the wallet.** Neither is an approval, and neither stops anything.
+
+The lists themselves are in the four section cards under it, each with its own note saying what its switch means as it stands.
 
 ## What a rule does when a request arrives
 

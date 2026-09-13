@@ -21,7 +21,7 @@
     <string name="policy_summary_daily">At most %1$s of %2$s a day, counted from what went through this app.</string>
     <string name="policy_base_units">%1$s base units</string>
     <string name="policy_summary_unchecked">Not checked: %1$s. A request that matches everything above still says nothing about these.</string>
-    <string name="policy_summary_manual">Allowed and under restrictions both need your hand on the wallet. Neither is an approval, and neither stops anything.</string>
+    <string name="policy_summary_manual">Within rules and under restrictions both need your hand on the wallet. Neither is an approval, and neither stops anything.</string>
 
     <string name="policy_check_action">the kind of action</string>
     <string name="policy_check_asset">which asset moves</string>
@@ -34,7 +34,7 @@
     <string name="policy_switch_actions">Only these actions may be asked for</string>
     <string name="policy_actions_off">Not checked. This connection may ask for any kind of action, and the review says the kind of action was not covered.</string>
     <string name="policy_actions_on">Checked. A kind of action that is not ticked is outside the rules.</string>
-    <string name="policy_actions_empty">Nothing is ticked, so every request is outside the rules. That is a rule, not a blank.</string>
+    <string name="policy_actions_empty">Checked, and nothing is ticked, so every request is outside the rules. That is a rule, not a blank.</string>
     <string name="policy_action_ack">Acknowledge text</string>
     <string name="policy_action_sign_message">Sign a message</string>
     <string name="policy_action_transfer">Transfer funds</string>
@@ -48,7 +48,7 @@
     <string name="policy_switch_assets">Only these assets may move</string>
     <string name="policy_assets_off">Not checked. Any asset may move. The thresholds below still apply to the assets they name.</string>
     <string name="policy_assets_on">Checked. An asset that is not listed is outside the rules.</string>
-    <string name="policy_assets_empty">Nothing is listed, so no asset may move. That is a rule, not a blank.</string>
+    <string name="policy_assets_empty">Checked, and nothing is listed, so no asset may move. That is a rule, not a blank.</string>
     <string name="policy_assets_none">No asset listed. Add one to set a threshold for it.</string>
     <string name="policy_add_asset">Add an asset</string>
     <string name="policy_asset_remove">Remove %1$s</string>
@@ -69,18 +69,31 @@
     <string name="policy_switch_recipients">Only these wallets may receive funds</string>
     <string name="policy_recipients_off">Not checked. Funds may go anywhere, and the review says the recipient was not covered.</string>
     <string name="policy_recipients_on">Checked. A payment to a wallet that is not listed is outside the rules.</string>
-    <string name="policy_recipients_empty">Nothing is listed, so no wallet may be paid. That is a rule, not a blank.</string>
+    <string name="policy_recipients_empty">Checked, and nothing is listed, so no wallet may be paid. That is a rule, not a blank.</string>
     <string name="policy_recipient_field">Wallet address</string>
     <string name="policy_recipient_note">Write the wallet that owns the funds, never a token account. The phone works the owner out of the transaction itself.</string>
 
     <string name="policy_section_programs">Programs</string>
     <string name="policy_switch_programs">Only these programs may be called</string>
     <string name="policy_programs_off">Not checked. The transaction may call anything, and the review says the programs were not covered.</string>
-    <string name="policy_programs_on">Checked. A transaction that calls a program which is not listed is outside the rules.</string>
-    <string name="policy_programs_empty">Nothing is listed, so no program may be called. That is a rule, not a blank.</string>
+    <string name="policy_programs_on">Checked. Every program the transaction calls is checked against this list, the compute budget program included.</string>
+    <string name="policy_programs_empty">Checked, and nothing is listed, so no program may be called. That is a rule, not a blank.</string>
     <string name="policy_program_field">Program address</string>
     <string name="policy_program_note">Every program the transaction calls is checked, the compute budget program included.</string>
 
+    <string name="policy_summary_checked">Checked: %1$s.</string>
+    <string name="policy_summary_limit_one">One asset carries a spending limit. Limits apply to the asset they name whether or not the asset switch is on.</string>
+    <string name="policy_summary_limit_many">%1$d assets carry a spending limit. Limits apply to the asset they name whether or not the asset switch is on.</string>
+    <string name="policy_asset_limits">%1$s per request · %2$s a day</string>
+    <string name="policy_asset_limit_per_request">%1$s per request</string>
+    <string name="policy_asset_limit_daily">%1$s a day</string>
+    <string name="policy_asset_no_limit">No limit set</string>
+    <string name="policy_asset_native">Native SOL · %1$s</string>
+    <string name="policy_asset_token_named">Token %1$s · %2$s</string>
+    <string name="policy_thresholds_optional">Thresholds · optional</string>
+    <string name="policy_threshold_note">A limit applies to the asset it names whether or not the asset switch is on. Going over it marks the request under restrictions; it does not stop it.</string>
+    <string name="policy_mint_invalid">Not a Solana address. A mint is base58 for 32 bytes.</string>
+    <string name="policy_asset_kind">Asset</string>
     <string name="policy_add">Add</string>
     <string name="policy_remove">Remove</string>
     <string name="policy_remove_entry">Remove %1$s</string>
@@ -113,8 +126,8 @@
     <string name="policy_unreadable_text">Every request from this connection is shown as under restrictions until this is settled. Starting over replaces what is stored, and nothing here can show you what you are replacing.</string>
     <string name="policy_start_over">Start over from no rules</string>
     <!-- The assessment on the request-review screen (SAW-028). -->
-    <string name="policy_verdict_allowed">Matches your rules</string>
-    <string name="policy_verdict_restricted">Outside your rules</string>
+    <string name="policy_verdict_allowed">Within the rules you set</string>
+    <string name="policy_verdict_restricted">Under restrictions</string>
 
     <string name="policy_review_check_action">Action</string>
     <string name="policy_review_check_asset">Asset</string>

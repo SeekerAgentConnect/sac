@@ -4,13 +4,14 @@ import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -20,9 +21,10 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.policy.storage.UnreadableReason
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.ui.SeekerVaultTheme
+import io.github.brrenat.seekervault.ui.truncateMiddle
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -94,6 +96,9 @@ class PolicyEditorScreenTest {
     private fun seen(id: Int, vararg args: Any) =
         compose.onNodeWithText(text(id, *args)).assertExists()
 
+    /** A listed asset keeps its thresholds folded away until the row is opened (SEE-57). */
+    private fun openAsset(index: Int = 0) = click(PolicyTags.asset(index))
+
     // A dialog isn't in the scrolling column, so its buttons are clicked where they are.
     private fun addSol() {
         click(PolicyTags.ADD_ASSET)
@@ -127,9 +132,8 @@ class PolicyEditorScreenTest {
         click(PolicyTags.restrict("actions"))
         // On with nothing ticked: a rule that matches nothing, said in words rather than shown
         // as a blank.
-        seen(R.string.policy_actions_on)
         seen(R.string.policy_actions_empty)
-        seen(R.string.policy_summary_actions_empty)
+        seen(R.string.policy_summary_checked, text(R.string.policy_check_action))
         compose.onNodeWithTag(PolicyTags.restrict("actions")).assertIsOn()
         compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()
     }
@@ -141,12 +145,7 @@ class PolicyEditorScreenTest {
         click(PolicyTags.action(PolicyAction.Transfer))
         click(PolicyTags.action(PolicyAction.Acknowledgement))
         assertEquals(setOf(PolicyAction.Transfer, PolicyAction.Acknowledgement), draft.actions)
-        seen(
-            R.string.policy_summary_actions,
-            text(R.string.policy_action_ack_short) +
-                ", " +
-                text(R.string.policy_action_transfer_short),
-        )
+        seen(R.string.policy_summary_checked, text(R.string.policy_check_action))
         // And unticking takes it back out.
         click(PolicyTags.action(PolicyAction.Transfer))
         assertEquals(setOf(PolicyAction.Acknowledgement), draft.actions)
@@ -156,13 +155,19 @@ class PolicyEditorScreenTest {
     fun anAmountOfSolIsShownInTheUnitsItIsStoredIn() {
         open()
         addSol()
-        compose.onNodeWithTag(PolicyTags.asset(0)).assertTextEquals("SOL on mainnet")
         compose
-            .onNodeWithTag(PolicyTags.perOperation(0))
-            .assertTextContains(text(R.string.policy_amount_none))
+            .onNodeWithTag(PolicyTags.asset(0))
+            .performScrollTo()
+            .assertTextContains(
+                text(R.string.policy_asset_native, text(R.string.policy_network_mainnet)),
+                substring = true,
+            )
+            .assertTextContains(text(R.string.policy_asset_no_limit), substring = true)
+        openAsset()
+        compose.onAllNodesWithText(text(R.string.policy_amount_none)).assertCountEquals(2)
         type(PolicyTags.perOperation(0), "1.5")
         seen(R.string.policy_amount_stored, "1500000000")
-        seen(R.string.policy_summary_per_operation, "1.5", "SOL on mainnet")
+        seen(R.string.policy_summary_limit_one)
         compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()
     }
 
@@ -170,6 +175,7 @@ class PolicyEditorScreenTest {
     fun anAmountThatIsntOneIsRefusedInWordsAndCantBeSaved() {
         open()
         addSol()
+        openAsset()
         type(PolicyTags.perOperation(0), "lots")
         seen(R.string.policy_amount_not_a_number)
         compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsNotEnabled()
@@ -186,6 +192,7 @@ class PolicyEditorScreenTest {
     fun aDailyThresholdBelowThePerRequestOneIsRefused() {
         open()
         addSol()
+        openAsset()
         type(PolicyTags.perOperation(0), "2")
         type(PolicyTags.daily(0), "1")
         seen(R.string.policy_daily_below)
@@ -198,18 +205,14 @@ class PolicyEditorScreenTest {
     fun aTokenIsTypedInItsOwnBaseUnitsAndSaysSo() {
         open()
         addToken()
-        compose.onNodeWithTag(PolicyTags.asset(0)).assertTextEquals("$MINT on mainnet")
         seen(R.string.policy_token_units)
+        openAsset()
         seen(R.string.policy_per_operation_units)
         type(PolicyTags.perOperation(0), "1.5")
         seen(R.string.policy_amount_too_precise, "$MINT on mainnet", 0)
         type(PolicyTags.perOperation(0), "1000000")
         seen(R.string.policy_amount_stored, "1000000")
-        seen(
-            R.string.policy_summary_per_operation,
-            text(R.string.policy_base_units, "1000000"),
-            "$MINT on mainnet",
-        )
+        seen(R.string.policy_summary_limit_one)
     }
 
     @Test
@@ -219,7 +222,7 @@ class PolicyEditorScreenTest {
         compose.onNodeWithTag(PolicyTags.ASSET_TOKEN).performClick()
         compose.onNodeWithTag(PolicyTags.MINT_FIELD).performTextReplacement("not-a-mint")
         compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
-        compose.onNodeWithText(text(R.string.policy_address_invalid)).assertExists()
+        compose.onNodeWithText(text(R.string.policy_mint_invalid)).assertExists()
         assertEquals(emptyList<AssetDraft>(), draft.assets)
         compose.onNodeWithTag(PolicyTags.MINT_FIELD).performTextReplacement(MINT)
         compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
@@ -241,9 +244,32 @@ class PolicyEditorScreenTest {
     }
 
     @Test
+    fun thresholdsCanBeSetWhereTheAssetIsAddedAndChangedAfterwards() {
+        // The dialog takes the limits with the asset (SEE-57), and the row still opens to change
+        // them: a rule the owner can only delete and rewrite is a rule they stop adjusting.
+        open()
+        click(PolicyTags.ADD_ASSET)
+        compose.onNodeWithTag(PolicyTags.DIALOG_PER_REQUEST).performTextReplacement("0.005")
+        compose.onNodeWithTag(PolicyTags.DIALOG_DAILY).performTextReplacement("0.05")
+        compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
+        assertEquals(listOf("0.005" to "0.05"), draft.assets.map { it.perOperation to it.daily })
+        compose
+            .onNodeWithTag(PolicyTags.asset(0))
+            .performScrollTo()
+            .assertTextContains(
+                text(R.string.policy_asset_limits, "0.005", "0.05"),
+                substring = true,
+            )
+        openAsset()
+        type(PolicyTags.daily(0), "0.06")
+        assertEquals(listOf("0.06"), draft.assets.map { it.daily })
+    }
+
+    @Test
     fun anAssetCanBeTakenBackOut() {
         open()
         addSol()
+        openAsset()
         type(PolicyTags.perOperation(0), "1")
         click(PolicyTags.removeAsset(0))
         assertEquals(emptyList<AssetDraft>(), draft.assets)
@@ -266,7 +292,7 @@ class PolicyEditorScreenTest {
         compose
             .onNodeWithTag(PolicyTags.entry(RECIPIENTS, RECIPIENT))
             .performScrollTo()
-            .assertTextEquals(RECIPIENT)
+            .assertTextContains(truncateMiddle(RECIPIENT))
     }
 
     @Test
@@ -295,7 +321,7 @@ class PolicyEditorScreenTest {
         click(PolicyTags.add(PROGRAMS))
         assertEquals(listOf(SYSTEM), draft.programs)
         assertEquals(emptyList<String>(), draft.recipients)
-        seen(R.string.policy_summary_programs, SYSTEM)
+        seen(R.string.policy_summary_checked, text(R.string.policy_check_program))
     }
 
     @Test
@@ -303,17 +329,15 @@ class PolicyEditorScreenTest {
         open()
         click(PolicyTags.restrict("actions"))
         click(PolicyTags.action(PolicyAction.Transfer))
-        seen(
-            R.string.policy_summary_unchecked,
+        val names =
             listOf(
                     R.string.policy_check_asset,
                     R.string.policy_check_recipient,
                     R.string.policy_check_program,
                     R.string.policy_check_per_operation,
-                    R.string.policy_check_daily,
                 )
-                .joinToString { text(it) },
-        )
+                .joinToString { text(it) } + " and " + text(R.string.policy_check_daily)
+        seen(R.string.policy_summary_unchecked, names)
     }
 
     @Test
@@ -397,6 +421,7 @@ class PolicyEditorScreenTest {
         click(PolicyTags.action(PolicyAction.Transfer))
         assertEquals(setOf(PolicyAction.Transfer), draft.actions)
         addSol()
+        openAsset()
         type(PolicyTags.perOperation(0), "1.5")
         seen(R.string.policy_amount_stored, "1500000000")
         compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()

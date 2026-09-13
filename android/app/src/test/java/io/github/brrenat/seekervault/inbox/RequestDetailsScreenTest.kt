@@ -14,7 +14,6 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Delivery
@@ -34,6 +33,7 @@ import io.github.brrenat.seekervault.request.v1.confirmation
 import io.github.brrenat.seekervault.request.v1.outcome
 import io.github.brrenat.seekervault.request.v1.signMessageAction
 import io.github.brrenat.seekervault.request.v1.transferAction
+import io.github.brrenat.seekervault.ui.SeekerVaultTheme
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.time.Instant

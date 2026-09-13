@@ -15,7 +15,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.ui.SeekerVaultTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -58,6 +58,9 @@ class LiveCommandScreenTest {
 
     private fun node(tag: String) = compose.onNodeWithTag(tag)
 
+    /** The screen scrolls, so a control is brought into view before it is touched. */
+    private fun reach(tag: String) = compose.onNodeWithTag(tag).performScrollTo()
+
     private fun string(id: Int, vararg args: Any): String = context.getString(id, *args)
 
     @Test
@@ -74,9 +77,9 @@ class LiveCommandScreenTest {
             okTaps++
             state = connectedWith(status = CommandStatus.Sending)
         }
-        node(LiveCommandTags.OK).performClick()
-        node(LiveCommandTags.OK).performClick()
-        node(LiveCommandTags.OK).assertIsNotEnabled()
+        reach(LiveCommandTags.OK).performClick()
+        reach(LiveCommandTags.OK).performClick()
+        reach(LiveCommandTags.OK).assertIsNotEnabled()
         node(LiveCommandTags.COMMAND_STATUS).assertTextEquals(string(R.string.command_sending))
         assertEquals(1, okTaps)
     }
@@ -100,7 +103,7 @@ class LiveCommandScreenTest {
             )
         for ((status, message) in messages) {
             state = connectedWith(status = status)
-            node(LiveCommandTags.OK).assertIsNotEnabled()
+            reach(LiveCommandTags.OK).assertIsNotEnabled()
             node(LiveCommandTags.COMMAND_STATUS).assertTextEquals(string(message))
         }
     }
@@ -117,16 +120,16 @@ class LiveCommandScreenTest {
     @Test
     fun locksTheFormWhileConnected() {
         show(connectedWith())
-        node(LiveCommandTags.SERVER_URL).assertIsNotEnabled()
-        node(LiveCommandTags.PHONE_TOKEN).assertIsNotEnabled()
-        node(LiveCommandTags.CONNECT).assertIsNotEnabled()
+        reach(LiveCommandTags.SERVER_URL).assertIsNotEnabled()
+        reach(LiveCommandTags.PHONE_TOKEN).assertIsNotEnabled()
+        reach(LiveCommandTags.CONNECT).assertIsNotEnabled()
         node(LiveCommandTags.DISCONNECT).assertIsEnabled()
         node(LiveCommandTags.CONNECTION_STATUS).assertTextEquals(string(R.string.status_connected))
         state = LiveCommandUiState()
         node(LiveCommandTags.SERVER_URL).assertIsEnabled()
         node(LiveCommandTags.PHONE_TOKEN).assertIsEnabled()
         node(LiveCommandTags.CONNECT).assertIsEnabled()
-        node(LiveCommandTags.DISCONNECT).assertIsNotEnabled()
+        reach(LiveCommandTags.DISCONNECT).assertIsNotEnabled()
         node(LiveCommandTags.COMMAND_TEXT).assertDoesNotExist()
     }
 

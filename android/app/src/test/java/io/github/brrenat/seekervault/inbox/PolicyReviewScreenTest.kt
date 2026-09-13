@@ -15,7 +15,6 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.HOME
@@ -29,6 +28,7 @@ import io.github.brrenat.seekervault.policy.RequestFacts
 import io.github.brrenat.seekervault.policy.assess
 import io.github.brrenat.seekervault.policy.noPolicy
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.ui.SeekerVaultTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule

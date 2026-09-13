@@ -1,6 +1,8 @@
 # Android
 
-The app opens on **Connections**: the sidecars this phone is paired with (SAW-012). From there, **Pending requests** shows what agents asked (SAW-013), **Add connection** pairs with a new sidecar, a connection's details refresh, rename, or disconnect it, and **Live test** opens the Stage 1 live-test screen. That screen connects to the sidecar's `LiveCommandService` ([`docs/protocol.md`](../protocol.md)), shows an agent's text, and sends the user's OK back. The app uses stock Jetpack Compose and Material 3 components only, and no wallet.
+The app opens on **Home**: what is waiting, and the sidecars this phone is paired with (SAW-012). A floating tab bar carries the four roots — Home, Requests, Wallet, Activity. From there, **Requests** shows what agents asked (SAW-013), **Add connection** pairs with a new sidecar, a connection's details refresh, rename, or disconnect it and reach its **Rules**, and **Live test** opens the Stage 1 live-test screen. That screen connects to the sidecar's `LiveCommandService` ([`docs/protocol.md`](../protocol.md)), shows an agent's text, and sends the user's OK back.
+
+Since SEE-57 the app is drawn with one design system, Nocturne, which lives in `ui/` and is documented in [`docs/wiki/design-system.md`](../wiki/design-system.md): a lit dark ground, translucent chrome floating over it, and every colour, radius, space and duration named once. No screen invents a value, and the package that holds them can draw and do nothing else. The app still has no wallet of its own.
 
 ## Connections
 
@@ -8,7 +10,7 @@ The owner's walkthrough is [`docs/guides/pairing.md`](../guides/pairing.md), and
 
 | Screen | What it shows and does |
 | --- | --- |
-| **Connections** | The app's first screen. Its first row is **Wallet**, then **Pending requests**, then each paired sidecar with its name, host, and status. **Add connection** pairs a new one, and **Live test** opens the Stage 1 screen. |
+| **Home** | The app's first screen. It asks for a wallet until there is one, then shows **Waiting for you** as a browse-only carousel of the requests that are waiting, then **Paired servers** — each with its initials, its name and its status — then **Add connection**. **Live test** opens the Stage 1 screen from the header. |
 | **Add connection** | **Scan QR code** asks for the camera permission, then scans with the back camera. The code can also be typed or pasted. A malformed code gets the reason. A valid one shows the server's URL and ID to confirm, and notes a server the phone already knows. **Pair** exchanges the code for a connection. |
 | **Connection details** | The status and the last refresh, the server URL and ID, the connection ID, when it paired, and the device name the sidecar saw. It offers **Refresh**, **Rename**, and **Disconnect**. A connection the sidecar no longer accepts offers **Remove from this phone** instead. |
 

@@ -13,6 +13,7 @@ import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.ui.ChromeTags
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import io.github.brrenat.seekervault.wallet.WalletResult
@@ -63,31 +64,42 @@ class WalletActivityTest {
 
         compose
             .onNodeWithTag(ConnectionsTags.WALLET)
-            .assertTextContains(app.getString(R.string.wallet_row_none))
+            .performScrollTo()
+            .assertTextContains(app.getString(R.string.home_wallet_card_title))
             .performClick()
         adapter.answerConnected(WALLET, chains = listOf("solana:devnet"))
         compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).performClick()
         compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().performClick()
 
-        compose.onNodeWithTag(WalletTags.field("address")).assertTextContains(WALLET)
+        compose
+            .onNodeWithTag(WalletTags.field("address"))
+            .performScrollTo()
+            .assertTextContains(WALLET)
         assertEquals(WALLET, server.wallet?.wallet)
         assertEquals(Network.NETWORK_DEVNET, server.wallet?.network)
         // The binding went to this connection's own server, and nowhere else.
         assertEquals(setOf(URL), gateway.published.map { it.first }.toSet())
         assertTrue(app.connectionRepository.connection(connection.id)!!.usable)
 
-        // Back on Connections the row names the wallet, and a restart keeps it.
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
-        compose.onNodeWithTag(ConnectionsTags.WALLET).assertTextContains(WALLET, substring = true)
+        // Home stops asking for a wallet once there is one, and its header names the network the
+        // wallet chose. A restart keeps both (SEE-57).
+        compose.onNodeWithTag(ChromeTags.HOME).performClick()
+        compose.onNodeWithTag(ConnectionsTags.WALLET).assertDoesNotExist()
+        compose.onNodeWithTag(ChromeTags.TAG).assertTextContains("Devnet", substring = true)
         scenario?.recreate()
-        compose.onNodeWithTag(ConnectionsTags.WALLET).assertTextContains(WALLET, substring = true)
+        compose.onNodeWithTag(ChromeTags.TAG).assertTextContains("Devnet", substring = true)
+        compose.onNodeWithTag(ChromeTags.WALLET).performClick()
+        compose
+            .onNodeWithTag(WalletTags.field("address"))
+            .performScrollTo()
+            .assertTextContains(WALLET)
     }
 
     @Test
     fun disconnectingTellsTheWalletAndTheSidecar() {
         runBlocking { app.connectionRepository.pair(server.issue(URL)) }
         launch()
-        compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
+        compose.onNodeWithTag(ConnectionsTags.WALLET).performScrollTo().performClick()
         adapter.answerConnected(WALLET, authToken = SECRET)
         compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().performClick()
 
@@ -104,10 +116,13 @@ class WalletActivityTest {
     @Test
     fun aConnectionPairedAfterwardsLearnsTheWalletWhenTheAppComesBack() {
         launch()
-        compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
+        compose.onNodeWithTag(ConnectionsTags.WALLET).performScrollTo().performClick()
         adapter.answerConnected(WALLET)
         compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().performClick()
-        compose.onNodeWithTag(WalletTags.field("address")).assertTextContains(WALLET)
+        compose
+            .onNodeWithTag(WalletTags.field("address"))
+            .performScrollTo()
+            .assertTextContains(WALLET)
         assertNull(server.wallet)
 
         runBlocking { app.connectionRepository.pair(server.issue(URL)) }
@@ -120,7 +135,7 @@ class WalletActivityTest {
     @Test
     fun saysWhyNothingHappenedWhenNoWalletIsInstalled() {
         launch()
-        compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
+        compose.onNodeWithTag(ConnectionsTags.WALLET).performScrollTo().performClick()
         adapter.answer(WalletResult.NoWallet)
         compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().performClick()
         compose

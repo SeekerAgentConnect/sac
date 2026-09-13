@@ -64,7 +64,7 @@ class PolicyActivityTest {
     }
 
     private fun openRules(connection: Connection) {
-        compose.onNodeWithTag(ConnectionsTags.item(connection.id)).performClick()
+        compose.onNodeWithTag(ConnectionsTags.item(connection.id)).performScrollTo().performClick()
         compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().performClick()
     }
 
@@ -88,6 +88,7 @@ class PolicyActivityTest {
             .performClick()
         compose.onNodeWithTag(PolicyTags.ADD_ASSET).performScrollTo().performClick()
         compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
+        compose.onNodeWithTag(PolicyTags.asset(0)).performScrollTo().performClick()
         compose
             .onNodeWithTag(PolicyTags.perOperation(0))
             .performScrollTo()

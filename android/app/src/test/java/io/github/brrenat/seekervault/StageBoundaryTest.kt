@@ -142,9 +142,14 @@ class StageBoundaryTest {
         // What it reaches for in the rest of the app, and every one of them is a read: the
         // connection ID rule, the protocol's requests and networks, what the phone read out of a
         // transaction's own bytes (SAW-020), the owner's own record of what this app did (SAW-023),
-        // and the address rule. SAW-027 added the editor, so three more: the app's strings, its
-        // back button, and its date format. Nothing that opens a wallet, a connection, or a socket
-        // — the screen the owner writes the rules on can't act on them either.
+        // and the address rule. SAW-027 added the editor, so two more: the app's strings and its
+        // date format. Nothing that opens a wallet, a connection, or a socket — the screen the
+        // owner writes the rules on can't act on them either.
+        //
+        // SEE-57 moved the app onto one design system, so the editor also draws with `ui`. Those
+        // imports are excluded here and checked in `theDesignSystemDrawsAndDoesNothingElse`
+        // instead: listing thirty component names in this assertion would turn a boundary check
+        // into a styling changelog, and the guard that matters is that `ui` itself cannot act.
         val reaches =
             sources
                 .flatMap { it.readLines() }
@@ -152,6 +157,7 @@ class StageBoundaryTest {
                 .filter { it.startsWith("import io.github.brrenat.seekervault.") }
                 .map { it.removePrefix("import ") }
                 .filterNot { it.startsWith("io.github.brrenat.seekervault.policy.") }
+                .filterNot { it.startsWith("io.github.brrenat.seekervault.ui.") }
                 .distinct()
                 .sorted()
         assertEquals(
@@ -160,7 +166,6 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.activity.ActivityKind",
                 "io.github.brrenat.seekervault.activity.ActivityOutcome",
                 "io.github.brrenat.seekervault.activity.ActivityRecord",
-                "io.github.brrenat.seekervault.connections.BackButton",
                 "io.github.brrenat.seekervault.connections.formatInstant",
                 "io.github.brrenat.seekervault.connections.isConnectionId",
                 "io.github.brrenat.seekervault.request.v1.Action",
@@ -207,6 +212,38 @@ class StageBoundaryTest {
             Regex(
                 """\b(signMessage|signAndSendTransactions|WalletAdapter|ConnectionGateway|""" +
                     """OkHttp|ResultStore|approveTransfer|Blocked|BLOCKED)\b"""
+            )
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { acting.containsMatchIn(withoutComments(it)) }.map { it.name },
+        )
+    }
+
+    @Test
+    fun theDesignSystemDrawsAndDoesNothingElse() {
+        // SEE-57 puts every colour, shape, surface and control in one package, `ui`, so that no
+        // screen invents a value. That package is drawn on by every other one — the policy editor
+        // included — so it is kept incapable of anything but drawing: it reaches for the app's own
+        // strings and for nothing else in this app, and it holds no repository, no gateway, no
+        // wallet, no store and no storage of its own.
+        val ui = File(main, "java/io/github/brrenat/seekervault/ui")
+        assertTrue(ui.isDirectory)
+        val sources = ui.walk().filter { it.extension == "kt" }.toList()
+        assertTrue(sources.isNotEmpty())
+        val reaches =
+            sources
+                .flatMap { it.readLines() }
+                .map { it.trim() }
+                .filter { it.startsWith("import io.github.brrenat.seekervault.") }
+                .map { it.removePrefix("import ") }
+                .filterNot { it.startsWith("io.github.brrenat.seekervault.ui.") }
+                .distinct()
+                .sorted()
+        assertEquals(listOf("io.github.brrenat.seekervault.R"), reaches)
+        val acting =
+            Regex(
+                """\b(Repository|Gateway|WalletAdapter|OkHttp|ViewModel|Store|CredentialVault|""" +
+                    """signMessage|signAndSendTransactions|approve)\b"""
             )
         assertEquals(
             emptyList<String>(),

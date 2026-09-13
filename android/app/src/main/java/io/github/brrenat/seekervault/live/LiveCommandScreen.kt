@@ -3,18 +3,13 @@ package io.github.brrenat.seekervault.live
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,7 +22,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.ui.GlassScreen
+import io.github.brrenat.seekervault.ui.SeekerVaultTheme
 
 /** Test tags for the screen's controls. */
 object LiveCommandTags {
@@ -43,9 +39,10 @@ object LiveCommandTags {
 }
 
 @Composable
-fun LiveCommandRoute(viewModel: LiveCommandViewModel) {
+fun LiveCommandRoute(viewModel: LiveCommandViewModel, onBack: () -> Unit = {}) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LiveCommandScreen(
+        onBack = onBack,
         state = state,
         onServerUrlChange = viewModel::onServerUrlChange,
         onPhoneTokenChange = viewModel::onPhoneTokenChange,
@@ -55,7 +52,10 @@ fun LiveCommandRoute(viewModel: LiveCommandViewModel) {
     )
 }
 
-/** The Stage 1 live-test screen: stock Material 3 components only. */
+/**
+ * The Stage 1 live-test screen. It is a diagnostic rather than part of the owner's workflow, so it
+ * keeps its plain form fields and gains only the app's own chrome and ground (SEE-57).
+ */
 @Composable
 fun LiveCommandScreen(
     state: LiveCommandUiState,
@@ -65,18 +65,15 @@ fun LiveCommandScreen(
     onDisconnect: () -> Unit,
     onOk: () -> Unit,
     modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
 ) {
     val disconnected = state.connection is ConnectionState.Disconnected
-    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
-        Column(
-            modifier =
-                Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                stringResource(R.string.live_title),
-                style = MaterialTheme.typography.headlineSmall,
-            )
+    GlassScreen(
+        title = stringResource(R.string.live_title),
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = state.serverUrl,
                 onValueChange = onServerUrlChange,

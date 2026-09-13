@@ -169,8 +169,8 @@
     <string name="policy_status_unverified">Could not be checked — %1$s</string>
     <string name="policy_status_unverified_plain">Could not be checked</string>
     <string name="policy_status_not_configured">No rule set</string>
-    <string name="policy_review_uncovered">Nothing was checked for: %1$s. Nothing above says anything about those.</string>
-    <string name="policy_review_manual">Whatever this says, it approves nothing and stops nothing. Both verdicts need your approval here, and your wallet will ask you again.</string>
+    <string name="policy_review_uncovered">Not checked for this connection: %1$s.</string>
+    <string name="policy_review_manual">Context, not permission. Whatever it says, you approve this request by hand here, and your wallet will ask you again.</string>
     <string name="policy_acknowledge">I have read the warnings above and want to go ahead anyway</string>
     <string name="approve_despite_warnings">Approve despite warnings</string>
     <string name="approve_and_send_despite_warnings">Approve and send despite warnings</string>

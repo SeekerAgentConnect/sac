@@ -21,16 +21,17 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.ui.SeekerVaultTheme
 import java.io.File
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
@@ -120,7 +121,7 @@ class AddConnectionRouteTest {
 
     private fun enter(text: String) {
         compose.onNodeWithTag(ConnectionsTags.CODE_FIELD).performTextReplacement(text)
-        compose.onNodeWithTag(ConnectionsTags.CONTINUE).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CONTINUE).performScrollTo().performClick()
     }
 
     private fun problem(id: Int) =
@@ -129,7 +130,7 @@ class AddConnectionRouteTest {
     @Test
     fun fallsBackToEnteringTheCodeWhenCameraAccessIsRefused() {
         show()
-        compose.onNodeWithTag(ConnectionsTags.SCAN).performClick()
+        compose.onNodeWithTag(ConnectionsTags.SCAN).performScrollTo().performClick()
         assertEquals(listOf(Manifest.permission.CAMERA), asked)
         compose
             .onNodeWithTag(ConnectionsTags.CAMERA_DENIED)
@@ -145,7 +146,7 @@ class AddConnectionRouteTest {
         allowCamera = true
         inView = text(server.issue(URL))
         show()
-        compose.onNodeWithTag(ConnectionsTags.SCAN).performClick()
+        compose.onNodeWithTag(ConnectionsTags.SCAN).performScrollTo().performClick()
         compose.onNodeWithTag(FAKE_CAMERA).performClick()
         compose.onNodeWithTag(ConnectionsTags.CONFIRM_SERVER).assertTextContains(URL)
     }
@@ -154,7 +155,7 @@ class AddConnectionRouteTest {
     fun doesNotAskAgainWhenAccessWasGranted() {
         shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
         show()
-        compose.onNodeWithTag(ConnectionsTags.SCAN).performClick()
+        compose.onNodeWithTag(ConnectionsTags.SCAN).performScrollTo().performClick()
         compose.onNodeWithTag(FAKE_CAMERA).assertExists()
         assertEquals(emptyList<Any?>(), asked)
     }
@@ -173,7 +174,7 @@ class AddConnectionRouteTest {
         allowCamera = true
         inView = "https://vault.example.com"
         show()
-        compose.onNodeWithTag(ConnectionsTags.SCAN).performClick()
+        compose.onNodeWithTag(ConnectionsTags.SCAN).performScrollTo().performClick()
         compose.onNodeWithTag(FAKE_CAMERA).performClick()
         problem(R.string.code_not_seeker_vault)
         inView = text(server.issue(URL))
@@ -203,12 +204,12 @@ class AddConnectionRouteTest {
         show()
         val code = server.issue(URL)
         compose.onNodeWithTag(ConnectionsTags.CODE_FIELD).performTextInput(text(code))
-        compose.onNodeWithTag(ConnectionsTags.CONTINUE).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CONTINUE).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.CONFIRM_SERVER).assertTextContains(URL)
         compose
             .onAllNodesWithText(code.token, substring = true, useUnmergedTree = true)
             .assertCountEquals(0)
-        compose.onNodeWithTag(ConnectionsTags.PAIR).performClick()
+        compose.onNodeWithTag(ConnectionsTags.PAIR).performScrollTo().performClick()
         compose.waitForIdle() // the Paired state reaches onPaired on the next composition
         val connection = paired.single()
         val credential = server.connections.getValue(connection.id)
@@ -221,12 +222,12 @@ class AddConnectionRouteTest {
     fun explainsARefusedCodeAndOffersNoRetry() {
         show()
         enter(text(PairingCode(URL, server.serverId, newSecret())))
-        compose.onNodeWithTag(ConnectionsTags.PAIR).performClick()
+        compose.onNodeWithTag(ConnectionsTags.PAIR).performScrollTo().performClick()
         compose
             .onNodeWithTag(ConnectionsTags.PAIRING_FAILURE)
             .assertTextEquals(app.getString(R.string.pair_failed_code))
         compose.onNodeWithTag(ConnectionsTags.PAIR).assertDoesNotExist()
-        compose.onNodeWithTag(ConnectionsTags.CANCEL_PAIRING).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CANCEL_PAIRING).performScrollTo().performClick()
         compose
             .onNodeWithTag(ConnectionsTags.CODE_FIELD)
             .assertTextEquals(app.getString(R.string.code_label), "")
@@ -240,7 +241,7 @@ class AddConnectionRouteTest {
         compose
             .onNodeWithTag(ConnectionsTags.CONFIRM_NOTE)
             .assertTextEquals(app.getString(R.string.confirm_same_server, existing.label))
-        compose.onNodeWithTag(ConnectionsTags.PAIR).performClick()
+        compose.onNodeWithTag(ConnectionsTags.PAIR).performScrollTo().performClick()
         compose.waitForIdle()
         assertNotNull(repository.connection(existing.id)?.revokedAt)
     }

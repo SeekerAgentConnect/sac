@@ -84,7 +84,22 @@ object InboxTags {
     const val CONFIRMATION = "requestConfirmation"
     const val CHECK_STATUS = "checkStatus"
 
+    // SEE-57: the redesigned chrome.
+    const val RULE_PILL = "rulePill"
+    const val CAROUSEL = "requestCarousel"
+    const val SEE_ALL = "seeAll"
+    const val PANEL = "requestPanel"
+    const val PANEL_VEIL = "requestPanelVeil"
+    const val PANEL_PREVIOUS = "requestPrevious"
+    const val PANEL_NEXT = "requestNext"
+    const val PANEL_PAGER = "requestPager"
+    const val HANDOFF = "walletHandoff"
+    const val LOCAL_CHECK = "localCheck"
+    const val EXPIRY = "requestExpiry"
+
     fun item(key: RequestKey) = "request:${key.connectionId}/${key.requestId}"
+
+    fun tile(key: RequestKey) = "tile:${key.connectionId}/${key.requestId}"
 
     fun policyCheck(check: PolicyCheck) = "policyCheck:${check.code}"
 
@@ -505,3 +520,7 @@ fun estimateText(prepared: PreparedTransaction): String {
             formatBaseUnits(rent, LAMPORT_DECIMALS),
         )
 }
+
+/** The pending requests of one connection, or of every connection, in the order they are shown. */
+fun Inbox.pendingKeys(connectionId: String? = null): List<RequestKey> =
+    inboxItems(this, connectionId).pending.map { it.key }

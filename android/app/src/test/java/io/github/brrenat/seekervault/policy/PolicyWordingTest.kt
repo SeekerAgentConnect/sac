@@ -88,9 +88,15 @@ class PolicyWordingTest {
         val restricted = context.getString(R.string.policy_verdict_restricted)
         val underThem = context.getString(R.string.policy_review_manual)
 
-        // The verdicts name the rules, and nothing else: what matched, or what didn't.
+        // The verdicts name the rules, and nothing else: what matched, or what it is under.
         assertTrue(allowed, allowed.contains("rules", ignoreCase = true))
-        assertTrue(restricted, restricted.contains("rules", ignoreCase = true))
+        assertTrue(restricted, restricted.contains("restrictions", ignoreCase = true))
+        // Neither reads as a decision. "Under restrictions" stops nothing, and says so by not
+        // saying anything else.
+        for (verdict in listOf(allowed, restricted)) {
+            assertFalse(verdict, verdict.contains("approv", ignoreCase = true))
+            assertFalse(verdict, verdict.contains("refus", ignoreCase = true))
+        }
         // And the line that never changes is under both of them, saying who approves.
         assertTrue(underThem, underThem.contains("approve", ignoreCase = true))
         assertTrue(underThem, underThem.contains("wallet", ignoreCase = true))
