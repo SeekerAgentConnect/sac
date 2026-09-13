@@ -1,7 +1,11 @@
 package io.github.brrenat.seekervault.ui
 
+import android.graphics.drawable.ColorDrawable
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -41,8 +45,8 @@ import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,25 +54,37 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.layout
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
 import io.github.brrenat.seekervault.SeekerTheme
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+
+private val SheetEnterEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+private val SheetExitEasing = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
 
 enum class SeekerButtonRole {
     Primary,
     Tonal,
     Neutral,
     Error,
+    StrongError,
 }
 
 @Composable
@@ -79,6 +95,7 @@ fun SeekerButton(
     role: SeekerButtonRole = SeekerButtonRole.Primary,
     enabled: Boolean = true,
     leading: String? = null,
+    automationTag: String? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     val (container, content) =
@@ -86,12 +103,20 @@ fun SeekerButton(
             !enabled -> colors.surfaceContainerHighest to colors.onSurfaceVariant
             role == SeekerButtonRole.Primary -> colors.primary to colors.onPrimary
             role == SeekerButtonRole.Tonal -> colors.primaryContainer to colors.onPrimaryContainer
+            role == SeekerButtonRole.StrongError -> colors.error to colors.onError
             role == SeekerButtonRole.Error -> colors.errorContainer to colors.onErrorContainer
             else -> colors.surfaceContainerHighest to colors.onSurface
         }
     Row(
         modifier =
             modifier
+                .then(
+                    if (automationTag == null) {
+                        Modifier
+                    } else {
+                        Modifier.semantics(mergeDescendants = true) { testTag = automationTag }
+                    }
+                )
                 .height(48.dp)
                 .clip(RoundedCornerShape(24.dp))
                 .background(container)
@@ -113,7 +138,7 @@ fun SeekerButton(
         Text(
             text,
             color = content,
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -124,7 +149,7 @@ fun SeekerButton(
 fun SeekerCard(
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.surfaceContainer,
-    radius: Dp = 20.dp,
+    radius: Dp = 16.dp,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
@@ -202,13 +227,19 @@ fun NetworkChip(network: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun Identifier(text: String, modifier: Modifier = Modifier, maxLines: Int = 1) {
+fun Identifier(
+    text: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 1,
+    textAlign: TextAlign? = null,
+) {
     Text(
         text,
         modifier = modifier,
         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = maxLines,
+        textAlign = textAlign,
         overflow = TextOverflow.Ellipsis,
     )
 }
@@ -357,79 +388,127 @@ fun SeekerSheet(
     depth: Int,
     motionKey: Any? = Unit,
     visible: Boolean = true,
+    promoteFromBackplate: Boolean = false,
     onBackplateClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val top = 100.dp
-    var entered by remember(motionKey) { mutableStateOf(false) }
-    LaunchedEffect(motionKey) { entered = true }
-    val entryOffset by
-        animateFloatAsState(
-            targetValue = if (entered) 0f else 1f,
-            animationSpec = tween(260),
-            label = "sheet-entry",
+    val activeTop = 100.dp
+    val transition =
+        remember(motionKey) {
+            MutableTransitionState(promoteFromBackplate).apply { targetState = visible }
+        }
+    LaunchedEffect(visible) { transition.targetState = visible }
+    var promoted by
+        remember(motionKey) { androidx.compose.runtime.mutableStateOf(!promoteFromBackplate) }
+    LaunchedEffect(promoteFromBackplate) { promoted = true }
+    val animatedTop by
+        animateDpAsState(
+            if (promoted) activeTop else 86.dp,
+            tween(300, easing = SheetEnterEasing),
+            label = "activeSheetTop",
+        )
+    val animatedBottom by
+        animateDpAsState(
+            if (promoted) 0.dp else 12.dp,
+            tween(300, easing = SheetEnterEasing),
+            label = "activeSheetBottom",
         )
     Box(modifier.fillMaxSize().zIndex(10f + depth)) {
         AnimatedVisibility(
-            visible = visible,
-            enter = slideInVertically(animationSpec = tween(260), initialOffsetY = { it }),
-            exit = slideOutVertically(animationSpec = tween(240), targetOffsetY = { it }),
-            modifier =
-                Modifier.fillMaxSize().layout { measurable, constraints ->
-                    val placeable = measurable.measure(constraints)
-                    layout(placeable.width, placeable.height) {
-                        placeable.placeRelative(
-                            0,
-                            (placeable.height * entryOffset).roundToInt(),
-                        )
-                    }
-                },
+            visibleState = transition,
+            enter =
+                slideInVertically(
+                    animationSpec = tween(260, easing = SheetEnterEasing),
+                    initialOffsetY = { it },
+                ),
+            exit =
+                slideOutVertically(
+                    animationSpec = tween(240, easing = SheetExitEasing),
+                    targetOffsetY = { it },
+                ),
+            modifier = Modifier.fillMaxSize(),
         ) {
-            Surface(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .fillMaxHeight()
-                        .padding(top = top)
-                        .then(
-                            if (onBackplateClick == null) Modifier
-                            else
-                                Modifier.clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    onClick = onBackplateClick,
-                                )
-                        ),
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 0.dp,
-                tonalElevation = 0.dp,
+            Box(
+                Modifier.fillMaxSize().padding(top = animatedTop, bottom = animatedBottom),
+                contentAlignment = Alignment.BottomCenter,
             ) {
-                Column {
-                    Box(
-                        Modifier.fillMaxWidth().height(22.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
+                Surface(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .then(
+                                if (onBackplateClick == null) Modifier
+                                else
+                                    Modifier.clickable(
+                                        indication = null,
+                                        interactionSource =
+                                            remember {
+                                                MutableInteractionSource()
+                                            },
+                                        onClick = onBackplateClick,
+                                    )
+                            ),
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shadowElevation = 0.dp,
+                    tonalElevation = 0.dp,
+                ) {
+                    Column {
                         Box(
-                            Modifier.size(width = 40.dp, height = 4.dp)
-                                .background(
-                                    MaterialTheme.colorScheme.outlineVariant,
-                                    RoundedCornerShape(2.dp),
-                                )
-                        )
+                            Modifier.fillMaxWidth().height(22.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                Modifier.size(width = 32.dp, height = 4.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.outlineVariant,
+                                        RoundedCornerShape(2.dp),
+                                    )
+                            )
+                        }
+                        Box(Modifier.fillMaxWidth()) { content() }
                     }
-                    Box(Modifier.fillMaxWidth().weight(1f)) { content() }
                 }
             }
         }
     }
 }
 
+/**
+ * Keeps the still-mounted root from receiving gestures through a sheet's exposed top edge. Sheet
+ * backplates sit above this layer, so their own surfaces remain the only interactive content behind
+ * the active sheet.
+ */
+@Composable
+fun SheetInputBarrier(modifier: Modifier = Modifier) {
+    Box(
+        modifier.fillMaxSize().pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                }
+            }
+        }
+    )
+}
+
 @Composable
 fun SheetBackplate(depth: Int, title: String, onClick: () -> Unit) {
     val back = depth.coerceAtLeast(1)
-    val top = (100 - back * 14).coerceAtLeast(30).dp
-    val bottom = (back * 12).dp
+    var stacked by remember { androidx.compose.runtime.mutableStateOf(false) }
+    LaunchedEffect(Unit) { stacked = true }
+    val top by
+        animateDpAsState(
+            if (stacked) (100 - back * 14).coerceAtLeast(30).dp else 100.dp,
+            tween(300, easing = SheetEnterEasing),
+            label = "sheetBackplateTop",
+        )
+    val bottom by
+        animateDpAsState(
+            if (stacked) (back * 12).dp else 0.dp,
+            tween(300, easing = SheetEnterEasing),
+            label = "sheetBackplateBottom",
+        )
     Surface(
         modifier =
             Modifier.fillMaxWidth()
@@ -450,7 +529,7 @@ fun SheetBackplate(depth: Int, title: String, onClick: () -> Unit) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(9.dp))
             Box(
-                Modifier.size(width = 40.dp, height = 4.dp)
+                Modifier.size(width = 32.dp, height = 4.dp)
                     .background(MaterialTheme.colorScheme.outline, RoundedCornerShape(2.dp))
             )
             Text(
@@ -470,22 +549,46 @@ fun SolidDialog(
     body: @Composable () -> Unit,
     actions: @Composable () -> Unit,
 ) {
-    Box(
-        modifier.fillMaxSize().background(SeekerTheme.colors.dim).padding(24.dp),
-        contentAlignment = Alignment.Center,
+    Dialog(
+        onDismissRequest = {},
+        properties =
+            DialogProperties(
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
+            ),
     ) {
-        SeekerCard(
-            modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            radius = 28.dp,
+        val dialogWindow = (LocalView.current.parent as DialogWindowProvider).window
+        val dim = SeekerTheme.colors.dim
+        SideEffect {
+            // Dialog is the input and accessibility barrier; its own window draws only solid
+            // tokens and explicitly disables the platform's translucent dim-behind treatment.
+            dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            dialogWindow.setWindowAnimations(0)
+            dialogWindow.setLayout(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+            )
+            dialogWindow.setBackgroundDrawable(ColorDrawable(dim.toArgb()))
+        }
+        Box(
+            modifier.fillMaxSize().background(dim).padding(24.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                Modifier.fillMaxWidth().padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
+            SeekerCard(
+                modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                radius = 28.dp,
             ) {
-                Text(title, style = MaterialTheme.typography.headlineSmall)
-                Box(Modifier.fillMaxWidth().heightIn(max = 240.dp).clipToBounds()) { body() }
-                Box(Modifier.fillMaxWidth().zIndex(1f)) { actions() }
+                Column(
+                    Modifier.fillMaxWidth().padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    Text(title, style = MaterialTheme.typography.headlineSmall)
+                    Box(Modifier.fillMaxWidth().heightIn(max = 240.dp).clipToBounds()) { body() }
+                    Box(Modifier.fillMaxWidth().zIndex(1f)) { actions() }
+                }
             }
         }
     }

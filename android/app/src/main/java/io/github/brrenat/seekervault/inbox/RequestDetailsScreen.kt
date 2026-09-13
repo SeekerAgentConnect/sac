@@ -4,9 +4,11 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -24,6 +26,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Answer
@@ -35,6 +38,7 @@ import io.github.brrenat.seekervault.connections.PairingCodes
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.connections.outcomeText
 import io.github.brrenat.seekervault.connections.signMessage
+import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.transactions.transfer
@@ -94,10 +98,62 @@ fun RequestDetailsScreen(
     /** Whether the owner has said they want to go ahead past the warnings above. */
     acknowledged: Boolean = false,
     onAcknowledge: (Boolean) -> Unit = {},
+    onRules: (() -> Unit)? = null,
 ) {
     // Warnings are the owner's to overrule, and overruling one is something they say they are
     // doing. Having no rules at all is not a warning: it would be one on every request there is.
     val warns = assessment?.decision?.warns == true
+    if (request.transfer() != null) {
+        TransferRequestReview(
+            request = request,
+            source = source,
+            result = result,
+            sending = sending,
+            now = now,
+            onAnswer = onAnswer,
+            onSendAgain = onSendAgain,
+            onBack = onBack,
+            modifier = modifier,
+            wallet = wallet,
+            signingProblem = signingProblem,
+            preparation = preparation,
+            onPrepareAgain = onPrepareAgain,
+            onApprove = onApproveTransfer,
+            checking = checking,
+            onCheckStatus = onCheckStatus,
+            assessment = assessment,
+            warns = warns,
+            acknowledged = acknowledged,
+            onAcknowledge = onAcknowledge,
+            onRules = onRules,
+        )
+        return
+    }
+    if (
+        request.action.kindCase == Action.KindCase.ACK ||
+            request.action.kindCase == Action.KindCase.SIGN_MESSAGE
+    ) {
+        SimpleRequestReview(
+            request = request,
+            source = source,
+            result = result,
+            sending = sending,
+            now = now,
+            onAnswer = onAnswer,
+            onApprove = onApprove,
+            onSendAgain = onSendAgain,
+            onBack = onBack,
+            modifier = modifier,
+            wallet = wallet,
+            signingProblem = signingProblem,
+            assessment = assessment,
+            warns = warns,
+            acknowledged = acknowledged,
+            onAcknowledge = onAcknowledge,
+            onRules = onRules,
+        )
+        return
+    }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
@@ -247,11 +303,12 @@ fun RequestDetailsScreen(
                     warns = warns,
                     acknowledged = acknowledged,
                     onAcknowledge = onAcknowledge,
+                    onRules = onRules,
                 )
             } else {
                 // A transfer's review has its own place for this, under the facts and above the
                 // button. Everything else has nothing between the two.
-                PolicyReview(assessment)
+                PolicyReview(assessment, onRules = onRules)
             }
             if (request.agentNote.isNotEmpty()) {
                 // Shown apart from the request itself: the agent wrote it, and nothing checked it.
@@ -353,6 +410,768 @@ fun RequestDetailsScreen(
     }
 }
 
+/** The v4 review sheet for acknowledgements and message signatures. */
+@Composable
+private fun SimpleRequestReview(
+    request: ActionRequest,
+    source: Connection?,
+    result: LocalResult?,
+    sending: Boolean,
+    now: Instant,
+    onAnswer: (Answer) -> Unit,
+    onApprove: () -> Unit,
+    onSendAgain: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier,
+    wallet: SelectedWallet?,
+    signingProblem: SigningProblem?,
+    assessment: RequestAssessment?,
+    warns: Boolean,
+    acknowledged: Boolean,
+    onAcknowledge: (Boolean) -> Unit,
+    onRules: (() -> Unit)?,
+) {
+    val message = messagePreview(request)
+    val acknowledgement = request.action.kindCase == Action.KindCase.ACK
+    val sourceLabel = source?.label ?: request.ref.connectionId
+    val walletAddress = wallet?.address ?: request.signMessage()?.wallet.orEmpty()
+    val waiting = result == null && !sending && canAnswer(request, result, now)
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().height(56.dp).padding(start = 16.dp, end = 8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(
+                    if (acknowledgement) R.string.request_acknowledge
+                    else R.string.request_signature
+                ),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
+            CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
+        }
+        Column(
+            Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (acknowledgement) {
+                    Text(
+                        request.text() ?: actionText(request),
+                        style = MaterialTheme.typography.displaySmall,
+                        modifier = Modifier.testTag(InboxTags.MESSAGE),
+                    )
+                    Identifier(
+                        stringResource(R.string.request_source_asks, sourceLabel),
+                        maxLines = 2,
+                    )
+                } else if (message != null) {
+                    Text(
+                        stringResource(R.string.request_bytes, message.bytes),
+                        style = MaterialTheme.typography.displaySmall,
+                        modifier = Modifier.testTag(InboxTags.field("encoding")),
+                    )
+                    Identifier(
+                        message.display,
+                        modifier = Modifier.testTag(InboxTags.MESSAGE),
+                        maxLines = 8,
+                    )
+                }
+            }
+            if (!waiting) {
+                SeekerCard(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    radius = 16.dp,
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            statusText(request, result, sending, now),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.testTag(InboxTags.STATUS),
+                        )
+                        if (
+                            result?.delivery == Delivery.Waiting &&
+                                result.lastFailure != null &&
+                                !sending
+                        ) {
+                            Text(
+                                stringResource(
+                                    R.string.status_last_failure,
+                                    outcomeText(result.lastFailure),
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            if (sending) {
+                LinearProgressIndicator(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag(InboxTags.SENDING),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                )
+            }
+            PolicyReview(assessment, onRules = onRules)
+            SeekerCard(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                radius = 16.dp,
+            ) {
+                Text(
+                    stringResource(
+                        if (acknowledgement) R.string.request_acknowledgement_check
+                        else R.string.message_not_a_payment
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(16.dp)
+                            .then(
+                                if (acknowledgement) Modifier
+                                else Modifier.testTag(InboxTags.NOT_A_PAYMENT)
+                            ),
+                )
+            }
+            RequestFact(
+                stringResource(R.string.request_field_from),
+                sourceLabel,
+                "from",
+            )
+            RequestFact(
+                stringResource(R.string.wallet_title),
+                walletAddress.ifBlank { stringResource(R.string.network_none) },
+                "signsWith",
+                mono = true,
+            )
+            RequestFact(
+                stringResource(R.string.request_fact_network),
+                wallet?.let { networkText(it.network) } ?: stringResource(R.string.network_none),
+                "network",
+            )
+            if (message?.hasHidden == true) {
+                Text(
+                    stringResource(R.string.message_hidden_characters),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp).testTag(InboxTags.HIDDEN),
+                )
+            }
+            if (request.agentNote.isNotEmpty()) {
+                SeekerCard(
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .testTag(InboxTags.NOTE)
+                        .semantics(mergeDescendants = true) {},
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    radius = 16.dp,
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.request_field_note_v4),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(request.agentNote, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            if (signingProblem != null) {
+                SeekerCard(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    radius = 16.dp,
+                ) {
+                    Text(
+                        stringResource(problemText(signingProblem)),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                    )
+                }
+            } else if (!acknowledgement && wallet == null && result == null) {
+                SeekerCard(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    radius = 16.dp,
+                ) {
+                    Text(
+                        stringResource(R.string.message_no_wallet),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                    )
+                }
+            }
+            Text(
+                stringResource(
+                    R.string.request_expires_v4,
+                    relativeTime(request.expiresAt.instant(), now),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        if (canAnswer(request, result, now)) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (warns) ApproveAnyway(acknowledged, onAcknowledge)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SeekerButton(
+                        text =
+                            stringResource(
+                                when {
+                                    warns && acknowledgement ->
+                                        R.string.acknowledge_despite_warnings
+                                    warns -> R.string.approve_despite_warnings
+                                    acknowledgement -> R.string.acknowledge
+                                    else -> R.string.approve
+                                }
+                            ),
+                        onClick = {
+                            if (acknowledgement) onAnswer(Answer.Acknowledge) else onApprove()
+                        },
+                        enabled =
+                            !sending &&
+                                (acknowledgement || wallet != null) &&
+                                (!warns || acknowledged),
+                        modifier =
+                            Modifier.weight(1f)
+                                .testTag(
+                                    if (acknowledgement) InboxTags.ACKNOWLEDGE
+                                    else InboxTags.APPROVE
+                                ),
+                    )
+                    SeekerButton(
+                        text = stringResource(R.string.reject),
+                        onClick = { onAnswer(Answer.Reject) },
+                        enabled = !sending,
+                        role = SeekerButtonRole.Neutral,
+                        modifier = Modifier.testTag(InboxTags.REJECT),
+                    )
+                }
+            }
+        } else if (result?.delivery == Delivery.Waiting) {
+            SeekerButton(
+                text = stringResource(R.string.send_again),
+                onClick = onSendAgain,
+                enabled = !sending,
+                role = SeekerButtonRole.Neutral,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
+                        .testTag(InboxTags.SEND_AGAIN),
+            )
+        }
+    }
+}
+
+@Composable
+private fun RequestFact(label: String, value: String, name: String, mono: Boolean = false) {
+    SeekerCard(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .testTag(InboxTags.field(name))
+            .semantics(mergeDescendants = true) {},
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        radius = 16.dp,
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (mono) {
+                Identifier(
+                    shortIdentifier(value),
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                )
+            } else {
+                Text(
+                    value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+private fun shortIdentifier(value: String): String =
+    if (value.length <= 16) value else "${value.take(9)}…${value.takeLast(7)}"
+
+/** The v4 review sheet for a prepared transfer, without changing its verification or approval. */
+@Composable
+private fun TransferRequestReview(
+    request: ActionRequest,
+    source: Connection?,
+    result: LocalResult?,
+    sending: Boolean,
+    now: Instant,
+    onAnswer: (Answer) -> Unit,
+    onSendAgain: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier,
+    wallet: SelectedWallet?,
+    signingProblem: SigningProblem?,
+    preparation: Preparation?,
+    onPrepareAgain: () -> Unit,
+    onApprove: () -> Unit,
+    checking: Boolean,
+    onCheckStatus: () -> Unit,
+    assessment: RequestAssessment?,
+    warns: Boolean,
+    acknowledged: Boolean,
+    onAcknowledge: (Boolean) -> Unit,
+    onRules: (() -> Unit)?,
+) {
+    val transfer = checkNotNull(request.transfer())
+    val ready = preparation as? Preparation.Ready
+    val facts = ready?.inspection?.facts
+    val canAnswer = canAnswer(request, result, now)
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().height(56.dp).padding(start = 16.dp, end = 8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.request_transfer),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
+            CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
+        }
+        Column(
+            Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    facts?.let {
+                        stringResource(
+                            if (it.mint == null) R.string.transfer_headline_sol
+                            else R.string.transfer_headline_token,
+                            io.github.brrenat.seekervault.transactions.formatBaseUnits(
+                                it.amount,
+                                it.decimals,
+                            ),
+                        )
+                    } ?: stringResource(R.string.request_transfer),
+                    style = MaterialTheme.typography.displaySmall,
+                )
+                Identifier(
+                    stringResource(R.string.transfer_to, facts?.recipient ?: transfer.recipient),
+                    modifier = Modifier.testTag(InboxTags.field("to")),
+                    maxLines = 3,
+                )
+            }
+            if (result != null || sending || !canAnswer) {
+                SeekerCard(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            statusText(request, result, sending, now),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.testTag(InboxTags.STATUS),
+                        )
+                        if (
+                            result?.delivery == Delivery.Waiting &&
+                                result.lastFailure != null &&
+                                !sending
+                        ) {
+                            Text(
+                                stringResource(
+                                    R.string.status_last_failure,
+                                    outcomeText(result.lastFailure),
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            if (sending || checking) {
+                LinearProgressIndicator(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag(InboxTags.SENDING),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                )
+            }
+            result?.let { answered ->
+                confirmationText(answered)?.let { checked ->
+                    Text(
+                        "$checked ${stringResource(R.string.confirmation_trust)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier =
+                            Modifier.padding(horizontal = 20.dp).testTag(InboxTags.CONFIRMATION),
+                    )
+                }
+            }
+            when (preparation) {
+                null,
+                Preparation.Running ->
+                    SeekerCard(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                    ) {
+                        Text(
+                            stringResource(R.string.transfer_checking),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier =
+                                Modifier.fillMaxWidth()
+                                    .padding(16.dp)
+                                    .testTag(InboxTags.TRANSFER_CHECKING),
+                        )
+                    }
+                is Preparation.Failed -> {
+                    SeekerCard(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                    ) {
+                        Text(
+                            stringResource(
+                                R.string.transfer_failed,
+                                outcomeText(preparation.outcome),
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier =
+                                Modifier.fillMaxWidth()
+                                    .padding(16.dp)
+                                    .testTag(InboxTags.TRANSFER_FAILED),
+                        )
+                    }
+                    SeekerButton(
+                        text = stringResource(R.string.transfer_prepare_again),
+                        onClick = onPrepareAgain,
+                        role = SeekerButtonRole.Neutral,
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .testTag(InboxTags.TRANSFER_AGAIN),
+                    )
+                }
+                is Preparation.Ready -> {
+                    val inspection = preparation.inspection
+                    SeekerCard(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        color =
+                            if (inspection.verdict == Verdict.Verified) {
+                                MaterialTheme.colorScheme.surfaceContainer
+                            } else {
+                                MaterialTheme.colorScheme.errorContainer
+                            },
+                    ) {
+                        Text(
+                            stringResource(verdictText(inspection.verdict)),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color =
+                                if (inspection.verdict == Verdict.Verified) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                },
+                            modifier =
+                                Modifier.fillMaxWidth()
+                                    .padding(16.dp)
+                                    .testTag(InboxTags.TRANSFER_VERDICT),
+                        )
+                    }
+                    inspection.facts?.let { inspected ->
+                        RequestFact(
+                            stringResource(R.string.request_field_from),
+                            source?.label ?: request.ref.connectionId,
+                            "from",
+                        )
+                        RequestFact(
+                            stringResource(R.string.wallet_title),
+                            wallet?.address ?: transfer.wallet,
+                            "signsWith",
+                            mono = true,
+                        )
+                        RequestFact(
+                            stringResource(R.string.request_fact_network),
+                            wallet?.let { networkText(it.network) }
+                                ?: io.github.brrenat.seekervault.policy.networkText(
+                                    transfer.network
+                                ),
+                            "network",
+                        )
+                        RequestFact(
+                            stringResource(R.string.request_field_sends),
+                            amountText(inspected),
+                            "sends",
+                        )
+                        inspected.destinationAccount?.let {
+                            Field(R.string.request_field_token_account, it, "tokenAccount")
+                        }
+                        inspected.mint?.let {
+                            Field(R.string.request_field_token, it, "token")
+                        }
+                        Field(R.string.request_field_pays_fee, inspected.payer, "paysFee")
+                        if (inspected.ensuresRecipientAccount) {
+                            Field(
+                                R.string.request_field_creates,
+                                stringResource(R.string.transfer_creates_account),
+                                "creates",
+                            )
+                        }
+                        inspected.computeUnitPrice?.let {
+                            Field(
+                                R.string.request_field_priority,
+                                stringResource(R.string.transfer_priority_price, it.toString()),
+                                "priority",
+                            )
+                        }
+                        inspected.programs
+                            .takeIf { it.isNotEmpty() }
+                            ?.let {
+                                Field(
+                                    R.string.request_field_programs,
+                                    it.joinToString("\n"),
+                                    "programs",
+                                )
+                            }
+                        Field(
+                            R.string.request_field_instructions,
+                            stringResource(
+                                R.string.transfer_instructions_read,
+                                inspected.recognizedInstructions,
+                                inspected.instructionCount,
+                            ),
+                            "instructions",
+                        )
+                        Field(R.string.request_field_blockhash, inspected.blockhash, "blockhash")
+                        Text(
+                            stringResource(R.string.transfer_derived_here),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier =
+                                Modifier.padding(horizontal = 20.dp)
+                                    .testTag(InboxTags.TRANSFER_DERIVED),
+                        )
+                    }
+                    if (inspection.findings.isNotEmpty()) {
+                        SeekerCard(
+                            Modifier.fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .testTag(InboxTags.TRANSFER_FINDINGS)
+                                .semantics(mergeDescendants = true) {},
+                            color = MaterialTheme.colorScheme.errorContainer,
+                        ) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                inspection.findings.forEach {
+                                    Text(
+                                        stringResource(findingText(it)),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Field(
+                        R.string.request_field_estimate,
+                        estimateText(preparation.prepared),
+                        "estimate",
+                    )
+                    // Verification and byte-derived facts remain above this advisory layer.
+                    PolicyReview(assessment, onRules = onRules)
+                    SeekerButton(
+                        text = stringResource(R.string.transfer_prepare_again),
+                        onClick = onPrepareAgain,
+                        enabled = !sending,
+                        role = SeekerButtonRole.Neutral,
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .testTag(InboxTags.TRANSFER_AGAIN),
+                    )
+                    if (!inspection.approvable && result == null) {
+                        SeekerCard(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                        ) {
+                            Text(
+                                stringResource(R.string.transfer_not_approvable),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier =
+                                    Modifier.fillMaxWidth()
+                                        .padding(16.dp)
+                                        .testTag(InboxTags.TRANSFER_NOT_APPROVABLE),
+                            )
+                        }
+                    }
+                }
+            }
+            if (request.agentNote.isNotEmpty()) {
+                SeekerCard(
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .testTag(InboxTags.NOTE)
+                        .semantics(mergeDescendants = true) {},
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.request_field_note_v4),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(request.agentNote, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            if (signingProblem != null) {
+                SeekerCard(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Text(
+                        stringResource(problemText(signingProblem)),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .padding(16.dp)
+                                .testTag(InboxTags.SIGNING_PROBLEM),
+                    )
+                }
+            } else if (ready?.inspection?.approvable == true && wallet == null && result == null) {
+                SeekerCard(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Text(
+                        stringResource(R.string.transfer_no_wallet),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .padding(16.dp)
+                                .testTag(InboxTags.SIGNING_PROBLEM),
+                    )
+                }
+            }
+            Text(
+                stringResource(
+                    R.string.request_expires_v4,
+                    relativeTime(request.expiresAt.instant(), now),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        if (canAnswer) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val approvable = ready?.inspection?.approvable == true
+                if (warns && approvable) ApproveAnyway(acknowledged, onAcknowledge)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (approvable) {
+                        SeekerButton(
+                            text =
+                                stringResource(
+                                    if (warns) R.string.approve_and_send_despite_warnings
+                                    else R.string.approve_and_send
+                                ),
+                            onClick = onApprove,
+                            enabled = !sending && wallet != null && (!warns || acknowledged),
+                            modifier = Modifier.weight(1f).testTag(InboxTags.TRANSFER_APPROVE),
+                        )
+                    }
+                    SeekerButton(
+                        text = stringResource(R.string.reject),
+                        onClick = { onAnswer(Answer.Reject) },
+                        enabled = !sending,
+                        role = SeekerButtonRole.Neutral,
+                        modifier =
+                            Modifier.then(if (approvable) Modifier else Modifier.weight(1f))
+                                .testTag(InboxTags.REJECT),
+                    )
+                }
+            }
+        } else if (result?.delivery == Delivery.Waiting) {
+            SeekerButton(
+                text = stringResource(R.string.send_again),
+                onClick = onSendAgain,
+                enabled = !sending,
+                role = SeekerButtonRole.Neutral,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
+                        .testTag(InboxTags.SEND_AGAIN),
+            )
+        } else if (result?.awaitingChain == true) {
+            SeekerButton(
+                text = stringResource(R.string.check_status),
+                onClick = onCheckStatus,
+                enabled = !checking,
+                role = SeekerButtonRole.Neutral,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
+                        .testTag(InboxTags.CHECK_STATUS),
+            )
+        }
+    }
+}
+
 /**
  * What this phone read out of the transfer's own transaction, and the owner's decision about it
  * (docs/security.md#inspecting-a-transfer, docs/guides/transfers.md).
@@ -380,6 +1199,7 @@ private fun TransferReview(
     warns: Boolean,
     acknowledged: Boolean,
     onAcknowledge: (Boolean) -> Unit,
+    onRules: (() -> Unit)?,
 ) {
     when (preparation) {
         null,
@@ -497,7 +1317,7 @@ private fun TransferReview(
             // The owner's own rules, under everything the phone established for itself. What
             // they say changes nothing above: a transaction that failed its own inspection has no
             // Approve button whatever the rules made of it, and this never says otherwise.
-            PolicyReview(assessment)
+            PolicyReview(assessment, onRules = onRules)
             SeekerButton(
                 text = stringResource(R.string.transfer_prepare_again),
                 onClick = onPrepareAgain,

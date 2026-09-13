@@ -164,20 +164,14 @@ class Stage51PolicyScenarioTest {
         assertFalse(decision.warns)
 
         show(review)
-        compose
-            .onNodeWithTag(InboxTags.policyCheck(PolicyCheck.Program))
-            .performScrollTo()
-            .assertTextContains(context.getString(R.string.policy_source_global), substring = true)
-        compose
-            .onNodeWithTag(InboxTags.policyCheck(PolicyCheck.Recipient))
-            .performScrollTo()
-            .assertTextContains(
-                context.getString(R.string.policy_source_connection),
-                substring = true,
-            )
+        // The compact v4 verdict does not repeat successful checks as rows. Their distinct rule
+        // sources remain asserted above in the evaluated decision itself.
+        compose.onNodeWithTag(InboxTags.policyCheck(PolicyCheck.Program)).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.policyCheck(PolicyCheck.Recipient)).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.POLICY_VERDICT).assertExists()
         compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).assertDoesNotExist()
-        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().assertIsEnabled()
-        compose.onNodeWithTag(InboxTags.REJECT).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertIsEnabled()
+        compose.onNodeWithTag(InboxTags.REJECT).assertIsEnabled()
     }
 
     @Test
@@ -202,10 +196,10 @@ class Stage51PolicyScenarioTest {
 
         val acknowledged = mutableStateOf(false)
         show(replaced, acknowledged)
-        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithTag(InboxTags.REJECT).performScrollTo().assertIsEnabled()
-        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).performScrollTo().performClick()
-        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertIsNotEnabled()
+        compose.onNodeWithTag(InboxTags.REJECT).assertIsEnabled()
+        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).performClick()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertIsEnabled()
 
         store.delete(CONNECTION)
         val reset = review(root)
@@ -424,10 +418,10 @@ class Stage51PolicyScenarioTest {
             )
             .assertTextContains("Confirmed: 2", substring = true)
             .assertTextContains("Projected with this request: 4.5", substring = true)
-        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithTag(InboxTags.REJECT).performScrollTo().assertIsEnabled()
-        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).performScrollTo().performClick()
-        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertIsNotEnabled()
+        compose.onNodeWithTag(InboxTags.REJECT).assertIsEnabled()
+        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).performClick()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertIsEnabled()
     }
 
     @Test

@@ -59,18 +59,20 @@ fun ActivityDetailsScreen(
     }
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.activity_details_title)) },
-                actions = { CloseButton(onBack) },
+                actions = {
+                    CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
+                },
                 expandedHeight = 56.dp,
                 windowInsets = WindowInsets(0, 0, 0, 0),
                 colors =
                     TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ),
             )
         },

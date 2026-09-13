@@ -1,11 +1,13 @@
 package io.github.brrenat.seekervault.connections
 
 import android.content.Context
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -127,7 +129,7 @@ class ConnectionDetailsScreenTest {
         compose
             .onNodeWithText(context.getString(R.string.disconnect_title, "Home Mac"))
             .assertExists()
-        compose.onNodeWithText(context.getString(R.string.disconnect_text)).assertExists()
+        compose.onAllNodesWithText(context.getString(R.string.disconnect_text)).assertCountEquals(2)
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()
         compose.onNodeWithTag(ConnectionsTags.DIALOG_DISMISS).performClick()
         assertEquals(listOf("confirm disconnect", "dismiss"), calls)

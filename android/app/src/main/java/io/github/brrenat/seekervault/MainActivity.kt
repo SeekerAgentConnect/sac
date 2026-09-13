@@ -179,7 +179,7 @@ private val DarkColors =
         tertiaryContainer = Color(0xFFFF7A1A),
         onTertiaryContainer = Color(0xFF2E1200),
         error = Color(0xFFF83959),
-        onError = Color.White,
+        onError = Color(0xFF2B0008),
         errorContainer = Color(0xFF4D0011),
         onErrorContainer = Color(0xFFFFD9DE),
         background = Color(0xFF121212),
@@ -214,7 +214,7 @@ private val LightColors =
         tertiaryContainer = Color(0xFFFFE0C2),
         onTertiaryContainer = Color(0xFF4A2600),
         error = Color(0xFFF83959),
-        onError = Color.White,
+        onError = Color(0xFF2B0008),
         errorContainer = Color(0xFFFFE1E5),
         onErrorContainer = Color(0xFF5C0014),
         background = Color(0xFFF7F7F7),
@@ -243,49 +243,49 @@ private val SeekerTypography =
         displaySmall =
             TextStyle(
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Normal,
                 fontSize = 36.sp,
                 lineHeight = 42.sp,
             ),
         headlineLarge =
             TextStyle(
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Normal,
                 fontSize = 28.sp,
                 lineHeight = 34.sp,
             ),
         headlineMedium =
             TextStyle(
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Normal,
                 fontSize = 24.sp,
                 lineHeight = 30.sp,
             ),
         headlineSmall =
             TextStyle(
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Normal,
                 fontSize = 22.sp,
                 lineHeight = 28.sp,
             ),
         titleLarge =
             TextStyle(
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Normal,
                 fontSize = 22.sp,
                 lineHeight = 28.sp,
             ),
         titleMedium =
             TextStyle(
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Medium,
                 fontSize = 16.sp,
                 lineHeight = 22.sp,
             ),
         titleSmall =
             TextStyle(
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
             ),
@@ -307,13 +307,13 @@ private val SeekerTypography =
             TextStyle(
                 fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Normal,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
             ),
         labelLarge =
             TextStyle(
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
             ),
@@ -328,7 +328,7 @@ private val SeekerTypography =
             TextStyle(
                 fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Medium,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 lineHeight = 16.sp,
             ),
     )

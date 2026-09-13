@@ -22,6 +22,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.Draw
+import androidx.compose.material.icons.rounded.NorthEast
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -50,7 +53,9 @@ import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.hasProblem
 import io.github.brrenat.seekervault.connections.statusText as connectionStatusText
+import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.transactions.transfer
 import io.github.brrenat.seekervault.ui.NetworkChip
 import io.github.brrenat.seekervault.ui.SeekerButton
 import io.github.brrenat.seekervault.ui.SeekerButtonRole
@@ -74,6 +79,9 @@ fun PendingRequestsScreen(
     onReject: (RequestKey) -> Unit = {},
     inSheet: Boolean = false,
 ) {
+    val containerColor =
+        if (inSheet) MaterialTheme.colorScheme.surfaceContainerHigh
+        else MaterialTheme.colorScheme.surface
     val labels = state.connections.associate { it.id to it.label }
     val shown = state.connections.filter { connectionId == null || it.id == connectionId }
     val inbox = inboxItems(state.inbox, connectionId)
@@ -85,7 +93,7 @@ fun PendingRequestsScreen(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
+                .background(containerColor)
                 .then(if (inSheet) Modifier else Modifier.statusBarsPadding())
     ) {
         Row(
@@ -126,7 +134,7 @@ fun PendingRequestsScreen(
             ) {
                 Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.refresh))
             }
-            if (connectionId != null) CloseButton(onBack)
+            if (connectionId != null) CloseButton(onBack, containerColor)
         }
         Row(Modifier.fillMaxWidth().height(48.dp)) {
             RequestTab(
@@ -137,12 +145,14 @@ fun PendingRequestsScreen(
                     ),
                 selected = selected == 0,
                 onClick = { selected = 0 },
+                containerColor = containerColor,
                 modifier = Modifier.weight(1f),
             )
             RequestTab(
                 text = stringResource(R.string.inbox_tab_answered, inbox.answered.size),
                 selected = selected == 1,
                 onClick = { selected = 1 },
+                containerColor = containerColor,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -206,11 +216,17 @@ fun PendingRequestsScreen(
 }
 
 @Composable
-private fun RequestTab(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun RequestTab(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    containerColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier,
+) {
     Box(
         modifier
             .height(48.dp)
-            .background(MaterialTheme.colorScheme.surface)
+            .background(containerColor)
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -229,10 +245,7 @@ private fun RequestTab(text: String, selected: Boolean, onClick: () -> Unit, mod
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(3.dp)
-                .background(
-                    if (selected) SeekerTheme.colors.primaryText
-                    else MaterialTheme.colorScheme.surface
-                )
+                .background(if (selected) SeekerTheme.colors.primaryText else containerColor)
         )
     }
 }
@@ -276,10 +289,38 @@ private fun RequestItem(
     onReject: (RequestKey) -> Unit,
 ) {
     val action = actionText(request)
+    val acknowledgement = request.action.kindCase == Action.KindCase.ACK
+    val signature = request.action.kindCase == Action.KindCase.SIGN_MESSAGE
+    val summary =
+        when {
+            acknowledgement ->
+                stringResource(
+                    R.string.request_card_ack_summary,
+                    source ?: request.ref.connectionId,
+                    request.text() ?: action,
+                )
+            signature ->
+                stringResource(
+                    R.string.request_card_sign_summary,
+                    source ?: request.ref.connectionId,
+                    messagePreview(request)?.bytes ?: 0,
+                )
+            request.transfer() != null ->
+                stringResource(
+                    R.string.request_card_transfer_summary,
+                    source ?: request.ref.connectionId,
+                    relativeTime(request.expiresAt.instant(), now),
+                )
+            else ->
+                stringResource(
+                    R.string.request_card_other_summary,
+                    source ?: request.ref.connectionId,
+                    relativeTime(request.expiresAt.instant(), now),
+                )
+        }
     SeekerCard(
         modifier = Modifier.fillMaxWidth().testTag(InboxTags.item(request.key)),
         color = MaterialTheme.colorScheme.surfaceContainer,
-        onClick = { onOpen(request.key) },
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
@@ -287,47 +328,51 @@ private fun RequestItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        when {
+                            acknowledgement -> Icons.Rounded.DoneAll
+                            signature -> Icons.Rounded.Draw
+                            else -> Icons.Rounded.NorthEast
+                        },
+                        contentDescription = null,
+                        tint = SeekerTheme.colors.primaryText,
+                        modifier = Modifier.size(22.dp),
+                    )
                     Text(
                         action,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = SeekerTheme.colors.primaryText,
-                    )
-                    Text(
-                        source ?: request.ref.connectionId,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (warning) {
-                    Text(
-                        stringResource(R.string.request_warning_badge),
-                        color = MaterialTheme.colorScheme.onTertiaryContainer,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier =
-                            Modifier.background(
-                                    MaterialTheme.colorScheme.tertiaryContainer,
-                                    RoundedCornerShape(12.dp),
-                                )
-                                .padding(horizontal = 9.dp, vertical = 4.dp),
-                    )
-                }
+                Text(
+                    stringResource(
+                        if (warning) R.string.request_warning_badge else R.string.request_in_rules
+                    ),
+                    color =
+                        if (warning) MaterialTheme.colorScheme.onTertiaryContainer
+                        else MaterialTheme.colorScheme.onPrimaryContainer,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier =
+                        Modifier.background(
+                                if (warning) MaterialTheme.colorScheme.tertiaryContainer
+                                else MaterialTheme.colorScheme.primaryContainer,
+                                RoundedCornerShape(8.dp),
+                            )
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                )
             }
             Text(
-                request.text() ?: action,
-                style = MaterialTheme.typography.headlineSmall,
+                summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                stringResource(
-                    R.string.inbox_request_summary,
-                    action,
-                    relativeTime(request.createdAt.instant(), now),
-                    shortTime(request.expiresAt.instant()),
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SeekerButton(
@@ -335,6 +380,21 @@ private fun RequestItem(
                     onClick = { onOpen(request.key) },
                     role = SeekerButtonRole.Tonal,
                     modifier = Modifier.weight(1f).height(40.dp),
+                )
+                // This is a shortcut into the mandatory review, never an answer from the list.
+                // Transfers still have to be decoded here and signatures still go to the wallet.
+                SeekerButton(
+                    text =
+                        stringResource(
+                            if (request.action.kindCase == Action.KindCase.ACK) {
+                                R.string.acknowledge
+                            } else {
+                                R.string.review_approve
+                            }
+                        ),
+                    onClick = { onOpen(request.key) },
+                    modifier = Modifier.weight(1f).height(40.dp),
+                    automationTag = InboxTags.QUICK_APPROVE,
                 )
                 Box(
                     Modifier.size(40.dp)

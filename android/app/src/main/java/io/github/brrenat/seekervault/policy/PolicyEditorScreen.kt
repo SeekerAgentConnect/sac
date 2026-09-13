@@ -101,6 +101,8 @@ fun PolicyEditorScreen(
     onSave: () -> Unit,
     onMessageShown: () -> Unit,
     onClose: () -> Unit,
+    closeRequest: Int = 0,
+    onCloseRequestCancelled: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -118,10 +120,13 @@ fun PolicyEditorScreen(
     // dirty draft is discarded, this lets the caller refresh inherited context after Global rules
     // closes and clear the ViewModel for an ordinary connection exit.
     BackHandler { leave() }
-    Box(modifier.fillMaxSize()) {
+    // An exposed sheet backplate asks the active editor to leave through this same guarded path.
+    // Zero is the idle value so a newly composed editor does not close itself.
+    LaunchedEffect(closeRequest) { if (closeRequest > 0) leave() }
+    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface,
             topBar = {
                 TopAppBar(
@@ -134,13 +139,15 @@ fun PolicyEditorScreen(
                             }
                         )
                     },
-                    actions = { CloseButton(leave) },
+                    actions = {
+                        CloseButton(leave, MaterialTheme.colorScheme.surfaceContainerHigh)
+                    },
                     expandedHeight = 56.dp,
                     windowInsets = WindowInsets(0, 0, 0, 0),
                     colors =
                         TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ),
                 )
             },
@@ -192,7 +199,10 @@ fun PolicyEditorScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         NeutralPolicyButton(
-                            onClick = { confirmDiscard = false },
+                            onClick = {
+                                confirmDiscard = false
+                                onCloseRequestCancelled()
+                            },
                             modifier = Modifier.weight(1f).testTag(PolicyTags.KEEP_EDITING),
                         ) {
                             Text(stringResource(R.string.policy_keep_editing))

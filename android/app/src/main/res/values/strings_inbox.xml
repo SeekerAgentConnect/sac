@@ -1,16 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The pending inbox and request details (SAW-013). -->
 <resources>
+    <string name="request_acknowledgement_check">Nothing is signed and no funds move. Your answer is all the agent gets.</string>
+    <string name="request_fact_network">Network</string>
+    <string name="request_field_note_v4">The agent’s note · not verified</string>
+    <string name="request_expires_v4">Expires %1$s.</string>
+    <string name="request_transfer">Transfer</string>
+    <string name="transfer_headline_sol">%1$s SOL</string>
+    <string name="transfer_headline_token">%1$s tokens</string>
+    <string name="transfer_to">to %1$s</string>
     <string name="inbox_tab_pending">Pending %1$d</string>
     <string name="inbox_tab_answered">Answered %1$d</string>
-    <string name="request_warning_badge">Warning</string>
+    <string name="request_warning_badge">1 warning</string>
+    <string name="request_card_ack_summary">%1$s · “%2$s” · nothing is signed</string>
+    <string name="request_card_sign_summary">%1$s · %2$d bytes · no funds move</string>
+    <string name="request_card_transfer_summary">%1$s · funds move · expires %2$s</string>
+    <string name="request_card_other_summary">%1$s · expires %2$s</string>
     <string name="inbox_title">Pending requests</string>
     <string name="inbox_from">From %1$s</string>
     <string name="inbox_row">Pending requests</string>
     <string name="inbox_row_waiting">Waiting for you: %1$d</string>
     <string name="inbox_row_waiting_and_to_send">Waiting for you: %1$d. Answers waiting to be sent: %2$d.</string>
     <string name="inbox_row_nothing">Nothing is waiting for you.</string>
-    <string name="pending_requests">Pending requests</string>
+    <string name="pending_requests">Its requests</string>
     <string name="inbox_section_to_send">Waiting to be sent</string>
     <string name="inbox_section_pending">Waiting for you</string>
     <string name="inbox_section_answered">Answered</string>
@@ -51,6 +63,7 @@
     <string name="approve">Approve and sign</string>
     <string name="approve_and_send">Approve and send</string>
     <string name="reject">Reject</string>
+    <string name="review_approve">Approve</string>
     <string name="send_again">Send again</string>
     <string name="check_status">Check status</string>
     <string name="confirmation_checked">Checked with %1$s. %2$s</string>
@@ -180,7 +193,10 @@
     <string name="policy_unreadable_connection">Connection rules are stored and this app cannot read them, so no effective assessment can be made.</string>
     <string name="policy_unreadable_both">Global and connection rules are stored and this app cannot read them, so no effective assessment can be made.</string>
     <string name="policy_review_uncovered">Nothing was checked for: %1$s. Nothing above says anything about those.</string>
-    <string name="policy_review_manual">Whatever this says, it approves nothing and stops nothing. Both verdicts need your approval here, and your wallet will ask you again.</string>
+    <string name="policy_review_deliberately_unchecked">Deliberately not checked: %1$s.</string>
+    <string name="policy_review_not_configured">No rule configured for: %1$s.</string>
+    <string name="policy_review_manual">Advisory only. You approve by hand, and your wallet still asks separately.</string>
+    <string name="policy_daily_title">Daily spend, if you approve</string>
     <string name="policy_acknowledge">I have read the warnings above and want to go ahead anyway</string>
     <string name="approve_despite_warnings">Approve despite warnings</string>
     <string name="approve_and_send_despite_warnings">Approve and send despite warnings</string>

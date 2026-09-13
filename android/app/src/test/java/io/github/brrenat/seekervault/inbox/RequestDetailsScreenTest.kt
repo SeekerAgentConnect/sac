@@ -86,18 +86,17 @@ class RequestDetailsScreenTest {
     @Test
     fun showsThePendingRequestAndOffersAcknowledgeAndReject() {
         show()
-        status(R.string.status_waiting_for_you)
-        compose
-            .onNodeWithTag(InboxTags.field("from"))
-            .assertTextContains("Home Mac (mac.tailnet.ts.net)")
-        // The text's own node: its list item merges it with the field's label.
+        // The v4 pending sheet leads with the request itself; "waiting" is implied by its actions.
+        compose.onNodeWithTag(InboxTags.STATUS).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.field("from")).assertTextContains("Home Mac")
         compose.onNodeWithTag(InboxTags.MESSAGE, useUnmergedTree = true).assertTextEquals(TEXT)
-        compose.onNodeWithTag(InboxTags.NOTE).assertTextContains("Nightly release")
         compose
-            .onNodeWithTag(InboxTags.field("requestId"))
-            .assertTextContains(REQUEST.ref.requestId)
-        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).performScrollTo().performClick()
-        compose.onNodeWithTag(InboxTags.REJECT).performScrollTo().performClick()
+            .onNodeWithTag(InboxTags.NOTE)
+            .assertTextContains("Nightly release", substring = true)
+        // Technical IDs are deliberately absent from the compact owner-facing review.
+        compose.onNodeWithTag(InboxTags.field("requestId")).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).performClick()
+        compose.onNodeWithTag(InboxTags.REJECT).performClick()
         assertEquals(listOf(Answer.Acknowledge, Answer.Reject), answers)
     }
 
@@ -106,7 +105,7 @@ class RequestDetailsScreenTest {
         show(sending = true)
         status(R.string.status_sending)
         compose.onNodeWithTag(InboxTags.SENDING).assertExists()
-        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertIsNotEnabled()
         compose.onNodeWithTag(InboxTags.REJECT).assertIsNotEnabled()
     }
 
@@ -135,7 +134,7 @@ class RequestDetailsScreenTest {
             )
             .assertExists()
         compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertDoesNotExist()
-        compose.onNodeWithTag(InboxTags.SEND_AGAIN).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.SEND_AGAIN).performClick()
         assertEquals(1, sentAgain)
     }
 
@@ -168,25 +167,17 @@ class RequestDetailsScreenTest {
             .assertTextEquals("Sign in to Example\u240D\u240A\nNonce: 7\u2409x")
         compose
             .onNodeWithTag(InboxTags.field("encoding"))
-            .assertTextContains(
-                context.resources.getQuantityString(R.plurals.message_text_bytes, 30, 30)
-            )
+            .assertTextContains(context.getString(R.string.request_bytes, 30))
         compose
             .onNodeWithTag(InboxTags.field("signsWith"))
-            .assertTextContains(
-                context.getString(
-                    R.string.signing_wallet,
-                    WALLET,
-                    context.getString(R.string.wallet_network_devnet),
-                )
-            )
+            .assertTextContains(WALLET.take(9), substring = true)
         // Invisible characters are called out, and a signature is never a payment.
         compose.onNodeWithTag(InboxTags.HIDDEN).assertExists()
         compose.onNodeWithTag(InboxTags.NOT_A_PAYMENT).assertExists()
         // Approve is the only way to the wallet, and Acknowledge doesn't apply to a message.
         compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertDoesNotExist()
-        compose.onNodeWithTag(InboxTags.APPROVE).performScrollTo().performClick()
-        compose.onNodeWithTag(InboxTags.REJECT).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.APPROVE).performClick()
+        compose.onNodeWithTag(InboxTags.REJECT).performClick()
         assertEquals(1, approvals)
         assertEquals(listOf(Answer.Reject), answers)
     }
@@ -195,7 +186,7 @@ class RequestDetailsScreenTest {
     fun saysToConnectAWalletBeforeApproving() {
         show(MESSAGE)
         compose.onNodeWithTag(InboxTags.SIGNING_PROBLEM).assertExists()
-        compose.onNodeWithTag(InboxTags.APPROVE).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag(InboxTags.APPROVE).assertIsNotEnabled()
         compose.onNodeWithTag(InboxTags.REJECT).assertIsEnabled()
     }
 
@@ -227,7 +218,7 @@ class RequestDetailsScreenTest {
     fun saysTheWalletSignedAndTheSignatureIsOnItsWay() {
         showApproved(SigningOutcome.Signed(ByteString.copyFrom(ByteArray(64) { 1 })))
         status(R.string.status_to_send_signed)
-        compose.onNodeWithTag(InboxTags.SEND_AGAIN).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.SEND_AGAIN).performClick()
         assertEquals(1, sentAgain)
     }
 
@@ -289,7 +280,7 @@ class RequestDetailsScreenTest {
             .onNodeWithTag(InboxTags.STATUS)
             .assertTextContains("not been confirmed", substring = true)
         // And the owner can ask, without anything going near the wallet.
-        compose.onNodeWithTag(InboxTags.CHECK_STATUS).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.CHECK_STATUS).performClick()
         assertEquals(1, checks)
     }
 
@@ -361,7 +352,7 @@ class RequestDetailsScreenTest {
     @Test
     fun disablesTheCheckWhileOneIsRunning() {
         show(TRANSFER, sent(RequestState.REQUEST_STATE_SUBMITTED), checking = true)
-        compose.onNodeWithTag(InboxTags.CHECK_STATUS).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag(InboxTags.CHECK_STATUS).assertIsNotEnabled()
         compose.onNodeWithTag(InboxTags.SENDING).assertExists()
     }
 

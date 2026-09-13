@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -23,7 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.activity.ActivityDetailsScreen
 import io.github.brrenat.seekervault.activity.ActivityScreen
@@ -52,6 +55,7 @@ import io.github.brrenat.seekervault.ui.BottomDestination
 import io.github.brrenat.seekervault.ui.SeekerBottomBar
 import io.github.brrenat.seekervault.ui.SeekerSheet
 import io.github.brrenat.seekervault.ui.SheetBackplate
+import io.github.brrenat.seekervault.ui.SheetInputBarrier
 import io.github.brrenat.seekervault.wallet.WalletScreen
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 import java.time.Instant
@@ -76,6 +80,10 @@ fun SeekerVaultApp(
 ) {
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.CONNECTIONS)) }
     var closingSheet by remember { mutableStateOf(false) }
+    var promotedRoute by remember { mutableStateOf<String?>(null) }
+    var backplateTargetSize by rememberSaveable { mutableStateOf<Int?>(null) }
+    var requestedPolicyClose by remember { mutableStateOf<String?>(null) }
+    var policyCloseRequest by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val push = { route: String -> stack = stack + route }
     val pop = {
@@ -87,6 +95,7 @@ fun SeekerVaultApp(
                 // A root-navigation tap can replace the stack during the exit motion. In that
                 // case there is no longer a sheet to remove.
                 if (stack.size > 1 && stack.last() == routeBeingClosed) {
+                    promotedRoute = stack.getOrNull(stack.lastIndex - 1)?.takeIf { stack.size > 2 }
                     stack = stack.dropLast(1)
                 }
                 closingSheet = false
@@ -102,15 +111,49 @@ fun SeekerVaultApp(
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
     val root = stack.first()
     val route = stack.last()
-    val rootModifier = Modifier.padding(bottom = 80.dp)
+    LaunchedEffect(promotedRoute) {
+        if (promotedRoute != null) {
+            delay(320)
+            promotedRoute = null
+        }
+    }
+    val pendingKeys = inboxItems(inboxState.inbox, null).pending.map { it.key }
+    val rootModifier =
+        Modifier.padding(bottom = 80.dp)
+            .then(if (stack.size > 1) Modifier.clearAndSetSemantics {} else Modifier)
+    // Badges and any open review follow successful rule writes immediately. The stored drafts
+    // change only after disk writes succeed, so in-flight edits never affect an assessment.
+    LaunchedEffect(pendingKeys, policyState.stored, globalPolicyState.stored) {
+        pendingKeys.forEach(inbox::review)
+    }
+    // A backplate can jump over more than one sheet, but each editor still gets its own guarded
+    // close request. Dirty rules therefore ask before they are discarded and each ViewModel is
+    // cleared before the next sheet is removed.
+    LaunchedEffect(backplateTargetSize, stack, closingSheet, requestedPolicyClose) {
+        val targetSize = backplateTargetSize ?: return@LaunchedEffect
+        if (stack.size <= targetSize) {
+            backplateTargetSize = null
+            requestedPolicyClose = null
+        } else if (!closingSheet && requestedPolicyClose == null) {
+            val top = stack.last()
+            if (top == Routes.GLOBAL_POLICY || top.startsWith(Routes.POLICY)) {
+                policyCloseRequest += 1
+                requestedPolicyClose = top
+            } else {
+                pop()
+            }
+        }
+    }
     Box(Modifier.fillMaxSize()) {
         when (root) {
             Routes.CONNECTIONS -> {
                 val (waitingForYou, toSend) = inboxCounts(inboxState)
                 val pending = inboxItems(inboxState.inbox, null).pending
                 ConnectionsScreen(
-                    // A detail sheet owns transient connection messages while it is open. Keeping
-                    // the Home message host quiet avoids announcing the same result twice through
+                    // A detail sheet owns transient connection messages while it is open.
+                    // Keeping
+                    // the Home message host quiet avoids announcing the same result twice
+                    // through
                     // the still-mounted layer underneath.
                     state = if (stack.size == 1) state else state.copy(message = null),
                     onOpen = { push(Routes.DETAILS + it) },
@@ -130,9 +173,6 @@ fun SeekerVaultApp(
                     },
                     modifier = rootModifier,
                 )
-                LaunchedEffect(pending.map { it.key }) {
-                    pending.forEach { inbox.review(it.key) }
-                }
             }
             Routes.WALLET ->
                 WalletScreen(
@@ -169,7 +209,10 @@ fun SeekerVaultApp(
                     warningRequests =
                         inboxState.assessments.filterValues { it.decision.warns }.keys,
                     onReject = {
-                        inbox.answer(it, io.github.brrenat.seekervault.connections.Answer.Reject)
+                        inbox.answer(
+                            it,
+                            io.github.brrenat.seekervault.connections.Answer.Reject,
+                        )
                     },
                 )
             Routes.ADD ->
@@ -183,12 +226,13 @@ fun SeekerVaultApp(
                 )
         }
 
+        if (stack.size > 1) SheetInputBarrier(Modifier.zIndex(5f))
         stack.drop(1).dropLast(1).forEachIndexed { index, backRoute ->
             val routeIndex = index + 1
             SheetBackplate(
                 depth = stack.lastIndex - routeIndex,
                 title = sheetTitle(backRoute, state),
-                onClick = { stack = stack.take(routeIndex + 1) },
+                onClick = { backplateTargetSize = routeIndex + 1 },
             )
         }
         if (stack.size > 1) {
@@ -196,6 +240,7 @@ fun SeekerVaultApp(
                 depth = (stack.size - 2).coerceAtMost(1),
                 motionKey = route,
                 visible = !closingSheet,
+                promoteFromBackplate = promotedRoute == route,
             ) {
                 when {
                     route == Routes.LIVE -> LiveTestRoute(live)
@@ -236,6 +281,7 @@ fun SeekerVaultApp(
                     route.startsWith(Routes.POLICY) -> {
                         val id = route.removePrefix(Routes.POLICY)
                         val close = {
+                            if (requestedPolicyClose == route) requestedPolicyClose = null
                             policy.close()
                             pop()
                         }
@@ -249,6 +295,14 @@ fun SeekerVaultApp(
                             onSave = policy::save,
                             onMessageShown = policy::messageShown,
                             onClose = close,
+                            closeRequest =
+                                if (requestedPolicyClose == route) policyCloseRequest else 0,
+                            onCloseRequestCancelled = {
+                                if (requestedPolicyClose == route) {
+                                    requestedPolicyClose = null
+                                    backplateTargetSize = null
+                                }
+                            },
                         )
                         // The rules are read from disk when the screen opens. Opening the
                         // connection that is
@@ -257,6 +311,7 @@ fun SeekerVaultApp(
                     }
                     route == Routes.GLOBAL_POLICY -> {
                         val close = {
+                            if (requestedPolicyClose == route) requestedPolicyClose = null
                             globalPolicy.close()
                             pop()
                             // A local draft underneath stays byte-for-byte intact. Only the
@@ -274,6 +329,14 @@ fun SeekerVaultApp(
                             onSave = globalPolicy::save,
                             onMessageShown = globalPolicy::messageShown,
                             onClose = close,
+                            closeRequest =
+                                if (requestedPolicyClose == route) policyCloseRequest else 0,
+                            onCloseRequestCancelled = {
+                                if (requestedPolicyClose == route) {
+                                    requestedPolicyClose = null
+                                    backplateTargetSize = null
+                                }
+                            },
                         )
                         LaunchedEffect(Unit) { globalPolicy.openGlobal() }
                     }
@@ -342,6 +405,7 @@ fun SeekerVaultApp(
                                         inboxState.acknowledged[key] ==
                                             inboxState.assessments[key]?.consent,
                                 onAcknowledge = { inbox.acknowledge(key, it) },
+                                onRules = { push(Routes.POLICY + connectionId) },
                                 onBack = pop,
                             )
                             // Opening a transfer fetches a fresh transaction and reads it on this
@@ -387,7 +451,9 @@ fun SeekerVaultApp(
                 ),
             selected = root,
             onSelect = { stack = listOf(it) },
-            modifier = Modifier.align(Alignment.BottomCenter),
+            modifier =
+                Modifier.align(Alignment.BottomCenter)
+                    .then(if (stack.size > 1) Modifier.clearAndSetSemantics {} else Modifier),
         )
     }
 }

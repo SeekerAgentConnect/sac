@@ -50,6 +50,7 @@ object InboxTags {
     const val ACKNOWLEDGE = "acknowledge"
     const val APPROVE = "approve"
     const val REJECT = "reject"
+    const val QUICK_APPROVE = "requestQuickApprove"
     const val ENCODING = "requestEncoding"
     const val SIGNS_WITH = "requestSignsWith"
     const val HIDDEN = "requestHiddenCharacters"

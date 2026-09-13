@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -190,12 +191,15 @@ fun BackButton(onBack: () -> Unit) {
 
 /** The trailing close action used by every detail sheet. */
 @Composable
-fun CloseButton(onClose: () -> Unit) {
+fun CloseButton(
+    onClose: () -> Unit,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+) {
     Box(
         modifier =
             Modifier.size(48.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface)
+                .background(containerColor)
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },

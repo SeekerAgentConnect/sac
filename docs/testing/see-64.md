@@ -9,6 +9,9 @@ SEE-64 is a presentation-only pass over the Android app. The complete Linear des
 - a Home dashboard with a scroll-reactive app bar and snapping request carousel;
 - persistent Home, Requests, Wallet, and Activity navigation;
 - connection, request, policy, and Activity details presented as a bottom-sheet stack;
+- content-hugging acknowledgement and signature reviews, with pinned v4 actions and compact advisory verdict cards;
+- animated sheet promotion and backplates using the design's 260 ms entrance, 240 ms exit, and 300 ms stack motion;
+- v4 request-list cards and connection details, including the status, fact, Rules, and destructive card hierarchy;
 - Global rules retained as the first-class rules layer above paired servers;
 - Material icons, compact identifier styling, source-ordered content, and v4 action hierarchy across the existing screens.
 
@@ -34,6 +37,6 @@ The required commands include the unchanged stage-boundary guards. They continue
 
 ## Device and visual checks
 
-**Physical Seeker: NOT RUN.** No Android device is attached to this workspace. The APK, real Seed Vault Wallet hand-off, camera pairing, system light/dark transition, largest system text size, and TalkBack traversal have not been exercised on hardware for SEE-64. No request was approved, no wallet was opened, and no transaction was signed or sent.
+**Physical Seeker: NOT RUN.** A Seeker was attached and the isolated `io.github.brrenat.seekervault.see64visual` visual fixture installed successfully beside the real app, but the device remained securely locked during the verification window, so no trustworthy dark/light screenshot comparison was recorded. The installed production package and its data were not replaced. Real Seed Vault Wallet hand-off, camera pairing, system light/dark transition, largest system text size, and TalkBack traversal have not been exercised on hardware for SEE-64. No request was approved, no wallet was opened, and no transaction was signed or sent.
 
 The dark and light HTML reference states were inspected directly. Automated Compose tests cover semantics and interaction paths, but they are not a substitute for a pixel comparison on the 390 by 844 Seeker viewport. The remaining owner check is therefore visual and device-specific: compare Home at the top and beyond 48 dp scroll, each root destination, nested sheets, Global and connection rules, all request verdict states, pairing, wallet, Activity, light/dark, largest text, and TalkBack against the attached design.
