@@ -35,18 +35,18 @@ enum class PolicyCheck(val code: String) {
 }
 
 /** What one check found. */
-enum class PolicyCheckStatus {
+enum class PolicyCheckStatus(val code: String) {
     /** Configured, and the request matched it. */
-    Passed,
+    Passed("passed"),
     /** Configured, and the request is outside it. */
-    Failed,
+    Failed("failed"),
     /**
      * Configured, but the phone couldn't establish the fact it needs — an instruction it can't
      * read, an amount it can't account for. It does not pass. Coverage is not compliance.
      */
-    Unverified,
+    Unverified("unverified"),
     /** The owner configured no such check, so nothing was checked and nothing is claimed. */
-    NotConfigured,
+    NotConfigured("not_configured"),
 }
 
 /**
@@ -177,7 +177,22 @@ data class PolicyDecision(
     val reason: PolicyReason? = null,
     /** Global then connection daily results, when this came from an effective Stage 5.1 policy. */
     val dailyChecks: List<DailyPolicyCheck> = emptyList(),
+    /** Stored documents this build could not read, in global then connection order. */
+    val unreadableSources: List<RuleSource> = emptyList(),
 ) {
+    init {
+        require(
+            unreadableSources.all {
+                it == RuleSource.Global || it == RuleSource.ConnectionOverride
+            }
+        ) {
+            "only stored rule documents can be unreadable"
+        }
+        require(unreadableSources.distinct() == unreadableSources) {
+            "an unreadable rule document is named once"
+        }
+    }
+
     val allowed: Boolean
         get() = assessment == PolicyAssessment.Allowed
 
@@ -271,7 +286,10 @@ fun assess(
  * Both are UNDER_RESTRICTIONS, and for the same reason: an assessment that checked nothing is not a
  * safe one, and the owner is told which of the two it was rather than being shown a blank.
  */
-fun noPolicy(reason: PolicyReason): PolicyDecision {
+fun noPolicy(
+    reason: PolicyReason,
+    unreadableSources: List<RuleSource> = emptyList(),
+): PolicyDecision {
     require(reason == PolicyReason.NoPolicyConfigured || reason == PolicyReason.PolicyUnreadable) {
         "not a reason for having no rules to apply"
     }
@@ -279,5 +297,6 @@ fun noPolicy(reason: PolicyReason): PolicyDecision {
         assessment = PolicyAssessment.UnderRestrictions,
         checks = PolicyCheck.entries.map(PolicyCheckResult::notConfigured),
         reason = reason,
+        unreadableSources = unreadableSources,
     )
 }

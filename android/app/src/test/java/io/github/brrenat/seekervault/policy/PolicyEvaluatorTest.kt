@@ -48,6 +48,23 @@ class PolicyEvaluatorTest {
     }
 
     @Test
+    fun aConnectionWithNoOverrideDocumentIsAssessedAgainstGlobalRules() {
+        PolicyStore(dir)
+            .putGlobal(
+                GlobalPolicy.default(NOW).copy(actions = Allowlist.of(PolicyAction.Transfer))
+            )
+
+        val decision = evaluator().evaluate(solFacts())
+
+        assertTrue(decision.allowed)
+        assertEquals(
+            RuleSource.Global,
+            decision.checks.single { it.check == PolicyCheck.Action }.source,
+        )
+        assertEquals(emptyList<RuleSource>(), decision.unreadableSources)
+    }
+
+    @Test
     fun theRulesOnDiskAreTheOnesApplied() {
         save(policy().copy(actions = Allowlist.of(PolicyAction.Transfer)))
 
@@ -376,9 +393,11 @@ class PolicyEvaluatorTest {
         )
         File(dir, "$CONNECTION.json").writeText("{ not json")
 
+        val unreadableConnection = evaluator(store).evaluate(solFacts())
+        assertEquals(listOf("policy_unreadable"), unreadableConnection.reasonCodes)
         assertEquals(
-            listOf("policy_unreadable"),
-            evaluator(store).evaluate(solFacts()).reasonCodes,
+            listOf(RuleSource.ConnectionOverride),
+            unreadableConnection.unreadableSources,
         )
 
         store.putOverrides(
@@ -387,9 +406,14 @@ class PolicyEvaluatorTest {
         )
         File(dir, "global.json").writeText("{ not json")
 
+        val unreadableGlobal = evaluator(store).evaluate(solFacts())
+        assertEquals(listOf("policy_unreadable"), unreadableGlobal.reasonCodes)
+        assertEquals(listOf(RuleSource.Global), unreadableGlobal.unreadableSources)
+
+        File(dir, "$CONNECTION.json").writeText("{ not json")
         assertEquals(
-            listOf("policy_unreadable"),
-            evaluator(store).evaluate(solFacts()).reasonCodes,
+            listOf(RuleSource.Global, RuleSource.ConnectionOverride),
+            evaluator(store).evaluate(solFacts()).unreadableSources,
         )
     }
 

@@ -177,6 +177,11 @@ fun reviewedPolicy(
     reasons: List<String> = listOf("over_daily_limit"),
     notChecked: List<String> = listOf("program"),
     approvedAnyway: Boolean = true,
+    ruleSources: List<ReviewedRuleSource> =
+        listOf(ReviewedRuleSource("action", "global"), ReviewedRuleSource("program", "connection")),
+    dailyChecks: List<ReviewedDailyCheck> =
+        listOf(ReviewedDailyCheck("global", "global", "failed", "over_daily_limit")),
+    unreadableSources: List<String> = emptyList(),
 ): ReviewedPolicy =
     ReviewedPolicy(
         assessment = assessment,
@@ -184,4 +189,7 @@ fun reviewedPolicy(
         notChecked = notChecked,
         assessedAt = ANSWERED_AT.minusSeconds(30),
         approvedAnyway = approvedAnyway,
+        ruleSources = ruleSources,
+        dailyChecks = dailyChecks,
+        unreadableSources = unreadableSources,
     )

@@ -138,6 +138,7 @@ class EffectivePolicyEvaluationTest {
             listOf("over_daily_limit", "over_daily_limit"),
             decision.reasonCodes,
         )
+        assertTrue(decision.warns)
     }
 
     @Test
@@ -181,12 +182,12 @@ class EffectivePolicyEvaluationTest {
     }
 
     @Test
-    fun globalOnlyLocalOnlyAndNoDailyThresholdsStayDistinct() {
-        val facts = solFacts(amount = 1UL)
+    fun globalOnlyWarningLocalOnlyWarningAndNoDailyThresholdsStayDistinct() {
+        val facts = solFacts(amount = 2UL)
         val globalOnly =
             resolveEffectivePolicy(
                 CONNECTION,
-                GlobalPolicy.default(NOW).copy(limits = mapOf(SOL to AssetLimits(daily = 2UL))),
+                GlobalPolicy.default(NOW).copy(limits = mapOf(SOL to AssetLimits(daily = 1UL))),
                 null,
             )
         val localOnly =
@@ -194,24 +195,29 @@ class EffectivePolicyEvaluationTest {
                 CONNECTION,
                 null,
                 ConnectionPolicyOverrides.inheritAll(CONNECTION, NOW)
-                    .copy(limits = mapOf(SOL to ConnectionAssetLimits(daily = 2UL))),
+                    .copy(limits = mapOf(SOL to ConnectionAssetLimits(daily = 1UL))),
             )
         val none = resolveEffectivePolicy(CONNECTION, null, null)
 
+        val globalWarning = evaluate(globalOnly, facts, totals(facts))
         assertEquals(
-            listOf(PolicyCheckStatus.Passed, PolicyCheckStatus.NotConfigured),
-            evaluate(globalOnly, facts, totals(facts)).dailyChecks.map { it.result.status },
+            listOf(PolicyCheckStatus.Failed, PolicyCheckStatus.NotConfigured),
+            globalWarning.dailyChecks.map { it.result.status },
         )
+        assertTrue(globalWarning.warns)
+        val localWarning = evaluate(localOnly, facts, totals(facts))
         assertEquals(
-            listOf(PolicyCheckStatus.NotConfigured, PolicyCheckStatus.Passed),
-            evaluate(localOnly, facts, totals(facts)).dailyChecks.map { it.result.status },
+            listOf(PolicyCheckStatus.NotConfigured, PolicyCheckStatus.Failed),
+            localWarning.dailyChecks.map { it.result.status },
         )
+        assertTrue(localWarning.warns)
         val noThresholds = evaluate(none, facts, totals(facts))
         assertEquals(
             listOf(PolicyCheckStatus.NotConfigured, PolicyCheckStatus.NotConfigured),
             noThresholds.dailyChecks.map { it.result.status },
         )
         assertEquals(listOf("no_policy_configured"), noThresholds.reasonCodes)
+        assertFalse(noThresholds.warns)
     }
 
     @Test

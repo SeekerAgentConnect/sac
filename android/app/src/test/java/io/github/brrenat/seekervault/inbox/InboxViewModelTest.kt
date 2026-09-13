@@ -20,11 +20,19 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.policy.Allowlist
+import io.github.brrenat.seekervault.policy.AssetLimits
+import io.github.brrenat.seekervault.policy.ConnectionAssetLimits
 import io.github.brrenat.seekervault.policy.ConnectionPolicy
+import io.github.brrenat.seekervault.policy.ConnectionPolicyOverrides
+import io.github.brrenat.seekervault.policy.GlobalPolicy
 import io.github.brrenat.seekervault.policy.PolicyAction
 import io.github.brrenat.seekervault.policy.PolicyAssessment
+import io.github.brrenat.seekervault.policy.PolicyAsset
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.PolicyReason
+import io.github.brrenat.seekervault.policy.RuleOverride
+import io.github.brrenat.seekervault.policy.RuleSource
+import io.github.brrenat.seekervault.policy.record as policyRecord
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
@@ -650,7 +658,7 @@ class InboxViewModelTest {
 
     @Test
     fun openingATransferFetchesItsTransactionAndReadsItHere() {
-        val (key, _) = pendingTransfer()
+        val (key, case) = pendingTransfer()
         val viewModel = viewModel()
 
         viewModel.prepare(key)
@@ -1376,6 +1384,241 @@ class InboxViewModelTest {
             )
         )
 
+    private fun globalRules(
+        actions: Allowlist<PolicyAction>? = null,
+        recipients: Allowlist<String>? = null,
+        daily: ULong? = null,
+    ) =
+        policies.putGlobal(
+            GlobalPolicy.default(Instant.parse("2026-09-12T10:00:00Z"))
+                .copy(
+                    actions = actions,
+                    recipients = recipients,
+                    limits =
+                        daily?.let {
+                            mapOf(
+                                PolicyAsset.sol(
+                                    io.github.brrenat.seekervault.request.v1.Network.NETWORK_DEVNET
+                                ) to AssetLimits(daily = it)
+                            )
+                        } ?: emptyMap(),
+                )
+        )
+
+    @Test
+    fun aConnectionWithoutOverridesIsAssessedAgainstGlobalRules() {
+        val (key, _) = pendingTransfer()
+        globalRules(actions = Allowlist.of(PolicyAction.Transfer))
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+
+        val decision = checkNotNull(viewModel.state.value.assessments[key]).decision
+
+        assertEquals(PolicyAssessment.Allowed, decision.assessment)
+        assertEquals(RuleSource.Global, decision.checks.first().source)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+    }
+
+    @Test
+    fun aGlobalEditWithTheSameRenderedWarningStopsAfterTheWalletLockWait() {
+        val (key, _) = pendingTransfer()
+        globalRules(recipients = Allowlist.of(OTHER_WALLET))
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        viewModel.acknowledge(key, true)
+        val shown = checkNotNull(viewModel.state.value.assessments[key]).decision
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+
+        // Another wallet interaction holds the lock after the owner taps. Editing the effective
+        // allowlist still matters even though this recipient remains outside it and the words shown
+        // by every check remain identical.
+        val release = CompletableDeferred<Unit>()
+        val holder = CoroutineScope(Dispatchers.Unconfined)
+        val busy = holder.launch { wallet.withWallet { release.await() } }
+        viewModel.approveTransfer(key, reviewed)
+        globalRules(recipients = Allowlist.of(OTHER_WALLET, THIRD_WALLET))
+        release.complete(Unit)
+        runBlocking { busy.join() }
+
+        assertEquals(shown, checkNotNull(viewModel.state.value.assessments[key]).decision)
+        assertEquals(SigningProblem.RulesChanged, viewModel.state.value.problem)
+        assertNull(viewModel.state.value.acknowledged[key])
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+    }
+
+    @Test
+    fun resettingLocalOverridesToGlobalStopsAStaleApproval() {
+        val (key, case) = pendingTransfer()
+        val recipient = case.getJSONObject("request").getString("recipient")
+        globalRules(recipients = Allowlist.of(OTHER_WALLET))
+        policies.putOverrides(
+            ConnectionPolicyOverrides.inheritAll(
+                    key.connectionId,
+                    Instant.parse("2026-09-12T10:00:00Z"),
+                )
+                .copy(recipients = RuleOverride.Replace(Allowlist.of(recipient)))
+        )
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+        assertEquals(
+            PolicyAssessment.Allowed,
+            viewModel.state.value.assessments[key]?.decision?.assessment,
+        )
+
+        policies.delete(key.connectionId)
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(SigningProblem.RulesChanged, viewModel.state.value.problem)
+        assertTrue(checkNotNull(viewModel.state.value.assessments[key]).decision.warns)
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+    }
+
+    @Test
+    fun unresolvedExposureAddedOnAnotherConnectionStopsAStaleApproval() {
+        val (key, _) = pendingTransfer()
+        globalRules(
+            actions = Allowlist.of(PolicyAction.Transfer),
+            daily = 4_000_000_000UL,
+        )
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+        assertEquals(
+            PolicyAssessment.Allowed,
+            viewModel.state.value.assessments[key]?.decision?.assessment,
+        )
+
+        ActivityStore(File(folder.root, "activity"))
+            .put(
+                policyRecord(
+                    requestId = OTHER_ACTIVITY_REQUEST,
+                    connectionId = OTHER_ACTIVITY_CONNECTION,
+                    wallet = checkNotNull(reviewed.inspection.facts).payer,
+                    network = io.github.brrenat.seekervault.request.v1.Network.NETWORK_DEVNET,
+                    amount = "2000000000",
+                    outcome = ActivityOutcome.Unknown,
+                    answeredAt = Instant.now(),
+                )
+            )
+        viewModel.approveTransfer(key, reviewed)
+
+        assertEquals(SigningProblem.RulesChanged, viewModel.state.value.problem)
+        val daily =
+            checkNotNull(viewModel.state.value.assessments[key]).decision.dailyChecks.first()
+        assertEquals(2_000_000_000UL, daily.total?.unresolved)
+        assertEquals(
+            PolicyAssessment.UnderRestrictions,
+            viewModel.state.value.assessments[key]?.decision?.assessment,
+        )
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+    }
+
+    @Test
+    fun anotherConnectionsConfirmationAndFailureEachClearConsentOnForegroundRefresh() {
+        val (key, _) = pendingTransfer()
+        globalRules(
+            recipients = Allowlist.of(OTHER_WALLET),
+            daily = 10_000_000_000UL,
+        )
+        val store = ActivityStore(File(folder.root, "activity"))
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        val payer =
+            checkNotNull(
+                    (viewModel.state.value.preparations[key] as Preparation.Ready).inspection.facts
+                )
+                .payer
+        val unresolved =
+            policyRecord(
+                requestId = OTHER_ACTIVITY_REQUEST,
+                connectionId = OTHER_ACTIVITY_CONNECTION,
+                wallet = payer,
+                network = io.github.brrenat.seekervault.request.v1.Network.NETWORK_DEVNET,
+                amount = "1000000000",
+                outcome = ActivityOutcome.Unknown,
+                answeredAt = Instant.now(),
+            )
+        store.put(unresolved)
+        viewModel.review(key)
+        viewModel.acknowledge(key, true)
+        assertNotNull(viewModel.state.value.acknowledged[key])
+
+        store.put(unresolved.copy(outcome = ActivityOutcome.Confirmed))
+        viewModel.onAppVisible()
+        assertNull(
+            "confirmation changes the shown daily composition",
+            viewModel.state.value.acknowledged[key],
+        )
+        assertEquals(
+            1_000_000_000UL,
+            viewModel.state.value.assessments[key]
+                ?.decision
+                ?.dailyChecks
+                ?.first()
+                ?.total
+                ?.confirmed,
+        )
+
+        store.put(unresolved)
+        viewModel.review(key)
+        viewModel.acknowledge(key, true)
+        assertNotNull(viewModel.state.value.acknowledged[key])
+        store.put(unresolved.copy(outcome = ActivityOutcome.ChainFailed))
+        viewModel.onAppVisible()
+
+        assertNull(
+            "a chain failure removes unresolved exposure",
+            viewModel.state.value.acknowledged[key],
+        )
+        assertEquals(
+            0UL,
+            viewModel.state.value.assessments[key]
+                ?.decision
+                ?.dailyChecks
+                ?.first()
+                ?.total
+                ?.projected,
+        )
+        assertEquals(emptyList<Any>(), adapter.sendings)
+    }
+
+    @Test
+    fun bothDailyWarningsUseOneDeliberateOverrideAndKeepTheirScopesInActivity() {
+        val (key, _) = pendingTransfer()
+        val asset = PolicyAsset.sol(io.github.brrenat.seekervault.request.v1.Network.NETWORK_DEVNET)
+        globalRules(daily = 2_000_000_000UL)
+        policies.putOverrides(
+            ConnectionPolicyOverrides.inheritAll(
+                    key.connectionId,
+                    Instant.parse("2026-09-12T10:00:00Z"),
+                )
+                .copy(limits = mapOf(asset to ConnectionAssetLimits(daily = 2_000_000_000UL)))
+        )
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+
+        viewModel.approveTransfer(key, reviewed)
+        assertEquals(SigningProblem.NotAcknowledged, viewModel.state.value.problem)
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 6 }))
+        viewModel.acknowledge(key, true)
+        viewModel.approveTransfer(key, reviewed)
+
+        val snapshot = checkNotNull(history.records.value.single().policy)
+        assertEquals(listOf("global", "connection"), snapshot.dailyChecks.map { it.scope })
+        assertEquals(listOf("global", "connection"), snapshot.dailyChecks.map { it.source })
+        assertEquals(listOf("failed", "failed"), snapshot.dailyChecks.map { it.status })
+        assertTrue(snapshot.approvedAnyway)
+        assertEquals(1, adapter.sendings.size)
+    }
+
     @Test
     fun aRequestThatMatchesTheRulesIsAllowedAndWarnsAboutNothing() {
         val (key, case) = pendingTransfer()
@@ -1620,6 +1863,23 @@ class InboxViewModelTest {
         assertEquals(listOf("recipient_not_allowed"), stored.reasons)
         assertTrue("action" in stored.notChecked)
         assertTrue(stored.approvedAnyway)
+        assertTrue(
+            stored.ruleSources.any {
+                it.check == "recipient" && it.source == RuleSource.ConnectionOverride.code
+            }
+        )
+        // Later edits cannot rewrite which scope supplied the assessment the owner answered.
+        globalRules(recipients = Allowlist.of(OTHER_WALLET))
+        policies.delete(key.connectionId)
+        assertEquals(
+            RuleSource.ConnectionOverride.code,
+            history.records.value
+                .single { it.requestId == key.requestId }
+                .policy
+                ?.ruleSources
+                ?.single { it.check == "recipient" }
+                ?.source,
+        )
 
         // And none of it, nor anything the rules themselves say, went to the sidecar. The rules
         // are the owner\'s own note, and the agent can neither read them nor learn of them.
@@ -1632,8 +1892,11 @@ class InboxViewModelTest {
     private companion object {
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
         const val OTHER_WALLET = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
+        const val THIRD_WALLET = "So11111111111111111111111111111111111111112"
         const val URL = "https://vault.example.com"
         const val OTHER_URL = "https://other.example.com"
         const val OTHER_REQUEST = "de03846e-d435-4705-b2e3-ec67da539f12"
+        const val OTHER_ACTIVITY_CONNECTION = "9c1d7b3a-8e4f-4a52-b0c6-1d2e3f4a5b6c"
+        const val OTHER_ACTIVITY_REQUEST = "a1111111-1111-4111-8111-111111111111"
     }
 }

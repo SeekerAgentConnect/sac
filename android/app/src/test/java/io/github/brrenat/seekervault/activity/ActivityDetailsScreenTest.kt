@@ -60,6 +60,15 @@ class ActivityDetailsScreenTest {
             context.getString(R.string.policy_review_check_program),
             substring = true,
         )
+        // Source/scope codes are translated from the snapshot, not re-read from today's rules.
+        shown.assertTextContains(
+            context.getString(R.string.policy_source_global),
+            substring = true,
+        )
+        shown.assertTextContains(
+            context.getString(R.string.policy_daily_global),
+            substring = true,
+        )
     }
 
     @Test

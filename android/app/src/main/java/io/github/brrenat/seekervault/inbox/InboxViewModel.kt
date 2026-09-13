@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityLog
+import io.github.brrenat.seekervault.activity.ReviewedDailyCheck
 import io.github.brrenat.seekervault.activity.ReviewedPolicy
+import io.github.brrenat.seekervault.activity.ReviewedRuleSource
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.ApprovalOutcome
 import io.github.brrenat.seekervault.connections.ApprovedTransaction
@@ -20,6 +22,8 @@ import io.github.brrenat.seekervault.connections.messageBytes
 import io.github.brrenat.seekervault.connections.resultDetail
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.connections.toOutcome
+import io.github.brrenat.seekervault.policy.EffectivePolicy
+import io.github.brrenat.seekervault.policy.PolicyCheck
 import io.github.brrenat.seekervault.policy.PolicyDecision
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.RequestFacts
@@ -33,6 +37,7 @@ import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SendResult
 import io.github.brrenat.seekervault.wallet.SignResult
 import io.github.brrenat.seekervault.wallet.WalletRepository
+import java.io.IOException
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
@@ -45,6 +50,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -132,10 +139,14 @@ data class RequestAssessment(
     val facts: RequestFacts,
     /** When it was made. */
     val at: Instant,
+    /** The effective rules applied to this request, held only to invalidate stale consent. */
+    val applicablePolicy: EffectivePolicy? = null,
+    /** The exact prepared transaction this assessment was about; null for non-transfers. */
+    val preparation: PreparedTransaction? = null,
 ) {
     /** What going ahead anyway would be consent to: the reasons, and the thing they are about. */
     val consent: Consent
-        get() = Consent(decision, facts)
+        get() = Consent(decision, facts, applicablePolicy, preparation)
 }
 
 /**
@@ -151,7 +162,14 @@ data class RequestAssessment(
  * The moment it was made is deliberately not part of it. The same reasons about the same bytes,
  * read again a second later, are the same reasons.
  */
-data class Consent(val decision: PolicyDecision, val facts: RequestFacts)
+data class Consent(
+    val decision: PolicyDecision,
+    val facts: RequestFacts,
+    /** Rules stay in memory on the phone and are never copied into Activity or a payload. */
+    val applicablePolicy: EffectivePolicy?,
+    /** Exact bytes, version, and hash; another preparation is another thing to consent to. */
+    val preparation: PreparedTransaction?,
+)
 
 /** Everything the inbox screens show. */
 data class InboxUiState(
@@ -189,13 +207,15 @@ class InboxViewModel(
     private val repository: ConnectionRepository,
     private val wallet: WalletRepository,
     /**
-     * The owner's rules, applied to the request in front of them (SAW-026). It reads, and every
-     * call re-reads: there is no stored verdict here, and nothing acts on the one it returns.
+     * The owner's rules, applied to the request in front of them (SAW-026). Every call re-reads
+     * both policy documents; [assess] reloads Activity first. There is no stored verdict here, and
+     * nothing acts on the one it returns.
      */
     private val policies: PolicyEvaluator,
     /**
      * The owner's own history, where the assessment they read is kept beside their answer
-     * (SAW-028). Written to, never read back for a decision.
+     * (SAW-028). SAW-046 also reloads it to derive fresh counters; stored policy snapshots are
+     * never read back as rules.
      */
     private val history: ActivityLog,
     /**
@@ -221,6 +241,11 @@ class InboxViewModel(
     )
 
     private val activity = MutableStateFlow(Activity())
+
+    /**
+     * One complete history/rules read at a time, so an older assessment cannot replace a newer one.
+     */
+    private val assessmentLock = Mutex()
 
     val state: StateFlow<InboxUiState> =
         combine(repository.connections, repository.inbox, wallet.wallet, activity) {
@@ -332,20 +357,47 @@ class InboxViewModel(
      * An acknowledgement given for another assessment is dropped here: the owner said they wanted
      * to go ahead past the reasons they were shown, and these are not those reasons.
      */
-    private suspend fun assess(key: RequestKey): RequestAssessment? {
-        val facts = factsFor(key) ?: return null
-        val assessment =
-            RequestAssessment(withContext(io) { policies.evaluate(facts) }, facts, now())
-        activity.update {
-            val ticked = it.acknowledged[key]
-            it.copy(
-                assessments = it.assessments + (key to assessment),
-                acknowledged =
-                    if (ticked != null && ticked != assessment.consent) it.acknowledged - key
-                    else it.acknowledged,
-            )
+    private suspend fun assess(key: RequestKey): RequestAssessment? = assessmentLock.withLock {
+        while (true) {
+            val facts = factsFor(key) ?: return@withLock null
+            val preparation = preparedFor(key)
+            val evaluated =
+                withContext(io) {
+                    // A review uses a complete disk read, not the Activity rows this process last
+                    // happened to see. Failure deliberately leaves the daily history unknown.
+                    try {
+                        history.load()
+                    } catch (_: IOException) {
+                        // ActivityLog has already marked this read unknown, so a configured daily
+                        // threshold becomes unverified instead of seeing an empty day.
+                    } catch (_: SecurityException) {
+                        // Treat denied storage exactly like any other incomplete history read.
+                    }
+                    policies.evaluateCurrent(facts)
+                }
+            // Preparation can finish while Activity is being read. Never publish an assessment of
+            // the old facts over the newer preparation; read everything again for the facts now.
+            if (factsFor(key) != facts || preparedFor(key) != preparation) continue
+            val assessment =
+                RequestAssessment(
+                    decision = evaluated.decision,
+                    facts = facts,
+                    at = now(),
+                    applicablePolicy = evaluated.applicablePolicy,
+                    preparation = preparation,
+                )
+            activity.update {
+                val ticked = it.acknowledged[key]
+                it.copy(
+                    assessments = it.assessments + (key to assessment),
+                    acknowledged =
+                        if (ticked != null && ticked != assessment.consent) it.acknowledged - key
+                        else it.acknowledged,
+                )
+            }
+            return@withLock assessment
         }
-        return assessment
+        @Suppress("UNREACHABLE_CODE") null
     }
 
     /**
@@ -392,6 +444,9 @@ class InboxViewModel(
         )
     }
 
+    private fun preparedFor(key: RequestKey): PreparedTransaction? =
+        (activity.value.preparations[key] as? Preparation.Ready)?.prepared
+
     /**
      * Keeps the assessment the owner was shown beside the record of what they did (SAW-028). Codes
      * and nothing else: the rules stay in the one place they are stored, and neither they nor this
@@ -407,6 +462,22 @@ class InboxViewModel(
                 notChecked = decision.notChecked.map { it.code },
                 assessedAt = assessment.at,
                 approvedAnyway = wentAhead && decision.warns,
+                ruleSources =
+                    decision.checks
+                        .filterNot {
+                            decision.dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit
+                        }
+                        .map { ReviewedRuleSource(it.check.code, it.source.code) },
+                dailyChecks =
+                    decision.dailyChecks.map {
+                        ReviewedDailyCheck(
+                            scope = it.scope.code,
+                            source = it.result.source.code,
+                            status = it.result.status.code,
+                            reason = it.result.reason?.code,
+                        )
+                    },
+                unreadableSources = decision.unreadableSources.map { it.code },
             ),
         )
     }
@@ -556,14 +627,17 @@ class InboxViewModel(
         viewModelScope.launch {
             try {
                 // The inspection above already refused anything this phone couldn't account for,
-                // and that refusal is not a rule to overrule. Only now are the owner's own rules
-                // read again, and an answer they haven't agreed to give stops here.
-                note(key, cleared(key) ?: return@launch, wentAhead = true)
+                // and that refusal is not a rule to overrule.
                 // Everything from here runs holding the one wallet lock. That lock is where the
                 // waiting happens — another wallet interaction can hold it for as long as the
                 // owner is in the wallet app — so the freshness of what is being approved is
                 // checked on this side of the wait, not before it.
                 wallet.withWallet<Unit> { session ->
+                    // The owner's rules and every required Activity record are read after the wait
+                    // for the lock and immediately before any answer. A change elsewhere while the
+                    // review was open therefore stops here, before the sidecar or wallet is asked.
+                    val fresh = cleared(key) ?: return@withWallet
+                    note(key, fresh, wentAhead = true)
                     if (!stillFresh(reviewed.prepared)) {
                         // Nothing has been approved anywhere yet, so the request is still the
                         // sidecar's and still PENDING: the owner reviews a new preparation.
@@ -645,10 +719,14 @@ class InboxViewModel(
      * are left alone, and nothing is ever sent to the wallet a second time.
      */
     fun onAppVisible() {
-        viewModelScope.launch { repository.resolveAbandonedSignings(activity.value.sending) }
-        // Including after a trip to the Rules screen or to the wallet: whatever is open is
-        // assessed against the rules as they are now, not as they were when it was opened.
-        activity.value.assessments.keys.forEach(::review)
+        viewModelScope.launch {
+            // Resolve records first: an outcome learned while the app was away can change either
+            // daily scope, so the foreground assessment must include it rather than race it.
+            repository.resolveAbandonedSignings(activity.value.sending)
+            // Including after a trip to the Rules screen or to the wallet: whatever is open is
+            // assessed against the rules and Activity on disk now, not as they were when opened.
+            activity.value.assessments.keys.forEach { assess(it) }
+        }
     }
 
     /**

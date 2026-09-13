@@ -80,6 +80,8 @@ object InboxTags {
     const val POLICY_MANUAL = "policyManual"
     const val POLICY_ACKNOWLEDGE = "policyAcknowledge"
 
+    fun policyDaily(scope: String) = "policyDaily:$scope"
+
     /** What the server has checked on chain, and the owner's own way of asking again (SAW-022). */
     const val CONFIRMATION = "requestConfirmation"
     const val CHECK_STATUS = "checkStatus"

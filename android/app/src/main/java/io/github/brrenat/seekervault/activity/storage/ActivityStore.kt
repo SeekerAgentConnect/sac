@@ -4,7 +4,9 @@ import android.util.AtomicFile
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.activity.ActivityRecord
+import io.github.brrenat.seekervault.activity.ReviewedDailyCheck
 import io.github.brrenat.seekervault.activity.ReviewedPolicy
+import io.github.brrenat.seekervault.activity.ReviewedRuleSource
 import io.github.brrenat.seekervault.activity.ReviewedTransfer
 import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.request.v1.Network
@@ -199,6 +201,27 @@ class ActivityStore(private val dir: File) {
                 .put("notChecked", JSONArray(policy.notChecked))
                 .put("assessedAt", policy.assessedAt.toString())
                 .put("approvedAnyway", policy.approvedAnyway)
+                .put(
+                    "ruleSources",
+                    JSONArray(
+                        policy.ruleSources.map {
+                            JSONObject().put("check", it.check).put("source", it.source)
+                        }
+                    ),
+                )
+                .put(
+                    "dailyChecks",
+                    JSONArray(
+                        policy.dailyChecks.map {
+                            JSONObject()
+                                .put("scope", it.scope)
+                                .put("source", it.source)
+                                .put("status", it.status)
+                                .putOpt("reason", it.reason)
+                        }
+                    ),
+                )
+                .put("unreadableSources", JSONArray(policy.unreadableSources))
 
         fun decodePolicy(json: JSONObject?): ReviewedPolicy? = json?.let {
             ReviewedPolicy(
@@ -207,8 +230,38 @@ class ActivityStore(private val dir: File) {
                 notChecked = codes(it.optJSONArray("notChecked")),
                 assessedAt = Instant.parse(it.getString("assessedAt")),
                 approvedAnyway = it.optBoolean("approvedAnyway"),
+                ruleSources = ruleSources(it.optJSONArray("ruleSources")),
+                dailyChecks = dailyChecks(it.optJSONArray("dailyChecks")),
+                unreadableSources = codes(it.optJSONArray("unreadableSources")),
             )
         }
+
+        fun ruleSources(array: JSONArray?): List<ReviewedRuleSource> =
+            (0 until (array?.length() ?: 0)).mapNotNull { index ->
+                array?.optJSONObject(index)?.let { value ->
+                    val check = value.optString("check")
+                    val source = value.optString("source")
+                    if (check.isEmpty() || source.isEmpty()) null
+                    else ReviewedRuleSource(check, source)
+                }
+            }
+
+        fun dailyChecks(array: JSONArray?): List<ReviewedDailyCheck> =
+            (0 until (array?.length() ?: 0)).mapNotNull { index ->
+                array?.optJSONObject(index)?.let { value ->
+                    val scope = value.optString("scope")
+                    val source = value.optString("source")
+                    val status = value.optString("status")
+                    if (scope.isEmpty() || source.isEmpty() || status.isEmpty()) null
+                    else
+                        ReviewedDailyCheck(
+                            scope = scope,
+                            source = source,
+                            status = status,
+                            reason = value.optString("reason").takeIf(String::isNotEmpty),
+                        )
+                }
+            }
 
         /** A list of codes, with anything that isn't one left out rather than guessed at. */
         fun codes(array: JSONArray?): List<String> =

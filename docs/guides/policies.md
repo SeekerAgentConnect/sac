@@ -119,6 +119,8 @@ It says one of two things at the top — *Matches your rules*, or *Outside your 
 | **Could not be checked** | That check was configured, and the phone couldn't establish the fact it needs — the bytes don't say who receives the funds, the amount couldn't be read, today's total didn't read back. It does not pass. |
 | **No rule set** | You wrote no such rule, so nothing was checked and nothing is claimed. |
 
+Each line also says where its effective value came from: **Global**, **Connection override**, or **Not configured**. For a transfer, **Global daily** and **Connection daily** are separate lines because one may match while the other warns. Each daily line shows three amounts in the asset's units: **Confirmed**, **Not yet settled**, and **Projected with this request**. An unreadable rules message likewise names whether the Global document, the Connection override document, or both could not be read.
+
 Under the checks, the ones nothing covered are named again in a line of their own. *Matches your rules* is never a statement about a parameter you didn't write a rule for, and the screen says which ones those are rather than leaving you to work it out.
 
 Under all of it, every time, is the line that doesn't change: **whatever this says, it approves nothing and stops nothing.** You still approve here, and your wallet still asks you again.
@@ -131,7 +133,7 @@ When something is outside your rules, or couldn't be checked, the Approve button
 
 **Reject never waits for anything.** Saying no is always available in one tap.
 
-What you tick is for the reasons in front of you *and* for the transaction they are about. If the transaction is read again, or you edit the rules, or the day's total moves, that is a different thing to have agreed to — the tick clears, and the reasons are there to read again. A transaction prepared again clears it even when the reasons read exactly the same: the new one can carry a different priority fee, which is real money leaving your wallet that no threshold here counts.
+What you tick is for the reasons in front of you, the exact effective rules that produced them, both daily readings, and the transaction they are about. If the transaction is read again, you edit a global value, reset a connection override to inheritance, or either day's total moves, that is a different thing to have agreed to — the tick clears, even when the words on screen happen to look the same. A transaction prepared again clears it even when the reasons read exactly the same: the new one can carry a different priority fee, which is real money leaving your wallet that no threshold here counts.
 
 **A connection with no rules never asks you to tick.** Every request under it is *Outside your rules* for want of any, which is not a warning about anything; a phone that asked you to tick past that on every request would be teaching you to tick without reading. Rules that are stored and can't be read do ask, because there you did write something and this app can't tell you what.
 
@@ -143,15 +145,15 @@ They can't refuse one either. A request outside your rules is exactly as approva
 
 ### What is checked again, and when
 
-Nothing is remembered. The rules and the day's records are read from disk when you open the request, again every time the transaction is read, again when you come back to the app, and once more the moment you answer.
+Nothing is remembered. Both rule documents and the day's records are read from disk when you open the request, again every time the transaction is read, again when you come back to the app, and once more the moment you answer. Returning to the app first records what became of an earlier wallet visit, so a newly confirmed, unsettled, or failed transfer is included. A transfer does its final read only after it has waited for any other wallet interaction to finish.
 
 If they changed while you were reading — you edited them, or a transfer settled — **the answer stops** rather than going ahead on what you read. Nothing is answered, no wallet is opened, and the review on screen is replaced by the one that stands now.
 
 ## What the history keeps
 
-When you answer, the assessment you read is kept with the record in **Activity**: the verdict, the reasons, which checks nothing covered, and whether you went ahead anyway.
+When you answer, the assessment you read is kept with the record in **Activity**: the verdict, the reasons, which checks nothing covered, each effective check's Global or Connection source, each daily check's scope and result, any unreadable document scopes, and whether you went ahead anyway. Older records without the new source details remain readable.
 
-It keeps what you were told, never what you wrote. No threshold and no address from your rules is copied into the history — those are stored once, where you set them. Nothing about either reaches the server.
+It keeps what you were told, never what you wrote. No threshold, daily total, address, or list from your rules is copied into the history — those are stored once, where you set them. Nothing about either reaches the server.
 
 ## Worked examples
 

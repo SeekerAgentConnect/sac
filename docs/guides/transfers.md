@@ -155,6 +155,7 @@ Each record holds who asked, the terms you reviewed — the wallet, the recipien
 - **A message signature is never shown as a payment.** A signed message carries a 64-byte signature too, and the record says in words that it moved nothing, that no network has it, and that no explorer can show it. There is no link on one.
 - **View on Solana Explorer** hands the address to your browser, on the record's own cluster. The app itself opens no connection to the explorer or to any chain; the only hosts it talks to are the sidecars you paired it with.
 - **Amounts are kept in base units.** SOL is also shown the readable way, because its decimals are fixed. A token's decimals belong to its mint and are read fresh when you review a transfer; a count stored months ago could show you the wrong amount, so the record keeps the number the transaction actually carried.
+- **The rules review keeps its context, not your rules.** Activity records the effective Global or Connection source for each check, the separate Global daily and Connection daily results, any unreadable document scope, and whether you went ahead anyway. It stores stable codes, not allowlists, thresholds, addresses, or daily totals; records written before those source fields existed remain readable.
 - **Clear** removes every record on this phone, after asking. It changes nothing on any network and nothing on any server: a transaction that went through stays on the network.
 
 ## Your first transfer, step by step
