@@ -6,6 +6,7 @@ import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.PairingCodes
+import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.request.v1.Action
@@ -14,6 +15,7 @@ import io.github.brrenat.seekervault.transactions.mint
 import io.github.brrenat.seekervault.transactions.transfer
 import io.github.brrenat.seekervault.wallet.encodeBase58
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,12 +35,26 @@ class ActivityLog(
 ) {
     private val _records = MutableStateFlow<List<ActivityRecord>>(emptyList())
 
+    // What the owner was shown about their rules, per request, until the answer is written. It is
+    // a note about a screen, not a verdict to act on: nothing reads it back out to decide anything.
+    private val shown = ConcurrentHashMap<RequestKey, ReviewedPolicy>()
+
+    private val _loaded = MutableStateFlow(false)
+
     /** Every record, newest first. */
     val records: StateFlow<List<ActivityRecord>> = _records.asStateFlow()
+
+    /**
+     * Whether the history has been read off the disk. Until it has — and after a read that failed —
+     * [records] is not the owner's history but what this process happens to have seen, and anything
+     * that counts what the phone has done must treat it as unknown rather than as none (SAW-026).
+     */
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
 
     /** Reads what is stored. A store that can't be read leaves the list as it was, and throws. */
     fun load() {
         _records.value = store.list()
+        _loaded.value = true
     }
 
     /**
@@ -52,17 +68,35 @@ class ActivityLog(
      */
     fun record(result: LocalResult, source: Connection?) {
         if (result.uncommittedTransfer) return
-        val stored = store.put(recordOf(result, source, now()))
+        // The assessment the owner read when they answered, or the one already stored: a status
+        // checked ten times later must not quietly drop what the review said at the time.
+        val policy = shown[result.key] ?: store.get(result.connectionId, result.requestId)?.policy
+        val stored = store.put(recordOf(result, source, now(), policy))
         _records.value =
             (_records.value.filterNot { it.key == stored.key } + stored).sortedWith(
                 compareByDescending<ActivityRecord> { it.answeredAt }.thenBy { it.requestId }
             )
     }
 
+    /**
+     * What the review screen showed the owner about their rules for [key] (SAW-028). The next write
+     * of that request's record keeps it, so the history says what the assessment said at the time —
+     * including that the owner went ahead with a warning in front of them.
+     *
+     * It is recorded, not consulted: nothing here re-reads it to allow, refuse, or re-assess
+     * anything. An assessment is made afresh every time one is needed (`PolicyEvaluator`).
+     */
+    fun reviewed(key: RequestKey, policy: ReviewedPolicy) {
+        shown[key] = policy
+    }
+
     /** Removes every record. The owner asked for it; nothing else calls it. */
     fun clear() {
         store.clear()
+        shown.clear()
         _records.value = emptyList()
+        // Cleared is read: the owner emptied it themselves, and an empty history is a known one.
+        _loaded.value = true
     }
 
     private companion object {
@@ -70,6 +104,7 @@ class ActivityLog(
             result: LocalResult,
             source: Connection?,
             at: Instant,
+            policy: ReviewedPolicy?,
         ): ActivityRecord {
             val request = result.request
             val transfer = request.transfer()
@@ -93,6 +128,7 @@ class ActivityLog(
                             preparedVersion = result.approvedTransaction?.version ?: 0,
                         )
                     },
+                policy = policy,
                 signature = signatureOf(result),
                 detail = detailOf(result),
                 checkedWith =

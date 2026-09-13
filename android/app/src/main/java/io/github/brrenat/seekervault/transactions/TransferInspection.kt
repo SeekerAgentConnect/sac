@@ -127,6 +127,13 @@ data class TransferFacts(
      * missing, and fails the whole transaction unless it is the recipient's for this mint.
      */
     val ensuresRecipientAccount: Boolean,
+    /**
+     * Every program the transaction calls, in the order they first appear, including the ones whose
+     * instructions the app couldn't read: an instruction it can't read still says which program
+     * runs it. Compute budget is in the list like any other, because a policy that names the
+     * programs a transaction may call is a list of what it may call, not a list with exceptions.
+     */
+    val programs: List<String>,
     val computeUnitLimit: UInt?,
     /** A priority price the owner would also pay, in micro-lamports per compute unit. */
     val computeUnitPrice: ULong?,
@@ -374,6 +381,7 @@ private fun facts(
         mint = mint,
         decimals = decimals,
         ensuresRecipientAccount = ensuresAccount,
+        programs = decoded.instructions.mapNotNull(decoded::programOf).distinct(),
         computeUnitLimit = budget.firstNotNullOfOrNull { it.unitLimit },
         computeUnitPrice = budget.firstNotNullOfOrNull { it.microLamportsPerUnit },
         blockhash = decoded.recentBlockhash,

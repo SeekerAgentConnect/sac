@@ -48,6 +48,7 @@ report, and the facts it must read out of the bytes.
 | --- | --- |
 | **Sound** | SOL; a token with and without an existing recipient account; the u64 maximum; a mint with no decimals; a compute-budget priority fee; a legacy message |
 | **Tampered** | A changed recipient, amount, or mint; an extra transfer; an extra signer; the wrong fee payer |
+| **The agent's words** | A note naming a well-known ticker for an unrelated mint, and a note whose amount is a tenth of the instruction's. Both transfers are sound, and the note is the only thing wrong with them: nothing reads it, so there is nothing for it to contradict |
 | **Not covered** | An SPL Token `Approve` riding along with the transfer, and an instruction from a program the phone doesn't read |
 | **Unreadable** | Truncated bytes, bytes left over at the end, and a content hash that isn't the bytes' own |
 

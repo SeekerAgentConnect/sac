@@ -6,14 +6,18 @@ import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.ApprovedTransaction
 import io.github.brrenat.seekervault.connections.Delivery
+import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
 import java.io.File
+import java.io.IOException
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -32,6 +36,71 @@ class ActivityLogTest {
     private val store by lazy { ActivityStore(dir) }
     private val now = Instant.parse("2026-09-11T12:05:00Z")
     private val log by lazy { ActivityLog(store) { now } }
+
+    @Test
+    fun theHistoryIsNotKnownUntilItHasBeenReadOffTheDisk() {
+        // Anything that counts what this phone has done has to tell "nothing here" from "nobody
+        // has looked". An empty list before a read is the second, and a daily threshold measured
+        // against it would report the day as empty (docs/policy.md#counters).
+        assertFalse(log.loaded.value)
+        assertEquals(emptyList<ActivityRecord>(), log.records.value)
+
+        log.load()
+
+        assertTrue(log.loaded.value)
+    }
+
+    @Test
+    fun aReadThatFailsLeavesTheHistoryUnknownRatherThanEmpty() {
+        File(folder.root, "files").mkdirs()
+        // A file where the directory has to go: the history is there and can't be listed.
+        dir.writeText("in the way")
+
+        assertThrows(IOException::class.java) { log.load() }
+
+        assertFalse(log.loaded.value)
+    }
+
+    @Test
+    fun clearingIsAHistoryTheOwnerKnowsIsEmpty() {
+        log.load()
+        log.record(result(transferRequest()), connection())
+
+        log.clear()
+
+        assertTrue(log.loaded.value)
+        assertEquals(emptyList<ActivityRecord>(), log.records.value)
+    }
+
+    @Test
+    fun keepsTheAssessmentTheOwnerReadThroughEveryLaterWriteOfTheRecord() {
+        log.reviewed(RequestKey(CONNECTION, REQUEST), reviewedPolicy())
+        log.record(
+            result(transferRequest(), delivery = Delivery.Waiting),
+            connection(),
+        )
+        assertEquals(reviewedPolicy(), log.records.value.single().policy)
+
+        // A status checked later rewrites the record. What the owner read when they answered is
+        // not something the chain's answer knows, so it must not take it away.
+        val reopened = ActivityLog(ActivityStore(dir)) { now }
+        reopened.load()
+        reopened.record(
+            result(
+                transferRequest(state = RequestState.REQUEST_STATE_CONFIRMED),
+                signing = SigningOutcome.Sent(signatureBytes()),
+            ),
+            connection(),
+        )
+        assertEquals(ActivityOutcome.Confirmed, reopened.records.value.single().outcome)
+        assertEquals(reviewedPolicy(), reopened.records.value.single().policy)
+    }
+
+    @Test
+    fun recordsNoAssessmentForARequestNoneWasNotedFor() {
+        log.record(result(ackRequest(), answer = Answer.Acknowledge), connection())
+        assertNull(log.records.value.single().policy)
+    }
 
     @Test
     fun recordsOneTransferThroughEveryStepItTakes() {

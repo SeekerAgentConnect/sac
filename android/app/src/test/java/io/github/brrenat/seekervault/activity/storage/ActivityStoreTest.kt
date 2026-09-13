@@ -8,6 +8,7 @@ import io.github.brrenat.seekervault.activity.MINT
 import io.github.brrenat.seekervault.activity.OTHER_REQUEST
 import io.github.brrenat.seekervault.activity.REQUEST
 import io.github.brrenat.seekervault.activity.record
+import io.github.brrenat.seekervault.activity.reviewedPolicy
 import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
 import java.time.Instant
@@ -57,6 +58,38 @@ class ActivityStoreTest {
         assertNull(stored?.transfer)
         // Whatever a message carries, it is never a transaction.
         assertEquals(false, stored?.signatureIsTransaction)
+    }
+
+    @Test
+    fun keepsTheAssessmentTheOwnerReadAcrossARestart() {
+        val approved = record(policy = reviewedPolicy())
+        store.put(approved)
+        val stored = checkNotNull(ActivityStore(dir).get(CONNECTION, REQUEST)?.policy)
+        assertEquals("under_restrictions", stored.assessment)
+        assertEquals(listOf("over_daily_limit"), stored.reasons)
+        assertEquals(listOf("program"), stored.notChecked)
+        assertTrue(stored.approvedAnyway)
+        assertEquals(approved, ActivityStore(dir).get(CONNECTION, REQUEST))
+    }
+
+    @Test
+    fun readsARecordWrittenBeforeThereWasAnAssessmentToKeep() {
+        // Every record on a phone that has been through SAW-023 was written without one. They are
+        // still records of what was done, and a history that lost them would lose what was spent.
+        File(dir, CONNECTION).mkdirs()
+        File(dir, "$CONNECTION/$REQUEST.json")
+            .writeText(
+                """
+                {"version":1,"connectionId":"$CONNECTION","requestId":"$REQUEST",
+                 "source":"Hermes","serverHost":"sidecar.example:8443","kind":"Acknowledgement",
+                 "answeredAt":"2026-09-11T12:00:00.250Z","recordedAt":"2026-09-11T12:00:05.250Z",
+                 "outcome":"Acknowledged"}
+                """
+                    .trimIndent()
+            )
+        val stored = checkNotNull(store.get(CONNECTION, REQUEST))
+        assertNull(stored.policy)
+        assertEquals(ActivityOutcome.Acknowledged, stored.outcome)
     }
 
     @Test

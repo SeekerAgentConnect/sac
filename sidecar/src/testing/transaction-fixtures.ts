@@ -352,6 +352,16 @@ export async function transactionFixtures(): Promise<FixtureFile> {
       { note: "Sending 1.5 USDC to the treasury" },
     ),
     await built(
+      "note_disagrees_with_the_amount",
+      "The agent's note says a tenth of what the instruction carries. The request and the " +
+        "transaction agree, so the transfer is sound; the prose is not evidence about either, " +
+        "and the base units the phone shows — and a threshold compares — are the instruction's " +
+        "own.",
+      solTransfer,
+      { verdict: "verified", findings: [], facts: solFacts("2500000000") },
+      { note: "Sending 0.25 SOL for the test run" },
+    ),
+    await built(
       "changed_recipient",
       "A transaction that pays somebody else, presented against the original request.",
       transferAction({ recipient: OTHER, amount: "2500000000" }),

@@ -153,7 +153,7 @@ The owner's wallet belongs to the wallet app, not to seeker-vault (SAW-015; [`do
 
 The wallet signs **and sends** a transfer, so the rules around it are tighter than around a message ([`docs/architecture.md`](architecture.md#approval-binding), [`docs/guides/transfers.md`](guides/transfers.md)).
 
-- **Only a transaction this phone read whole can be approved.** A preparation whose inspection came back anything but `Verified` has no Approve button, and the check is made again when one is tapped. This is input validation, not a policy verdict.
+- **Only a transaction this phone read whole can be approved.** A preparation whose inspection came back anything but `Verified` has no Approve button, and the check is made again when one is tapped. This is input validation, not a policy verdict, and the two never trade places: validation settles what is executable, before any policy is consulted, and a policy adds only reasons for the owner to read ([`docs/policy.md`](policy.md#precedence)). No rule can make an unverified preparation approvable, and a malformed one is never relabelled as an advisory warning.
 - **The sidecar is the commit point.** The approval, naming the version and content hash, is sent first; the wallet is opened only once the sidecar accepts it. An approval the sidecar refuses, or that never left the phone, is deleted there: nothing was approved, and the owner reviews a fresh preparation.
 - **An approval nobody answered is kept, not guessed at.** A dropped connection or a lost response is not a refusal: the sidecar may hold the request as PROCESSING, and only the phone can ever settle that. So the approval stays on the phone, marked as unanswered, and the next delivery *reads* the request rather than sending the approval again. Still PENDING means it never arrived, and the approval is dropped; PROCESSING means it did, and since the wallet is opened only for an approval the sidecar answered, the sidecar is told that nothing was signed and nothing was sent, so the request ends instead of waiting for a wallet forever.
 - **The window is checked again at the wallet, not only at the sidecar.** The sidecar refuses an approval with less than 15 seconds of its blockhash window left, but acceptance and the wallet call are different moments: one wallet interaction runs at a time, and the wait for that lock can outlast the window. The phone takes the lock first, checks the window, commits the approval, and checks the window once more immediately before `signAndSendTransactions`. A transaction that can no longer land is never put in front of the wallet — before the commit the owner simply reviews a fresh preparation, and after it the sidecar is told that nothing was sent.
@@ -279,6 +279,28 @@ account for, which is a different contract. It is about 150 lines, it cannot sig
 network, and it is checked against transactions the sidecar really builds
 ([`docs/testing/transaction-fixtures.md`](testing/transaction-fixtures.md)).
 `StageBoundaryTest` fails if a source file starts importing an SDK decoder instead.
+
+## Verification versus advisory rules
+
+Two different things on the review screen look, at a glance, like the same kind of judgement. They are not, and the difference is the one the whole design rests on.
+
+| | Input validation | The owner's rules |
+| --- | --- | --- |
+| What it is about | Whether the bytes are the transaction the request asked for | Whether the request is what the owner expected this agent to ask for |
+| Where it comes from | The transaction's own bytes, read by this phone ([above](#inspecting-a-transfer)) | A file on this phone that the owner wrote ([`policy.md`](policy.md)) |
+| What it can do | Take the Approve button away entirely | Add reasons to read |
+| Who can overrule it | Nobody | The owner, deliberately |
+| When it runs | First, always | Second, on what passed |
+
+**A rule can never make something executable.** A preparation that is malformed, that disagrees with its request, or that this phone could not account for whole has no Approve button, and there is no tick that brings one back. `ALLOWED` next to it changes nothing at all: it is a statement about parameters, made about a transaction the phone already refused to put in front of a wallet.
+
+**A malformed preparation is never relabelled as an advisory warning.** The two live in separate blocks on the screen, with their own words, and the block that says why there is no button is the input-validation one. Calling a byte mismatch "outside your rules" would offer the owner a way past it that does not exist, and would teach them that the refusals they cannot overrule are the same kind of thing as the warnings they can.
+
+**A rule can never make something stricter, either.** `UNDER_RESTRICTIONS` leaves a request exactly as executable as it was. There is no `BLOCKED`, and no setting that makes the app turn a request down on its own.
+
+**Neither one approves.** `ALLOWED` means the parameters matched what the owner wrote down. The owner still approves by hand in the app, and their wallet asks them again.
+
+The assessment the owner read is kept with their own record of what they did, as codes ([`policy.md`](policy.md#the-stored-snapshot)). The rules never reach the sidecar, and neither does the assessment: no RPC carries one, and `StageBoundaryTest` holds the files that speak to a sidecar to having never heard of a policy.
 
 ## Logs and diagnostics
 

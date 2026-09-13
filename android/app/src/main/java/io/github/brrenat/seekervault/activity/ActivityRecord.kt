@@ -69,6 +69,32 @@ data class ReviewedTransfer(
 )
 
 /**
+ * What the owner was shown about their own rules when they answered, kept with the record (SAW-028,
+ * docs/policy.md#the-stored-snapshot).
+ *
+ * It is codes and nothing else: the verdict's code, the reasons behind it, and the checks nothing
+ * covered. The rules themselves are never written here — not a threshold, not an address, not a
+ * list — because the record is about what the owner read, and the rules are already stored once, in
+ * the one place they belong. Nothing in here ever reaches the sidecar.
+ *
+ * It records no decision either. An assessment approved nothing when it was shown, and reading it
+ * back months later approves nothing now; [approvedAnyway] is the only thing here about what the
+ * owner did, and it says they went ahead with a warning in front of them.
+ */
+data class ReviewedPolicy(
+    /** The verdict's own code: `allowed` or `under_restrictions`. */
+    val assessment: String,
+    /** Every reason behind the verdict, by code, in the order they were shown. */
+    val reasons: List<String> = emptyList(),
+    /** The checks no rule covered, by code. ALLOWED never claims anything about these. */
+    val notChecked: List<String> = emptyList(),
+    /** When the assessment the owner read was made. */
+    val assessedAt: Instant,
+    /** Whether the owner answered with a warning on screen, having said so on purpose. */
+    val approvedAnyway: Boolean = false,
+)
+
+/**
  * One thing this phone did about one request, kept as the record of it
  * (docs/security.md#local-storage-and-recovery). It is not the answer the sidecar is owed — that is
  * a `LocalResult`, and it is dropped a week after it settles and when its connection is removed.
@@ -94,6 +120,10 @@ data class ActivityRecord(
     val outcome: ActivityOutcome,
     /** The terms of a transfer; null for everything else. */
     val transfer: ReviewedTransfer? = null,
+    /**
+     * What the rules made of the request when the owner answered; null when nothing assessed it.
+     */
+    val policy: ReviewedPolicy? = null,
     /** The wallet's signature in base58, once there is one. */
     val signature: String? = null,
     /** What the server or the wallet said about how it ended. */

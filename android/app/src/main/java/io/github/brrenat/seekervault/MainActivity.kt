@@ -16,6 +16,7 @@ import io.github.brrenat.seekervault.activity.ActivityViewModel
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
+import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 
 class MainActivity : ComponentActivity() {
@@ -40,7 +41,13 @@ class MainActivity : ComponentActivity() {
         viewModelFactory {
             initializer {
                 val app = application as SeekerVaultApplication
-                InboxViewModel(app.connectionRepository, app.walletRepository)
+                InboxViewModel(
+                    app.connectionRepository,
+                    app.walletRepository,
+                    app.policyEvaluator,
+                    app.activityLog,
+                    io = app.connectionIo,
+                )
             }
         }
     }
@@ -49,6 +56,15 @@ class MainActivity : ComponentActivity() {
         viewModelFactory {
             initializer {
                 ActivityViewModel((application as SeekerVaultApplication).activityLog)
+            }
+        }
+    }
+
+    private val policy: PolicyEditorViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val app = application as SeekerVaultApplication
+                PolicyEditorViewModel(app.policyStore, io = app.connectionIo)
             }
         }
     }
@@ -70,7 +86,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SeekerVaultTheme {
-                SeekerVaultApp(connections, inbox, wallet, history, viewModel)
+                SeekerVaultApp(connections, inbox, wallet, history, policy, viewModel)
             }
         }
     }

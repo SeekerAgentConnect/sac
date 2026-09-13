@@ -3,6 +3,8 @@ package io.github.brrenat.seekervault.inbox
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.activity.ActivityLog
+import io.github.brrenat.seekervault.activity.ReviewedPolicy
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.ApprovalOutcome
 import io.github.brrenat.seekervault.connections.ApprovedTransaction
@@ -18,6 +20,11 @@ import io.github.brrenat.seekervault.connections.messageBytes
 import io.github.brrenat.seekervault.connections.resultDetail
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.connections.toOutcome
+import io.github.brrenat.seekervault.policy.PolicyDecision
+import io.github.brrenat.seekervault.policy.PolicyEvaluator
+import io.github.brrenat.seekervault.policy.RequestFacts
+import io.github.brrenat.seekervault.policy.policyFacts
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.transactions.TransferInspection
 import io.github.brrenat.seekervault.transactions.inspectTransfer
@@ -28,6 +35,8 @@ import io.github.brrenat.seekervault.wallet.SignResult
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,6 +45,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Why the app didn't ask the wallet to sign. Nothing was approved and nothing was sent. */
@@ -74,6 +84,18 @@ enum class SigningProblem {
      * says nothing about the transaction, which stands exactly as it did (SAW-022).
      */
     NotChecked,
+    /**
+     * The rules, or what this app has recorded, changed while the request was on screen, so the
+     * assessment the owner read isn't the one that stands now. Nothing was answered and no wallet
+     * was opened: the review on screen has been replaced with the current one, to be read again
+     * (SAW-028).
+     */
+    RulesChanged,
+    /**
+     * The assessment warns about something and the owner hasn't said they want to go ahead anyway.
+     * A warning is theirs to overrule, and overruling it is a thing they do on purpose.
+     */
+    NotAcknowledged,
 }
 
 /**
@@ -97,6 +119,40 @@ sealed interface Preparation {
     data class Failed(val outcome: CheckOutcome, val detail: String? = null) : Preparation
 }
 
+/**
+ * What this phone's rules made of one request, as the owner was shown it (SAW-028).
+ *
+ * It is a reading and not a decision. Nothing is kept to act on later: every assessment is made
+ * afresh from the rules and the records as they stand, and the one held here exists so that what is
+ * on screen can be compared with what is true at the moment the owner answers.
+ */
+data class RequestAssessment(
+    val decision: PolicyDecision,
+    /** What the phone established about the request, which is all the rules were applied to. */
+    val facts: RequestFacts,
+    /** When it was made. */
+    val at: Instant,
+) {
+    /** What going ahead anyway would be consent to: the reasons, and the thing they are about. */
+    val consent: Consent
+        get() = Consent(decision, facts)
+}
+
+/**
+ * What an acknowledgement is given for (SAW-028).
+ *
+ * The reasons the owner read, and the preparation they read them about. Both, because either one
+ * changing makes it a different thing to have consented to — and the two do not always change
+ * together: a transaction prepared again can carry another blockhash, another priority fee, or
+ * another version while what the rules make of it is word for word the same, and a rule the owner
+ * edits can leave this request's every check exactly as it was. What the owner said yes to is this
+ * assessment of this preparation.
+ *
+ * The moment it was made is deliberately not part of it. The same reasons about the same bytes,
+ * read again a second later, are the same reasons.
+ */
+data class Consent(val decision: PolicyDecision, val facts: RequestFacts)
+
 /** Everything the inbox screens show. */
 data class InboxUiState(
     val connections: List<Connection> = emptyList(),
@@ -114,6 +170,15 @@ data class InboxUiState(
     val preparations: Map<RequestKey, Preparation> = emptyMap(),
     /** Transfers whose status is being checked on chain now (SAW-022). */
     val checking: Set<RequestKey> = emptySet(),
+    /** What the rules make of each request the owner has opened (SAW-028). */
+    val assessments: Map<RequestKey, RequestAssessment> = emptyMap(),
+    /**
+     * The assessment the owner said they want to go ahead past, per request. It is the [Consent]
+     * itself and not a flag, because consent is to the reasons that were on screen and to the
+     * preparation they were about: a different assessment, or a transaction read again, is a
+     * different thing to consent to, and this stops matching it.
+     */
+    val acknowledged: Map<RequestKey, Consent> = emptyMap(),
 )
 
 /**
@@ -124,6 +189,16 @@ class InboxViewModel(
     private val repository: ConnectionRepository,
     private val wallet: WalletRepository,
     /**
+     * The owner's rules, applied to the request in front of them (SAW-026). It reads, and every
+     * call re-reads: there is no stored verdict here, and nothing acts on the one it returns.
+     */
+    private val policies: PolicyEvaluator,
+    /**
+     * The owner's own history, where the assessment they read is kept beside their answer
+     * (SAW-028). Written to, never read back for a decision.
+     */
+    private val history: ActivityLog,
+    /**
      * How long the app waits for the wallet before it gives up on an approval. It is the owner's
      * own time in the wallet app, so it is generous; a wallet that never answers at all must still
      * not hold a request open for the rest of the session.
@@ -131,6 +206,8 @@ class InboxViewModel(
     private val walletTimeout: Duration = WALLET_TIMEOUT,
     /** The clock the blockhash window is judged against; tests move it. */
     private val now: () -> Instant = Instant::now,
+    /** Where the rules are read from disk. Tests replace it, to run them in step. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private data class Activity(
         val refreshing: Boolean = false,
@@ -139,6 +216,8 @@ class InboxViewModel(
         val problemKey: RequestKey? = null,
         val preparations: Map<RequestKey, Preparation> = emptyMap(),
         val checking: Set<RequestKey> = emptySet(),
+        val assessments: Map<RequestKey, RequestAssessment> = emptyMap(),
+        val acknowledged: Map<RequestKey, Consent> = emptyMap(),
     )
 
     private val activity = MutableStateFlow(Activity())
@@ -159,6 +238,8 @@ class InboxViewModel(
                     now.problemKey,
                     now.preparations,
                     now.checking,
+                    now.assessments,
+                    now.acknowledged,
                 )
             }
             .stateIn(
@@ -198,11 +279,136 @@ class InboxViewModel(
         activity.update { it.copy(sending = it.sending + key) }
         viewModelScope.launch {
             try {
+                // Saying no is always the safe answer, and never asks the owner to go past a
+                // warning. Saying yes does, and the rules are read again before it is sent.
+                if (answer == Answer.Reject) {
+                    note(key, assess(key), wentAhead = false)
+                } else {
+                    note(key, cleared(key) ?: return@launch, wentAhead = true)
+                }
                 repository.answer(key, answer)
             } finally {
                 activity.update { it.copy(sending = it.sending - key) }
             }
         }
+    }
+
+    /**
+     * What the owner's rules make of the request they are looking at (SAW-028). It runs when they
+     * open it, again whenever a new preparation has been read, and again when the app comes back to
+     * the front, so the review on screen is what the rules say now and not what they said when it
+     * was opened.
+     *
+     * It reads the rules and this app's own records, and that is all it does: it opens no wallet,
+     * sends nothing, answers nothing, and writes nothing down (docs/policy.md#re-evaluation).
+     */
+    fun review(key: RequestKey) {
+        viewModelScope.launch { assess(key) }
+    }
+
+    /**
+     * The owner says they have read the warnings and want to go ahead anyway, or takes it back.
+     *
+     * What is kept is the assessment itself, not a tick: consent is to the reasons that were on
+     * screen and to the preparation they were about, so either changing afterwards leaves nothing
+     * consented to.
+     */
+    fun acknowledge(key: RequestKey, accepted: Boolean) {
+        val consent = activity.value.assessments[key]?.consent ?: return
+        activity.update {
+            it.copy(
+                problem = if (it.problemKey == key) null else it.problem,
+                problemKey = if (it.problemKey == key) null else it.problemKey,
+                acknowledged =
+                    if (accepted) it.acknowledged + (key to consent) else it.acknowledged - key,
+            )
+        }
+    }
+
+    /**
+     * Assesses [key] against the rules and the records as they stand now, and puts the result on
+     * screen. Null when the request isn't here any more.
+     *
+     * An acknowledgement given for another assessment is dropped here: the owner said they wanted
+     * to go ahead past the reasons they were shown, and these are not those reasons.
+     */
+    private suspend fun assess(key: RequestKey): RequestAssessment? {
+        val facts = factsFor(key) ?: return null
+        val assessment =
+            RequestAssessment(withContext(io) { policies.evaluate(facts) }, facts, now())
+        activity.update {
+            val ticked = it.acknowledged[key]
+            it.copy(
+                assessments = it.assessments + (key to assessment),
+                acknowledged =
+                    if (ticked != null && ticked != assessment.consent) it.acknowledged - key
+                    else it.acknowledged,
+            )
+        }
+        return assessment
+    }
+
+    /**
+     * Reads the rules again, right now, and says whether an affirmative answer may go ahead. Null
+     * means it may not, and why is on screen.
+     *
+     * Nothing here is taken on trust from the screen. The assessment is made afresh and compared
+     * with the one the owner was actually shown: one that changed while they were reading is not
+     * one they read, so it replaces what is on screen and the answer stops there. One that warns
+     * needs their word for it, and their word was given for a particular set of reasons.
+     *
+     * This is advisory and it comes second. A preparation that failed this phone's own inspection
+     * was refused before any of it ran, and is never relabelled as a rule the owner could overrule
+     * (docs/security.md#verification-versus-advisory-rules).
+     */
+    private suspend fun cleared(key: RequestKey): RequestAssessment? {
+        val shown = activity.value.assessments[key]?.consent
+        val fresh = assess(key) ?: return null
+        if (shown != null && shown != fresh.consent) {
+            problem(key, SigningProblem.RulesChanged)
+            return null
+        }
+        if (fresh.decision.warns && activity.value.acknowledged[key] != fresh.consent) {
+            problem(key, SigningProblem.NotAcknowledged)
+            return null
+        }
+        return fresh
+    }
+
+    /**
+     * What the phone itself established about [key], which is all a policy is ever applied to. The
+     * chain comes from the wallet the owner connected, and the rest from the structured request and
+     * from the transaction's own bytes when one has been read.
+     */
+    private fun factsFor(key: RequestKey): RequestFacts? {
+        val inbox = repository.inbox.value
+        val request = inbox.pendingRequest(key) ?: inbox.result(key)?.request ?: return null
+        val prepared = activity.value.preparations[key] as? Preparation.Ready
+        return policyFacts(
+            connectionId = key.connectionId,
+            request = request,
+            network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED,
+            inspection = prepared?.inspection,
+        )
+    }
+
+    /**
+     * Keeps the assessment the owner was shown beside the record of what they did (SAW-028). Codes
+     * and nothing else: the rules stay in the one place they are stored, and neither they nor this
+     * ever goes near the sidecar.
+     */
+    private fun note(key: RequestKey, assessment: RequestAssessment?, wentAhead: Boolean) {
+        val decision = assessment?.decision ?: return
+        history.reviewed(
+            key,
+            ReviewedPolicy(
+                assessment = decision.assessment.code,
+                reasons = decision.reasonCodes,
+                notChecked = decision.notChecked.map { it.code },
+                assessedAt = assessment.at,
+                approvedAnyway = wentAhead && decision.warns,
+            ),
+        )
     }
 
     /**
@@ -235,6 +441,9 @@ class InboxViewModel(
         }
         viewModelScope.launch {
             try {
+                // The rules are read again here, and an assessment that changed while they were
+                // reading stops the approval rather than being approved unseen.
+                note(key, cleared(key) ?: return@launch, wentAhead = true)
                 val stored = repository.answer(key, Answer.Approve)
                 // Only a stored approval that is still on its way leads to the wallet: one the
                 // sidecar refused, because the request had moved on, is finished.
@@ -295,6 +504,9 @@ class InboxViewModel(
                     Preparation.Failed(e.kind.toOutcome(), e.message)
                 }
             activity.update { it.copy(preparations = it.preparations + (key to outcome)) }
+            // A new preparation is a new set of facts, so the rules are applied to it again. An
+            // assessment the owner had already agreed to go past no longer matches, and goes.
+            assess(key)
         }
     }
 
@@ -343,6 +555,10 @@ class InboxViewModel(
         }
         viewModelScope.launch {
             try {
+                // The inspection above already refused anything this phone couldn't account for,
+                // and that refusal is not a rule to overrule. Only now are the owner's own rules
+                // read again, and an answer they haven't agreed to give stops here.
+                note(key, cleared(key) ?: return@launch, wentAhead = true)
                 // Everything from here runs holding the one wallet lock. That lock is where the
                 // waiting happens — another wallet interaction can hold it for as long as the
                 // owner is in the wallet app — so the freshness of what is being approved is
@@ -430,6 +646,9 @@ class InboxViewModel(
      */
     fun onAppVisible() {
         viewModelScope.launch { repository.resolveAbandonedSignings(activity.value.sending) }
+        // Including after a trip to the Rules screen or to the wallet: whatever is open is
+        // assessed against the rules as they are now, not as they were when it was opened.
+        activity.value.assessments.keys.forEach(::review)
     }
 
     /**

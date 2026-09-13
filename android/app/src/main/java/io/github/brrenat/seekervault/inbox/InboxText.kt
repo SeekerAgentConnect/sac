@@ -16,6 +16,7 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.connections.messageBytes
 import io.github.brrenat.seekervault.connections.signMessage
+import io.github.brrenat.seekervault.policy.PolicyCheck
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
@@ -68,13 +69,24 @@ object InboxTags {
     /** Approving one through the wallet (SAW-021). */
     const val TRANSFER_APPROVE = "transferApprove"
 
-    const val TRANSFER_POLICY = "transferPolicy"
+    /** Why there is no Approve button: input validation, and never a rule (SAW-020). */
+    const val TRANSFER_NOT_APPROVABLE = "transferNotApprovable"
+
+    /** What the owner's own rules made of the request (SAW-028). */
+    const val POLICY_PENDING = "policyPending"
+    const val POLICY_VERDICT = "policyVerdict"
+    const val POLICY_REASON = "policyReason"
+    const val POLICY_UNCOVERED = "policyUncovered"
+    const val POLICY_MANUAL = "policyManual"
+    const val POLICY_ACKNOWLEDGE = "policyAcknowledge"
 
     /** What the server has checked on chain, and the owner's own way of asking again (SAW-022). */
     const val CONFIRMATION = "requestConfirmation"
     const val CHECK_STATUS = "checkStatus"
 
     fun item(key: RequestKey) = "request:${key.connectionId}/${key.requestId}"
+
+    fun policyCheck(check: PolicyCheck) = "policyCheck:${check.code}"
 
     fun field(name: String) = "requestField:$name"
 }
@@ -271,6 +283,8 @@ fun problemText(problem: SigningProblem): Int =
         SigningProblem.NotApproved -> R.string.problem_not_approved
         SigningProblem.NotSentYet -> R.string.problem_not_sent_yet
         SigningProblem.NotChecked -> R.string.problem_not_checked
+        SigningProblem.RulesChanged -> R.string.problem_rules_changed
+        SigningProblem.NotAcknowledged -> R.string.problem_not_acknowledged
     }
 
 /** Whether this app can put [request] in front of the owner for an answer at all. */

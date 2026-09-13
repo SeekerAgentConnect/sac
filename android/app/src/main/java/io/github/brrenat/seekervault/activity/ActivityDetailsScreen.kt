@@ -101,6 +101,11 @@ fun ActivityDetailsScreen(
                 )
             }
             Field(R.string.activity_field_answered, formatInstant(record.answeredAt))
+            // What the rules made of it when they answered, kept as it was read. It approved
+            // nothing then and it approves nothing now (SAW-028).
+            record.policy?.let {
+                Field(R.string.activity_field_policy, policyText(it), ActivityTags.POLICY)
+            }
             record.signature?.let { signature ->
                 Field(
                     if (record.signatureIsTransaction) R.string.activity_field_signature

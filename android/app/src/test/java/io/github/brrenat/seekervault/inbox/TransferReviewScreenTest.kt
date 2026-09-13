@@ -17,6 +17,13 @@ import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.NOW
+import io.github.brrenat.seekervault.policy.PolicyAction
+import io.github.brrenat.seekervault.policy.PolicyCheck
+import io.github.brrenat.seekervault.policy.PolicyCheckResult
+import io.github.brrenat.seekervault.policy.PolicyDecision
+import io.github.brrenat.seekervault.policy.PolicyReason
+import io.github.brrenat.seekervault.policy.RequestFacts
+import io.github.brrenat.seekervault.policy.assess
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
 import io.github.brrenat.seekervault.request.v1.Network
@@ -50,6 +57,7 @@ class TransferReviewScreenTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private var prepareAgain = 0
     private var approvals = 0
+    private val ticks = mutableListOf<Boolean>()
 
     private val cases =
         JSONObject(
@@ -115,6 +123,8 @@ class TransferReviewScreenTest {
         case: JSONObject,
         preparation: Preparation?,
         wallet: SelectedWallet? = walletFor(case),
+        decision: PolicyDecision? = null,
+        acknowledged: Boolean = false,
     ) = compose.setContent {
         SeekerVaultTheme {
             RequestDetailsScreen(
@@ -131,9 +141,39 @@ class TransferReviewScreenTest {
                 preparation = preparation,
                 onPrepareAgain = { prepareAgain++ },
                 onApproveTransfer = { approvals++ },
+                assessment =
+                    decision?.let {
+                        RequestAssessment(
+                            it,
+                            RequestFacts.unread(HOME.id, PolicyAction.Transfer),
+                            Instant.parse("2026-09-12T12:00:00Z"),
+                        )
+                    },
+                acknowledged = acknowledged,
+                onAcknowledge = { ticks += it },
             )
         }
     }
+
+    /** Every check, in order, with [configured] in place of the ones nobody configured. */
+    private fun checks(
+        vararg configured: Pair<PolicyCheck, PolicyCheckResult>
+    ): List<PolicyCheckResult> {
+        val byCheck = configured.toMap()
+        return PolicyCheck.entries.map { byCheck[it] ?: PolicyCheckResult.notConfigured(it) }
+    }
+
+    private fun overThreshold() =
+        assess(
+            checks(
+                PolicyCheck.DailyLimit to
+                    PolicyCheckResult.failed(
+                        PolicyCheck.DailyLimit,
+                        PolicyReason.OverDailyLimit,
+                        "3 SOL of 2 SOL today",
+                    )
+            )
+        )
 
     private fun field(name: String) = compose.onNodeWithTag(InboxTags.field(name))
 
@@ -257,7 +297,7 @@ class TransferReviewScreenTest {
         // No button that would refuse: nothing this phone can't account for is put to a wallet.
         compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertDoesNotExist()
         compose
-            .onNodeWithTag(InboxTags.TRANSFER_POLICY)
+            .onNodeWithTag(InboxTags.TRANSFER_NOT_APPROVABLE)
             .performScrollTo()
             .assertTextEquals(context.getString(R.string.transfer_not_approvable))
     }
@@ -275,15 +315,16 @@ class TransferReviewScreenTest {
     }
 
     @Test
-    fun saysPoliciesAreNotEvaluatedRatherThanCallingItAllowed() {
-        val case = case("sol_transfer")
-        show(case, readyFrom(case))
-        field("policy")
-            .performScrollTo()
-            .assertTextContains(
-                context.getString(R.string.transfer_policy_not_evaluated),
-                substring = true,
-            )
+    fun showsEveryProgramTheTransactionCalls() {
+        // What it would run, whether or not any rule was written about it: a request nothing
+        // could be verified about still shows the programs it names (SAW-028).
+        val case = case("token_transfer_creates_account")
+        show(case, readyFrom(case, rentLamports = 2_039_280L))
+        val programs = checkNotNull(readyFrom(case).inspection.facts).programs
+        assertEquals(true, programs.size > 1)
+        programs.forEach {
+            field("programs").performScrollTo().assertTextContains(it, substring = true)
+        }
     }
 
     @Test
@@ -295,6 +336,64 @@ class TransferReviewScreenTest {
             .onNodeWithTag(InboxTags.SIGNING_PROBLEM)
             .performScrollTo()
             .assertTextEquals(context.getString(R.string.transfer_no_wallet))
+    }
+
+    @Test
+    fun aTransferOutsideTheRulesWaitsForTheOwnersWordBeforeItCanBeApproved() {
+        val case = case("sol_transfer")
+        show(case, readyFrom(case), decision = overThreshold())
+        // The reasons are above the button, and the button says what it would be doing.
+        compose
+            .onNodeWithTag(InboxTags.policyCheck(PolicyCheck.DailyLimit))
+            .performScrollTo()
+            .assertTextContains("3 SOL of 2 SOL today", substring = true)
+        compose
+            .onNodeWithTag(InboxTags.TRANSFER_APPROVE)
+            .performScrollTo()
+            .assertIsNotEnabled()
+            .assertTextEquals(context.getString(R.string.approve_and_send_despite_warnings))
+        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).performScrollTo().performClick()
+        assertEquals(listOf(true), ticks)
+        assertEquals(0, approvals)
+    }
+
+    @Test
+    fun onceTheOwnerHasSaidSoTheTransferCanGoToTheWallet() {
+        val case = case("sol_transfer")
+        show(case, readyFrom(case), decision = overThreshold(), acknowledged = true)
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().performClick()
+        assertEquals(1, approvals)
+    }
+
+    @Test
+    fun noRuleEverPutsBackTheApproveButtonInputValidationTookAway() {
+        // A transaction that doesn't match its request is not an advisory warning to tick past:
+        // there is no button, and no tick that would bring one back (SAW-020, SAW-028).
+        val case = case("changed_amount")
+        // The rules are as satisfied as rules get, and it makes no difference at all.
+        val allowed =
+            assess(
+                checks(
+                    PolicyCheck.Action to PolicyCheckResult.passed(PolicyCheck.Action, "transfer")
+                )
+            )
+        show(case, readyFrom(case), decision = allowed, acknowledged = true)
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).assertDoesNotExist()
+        compose
+            .onNodeWithTag(InboxTags.TRANSFER_NOT_APPROVABLE)
+            .performScrollTo()
+            .assertTextEquals(context.getString(R.string.transfer_not_approvable))
+        // The phone's own verdict on the bytes stays what it is, and the rules stay beside it
+        // rather than being read as the reason there is no button.
+        compose
+            .onNodeWithTag(InboxTags.TRANSFER_VERDICT)
+            .performScrollTo()
+            .assertTextEquals(context.getString(R.string.transfer_verdict_invalid))
+        compose
+            .onNodeWithTag(InboxTags.POLICY_VERDICT)
+            .performScrollTo()
+            .assertTextEquals(context.getString(R.string.policy_verdict_allowed))
     }
 
     @Test

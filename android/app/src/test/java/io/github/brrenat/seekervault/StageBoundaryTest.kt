@@ -11,11 +11,12 @@ import org.w3c.dom.Element
  * The stage boundary (AGENTS.md): no wallet keys, nothing that runs in the background, and storage
  * only in the storage packages: connection metadata and Keystore-encrypted credentials in
  * `connections/storage/` (SAW-012), the owner's wallet selection and its authorization in
- * `wallet/storage/` (SAW-015), and the owner's own record of what this phone did in
- * `activity/storage/` (SAW-023). Nothing is backed up. SAW-015 lifted the "no wallet library" limit
- * for the Mobile Wallet Adapter client, on purpose: the app drives the wallet the owner already
- * has. It still holds no wallet key of its own, and Seed Vault's own SDK stays out. These checks
- * fail when a limit is crossed early; the stage that lifts one changes them.
+ * `wallet/storage/` (SAW-015), the owner's own record of what this phone did in `activity/storage/`
+ * (SAW-023), and the rules they set for one connection in `policy/storage/` (SAW-025). Nothing is
+ * backed up. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on
+ * purpose: the app drives the wallet the owner already has. It still holds no wallet key of its
+ * own, and Seed Vault's own SDK stays out. These checks fail when a limit is crossed early; the
+ * stage that lifts one changes them.
  */
 class StageBoundaryTest {
     private val main =
@@ -25,6 +26,13 @@ class StageBoundaryTest {
             },
             "android/app/src/main",
         )
+
+    /** [file]'s code, with the comments taken out, for a check that is about what it does. */
+    private fun withoutComments(file: File): String =
+        file
+            .readText()
+            .replace(Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL), "")
+            .replace(Regex("""//.*"""), "")
 
     private fun xml(path: String): Element =
         DocumentBuilderFactory.newInstance()
@@ -101,6 +109,7 @@ class StageBoundaryTest {
                 File(main, "java/io/github/brrenat/seekervault/connections/storage"),
                 File(main, "java/io/github/brrenat/seekervault/wallet/storage"),
                 File(main, "java/io/github/brrenat/seekervault/activity/storage"),
+                File(main, "java/io/github/brrenat/seekervault/policy/storage"),
             )
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         fun inStorage(file: File) = storagePackages.any { file.startsWith(it) }
@@ -118,6 +127,91 @@ class StageBoundaryTest {
                 hits(storage, sources.filter { it.startsWith(storagePackage) }).isNotEmpty(),
             )
         }
+    }
+
+    @Test
+    fun aPolicyDecidesNothingAndNeverLeavesThePhone() {
+        // SAW-025 opens Stage 5. A policy is the owner's own note about one connection: no agent
+        // can read it or change it, and it settles nothing by itself. The package that holds it is
+        // kept without any means of acting or speaking, so that stays true as the stage is built —
+        // the editor the owner writes the rules on (SAW-027) included.
+        val policy = File(main, "java/io/github/brrenat/seekervault/policy")
+        assertTrue(policy.isDirectory)
+        val sources = policy.walk().filter { it.extension == "kt" }.toList()
+        assertTrue(sources.isNotEmpty())
+        // What it reaches for in the rest of the app, and every one of them is a read: the
+        // connection ID rule, the protocol's requests and networks, what the phone read out of a
+        // transaction's own bytes (SAW-020), the owner's own record of what this app did (SAW-023),
+        // and the address rule. SAW-027 added the editor, so three more: the app's strings, its
+        // back button, and its date format. Nothing that opens a wallet, a connection, or a socket
+        // — the screen the owner writes the rules on can't act on them either.
+        val reaches =
+            sources
+                .flatMap { it.readLines() }
+                .map { it.trim() }
+                .filter { it.startsWith("import io.github.brrenat.seekervault.") }
+                .map { it.removePrefix("import ") }
+                .filterNot { it.startsWith("io.github.brrenat.seekervault.policy.") }
+                .distinct()
+                .sorted()
+        assertEquals(
+            listOf(
+                "io.github.brrenat.seekervault.R",
+                "io.github.brrenat.seekervault.activity.ActivityKind",
+                "io.github.brrenat.seekervault.activity.ActivityOutcome",
+                "io.github.brrenat.seekervault.activity.ActivityRecord",
+                "io.github.brrenat.seekervault.connections.BackButton",
+                "io.github.brrenat.seekervault.connections.formatInstant",
+                "io.github.brrenat.seekervault.connections.isConnectionId",
+                "io.github.brrenat.seekervault.request.v1.Action",
+                "io.github.brrenat.seekervault.request.v1.ActionRequest",
+                "io.github.brrenat.seekervault.request.v1.Network",
+                "io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS",
+                "io.github.brrenat.seekervault.transactions.TransferInspection",
+                "io.github.brrenat.seekervault.transactions.formatBaseUnits",
+                "io.github.brrenat.seekervault.wallet.isSolanaAddress",
+            ),
+            reaches,
+        )
+        // The rules never leave the phone, and neither does what they made of a request
+        // (SAW-028). The two files that speak to a sidecar have never heard of a policy, and the
+        // one file in `connections/` that has, has it to delete a removed connection's rules and
+        // for nothing else — an assessment is the owner's to read, and no agent's to learn of.
+        val speaking =
+            File(main, "java")
+                .walk()
+                .filter {
+                    it.name == "ConnectConnectionGateway.kt" ||
+                        it.name == "ConnectLiveCommandTransport.kt" ||
+                        it.name == "ConnectionRepository.kt"
+                }
+                .toList()
+        assertEquals(3, speaking.size)
+        assertEquals(
+            listOf(
+                "ConnectionRepository.kt: io.github.brrenat.seekervault.policy.storage.PolicyStore"
+            ),
+            speaking
+                .flatMap { file ->
+                    file
+                        .readLines()
+                        .map { it.trim() }
+                        .filter { it.startsWith("import io.github.brrenat.seekervault.policy") }
+                        .map { "${file.name}: ${it.removePrefix("import ")}" }
+                }
+                .sorted(),
+        )
+        // There is no BLOCKED verdict and no branch that acts on either of the two there are. The
+        // comments say so too, so this reads the code with the comments taken out of it.
+        val acting =
+            Regex(
+                """\b(signMessage|signAndSendTransactions|WalletAdapter|ConnectionGateway|""" +
+                    """OkHttp|ResultStore|approveTransfer|Blocked|BLOCKED)\b"""
+            )
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { acting.containsMatchIn(withoutComments(it)) }.map { it.name },
+        )
     }
 
     @Test
