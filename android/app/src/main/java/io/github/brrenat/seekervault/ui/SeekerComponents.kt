@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.TextSelectionColors
@@ -335,13 +336,13 @@ fun SeekerBottomBar(
             Column(
                 modifier =
                     Modifier.weight(1f)
-                        .clickable(
+                        .selectable(
+                            selected = active,
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() },
                             role = Role.Tab,
                             onClick = { onSelect(destination.route) },
-                        )
-                        .semantics { role = Role.Tab },
+                        ),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {

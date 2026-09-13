@@ -1519,9 +1519,11 @@ private fun FilterChip(
                         if (selected) MaterialTheme.colorScheme.primaryContainer
                         else MaterialTheme.colorScheme.surfaceContainerHighest
                     )
-                    .clickable(
+                    .selectable(
+                        selected = selected,
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() },
+                        role = Role.RadioButton,
                         onClick = onClick,
                     )
                     .padding(horizontal = 14.dp),

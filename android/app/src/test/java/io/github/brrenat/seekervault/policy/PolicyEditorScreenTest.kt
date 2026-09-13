@@ -7,8 +7,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -246,6 +248,19 @@ class PolicyEditorScreenTest {
         compose.onNodeWithTag(PolicyTags.network(Network.NETWORK_DEVNET)).performClick()
         compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
         assertEquals(listOf(SOL, SOL_ON_DEVNET), draft.assets.map { it.asset })
+    }
+
+    @Test
+    fun addAssetNetworksExposeTheirExclusiveSelection() {
+        open()
+        click(PolicyTags.ADD_ASSET)
+        val mainnet = compose.onNodeWithTag(PolicyTags.network(Network.NETWORK_MAINNET))
+        val devnet = compose.onNodeWithTag(PolicyTags.network(Network.NETWORK_DEVNET))
+
+        mainnet.assertIsSelected()
+        devnet.assertIsNotSelected().performClick()
+        mainnet.assertIsNotSelected()
+        devnet.assertIsSelected()
     }
 
     @Test

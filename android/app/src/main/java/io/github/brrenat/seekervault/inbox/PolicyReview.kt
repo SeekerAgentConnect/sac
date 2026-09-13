@@ -97,9 +97,7 @@ fun PolicyReview(
         decision.checks.filterNot {
             decision.dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit
         }
-    val warningChecks = ordinaryChecks.filter {
-        it.status == PolicyCheckStatus.Failed || it.status == PolicyCheckStatus.Unverified
-    }
+    val configuredChecks = ordinaryChecks.filter { it.status != PolicyCheckStatus.NotConfigured }
     val deliberatelyOff =
         ordinaryChecks
             .filter {
@@ -162,7 +160,7 @@ fun PolicyReview(
                         modifier = Modifier.testTag(InboxTags.POLICY_REASON),
                     )
                 }
-                warningChecks.forEach { WarningCheck(it, verdictInk) }
+                configuredChecks.forEach { ConfiguredCheck(it, verdictInk) }
                 if (deliberatelyOff.isNotEmpty() || absent.isNotEmpty()) {
                     Column(
                         Modifier.testTag(InboxTags.POLICY_UNCOVERED).semantics(
@@ -213,7 +211,9 @@ fun PolicyReview(
 }
 
 @Composable
-private fun WarningCheck(result: PolicyCheckResult, ink: androidx.compose.ui.graphics.Color) {
+private fun ConfiguredCheck(result: PolicyCheckResult, ink: androidx.compose.ui.graphics.Color) {
+    val warns =
+        result.status == PolicyCheckStatus.Failed || result.status == PolicyCheckStatus.Unverified
     Row(
         modifier =
             Modifier.fillMaxWidth().testTag(InboxTags.policyCheck(result.check)).semantics(
@@ -223,19 +223,28 @@ private fun WarningCheck(result: PolicyCheckResult, ink: androidx.compose.ui.gra
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
-            Icons.Outlined.ErrorOutline,
+            if (warns) Icons.Outlined.ErrorOutline else Icons.Outlined.CheckCircle,
             contentDescription = null,
             tint = ink,
             modifier = Modifier.size(18.dp),
         )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                stringResource(reasonText(checkNotNull(result.reason))),
-                style = MaterialTheme.typography.bodyMedium,
+                stringResource(checkText(result.check)),
+                style = MaterialTheme.typography.labelMedium,
                 color = ink,
             )
-            result.detail?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = ink)
+            if (warns) {
+                Text(
+                    stringResource(reasonText(checkNotNull(result.reason))),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ink,
+                )
+                result.detail?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = ink)
+                }
+            } else {
+                Text(statusText(result), style = MaterialTheme.typography.bodyMedium, color = ink)
             }
             SourceChip(result.source)
         }
