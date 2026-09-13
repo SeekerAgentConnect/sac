@@ -125,4 +125,73 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE connections ADD COLUMN wallet_bound_at_ms INTEGER;
     `,
   },
+  {
+    version: 4,
+    description:
+      "durable request revisions, update replay, and frozen sync snapshots (SAW-049)",
+    sql: `
+      -- Every current request has a monotonic revision. Existing requests begin at one and enter
+      -- a fresh phone through Sync; later mutations increment the revision and append an event in
+      -- the same transaction as the request row.
+      ALTER TABLE requests ADD COLUMN update_revision INTEGER NOT NULL DEFAULT 1;
+
+      -- Cursors are per connection. pruned_through makes a retained-history gap distinguishable
+      -- from an empty replay after old events have been bounded away.
+      CREATE TABLE update_state (
+        connection_id TEXT PRIMARY KEY NOT NULL REFERENCES connections (connection_id),
+        next_sequence INTEGER NOT NULL DEFAULT 0,
+        pruned_through INTEGER NOT NULL DEFAULT 0,
+        confirmation_offset INTEGER NOT NULL DEFAULT 0
+      ) STRICT;
+
+      -- payload is an ActionRequest for kind=request; revocation has no payload. The event row is
+      -- committed atomically with the request/connection mutation it reports.
+      CREATE TABLE update_events (
+        connection_id TEXT NOT NULL REFERENCES connections (connection_id),
+        sequence INTEGER NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('request', 'revoked')),
+        request_id TEXT,
+        revision INTEGER,
+        payload BLOB,
+        created_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (connection_id, sequence),
+        CHECK (
+          (kind = 'request' AND request_id IS NOT NULL AND revision IS NOT NULL AND payload IS NOT NULL)
+          OR (kind = 'revoked' AND request_id IS NULL AND revision IS NULL AND payload IS NULL)
+        )
+      ) STRICT;
+
+      -- A Sync snapshot is frozen on disk so a large pending queue does not become a large heap
+      -- allocation and mutations between pages cannot change what later pages mean. The process
+      -- instance binds every token, so rows left by a crash are invalid and cleaned on next use.
+      CREATE TABLE update_snapshots (
+        snapshot_id TEXT PRIMARY KEY NOT NULL,
+        connection_id TEXT NOT NULL REFERENCES connections (connection_id),
+        server_instance_id TEXT NOT NULL,
+        snapshot_sequence INTEGER NOT NULL,
+        expires_at_ms INTEGER NOT NULL,
+        created_at_ms INTEGER NOT NULL
+      ) STRICT;
+      CREATE INDEX update_snapshots_by_connection
+        ON update_snapshots (connection_id, created_at_ms, snapshot_id);
+
+      -- kind 1 is SyncedRequest and kind 2 is RequestRemoved, each as protobuf binary.
+      CREATE TABLE update_snapshot_items (
+        snapshot_id TEXT NOT NULL REFERENCES update_snapshots (snapshot_id) ON DELETE CASCADE,
+        ordinal INTEGER NOT NULL,
+        kind INTEGER NOT NULL CHECK (kind IN (1, 2)),
+        revision INTEGER NOT NULL,
+        payload BLOB NOT NULL,
+        PRIMARY KEY (snapshot_id, ordinal)
+      ) STRICT;
+
+      CREATE TABLE update_snapshot_deferred (
+        snapshot_id TEXT NOT NULL REFERENCES update_snapshots (snapshot_id) ON DELETE CASCADE,
+        ordinal INTEGER NOT NULL,
+        connection_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        PRIMARY KEY (snapshot_id, ordinal)
+      ) STRICT;
+    `,
+  },
 ];

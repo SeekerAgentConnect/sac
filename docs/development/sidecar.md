@@ -11,7 +11,7 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 
 `pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`.
 
-`MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, and `SOLANA_RPC_TIMEOUT_MS` are optional, and an empty one counts as unset. The others are required.
+`MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, and `SOLANA_RPC_TIMEOUT_MS` are optional, and an empty one counts as unset. The others are required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
@@ -27,6 +27,8 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 | `REQUEST_TTL_SECONDS` | Optional. How long a request waits for the owner's decision when its agent doesn't choose | 60 to 604800; defaults to 86400 (a day) |
 | `REQUEST_PENDING_LIMIT` | Optional. The most requests that can wait for the owner at once | 1 to 10000; defaults to 100 |
 | `SIDECAR_PUBLIC_URL` | Optional. The URL that pairing codes carry: where the phone reaches the sidecar | `https://`, or `http://` on `127.0.0.1`, `localhost`, or `[::1]`. No user name, password, query, or fragment, and a port, if given, from 1 to 65535. Defaults to `http://<SIDECAR_HOST>:<SIDECAR_PORT>`, the development URL over `adb reverse`. For a phone on another network, use a trusted TLS endpoint; see [transport security](../security.md#transport-security). |
+| `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH` | Optional pair. PEM certificate chain and private key for the production listener | Set both or neither. With them, `SIDECAR_PUBLIC_URL` must be HTTPS. The certificate must be publicly trusted by the phone and match that URL's host. The listener negotiates HTTP/2 and HTTP/1.1. Never commit the private key. |
+| `SIDECAR_UPDATE_PORT` | Optional loopback development HTTP/2 port | 1 to 65535. It starts a separate cleartext h2c listener and advertises its loopback origin. Do not expose it off-machine or combine it with the TLS paths. Use a second `adb reverse` for a physical phone. |
 | `PAIRING_TOKEN_TTL_SECONDS` | Optional. How long a pairing code works | 60 to 3600; defaults to 600 (10 minutes) |
 | `SOLANA_RPC_URL` | Optional. The Solana JSON-RPC endpoint transfers are prepared against (SAW-019), and the one a sent transaction's outcome is read from (SAW-022). Without it the sidecar serves no `vault_transfer`, prepares no transaction, and can confirm nothing. | An `http://` or `https://` URL. It may carry an API key, so the sidecar never logs it or puts it in an error message; only its **host** is recorded, as the endpoint a confirmed or failed transfer's word came from. |
 | `SOLANA_RPC_TIMEOUT_MS` | Optional. How long one chain call may take | 1000 to 20000; defaults to 10000. A whole operation is bounded too: 20000 ms, however many calls it makes |
@@ -43,9 +45,10 @@ pnpm dev:sidecar
 The expected output is:
 
 ```text
-[sidecar] requests are stored in /path/to/SeekerAgentWallet/sidecar/data/sidecar.db (schema version 2); server 9fda5035-f3b4-4ec3-a68a-5e6caa02397a; no phone is paired: run pnpm pair
+[sidecar] requests are stored in /path/to/SeekerAgentWallet/sidecar/data/sidecar.db (schema version 4); server 9fda5035-f3b4-4ec3-a68a-5e6caa02397a; no phone is paired: run pnpm pair
 [sidecar] the demo tool vault_request_ack is on (MCP_DEMO_TOOLS=true)
 [sidecar] listening on http://127.0.0.1:8080: MCP at http://127.0.0.1:8080/mcp, phone API at http://127.0.0.1:8080/seekervault.live.v1.LiveCommandService
+[sidecar] production updates are not configured
 ```
 
 The server ID is created with the database and never changes. Once a phone pairs, the first line ends with `paired phone: connection <ID>` instead. Until then, agents can't create requests, and get `NOT_PAIRED`; see [pairing a phone](#pairing-a-phone).
@@ -55,7 +58,7 @@ To check that the sidecar is up, run `curl -s http://127.0.0.1:8080/healthz`, wh
 To stop it, press Ctrl+C or send SIGTERM. Stopping happens in this order:
 
 1. The in-flight live command, if any, is cancelled, and the agent gets `CANCELLED`.
-2. The phone's stream ends with `unavailable`.
+2. The Stage 1 stream and every production update stream end; update streams receive `unavailable`.
 3. The database closes, and the process exits within about a second.
 
 A restart loses the in-flight live command by design, and nothing is replayed after it. Durable requests survive a restart unchanged; see [storage and lifecycle](#storage-and-lifecycle).
@@ -118,8 +121,35 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | `/seekervault.request.v1.PairingService/GetConnectionCapabilities` | The paired phone | `Authorization: Bearer <phone credential>` | Reports the caller's optional production-update capability without requiring re-pairing (SAW-048) |
 | `/seekervault.request.v1.PairingService/RevokeConnection` | The paired phone | `Authorization: Bearer <phone credential>` | Revokes the caller's own connection |
 | `/seekervault.request.v1.RequestService/ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, `CheckStatus`, and `PublishWallet` | The paired phone | `Authorization: Bearer <phone credential>` | Connect unary calls of the durable workflow, and the wallet the owner selected (SAW-015) |
+| `/seekervault.update.v1.UpdateService/Subscribe` | The paired phone, configured update origin | `Authorization: Bearer <phone credential>` | Bidirectional gRPC/HTTP2 replay and live durable request changes |
+| `/seekervault.update.v1.UpdateService/Sync` | The paired phone, configured update origin | `Authorization: Bearer <phone credential>` | Unary gRPC/HTTP2 frozen reconciliation and bounded read-only confirmation |
 
-SAW-048 defines `seekervault.update.v1.UpdateService` and proves its bidirectional gRPC transport in a test-only HTTP/2 server. This production sidecar does not serve that service yet and therefore returns no `UpdateCapability`; SAW-049 adds the listener and durable event source. Existing RequestService, pairing, health, and MCP endpoints remain unchanged.
+### Production update listener
+
+An update endpoint is opt-in. Without either configuration below, `PairResponse.updates` and `GetConnectionCapabilitiesResponse.updates` are absent, and the existing manual/unary workflow remains available.
+
+For production, put a publicly trusted PEM identity on the sidecar host and configure one secure listener:
+
+```dotenv
+SIDECAR_HOST=127.0.0.1
+SIDECAR_PORT=8443
+SIDECAR_PUBLIC_URL=https://vault.example.com:8443
+SIDECAR_TLS_CERT_PATH=/run/secrets/fullchain.pem
+SIDECAR_TLS_KEY_PATH=/run/secrets/privkey.pem
+```
+
+This changes the main listener to TLS with ALPN `h2` and `http/1.1`. `Subscribe` uses genuine gRPC over HTTP/2; `/healthz`, `/mcp`, pairing, Stage 1, and the existing unary RequestService continue over HTTP/1.1 or HTTP/2 on the same origin. If a TCP or gRPC-aware proxy fronts the listener, it must preserve HTTP/2 to it. An HTTP/1-only reverse proxy cannot carry `Subscribe` and is not a fallback transport.
+
+For loopback development only, leave the TLS paths empty and choose a second port:
+
+```dotenv
+SIDECAR_PORT=8080
+SIDECAR_UPDATE_PORT=8081
+```
+
+The main server stays at `http://127.0.0.1:8080`; the advertised update origin is `http://127.0.0.1:8081` and accepts h2c. With a USB-connected phone, reverse both ports (`adb reverse tcp:8080 tcp:8080` and `adb reverse tcp:8081 tcp:8081`). Cleartext HTTP/2 is never a remote deployment option.
+
+The bearer credential is still the connection's phone token. The MCP token, pairing token, Stage 1 token, a revoked token, and another connection ID cannot open `Subscribe` or `Sync`. A second subscription for the same connection cancels the first. Pairing replacement and explicit revocation publish the terminal revocation event and close the stream; shutdown cancels all streams and destroys their HTTP/2 sessions.
 
 The sidecar checks requests to `/mcp` as follows, following the MCP transport specification's defense against DNS rebinding:
 
@@ -222,14 +252,18 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 
 ## Storage and lifecycle
 
-Durable requests live in one SQLite file, `DATABASE_PATH` (by default `sidecar/data/sidecar.db`). While the sidecar runs, SQLite keeps `-wal` and `-shm` files next to it. `.gitignore` covers all three (`*.db`, `*.db-*`).
+Durable requests and production update state live in one SQLite file, `DATABASE_PATH` (by default `sidecar/data/sidecar.db`). While the sidecar runs, SQLite keeps `-wal` and `-shm` files next to it. `.gitignore` covers all three (`*.db`, `*.db-*`).
 
 ### How requests are stored
 
 - **The driver is Node's built-in `node:sqlite`,** so there's no native build and no extra dependency.
 - **The database runs in WAL mode with `synchronous = FULL`,** so a commit is on disk before it returns.
 - **Each operation is one transaction (`BEGIN IMMEDIATE`) that commits before the sidecar answers.** The agent's tool result and the phone's RPC response never report a change that a crash could still lose. Operations are synchronous, so two never interleave.
-- **Only `sidecar/src/storage/` touches SQLite or the file system.** It alone imports them, and it alone runs SQL: `request-store.ts` and `pairing-store.ts` hold every query. `stage-boundary.test.ts` checks both.
+- **Only `sidecar/src/storage/` touches SQLite or the file system.** It alone imports them, and it alone runs SQL. `request-store.ts` and `pairing-store.ts` commit lifecycle changes, while `update-store.ts` appends their complete revisioned forms, bounds replay to 512 events per connection, and freezes two-minute paginated snapshots on disk. `tls.ts` reads the configured PEM bytes. `stage-boundary.test.ts` checks the boundary.
+- **Publication is part of the source transaction.** Creation, cancellation, expiry, accepted owner/wallet results, confirmation attempts/results, wallet-binding cancellations, and revocation append only if their request/connection update commits. Duplicate/idempotent calls append nothing.
+- **A cursor is process- and connection-bound.** A restart, malformed cursor, another connection, or a cursor older than retained replay requires `Sync`. The stream registers before taking its barrier, so mutations committed after the barrier are replayed or delivered live rather than falling between snapshot and subscription.
+- **Sync pages do not drift.** Page one freezes every current PENDING request plus the named nonterminal Activity records in SQLite. Later mutations do not rewrite remaining pages; tokens expire after two minutes and after a process restart. Responses shrink below 65,536 encoded bytes, and no unbounded request list is retained in heap memory.
+- **Confirmation is bounded observation.** Of the supplied SUBMITTED/UNKNOWN transfers, each Sync checks at most four concurrently through `ConfirmationTracker`; the durable rotation moves deferred records into later runs. It uses the same cluster and approved-byte verification as Check status and can only record that result. It never prepares, signs, simulates, sends, or resubmits.
 - **Run one sidecar per database file.**
 
 These are the tables at schema version 3:
@@ -354,7 +388,7 @@ Typical log lines:
 | File | Role |
 | --- | --- |
 | `sidecar/src/main.ts` | Entry point: loads the configuration, starts the server, and stops it on SIGINT or SIGTERM |
-| `sidecar/src/server.ts` | The HTTP server: `/healthz`, `/mcp`, the phone API, the database, and a graceful close |
+| `sidecar/src/server.ts` | The HTTP/1 or TLS HTTP/2+HTTP/1 listener, optional h2c development listener, `/healthz`, `/mcp`, phone APIs, and graceful session cleanup |
 | `sidecar/src/mcp-endpoint.ts` | MCP sessions, the tools, the body limit, and the Host, Origin, and token checks |
 | `sidecar/src/phone-api.ts` | The Connect `LiveCommandService` |
 | `sidecar/src/live/bridge.ts` | The in-memory waiter: one watcher, one in-flight command, deadline timers, and cancellation |
@@ -364,6 +398,9 @@ Typical log lines:
 | `sidecar/src/requests/lifecycle.ts` | The durable lifecycle (SAW-009): the transition table, the phone's results, the approval binding, and expiry |
 | `sidecar/src/requests/failure.ts` | `RequestFailure`, the error that every durable operation refuses with |
 | `sidecar/src/storage/request-store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions, and the wallet binding (SAW-015) |
+| `sidecar/src/storage/update-store.ts` | Durable per-connection sequences/replay and disk-frozen Sync snapshots (SAW-049) |
+| `sidecar/src/storage/tls.ts` | Reads the configured production PEM identity inside the audited file-system boundary (SAW-049) |
+| `sidecar/src/updates/service.ts` | Authenticated bidirectional Subscribe, unary Sync, stream ownership/liveness, and bounded confirmation (SAW-049) |
 | `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010), `vault_get_address` (SAW-015), and `vault_sign_message` and `vault_get_capabilities` (SAW-016) |
 | `sidecar/src/requests/signature.ts` | Ed25519 verification (SAW-016): the sidecar checks a wallet's signature, and never makes one |
 | `sidecar/src/requests/preparation.ts` | `TransactionPreparer` (SAW-019): checks an asset before a request is stored, and builds and records the next prepared version |
@@ -372,7 +409,7 @@ Typical log lines:
 | `sidecar/src/solana/token.ts`, `addresses.ts`, `network.ts` | The SPL Token layouts and instructions, the program addresses and the associated-token-account derivation, and each network's genesis hash |
 | `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
 | `sidecar/src/storage/database.ts` | Opening the database, migrations, and transactions (SAW-010) |
-| `sidecar/src/storage/migrations.ts` | The numbered schema migrations (SAW-010, SAW-011) |
+| `sidecar/src/storage/migrations.ts` | The numbered schema migrations, including durable update revision/replay/snapshot tables (SAW-010, SAW-011, SAW-049) |
 | `sidecar/src/pairing/uri.ts` | The pairing code's URI, and the server URL rule (SAW-011) |
 | `sidecar/src/storage/pairing-store.ts` | `PairingStore` (SAW-011): pairing tokens, pairing, phone credentials, revocation, and the server ID |
 | `sidecar/src/pairing/service.ts` | The Connect `PairingService` (SAW-011) |
@@ -381,6 +418,8 @@ Typical log lines:
 The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. The contract they implement is in [`docs/protocol.md`](../protocol.md#stage-2-durable-requests).
 
 `pnpm check` runs these tests:
+
+- **`src/updates/service.test.ts`, `store.test.ts`, and `confirmation.test.ts`** test the actual TLS/h2 and loopback h2c listeners, preserved HTTP/1 routes, durable publication, replay, frozen paging, restart/gap recovery, isolation, replacement/revocation/cleanup, and bounded byte-verified confirmation.
 
 - **`src/live/bridge.test.ts`** tests the waiter with mocked timers.
 - **`src/server.test.ts`** tests the real server with the MCP SDK client and a Connect client. It covers:

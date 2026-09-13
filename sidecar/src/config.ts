@@ -50,6 +50,11 @@ export interface SidecarConfig {
   readonly solanaRpcUrl?: string;
   /** How long one chain call may take (SOLANA_RPC_TIMEOUT_MS); the default applies when unset. */
   readonly solanaRpcTimeoutMs?: number;
+  /** Cleartext HTTP/2 update listener for loopback development (SIDECAR_UPDATE_PORT). */
+  readonly updatePort?: number;
+  /** PEM identity for the production HTTP/2 + HTTP/1.1 TLS listener. */
+  readonly tlsCertificatePath?: string;
+  readonly tlsPrivateKeyPath?: string;
 }
 
 export class ConfigError extends Error {
@@ -162,6 +167,40 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     DEFAULT_SOLANA_RPC_TIMEOUT_MS,
     problems,
   );
+  const updatePort = optionalNumber(
+    env,
+    "SIDECAR_UPDATE_PORT",
+    1,
+    65_535,
+    problems,
+  );
+  const tlsCertificatePath = env.SIDECAR_TLS_CERT_PATH?.trim() || undefined;
+  const tlsPrivateKeyPath = env.SIDECAR_TLS_KEY_PATH?.trim() || undefined;
+  if (
+    (tlsCertificatePath === undefined) !==
+    (tlsPrivateKeyPath === undefined)
+  ) {
+    problems.push(
+      "SIDECAR_TLS_CERT_PATH and SIDECAR_TLS_KEY_PATH must both be set or both be unset.",
+    );
+  }
+  if (updatePort !== undefined && tlsCertificatePath !== undefined) {
+    problems.push(
+      "SIDECAR_UPDATE_PORT is the loopback development listener and cannot be combined with the production TLS listener.",
+    );
+  }
+  if (
+    tlsCertificatePath !== undefined &&
+    tlsPrivateKeyPath !== undefined &&
+    publicUrl !== undefined
+  ) {
+    const url = new URL(publicUrl);
+    if (url.protocol !== "https:") {
+      problems.push(
+        "SIDECAR_PUBLIC_URL must use https:// when the production TLS listener is configured.",
+      );
+    }
+  }
 
   if (
     problems.length > 0 ||
@@ -193,6 +232,9 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     pairingTokenTtlSeconds,
     solanaRpcUrl,
     solanaRpcTimeoutMs,
+    ...(updatePort === undefined ? {} : { updatePort }),
+    ...(tlsCertificatePath === undefined ? {} : { tlsCertificatePath }),
+    ...(tlsPrivateKeyPath === undefined ? {} : { tlsPrivateKeyPath }),
   };
 }
 
@@ -309,6 +351,18 @@ function optionalWholeNumber(
   problems: string[],
 ): number | undefined {
   if (!env[name]?.trim()) return fallback;
+  return wholeNumber(env, name, min, max, problems);
+}
+
+/** Like wholeNumber, but an unset or empty variable is absent. */
+function optionalNumber(
+  env: Env,
+  name: string,
+  min: number,
+  max: number,
+  problems: string[],
+): number | undefined {
+  if (!env[name]?.trim()) return undefined;
   return wholeNumber(env, name, min, max, problems);
 }
 

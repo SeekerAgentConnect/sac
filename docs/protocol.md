@@ -554,9 +554,9 @@ The durable contract leaves the live diagnostic as it was.
 - **`vault_display_command` and its tests are unchanged.**
 - **The durable rules reuse two live rules without changing them:** an `ack`'s text follows `invalidTextReason`, and `expires_at` has `isExpired`'s boundary.
 
-## Production updates (SAW-048)
+## Production updates (SAW-048, SAW-049)
 
-The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 starts serving it, and the Android state/lifecycle work follows in SAW-050–052.
+The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar, and the Android state/lifecycle work follows in SAW-050–052.
 
 | RPC | Wire protocol | Lifetime | Purpose |
 | --- | --- | --- | --- |
@@ -578,7 +578,7 @@ The ordering is the part that prevents a mutation from falling between “list�
 
 If paging fails, the phone keeps its previous cache, abandons the incomplete snapshot, and starts page one again. `next_page_token` is opaque, connection- and instance-bound, at most 256 UTF-8 bytes, and expires after two minutes; expiry or restart is `failed_precondition` and becomes `SNAPSHOT_INVALID`. Page size is 50 by default and at most 100, but the server returns fewer entries when another one would cross the message limit.
 
-The server does not have to be a general event platform. Version 1 needs a durable per-connection mutation sequence, a bounded retained replay window, and short-lived frozen sync snapshots. A process restart deliberately changes `server_instance_id`, invalidates cursors/page tokens, and causes a full sync; the database remains authoritative.
+The server is not a general event platform. Version 1 uses a durable per-connection mutation sequence, retains the newest 512 events, and keeps at most four short-lived frozen snapshots for a connection. Creation and every durable state, outcome, confirmation, wallet-binding cancellation, expiry, and revocation append their complete current form in the same SQLite transaction as the source mutation; a duplicate or failed operation appends nothing. Only after that commit may a subscriber read the event. Snapshot items are frozen on disk rather than held as an unbounded in-memory list. A process restart deliberately changes `server_instance_id`, invalidates cursors/page tokens, and causes a full sync; the database remains authoritative.
 
 ### Events, revisions, and liveness
 
@@ -619,7 +619,7 @@ Pairing URI version 1 stays unchanged. A new `PairResponse.updates`, or `Pairing
 
 `grpc_url` is an origin, not a new trust domain. In production it is HTTPS with a publicly trusted certificate and the same host as the paired URL; only loopback development can use HTTP and a different port. The production Node secure listener negotiates `h2` and `http/1.1` by ALPN (`allowHTTP1`): gRPC updates use HTTP/2, while existing Connect unary, pairing, health, and MCP clients remain compatible. A TLS terminator/reverse proxy is valid only when it preserves gRPC HTTP/2 to this listener; silently downgrading `Subscribe` to polling or server-only streaming is not compatibility.
 
-The proof in `GrpcBidiInteropTest` uses the pinned Connect Kotlin 0.9.0 client and OkHttp 5.4.0 against the pinned Connect Node 2.2.0 adapter on a real TLS HTTP/2 listener. It sends subscribe, receives ready, sends and receives two heartbeats in alternation while the Kotlin send side is still open, and asserts the Node handler saw protocol `grpc` and HTTP version `2.0`. Its second case closes the Kotlin receive side and asserts one Node stream observes cancellation and no replacement stream starts. No dependency change was required.
+The proof in `GrpcBidiInteropTest` uses the pinned Connect Kotlin 0.9.0 client and OkHttp 5.4.0 against the pinned Connect Node 2.2.0 adapter on a real TLS HTTP/2 listener. It sends subscribe, receives ready, sends and receives two heartbeats in alternation while the Kotlin send side is still open, and asserts the Node handler saw protocol `grpc` and HTTP version `2.0`. Its second case closes the Kotlin receive side and asserts one Node stream observes cancellation and no replacement stream starts. SAW-049's sidecar tests then use the Node gRPC client against the actual secure production listener and its loopback h2c development mode, including the deployed capability origin and preserved HTTP/1 routes. No dependency change was required.
 
 ## Generated code
 

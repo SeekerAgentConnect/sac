@@ -248,6 +248,53 @@ describe("loadSidecarConfig", () => {
     assert.equal(config.solanaRpcTimeoutMs, 2500);
   });
 
+  it("configures either loopback HTTP/2 development or the production TLS listener", () => {
+    assert.equal(
+      loadSidecarConfig({ ...validEnv, SIDECAR_UPDATE_PORT: "8081" })
+        .updatePort,
+      8081,
+    );
+    const tls = loadSidecarConfig({
+      ...validEnv,
+      SIDECAR_PUBLIC_URL: "https://vault.example.test:8443",
+      SIDECAR_TLS_CERT_PATH: " /run/secrets/fullchain.pem ",
+      SIDECAR_TLS_KEY_PATH: " /run/secrets/privkey.pem ",
+    });
+    assert.equal(tls.tlsCertificatePath, "/run/secrets/fullchain.pem");
+    assert.equal(tls.tlsPrivateKeyPath, "/run/secrets/privkey.pem");
+  });
+
+  it("refuses partial, insecure, or conflicting update listener settings", () => {
+    assert.deepEqual(
+      problemsFor({ ...validEnv, SIDECAR_TLS_CERT_PATH: "cert.pem" }),
+      [
+        "SIDECAR_TLS_CERT_PATH and SIDECAR_TLS_KEY_PATH must both be set or both be unset.",
+      ],
+    );
+    assert.deepEqual(
+      problemsFor({
+        ...validEnv,
+        SIDECAR_TLS_CERT_PATH: "cert.pem",
+        SIDECAR_TLS_KEY_PATH: "key.pem",
+      }),
+      [
+        "SIDECAR_PUBLIC_URL must use https:// when the production TLS listener is configured.",
+      ],
+    );
+    assert.deepEqual(
+      problemsFor({
+        ...validEnv,
+        SIDECAR_PUBLIC_URL: "https://vault.example.test",
+        SIDECAR_UPDATE_PORT: "8081",
+        SIDECAR_TLS_CERT_PATH: "cert.pem",
+        SIDECAR_TLS_KEY_PATH: "key.pem",
+      }),
+      [
+        "SIDECAR_UPDATE_PORT is the loopback development listener and cannot be combined with the production TLS listener.",
+      ],
+    );
+  });
+
   it("refuses an RPC endpoint that isn't an HTTP URL, without echoing it", () => {
     for (const url of [
       "wss://rpc.example.com/?api-key=s3cret",

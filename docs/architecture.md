@@ -76,7 +76,7 @@ sequenceDiagram
 
 ### The update convergence boundary
 
-SAW-048 defines one production update service, separate from the Stage 1 diagnostic. The foreground stream, app resume, manual Refresh, and later WorkManager runs all converge through the same reconciliation operation instead of maintaining four versions of request state.
+SAW-048 defines one production update service, separate from the Stage 1 diagnostic, and SAW-049 backs it with the sidecar's durable mutation sequence and frozen snapshots. The foreground stream, app resume, manual Refresh, and later WorkManager runs all converge through the same reconciliation operation instead of maintaining four versions of request state.
 
 ```mermaid
 flowchart LR
@@ -123,7 +123,7 @@ flowchart LR
 | The assessment the owner read when they answered | The phone, as codes on the Activity record; never the rules themselves, and never sent anywhere | SAW-028 |
 | Assessments | Nowhere — computed on demand from the rules and the records, never stored | SAW-026 |
 | Daily counters | The phone, derived from the Activity records in `filesDir` | SAW-026 |
-| Update revisions, cursors, and retained replay | The sidecar's SQLite database, through `src/storage/` | SAW-048 contract; SAW-049 implementation |
+| Update revisions, cursors, retained replay, and frozen snapshots | The sidecar's SQLite database, through `src/storage/` | SAW-048 contract; SAW-049 implementation |
 | Minimal request/status cache and sync metadata | The phone in `filesDir`, through `sync/storage/`; never backed up | SAW-048 contract; SAW-050 implementation |
 | Keys | Seed Vault Wallet | Stage 3 |
 
@@ -131,7 +131,7 @@ flowchart LR
 
 - **The live diagnostic (Stage 1)** proves the transport. An agent's call waits while the text shows on the open live-test screen, and the user's OK comes back as the tool's result. It's in memory and foreground-only, and it stays as a diagnostic.
 - **The durable workflow (Stage 2 on)** carries the product. The sidecar stores an agent's request and answers with its ID at once. The phone fetches it later, and the agent reads the result when it's ready.
-- **The production update transport (Stage 5.2)** observes the durable workflow: bidirectional gRPC while foreground and unary Sync for recovery, Refresh, and eventual background work. It creates no third kind of request and makes no decision.
+- **The production update transport (Stage 5.2)** observes the durable workflow: the sidecar now serves bidirectional gRPC and unary Sync; foreground ownership, Refresh integration, and eventual background work arrive on Android in SAW-050–052. It creates no third kind of request and makes no decision.
 
 The two workflows share the sidecar process and the text rules, and nothing else; the production update transport belongs only to durable requests. See [Compatibility with Stage 1](protocol.md#compatibility-with-stage-1).
 

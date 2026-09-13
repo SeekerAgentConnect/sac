@@ -79,15 +79,19 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 
 ## Transport security
 
-- **The sidecar listens on loopback only,** over plain HTTP. `SIDECAR_HOST` can't be anything else.
-- **A phone on another network reaches it through a trusted TLS endpoint** on the same machine. The endpoint ends TLS with a certificate the phone already trusts, and forwards to the loopback port. The app keeps Android's normal certificate and host name checks, with no certificate pinning and no trust-all.
+- **The sidecar listens on loopback only.** `SIDECAR_HOST` can't be anything else. It uses plain HTTP by default; setting both TLS identity paths starts the production secure listener instead.
+- **Production updates terminate TLS at the sidecar's HTTP/2 listener.** `SIDECAR_TLS_CERT_PATH` and `SIDECAR_TLS_KEY_PATH` name its PEM identity, and `SIDECAR_PUBLIC_URL` must be HTTPS. The certificate is publicly trusted and matches the public host. The listener negotiates `h2` for gRPC and `http/1.1` for existing clients. A pass-through or gRPC-aware proxy may expose the loopback listener only if HTTP/2 reaches it intact.
+- **Loopback development may use a separate cleartext HTTP/2 port.** `SIDECAR_UPDATE_PORT` is for `adb reverse` on the same machine, never for a LAN or public listener. It cannot be combined with the TLS identity.
+- **The app keeps Android's normal certificate and host name checks,** with no certificate pinning, custom CA, or trust-all.
 - **`SIDECAR_PUBLIC_URL` is the URL that pairing codes carry.** It must be `https://`, with one exception: `http://` on `127.0.0.1`, `localhost`, or `[::1]`, for development over `adb reverse`. That's the default, and it's the Stage 1 loopback exception. The debug build allows cleartext to `127.0.0.1` and `localhost` only, and release builds allow none. The URL can have a path, but no user name, password, query, or fragment.
-- **The endpoint forwards everything, `/mcp` included.** `/mcp` still refuses a public host name unless `MCP_ALLOWED_HOSTS` lists it, and it always needs `MCP_TOKEN`.
+- **The secure listener preserves every existing route, `/mcp` included.** `/mcp` still refuses a public host name unless `MCP_ALLOWED_HOSTS` lists it, and it always needs `MCP_TOKEN`. The paired phone credential opens production updates; every other role is refused.
 - **Stage 7 adds the Docker gateway,** with TLS and optional OAuth.
 
-### A trusted endpoint for this stage's remote test
+### Trusted endpoints
 
-Either of these works, and the sidecar's configuration stays the same apart from `SIDECAR_PUBLIC_URL`.
+For production updates, configure the sidecar's TLS identity as shown in [`docs/development/sidecar.md`](development/sidecar.md#production-update-listener), then expose that secure loopback socket with a TLS pass-through or gRPC-aware HTTP/2 route. A proxy that speaks HTTP/1.1 to the sidecar can carry the old unary APIs but cannot carry the bidirectional `Subscribe` call. Never treat polling or a server-only stream as a transport fallback.
+
+The following older examples remain suitable for the Stage 1 diagnostic and unary pairing/manual-refresh path. Do not assume they carry the production update stream unless their configuration is separately proven to preserve HTTP/2 to the secure sidecar listener.
 
 **Tailscale Serve,** when the phone and the Mac are on the same tailnet:
 
@@ -100,9 +104,9 @@ Only devices on the tailnet can reach this endpoint.
 
 **Caddy,** on a machine with a public DNS name and ports 80 and 443 open: run `caddy reverse-proxy --from vault.example.com --to 127.0.0.1:8080`. Caddy gets a certificate automatically and forwards to the sidecar. Then set `SIDECAR_PUBLIC_URL=https://vault.example.com`.
 
-Don't use a self-signed certificate. The phone rightly refuses it, and the only way around that is weakening its checks.
+Don't use a self-signed certificate. The phone rightly refuses it, and the only way around that is weakening its checks. The automated production-listener test trusts a throwaway local certificate only inside the test process; no such trust configuration ships.
 
-`sidecar/src/pairing/tls.test.ts` runs a TLS endpoint in front of the sidecar and pairs through it. Pairing works with a trusted certificate. An untrusted certificate, or one for another host name, fails before the token is sent, and the token stays usable.
+`sidecar/src/pairing/tls.test.ts` covers legacy unary proxying and certificate refusal. `sidecar/src/updates/service.test.ts` drives gRPC over negotiated HTTP/2 into the actual secure sidecar listener while also proving its health, authenticated MCP, pairing, and RequestService HTTP/1 calls still work.
 
 ## Local storage and recovery
 

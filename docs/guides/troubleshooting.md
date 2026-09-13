@@ -333,7 +333,8 @@ here builds a replacement transaction for you.
 
 Sending is not succeeding. Your wallet handed the transaction to the network and gave it back an
 ID; whether it landed is something only the network can say. Tap **Check status** and the server
-looks the ID up on the chain.
+looks the ID up on the chain. A configured production Sync also performs the same bounded,
+read-only lookup for submitted Activity records; it does not send anything.
 
 That check opens no wallet, signs nothing, and sends nothing a second time. You can tap it as often
 as you like. A transfer usually confirms within a few seconds, so if it stays like this for a
@@ -350,8 +351,9 @@ review the new request as you did the first.
 
 ### "The server has not looked this up on the network yet"
 
-The server hasn't been asked yet, or its last look settled nothing. It has no background worker on
-purpose: it checks when you tap **Check status**, or when the agent reads the request. If checking
+The server hasn't been asked yet, or its last look settled nothing. It does not poll the chain on
+its own: it checks when you tap **Check status**, when the agent reads the request, or when a
+foreground/background production Sync supplies this nonterminal Activity record. If checking
 keeps failing, the server can't reach its Solana RPC endpoint — check `SOLANA_RPC_URL` in its
 `.env`, and that the machine has a network. **Nothing about your transaction changes while the
 server can't see it.** A server that cannot look is not a transaction that failed.

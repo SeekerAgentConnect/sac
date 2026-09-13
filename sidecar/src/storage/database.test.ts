@@ -77,6 +77,11 @@ describe("the sidecar database", () => {
         "requests",
         "results",
         "server",
+        "update_events",
+        "update_snapshot_deferred",
+        "update_snapshot_items",
+        "update_snapshots",
+        "update_state",
       ]);
     } finally {
       db.close();

@@ -35,3 +35,35 @@ Run on 2026-09-13 on macOS 26.5.2 (Apple silicon). The Android SDK came from the
 | `pnpm check:android` | PASS: Spotless, 746/746 JVM tests including the real full-duplex proof, lint, and debug and instrumentation APKs. |
 | Deliberate transport break | PASS: requiring the HTTP/2 proof server to accept HTTP/1.1 made `GrpcBidiInteropTest` fail; the source was restored and the test passed. |
 | Physical Seeker | **NOT RUN.** SAW-048 changes no production phone behavior. |
+
+## SAW-049 — production sidecar stream and sync
+
+SAW-049 attaches the contract to the same durable queue used by MCP and RequestService. It adds sidecar behavior only: the Android app does not consume the new endpoint until SAW-050 and SAW-051, and no worker is scheduled until SAW-052.
+
+### Automated coverage
+
+- `sidecar/src/updates/service.test.ts` connects a real Node gRPC client to the production secure listener over negotiated HTTP/2. On that same listener, HTTPS health, an authenticated MCP initialize, pairing capability discovery, and HTTP/1 RequestService remain usable. The suite also exercises the separate loopback h2c development listener.
+- A subscription receives durable create, cancel, expiry, and revocation events with increasing request revisions; a client heartbeat can be sent while server events continue. Durable commits wake the stream directly: the delivery test sets the idle housekeeping interval to 60 seconds and still requires the new request within 500 milliseconds. A newer stream cancels the old generation, pairing replacement closes the revoked stream, and shutdown destroys retained HTTP/2 sessions.
+- A retained cursor replays through `replay_complete`. More than the retained 512 mutations makes an old/slow cursor require a snapshot. Restart changes the process instance, invalidates its cursor, and recovers the still-pending request with Sync.
+- Sync pages a disk-frozen pending set: a cancellation between pages does not rewrite the incomplete snapshot. A missing named Activity reference returns a revisioned removal; page tokens and every reference remain connection-scoped. The MCP token cannot call either update RPC, and an authenticated connection cannot name another one.
+- `sidecar/src/updates/store.test.ts` checks the source transaction log directly: create, completion, agent cancellation, expiry, wallet-binding cancellation, and revocation each publish exactly once, while duplicate/idempotent operations do not. The revocation marker follows its request cancellations.
+- `sidecar/src/updates/confirmation.test.ts` advances a controlled chain only after a transfer is SUBMITTED. Sync—not CheckStatus—settles it only after `ConfirmationTracker` fetches and matches the approved bytes, and the committed confirmation is then streamed. With five eligible transfers, exactly four are checked and the deferred record rotates into the next run. The fake chain exposes no send or simulation method.
+- `sidecar/src/config.test.ts`, `storage/database.test.ts`, and `stage-boundary.test.ts` cover valid/invalid TLS and h2c configuration, schema migration 4, file/SQL boundaries, and confinement of HTTP/2/update-protocol code.
+
+The TLS test identity is generated locally for the test and trusted only by that test client. Production continues to require a publicly trusted certificate. All chain advancement is deterministic on loopback; no cluster, wallet, or funds are used.
+
+### Verification record
+
+Run on 2026-09-13 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, Buf 1.72.0, and the other pinned versions in [`docs/development/toolchain.md`](../development/toolchain.md). The Android SDK came from the machine's existing `ANDROID_HOME`; no machine path was written to the repository.
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, Buf format/lint, ESLint, TypeScript, 410/410 sidecar tests, and 29/29 test-agent tests. |
+| Production TLS/h2 and loopback h2c integration | PASS: all 5 cases, including the actual gRPC client, HTTP/1 health/MCP/Connect compatibility, replay, frozen Sync, isolation, replacement, revocation, retention gap, and restart recovery. |
+| `pnpm test:hello` | PASS: all 9 Stage 1 simulated-device cases remain compatible. |
+| `pnpm test:queue` | PASS: all 7 Stage 2 durable queue cases remain compatible. |
+| `pnpm check:android` | PASS: Spotless, 746/746 JVM tests, lint, and the debug and instrumentation APKs. |
+| `pnpm check:generated` | PASS: generated protocol code and fixtures are current. SEE-68 changes no schema. |
+| `pnpm build` | PASS: the sidecar and test-agent production TypeScript builds compile. |
+| Deliberate confirmation-bound break | PASS: changing the Sync confirmation limit from four to five failed `updates/confirmation.test.ts` because the required deferred record disappeared; restoring four passed both focused cases. |
+| Physical Seeker | **NOT RUN.** SAW-049 changes only the sidecar; the phone transport arrives in SAW-050. |
