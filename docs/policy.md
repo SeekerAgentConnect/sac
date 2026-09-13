@@ -1,21 +1,21 @@
 # Policies
 
-The rules the owner sets for one connection, and how a request is assessed against them. The rules live on the phone; the assessment is something the owner reads. Neither reaches an agent, and neither decides anything on its own.
+The global defaults and connection overrides the owner sets, and how a request is assessed against their effective rules. The rules live on the phone; the assessment is something the owner reads. Neither reaches an agent, and neither decides anything on its own.
 
-Stage 5 builds this in four steps. **SAW-025 defined the model and the semantics, SAW-026 made the phone apply them — a real request is assessed against a stored policy, and the day's spending is counted from the app's own records — and SAW-027 gave the owner the editor to write one in** ([`guides/policies.md`](guides/policies.md)). The request-review screen that shows the assessment is SAW-028. Until it lands a verdict is computed and never displayed, so the review screen still says "Not evaluated" as it has since Stage 4.
+Stage 5 built the per-connection system in five steps: SAW-025 defined it, SAW-026 evaluated it, SAW-027 added the editor, SAW-028 put the assessment in review, and SAW-029 exercised the whole path. Stage 5.1 extends that system rather than adding another policy engine. **SAW-043 adds the global and override documents, their migration, and the pure effective-policy resolver.** SAW-044 will feed those effective rules and both daily scopes into evaluation; SAW-045 will add the corresponding editors. Until those follow-ups land, the completed Stage 5 editor and evaluator keep using their local-only compatibility view.
 
 ## What a policy is
 
-A note the owner writes to themselves about one connection: what this agent is expected to ask for. It is not a permission system.
+A note the owner writes to themselves about what every connection may ask for by default, and where one connection differs. It is not a permission system.
 
-- **It lives only on the phone,** in `policy/storage/` (`PolicyStore`), one file per connection. The sidecar is never sent the rules, and never sent the assessment. An agent cannot read them, and cannot change them.
-- **It is per connection.** One connection's rules are in one file and nowhere else, so they can never be read for another connection, and removing one connection's rules leaves every other connection's as they were.
+- **It lives only on the phone,** in `policy/storage/` (`PolicyStore`): one global file and at most one override file per connection. The sidecar is never sent the rules, and never sent the assessment. An agent cannot read them, and cannot change them.
+- **Global rules are defaults; connection rules are explicit overrides.** A connection with no override document inherits. Removing a connection removes only its overrides. Removing the global document preserves every connection's overrides.
 - **It approves nothing.** `ALLOWED` means the parameters matched the rules. The owner still approves by hand, in the app and again in their wallet.
 - **It blocks nothing.** There is no `BLOCKED`. A request outside the rules is shown with its reasons, and the owner may go ahead anyway.
 
 ## Schema
 
-`ConnectionPolicy` (`policy/Policy.kt`):
+Stage 5's `ConnectionPolicy` (`policy/Policy.kt`) remains the flat, local-only value consumed by the existing editor and evaluator while Stage 5.1 lands in ordered tickets:
 
 | Field | Type | What it restricts |
 | --- | --- | --- |
@@ -26,6 +26,50 @@ A note the owner writes to themselves about one connection: what this agent is e
 | `programs` | `Allowlist<String>?` | Which programs the transaction may call |
 | `limits` | `Map<PolicyAsset, AssetLimits>` | What may move, per asset: `perOperation` and `daily` |
 | `updatedAt` | `Instant` | When the owner last saved |
+
+SAW-043 adds the two persisted Stage 5.1 models:
+
+| Model | Fields | Meaning |
+| --- | --- | --- |
+| `GlobalPolicy` | The same four nullable allowlists, per-asset `AssetLimits`, and `updatedAt` | Defaults for every connection, including connections paired later |
+| `ConnectionPolicyOverrides` | `connectionId`; four `RuleOverride<Allowlist<…>>` sections; per-asset `ConnectionAssetLimits`; `updatedAt` | Only what one connection changes from the global document |
+
+`RuleOverride` keeps three states that cannot be collapsed:
+
+| State | Meaning |
+| --- | --- |
+| `Inherit` | Use the global value; if no global value exists, no check is configured |
+| `NoCheck` | Deliberately replace the global value with no check |
+| `Replace(value)` | Replace the whole global value. For an allowlist, `Replace([])` is a configured check that allows nothing |
+
+`ConnectionAssetLimits.perOperation` uses those same three states per asset and network. Its `daily` value is different: it is a separate connection-scoped daily check, not an override of the global daily check.
+
+### Effective resolution
+
+`resolveEffectivePolicy` (`policy/EffectivePolicy.kt`) is pure: the same global document and connection override document produce the same `EffectivePolicy`, without storage, a clock, a request, or a side effect. Every effective value includes `RuleSource.Global`, `RuleSource.ConnectionOverride`, or `RuleSource.NotConfigured`.
+
+Allowlist sections resolve independently and replace in full:
+
+| Global section | Connection section | Effective section | Source |
+| --- | --- | --- | --- |
+| list | `Inherit` | global list | Global |
+| absent | `Inherit` | no check | Not configured |
+| any | `NoCheck` | no check | Connection override |
+| any | `Replace([])` | configured empty list; nothing matches | Connection override |
+| any | `Replace(list)` | connection list only | Connection override |
+
+There is no union mode. Global programs plus local recipients produce both checks; global programs plus local programs produce only the local program check. One section never changes how another resolves.
+
+Per-request thresholds resolve the same way, independently for each `PolicyAsset`, and independently from the asset allowlist section. Replacing the asset list does not delete an inherited threshold.
+
+Daily thresholds are the exception to override resolution. An `EffectiveAssetLimits` carries `globalDaily` and `connectionDaily` separately:
+
+- the global value is checked against spending across connections;
+- the connection value is checked against spending for this connection;
+- when both exist, they remain two checks and both must pass for a match;
+- inheritance, `NoCheck`, an asset-list replacement, a per-request replacement, or deleting/resetting the connection document cannot remove the global daily value.
+
+The two scopes are validated independently. A global daily threshold of 5 and a local per-request threshold of 10 is meaningful — either warning may bind first — and is not the malformed same-document case `DailyBelowPerOperation` describes.
 
 **`PolicyAsset` is a network and a mint,** and native SOL is a mint of none. The network is part of the asset's identity because the same mint on devnet and on mainnet are not the same thing to spend, and a rule written for one must never be read as covering the other.
 
@@ -52,16 +96,20 @@ The same holds for an amount: no `perOperation` is no threshold, and it is not a
 | `NotAnAddress`, `NotAMint` | An address is base58 for 32 bytes, exactly as the sidecar reads one |
 | `NoNetwork` | An asset with no network names no chain, so there is nothing the rule is about |
 | `ZeroLimit` | See above: that is an empty list, written confusingly |
-| `DailyBelowPerOperation` | The per-operation limit could never bind, so one of the two numbers is a mistake |
+| `DailyBelowPerOperation` | Within one document and scope, the per-operation limit could never bind, so one of the two numbers is a mistake |
 | `LimitForUnlistedAsset` | The asset check fails first, so the threshold could never be reached and the owner would be reading a number that means nothing |
 
 The editor can't type most of these. It validates an address before it is added to a list, it hangs thresholds off the asset rows so a limit for an unlisted asset can't be written at all, and it refuses to save an amount it couldn't read. `policyProblems` stays the store's own guard rather than the screen's: what the app refuses to write, it refuses to read back.
 
-## Defaults
+## Defaults and reset semantics
 
-A connection with no policy, and a policy with nothing configured, come to the same thing: **`UNDER_RESTRICTIONS`, with the reason `no_policy_configured`.**
+A connection with no override document inherits every global section and per-request threshold. This is also how a newly paired connection starts; pairing does not copy or create a policy document.
 
-Nothing configured is not a match. A policy that asks nothing of a request has said nothing about it, and saying nothing must never read as approval. This is the default state of every connection, and it will stay the default until the owner writes a rule.
+Deleting or resetting a connection removes only `<connection ID>.json`, returning every section and per-request threshold to inheritance. It never changes `global.json`. Deleting the global rules removes only `global.json`; explicit local replacements and explicit local no-check states remain.
+
+With no global rules and no local configured values, the effective policy checks nothing: **`UNDER_RESTRICTIONS`, with the reason `no_policy_configured`.** This is also the result of every migrated Stage 5 document that configured nothing.
+
+Nothing configured is not a match. A policy that asks nothing of a request has said nothing about it, and saying nothing must never read as approval.
 
 ## What is evaluated
 
@@ -295,16 +343,17 @@ And one movement can be counted as exposure that never happened: an `unresolved`
 
 ## Storage
 
-One JSON file per connection, `<filesDir>/policies/<connection ID>.json`, written atomically. Nothing here is encrypted, because a policy holds no credential and no key: public addresses and the owner's own thresholds. Nothing on the phone is backed up.
+`PolicyStore` keeps one global document at `<filesDir>/policies/global.json` and at most one override document per connection at `<filesDir>/policies/<connection ID>.json`. Every document is written whole with Android's `AtomicFile`. Nothing here is encrypted, because a policy holds no credential and no key: public addresses and the owner's own thresholds. Nothing on the phone is backed up.
+
+A version 2 global document has ordinary nullable rules because there is nothing above it to inherit from:
 
 ```json
 {
-  "version": 1,
-  "connectionId": "6a5f0a0e-2f2f-4a07-9a1f-4f0f2b3f9a11",
-  "updatedAt": "2026-09-12T10:00:00Z",
+  "version": 2,
+  "scope": "global",
+  "updatedAt": "2026-09-13T10:00:00Z",
   "actions": ["transfer"],
-  "assets": [{ "network": "NETWORK_MAINNET" }],
-  "recipients": [],
+  "programs": ["11111111111111111111111111111111"],
   "limits": [
     {
       "asset": { "network": "NETWORK_MAINNET" },
@@ -315,18 +364,42 @@ One JSON file per connection, `<filesDir>/policies/<connection ID>.json`, writte
 }
 ```
 
-An absent key is a check with no list; `[]` is a list that allows nothing. Amounts are decimal strings, because a 64-bit base-unit amount doesn't survive a JSON number. `"programs"` is absent above, so programs are not checked.
+An absent global list or threshold is no check. An empty global array is a configured check that allows nothing. Amounts remain decimal strings because an unsigned 64-bit base-unit amount does not survive a JSON number.
+
+A version 2 connection document stores only its overrides:
+
+```json
+{
+  "version": 2,
+  "scope": "connection",
+  "connectionId": "6a5f0a0e-2f2f-4a07-9a1f-4f0f2b3f9a11",
+  "updatedAt": "2026-09-13T11:00:00Z",
+  "actions": { "mode": "no_check" },
+  "recipients": { "mode": "replace", "values": [] },
+  "limits": [
+    {
+      "asset": { "network": "NETWORK_MAINNET" },
+      "perOperation": { "mode": "replace", "amount": "2000000" },
+      "daily": "6000000"
+    }
+  ]
+}
+```
+
+An absent connection section or `perOperation` inherits. `no_check` is an explicit override to configure no check. `replace` supplies the whole local value, and an empty `values` array still allows nothing. A connection `daily` is a separate local daily check; it has no mode that can disable the global one. `"programs"` and `"assets"` are absent above, so both inherit.
 
 ### Versions and migration
 
-`version` is the document format, and version 1 is the first this app ever wrote.
+`version` is the document format. Stage 5 wrote version 1 connection documents; SAW-043 writes version 2 global and connection documents.
 
 - **A newer version is refused,** as `NewerVersion`. Reading a document this build only half understands would show the owner fewer rules than they set, and saving it back would delete the rest.
-- **An older version is upgraded,** never refused. There is no older version yet; when version 2 arrives, its reader upgrades a version 1 document rather than turning it away, and an upgrade step is kept for every version this app has written.
+- **A version 1 connection document is migrated atomically and idempotently.** Every configured list becomes `Replace`, including an empty list. An absent list becomes `Inherit`. Every existing per-operation threshold becomes a per-asset `Replace`, and every existing daily threshold stays connection-scoped. `updatedAt` and all configured values are preserved.
+- **Migration never creates `global.json`.** With no global document, the migrated effective values are the values Stage 5 evaluated, so upgrading alone changes no assessment.
+- **An interrupted migration keeps the previous complete document.** A failed atomic replacement is retried the next time the rules are read; opening over a leftover partial `.new` file recovers the last complete base file. Re-reading a migrated file does not rewrite it.
 - **A rule this build has no name for makes the whole document unreadable,** as `UnknownRule` — an action kind or a network it doesn't know. Reading a shorter list would be safe on its own, since these are allowlists and dropping an entry only makes them stricter. It is refused because of what happens next: the owner opens the editor, sees a policy missing a rule they wrote, saves it, and the rule is gone.
-- **Anything else that doesn't read back is `Damaged`,** including a file that names another connection, a malformed timestamp, an amount that isn't a whole number of base units, and a policy this app would have refused to write.
+- **Anything else that doesn't read back is `Damaged`,** including a document with the wrong scope, a file that names another connection, a malformed timestamp, a duplicate asset entry, an amount that isn't a whole number of base units, and a policy this app would have refused to write.
 
-A connection whose rules can't be read is never treated as a connection with none. `StoredPolicy` says which of the three it is — `None`, `Policy`, or `Unreadable` — and an unreadable one assesses as `UNDER_RESTRICTIONS` with `policy_unreadable`.
+Missing and unreadable remain different for both scopes. `StoredGlobalPolicy` and `StoredConnectionOverrides` each say `None`, `Policy`, or `Unreadable`; an unreadable global file does not become no global rules, and an unreadable connection file does not become inheritance. Reading either one never overwrites it. Stage 5's `StoredPolicy` is retained as the local-only compatibility view until SAW-044 moves evaluation to the effective model.
 
 ## The protocol's `PolicyEvaluation`
 
@@ -359,7 +432,8 @@ Each scenario is also run through a second connection that has written no rules,
 
 | File | What it holds |
 | --- | --- |
-| `policy/Policy.kt` | `ConnectionPolicy`, `Allowlist`, `PolicyAsset`, `AssetLimits`, `PolicyAction`, and `policyProblems` |
+| `policy/Policy.kt` | The flat Stage 5 policy; `GlobalPolicy`; `ConnectionPolicyOverrides`; `RuleOverride`; assets, limits, validation, and migration conversions |
+| `policy/EffectivePolicy.kt` | `EffectivePolicy`, source metadata, separate daily scopes, and the pure resolver |
 | `policy/PolicyDecision.kt` | `PolicyAssessment`, `PolicyCheck`, `PolicyCheckStatus`, `PolicyReason`, `PolicyDecision`, `assess`, and `noPolicy` |
 | `policy/RequestFacts.kt` | `RequestFacts`, and `policyFacts`, which reads them off a request and its inspection |
 | `policy/PolicyEvaluation.kt` | `evaluate`, the six checks, and `PolicyEvaluator` |
@@ -368,11 +442,11 @@ Each scenario is also run through a second connection that has written no rules,
 | `policy/PolicyEditorViewModel.kt` | `PolicyUiState`, and load, edit, save, remove, start over |
 | `policy/PolicyEditorScreen.kt` | The editor itself |
 | `policy/PolicyText.kt` | `PolicyTags`, the owner's words for each rule and each verdict, reason and check, and the plain-language summary |
-| `policy/storage/PolicyStore.kt` | The document, its versions, and `StoredPolicy` |
+| `policy/storage/PolicyStore.kt` | Global and connection documents, version 1 migration, atomic writes, and the three stored states for each scope |
 | `inbox/PolicyReview.kt` | The assessment on Request details, and the step before going ahead anyway |
 | `inbox/InboxViewModel.kt` | `RequestAssessment`, when an assessment is made, and the re-read before an answer |
 | `activity/ActivityRecord.kt` | `ReviewedPolicy`, the snapshot kept with the record |
 
-Tests: `policy/PolicyTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyScenarioTest`, `policy/PolicyWordingTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`.
+Tests: `policy/PolicyTest`, `policy/EffectivePolicyTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyScenarioTest`, `policy/PolicyWordingTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, `policy/storage/PolicyStoreV2Test`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`.
 
 `StageBoundaryTest` keeps the package unable to act — the editor included. Everything it may reach into is a read: the connection ID rule, the protocol's requests and networks, what the phone read out of a transaction's bytes, the owner's own activity records, the address rule, and the app's own strings, back button, and date format. It may reach nothing that opens a wallet, a connection, or a socket.

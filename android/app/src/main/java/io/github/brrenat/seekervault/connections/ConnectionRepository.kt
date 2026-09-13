@@ -80,9 +80,10 @@ class ConnectionRepository(
      */
     private val history: ActivityLog? = null,
     /**
-     * The owner's rules for each connection (SAW-027). Optional for the same reason [history] is: a
-     * phone with none still pairs, answers, and removes. Nothing here reads a policy — the rules
-     * are the owner's own note, and this only makes sure a removed connection's note goes with it.
+     * The owner's overrides for each connection (SAW-027, SAW-043). Optional for the same reason
+     * [history] is: a phone with none still pairs, answers, and removes. Nothing here reads a
+     * policy — it only makes sure a removed connection's overrides go with it, without touching
+     * global rules.
      */
     private val rules: PolicyStore? = null,
     private val deviceName: String,

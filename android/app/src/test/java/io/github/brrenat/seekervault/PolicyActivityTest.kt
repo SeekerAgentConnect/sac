@@ -14,14 +14,17 @@ import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.policy.Allowlist
+import io.github.brrenat.seekervault.policy.GlobalPolicy
 import io.github.brrenat.seekervault.policy.PolicyAction
 import io.github.brrenat.seekervault.policy.PolicyAsset
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.policy.RECIPIENTS
 import io.github.brrenat.seekervault.policy.SpendScope
+import io.github.brrenat.seekervault.policy.storage.StoredGlobalPolicy
 import io.github.brrenat.seekervault.policy.storage.StoredPolicy
 import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
+import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -138,6 +141,10 @@ class PolicyActivityTest {
     @Test
     fun aConnectionsRulesGoWhenTheConnectionDoes() {
         val connection = pair()
+        val global =
+            GlobalPolicy.default(Instant.parse("2026-09-13T12:00:00Z"))
+                .copy(actions = Allowlist.of(PolicyAction.Transfer))
+        app.policyStore.putGlobal(global)
         launch()
         openRules(connection)
         compose.onNodeWithTag(PolicyTags.restrict("actions")).performScrollTo().performClick()
@@ -149,6 +156,7 @@ class PolicyActivityTest {
         compose.onNodeWithTag(ConnectionsTags.EMPTY).assertExists()
         assertFalse(File(app.filesDir, "policies/${connection.id}.json").exists())
         assertEquals(emptySet<String>(), app.policyStore.connectionIds())
+        assertEquals(StoredGlobalPolicy.Policy(global), app.policyStore.getGlobal())
     }
 
     @Test

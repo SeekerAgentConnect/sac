@@ -59,6 +59,97 @@ data class ConnectionPolicy(
 }
 
 /**
+ * The rules that apply by default to every connection.
+ *
+ * A global policy is still only the owner's phone-local note. It has no connection ID because it
+ * belongs to the phone rather than to an agent, and it has no way to approve, reject, sign, or send
+ * anything. [ConnectionPolicyOverrides] says where one connection differs from it.
+ */
+data class GlobalPolicy(
+    val actions: Allowlist<PolicyAction>? = null,
+    val assets: Allowlist<PolicyAsset>? = null,
+    val recipients: Allowlist<String>? = null,
+    val programs: Allowlist<String>? = null,
+    val limits: Map<PolicyAsset, AssetLimits> = emptyMap(),
+    val updatedAt: Instant,
+) {
+    val configuresNothing: Boolean
+        get() =
+            actions == null &&
+                assets == null &&
+                recipients == null &&
+                programs == null &&
+                limits.values.none { it.configuresSomething }
+
+    fun limitsFor(asset: PolicyAsset): AssetLimits = limits[asset] ?: AssetLimits()
+
+    companion object {
+        fun default(at: Instant): GlobalPolicy = GlobalPolicy(updatedAt = at)
+    }
+}
+
+/**
+ * One connection's choice for a rule supplied by the global policy.
+ *
+ * [Inherit] means use the global rule. [NoCheck] deliberately replaces it with no check, which is
+ * observably different from inheriting when a global rule exists. [Replace] replaces the whole
+ * rule; for an [Allowlist], an empty value is a configured list that allows nothing.
+ */
+sealed interface RuleOverride<out T : Any> {
+    data object Inherit : RuleOverride<Nothing>
+
+    data object NoCheck : RuleOverride<Nothing>
+
+    data class Replace<T : Any>(val value: T) : RuleOverride<T>
+}
+
+/** One connection's thresholds for one asset. */
+data class ConnectionAssetLimits(
+    /**
+     * Per-request thresholds inherit, deliberately configure no check, or replace the global one.
+     */
+    val perOperation: RuleOverride<ULong> = RuleOverride.Inherit,
+    /** A connection daily threshold is an additional check, never an override of the global one. */
+    val daily: ULong? = null,
+) {
+    val configuresSomething: Boolean
+        get() = perOperation != RuleOverride.Inherit || daily != null
+}
+
+/**
+ * The rules one connection changes from the phone's global defaults.
+ *
+ * A missing document means the same thing as [inheritAll]: new connections inherit without a file
+ * being created. Deleting this document resets only this connection. It never deletes the global
+ * document or changes another connection.
+ */
+data class ConnectionPolicyOverrides(
+    val connectionId: String,
+    val actions: RuleOverride<Allowlist<PolicyAction>> = RuleOverride.Inherit,
+    val assets: RuleOverride<Allowlist<PolicyAsset>> = RuleOverride.Inherit,
+    val recipients: RuleOverride<Allowlist<String>> = RuleOverride.Inherit,
+    val programs: RuleOverride<Allowlist<String>> = RuleOverride.Inherit,
+    val limits: Map<PolicyAsset, ConnectionAssetLimits> = emptyMap(),
+    val updatedAt: Instant,
+) {
+    val hasNoOverrides: Boolean
+        get() =
+            actions == RuleOverride.Inherit &&
+                assets == RuleOverride.Inherit &&
+                recipients == RuleOverride.Inherit &&
+                programs == RuleOverride.Inherit &&
+                limits.values.none { it.configuresSomething }
+
+    fun limitsFor(asset: PolicyAsset): ConnectionAssetLimits =
+        limits[asset] ?: ConnectionAssetLimits()
+
+    companion object {
+        fun inheritAll(connectionId: String, at: Instant): ConnectionPolicyOverrides =
+            ConnectionPolicyOverrides(connectionId = connectionId, updatedAt = at)
+    }
+}
+
+/**
  * A list the owner configured. Its absence — a `null` in [ConnectionPolicy] — is not an empty list:
  * an absent list means the owner configured no such check, so nothing is checked and the review
  * says the parameter wasn't covered. An empty list means the owner configured the check and put
@@ -157,30 +248,122 @@ enum class PolicyProblem {
 fun policyProblems(policy: ConnectionPolicy): List<PolicyProblem> {
     val problems = mutableListOf<PolicyProblem>()
     if (!isConnectionId(policy.connectionId)) problems += PolicyProblem.NotAConnection
-    if (policy.recipients?.values.orEmpty().any { !isSolanaAddress(it) }) {
+    problems +=
+        ruleProblems(
+            recipients = policy.recipients,
+            programs = policy.programs,
+            assets = policy.assets,
+            limits = policy.limits,
+        )
+    return problems.distinct()
+}
+
+/** Everything wrong with a global document. It has no connection ID to validate. */
+fun policyProblems(policy: GlobalPolicy): List<PolicyProblem> =
+    ruleProblems(policy.recipients, policy.programs, policy.assets, policy.limits)
+
+/** Everything wrong with one connection's explicit overrides. */
+fun policyProblems(policy: ConnectionPolicyOverrides): List<PolicyProblem> {
+    val problems = mutableListOf<PolicyProblem>()
+    if (!isConnectionId(policy.connectionId)) problems += PolicyProblem.NotAConnection
+    val limits =
+        policy.limits.mapValues { (_, value) ->
+            AssetLimits(
+                perOperation = value.perOperation.replacement,
+                daily = value.daily,
+            )
+        }
+    problems +=
+        ruleProblems(
+            recipients = policy.recipients.replacement,
+            programs = policy.programs.replacement,
+            assets = policy.assets.replacement,
+            limits = limits,
+        )
+    return problems.distinct()
+}
+
+private fun ruleProblems(
+    recipients: Allowlist<String>?,
+    programs: Allowlist<String>?,
+    assets: Allowlist<PolicyAsset>?,
+    limits: Map<PolicyAsset, AssetLimits>,
+): List<PolicyProblem> {
+    val problems = mutableListOf<PolicyProblem>()
+    if (recipients?.values.orEmpty().any { !isSolanaAddress(it) }) {
         problems += PolicyProblem.NotAnAddress
     }
-    if (policy.programs?.values.orEmpty().any { !isSolanaAddress(it) }) {
+    if (programs?.values.orEmpty().any { !isSolanaAddress(it) }) {
         problems += PolicyProblem.NotAnAddress
     }
-    val assets = policy.assets?.values.orEmpty() + policy.limits.keys
-    if (assets.any { it.mint != null && !isSolanaAddress(it.mint) })
+    val namedAssets = assets?.values.orEmpty() + limits.keys
+    if (namedAssets.any { it.mint != null && !isSolanaAddress(it.mint) })
         problems += PolicyProblem.NotAMint
-    if (assets.any { it.network == Network.NETWORK_UNSPECIFIED })
+    if (namedAssets.any { it.network == Network.NETWORK_UNSPECIFIED })
         problems += PolicyProblem.NoNetwork
-    for ((asset, limits) in policy.limits) {
-        if (limits.perOperation == 0UL || limits.daily == 0UL) problems += PolicyProblem.ZeroLimit
-        val perOperation = limits.perOperation
-        val daily = limits.daily
+    for ((asset, value) in limits) {
+        if (value.perOperation == 0UL || value.daily == 0UL) problems += PolicyProblem.ZeroLimit
+        val perOperation = value.perOperation
+        val daily = value.daily
         if (perOperation != null && daily != null && daily < perOperation) {
             problems += PolicyProblem.DailyBelowPerOperation
         }
         // A limit on an asset the list doesn't allow is dead text: the asset check fails first, and
         // the owner would be reading a threshold that can never be reached.
-        val allowed = policy.assets
-        if (limits.configuresSomething && allowed != null && asset !in allowed) {
+        if (value.configuresSomething && assets != null && asset !in assets) {
             problems += PolicyProblem.LimitForUnlistedAsset
         }
     }
     return problems.distinct()
 }
+
+/** The replacement value, or null for inheritance and an explicit no-check override. */
+val <T : Any> RuleOverride<T>.replacement: T?
+    get() = (this as? RuleOverride.Replace<T>)?.value
+
+/**
+ * Stage 5's flat connection policy represented as Stage 5.1 overrides.
+ *
+ * Every value Stage 5 configured becomes a connection replacement. Every absent field inherits, and
+ * an existing daily threshold stays a connection-scoped daily check. With no global document,
+ * resolving this produces the same effective values Stage 5 evaluated.
+ */
+fun overridesOf(policy: ConnectionPolicy): ConnectionPolicyOverrides =
+    ConnectionPolicyOverrides(
+        connectionId = policy.connectionId,
+        actions = policy.actions.asOverride(),
+        assets = policy.assets.asOverride(),
+        recipients = policy.recipients.asOverride(),
+        programs = policy.programs.asOverride(),
+        limits =
+            policy.limits.mapValues { (_, value) ->
+                ConnectionAssetLimits(
+                    perOperation = value.perOperation.asOverride(),
+                    daily = value.daily,
+                )
+            },
+        updatedAt = policy.updatedAt,
+    )
+
+/**
+ * The local-only compatibility view used by the completed Stage 5 editor and evaluator.
+ *
+ * Inheritance and an explicit no-check both appear as an absent local rule here. Code that needs to
+ * distinguish them uses [ConnectionPolicyOverrides] and the effective-policy resolver instead.
+ */
+fun localPolicyOf(overrides: ConnectionPolicyOverrides): ConnectionPolicy =
+    ConnectionPolicy(
+        connectionId = overrides.connectionId,
+        actions = overrides.actions.replacement,
+        assets = overrides.assets.replacement,
+        recipients = overrides.recipients.replacement,
+        programs = overrides.programs.replacement,
+        limits =
+            overrides.limits.mapValues { (_, value) ->
+                AssetLimits(perOperation = value.perOperation.replacement, daily = value.daily)
+            },
+        updatedAt = overrides.updatedAt,
+    )
+
+private fun <T : Any> T?.asOverride(): RuleOverride<T> =
+    if (this == null) RuleOverride.Inherit else RuleOverride.Replace(this)

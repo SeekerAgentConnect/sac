@@ -66,8 +66,8 @@ class SeekerVaultApplication : Application() {
     }
 
     /**
-     * The rules the owner set for each connection (docs/policy.md#storage), in `filesDir`. Nothing
-     * here is encrypted, because a policy holds no credential and no key.
+     * The global rules and connection overrides the owner set (docs/policy.md#storage), in
+     * `filesDir`. Nothing here is encrypted, because a policy holds no credential and no key.
      */
     val policyStore: PolicyStore by lazy { PolicyStore(File(filesDir, "policies")) }
 
@@ -96,7 +96,7 @@ class SeekerVaultApplication : Application() {
             results = ResultStore(File(filesDir, "results")),
             gateway = connectionGateway(),
             history = activityLog,
-            // A connection's rules go when the connection does.
+            // A connection's overrides go when it does. Global rules are a separate document.
             rules = policyStore,
             deviceName = Build.MODEL,
             io = connectionIo,

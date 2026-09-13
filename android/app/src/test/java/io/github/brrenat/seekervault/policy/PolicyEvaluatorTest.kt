@@ -4,10 +4,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.activity.ActivityRecord
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
+import io.github.brrenat.seekervault.policy.storage.StoredGlobalPolicy
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -97,6 +100,27 @@ class PolicyEvaluatorTest {
 
         assertEquals(before, after)
         assertEquals(listOf("over_daily_limit"), after.reasonCodes)
+    }
+
+    @Test
+    fun migratingAStage5DocumentDoesNotChangeItsAssessment() {
+        val old = policy().copy(actions = Allowlist.of(PolicyAction.Transfer))
+        File(dir, "$CONNECTION.json")
+            .writeText(
+                JSONObject()
+                    .put("version", 1)
+                    .put("connectionId", CONNECTION)
+                    .put("updatedAt", old.updatedAt.toString())
+                    .put("actions", JSONArray(listOf("transfer")))
+                    .toString()
+            )
+        val facts = solFacts()
+
+        val afterUpgrade = evaluator().evaluate(facts)
+
+        assertEquals(evaluate(old, facts), afterUpgrade)
+        assertEquals(2, JSONObject(File(dir, "$CONNECTION.json").readText()).getInt("version"))
+        assertEquals(StoredGlobalPolicy.None, PolicyStore(dir).getGlobal())
     }
 
     @Test
