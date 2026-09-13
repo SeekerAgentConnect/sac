@@ -140,6 +140,87 @@ Both mutations were applied, run, observed failing, reverted, and followed by a 
 | Warning consent ignored the applicable effective policy | `InboxViewModelTest.aGlobalEditWithTheSameRenderedWarningStopsAfterTheWalletLockWait` failed at its `RulesChanged` assertion, proving a same-looking global edit would otherwise pass the stale assessment guard |
 | Assessment reused the process's Activity snapshot instead of reloading disk | Both focused cross-connection tests failed: newly unresolved exposure did not stop approval, and foreground confirmation/failure did not clear consent |
 
-## Physical-Seeker checks
+## SAW-047 — end-to-end acceptance and owner walkthrough
 
-**NOT RUN.** SAW-045 and SAW-046 add owner-facing policy screens and review details, so their large-text, TalkBack, navigation, and comprehension checks still require the owner's physical Seeker. Robolectric tests and successful APK builds do not count as a physical-device pass. Stage 5.1's end-to-end ticket owns that device walkthrough. SAW-043 and SAW-044 themselves changed models, storage, evaluation, and accounting without new owner-facing UI.
+Automated on 2026-09-13 with Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1, Kotlin 2.4.20, and the build's pinned Temurin 21.0.12.1 toolchain. Gradle was launched by Oracle JDK 19.0.2. The installed Android SDK was supplied through `ANDROID_HOME`; no `local.properties` or other machine-specific file was written.
+
+**Revision under test:** the SEE-63 working tree on top of `577968d` (SAW-046). The final SEE-63 commit SHA is recorded in Linear with this report; a commit cannot contain its own SHA.
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS — Prettier, Buf format/lint, ESLint, both TypeScript type checks, 396 sidecar tests, and 29 test-agent tests |
+| `pnpm test:hello` | PASS — all 9 Stage 1 simulated-device acceptance cases |
+| `pnpm test:queue` | PASS — all 7 Stage 2 two-sidecar acceptance cases |
+| `ANDROID_HOME=… pnpm check:android` | PASS — Spotless, all 737 Android unit tests, Android lint, debug APK, and instrumentation APK |
+| `pnpm check:generated` | PASS — generated protocol code and fixtures are current; this ticket changes no protocol |
+| `git diff --check` and documentation Prettier | PASS |
+| Network tests | NOT RUN — the acceptance suite uses committed deterministic transaction bytes and temporary phone-local stores |
+
+`Stage51PolicyScenarioTest` is the combined acceptance layer. It takes `sol_transfer` from `fixtures/transactions/cases.json`, inspects those bytes through the phone's real decoder, reloads versioned policy and Activity documents from temporary on-disk stores, evaluates the current effective rules, and carries the result into Request details. It asserts exact verdicts, ordered reason codes, uncovered checks, rule sources, scoped daily statuses and totals, input-verification precedence, and manual action availability.
+
+The scenarios cover:
+
+- global Programs and a connection Recipient applying as one conjunction, with both sources visible;
+- a connection Programs list replacing the global list whole, reset restoring inheritance, and a connection with no override file inheriting immediately after pairing;
+- global exceeded/local passed, local exceeded/global passed, both exceeded, both exactly equal, and a higher or absent local threshold unable to suppress a global warning;
+- confirmed and unresolved totals, two connections sharing a wallet, another wallet, another network, and retained Activity from a connection with no live policy document;
+- a Stage 5 version 1 document migrating without a global file or assessment change, followed by a new store and Activity read over the same directories;
+- damaged global rules, damaged connection rules, both together, and a damaged Activity record, none of which becomes missing or an empty day;
+- same-looking global edits and cross-connection spending producing different consent, backed by `InboxViewModelTest` cases that stop stale approval before either sidecar or wallet;
+- inherited and overridden source labels, both daily rows, and the deliberate warning step at twice the system font scale.
+
+The Stage 5 regressions remain in the required Android suite: `PolicyEvaluatorTest.aDayNobodyHasReadYetIsNotADayWithNothingInIt`, `InboxViewModelTest.aTransactionPreparedAgainTakesTheOwnersWordWithItHoweverTheRulesRead`, and `PolicyEditorViewModelTest.editsTypedWhileSavingAreNotMarkedAsSaved`. The SAW-046 foreground, wallet-lock, local-reset, and cross-connection stale-review tests remain alongside them.
+
+### Deliberate break
+
+The mutation was applied, run, observed failing, restored, and followed by a passing complete `Stage51PolicyScenarioTest` run:
+
+| Break | Expected failure observed |
+| --- | --- |
+| Connection `Replace` incorrectly retained the global value | `aProgramOverrideReplacesGlobalAndResetAndNewPairingRestoreInheritance` failed at the expected UNDER_RESTRICTIONS verdict, proving the acceptance path detects a hidden list union |
+
+## Physical Seeker checks — SAW-047
+
+**All checks 79–100: NOT RUN.** No physical Seeker was attached or controlled for SEE-63. Robolectric, an APK build, and a deterministic transaction fixture do not count as device evidence. No network test ran and no transfer was requested, approved, signed, or sent.
+
+When the owner runs this table, use the existing devnet setup and a recipient they control. The 2.5 SOL request below is a deterministic review amount, not permission to spend it: reject it or cancel in the wallet. A real transfer is separately opt-in through [`docs/guides/transfers.md`](../guides/transfers.md#your-first-transfer-step-by-step) with a deliberately small devnet amount. Cross-connection confirmed/unresolved Activity checks likewise remain NOT RUN unless the owner separately authorizes the prerequisite devnet action. Never substitute mainnet.
+
+| # | Check on the physical Seeker | Expected | Result |
+| ---: | --- | --- | --- |
+| 79 | Install the SEE-63 debug APK, open **Connections**, and find **Global rules**. | The phone-wide entry is reachable without opening a connection. | NOT RUN |
+| 80 | Open **Global rules**. | The title and introduction are global; no connection is presented as owning the document. | NOT RUN |
+| 81 | Add the programs needed by the reviewed devnet SOL fixture and a 2.5 SOL global daily threshold, then save. | The summary shows the list and exact `2500000000` base-unit threshold; save returns without changing a connection override. | NOT RUN |
+| 82 | Open connection A → **Rules**. | Programs and the daily context say **Global**; untouched sections say **Use global** or **Not configured** in words. | NOT RUN |
+| 83 | Override Recipients with the fixture recipient and save. | Recipient says **Connection override** while Programs stays **Global**. | NOT RUN |
+| 84 | Override Programs with a different complete list. | The effective list is the connection list only; no global item is described as merged or added. | NOT RUN |
+| 85 | Choose **Reset connection overrides**, save, and reopen connection A's Rules. | The local recipient and program values are gone, inheritance is restored, and Global rules are unchanged. | NOT RUN |
+| 86 | Pair connection B and open its Rules before saving anything locally. | It inherits the current global values; pairing created no copied local policy. | NOT RUN |
+| 87 | Review a 2.5 SOL request with global daily 2 SOL and connection daily 3 SOL. Do not send it. | Global daily warns at 2.5 of 2; Connection daily matches at 2.5 of 3. Both rows show confirmed, not-yet-settled, and projected amounts. | NOT RUN |
+| 88 | Change only the values to global 3 SOL and connection 2 SOL, then reopen/reprepare the request. | Global matches and Connection warns, with the same request bytes and independently named scopes. | NOT RUN |
+| 89 | Set both daily thresholds to 2 SOL and reopen/reprepare. | Both rows warn and both exact `over_daily_limit` reasons are retained. | NOT RUN |
+| 90 | Set both daily thresholds to exactly 2.5 SOL and reopen/reprepare. | Equality matches in both scopes; neither uses a strict-less-than boundary. | NOT RUN |
+| 91 | Set global to 2 SOL, then test a 3 SOL local threshold and no local threshold. | The global warning remains in both cases; a higher or absent local value never bypasses it. | NOT RUN |
+| 92 | If retained devnet Activity exists for a removed connection using this wallet, review the matching asset. Do not create spending for this check without separate authorization. | Its amount appears in Global daily and not in connection A's daily row. | NOT RUN |
+| 93 | Compare retained records for another wallet or network. | Neither contributes to this wallet's devnet SOL rows. | NOT RUN |
+| 94 | On any warning, tap **Reject** without ticking the warning box. | Rejection is immediately available and opens no wallet. | NOT RUN |
+| 95 | On a fresh warning, try the affirmative button, tick the deliberate-warning box, then continue only as far as the wallet and cancel there. | The button waits for the tick; the wallet still asks. Cancel sends no transfer. | NOT RUN |
+| 96 | Tick a warning, leave Request details open, edit Global rules so the rendered warning can remain the same, then return and try to proceed. | The tick clears or the final check stops with a fresh review; the stale action reaches neither sidecar nor wallet. | NOT RUN |
+| 97 | If separately authorized retained Activity on connection B changes while A is open, return to A. | Both daily compositions reload, affected consent clears, and a stale affirmative action stops. | NOT RUN |
+| 98 | Force-stop and reopen the app, then revisit Global rules, connection A Rules, Activity, and the pending request. | Stored values, inherited/override sources, and retained totals survive restart and read the same. | NOT RUN |
+| 99 | Set Android to its largest system text size and repeat checks 82, 83, and 89. | Global/Connection labels, both daily rows, totals, warning control, Approve, and Reject remain readable and reachable without clipped meaning. | NOT RUN |
+| 100 | Enable TalkBack and repeat checks 82, 83, and 89 by swipe navigation. | TalkBack announces inherited versus overridden sources, Global daily versus Connection daily, all three totals, statuses, and both manual actions in a meaningful order; no meaning depends on colour. | NOT RUN |
+
+### Device record
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-09-13 |
+| Commit | NOT RUN — use the final SEE-63 commit recorded in Linear |
+| Device | NOT RUN |
+| Android version | NOT RUN |
+| Wallet and version | NOT RUN |
+| Network | NOT RUN; devnet only if the owner later opts in |
+
+## Release-check handoff
+
+The cross-component regression in [SEE-52](https://linear.app/seekeragentwallet/issue/SEE-52/saw-039-run-cross-component-reliability-and-security-regression-checks) can cite the SAW-047 automated matrix and rerun the same repository commands. The guide verification in [SEE-54](https://linear.app/seekeragentwallet/issue/SEE-54/saw-041-verify-all-owner-guides-against-the-release) can start from checks 79–100 and the [owner flow](../guides/policies.md#stage-51-owner-flow-and-states). Neither release task should promote the hardware rows to PASS without the owner's own Seeker record.

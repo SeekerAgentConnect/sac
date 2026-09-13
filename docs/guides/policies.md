@@ -16,6 +16,21 @@ Before this, pair the phone ([`pairing.md`](pairing.md)). Rules are about reques
 
 What *does* stop a request is different and comes first: a prepared transaction whose bytes disagree with the request, or that the phone can't read whole, has no Approve button at all ([`transfers.md`](transfers.md)). No rule can soften that, and no rule makes it stricter.
 
+## Stage 5.1 owner flow and states
+
+This is the shortest walkthrough of the inheritance model. It is also the state map for somebody designing or reviewing this flow:
+
+1. From **Connections**, open **Global rules**. The editor is phone-wide and has no connection name. Save a Programs list and, if wanted, **Most across all connections per day**.
+2. Open one connection, then **Rules**. Inherited sections say **Use global** and the summary names **Global**. Set Recipients to **Override**: the effective summary now shows the local recipient as **Connection override** while Programs stays **Global**.
+3. Set Programs to **Override**. The local list replaces the global list whole; the screen never describes it as an addition or merge.
+4. Use **Reset connection overrides**, review the draft, and save. The local file is removed and all sections return to inheritance; the global file is unchanged. A newly paired connection begins in this same inherited state without copying a policy file.
+5. Put a global daily threshold and an additional connection daily threshold on the same asset and network. Request review shows two rows. Either can warn while the other matches, both can warn, and equality matches. A higher or blank connection value never disables the global row.
+6. A warning leaves **Reject** available immediately. The affirmative button waits for **I have read the warnings…**, then still opens the wallet; the rules never approve or send. For a no-spend walkthrough, cancel in the wallet. A real devnet transfer is a separate, explicit choice under the [transfer guide](transfers.md#your-first-transfer-step-by-step).
+7. Edit Global rules while Request details is open, or let retained Activity change on another connection. On return—or on the final tap—the review reloads. A stale affirmative action stops, the consent tick clears, and no wallet or sidecar is asked on the stale assessment.
+8. Force-stop and reopen the app. Global rules, connection overrides, Activity-derived totals, and source labels read back from disk. Nothing was copied to a sidecar.
+
+Editor states are explicit: unchanged, dirty, saving, saved, save failed, or unreadable. A failed save leaves the draft on screen for retry. Edits typed while a save is running remain dirty because only the submitted snapshot counts as saved. An unreadable document opens a recovery choice, not a blank editor. Request review likewise distinguishes loading, current, warning awaiting deliberate consent, and stale review replaced by a fresh one.
+
 ## The one thing worth reading twice
 
 **Use global, an override with its switch off, and an override with an empty list are three different things.**
@@ -270,6 +285,7 @@ It errs in one direction on purpose. A transfer handed to your wallet that this 
 ## See also
 
 - [`docs/testing/stage-5.md`](../testing/stage-5.md) — what the tests cover, and the device checks
+- [`docs/testing/stage-5-1.md`](../testing/stage-5-1.md) — Stage 5.1 automated evidence and physical checks 79–100
 - [`docs/policy.md`](../policy.md) — the model, the evaluation semantics, the counters, and the stored document
 - [`docs/security.md`](../security.md#verification-versus-advisory-rules) — what stops a request, and what only warns about one
 - [`transfers.md`](transfers.md) — what a transfer request is, and what your approval binds
