@@ -478,7 +478,7 @@ private fun SimpleRequestReview(
                     Identifier(
                         message.display,
                         modifier = Modifier.testTag(InboxTags.MESSAGE),
-                        maxLines = 8,
+                        maxLines = Int.MAX_VALUE,
                     )
                 }
             }

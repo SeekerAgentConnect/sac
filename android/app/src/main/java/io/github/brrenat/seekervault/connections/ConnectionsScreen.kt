@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.connections
 
 import android.content.ClipData
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.SnapPosition
@@ -8,7 +10,6 @@ import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -379,31 +380,27 @@ private fun RequestCarousel(
                             ?.index ?: 0
                     }
                 }
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val tileWidth = 204.dp
-                val edgePadding = ((maxWidth - tileWidth) / 2).coerceAtLeast(16.dp)
-                LazyRow(
-                    state = carouselState,
-                    flingBehavior = rememberSnapFlingBehavior(carouselState, SnapPosition.Center),
-                    contentPadding = PaddingValues(horizontal = edgePadding),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.CAROUSEL),
-                ) {
-                    itemsIndexed(
-                        requests,
-                        key = { _, request ->
-                            "${request.ref.connectionId}/${request.ref.requestId}"
-                        },
-                    ) { index, request ->
-                        val source = connections.firstOrNull { it.id == request.ref.connectionId }
-                        RequestTile(
-                            request = request,
-                            source = source,
-                            assessment = requestAssessments[request.key],
-                            active = index == activeIndex,
-                            onOpen = { onOpen(request.key) },
-                        )
-                    }
+            LazyRow(
+                state = carouselState,
+                flingBehavior = rememberSnapFlingBehavior(carouselState, SnapPosition.Center),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.CAROUSEL),
+            ) {
+                itemsIndexed(
+                    requests,
+                    key = { _, request ->
+                        "${request.ref.connectionId}/${request.ref.requestId}"
+                    },
+                ) { index, request ->
+                    val source = connections.firstOrNull { it.id == request.ref.connectionId }
+                    RequestTile(
+                        request = request,
+                        source = source,
+                        assessment = requestAssessments[request.key],
+                        active = index == activeIndex,
+                        onOpen = { onOpen(request.key) },
+                    )
                 }
             }
             Text(
@@ -498,20 +495,34 @@ private fun RequestTile(
     onOpen: () -> Unit,
 ) {
     val copy = requestTileCopy(request, source)
-    val ink =
-        if (active) MaterialTheme.colorScheme.onPrimaryContainer
-        else MaterialTheme.colorScheme.onSurface
-    val secondary =
-        if (active) MaterialTheme.colorScheme.onPrimaryContainer
-        else MaterialTheme.colorScheme.onSurfaceVariant
+    val transition = tween<Color>(durationMillis = 200)
+    val container by
+        animateColorAsState(
+            if (active) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceContainer,
+            transition,
+            label = "request tile container",
+        )
+    val ink by
+        animateColorAsState(
+            if (active) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurface,
+            transition,
+            label = "request tile ink",
+        )
+    val secondary by
+        animateColorAsState(
+            if (active) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            transition,
+            label = "request tile secondary ink",
+        )
     SeekerCard(
         modifier =
             Modifier.size(width = 204.dp, height = 192.dp)
                 .testTag(ConnectionsTags.request(request.key))
                 .semantics { selected = active },
-        color =
-            if (active) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceContainer,
+        color = container,
         radius = 20.dp,
         onClick = onOpen,
     ) {
@@ -568,20 +579,25 @@ private fun RequestPill(assessment: RequestAssessment?, active: Boolean) {
     val allowed = assessment?.decision?.allowed == true
     val warningCount =
         assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1) ?: 0
-    val background =
+    val targetBackground =
         when {
             warningCount > 0 -> MaterialTheme.colorScheme.tertiaryContainer
             allowed && active -> MaterialTheme.colorScheme.onPrimaryContainer
             allowed -> MaterialTheme.colorScheme.primaryContainer
             else -> MaterialTheme.colorScheme.surfaceContainerHighest
         }
-    val foreground =
+    val targetForeground =
         when {
             warningCount > 0 -> MaterialTheme.colorScheme.onTertiaryContainer
             allowed && active -> MaterialTheme.colorScheme.primaryContainer
             allowed -> MaterialTheme.colorScheme.onPrimaryContainer
             else -> MaterialTheme.colorScheme.onSurfaceVariant
         }
+    val transition = tween<Color>(durationMillis = 200)
+    val background by
+        animateColorAsState(targetBackground, transition, label = "request status container")
+    val foreground by
+        animateColorAsState(targetForeground, transition, label = "request status ink")
     Box(
         Modifier.height(24.dp)
             .clip(RoundedCornerShape(8.dp))

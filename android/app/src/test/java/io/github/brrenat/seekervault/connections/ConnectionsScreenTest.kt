@@ -10,6 +10,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
@@ -114,7 +117,7 @@ class ConnectionsScreenTest {
     }
 
     @Test
-    fun requestCarouselCentersAndFocusesTheSnappedItem() {
+    fun requestCarouselStartsLeadingThenCentersAndFocusesTheSnappedItem() {
         val requests =
             listOf(
                 FakeConnectionGateway.request(HOME.id, "request-1", "First"),
@@ -127,14 +130,30 @@ class ConnectionsScreenTest {
             requests = requests,
         )
 
-        compose.onNodeWithTag(ConnectionsTags.CAROUSEL).performScrollToIndex(1)
+        val rail = compose.onNodeWithTag(ConnectionsTags.CAROUSEL)
+        val railBounds = rail.fetchSemanticsNode().boundsInRoot
+        val first =
+            compose.onNodeWithTag(ConnectionsTags.request(requests[0].key)).assertIsSelected()
+        val firstBounds = first.fetchSemanticsNode().boundsInRoot
+        assertEquals(
+            railBounds.left + 16 * context.resources.displayMetrics.density,
+            firstBounds.left,
+            1f,
+        )
+
+        rail.performTouchInput {
+            val travel = 120.dp.toPx()
+            swipe(
+                start = center.copy(x = center.x + travel / 2),
+                end = center.copy(x = center.x - travel / 2),
+                durationMillis = 600,
+            )
+        }
         compose.waitForIdle()
 
-        compose.onNodeWithTag(ConnectionsTags.request(requests[0].key)).assertIsNotSelected()
+        first.assertIsNotSelected()
         val focused =
             compose.onNodeWithTag(ConnectionsTags.request(requests[1].key)).assertIsSelected()
-        val railBounds =
-            compose.onNodeWithTag(ConnectionsTags.CAROUSEL).fetchSemanticsNode().boundsInRoot
         val focusedBounds = focused.fetchSemanticsNode().boundsInRoot
         assertEquals(railBounds.center.x, focusedBounds.center.x, 1f)
     }

@@ -124,9 +124,11 @@ class PolicyReviewScreenTest {
         compose
             .onNodeWithTag(InboxTags.POLICY_VERDICT)
             .assertTextEquals(text(R.string.policy_verdict_allowed))
-        // v4 keeps the card compact: matching checks are represented by the verdict and omitted
-        // checks are grouped in a single explicit coverage line.
-        check(PolicyCheck.Action).assertDoesNotExist()
+        // The compact verdict is still the complete assessment: every configured check says what
+        // the phone read, while checks without a rule are grouped in the coverage line.
+        check(PolicyCheck.Action)
+            .assertTextContains(text(R.string.policy_review_check_action), substring = true)
+            .assertTextContains(text(R.string.policy_status_passed, "ack"), substring = true)
         PolicyCheck.entries.drop(1).forEach { check(it).assertDoesNotExist() }
         compose
             .onNodeWithTag(InboxTags.POLICY_UNCOVERED)
@@ -196,10 +198,14 @@ class PolicyReviewScreenTest {
             )
         show(decision, facts = facts)
 
-        // Passing allowlist checks collapse into the verdict. The two daily rows remain separate,
-        // because their independent Global and connection scopes are material to the owner.
-        check(PolicyCheck.Action).assertDoesNotExist()
-        check(PolicyCheck.Recipient).assertDoesNotExist()
+        // Passing allowlist checks remain visible with what they read and which document supplied
+        // the rule. The two daily rows remain separate because their scopes are independent.
+        check(PolicyCheck.Action)
+            .assertTextContains(text(R.string.policy_status_passed_plain), substring = true)
+            .assertTextContains(text(R.string.policy_source_global), substring = true)
+        check(PolicyCheck.Recipient)
+            .assertTextContains(RECIPIENT, substring = true)
+            .assertTextContains(text(R.string.policy_source_connection), substring = true)
         compose
             .onNodeWithTag(InboxTags.policyDaily(DailyCheckScope.Global.code))
             .assertTextContains(text(R.string.policy_daily_global), substring = true)

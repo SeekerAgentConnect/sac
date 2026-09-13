@@ -164,10 +164,19 @@ class Stage51PolicyScenarioTest {
         assertFalse(decision.warns)
 
         show(review)
-        // The compact v4 verdict does not repeat successful checks as rows. Their distinct rule
-        // sources remain asserted above in the evaluated decision itself.
-        compose.onNodeWithTag(InboxTags.policyCheck(PolicyCheck.Program)).assertDoesNotExist()
-        compose.onNodeWithTag(InboxTags.policyCheck(PolicyCheck.Recipient)).assertDoesNotExist()
+        // The compact v4 verdict still shows every configured check, what it read, and which
+        // document supplied it.
+        compose
+            .onNodeWithTag(InboxTags.policyCheck(PolicyCheck.Program))
+            .assertTextContains(SYSTEM_PROGRAM, substring = true)
+            .assertTextContains(context.getString(R.string.policy_source_global), substring = true)
+        compose
+            .onNodeWithTag(InboxTags.policyCheck(PolicyCheck.Recipient))
+            .assertTextContains(recipient, substring = true)
+            .assertTextContains(
+                context.getString(R.string.policy_source_connection),
+                substring = true,
+            )
         compose.onNodeWithTag(InboxTags.POLICY_VERDICT).assertExists()
         compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).assertDoesNotExist()
         compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertIsEnabled()

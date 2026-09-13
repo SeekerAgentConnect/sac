@@ -225,6 +225,40 @@ class RequestDetailsScreenTest {
     }
 
     @Test
+    fun aLongSignableMessageIsNeverTruncatedBeforeApproval() {
+        val fullMessage = (1..12).joinToString("\n") { "Signed line $it" }
+        val request =
+            MESSAGE.toBuilder()
+                .setAction(
+                    action {
+                        signMessage = signMessageAction {
+                            wallet = WALLET
+                            text = fullMessage
+                        }
+                    }
+                )
+                .build()
+
+        show(request, wallet = SELECTED, assessment = allowedAssessment(request))
+
+        val renderedHeight =
+            compose
+                .onNodeWithTag(InboxTags.MESSAGE, useUnmergedTree = true)
+                .fetchSemanticsNode()
+                .boundsInRoot
+                .height
+        val formerEightLineCap =
+            8 *
+                18 *
+                context.resources.displayMetrics.density *
+                context.resources.configuration.fontScale
+        assertTrue(
+            "all twelve signable lines must be laid out inside the scrollable review",
+            renderedHeight > formerEightLineCap,
+        )
+    }
+
+    @Test
     fun saysToConnectAWalletBeforeApproving() {
         show(MESSAGE)
         compose.onNodeWithTag(InboxTags.SIGNING_PROBLEM).assertExists()

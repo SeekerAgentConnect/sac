@@ -1,13 +1,22 @@
 package io.github.brrenat.seekervault
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.sp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.ui.BottomDestination
+import io.github.brrenat.seekervault.ui.SeekerBottomBar
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -45,6 +54,29 @@ class SeekerVaultThemeTest {
         assertEquals(28.sp, values.typography.headlineLarge.fontSize)
         assertEquals(22.sp, values.typography.titleLarge.fontSize)
         assertOpaque(values)
+    }
+
+    @Test
+    fun bottomBarExposesTheActiveDestinationAsSelected() {
+        val selected = mutableStateOf("home")
+        compose.setContent {
+            SeekerVaultTheme {
+                SeekerBottomBar(
+                    destinations =
+                        listOf(
+                            BottomDestination("home", Icons.Outlined.Public, "Home"),
+                            BottomDestination("wallet", Icons.Outlined.Public, "Wallet"),
+                        ),
+                    selected = selected.value,
+                    onSelect = { selected.value = it },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Home").assertIsSelected()
+        compose.onNodeWithText("Wallet").assertIsNotSelected().performClick()
+        compose.onNodeWithText("Home").assertIsNotSelected()
+        compose.onNodeWithText("Wallet").assertIsSelected()
     }
 
     private fun capture(dark: Boolean): Captured {
