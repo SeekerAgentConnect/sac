@@ -275,6 +275,31 @@ class ConnectionPolicyEditorScreenTest {
     }
 
     @Test
+    fun anUnreadableGlobalDocumentWithholdsInheritedThresholdContext() {
+        show(
+            draft =
+                ConnectionPolicyDraft(
+                    CONNECTION,
+                    limits = listOf(ConnectionAssetDraft(Network.NETWORK_MAINNET, daily = "1")),
+                ),
+            globalUnreadable = UnreadableReason.NewerVersion,
+        )
+
+        compose.onNodeWithTag(PolicyTags.GLOBAL_UNREADABLE).assertExists()
+        compose
+            .onNodeWithText(
+                text(
+                    R.string.policy_effective_per_request,
+                    text(R.string.policy_effective_not_checked),
+                    text(R.string.policy_source_none),
+                )
+            )
+            .assertDoesNotExist()
+        compose.onNodeWithTag(PolicyTags.globalDaily(SOL)).assertDoesNotExist()
+        compose.onNodeWithTag(PolicyTags.connectionDaily(SOL)).performScrollTo().assertExists()
+    }
+
+    @Test
     fun aLocalAssetRemovalNamesTheWholeAssetForAccessibility() {
         show(
             draft =

@@ -179,6 +179,23 @@ The mutation was applied, run, observed failing, restored, and followed by a pas
 | --- | --- |
 | Connection `Replace` incorrectly retained the global value | `aProgramOverrideReplacesGlobalAndResetAndNewPairingRestoreInheritance` failed at the expected UNDER_RESTRICTIONS verdict, proving the acceptance path detects a hidden list union |
 
+## PR #10 review fixes
+
+Automated on 2026-09-13 with Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1, and the build's pinned Temurin 21 toolchain. The installed Android SDK was supplied through `ANDROID_HOME`; no machine-specific file was written.
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS — Prettier, Buf format/lint, ESLint, both TypeScript type checks, 396 sidecar tests, and 29 test-agent tests |
+| `pnpm test:hello` | PASS — all 9 Stage 1 simulated-device acceptance cases |
+| `pnpm test:queue` | PASS — all 7 Stage 2 two-sidecar acceptance cases |
+| `ANDROID_HOME=… pnpm check:android` | PASS — Spotless, all 739 Android unit tests, Android lint, debug APK, and instrumentation APK |
+| `pnpm check:generated` | PASS — generated protocol code and fixtures are current; the fixes change no protocol |
+| `git diff --check` | PASS |
+
+The connection editor now withholds inherited per-request and global-daily threshold labels when the global document is unreadable; it does not turn unknown context into **Not configured**. A no-policy assessment now retains the source on every original not-configured check, including an explicit connection `NoCheck`, so Request review and Activity preserve the distinction from simple absence.
+
+Both regressions have focused tests. Replacing the source-preserving decision with a fresh `noPolicy` decision failed `PolicyDecisionTest.aPolicyThatChecksNothingKeepsExplicitNoCheckSources`; forcing the editor to treat the unreadable global document as readable failed `ConnectionPolicyEditorScreenTest.anUnreadableGlobalDocumentWithholdsInheritedThresholdContext`. Each deliberate break was restored before the focused and complete passing runs. Physical Seeker checks 79–100 remain **NOT RUN**.
+
 ## Physical Seeker checks — SAW-047
 
 **All checks 79–100: NOT RUN.** No physical Seeker was attached or controlled for SEE-63. Robolectric, an APK build, and a deterministic transaction fixture do not count as device evidence. No network test ran and no transfer was requested, approved, signed, or sent.
