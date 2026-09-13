@@ -76,6 +76,10 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 - **Generation needs network access.** `pnpm generate` and `pnpm check:generated` call the Kotlin plugins, which run remotely on the Buf Schema Registry.
 - **Android compiles the generated code in place.** `android/app/build.gradle.kts` adds the generated directories to the `main` source set and adds `proto/fixtures` to the unit-test resources.
 
+### Bidirectional gRPC support (SAW-048)
+
+The existing pins already support the production update protocol, so SAW-048 adds no dependency. Connect-Kotlin 0.9.0 generates a `BidirectionalStreamInterface` for `UpdateService.Subscribe`; its OkHttp transport 5.4.0 negotiates HTTP/2 over TLS, and Connect Node 2.2.0 serves the generated descriptor through its Node HTTP/2 adapter. `GrpcBidiInteropTest` exercises that exact combination, rather than a fake stream or an in-memory handler. See [`docs/testing/stage-5-2.md`](../testing/stage-5-2.md).
+
 ## MacBook setup
 
 1. **Node.js:** install nvm, then run `nvm install` from the repository root. It reads `.nvmrc`.

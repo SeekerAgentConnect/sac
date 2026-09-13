@@ -20,6 +20,13 @@ public interface PairingServiceClientInterface {
   public suspend fun pair(request: PairRequest, headers: Headers = emptyMap()): ResponseMessage<PairResponse>
 
   /**
+   *  GetConnectionCapabilities lets a phone paired before UpdateCapability was added discover the
+   *  production update endpoint with its existing phone credential. Every field is scoped to the
+   *  authenticated connection, and connection_id must name that connection.
+   */
+  public suspend fun getConnectionCapabilities(request: GetConnectionCapabilitiesRequest, headers: Headers = emptyMap()): ResponseMessage<GetConnectionCapabilitiesResponse>
+
+  /**
    *  RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The
    *  token stops working at once, and the connection's PENDING requests become CANCELLED.
    *  Requests already approved are still resolved, and agents can still read every request.

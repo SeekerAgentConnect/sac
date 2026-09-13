@@ -8,15 +8,17 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 /**
- * The stage boundary (AGENTS.md): no wallet keys, nothing that runs in the background, and storage
- * only in the storage packages: connection metadata and Keystore-encrypted credentials in
- * `connections/storage/` (SAW-012), the owner's wallet selection and its authorization in
- * `wallet/storage/` (SAW-015), the owner's own record of what this phone did in `activity/storage/`
- * (SAW-023), and the rules they set for one connection in `policy/storage/` (SAW-025). Nothing is
- * backed up. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on
- * purpose: the app drives the wallet the owner already has. It still holds no wallet key of its
- * own, and Seed Vault's own SDK stays out. These checks fail when a limit is crossed early; the
- * stage that lifts one changes them.
+ * The stage boundary (AGENTS.md): no wallet keys, and storage only in the storage packages:
+ * connection metadata and Keystore-encrypted credentials in `connections/storage/` (SAW-012), the
+ * owner's wallet selection and its authorization in `wallet/storage/` (SAW-015), the owner's own
+ * record of what this phone did in `activity/storage/` (SAW-023), and the rules they set for one
+ * connection in `policy/storage/` (SAW-025). Nothing is backed up. SAW-048 authorizes only the
+ * `sync/` package to use the production sidecar transport, its own storage subpackage, and
+ * WorkManager; FCM, services, jobs, alarms, receivers, and wallet automation remain excluded.
+ * SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on purpose:
+ * the app drives the wallet the owner already has. It still holds no wallet key of its own, and
+ * Seed Vault's own SDK stays out. These checks fail when a limit is crossed early; the stage that
+ * lifts one changes them.
  */
 class StageBoundaryTest {
     private val main =
@@ -89,28 +91,35 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun storageAndKeysStayInTheStoragePackagesAndNothingRunsInTheBackground() {
+    fun storageKeysAndBackgroundWorkStayInsideTheirNarrowPackages() {
         // Substrings on purpose: getSharedPreferences, KeyStoreSpi, and the like must match too.
         val storage =
             Regex(
                 """SharedPreferences|DataStore|openFileOutput|FileOutputStream|SQLiteDatabase|""" +
                     """RoomDatabase|AtomicFile|KeyStore|KeyGenerator|KeyGenParameterSpec"""
             )
-        // No wallet key of the app's own, and nothing that runs in the background. SAW-015 drives
-        // the wallet the owner already has; a key never reaches this app.
-        val forbidden =
+        // No wallet key of the app's own. SAW-015 drives the wallet the owner already has; a key
+        // never reaches this app.
+        val keys = Regex("""KeyPairGenerator|PrivateKey|SecretKeySpec""")
+        // Stage 5.2's background work is WorkManager only, and only from sync/. A foreground
+        // service, Android service, JobScheduler, alarm, or receiver remains outside the stage.
+        val forbiddenBackground =
             Regex(
-                """(KeyPairGenerator|PrivateKey|SecretKeySpec|WorkManager|JobScheduler|""" +
-                    """AlarmManager|startForegroundService|startService|BroadcastReceiver)|""" +
-                    """:\s*Service\("""
+                """(JobScheduler|AlarmManager|startForegroundService|startService|""" +
+                    """BroadcastReceiver)|:\s*Service\("""
             )
-        val storagePackages =
+        val workManager =
+            Regex("""\bWorkManager\b|^import androidx\.work\.""", RegexOption.MULTILINE)
+        val requiredStoragePackages =
             listOf(
                 File(main, "java/io/github/brrenat/seekervault/connections/storage"),
                 File(main, "java/io/github/brrenat/seekervault/wallet/storage"),
                 File(main, "java/io/github/brrenat/seekervault/activity/storage"),
                 File(main, "java/io/github/brrenat/seekervault/policy/storage"),
             )
+        val syncPackage = File(main, "java/io/github/brrenat/seekervault/sync")
+        val storagePackages =
+            requiredStoragePackages + File(main, "java/io/github/brrenat/seekervault/sync/storage")
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         fun inStorage(file: File) = storagePackages.any { file.startsWith(it) }
         fun hits(pattern: Regex, files: List<File>) = files.flatMap { file ->
@@ -119,9 +128,15 @@ class StageBoundaryTest {
             }
         }
         assertEquals(emptyList<String>(), hits(storage, sources.filterNot(::inStorage)))
-        assertEquals(emptyList<String>(), hits(forbidden, sources))
-        // Both storage packages do use them, so the first check can't pass by finding nothing.
-        for (storagePackage in storagePackages) {
+        assertEquals(emptyList<String>(), hits(keys, sources))
+        assertEquals(emptyList<String>(), hits(forbiddenBackground, sources))
+        assertEquals(
+            emptyList<String>(),
+            hits(workManager, sources.filterNot { it.startsWith(syncPackage) }),
+        )
+        // The existing storage packages do use storage APIs, so the first check can't pass by
+        // finding nothing. sync/storage becomes the only additional location when SAW-050 lands.
+        for (storagePackage in requiredStoragePackages) {
             assertTrue(
                 storagePackage.name,
                 hits(storage, sources.filter { it.startsWith(storagePackage) }).isNotEmpty(),
@@ -181,19 +196,20 @@ class StageBoundaryTest {
             reaches,
         )
         // The rules never leave the phone, and neither does what they made of a request
-        // (SAW-028). The two files that speak to a sidecar have never heard of a policy, and the
-        // one file in `connections/` that has, has it to delete a removed connection's rules and
-        // for nothing else — an assessment is the owner's to read, and no agent's to learn of.
-        val speaking =
-            File(main, "java")
-                .walk()
-                .filter {
-                    it.name == "ConnectConnectionGateway.kt" ||
-                        it.name == "ConnectLiveCommandTransport.kt" ||
-                        it.name == "ConnectionRepository.kt"
-                }
-                .toList()
-        assertEquals(3, speaking.size)
+        // (SAW-028). Files that speak to a sidecar have never heard of a policy, and the one file
+        // in `connections/` that has, has it to delete a removed connection's rules and for
+        // nothing else — an assessment is the owner's to read, and no agent's to learn of.
+        val speakingNames =
+            setOf(
+                "ConnectConnectionGateway.kt",
+                "ConnectLiveCommandTransport.kt",
+                "ConnectUpdateTransport.kt",
+                "ConnectionRepository.kt",
+            )
+        val speaking = File(main, "java").walk().filter { it.name in speakingNames }.toList()
+        assertTrue(
+            speaking.map { it.name }.containsAll(speakingNames - "ConnectUpdateTransport.kt")
+        )
         assertEquals(
             listOf(
                 "ConnectionRepository.kt: io.github.brrenat.seekervault.policy.storage.PolicyStore"
@@ -298,7 +314,7 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun noWalletDatabaseOrBackgroundLibraryIsOnTheClasspath() {
+    fun noWalletGeneralDatabaseOrPushLibraryIsOnTheClasspath() {
         val present =
             listOf(
                     // SAW-015 adds the MWA client on purpose; Seed Vault's own SDK is Stage 3's
@@ -307,8 +323,7 @@ class StageBoundaryTest {
                     "androidx.room.RoomDatabase",
                     "androidx.datastore.core.DataStore",
                     "androidx.security.crypto.EncryptedSharedPreferences",
-                    "androidx.work.WorkManager",
-                    // No push: the phone fetches when the app opens or the owner refreshes.
+                    // Stage 5.2 permits WorkManager, but no push: FCM is SEE-73.
                     "com.google.firebase.messaging.FirebaseMessaging",
                     "com.google.android.gms.gcm.GcmListenerService",
                 )
@@ -342,14 +357,16 @@ class StageBoundaryTest {
         )
         // The sidecar transports and the one client they share, and nothing else. A new file here
         // is a new host this app talks to, and has to be read as one.
-        assertEquals(
-            listOf(
+        val allowed =
+            setOf(
                 "ConnectConnectionGateway.kt",
                 "ConnectLiveCommandTransport.kt",
+                "ConnectUpdateTransport.kt",
                 "SeekerVaultApplication.kt",
-            ),
-            sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.sorted(),
-        )
+            )
+        val clients = sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.toSet()
+        assertTrue(clients.all { it in allowed })
+        assertTrue(clients.containsAll(allowed - "ConnectUpdateTransport.kt"))
     }
 
     @Test

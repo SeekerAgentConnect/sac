@@ -1,0 +1,212 @@
+syntax = "proto3";
+
+package seekervault.update.v1;
+
+import "google/protobuf/timestamp.proto";
+import "seekervault/request/v1/request.proto";
+
+// UpdateService is the phone's production update transport for durable requests. It is separate
+// from the foreground-only Stage 1 LiveCommandService. Subscribe is genuine bidirectional gRPC
+// over HTTP/2; Sync is unary gRPC and is shared by foreground recovery, manual Refresh, and later
+// WorkManager runs.
+//
+// Both RPCs require `Authorization: Bearer <phone token>`. Every request and response also carries
+// the authenticated connection_id. A mismatch is NOT_FOUND, so a credential can never use a
+// reference, cursor, snapshot, or event from another connection.
+//
+// Each encoded request or response is at most 65,536 bytes. Cursors, instance IDs, and page tokens
+// are opaque UTF-8 strings of at most 256 bytes. Servers reject larger messages before reading
+// their fields and clients reject larger responses.
+service UpdateService {
+  // Subscribe maintains one logical foreground stream for one paired connection. The first client
+  // message must be subscribe and later client messages are heartbeats. The server's first message
+  // is ready. A replacement stream for the same connection cancels the older one.
+  rpc Subscribe(stream SubscribeRequest) returns (stream SubscribeResponse);
+
+  // Sync returns a frozen, paginated view of every PENDING request plus the current form of the
+  // nonterminal Activity requests named by the phone. It never prepares, approves, signs, sends,
+  // or re-executes anything. It may perform the bounded read-only confirmation described below.
+  rpc Sync(SyncRequest) returns (SyncResponse);
+}
+
+message SubscribeRequest {
+  // Repeated on every message and required to equal the connection authenticated by the bearer
+  // token. This makes an accidentally shared client or stream fail closed.
+  string connection_id = 1;
+  oneof message {
+    Subscribe subscribe = 2;
+    ClientHeartbeat heartbeat = 3;
+  }
+}
+
+message Subscribe {
+  // Version 1 is this contract. Other values fail with FAILED_PRECONDITION; the phone keeps unary
+  // manual Refresh available when it understands the older RequestService.
+  uint32 protocol_version = 1;
+  // The last event cursor the phone durably applied. Empty requests an initial snapshot. A cursor
+  // is meaningful only with the server_instance_id that issued it.
+  string resume_cursor = 2;
+  // The instance ID from the last ready or Sync response. Empty with an empty resume_cursor.
+  string server_instance_id = 3;
+}
+
+message ClientHeartbeat {
+  // Increases within one stream. A duplicate is harmless; a decrease is a protocol error.
+  uint64 sequence = 1;
+  // The most recent event cursor the phone has durably applied, or empty before its first sync.
+  string applied_cursor = 2;
+  google.protobuf.Timestamp sent_at = 3;
+}
+
+message SubscribeResponse {
+  // Repeated on every response and required to equal the authenticated connection.
+  string connection_id = 1;
+  // Random for each sidecar process. All cursors and snapshot tokens are bound to it.
+  string server_instance_id = 2;
+  // The mutation cursor represented by this response. For ready and heartbeat it is the latest
+  // cursor known when the response was made. It can be empty only before the first mutation.
+  string cursor = 3;
+  oneof event {
+    ServerReady ready = 4;
+    RequestChanged request_changed = 5;
+    RequestRemoved request_removed = 6;
+    ConnectionRevoked revoked = 7;
+    SyncRequired sync_required = 8;
+    ServerHeartbeat heartbeat = 9;
+    ReplayComplete replay_complete = 10;
+  }
+}
+
+message ServerReady {
+  // The one protocol version selected for this stream.
+  uint32 protocol_version = 1;
+  ResumeDisposition resume = 2;
+  // Chosen by the server in the inclusive range 15..60 seconds; version 1 defaults to 30. Each
+  // peer sends a heartbeat after one quiet interval and closes after three unanswered intervals.
+  uint32 heartbeat_interval_seconds = 3;
+  // Always 65,536 for version 1. It states the transport limit the peer must enforce too.
+  uint32 max_message_bytes = 4;
+  // Always in 1..100; version 1 defaults to 50.
+  uint32 max_page_size = 5;
+}
+
+enum ResumeDisposition {
+  RESUME_DISPOSITION_UNSPECIFIED = 0;
+  // The supplied cursor is retained. Request events after it are replayed, then ReplayComplete is
+  // sent, then live events continue.
+  RESUME_DISPOSITION_REPLAYING = 1;
+  // No cursor was supplied, or it cannot be resumed. SyncRequired follows and the phone obtains a
+  // frozen snapshot while buffering later events from this stream.
+  RESUME_DISPOSITION_FULL_SYNC_REQUIRED = 2;
+}
+
+message RequestChanged {
+  // The request in its complete current form. New, updated, cancelled, expired, submitted,
+  // confirmed, completed, rejected, failed, and unknown requests all use this event.
+  seekervault.request.v1.ActionRequest request = 1;
+  // Increases for this RequestRef on every durable mutation. Zero is invalid. A phone ignores a
+  // duplicate or stale revision and never rolls a request state backward.
+  uint64 revision = 2;
+}
+
+message RequestRemoved {
+  seekervault.request.v1.RequestRef ref = 1;
+  uint64 revision = 2;
+  RemovalReason reason = 3;
+}
+
+enum RemovalReason {
+  REMOVAL_REASON_UNSPECIFIED = 0;
+  // The durable request aged out of the sidecar's retained history. This never erases the owner's
+  // Activity record.
+  REMOVAL_REASON_RETENTION = 1;
+  // The server can no longer account for the referenced record; the phone retains any local
+  // decision/outcome and marks server state unavailable rather than inventing a terminal result.
+  REMOVAL_REASON_NOT_FOUND = 2;
+}
+
+message ConnectionRevoked {
+  google.protobuf.Timestamp revoked_at = 1;
+}
+
+message SyncRequired {
+  SyncRequiredReason reason = 1;
+}
+
+enum SyncRequiredReason {
+  SYNC_REQUIRED_REASON_UNSPECIFIED = 0;
+  // A new subscription has no durable cursor yet.
+  SYNC_REQUIRED_REASON_INITIAL_SNAPSHOT = 1;
+  // The cursor belongs to another sidecar process or is malformed.
+  SYNC_REQUIRED_REASON_CURSOR_INVALID = 2;
+  // The cursor is older than the bounded mutation log the sidecar retained.
+  SYNC_REQUIRED_REASON_HISTORY_GAP = 3;
+  // The phone or sidecar could not buffer another event under its bounded memory limit.
+  SYNC_REQUIRED_REASON_BUFFER_OVERFLOW = 4;
+  // A snapshot or page token expired or was invalidated by a restart.
+  SYNC_REQUIRED_REASON_SNAPSHOT_INVALID = 5;
+}
+
+message ServerHeartbeat {
+  // Echoes the latest client heartbeat sequence observed, or zero for a server-initiated heartbeat
+  // before one arrived. This is liveness only and is not a mutation acknowledgement.
+  uint64 acknowledged_sequence = 1;
+  google.protobuf.Timestamp sent_at = 2;
+}
+
+message ReplayComplete {
+  // Equals SubscribeResponse.cursor. Every retained event after the requested resume cursor and
+  // through this cursor has been sent before this marker; later events are live.
+  string through_cursor = 1;
+}
+
+message SyncRequest {
+  string connection_id = 1;
+  uint32 protocol_version = 2;
+  // 1..100, or zero for the server default of 50. The server may return fewer entries to stay
+  // below 65,536 encoded bytes.
+  uint32 page_size = 3;
+  // Empty starts a snapshot. A nonempty token is the next_page_token from the immediately previous
+  // page and already binds the connection, instance, snapshot, and known_nonterminal set.
+  string page_token = 4;
+  // On the first page, the cursor from ServerReady. The frozen snapshot is taken only after the
+  // store contains every mutation through this barrier. Empty is allowed for manual/background
+  // sync with no active stream.
+  string subscription_cursor = 5;
+  // On the first page only: nonterminal requests in the owner's Activity records. At most 100,
+  // unique by RequestRef. The server returns their current forms even when they are not PENDING.
+  repeated KnownRequest known_nonterminal = 6;
+}
+
+message KnownRequest {
+  seekervault.request.v1.RequestRef ref = 1;
+  // The last server revision the phone stored, or zero for an Activity record written before
+  // revisions existed.
+  uint64 revision = 2;
+  seekervault.request.v1.RequestState state = 3;
+}
+
+message SyncResponse {
+  string connection_id = 1;
+  string server_instance_id = 2;
+  // The store's high-water mark frozen for the complete snapshot. It is identical on every page.
+  // After all pages arrive, apply the snapshot, discard buffered stream events at or before this
+  // cursor, then apply later events in stream order.
+  string snapshot_cursor = 3;
+  repeated SyncedRequest requests = 4;
+  repeated RequestRemoved removed = 5;
+  // Empty on the final page. Tokens are opaque, at most 256 UTF-8 bytes, expire after two minutes,
+  // and fail with FAILED_PRECONDITION after expiry or server restart; the client restarts page one
+  // and does not delete cache entries from an incomplete snapshot.
+  string next_page_token = 6;
+  // Eligible records not checked on chain in this snapshot because of the confirmation bound.
+  // Version 1 checks at most four, concurrently, under the existing 20-second per-operation chain
+  // budget. Later syncs rotate through this list. A check only reads and may settle the same states
+  // as RequestService.CheckStatus; it never opens a wallet or builds or sends a transaction.
+  repeated seekervault.request.v1.RequestRef confirmation_deferred = 7;
+}
+
+message SyncedRequest {
+  seekervault.request.v1.ActionRequest request = 1;
+  uint64 revision = 2;
+}

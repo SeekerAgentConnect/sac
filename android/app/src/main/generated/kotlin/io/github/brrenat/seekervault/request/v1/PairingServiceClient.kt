@@ -35,6 +35,23 @@ public class PairingServiceClient(
 
 
   /**
+   *  GetConnectionCapabilities lets a phone paired before UpdateCapability was added discover the
+   *  production update endpoint with its existing phone credential. Every field is scoped to the
+   *  authenticated connection, and connection_id must name that connection.
+   */
+  override suspend fun getConnectionCapabilities(request: GetConnectionCapabilitiesRequest, headers: Headers): ResponseMessage<GetConnectionCapabilitiesResponse> = client.unary(
+    request,
+    headers,
+    MethodSpec(
+    "seekervault.request.v1.PairingService/GetConnectionCapabilities",
+      io.github.brrenat.seekervault.request.v1.GetConnectionCapabilitiesRequest::class,
+      io.github.brrenat.seekervault.request.v1.GetConnectionCapabilitiesResponse::class,
+      StreamType.UNARY,
+    ),
+  )
+
+
+  /**
    *  RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The
    *  token stops working at once, and the connection's PENDING requests become CANCELLED.
    *  Requests already approved are still resolved, and agents can still read every request.

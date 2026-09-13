@@ -1,7 +1,7 @@
 /**
  * The phone's PairingService over Connect (docs/protocol.md#pairing). Pair takes the one-use
- * pairing token as its bearer credential, and RevokeConnection takes the phone's own credential.
- * No token reaches the log.
+ * pairing token as its bearer credential. GetConnectionCapabilities and RevokeConnection take the
+ * phone's own credential. No token reaches the log.
  */
 import type { ConnectRouter } from "@connectrpc/connect";
 
@@ -41,6 +41,31 @@ export function pairingRoutes(
           log(`rejected Pair: ${error.code}`);
           throw connectError(error);
         }
+      },
+
+      getConnectionCapabilities(request, context) {
+        const connectionId = pairing.authenticate(
+          bearerToken(context.requestHeader.get("authorization")),
+        );
+        if (connectionId === undefined) {
+          log(
+            "rejected GetConnectionCapabilities: missing, wrong, or revoked phone credential",
+          );
+          throw connectError(
+            new RequestFailure(
+              RequestError.UNAUTHENTICATED,
+              "a valid phone credential is required",
+            ),
+          );
+        }
+        if (request.connectionId !== connectionId) {
+          throw connectError(
+            new RequestFailure(RequestError.NOT_FOUND, "no such connection"),
+          );
+        }
+        // SAW-048 defines discovery. SAW-049 supplies the capability once the production HTTP/2
+        // endpoint exists; until then this new sidecar explicitly reports no configured endpoint.
+        return {};
       },
 
       revokeConnection(request, context) {

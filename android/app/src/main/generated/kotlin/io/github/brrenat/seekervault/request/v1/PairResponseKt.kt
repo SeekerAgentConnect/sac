@@ -107,8 +107,59 @@ public object PairResponseKt {
     public fun clearServerId() {
       _builder.clearServerId()
     }
+
+    /**
+     * ```
+     * The production update transport this sidecar serves. Absent on a new sidecar means that its
+     * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+     * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+     * field existed. Manual Refresh remains available either way.
+     * ```
+     *
+     * `.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];`
+     */
+    public var updates: io.github.brrenat.seekervault.request.v1.UpdateCapability
+      @kotlin.jvm.JvmName("getUpdates")
+        get() = _builder.updates
+      @kotlin.jvm.JvmName("setUpdates")
+        set(value) {
+        _builder.updates = value
+      }
+    /**
+     * ```
+     * The production update transport this sidecar serves. Absent on a new sidecar means that its
+     * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+     * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+     * field existed. Manual Refresh remains available either way.
+     * ```
+     *
+     * `.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];`
+     */
+    public fun clearUpdates() {
+      _builder.clearUpdates()
+    }
+    /**
+     * ```
+     * The production update transport this sidecar serves. Absent on a new sidecar means that its
+     * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+     * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+     * field existed. Manual Refresh remains available either way.
+     * ```
+     *
+     * `.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];`
+     * @return Whether the updates field is set.
+     */
+    public fun hasUpdates(): kotlin.Boolean {
+      return _builder.hasUpdates()
+    }
+
+    public val PairResponseKt.Dsl.updatesOrNull: io.github.brrenat.seekervault.request.v1.UpdateCapability?
+      get() = _builder.updatesOrNull
   }
 }
 public inline fun io.github.brrenat.seekervault.request.v1.PairResponse.copy(block: `io.github.brrenat.seekervault.request.v1`.PairResponseKt.Dsl.() -> kotlin.Unit): io.github.brrenat.seekervault.request.v1.PairResponse =
   `io.github.brrenat.seekervault.request.v1`.PairResponseKt.Dsl._create(this.toBuilder()).apply { block() }._build()
+
+public val io.github.brrenat.seekervault.request.v1.PairResponseOrBuilder.updatesOrNull: io.github.brrenat.seekervault.request.v1.UpdateCapability?
+  get() = if (hasUpdates()) getUpdates() else null
 

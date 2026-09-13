@@ -115,8 +115,11 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | `/seekervault.live.v1.LiveCommandService/WatchCommands` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect server stream of live commands |
 | `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
 | `/seekervault.request.v1.PairingService/Pair` | A phone that's pairing | `Authorization: Bearer <pairing token>`, from `pnpm pair` | Exchanges the pairing token for a connection and its credential |
+| `/seekervault.request.v1.PairingService/GetConnectionCapabilities` | The paired phone | `Authorization: Bearer <phone credential>` | Reports the caller's optional production-update capability without requiring re-pairing (SAW-048) |
 | `/seekervault.request.v1.PairingService/RevokeConnection` | The paired phone | `Authorization: Bearer <phone credential>` | Revokes the caller's own connection |
-| `/seekervault.request.v1.RequestService/ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, and `PublishWallet` | The paired phone | `Authorization: Bearer <phone credential>` | Connect unary calls of the durable workflow, and the wallet the owner selected (SAW-015) |
+| `/seekervault.request.v1.RequestService/ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, `CheckStatus`, and `PublishWallet` | The paired phone | `Authorization: Bearer <phone credential>` | Connect unary calls of the durable workflow, and the wallet the owner selected (SAW-015) |
+
+SAW-048 defines `seekervault.update.v1.UpdateService` and proves its bidirectional gRPC transport in a test-only HTTP/2 server. This production sidecar does not serve that service yet and therefore returns no `UpdateCapability`; SAW-049 adds the listener and durable event source. Existing RequestService, pairing, health, and MCP endpoints remain unchanged.
 
 The sidecar checks requests to `/mcp` as follows, following the MCP transport specification's defense against DNS rebinding:
 
@@ -132,7 +135,7 @@ On the phone API:
 
 - **Token:** each service takes only its own credential, as the [role matrix](../protocol.md#roles) shows. Any other token, a revoked credential, or none fails with `unauthenticated`. The MCP token is refused on every phone RPC, and every phone-side token is refused on `/mcp`.
 - **Size:** each message is limited to 64 KiB, and a larger one fails with `resource_exhausted`.
-- **Connection:** the phone credential authenticates as its own connection. Every `RequestService` call must name that connection, in `connection_id` or `ref`. A call that names another connection gets `not_found`.
+- **Connection:** the phone credential authenticates as its own connection. Every `RequestService` and capability-discovery call must name that connection, in `connection_id` or `ref`. A call that names another connection gets `not_found`.
 - **Errors:** every `PairingService` and `RequestService` error carries a `RequestErrorDetail`; see [request errors](../protocol.md#request-errors).
 
 **Tokens and logs:** tokens are read only from the `Authorization` header, and never logged. `MCP_TOKEN` and `PHONE_TOKEN` are compared in constant time. Pairing tokens and phone credentials are looked up by their SHA-256 hash, which is all the database keeps. Log lines carry command and request IDs, sizes, and states. They never carry command text, request text, or notes.

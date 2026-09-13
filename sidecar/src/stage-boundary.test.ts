@@ -2,8 +2,9 @@
  * Stage boundaries on the Node side (AGENTS.md). Nothing creates keys and nothing signs. The
  * sidecar stores durable requests (SAW-010): only src/storage/ imports the file system or SQLite,
  * and only it runs SQL. SAW-019 lets it read a chain, and only from src/solana/, to build a
- * transfer the owner reviews; it still sends nothing. These checks fail when that changes before
- * the stage that changes it on purpose.
+ * transfer the owner reviews; it still sends nothing. SAW-048 authorizes an HTTP/2 listener and
+ * UpdateService only in server.ts and src/updates/, while durable cursors and snapshots still go
+ * through src/storage/. These checks fail when that narrow boundary changes.
  */
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -135,6 +136,33 @@ describe("stage boundary", () => {
       readFileSync(join(SRC, "storage/request-store.ts"), "utf8"),
       sql,
       "the request store runs its SQL in storage",
+    );
+  });
+
+  it("keeps the production update transport in its server and updates packages", () => {
+    const sources = shippedSources();
+    const http2 = /from "node:http2"/;
+    const updateProtocol = /gen\/seekervault\/update\/v1\/update_pb\.js/;
+    const http2OutsideServer = sources.filter(
+      (file) =>
+        relative(SRC, file) !== "server.ts" &&
+        http2.test(readFileSync(file, "utf8")),
+    );
+    const protocolOutsideUpdates = sources.filter((file) => {
+      const path = relative(SRC, file);
+      return (
+        path !== "server.ts" &&
+        !path.startsWith("updates/") &&
+        updateProtocol.test(readFileSync(file, "utf8"))
+      );
+    });
+    assert.deepEqual(
+      http2OutsideServer.map((file) => relative(ROOT, file)),
+      [],
+    );
+    assert.deepEqual(
+      protocolOutsideUpdates.map((file) => relative(ROOT, file)),
+      [],
     );
   });
 
