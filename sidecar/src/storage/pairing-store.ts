@@ -17,6 +17,10 @@ import {
 import { RequestFailure } from "../requests/failure.ts";
 import { transaction, type DatabaseSync, type Row } from "./database.ts";
 import { invalidServerUrlReason, normalizeServerUrl } from "../pairing/uri.ts";
+import {
+  recordConnectionRevoked,
+  recordRequestUpdate,
+} from "./update-store.ts";
 
 /** The detail a request gets when its connection's revocation cancels it. */
 export const REVOKED_DETAIL = "The phone's connection was revoked.";
@@ -236,13 +240,31 @@ export class PairingStore {
     if (Number(changes) === 0) return { revoked: false, cancelled: 0 };
     // Requests already past their deadline are left for the next operation to expire, since
     // expiry comes first (docs/protocol.md).
-    const cancelled = this.#db
+    const pending = this.#db
       .prepare(
-        `UPDATE requests SET state = ?, outcome = ?, updated_at_ms = ?
-         WHERE connection_id = ? AND state = ? AND expires_at_ms > ?`,
+        `SELECT request_id FROM requests
+         WHERE connection_id = ? AND state = ? AND expires_at_ms > ? ORDER BY request_id`,
       )
-      .run(CANCELLED, REVOKED_OUTCOME, now, connectionId, PENDING, now);
-    return { revoked: true, cancelled: Number(cancelled.changes) };
+      .all(connectionId, PENDING, now);
+    const cancel = this.#db.prepare(
+      "UPDATE requests SET state = ?, outcome = ?, updated_at_ms = ? WHERE request_id = ? AND state = ?",
+    );
+    let cancelled = 0;
+    for (const row of pending) {
+      const requestId = text(row.request_id);
+      const result = cancel.run(
+        CANCELLED,
+        REVOKED_OUTCOME,
+        now,
+        requestId,
+        PENDING,
+      );
+      if (Number(result.changes) !== 1) continue;
+      recordRequestUpdate(this.#db, requestId, now);
+      cancelled += 1;
+    }
+    recordConnectionRevoked(this.#db, connectionId, now);
+    return { revoked: true, cancelled };
   }
 
   #activeConnectionIds(): string[] {
