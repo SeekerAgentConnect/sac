@@ -1,23 +1,40 @@
 package io.github.brrenat.seekervault
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.ui.BottomDestination
 import io.github.brrenat.seekervault.ui.SeekerBottomBar
+import io.github.brrenat.seekervault.ui.SeekerButton
+import io.github.brrenat.seekervault.ui.SolidDialog
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -77,6 +94,60 @@ class SeekerVaultThemeTest {
         compose.onNodeWithText("Wallet").assertIsNotSelected().performClick()
         compose.onNodeWithText("Home").assertIsNotSelected()
         compose.onNodeWithText("Wallet").assertIsSelected()
+    }
+
+    @Test
+    fun solidDialogBodyScrollsWithoutMovingItsActions() {
+        compose.setContent {
+            SeekerVaultTheme {
+                SolidDialog(
+                    title = "Confirm",
+                    body = {
+                        Column {
+                            repeat(20) { Text("Explanation line $it") }
+                            Text("Last explanation", Modifier.testTag("dialog-last-line"))
+                        }
+                    },
+                    actions = { Text("Keep this action visible") },
+                )
+            }
+        }
+
+        val lastLine = compose.onNodeWithTag("dialog-last-line")
+        lastLine.assertIsNotDisplayed().performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Keep this action visible").assertIsDisplayed()
+    }
+
+    @Test
+    fun criticalButtonLabelsWrapAtLargeText() {
+        compose.setContent {
+            SeekerVaultTheme {
+                val density = LocalDensity.current
+                CompositionLocalProvider(
+                    LocalDensity provides Density(density.density, fontScale = 2f)
+                ) {
+                    SeekerButton(
+                        text = "Approve and send\ndespite warnings",
+                        onClick = {},
+                        modifier = Modifier.width(180.dp).testTag("large-action"),
+                    )
+                }
+            }
+        }
+
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        val action =
+            compose
+                .onNodeWithText("Approve and send\ndespite warnings", useUnmergedTree = true)
+                .fetchSemanticsNode()
+                .config[SemanticsActions.GetTextLayoutResult]
+                .action
+        assertTrue(requireNotNull(action).invoke(layouts))
+        val layout = layouts.single()
+        assertTrue(
+            "the complete action must wrap instead of ellipsizing: lines=${layout.lineCount}, size=${layout.size}, overflowWidth=${layout.didOverflowWidth}, overflowHeight=${layout.didOverflowHeight}",
+            layout.lineCount > 1,
+        )
     }
 
     private fun capture(dark: Boolean): Captured {
