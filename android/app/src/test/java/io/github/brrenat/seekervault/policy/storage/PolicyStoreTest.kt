@@ -71,7 +71,7 @@ class PolicyStoreTest {
         store.put(policy)
 
         val json = JSONObject(file(CONNECTION).readText())
-        assertEquals(0, json.getJSONArray("recipients").length())
+        assertEquals(0, json.getJSONObject("recipients").getJSONArray("values").length())
         assertEquals(false, json.has("programs"))
 
         val read = store.get(CONNECTION) as StoredPolicy.Policy
@@ -110,7 +110,7 @@ class PolicyStoreTest {
 
     @Test
     fun aDocumentFromALaterVersionIsRefusedRatherThanReadAsFewerRules() {
-        write(CONNECTION, base().put("version", 2).put("recipients", JSONArray(listOf(RECIPIENT))))
+        write(CONNECTION, base().put("version", 3).put("recipients", JSONArray(listOf(RECIPIENT))))
 
         assertEquals(StoredPolicy.Unreadable(UnreadableReason.NewerVersion), store.get(CONNECTION))
     }
@@ -152,6 +152,9 @@ class PolicyStoreTest {
 
         write(CONNECTION, base().put("recipients", "not a list"))
         assertEquals(StoredPolicy.Unreadable(UnreadableReason.Damaged), store.get(CONNECTION))
+
+        write(CONNECTION, base().put("limits", "not a list"))
+        assertEquals(StoredPolicy.Unreadable(UnreadableReason.Damaged), store.get(CONNECTION))
     }
 
     @Test
@@ -171,6 +174,22 @@ class PolicyStoreTest {
                 ),
         )
 
+        assertEquals(StoredPolicy.Unreadable(UnreadableReason.Damaged), store.get(CONNECTION))
+
+        write(
+            CONNECTION,
+            base()
+                .put(
+                    "limits",
+                    JSONArray(
+                        listOf(
+                            JSONObject()
+                                .put("asset", JSONObject().put("network", "NETWORK_MAINNET"))
+                                .put("perOperation", 1)
+                        )
+                    ),
+                ),
+        )
         assertEquals(StoredPolicy.Unreadable(UnreadableReason.Damaged), store.get(CONNECTION))
     }
 

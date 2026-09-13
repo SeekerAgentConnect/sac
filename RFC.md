@@ -63,7 +63,7 @@ For swaps, we use Jupiter `/build`: retrieve the instructions, build the transac
 
 ### Connections
 
-Each connection stores the server address, credentials, name, its own policy, and activity history. Request IDs are scoped by connection ID.
+Each connection stores the server address, credentials, name, its own policy overrides, and activity history. The phone also stores one global policy whose defaults apply to every connection. Request IDs are scoped by connection ID.
 
 Pairing uses a QR code containing the server address and a one-time token, and runs over a secure connection. The agent's MCP access is separate from the phone's access to the approval API. Connection revocation and secure credential storage are included.
 
@@ -102,7 +102,7 @@ Creating a request returns a `request_id` without keeping the MCP call open unti
 
 ## 5. Policies and User Interface
 
-Policies are edited and enforced **only on the phone**, separately for each connection. The agent cannot change the rules. A full copy of the policy is not sent to the sidecar.
+Policies are edited and evaluated **only on the phone**. One global document supplies defaults, and each connection may replace a section in full, explicitly configure no check, or inherit it; global and connection daily thresholds remain separate additive checks. The agent cannot change the rules. A full copy of the policy is not sent to the sidecar.
 
 The builder includes action types, assets, recipients, programs, a per-transaction threshold, and a daily threshold. In the first version, monetary thresholds are expressed in units of the selected asset, without requiring conversion to dollars. The daily counter covers operations through our app, not all wallet activity.
 
@@ -132,7 +132,7 @@ This table was revised on September 11, 2026:
 | **2. Persistent requests and connections** | Durable request contract and lifecycle; a persistent sidecar queue with async MCP results; secure pairing with separate agent and phone roles; multiple connections; a pending inbox | Requests survive restarts and are fetched when the app opens; several self-hosted servers can be connected |
 | **3. Wallet connection and message signing** | MWA integration bound to a wallet and network; async message signing; wallet lifecycle and reliable result delivery | The agent receives the result of an actual manual signature on Seeker |
 | **4. Transfers** | Fresh transaction preparation; independent on-phone parsing; MWA sign-and-send; on-chain confirmation and recovery of uncertain outcomes; activity history | A transfer completes the full workflow, and its outcome is confirmed on chain |
-| **5. Policies** | Policy model and evaluation semantics; daily counters; the Policy Builder; policy results in request review | A transfer shows an `ALLOWED` or `UNDER_RESTRICTIONS` assessment with its reasons |
+| **5. Policies** | Policy model and evaluation semantics; global defaults and connection overrides; connection-wide and global daily counters; the Policy Builder; policy results in request review | A transfer shows an `ALLOWED` or `UNDER_RESTRICTIONS` assessment with its reasons and rule sources |
 | **6. Jupiter** | `/build`; swap parameter checks; output amount and slippage display; refreshing expired transactions | Swaps use the same review and approval workflow |
 | **7. Packaging and integrations** | Docker Compose; a TLS gateway; an OAuth gateway for hosted MCP clients; the test-agent CLI; real Hermes integration; a self-hosting guide | The project can be deployed and connected by following the instructions |
 | **8. Release and submission** | Cross-component reliability and security regression checks; a signed release APK; verified guides; the demo and presentation | Retries don't cause duplicate execution; uncertain outcomes are clearly reported; the release can be installed and reproduced |
