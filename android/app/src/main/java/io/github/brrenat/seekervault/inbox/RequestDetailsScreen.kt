@@ -1,7 +1,12 @@
 package io.github.brrenat.seekervault.inbox
 
+import android.content.ClipData
 import androidx.annotation.StringRes
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,9 +15,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.HourglassTop
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -21,26 +39,50 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.SeekerTheme
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.PairingCodes
+import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.connections.outcomeText
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.request.v1.Asset
+import io.github.brrenat.seekervault.request.v1.PreparedTransaction
+import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.transactions.ASSOCIATED_TOKEN_PROGRAM
+import io.github.brrenat.seekervault.transactions.COMPUTE_BUDGET_PROGRAM
+import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
+import io.github.brrenat.seekervault.transactions.SYSTEM_PROGRAM
+import io.github.brrenat.seekervault.transactions.TOKEN_2022_PROGRAM
+import io.github.brrenat.seekervault.transactions.TOKEN_PROGRAM
+import io.github.brrenat.seekervault.transactions.TransferFacts
 import io.github.brrenat.seekervault.transactions.Verdict
+import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.transactions.transfer
 import io.github.brrenat.seekervault.ui.Identifier
 import io.github.brrenat.seekervault.ui.SeekerButton
@@ -48,8 +90,11 @@ import io.github.brrenat.seekervault.ui.SeekerButtonRole
 import io.github.brrenat.seekervault.ui.SeekerCard
 import io.github.brrenat.seekervault.ui.seekerListItemColors
 import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.encodeBase58
 import io.github.brrenat.seekervault.wallet.networkText
 import java.time.Instant
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Request details: who asked, what, and until when. A pending acknowledgement offers Acknowledge
@@ -774,6 +819,593 @@ private fun RequestFact(
 private fun shortIdentifier(value: String): String =
     if (value.length <= 16) value else "${value.take(9)}…${value.takeLast(7)}"
 
+@Composable
+private fun transferPrimaryAmount(
+    facts: TransferFacts?,
+    transfer: io.github.brrenat.seekervault.request.v1.TransferAction,
+): String {
+    if (facts != null) {
+        return stringResource(
+            if (facts.mint == null) R.string.transfer_headline_sol
+            else R.string.transfer_headline_token,
+            formatBaseUnits(facts.amount, facts.decimals),
+        )
+    }
+    val amount = transfer.amount.toULongOrNull()
+    return if (transfer.asset.kindCase == Asset.KindCase.NATIVE_SOL && amount != null) {
+        stringResource(
+            R.string.transfer_headline_sol,
+            formatBaseUnits(amount, LAMPORT_DECIMALS),
+        )
+    } else {
+        stringResource(R.string.transfer_headline_token, transfer.amount)
+    }
+}
+
+@Composable
+private fun TransferStatusBlock(
+    request: ActionRequest,
+    result: LocalResult?,
+    sending: Boolean,
+    checking: Boolean,
+    now: Instant,
+    amount: String,
+    ready: Boolean,
+) {
+    if (!ready && result == null && !sending) return
+    val sent = result?.signing as? SigningOutcome.Sent
+    val state = result?.request?.state ?: request.state
+    val confirmed = sent != null && state == RequestState.REQUEST_STATE_CONFIRMED
+    val failedOnNetwork = sent != null && state == RequestState.REQUEST_STATE_FAILED
+    val title: String
+    val detail: String?
+    val supporting: String?
+    val icon =
+        when {
+            sending -> Icons.Outlined.HourglassTop
+            confirmed -> Icons.Outlined.CheckCircle
+            failedOnNetwork -> Icons.Outlined.WarningAmber
+            sent != null && checking -> Icons.Outlined.Sync
+            sent != null -> Icons.AutoMirrored.Outlined.Send
+            else -> Icons.Outlined.CheckCircle
+        }
+    when {
+        sending -> {
+            title = stringResource(R.string.transfer_status_signing)
+            detail = stringResource(R.string.transfer_status_signing_detail)
+            supporting = null
+        }
+        confirmed -> {
+            title = stringResource(R.string.transfer_status_confirmed)
+            detail = stringResource(R.string.transfer_status_confirmed_detail, amount)
+            supporting = null
+        }
+        failedOnNetwork -> {
+            title = stringResource(R.string.transfer_status_failed)
+            detail =
+                result.request.outcome.detail.takeIf { it.isNotBlank() }
+                    ?: stringResource(R.string.transfer_status_failed_detail)
+            supporting = null
+        }
+        sent != null && checking -> {
+            title = stringResource(R.string.transfer_status_confirming)
+            detail = stringResource(R.string.transfer_status_confirming_detail)
+            supporting = null
+        }
+        sent != null -> {
+            title = stringResource(R.string.transfer_status_sent)
+            detail = stringResource(R.string.transfer_status_sent_detail, amount)
+            supporting = stringResource(R.string.transfer_status_waiting_confirmation)
+        }
+        result != null -> {
+            title = statusText(request, result, sending = false, now = now)
+            detail = null
+            supporting = null
+        }
+        else -> {
+            title = stringResource(R.string.transfer_status_ready)
+            detail = stringResource(R.string.transfer_status_ready_detail)
+            supporting = null
+        }
+    }
+    val container =
+        when {
+            confirmed -> MaterialTheme.colorScheme.primaryContainer
+            failedOnNetwork -> MaterialTheme.colorScheme.errorContainer
+            sent != null || sending -> MaterialTheme.colorScheme.surfaceContainerHighest
+            else -> MaterialTheme.colorScheme.surfaceContainer
+        }
+    val ink =
+        when {
+            confirmed -> MaterialTheme.colorScheme.onPrimaryContainer
+            failedOnNetwork -> MaterialTheme.colorScheme.onErrorContainer
+            else -> MaterialTheme.colorScheme.onSurface
+        }
+    SeekerCard(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        color = container,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = ink,
+                    modifier = Modifier.testTag(InboxTags.STATUS),
+                )
+            }
+            detail?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ink,
+                    modifier =
+                        if (sent != null) Modifier.testTag(InboxTags.CONFIRMATION) else Modifier,
+                )
+            }
+            supporting?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = ink)
+            }
+            sent?.let {
+                TransactionId(encodeBase58(it.signature.toByteArray()), ink)
+            }
+            if (result?.delivery == Delivery.Waiting && result.lastFailure != null && !sending) {
+                Text(
+                    stringResource(
+                        R.string.status_last_failure,
+                        outcomeText(result.lastFailure),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ink,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransactionId(id: String, ink: androidx.compose.ui.graphics.Color) {
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    var copied by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(
+            stringResource(R.string.transfer_transaction_id),
+            style = MaterialTheme.typography.labelSmall,
+            color = ink,
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Identifier(
+                shortIdentifier(id),
+                modifier = Modifier.weight(1f).testTag(InboxTags.TRANSACTION_ID),
+            )
+            Box(
+                Modifier.size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        role = Role.Button,
+                        onClick = {
+                            scope.launch {
+                                clipboard.setClipEntry(
+                                    ClipEntry(ClipData.newPlainText("Transaction ID", id))
+                                )
+                                copied = true
+                                delay(1_600)
+                                copied = false
+                            }
+                        },
+                    )
+                    .testTag(InboxTags.TRANSACTION_COPY),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
+                    contentDescription =
+                        stringResource(
+                            if (copied) R.string.transfer_transaction_id_copied
+                            else R.string.transfer_copy_transaction_id
+                        ),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransactionSummary(
+    approved: Boolean,
+    amount: String,
+    recipient: String,
+    sender: String,
+    network: String,
+    prepared: PreparedTransaction?,
+) {
+    SeekerCard(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(
+                    if (approved) R.string.transfer_summary_approved_title
+                    else R.string.transfer_summary_title
+                ),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(
+                Modifier.testTag(InboxTags.field("sends")).semantics(mergeDescendants = true) {},
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    stringResource(R.string.request_field_sends),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(amount, style = MaterialTheme.typography.headlineSmall)
+            }
+            SummaryRow(stringResource(R.string.request_field_to), recipient, "to", mono = true)
+            SummaryRow(
+                stringResource(R.string.request_field_from_wallet),
+                sender,
+                "signsWith",
+                mono = true,
+            )
+            SummaryRow(stringResource(R.string.request_fact_network), network, "network")
+            SummaryRow(
+                stringResource(R.string.request_field_network_fee),
+                prepared?.let {
+                    stringResource(
+                        R.string.transfer_fee_value,
+                        formatBaseUnits(it.feeLamports.toULong(), LAMPORT_DECIMALS),
+                    )
+                } ?: stringResource(R.string.transfer_value_unavailable),
+                "estimate",
+            )
+        }
+    }
+}
+
+@Composable
+private fun SummaryRow(label: String, value: String, name: String, mono: Boolean = false) {
+    Row(
+        Modifier.fillMaxWidth().testTag(InboxTags.field(name)).semantics(
+            mergeDescendants = true
+        ) {},
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (mono) {
+            Identifier(
+                shortIdentifier(value),
+                modifier = Modifier.weight(1f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            )
+        } else {
+            Text(
+                value,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeviceVerification(verdict: Verdict) {
+    val verified = verdict == Verdict.Verified
+    val container =
+        if (verified) MaterialTheme.colorScheme.surfaceContainerHighest
+        else MaterialTheme.colorScheme.errorContainer
+    val ink =
+        if (verified) MaterialTheme.colorScheme.onSurface
+        else MaterialTheme.colorScheme.onErrorContainer
+    SeekerCard(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        color = container,
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                if (verified) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
+                contentDescription = null,
+                tint = if (verified) SeekerTheme.colors.primaryText else ink,
+                modifier = Modifier.size(22.dp),
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(
+                        when (verdict) {
+                            Verdict.Verified -> R.string.transfer_verdict_verified
+                            Verdict.Unverified -> R.string.transfer_verdict_unverified_title
+                            Verdict.Invalid -> R.string.transfer_verdict_invalid_title
+                        }
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = ink,
+                    modifier = Modifier.testTag(InboxTags.TRANSFER_VERDICT),
+                )
+                Text(
+                    stringResource(
+                        if (verified) R.string.transfer_verdict_verified_detail
+                        else verdictText(verdict)
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ink,
+                    modifier = Modifier.testTag(InboxTags.TRANSFER_DERIVED),
+                )
+            }
+        }
+    }
+}
+
+private data class ProgramInfo(@StringRes val name: Int, @StringRes val purpose: Int)
+
+private const val JUPITER_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+
+private fun programInfo(program: String): ProgramInfo =
+    when (program) {
+        SYSTEM_PROGRAM ->
+            ProgramInfo(R.string.transfer_program_system, R.string.transfer_program_system_purpose)
+        TOKEN_PROGRAM ->
+            ProgramInfo(R.string.transfer_program_token, R.string.transfer_program_token_purpose)
+        TOKEN_2022_PROGRAM ->
+            ProgramInfo(
+                R.string.transfer_program_token_2022,
+                R.string.transfer_program_token_purpose,
+            )
+        ASSOCIATED_TOKEN_PROGRAM ->
+            ProgramInfo(
+                R.string.transfer_program_associated_token,
+                R.string.transfer_program_associated_token_purpose,
+            )
+        COMPUTE_BUDGET_PROGRAM ->
+            ProgramInfo(
+                R.string.transfer_program_compute_budget,
+                R.string.transfer_program_compute_budget_purpose,
+            )
+        JUPITER_PROGRAM ->
+            ProgramInfo(
+                R.string.transfer_program_jupiter,
+                R.string.transfer_program_jupiter_purpose,
+            )
+        else ->
+            ProgramInfo(
+                R.string.transfer_program_unknown,
+                R.string.transfer_program_unknown_purpose,
+            )
+    }
+
+@Composable
+private fun ProgramSummary(programs: List<String>) {
+    Column(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .testTag(InboxTags.field("programs"))
+            .semantics(mergeDescendants = true) {},
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            pluralStringResource(R.plurals.transfer_programs_used, programs.size),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        programs.forEach { program ->
+            val info = programInfo(program)
+            SeekerCard(
+                Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(stringResource(info.name), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        stringResource(info.purpose),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Identifier(program, maxLines = 2)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransferTechnicalDetails(
+    facts: TransferFacts?,
+    transfer: io.github.brrenat.seekervault.request.v1.TransferAction,
+    prepared: PreparedTransaction?,
+    result: LocalResult?,
+    source: Connection?,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val sent = result?.signing as? SigningOutcome.Sent
+    SeekerCard(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .testTag(InboxTags.TECHNICAL_DETAILS),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        onClick = { expanded = !expanded },
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    stringResource(R.string.transfer_technical_details),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription =
+                        stringResource(
+                            if (expanded) R.string.transfer_hide_technical_details
+                            else R.string.transfer_show_technical_details
+                        ),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (expanded) {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .padding(top = 14.dp)
+                        .testTag(InboxTags.TECHNICAL_DETAILS_CONTENT),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    TechnicalValue(
+                        stringResource(R.string.transfer_technical_sender),
+                        facts?.payer ?: transfer.wallet,
+                    )
+                    TechnicalValue(
+                        stringResource(R.string.transfer_technical_recipient),
+                        facts?.recipient ?: transfer.recipient,
+                    )
+                    facts?.destinationAccount?.let {
+                        TechnicalValue(stringResource(R.string.request_field_token_account), it)
+                    }
+                    facts?.mint?.let {
+                        TechnicalValue(stringResource(R.string.request_field_token), it)
+                    }
+                    facts
+                        ?.programs
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let {
+                            TechnicalValue(
+                                stringResource(R.string.transfer_technical_program_ids),
+                                it.joinToString("\n"),
+                            )
+                        }
+                    facts?.let {
+                        TechnicalValue(
+                            stringResource(R.string.transfer_technical_instruction_count),
+                            stringResource(
+                                R.string.transfer_instructions_read,
+                                it.recognizedInstructions,
+                                it.instructionCount,
+                            ),
+                        )
+                        TechnicalValue(
+                            stringResource(R.string.request_field_blockhash),
+                            it.blockhash,
+                        )
+                        TechnicalValue(
+                            stringResource(
+                                if (it.mint == null) {
+                                    R.string.transfer_technical_amount_lamports
+                                } else {
+                                    R.string.transfer_technical_amount_base_units
+                                }
+                            ),
+                            it.amount.toString(),
+                        )
+                        if (it.ensuresRecipientAccount) {
+                            TechnicalValue(
+                                stringResource(R.string.request_field_creates),
+                                stringResource(R.string.transfer_creates_account),
+                            )
+                        }
+                        it.computeUnitPrice?.let { price ->
+                            TechnicalValue(
+                                stringResource(R.string.request_field_priority),
+                                stringResource(R.string.transfer_priority_price, price.toString()),
+                            )
+                        }
+                    }
+                    prepared?.let {
+                        TechnicalValue(
+                            stringResource(R.string.transfer_technical_fee_lamports),
+                            it.feeLamports.toULong().toString(),
+                        )
+                        if (it.rentLamports != 0L) {
+                            TechnicalValue(
+                                stringResource(R.string.transfer_technical_rent_lamports),
+                                it.rentLamports.toULong().toString(),
+                            )
+                        }
+                    }
+                    sent?.let {
+                        TechnicalValue(
+                            stringResource(R.string.transfer_transaction_id),
+                            encodeBase58(it.signature.toByteArray()),
+                        )
+                    }
+                    result
+                        ?.request
+                        ?.outcome
+                        ?.takeIf { it.hasConfirmation() }
+                        ?.confirmation
+                        ?.let {
+                            TechnicalValue(
+                                stringResource(R.string.transfer_technical_confirmation_source),
+                                it.endpoint,
+                            )
+                            if (it.detail.isNotBlank()) {
+                                TechnicalValue(
+                                    stringResource(R.string.transfer_technical_network_result),
+                                    it.detail,
+                                )
+                            }
+                        }
+                    source?.let {
+                        TechnicalValue(
+                            stringResource(R.string.request_field_from),
+                            "${it.label} (${PairingCodes.hostOf(it.serverUrl)})",
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TechnicalValue(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Identifier(value, maxLines = Int.MAX_VALUE)
+    }
+}
+
 /** The v4 review sheet for a prepared transfer, without changing its verification or approval. */
 @Composable
 private fun TransferRequestReview(
@@ -819,60 +1451,16 @@ private fun TransferRequestReview(
             Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    facts?.let {
-                        stringResource(
-                            if (it.mint == null) R.string.transfer_headline_sol
-                            else R.string.transfer_headline_token,
-                            io.github.brrenat.seekervault.transactions.formatBaseUnits(
-                                it.amount,
-                                it.decimals,
-                            ),
-                        )
-                    } ?: stringResource(R.string.request_transfer),
-                    style = MaterialTheme.typography.displaySmall,
-                )
-                Identifier(
-                    stringResource(R.string.transfer_to, facts?.recipient ?: transfer.recipient),
-                    modifier = Modifier.testTag(InboxTags.field("to")),
-                    maxLines = 3,
-                )
-            }
-            if (result != null || sending || !canAnswer) {
-                SeekerCard(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                ) {
-                    Column(
-                        Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            statusText(request, result, sending, now),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.testTag(InboxTags.STATUS),
-                        )
-                        if (
-                            result?.delivery == Delivery.Waiting &&
-                                result.lastFailure != null &&
-                                !sending
-                        ) {
-                            Text(
-                                stringResource(
-                                    R.string.status_last_failure,
-                                    outcomeText(result.lastFailure),
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
+            val amount = transferPrimaryAmount(facts, transfer)
+            TransferStatusBlock(
+                request = request,
+                result = result,
+                sending = sending,
+                checking = checking,
+                now = now,
+                amount = amount,
+                ready = ready?.inspection?.approvable == true,
+            )
             if (sending || checking) {
                 LinearProgressIndicator(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag(InboxTags.SENDING),
@@ -880,33 +1468,37 @@ private fun TransferRequestReview(
                     trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 )
             }
-            result?.let { answered ->
-                confirmationText(answered)?.let { checked ->
-                    Text(
-                        "$checked ${stringResource(R.string.confirmation_trust)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier =
-                            Modifier.padding(horizontal = 20.dp).testTag(InboxTags.CONFIRMATION),
-                    )
-                }
-            }
+            TransactionSummary(
+                approved = result?.answer == Answer.Approve,
+                amount = amount,
+                recipient = facts?.recipient ?: transfer.recipient,
+                sender = facts?.payer ?: wallet?.address ?: transfer.wallet,
+                network =
+                    wallet?.let { networkText(it.network) }
+                        ?: io.github.brrenat.seekervault.policy.networkText(transfer.network),
+                prepared = ready?.prepared,
+            )
             when (preparation) {
                 null,
-                Preparation.Running ->
-                    SeekerCard(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainer,
-                    ) {
-                        Text(
-                            stringResource(R.string.transfer_checking),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier =
-                                Modifier.fillMaxWidth()
-                                    .padding(16.dp)
-                                    .testTag(InboxTags.TRANSFER_CHECKING),
-                        )
+                Preparation.Running -> {
+                    if (result == null) {
+                        SeekerCard(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                        ) {
+                            Text(
+                                stringResource(R.string.transfer_checking),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier =
+                                    Modifier.fillMaxWidth()
+                                        .padding(16.dp)
+                                        .testTag(InboxTags.TRANSFER_CHECKING),
+                            )
+                        }
+                    } else if (result.signing is SigningOutcome.Sent) {
+                        DeviceVerification(Verdict.Verified)
                     }
+                }
                 is Preparation.Failed -> {
                     SeekerCard(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -937,104 +1529,7 @@ private fun TransferRequestReview(
                 }
                 is Preparation.Ready -> {
                     val inspection = preparation.inspection
-                    SeekerCard(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        color =
-                            if (inspection.verdict == Verdict.Verified) {
-                                MaterialTheme.colorScheme.surfaceContainer
-                            } else {
-                                MaterialTheme.colorScheme.errorContainer
-                            },
-                    ) {
-                        Text(
-                            stringResource(verdictText(inspection.verdict)),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color =
-                                if (inspection.verdict == Verdict.Verified) {
-                                    MaterialTheme.colorScheme.onSurface
-                                } else {
-                                    MaterialTheme.colorScheme.onErrorContainer
-                                },
-                            modifier =
-                                Modifier.fillMaxWidth()
-                                    .padding(16.dp)
-                                    .testTag(InboxTags.TRANSFER_VERDICT),
-                        )
-                    }
-                    inspection.facts?.let { inspected ->
-                        RequestFact(
-                            stringResource(R.string.request_field_from),
-                            source?.label ?: request.ref.connectionId,
-                            "from",
-                        )
-                        RequestFact(
-                            stringResource(R.string.wallet_title),
-                            wallet?.address ?: transfer.wallet,
-                            "signsWith",
-                            mono = true,
-                        )
-                        RequestFact(
-                            stringResource(R.string.request_fact_network),
-                            wallet?.let { networkText(it.network) }
-                                ?: io.github.brrenat.seekervault.policy.networkText(
-                                    transfer.network
-                                ),
-                            "network",
-                        )
-                        RequestFact(
-                            stringResource(R.string.request_field_sends),
-                            amountText(inspected),
-                            "sends",
-                        )
-                        inspected.destinationAccount?.let {
-                            Field(R.string.request_field_token_account, it, "tokenAccount")
-                        }
-                        inspected.mint?.let {
-                            Field(R.string.request_field_token, it, "token")
-                        }
-                        Field(R.string.request_field_pays_fee, inspected.payer, "paysFee")
-                        if (inspected.ensuresRecipientAccount) {
-                            Field(
-                                R.string.request_field_creates,
-                                stringResource(R.string.transfer_creates_account),
-                                "creates",
-                            )
-                        }
-                        inspected.computeUnitPrice?.let {
-                            Field(
-                                R.string.request_field_priority,
-                                stringResource(R.string.transfer_priority_price, it.toString()),
-                                "priority",
-                            )
-                        }
-                        inspected.programs
-                            .takeIf { it.isNotEmpty() }
-                            ?.let {
-                                Field(
-                                    R.string.request_field_programs,
-                                    it.joinToString("\n"),
-                                    "programs",
-                                )
-                            }
-                        Field(
-                            R.string.request_field_instructions,
-                            stringResource(
-                                R.string.transfer_instructions_read,
-                                inspected.recognizedInstructions,
-                                inspected.instructionCount,
-                            ),
-                            "instructions",
-                        )
-                        Field(R.string.request_field_blockhash, inspected.blockhash, "blockhash")
-                        Text(
-                            stringResource(R.string.transfer_derived_here),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier =
-                                Modifier.padding(horizontal = 20.dp)
-                                    .testTag(InboxTags.TRANSFER_DERIVED),
-                        )
-                    }
+                    DeviceVerification(inspection.verdict)
                     if (inspection.findings.isNotEmpty()) {
                         SeekerCard(
                             Modifier.fillMaxWidth()
@@ -1057,38 +1552,43 @@ private fun TransferRequestReview(
                             }
                         }
                     }
-                    Field(
-                        R.string.request_field_estimate,
-                        estimateText(preparation.prepared),
-                        "estimate",
-                    )
-                    // Verification and byte-derived facts remain above this advisory layer.
-                    PolicyReview(assessment, onRules = onRules)
-                    SeekerButton(
-                        text = stringResource(R.string.transfer_prepare_again),
-                        onClick = onPrepareAgain,
-                        enabled = !sending,
-                        role = SeekerButtonRole.Neutral,
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .testTag(InboxTags.TRANSFER_AGAIN),
-                    )
-                    if (!inspection.approvable && result == null) {
-                        SeekerCard(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.errorContainer,
-                        ) {
-                            Text(
-                                stringResource(R.string.transfer_not_approvable),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier =
-                                    Modifier.fillMaxWidth()
-                                        .padding(16.dp)
-                                        .testTag(InboxTags.TRANSFER_NOT_APPROVABLE),
-                            )
-                        }
+                }
+            }
+            facts?.programs?.takeIf { it.isNotEmpty() }?.let { ProgramSummary(it) }
+            // Device verification and byte-derived facts remain above this advisory layer.
+            PolicyReview(assessment, onRules = onRules, transaction = true)
+            TransferTechnicalDetails(
+                facts = facts,
+                transfer = transfer,
+                prepared = ready?.prepared,
+                result = result,
+                source = source,
+            )
+            if (ready != null) {
+                SeekerButton(
+                    text = stringResource(R.string.transfer_prepare_again),
+                    onClick = onPrepareAgain,
+                    enabled = !sending,
+                    role = SeekerButtonRole.Neutral,
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .testTag(InboxTags.TRANSFER_AGAIN),
+                )
+                if (!ready.inspection.approvable && result == null) {
+                    SeekerCard(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                    ) {
+                        Text(
+                            stringResource(R.string.transfer_not_approvable),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier =
+                                Modifier.fillMaxWidth()
+                                    .padding(16.dp)
+                                    .testTag(InboxTags.TRANSFER_NOT_APPROVABLE),
+                        )
                     }
                 }
             }

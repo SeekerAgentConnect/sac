@@ -219,7 +219,7 @@ class PolicyActivityTest {
             .onNodeWithTag(PolicyTags.action(PolicyAction.Transfer))
             .performScrollTo()
             .performClick()
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.SAVE).performClick()
         compose.onNodeWithTag(PolicyTags.CONFIRM_GLOBAL_SAVE).performClick()
         compose.mainClock.advanceTimeBy(10_000)
         // System Back must use the same close path as the app-bar button: the global editor has

@@ -25,6 +25,7 @@ import io.github.brrenat.seekervault.policy.PolicyDecision
 import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.policy.RequestFacts
 import io.github.brrenat.seekervault.policy.assess
+import io.github.brrenat.seekervault.policy.noPolicy
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
 import io.github.brrenat.seekervault.request.v1.Network
@@ -59,6 +60,7 @@ class TransferReviewScreenTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private var prepareAgain = 0
     private var approvals = 0
+    private var rulesOpened = 0
     private val ticks = mutableListOf<Boolean>()
 
     private val cases =
@@ -130,13 +132,14 @@ class TransferReviewScreenTest {
         wallet: SelectedWallet? = walletFor(case),
         decision: PolicyDecision? = null,
         acknowledged: Boolean = false,
+        sending: Boolean = false,
     ) = compose.setContent {
         SeekerVaultTheme {
             RequestDetailsScreen(
                 request = requestOf(case),
                 source = HOME,
                 result = null,
-                sending = false,
+                sending = sending,
                 now = NOW,
                 onAnswer = {},
                 onApprove = {},
@@ -156,6 +159,7 @@ class TransferReviewScreenTest {
                     },
                 acknowledged = acknowledged,
                 onAcknowledge = { ticks += it },
+                onRules = { rulesOpened++ },
             )
         }
     }
@@ -183,59 +187,91 @@ class TransferReviewScreenTest {
     private fun field(name: String) = compose.onNodeWithTag(InboxTags.field(name))
 
     @Test
+    fun showsTheReadyStepInPlainLanguage() {
+        val case = case("sol_transfer")
+        show(case, readyFrom(case))
+        compose
+            .onNodeWithTag(InboxTags.STATUS)
+            .assertTextEquals(context.getString(R.string.transfer_status_ready))
+    }
+
+    @Test
+    fun showsTheSigningStepInPlainLanguage() {
+        val case = case("sol_transfer")
+        show(case, readyFrom(case), sending = true)
+        compose
+            .onNodeWithTag(InboxTags.STATUS)
+            .assertTextEquals(context.getString(R.string.transfer_status_signing))
+    }
+
+    @Test
+    fun simplifiesTheNoRulesWarningAndOpensRules() {
+        val case = case("sol_transfer")
+        show(case, readyFrom(case), decision = noPolicy(PolicyReason.NoPolicyConfigured))
+
+        compose
+            .onNodeWithTag(InboxTags.POLICY_VERDICT)
+            .performScrollTo()
+            .assertTextEquals(context.getString(R.string.transfer_rules_no_policy_title))
+        compose
+            .onNodeWithTag(InboxTags.POLICY_REASON)
+            .assertTextEquals(context.getString(R.string.transfer_rules_no_policy_detail))
+        compose.onNodeWithTag(InboxTags.RULES_BUTTON).performScrollTo().performClick()
+        assertEquals(1, rulesOpened)
+    }
+
+    @Test
     fun showsTheAmountAndRecipientItReadOutOfTheTransaction() {
         show(case("sol_transfer"), readyFrom(case("sol_transfer")))
         compose
             .onNodeWithTag(InboxTags.TRANSFER_VERDICT)
             .assertTextEquals(context.getString(R.string.transfer_verdict_verified))
-        // Both the readable amount and the base units the transaction actually carries.
-        field("sends")
-            .performScrollTo()
-            .assertTextContains("2.5 SOL (2500000000 lamports)", substring = true)
+        // The primary summary is readable and keeps base units out of the main decision.
+        field("sends").performScrollTo().assertTextContains("2.5 SOL", substring = true)
         field("to")
             .performScrollTo()
             .assertTextContains(
-                case("sol_transfer").getJSONObject("request").getString("recipient"),
+                case("sol_transfer").getJSONObject("request").getString("recipient").take(9),
                 substring = true,
             )
-        field("instructions").performScrollTo().assertTextContains("1 of 1", substring = true)
         compose
             .onNodeWithTag(InboxTags.TRANSFER_DERIVED)
             .performScrollTo()
-            .assertTextEquals(context.getString(R.string.transfer_derived_here))
+            .assertTextEquals(context.getString(R.string.transfer_verdict_verified_detail))
+        compose.onNodeWithTag(InboxTags.TECHNICAL_DETAILS_CONTENT).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.TECHNICAL_DETAILS).performScrollTo().performClick()
+        compose.onNodeWithText("2500000000").performScrollTo().assertExists()
+        compose.onNodeWithText("1 of 1").performScrollTo().assertExists()
     }
 
     @Test
     fun showsTheTokenByItsMintAndTheAccountItGoesInto() {
         val case = case("token_transfer_creates_account")
         show(case, readyFrom(case, rentLamports = 2_039_280L))
-        field("token")
+        compose.onNodeWithTag(InboxTags.TECHNICAL_DETAILS).performScrollTo().performClick()
+        compose
+            .onNodeWithText(case.getJSONObject("request").getString("tokenMint"))
             .performScrollTo()
-            .assertTextContains(
-                case.getJSONObject("request").getString("tokenMint"),
-                substring = true,
-            )
-        field("tokenAccount").performScrollTo()
-        field("creates")
+            .assertExists()
+        compose
+            .onNodeWithText(context.getString(R.string.request_field_token_account))
             .performScrollTo()
-            .assertTextContains(
-                context.getString(R.string.transfer_creates_account),
-                substring = true,
-            )
-        field("sends")
+        compose
+            .onNodeWithText(context.getString(R.string.transfer_creates_account))
             .performScrollTo()
-            .assertTextContains("(1500000 base units)", substring = true)
+            .assertExists()
+        compose.onNodeWithText("1500000").performScrollTo().assertExists()
     }
 
     @Test
     fun keepsTheServersCostEstimateApartFromWhatItRead() {
         val case = case("token_transfer_creates_account")
         show(case, readyFrom(case, rentLamports = 2_039_280L))
-        // The fee can't be read out of a transaction, so it is labelled as the server's number.
+        // The fee is plainly labelled as an estimate and shown in SOL in the summary.
         field("estimate")
             .performScrollTo()
             .assertTextContains(
-                context.getString(R.string.request_field_estimate),
+                context.getString(R.string.request_field_network_fee),
                 substring = true,
             )
         field("estimate").assertTextContains("0.000005", substring = true)
@@ -247,7 +283,7 @@ class TransferReviewScreenTest {
         show(case, readyFrom(case))
         compose
             .onNodeWithTag(InboxTags.TRANSFER_VERDICT)
-            .assertTextEquals(context.getString(R.string.transfer_verdict_invalid))
+            .assertTextEquals(context.getString(R.string.transfer_verdict_invalid_title))
         compose.onNodeWithTag(InboxTags.TRANSFER_FINDINGS).performScrollTo()
         compose
             .onNodeWithText(context.getString(R.string.finding_recipient_mismatch))
@@ -255,7 +291,9 @@ class TransferReviewScreenTest {
         // And it shows where the money would really go, which is not where the request said.
         val paid = checkNotNull(readyFrom(case).inspection.facts).recipient
         assertEquals(false, paid == case.getJSONObject("request").getString("recipient"))
-        field("to").performScrollTo().assertTextContains(checkNotNull(paid), substring = true)
+        field("to")
+            .performScrollTo()
+            .assertTextContains(checkNotNull(paid).take(9), substring = true)
     }
 
     @Test
@@ -264,10 +302,11 @@ class TransferReviewScreenTest {
         show(case, readyFrom(case))
         compose
             .onNodeWithTag(InboxTags.TRANSFER_VERDICT)
-            .assertTextEquals(context.getString(R.string.transfer_verdict_unverified))
+            .assertTextEquals(context.getString(R.string.transfer_verdict_unverified_title))
         compose.onNodeWithTag(InboxTags.TRANSFER_FINDINGS).performScrollTo()
         compose.onNodeWithText(context.getString(R.string.finding_unrecognized)).assertExists()
-        field("instructions").performScrollTo().assertTextContains("1 of 2", substring = true)
+        compose.onNodeWithTag(InboxTags.TECHNICAL_DETAILS).performScrollTo().performClick()
+        compose.onNodeWithText("1 of 2").performScrollTo().assertExists()
     }
 
     @Test
@@ -279,12 +318,11 @@ class TransferReviewScreenTest {
             .onNodeWithTag(InboxTags.NOTE)
             .performScrollTo()
             .assertTextContains(context.getString(R.string.request_field_note_v4), substring = true)
-        field("token")
+        compose.onNodeWithTag(InboxTags.TECHNICAL_DETAILS).performScrollTo().performClick()
+        compose
+            .onNodeWithText(case.getJSONObject("request").getString("tokenMint"))
             .performScrollTo()
-            .assertTextContains(
-                case.getJSONObject("request").getString("tokenMint"),
-                substring = true,
-            )
+            .assertExists()
     }
 
     @Test
@@ -315,7 +353,7 @@ class TransferReviewScreenTest {
         show(case, readyFrom(case))
         compose
             .onNodeWithTag(InboxTags.TRANSFER_VERDICT)
-            .assertTextEquals(context.getString(R.string.transfer_verdict_unverified))
+            .assertTextEquals(context.getString(R.string.transfer_verdict_unverified_title))
         compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertDoesNotExist()
     }
 
@@ -327,6 +365,12 @@ class TransferReviewScreenTest {
         show(case, readyFrom(case, rentLamports = 2_039_280L))
         val programs = checkNotNull(readyFrom(case).inspection.facts).programs
         assertEquals(true, programs.size > 1)
+        field("programs")
+            .performScrollTo()
+            .assertTextContains(
+                context.getString(R.string.transfer_program_token),
+                substring = true,
+            )
         programs.forEach {
             field("programs").performScrollTo().assertTextContains(it, substring = true)
         }
@@ -393,7 +437,7 @@ class TransferReviewScreenTest {
         compose
             .onNodeWithTag(InboxTags.TRANSFER_VERDICT)
             .performScrollTo()
-            .assertTextEquals(context.getString(R.string.transfer_verdict_invalid))
+            .assertTextEquals(context.getString(R.string.transfer_verdict_invalid_title))
         compose
             .onNodeWithTag(InboxTags.POLICY_VERDICT)
             .performScrollTo()

@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.inbox
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -70,6 +71,7 @@ fun PolicyReview(
     assessment: RequestAssessment?,
     modifier: Modifier = Modifier,
     onRules: (() -> Unit)? = null,
+    transaction: Boolean = false,
 ) {
     if (assessment == null) {
         // The rules are read from disk when the request is opened. It is a moment, and it says so
@@ -90,6 +92,7 @@ fun PolicyReview(
     }
     val decision = assessment.decision
     val allowed = decision.allowed
+    val transactionWithoutRules = transaction && decision.reason == PolicyReason.NoPolicyConfigured
     val verdictInk =
         if (allowed) MaterialTheme.colorScheme.onPrimaryContainer
         else MaterialTheme.colorScheme.onTertiaryContainer
@@ -139,29 +142,52 @@ fun PolicyReview(
                         modifier = Modifier.size(22.dp),
                     )
                     Text(
-                        stringResource(assessmentText(decision.assessment)),
+                        stringResource(
+                            if (transaction && !allowed) {
+                                R.string.transfer_rules_no_policy_title
+                            } else {
+                                assessmentText(decision.assessment)
+                            }
+                        ),
                         style = MaterialTheme.typography.titleMedium,
                         color = verdictInk,
                         modifier = Modifier.weight(1f).testTag(InboxTags.POLICY_VERDICT),
                     )
                 }
-                decision.reason?.let { reason ->
+                if (transactionWithoutRules) {
                     Text(
-                        if (
-                            reason == PolicyReason.PolicyUnreadable &&
-                                decision.unreadableSources.isNotEmpty()
-                        ) {
-                            stringResource(unreadableText(decision.unreadableSources))
-                        } else {
-                            stringResource(reasonText(reason))
-                        },
+                        stringResource(R.string.transfer_rules_no_policy_detail),
                         style = MaterialTheme.typography.bodyMedium,
                         color = verdictInk,
                         modifier = Modifier.testTag(InboxTags.POLICY_REASON),
                     )
+                    Text(
+                        stringResource(R.string.transfer_rules_no_policy_secondary),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = verdictInk,
+                    )
+                } else {
+                    decision.reason?.let { reason ->
+                        Text(
+                            if (
+                                reason == PolicyReason.PolicyUnreadable &&
+                                    decision.unreadableSources.isNotEmpty()
+                            ) {
+                                stringResource(unreadableText(decision.unreadableSources))
+                            } else {
+                                stringResource(reasonText(reason))
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = verdictInk,
+                            modifier = Modifier.testTag(InboxTags.POLICY_REASON),
+                        )
+                    }
                 }
                 configuredChecks.forEach { ConfiguredCheck(it, verdictInk) }
-                if (deliberatelyOff.isNotEmpty() || absent.isNotEmpty()) {
+                if (
+                    !transactionWithoutRules &&
+                        (deliberatelyOff.isNotEmpty() || absent.isNotEmpty())
+                ) {
                     Column(
                         Modifier.testTag(InboxTags.POLICY_UNCOVERED).semantics(
                             mergeDescendants = true
@@ -194,13 +220,28 @@ fun PolicyReview(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        stringResource(R.string.policy_review_manual),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = verdictInk,
-                        modifier = Modifier.weight(1f).testTag(InboxTags.POLICY_MANUAL),
-                    )
-                    onRules?.let { RulesButton(allowed, it) }
+                    if (!transactionWithoutRules) {
+                        Text(
+                            stringResource(R.string.policy_review_manual),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = verdictInk,
+                            modifier = Modifier.weight(1f).testTag(InboxTags.POLICY_MANUAL),
+                        )
+                    } else {
+                        Box(Modifier.weight(1f))
+                    }
+                    onRules?.let {
+                        RulesButton(
+                            allowed = allowed,
+                            onClick = it,
+                            label =
+                                if (transactionWithoutRules) {
+                                    R.string.transfer_configure_rules
+                                } else {
+                                    R.string.rules_heading
+                                },
+                        )
+                    }
                 }
             }
         }
@@ -326,13 +367,14 @@ private fun DailyRow(check: DailyPolicyCheck, decimals: Int) {
 }
 
 @Composable
-private fun RulesButton(allowed: Boolean, onClick: () -> Unit) {
+private fun RulesButton(allowed: Boolean, onClick: () -> Unit, @StringRes label: Int) {
     val container =
         if (allowed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
     val ink =
         if (allowed) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary
     Box(
         Modifier.height(32.dp)
+            .testTag(InboxTags.RULES_BUTTON)
             .clip(RoundedCornerShape(16.dp))
             .background(container)
             .clickable(
@@ -345,7 +387,7 @@ private fun RulesButton(allowed: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            stringResource(R.string.rules_heading),
+            stringResource(label),
             style = MaterialTheme.typography.labelMedium,
             color = ink,
         )

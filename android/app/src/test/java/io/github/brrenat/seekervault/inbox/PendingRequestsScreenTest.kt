@@ -16,6 +16,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
@@ -31,6 +33,7 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.request.v1.RequestState
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -154,6 +157,34 @@ class PendingRequestsScreenTest {
     fun disablesRefreshWhileOneRuns() {
         show(STATE.copy(refreshing = true))
         compose.onNodeWithTag(InboxTags.REFRESH).assertIsNotEnabled()
+    }
+
+    @Test
+    fun lastRequestScrollsAboveTheBottomEdgeWithAComfortableGap() {
+        val requests =
+            (1..8).map {
+                FakeConnectionGateway.request(HOME.id, "request-$it", "Request $it")
+            }
+        show(
+            InboxUiState(
+                connections = listOf(HOME),
+                inbox = Inbox(pending = mapOf(HOME.id to requests)),
+            )
+        )
+
+        val list = compose.onNodeWithTag(InboxTags.LIST)
+        val lastTag = InboxTags.item(requests.last().key)
+        list.performScrollToNode(hasTestTag(lastTag))
+        repeat(3) { list.performTouchInput { swipeUp() } }
+        compose.waitForIdle()
+        val gap =
+            list.fetchSemanticsNode().boundsInRoot.bottom -
+                compose.onNodeWithTag(lastTag).fetchSemanticsNode().boundsInRoot.bottom
+        val expected = 24 * context.resources.displayMetrics.density
+        assertTrue(
+            "the last card needs bottom breathing room; gap was $gap, expected $expected",
+            gap >= expected - 1f,
+        )
     }
 
     companion object {

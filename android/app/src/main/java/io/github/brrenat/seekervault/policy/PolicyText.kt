@@ -32,6 +32,10 @@ object PolicyTags {
     const val GLOBAL_UNREADABLE = "policyGlobalUnreadable"
     const val ADD_ALLOWED_ASSET = "policyAddAllowedAsset"
     const val ADD_LIMIT_ASSET = "policyAddLimitAsset"
+    const val HELP = "policyHelp"
+    const val HELP_CONTENT = "policyHelpContent"
+
+    fun section(list: String) = "policySection:$list"
 
     /** The switch that decides whether one list is a check at all. */
     fun restrict(list: String) = "policyRestrict:$list"

@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Draw
@@ -121,7 +122,8 @@ fun SeekerVaultApp(
     }
     val pendingKeys = inboxItems(inboxState.inbox, null).pending.map { it.key }
     val rootModifier =
-        Modifier.padding(bottom = 80.dp)
+        Modifier.navigationBarsPadding()
+            .padding(bottom = 80.dp)
             .then(if (stack.size > 1) Modifier.clearAndSetSemantics {} else Modifier)
     // Badges and any open review follow successful rule writes immediately. The stored drafts
     // change only after disk writes succeed, so in-flight edits never affect an assessment.
