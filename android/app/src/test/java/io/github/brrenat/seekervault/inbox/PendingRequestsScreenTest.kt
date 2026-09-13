@@ -3,6 +3,8 @@ package io.github.brrenat.seekervault.inbox
 import android.content.Context
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
@@ -80,6 +82,10 @@ class PendingRequestsScreenTest {
     @Test
     fun separatesAnswersWaitingToBeSentFromSettledOnes() {
         show(STATE)
+        val pendingTab = compose.onNodeWithText(context.getString(R.string.inbox_tab_pending, 2))
+        val answeredTab = compose.onNodeWithText(context.getString(R.string.inbox_tab_answered, 1))
+        pendingTab.assertIsSelected()
+        answeredTab.assertIsNotSelected()
         compose.onNodeWithTag(InboxTags.SECTION_TO_SEND).assertExists()
         val acknowledged = context.getString(R.string.answer_acknowledged)
         compose
@@ -89,7 +95,8 @@ class PendingRequestsScreenTest {
         compose
             .onNodeWithTag(InboxTags.LIST)
             .performScrollToNode(hasTestTag(InboxTags.SECTION_TO_SEND))
-        compose.onNodeWithText(context.getString(R.string.inbox_tab_answered, 1)).performClick()
+        answeredTab.performClick().assertIsSelected()
+        pendingTab.assertIsNotSelected()
         compose
             .onNodeWithTag(InboxTags.LIST)
             .performScrollToNode(hasTestTag(InboxTags.item(ANSWERED.key)))
