@@ -1,20 +1,25 @@
 package io.github.brrenat.seekervault.inbox
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ListItem
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckBox
+import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.policy.DailyCheckScope
@@ -28,6 +33,7 @@ import io.github.brrenat.seekervault.policy.assessmentText
 import io.github.brrenat.seekervault.policy.checkText
 import io.github.brrenat.seekervault.policy.reasonText
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
+import io.github.brrenat.seekervault.ui.SeekerCard
 
 /**
  * What the owner's own rules made of the request, on the screen where they answer it (SAW-028,
@@ -49,74 +55,89 @@ fun PolicyReview(assessment: RequestAssessment?, modifier: Modifier = Modifier) 
     if (assessment == null) {
         // The rules are read from disk when the request is opened. It is a moment, and it says so
         // rather than leaving a gap that could be read as "nothing to say".
-        Text(
-            stringResource(R.string.policy_review_pending),
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = modifier.padding(16.dp).testTag(InboxTags.POLICY_PENDING),
-        )
+        SeekerCard(
+            modifier =
+                modifier.fillMaxWidth().padding(16.dp).testTag(InboxTags.POLICY_PENDING).semantics(
+                    mergeDescendants = true
+                ) {}
+        ) {
+            Text(
+                stringResource(R.string.policy_review_pending),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(16.dp),
+            )
+        }
         return
     }
     val decision = assessment.decision
-    Column(modifier.fillMaxWidth()) {
-        Text(
-            stringResource(R.string.policy_review_heading),
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
-        )
-        Text(
-            stringResource(assessmentText(decision.assessment)),
-            style = MaterialTheme.typography.bodyLarge,
-            // Colour where there is something to warn about, and never colour on its own: the
-            // verdict, every reason, and every check say what they mean in words.
-            color =
-                if (decision.warns) MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.onSurface,
-            modifier =
-                Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    .testTag(InboxTags.POLICY_VERDICT),
-        )
-        // Why there was nothing to match, or why a match was withheld. It is the reason for the
-        // verdict itself rather than any one check's, so it stands above them.
-        decision.reason?.let { reason ->
+    SeekerCard(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        color =
+            if (decision.warns) MaterialTheme.colorScheme.tertiaryContainer
+            else MaterialTheme.colorScheme.primaryContainer,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
             Text(
-                if (
-                    reason == PolicyReason.PolicyUnreadable &&
-                        decision.unreadableSources.isNotEmpty()
-                ) {
-                    stringResource(unreadableText(decision.unreadableSources))
-                } else {
-                    stringResource(reasonText(reason))
-                },
-                style = MaterialTheme.typography.bodyMedium,
+                stringResource(R.string.policy_review_heading),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+            )
+            Text(
+                stringResource(assessmentText(decision.assessment)),
+                style = MaterialTheme.typography.bodyLarge,
+                // Colour where there is something to warn about, and never colour on its own: the
+                // verdict, every reason, and every check say what they mean in words.
+                color =
+                    if (decision.warns) MaterialTheme.colorScheme.onTertiaryContainer
+                    else MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier =
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        .testTag(InboxTags.POLICY_REASON),
+                        .testTag(InboxTags.POLICY_VERDICT),
             )
-        }
-        decision.checks
-            .filterNot {
-                decision.dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit
+            // Why there was nothing to match, or why a match was withheld. It is the reason for the
+            // verdict itself rather than any one check's, so it stands above them.
+            decision.reason?.let { reason ->
+                Text(
+                    if (
+                        reason == PolicyReason.PolicyUnreadable &&
+                            decision.unreadableSources.isNotEmpty()
+                    ) {
+                        stringResource(unreadableText(decision.unreadableSources))
+                    } else {
+                        stringResource(reasonText(reason))
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier =
+                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            .testTag(InboxTags.POLICY_REASON),
+                )
             }
-            .forEach { Check(it) }
-        decision.dailyChecks.forEach { DailyCheck(it, assessment.facts.decimals) }
-        // Coverage, not compliance: ALLOWED is never a statement about a parameter nobody wrote a
-        // rule for, so the ones nothing covered are named.
-        if (decision.notChecked.isNotEmpty()) {
-            val names = decision.notChecked.map { stringResource(checkText(it)) }
+            decision.checks
+                .filterNot {
+                    decision.dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit
+                }
+                .forEach { Check(it) }
+            decision.dailyChecks.forEach { DailyCheck(it, assessment.facts.decimals) }
+            // Coverage, not compliance: ALLOWED is never a statement about a parameter nobody wrote
+            // a
+            // rule for, so the ones nothing covered are named.
+            if (decision.notChecked.isNotEmpty()) {
+                val names = decision.notChecked.map { stringResource(checkText(it)) }
+                Text(
+                    stringResource(R.string.policy_review_uncovered, names.joinToString()),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier =
+                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            .testTag(InboxTags.POLICY_UNCOVERED),
+                )
+            }
+            // The line that never changes, under every verdict there is.
             Text(
-                stringResource(R.string.policy_review_uncovered, names.joinToString()),
+                stringResource(R.string.policy_review_manual),
                 style = MaterialTheme.typography.bodySmall,
-                modifier =
-                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        .testTag(InboxTags.POLICY_UNCOVERED),
+                modifier = Modifier.padding(16.dp).testTag(InboxTags.POLICY_MANUAL),
             )
         }
-        // The line that never changes, under every verdict there is.
-        Text(
-            stringResource(R.string.policy_review_manual),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(16.dp).testTag(InboxTags.POLICY_MANUAL),
-        )
     }
 }
 
@@ -124,11 +145,23 @@ fun PolicyReview(assessment: RequestAssessment?, modifier: Modifier = Modifier) 
 @Composable
 private fun Check(result: PolicyCheckResult) {
     val name = stringResource(checkText(result.check))
-    ListItem(
-        overlineContent = { Text(checkName(name, result.source, result.status)) },
-        headlineContent = { Text(statusText(result)) },
-        modifier = Modifier.testTag(InboxTags.policyCheck(result.check)),
-    )
+    SeekerCard(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .testTag(InboxTags.policyCheck(result.check))
+                .semantics(mergeDescendants = true) {},
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        radius = 12.dp,
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                checkName(name, result.source, result.status),
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Text(statusText(result), style = MaterialTheme.typography.bodyMedium)
+        }
+    }
 }
 
 /** The two daily scopes never collapse into one row: either one can independently warn. */
@@ -143,24 +176,34 @@ private fun DailyCheck(check: DailyPolicyCheck, decimals: Int) {
         )
     val total = check.total
     val projected = check.projected
-    ListItem(
-        overlineContent = { Text(checkName(name, check.result.source, check.result.status)) },
-        headlineContent = { Text(statusText(check.result)) },
-        supportingContent =
+    SeekerCard(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .testTag(InboxTags.policyDaily(check.scope.code))
+                .semantics(mergeDescendants = true) {},
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        radius = 12.dp,
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                checkName(name, check.result.source, check.result.status),
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Text(statusText(check.result), style = MaterialTheme.typography.bodyMedium)
             if (total != null && projected != null) {
-                {
-                    Text(
-                        stringResource(
-                            R.string.policy_daily_totals,
-                            formatBaseUnits(total.confirmed, decimals),
-                            formatBaseUnits(total.unresolved, decimals),
-                            formatBaseUnits(projected, decimals),
-                        )
-                    )
-                }
-            } else null,
-        modifier = Modifier.testTag(InboxTags.policyDaily(check.scope.code)),
-    )
+                Text(
+                    stringResource(
+                        R.string.policy_daily_totals,
+                        formatBaseUnits(total.confirmed, decimals),
+                        formatBaseUnits(total.unresolved, decimals),
+                        formatBaseUnits(projected, decimals),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -232,13 +275,21 @@ fun ApproveAnyway(
                 .testTag(InboxTags.POLICY_ACKNOWLEDGE)
                 .toggleable(
                     value = acknowledged,
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
                     role = Role.Checkbox,
                     onValueChange = onAcknowledge,
                 )
                 .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(checked = acknowledged, onCheckedChange = null)
+        Icon(
+            if (acknowledged) Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank,
+            contentDescription = null,
+            tint =
+                if (acknowledged) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(
             stringResource(R.string.policy_acknowledge),
             style = MaterialTheme.typography.bodyMedium,

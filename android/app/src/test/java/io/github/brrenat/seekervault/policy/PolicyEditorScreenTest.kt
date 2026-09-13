@@ -160,6 +160,7 @@ class PolicyEditorScreenTest {
     fun anAmountOfSolIsShownInTheUnitsItIsStoredIn() {
         open()
         addSol()
+        assertEquals(1, draft.assets.size)
         compose.onNodeWithTag(PolicyTags.asset(0)).assertTextEquals("SOL on mainnet")
         compose
             .onNodeWithTag(PolicyTags.perOperation(0))

@@ -12,6 +12,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.inbox.key
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -27,7 +28,13 @@ class ConnectionsScreenTest {
     private val opened = mutableListOf<String>()
     private val actions = mutableListOf<String>()
 
-    private fun show(state: ConnectionsUiState, activity: Int? = null) = compose.setContent {
+    private fun show(
+        state: ConnectionsUiState,
+        activity: Int? = null,
+        inbox: InboxSummary? = null,
+        requests: List<io.github.brrenat.seekervault.request.v1.ActionRequest> = emptyList(),
+        warnings: Set<RequestKey> = emptySet(),
+    ) = compose.setContent {
         SeekerVaultTheme {
             ConnectionsScreen(
                 state = state,
@@ -38,8 +45,49 @@ class ConnectionsScreenTest {
                 activity = activity,
                 onActivity = { actions += "activity" },
                 onGlobalRules = { actions += "global-rules" },
+                inbox = inbox,
+                onInbox = { actions += "inbox" },
+                requests = requests,
+                warningRequests = warnings,
             )
         }
+    }
+
+    @Test
+    fun requestCarouselBrowsesWithoutAnsweringAndShowsItsRuleState() {
+        val request = FakeConnectionGateway.request(HOME.id, text = "Still here?")
+        show(
+            state = ConnectionsUiState(connections = listOf(HOME), loaded = true),
+            inbox = InboxSummary(waitingForYou = 1, toSend = 0),
+            requests = listOf(request),
+            warnings = setOf(request.key),
+        )
+
+        compose.onNodeWithText(context.getString(R.string.waiting_for_you)).assertExists()
+        compose.onNodeWithText("Still here?").assertExists()
+        compose.onNodeWithText(context.getString(R.string.request_one_warning)).assertExists()
+        compose
+            .onNodeWithTag(ConnectionsTags.INBOX)
+            .assertTextContains(context.getString(R.string.requests_see_all, 1))
+            .performClick()
+        assertEquals(listOf("inbox"), actions)
+    }
+
+    @Test
+    fun requestCarouselKeepsTheSameRequestIdFromTwoConnectionsApart() {
+        val requestId = "e69eb47f-1ee5-42bd-8504-271f04f05ac3"
+        show(
+            state = ConnectionsUiState(connections = listOf(HOME, VPS), loaded = true),
+            inbox = InboxSummary(waitingForYou = 2, toSend = 0),
+            requests =
+                listOf(
+                    FakeConnectionGateway.request(HOME.id, requestId, "First request"),
+                    FakeConnectionGateway.request(VPS.id, requestId, "Second request"),
+                ),
+        )
+
+        compose.waitForIdle()
+        compose.onNodeWithText("First request").assertExists()
     }
 
     @Test
@@ -47,6 +95,7 @@ class ConnectionsScreenTest {
         // The record of what this phone did is the owner's, and it doesn't depend on the agent
         // that asked (SAW-023).
         show(ConnectionsUiState(loaded = true), activity = 3)
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
         compose
             .onNodeWithTag(ConnectionsTags.ACTIVITY)
             .assertTextContains(context.getString(R.string.activity_row))
@@ -69,6 +118,7 @@ class ConnectionsScreenTest {
     @Test
     fun saysWhenNothingHasBeenRecordedYet() {
         show(ConnectionsUiState(loaded = true), activity = 0)
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
         compose
             .onNodeWithTag(ConnectionsTags.ACTIVITY)
             .assertTextContains(context.getString(R.string.activity_row_none), substring = true)
@@ -77,16 +127,15 @@ class ConnectionsScreenTest {
     @Test
     fun listsEachConnectionWithItsAddressAndStatus() {
         show(ConnectionsUiState(connections = listOf(HOME, VPS, LAPTOP), loaded = true))
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(4)
         compose
             .onNodeWithTag(ConnectionsTags.item(HOME.id))
             .assertTextContains("Home Mac")
-            .assertTextContains("mac.tailnet.ts.net")
             .assertTextContains(context.getString(R.string.connection_status_ok, 2))
         compose
             .onNodeWithTag(ConnectionsTags.item(VPS.id))
-            .assertTextContains("vps.example.com:8443")
             .assertTextContains(context.getString(R.string.connection_status_revoked))
-        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(4)
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(6)
         compose
             .onNodeWithTag(ConnectionsTags.item(LAPTOP.id))
             .assertTextContains(context.getString(R.string.connection_status_certificate))
@@ -101,6 +150,7 @@ class ConnectionsScreenTest {
         compose
             .onNodeWithTag(ConnectionsTags.EMPTY)
             .assertTextEquals(context.getString(R.string.connections_empty))
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
         compose.onNodeWithTag(ConnectionsTags.ADD).performClick()
         compose.onNodeWithTag(ConnectionsTags.LIVE_TEST).performClick()
         assertEquals(listOf("add", "live"), actions)

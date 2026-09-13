@@ -7,9 +7,20 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.brrenat.seekervault.activity.ActivityViewModel
@@ -140,11 +151,222 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** Stock Material 3 with its baseline light and dark color schemes. */
-@Composable
-fun SeekerVaultTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
-        content = content,
+@Immutable
+data class SeekerExtraColors(
+    val primaryText: Color,
+    val dim: Color,
+    val errorText: Color,
+)
+
+private val LocalSeekerExtraColors = staticCompositionLocalOf {
+    SeekerExtraColors(Color.Unspecified, Color.Unspecified, Color.Unspecified)
+}
+
+object SeekerTheme {
+    val colors: SeekerExtraColors
+        @Composable get() = LocalSeekerExtraColors.current
+}
+
+private val DarkColors =
+    darkColorScheme(
+        primary = Color(0xFFE7FC6E),
+        onPrimary = Color(0xFF1B1B1B),
+        primaryContainer = Color(0xFFC2E60F),
+        onPrimaryContainer = Color(0xFF1B1B1B),
+        tertiary = Color(0xFFFFB27A),
+        onTertiary = Color(0xFF2E1200),
+        tertiaryContainer = Color(0xFFFF7A1A),
+        onTertiaryContainer = Color(0xFF2E1200),
+        error = Color(0xFFF83959),
+        onError = Color.White,
+        errorContainer = Color(0xFF4D0011),
+        onErrorContainer = Color(0xFFFFD9DE),
+        background = Color(0xFF121212),
+        onBackground = Color.White,
+        surface = Color(0xFF121212),
+        onSurface = Color.White,
+        surfaceVariant = Color(0xFF232323),
+        onSurfaceVariant = Color(0xFFCACACA),
+        outline = Color(0xFF6F6F6F),
+        outlineVariant = Color(0xFF3A3A3A),
+        surfaceContainerLowest = Color(0xFF121212),
+        surfaceContainerLow = Color(0xFF1C1C1C),
+        surfaceContainer = Color(0xFF1C1C1C),
+        surfaceContainerHigh = Color(0xFF232323),
+        surfaceContainerHighest = Color(0xFF2E2E2E),
+        surfaceBright = Color(0xFF2E2E2E),
+        surfaceDim = Color(0xFF0A0A0A),
+        inverseSurface = Color(0xFFF7F7F7),
+        inverseOnSurface = Color(0xFF1B1B1B),
+        inversePrimary = Color(0xFF4F5C00),
+        scrim = Color(0xFF0A0A0A),
     )
+
+private val LightColors =
+    lightColorScheme(
+        primary = Color(0xFFF1FFA0),
+        onPrimary = Color(0xFF1B1B1B),
+        primaryContainer = Color(0xFFE9FF7A),
+        onPrimaryContainer = Color(0xFF2C3400),
+        tertiary = Color(0xFF8A3C00),
+        onTertiary = Color.White,
+        tertiaryContainer = Color(0xFFFFE0C2),
+        onTertiaryContainer = Color(0xFF4A2600),
+        error = Color(0xFFF83959),
+        onError = Color.White,
+        errorContainer = Color(0xFFFFE1E5),
+        onErrorContainer = Color(0xFF5C0014),
+        background = Color(0xFFF7F7F7),
+        onBackground = Color(0xFF1B1B1B),
+        surface = Color(0xFFF7F7F7),
+        onSurface = Color(0xFF1B1B1B),
+        surfaceVariant = Color(0xFFEEEEEE),
+        onSurfaceVariant = Color(0xFF45464A),
+        outline = Color(0xFF76767F),
+        outlineVariant = Color(0xFFC6C6C9),
+        surfaceContainerLowest = Color(0xFFFFFFFF),
+        surfaceContainerLow = Color(0xFFFFFFFF),
+        surfaceContainer = Color(0xFFFFFFFF),
+        surfaceContainerHigh = Color(0xFFEEEEEE),
+        surfaceContainerHighest = Color(0xFFE4E4E4),
+        surfaceBright = Color(0xFFFFFFFF),
+        surfaceDim = Color(0xFFCFCFD2),
+        inverseSurface = Color(0xFF1C1C1C),
+        inverseOnSurface = Color.White,
+        inversePrimary = Color(0xFFE7FC6E),
+        scrim = Color(0xFFCFCFD2),
+    )
+
+private val SeekerTypography =
+    Typography(
+        displaySmall =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 36.sp,
+                lineHeight = 42.sp,
+            ),
+        headlineLarge =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 28.sp,
+                lineHeight = 34.sp,
+            ),
+        headlineMedium =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 24.sp,
+                lineHeight = 30.sp,
+            ),
+        headlineSmall =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 22.sp,
+                lineHeight = 28.sp,
+            ),
+        titleLarge =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 22.sp,
+                lineHeight = 28.sp,
+            ),
+        titleMedium =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp,
+                lineHeight = 22.sp,
+            ),
+        titleSmall =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+            ),
+        bodyLarge =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.Normal,
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+            ),
+        bodyMedium =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.Normal,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+            ),
+        bodySmall =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.Normal,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+            ),
+        labelLarge =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+            ),
+        labelMedium =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+            ),
+        labelSmall =
+            TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.Medium,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            ),
+    )
+
+/** Material 3 v4 tokens from the SEE-64 design; the system selects light or dark. */
+@Composable
+fun SeekerVaultTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit,
+) {
+    val dark = darkTheme
+    CompositionLocalProvider(
+        LocalSeekerExtraColors provides
+            if (dark) {
+                SeekerExtraColors(
+                    primaryText = Color(0xFFE7FC6E),
+                    dim = Color(0xFF0A0A0A),
+                    errorText = Color(0xFFF83959),
+                )
+            } else {
+                SeekerExtraColors(
+                    primaryText = Color(0xFF4F5C00),
+                    dim = Color(0xFFCFCFD2),
+                    errorText = Color(0xFFC4142F),
+                )
+            }
+    ) {
+        MaterialTheme(
+            colorScheme = if (dark) DarkColors else LightColors,
+            typography = SeekerTypography,
+            shapes =
+                Shapes(
+                    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                    small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                    large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+                ),
+            content = content,
+        )
+    }
 }

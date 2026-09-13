@@ -2,14 +2,28 @@ package io.github.brrenat.seekervault
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Draw
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.Wallet
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.activity.ActivityDetailsScreen
 import io.github.brrenat.seekervault.activity.ActivityScreen
@@ -28,13 +42,21 @@ import io.github.brrenat.seekervault.inbox.Preparation
 import io.github.brrenat.seekervault.inbox.RequestDetailsScreen
 import io.github.brrenat.seekervault.inbox.RequestGoneScreen
 import io.github.brrenat.seekervault.inbox.inboxCounts
+import io.github.brrenat.seekervault.inbox.inboxItems
+import io.github.brrenat.seekervault.inbox.key
 import io.github.brrenat.seekervault.live.LiveCommandRoute
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
 import io.github.brrenat.seekervault.policy.PolicyEditorScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
+import io.github.brrenat.seekervault.ui.BottomDestination
+import io.github.brrenat.seekervault.ui.SeekerBottomBar
+import io.github.brrenat.seekervault.ui.SeekerSheet
+import io.github.brrenat.seekervault.ui.SheetBackplate
 import io.github.brrenat.seekervault.wallet.WalletScreen
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 import java.time.Instant
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The app's screens: Connections first, then Global rules or a connection's details and overrides,
@@ -53,8 +75,24 @@ fun SeekerVaultApp(
     live: LiveCommandViewModel,
 ) {
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.CONNECTIONS)) }
+    var closingSheet by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val push = { route: String -> stack = stack + route }
-    val pop = { stack = stack.dropLast(1) }
+    val pop = {
+        if (stack.size > 1 && !closingSheet) {
+            val routeBeingClosed = stack.last()
+            closingSheet = true
+            scope.launch {
+                delay(240)
+                // A root-navigation tap can replace the stack during the exit motion. In that
+                // case there is no longer a sheet to remove.
+                if (stack.size > 1 && stack.last() == routeBeingClosed) {
+                    stack = stack.dropLast(1)
+                }
+                closingSheet = false
+            }
+        }
+    }
     BackHandler(enabled = stack.size > 1) { pop() }
     val state by connections.state.collectAsStateWithLifecycle()
     val inboxState by inbox.state.collectAsStateWithLifecycle()
@@ -62,180 +100,311 @@ fun SeekerVaultApp(
     val historyState by history.state.collectAsStateWithLifecycle()
     val policyState by policy.state.collectAsStateWithLifecycle()
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
+    val root = stack.first()
     val route = stack.last()
-    when {
-        route == Routes.CONNECTIONS -> {
-            val (waitingForYou, toSend) = inboxCounts(inboxState)
-            ConnectionsScreen(
-                state = state,
-                onOpen = { push(Routes.DETAILS + it) },
-                onAdd = { push(Routes.ADD) },
-                onLiveTest = { push(Routes.LIVE) },
-                onMessageShown = connections::messageShown,
-                inbox = InboxSummary(waitingForYou, toSend),
-                onInbox = { push(Routes.INBOX) },
-                wallet = walletState.wallet,
-                onWallet = { push(Routes.WALLET) },
-                activity = historyState.records.size,
-                onActivity = { push(Routes.ACTIVITY) },
-                onGlobalRules = { push(Routes.GLOBAL_POLICY) },
-            )
-        }
-        route == Routes.WALLET ->
-            WalletScreen(
-                state = walletState,
-                onChooseNetwork = wallet::chooseNetwork,
-                onConnect = wallet::connect,
-                onDisconnect = wallet::disconnect,
-                onPublishAgain = wallet::publishAgain,
-                onBack = pop,
-            )
-        route == Routes.ADD ->
-            AddConnectionRoute(
-                viewModel = connections,
-                onBack = pop,
-                // Show the new connection in place of the Add screen.
-                onPaired = { stack = stack.dropLast(1) + (Routes.DETAILS + it.id) },
-            )
-        route == Routes.LIVE -> LiveTestRoute(live)
-        route == Routes.ACTIVITY ->
-            ActivityScreen(
-                state = historyState,
-                onOpen = { push("${Routes.RECORD}${it.connectionId}/${it.requestId}") },
-                onRefresh = history::refresh,
-                onClear = history::clear,
-                onBack = pop,
-            )
-        route.startsWith(Routes.RECORD) -> {
-            val (connectionId, requestId) = route.removePrefix(Routes.RECORD).split('/', limit = 2)
-            val record = historyState.record(RequestKey(connectionId, requestId))
-            if (record == null) {
-                RequestGoneScreen(onBack = pop)
-            } else {
-                val context = LocalContext.current
-                ActivityDetailsScreen(
-                    record = record,
-                    // The link goes to whatever app opens links. This app fetches nothing from it,
-                    // and a phone with nothing to open it with is told so rather than left silent.
-                    onOpenExplorer = { if (!openLink(context, it)) history.linkFailed() },
-                    linkFailed = historyState.linkFailed,
-                    onMessageShown = history::messageShown,
-                    onBack = pop,
-                )
-            }
-        }
-        route.startsWith(Routes.DETAILS) -> {
-            val id = route.removePrefix(Routes.DETAILS)
-            ConnectionDetailsRoute(
-                viewModel = connections,
-                state = state,
-                id = id,
-                onBack = pop,
-                onPendingRequests = { push(Routes.INBOX_FOR + id) },
-                onRules = { push(Routes.POLICY + id) },
-            )
-        }
-        route.startsWith(Routes.POLICY) -> {
-            val id = route.removePrefix(Routes.POLICY)
-            val close = {
-                policy.close()
-                pop()
-            }
-            PolicyEditorScreen(
-                label = state.connections.firstOrNull { it.id == id }?.label.orEmpty(),
-                state = policyState,
-                onEdit = policy::edit,
-                onStartOver = policy::startOver,
-                onResetConnection = policy::resetConnectionOverrides,
-                onOpenGlobal = { push(Routes.GLOBAL_POLICY) },
-                onSave = policy::save,
-                onMessageShown = policy::messageShown,
-                onClose = close,
-            )
-            // The rules are read from disk when the screen opens. Opening the connection that is
-            // already open keeps unsaved edits, so a rotation doesn't throw them away.
-            LaunchedEffect(id) { policy.open(id) }
-        }
-        route == Routes.GLOBAL_POLICY -> {
-            val close = {
-                globalPolicy.close()
-                pop()
-                // A local draft underneath stays byte-for-byte intact. Only the inherited context
-                // is read again after a global edit.
-                policy.refreshGlobal()
-            }
-            PolicyEditorScreen(
-                label = "",
-                state = globalPolicyState,
-                onEdit = globalPolicy::edit,
-                onStartOver = globalPolicy::startOver,
-                onResetConnection = {},
-                onOpenGlobal = {},
-                onSave = globalPolicy::save,
-                onMessageShown = globalPolicy::messageShown,
-                onClose = close,
-            )
-            LaunchedEffect(Unit) { globalPolicy.openGlobal() }
-        }
-        route == Routes.INBOX || route.startsWith(Routes.INBOX_FOR) ->
-            PendingRequestsScreen(
-                state = inboxState,
-                connectionId = route.removePrefix(Routes.INBOX).removePrefix("/").ifEmpty { null },
-                now = Instant.now(),
-                onOpen = { push("${Routes.REQUEST}${it.connectionId}/${it.requestId}") },
-                onRefresh = {
-                    inbox.refresh(
-                        route.removePrefix(Routes.INBOX).removePrefix("/").ifEmpty { null }
-                    )
-                },
-                onBack = pop,
-            )
-        route.startsWith(Routes.REQUEST) -> {
-            val (connectionId, requestId) = route.removePrefix(Routes.REQUEST).split('/', limit = 2)
-            val key = RequestKey(connectionId, requestId)
-            val result = inboxState.inbox.result(key)
-            val request = result?.request ?: inboxState.inbox.pendingRequest(key)
-            if (request == null) {
-                RequestGoneScreen(onBack = pop)
-            } else {
-                RequestDetailsScreen(
-                    request = request,
-                    source = inboxState.connections.firstOrNull { it.id == connectionId },
-                    result = result,
-                    sending = key in inboxState.sending,
-                    now = Instant.now(),
-                    onAnswer = { inbox.answer(key, it) },
-                    onApprove = { inbox.approve(key, inboxState.wallet) },
-                    onSendAgain = { inbox.sendAgain(key) },
-                    wallet = inboxState.wallet,
-                    signingProblem = inboxState.problem.takeIf { inboxState.problemKey == key },
-                    preparation = inboxState.preparations[key],
-                    onPrepareAgain = { inbox.prepare(key, force = true) },
-                    onApproveTransfer = {
-                        inbox.approveTransfer(
-                            key,
-                            inboxState.preparations[key] as? Preparation.Ready,
-                        )
+    val rootModifier = Modifier.padding(bottom = 80.dp)
+    Box(Modifier.fillMaxSize()) {
+        when (root) {
+            Routes.CONNECTIONS -> {
+                val (waitingForYou, toSend) = inboxCounts(inboxState)
+                val pending = inboxItems(inboxState.inbox, null).pending
+                ConnectionsScreen(
+                    // A detail sheet owns transient connection messages while it is open. Keeping
+                    // the Home message host quiet avoids announcing the same result twice through
+                    // the still-mounted layer underneath.
+                    state = if (stack.size == 1) state else state.copy(message = null),
+                    onOpen = { push(Routes.DETAILS + it) },
+                    onAdd = { stack = listOf(Routes.ADD) },
+                    onLiveTest = { push(Routes.LIVE) },
+                    onMessageShown = connections::messageShown,
+                    inbox = InboxSummary(waitingForYou, toSend),
+                    onInbox = { stack = listOf(Routes.INBOX) },
+                    wallet = walletState.wallet,
+                    onWallet = { stack = listOf(Routes.WALLET) },
+                    onGlobalRules = { push(Routes.GLOBAL_POLICY) },
+                    requests = pending,
+                    warningRequests =
+                        inboxState.assessments.filterValues { it.decision.warns }.keys,
+                    onOpenRequest = {
+                        push("${Routes.REQUEST}${it.connectionId}/${it.requestId}")
                     },
-                    checking = key in inboxState.checking,
-                    onCheckStatus = { inbox.checkStatus(key) },
-                    assessment = inboxState.assessments[key],
-                    acknowledged =
-                        inboxState.acknowledged[key] != null &&
-                            inboxState.acknowledged[key] == inboxState.assessments[key]?.consent,
-                    onAcknowledge = { inbox.acknowledge(key, it) },
-                    onBack = pop,
+                    modifier = rootModifier,
                 )
-                // Opening a transfer fetches a fresh transaction and reads it on this phone. It
-                // is a read and nothing more: no wallet opens until the owner taps Approve.
-                LaunchedEffect(key) { inbox.prepare(key) }
-                // And the rules are read for it, every time it is opened. Nothing is remembered
-                // between visits, so rules changed in between are the ones that apply (SAW-028).
-                LaunchedEffect(key) { inbox.review(key) }
+                LaunchedEffect(pending.map { it.key }) {
+                    pending.forEach { inbox.review(it.key) }
+                }
+            }
+            Routes.WALLET ->
+                WalletScreen(
+                    state = walletState,
+                    onChooseNetwork = wallet::chooseNetwork,
+                    onConnect = wallet::connect,
+                    onDisconnect = wallet::disconnect,
+                    onPublishAgain = wallet::publishAgain,
+                    onBack = { stack = listOf(Routes.CONNECTIONS) },
+                    modifier = rootModifier,
+                )
+            Routes.ACTIVITY ->
+                ActivityScreen(
+                    state = historyState,
+                    onOpen = { push("${Routes.RECORD}${it.connectionId}/${it.requestId}") },
+                    onRefresh = history::refresh,
+                    onClear = history::clear,
+                    onBack = { stack = listOf(Routes.CONNECTIONS) },
+                    modifier = rootModifier,
+                    network =
+                        walletState.wallet?.let {
+                            io.github.brrenat.seekervault.wallet.networkText(it.network)
+                        },
+                )
+            Routes.INBOX ->
+                PendingRequestsScreen(
+                    state = inboxState,
+                    connectionId = null,
+                    now = Instant.now(),
+                    onOpen = { push("${Routes.REQUEST}${it.connectionId}/${it.requestId}") },
+                    onRefresh = { inbox.refresh(null) },
+                    onBack = { stack = listOf(Routes.CONNECTIONS) },
+                    modifier = rootModifier,
+                    warningRequests =
+                        inboxState.assessments.filterValues { it.decision.warns }.keys,
+                    onReject = {
+                        inbox.answer(it, io.github.brrenat.seekervault.connections.Answer.Reject)
+                    },
+                )
+            Routes.ADD ->
+                AddConnectionRoute(
+                    viewModel = connections,
+                    onBack = { stack = listOf(Routes.CONNECTIONS) },
+                    onPaired = {
+                        stack = listOf(Routes.CONNECTIONS, Routes.DETAILS + it.id)
+                    },
+                    modifier = rootModifier,
+                )
+        }
+
+        stack.drop(1).dropLast(1).forEachIndexed { index, backRoute ->
+            val routeIndex = index + 1
+            SheetBackplate(
+                depth = stack.lastIndex - routeIndex,
+                title = sheetTitle(backRoute, state),
+                onClick = { stack = stack.take(routeIndex + 1) },
+            )
+        }
+        if (stack.size > 1) {
+            SeekerSheet(
+                depth = (stack.size - 2).coerceAtMost(1),
+                motionKey = route,
+                visible = !closingSheet,
+            ) {
+                when {
+                    route == Routes.LIVE -> LiveTestRoute(live)
+                    route.startsWith(Routes.RECORD) -> {
+                        val (connectionId, requestId) =
+                            route.removePrefix(Routes.RECORD).split('/', limit = 2)
+                        val record = historyState.record(RequestKey(connectionId, requestId))
+                        if (record == null) {
+                            RequestGoneScreen(onBack = pop)
+                        } else {
+                            val context = LocalContext.current
+                            ActivityDetailsScreen(
+                                record = record,
+                                // The link goes to whatever app opens links. This app fetches
+                                // nothing from it,
+                                // and a phone with nothing to open it with is told so rather than
+                                // left silent.
+                                onOpenExplorer = {
+                                    if (!openLink(context, it)) history.linkFailed()
+                                },
+                                linkFailed = historyState.linkFailed,
+                                onMessageShown = history::messageShown,
+                                onBack = pop,
+                            )
+                        }
+                    }
+                    route.startsWith(Routes.DETAILS) -> {
+                        val id = route.removePrefix(Routes.DETAILS)
+                        ConnectionDetailsRoute(
+                            viewModel = connections,
+                            state = state,
+                            id = id,
+                            onBack = pop,
+                            onPendingRequests = { push(Routes.INBOX_FOR + id) },
+                            onRules = { push(Routes.POLICY + id) },
+                        )
+                    }
+                    route.startsWith(Routes.POLICY) -> {
+                        val id = route.removePrefix(Routes.POLICY)
+                        val close = {
+                            policy.close()
+                            pop()
+                        }
+                        PolicyEditorScreen(
+                            label = state.connections.firstOrNull { it.id == id }?.label.orEmpty(),
+                            state = policyState,
+                            onEdit = policy::edit,
+                            onStartOver = policy::startOver,
+                            onResetConnection = policy::resetConnectionOverrides,
+                            onOpenGlobal = { push(Routes.GLOBAL_POLICY) },
+                            onSave = policy::save,
+                            onMessageShown = policy::messageShown,
+                            onClose = close,
+                        )
+                        // The rules are read from disk when the screen opens. Opening the
+                        // connection that is
+                        // already open keeps unsaved edits, so a rotation doesn't throw them away.
+                        LaunchedEffect(id) { policy.open(id) }
+                    }
+                    route == Routes.GLOBAL_POLICY -> {
+                        val close = {
+                            globalPolicy.close()
+                            pop()
+                            // A local draft underneath stays byte-for-byte intact. Only the
+                            // inherited context
+                            // is read again after a global edit.
+                            policy.refreshGlobal()
+                        }
+                        PolicyEditorScreen(
+                            label = "",
+                            state = globalPolicyState,
+                            onEdit = globalPolicy::edit,
+                            onStartOver = globalPolicy::startOver,
+                            onResetConnection = {},
+                            onOpenGlobal = {},
+                            onSave = globalPolicy::save,
+                            onMessageShown = globalPolicy::messageShown,
+                            onClose = close,
+                        )
+                        LaunchedEffect(Unit) { globalPolicy.openGlobal() }
+                    }
+                    route.startsWith(Routes.INBOX_FOR) ->
+                        PendingRequestsScreen(
+                            state = inboxState,
+                            connectionId =
+                                route.removePrefix(Routes.INBOX).removePrefix("/").ifEmpty { null },
+                            now = Instant.now(),
+                            onOpen = {
+                                push("${Routes.REQUEST}${it.connectionId}/${it.requestId}")
+                            },
+                            onRefresh = {
+                                inbox.refresh(
+                                    route.removePrefix(Routes.INBOX).removePrefix("/").ifEmpty {
+                                        null
+                                    }
+                                )
+                            },
+                            onBack = pop,
+                            warningRequests =
+                                inboxState.assessments.filterValues { it.decision.warns }.keys,
+                            onReject = {
+                                inbox.answer(
+                                    it,
+                                    io.github.brrenat.seekervault.connections.Answer.Reject,
+                                )
+                            },
+                            inSheet = true,
+                        )
+                    route.startsWith(Routes.REQUEST) -> {
+                        val (connectionId, requestId) =
+                            route.removePrefix(Routes.REQUEST).split('/', limit = 2)
+                        val key = RequestKey(connectionId, requestId)
+                        val result = inboxState.inbox.result(key)
+                        val request = result?.request ?: inboxState.inbox.pendingRequest(key)
+                        if (request == null) {
+                            RequestGoneScreen(onBack = pop)
+                        } else {
+                            RequestDetailsScreen(
+                                request = request,
+                                source =
+                                    inboxState.connections.firstOrNull { it.id == connectionId },
+                                result = result,
+                                sending = key in inboxState.sending,
+                                now = Instant.now(),
+                                onAnswer = { inbox.answer(key, it) },
+                                onApprove = { inbox.approve(key, inboxState.wallet) },
+                                onSendAgain = { inbox.sendAgain(key) },
+                                wallet = inboxState.wallet,
+                                signingProblem =
+                                    inboxState.problem.takeIf { inboxState.problemKey == key },
+                                preparation = inboxState.preparations[key],
+                                onPrepareAgain = { inbox.prepare(key, force = true) },
+                                onApproveTransfer = {
+                                    inbox.approveTransfer(
+                                        key,
+                                        inboxState.preparations[key] as? Preparation.Ready,
+                                    )
+                                },
+                                checking = key in inboxState.checking,
+                                onCheckStatus = { inbox.checkStatus(key) },
+                                assessment = inboxState.assessments[key],
+                                acknowledged =
+                                    inboxState.acknowledged[key] != null &&
+                                        inboxState.acknowledged[key] ==
+                                            inboxState.assessments[key]?.consent,
+                                onAcknowledge = { inbox.acknowledge(key, it) },
+                                onBack = pop,
+                            )
+                            // Opening a transfer fetches a fresh transaction and reads it on this
+                            // phone. It
+                            // is a read and nothing more: no wallet opens until the owner taps
+                            // Approve.
+                            LaunchedEffect(key) { inbox.prepare(key) }
+                            // And the rules are read for it, every time it is opened. Nothing is
+                            // remembered
+                            // between visits, so rules changed in between are the ones that apply
+                            // (SAW-028).
+                            LaunchedEffect(key) { inbox.review(key) }
+                        }
+                    }
+                }
             }
         }
+
+        SeekerBottomBar(
+            destinations =
+                listOf(
+                    BottomDestination(
+                        Routes.CONNECTIONS,
+                        Icons.Outlined.Inbox,
+                        stringResource(R.string.nav_home),
+                    ),
+                    BottomDestination(
+                        Routes.INBOX,
+                        Icons.Outlined.Draw,
+                        stringResource(R.string.nav_requests),
+                        inboxCounts(inboxState).first > 0,
+                    ),
+                    BottomDestination(
+                        Routes.WALLET,
+                        Icons.Outlined.Wallet,
+                        stringResource(R.string.nav_wallet),
+                    ),
+                    BottomDestination(
+                        Routes.ACTIVITY,
+                        Icons.Outlined.History,
+                        stringResource(R.string.nav_activity),
+                    ),
+                ),
+            selected = root,
+            onSelect = { stack = listOf(it) },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
+
+private fun sheetTitle(route: String, state: ConnectionsUiState): String =
+    when {
+        route.startsWith(Routes.DETAILS) ->
+            state.connections.firstOrNull { it.id == route.removePrefix(Routes.DETAILS) }?.label
+                ?: "Connection"
+        route.startsWith(Routes.POLICY) -> "Rules"
+        route == Routes.GLOBAL_POLICY -> "Global rules"
+        route.startsWith(Routes.REQUEST) -> "Review request"
+        route.startsWith(Routes.RECORD) -> "Activity"
+        route == Routes.ADD -> "Add connection"
+        route == Routes.LIVE -> "Live test"
+        else -> "Details"
+    }
 
 private object Routes {
     const val CONNECTIONS = "connections"

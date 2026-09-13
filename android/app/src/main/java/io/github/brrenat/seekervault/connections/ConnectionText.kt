@@ -1,15 +1,26 @@
 package io.github.brrenat.seekervault.connections
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import java.time.Instant
 import java.time.ZoneId
@@ -23,6 +34,7 @@ object ConnectionsTags {
     const val EMPTY = "connectionsEmpty"
     const val ACTIVITY = "activityRow"
     const val BACK = "back"
+    const val CLOSE = "close"
     const val STATUS = "connectionStatus"
     const val REFRESH = "refresh"
     const val RENAME = "rename"
@@ -46,6 +58,7 @@ object ConnectionsTags {
     const val PAIRING_FAILURE = "pairingFailure"
     const val INBOX = "inbox"
     const val WALLET = "walletRow"
+    const val WALLET_COPY = "walletCopy"
     const val PENDING = "pendingRequests"
     const val GLOBAL_RULES = "globalRules"
     const val LIST = "connectionsList"
@@ -155,10 +168,45 @@ fun MessageEffect(message: ConnectionMessage?, host: SnackbarHostState, onShown:
 
 @Composable
 fun BackButton(onBack: () -> Unit) {
-    IconButton(onClick = onBack, modifier = Modifier.testTag(ConnectionsTags.BACK)) {
+    Box(
+        modifier =
+            Modifier.size(48.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = onBack,
+                )
+                .testTag(ConnectionsTags.BACK),
+        contentAlignment = Alignment.Center,
+    ) {
         Icon(
             painterResource(R.drawable.ic_arrow_back),
             contentDescription = stringResource(R.string.back),
+        )
+    }
+}
+
+/** The trailing close action used by every detail sheet. */
+@Composable
+fun CloseButton(onClose: () -> Unit) {
+    Box(
+        modifier =
+            Modifier.size(48.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = onClose,
+                )
+                .testTag(ConnectionsTags.CLOSE),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Rounded.Close,
+            contentDescription = stringResource(R.string.close),
         )
     }
 }

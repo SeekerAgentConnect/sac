@@ -68,8 +68,9 @@ class PolicyActivityTest {
     }
 
     private fun openRules(connection: Connection) {
-        val connectionIndex = app.connectionRepository.connections.value.indexOf(connection)
-        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(4 + connectionIndex)
+        val connectionIndex =
+            app.connectionRepository.connections.value.indexOfFirst { it.id == connection.id }
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5 + connectionIndex)
         compose.onNodeWithTag(ConnectionsTags.item(connection.id)).performClick()
         compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().performClick()
     }
@@ -144,7 +145,8 @@ class PolicyActivityTest {
         compose.onNodeWithTag(PolicyTags.add(RECIPIENTS)).performScrollTo().performClick()
         save()
         compose.onNodeWithTag(PolicyTags.CANCEL).performScrollTo().performClick()
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
+        compose.mainClock.advanceTimeBy(240)
 
         openRules(second)
         compose.onNodeWithTag(PolicyTags.inherit(RECIPIENTS)).performScrollTo().assertExists()

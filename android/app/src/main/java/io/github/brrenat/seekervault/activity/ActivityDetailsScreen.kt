@@ -2,30 +2,35 @@ package io.github.brrenat.seekervault.activity
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.connections.BackButton
+import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.formatInstant
+import io.github.brrenat.seekervault.ui.Identifier
+import io.github.brrenat.seekervault.ui.SeekerButton
+import io.github.brrenat.seekervault.ui.SeekerButtonRole
+import io.github.brrenat.seekervault.ui.SeekerCard
+import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
 
 /**
  * One record in full: who asked, what the owner reviewed, which network it was on, how it ended,
@@ -54,13 +59,22 @@ fun ActivityDetailsScreen(
     }
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.activity_details_title)) },
-                navigationIcon = { BackButton(onBack) },
+                actions = { CloseButton(onBack) },
+                expandedHeight = 56.dp,
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                    ),
             )
         },
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { SeekerSnackbarHost(snackbar) },
     ) { innerPadding ->
         Column(Modifier.padding(innerPadding).verticalScroll(rememberScrollState())) {
             Text(
@@ -134,12 +148,12 @@ fun ActivityDetailsScreen(
                 )
             }
             explorerUrl(record)?.let { url ->
-                OutlinedButton(
+                SeekerButton(
+                    text = stringResource(R.string.activity_explorer),
                     onClick = { onOpenExplorer(url) },
+                    role = SeekerButtonRole.Neutral,
                     modifier = Modifier.padding(16.dp).testTag(ActivityTags.EXPLORER),
-                ) {
-                    Text(stringResource(R.string.activity_explorer))
-                }
+                )
                 Text(
                     stringResource(R.string.activity_explorer_note),
                     style = MaterialTheme.typography.bodySmall,
@@ -158,15 +172,24 @@ private fun Field(
     monospace: Boolean = false,
 ) {
     val name = stringResource(label)
-    ListItem(
-        overlineContent = { Text(name) },
-        headlineContent = {
+    SeekerCard(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 5.dp)
+                .testTag(tag ?: ActivityTags.field(name))
+                .semantics(mergeDescendants = true) {}
+    ) {
+        Column(Modifier.padding(14.dp)) {
             Text(
-                value,
-                fontFamily = if (monospace) FontFamily.Monospace else null,
-                style = MaterialTheme.typography.bodyMedium,
+                name,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        },
-        modifier = Modifier.testTag(tag ?: ActivityTags.field(name)),
-    )
+            if (monospace) {
+                Identifier(value, Modifier.padding(top = 3.dp), maxLines = 8)
+            } else {
+                Text(value, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
 }

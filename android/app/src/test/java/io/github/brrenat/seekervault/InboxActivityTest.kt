@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -70,7 +71,7 @@ class InboxActivityTest {
         // Opening the app fetched the request, and answered nothing.
         compose
             .onNodeWithTag(ConnectionsTags.INBOX)
-            .assertTextContains(app.getString(R.string.inbox_row_waiting, 1))
+            .assertTextContains(app.getString(R.string.requests_see_all, 1))
             .performClick()
         assertTrue(gateway.submits.isEmpty())
         compose
@@ -91,7 +92,8 @@ class InboxActivityTest {
         )
 
         // Back in the list it's answered; reopened, it shows the outcome, not the buttons.
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
+        compose.mainClock.advanceTimeBy(240)
         compose.onNodeWithTag(InboxTags.SECTION_ANSWERED).assertExists()
         compose.onNodeWithTag(InboxTags.item(key)).performClick()
         scenario.recreate()
@@ -117,7 +119,7 @@ class InboxActivityTest {
         scenario.moveToState(Lifecycle.State.RESUMED)
         compose
             .onNodeWithTag(ConnectionsTags.INBOX)
-            .assertTextContains(app.getString(R.string.inbox_row_waiting, 1))
+            .assertTextContains(app.getString(R.string.requests_see_all, 1))
         assertTrue(gateway.submits.isEmpty())
     }
 
@@ -128,6 +130,7 @@ class InboxActivityTest {
         val mine = server.addPending(home.id, text = "For home")
         val theirs = other.addPending(vps.id, text = "For the VPS")
         launch()
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
         compose.onNodeWithTag(ConnectionsTags.item(home.id)).performClick()
         compose.onNodeWithTag(ConnectionsTags.PENDING).performScrollTo().performClick()
         compose

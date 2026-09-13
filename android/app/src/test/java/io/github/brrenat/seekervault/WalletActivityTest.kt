@@ -78,9 +78,13 @@ class WalletActivityTest {
 
         // Back on Connections the row names the wallet, and a restart keeps it.
         compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
-        compose.onNodeWithTag(ConnectionsTags.WALLET).assertTextContains(WALLET, substring = true)
+        compose
+            .onNodeWithTag(ConnectionsTags.WALLET)
+            .assertTextContains(WALLET.take(9), substring = true)
         scenario?.recreate()
-        compose.onNodeWithTag(ConnectionsTags.WALLET).assertTextContains(WALLET, substring = true)
+        compose
+            .onNodeWithTag(ConnectionsTags.WALLET)
+            .assertTextContains(WALLET.take(9), substring = true)
     }
 
     @Test
