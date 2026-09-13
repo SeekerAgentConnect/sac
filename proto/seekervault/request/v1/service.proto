@@ -11,6 +11,10 @@ service PairingService {
   // Pair exchanges a one-time pairing token (`Authorization: Bearer <pairing token>`) for a new
   // connection and its phone token.
   rpc Pair(PairRequest) returns (PairResponse);
+  // GetConnectionCapabilities lets a phone paired before UpdateCapability was added discover the
+  // production update endpoint with its existing phone credential. Every field is scoped to the
+  // authenticated connection, and connection_id must name that connection.
+  rpc GetConnectionCapabilities(GetConnectionCapabilitiesRequest) returns (GetConnectionCapabilitiesResponse);
   // RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The
   // token stops working at once, and the connection's PENDING requests become CANCELLED.
   // Requests already approved are still resolved, and agents can still read every request.
@@ -60,6 +64,33 @@ message PairResponse {
   // The sidecar's lasting ID: the one in the pairing code, and the same across pairings and
   // restarts. The phone refuses a response whose server_id isn't its pairing code's.
   string server_id = 3;
+  // The production update transport this sidecar serves. Absent on a new sidecar means that its
+  // endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+  // GetConnectionCapabilities to distinguish those cases and for connections saved before this
+  // field existed. Manual Refresh remains available either way.
+  UpdateCapability updates = 4;
+}
+
+// UpdateCapability lets a new phone discover the HTTP/2 endpoint without changing the pairing
+// URI. The update credential is still this connection's phone token; no new bearer token exists.
+message UpdateCapability {
+  // Version 1 is seekervault.update.v1.UpdateService. Zero is never advertised.
+  uint32 protocol_version = 1;
+  // Absolute origin for gRPC over HTTP/2, with no path, query, user info, or fragment. Production
+  // endpoints use https and a publicly trusted certificate. The host must equal the paired
+  // server_url's host; only loopback development may use http and a different port.
+  string grpc_url = 2;
+}
+
+message GetConnectionCapabilitiesRequest {
+  string connection_id = 1;
+}
+
+message GetConnectionCapabilitiesResponse {
+  // Absent only while a new sidecar is not configured to serve the update endpoint. An old
+  // sidecar returns UNIMPLEMENTED because it does not know this RPC at all; both cases retain
+  // manual Refresh, but the phone distinguishes unavailable configuration from upgrade needed.
+  UpdateCapability updates = 1;
 }
 
 message RevokeConnectionRequest {

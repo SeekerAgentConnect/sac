@@ -2,6 +2,8 @@
 
 What an agent asks of you arrives on the phone as a **pending request**. You review each one and answer it yourself. The app answers nothing for you, and nothing runs while it's closed.
 
+> **Stage 5.2 status:** SAW-048 defines and tests the future live-update and bounded-sync protocol, but it does not change this screen yet. This build still fetches at the moments described below. Later Stage 5.2 tickets will adopt the new transport without adding push notifications or automatic wallet actions.
+
 ## Where requests come from
 
 - **An agent asks a sidecar,** for example Hermes, or `pnpm agent ack` from the test agent. The sidecar stores the request as PENDING and tells the agent at once that it's waiting. The agent reads your answer later ([`docs/protocol.md`](../protocol.md#agent-api-mcp)).

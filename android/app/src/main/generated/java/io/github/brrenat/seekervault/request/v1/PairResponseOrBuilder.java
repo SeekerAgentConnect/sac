@@ -73,4 +73,29 @@ public interface PairResponseOrBuilder extends
    */
   com.google.protobuf.ByteString
       getServerIdBytes();
+
+  /**
+   * <pre>
+   * The production update transport this sidecar serves. Absent on a new sidecar means that its
+   * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+   * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+   * field existed. Manual Refresh remains available either way.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+   * @return Whether the updates field is set.
+   */
+  boolean hasUpdates();
+  /**
+   * <pre>
+   * The production update transport this sidecar serves. Absent on a new sidecar means that its
+   * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+   * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+   * field existed. Manual Refresh remains available either way.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+   * @return The updates.
+   */
+  io.github.brrenat.seekervault.request.v1.UpdateCapability getUpdates();
 }

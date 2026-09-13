@@ -9,7 +9,7 @@ import { file_seekervault_request_v1_request } from "./request_pb.js";
  * Describes the file seekervault/request/v1/service.proto.
  */
 export const file_seekervault_request_v1_service = /*@__PURE__*/
-  fileDesc("CiRzZWVrZXJ2YXVsdC9yZXF1ZXN0L3YxL3NlcnZpY2UucHJvdG8SFnNlZWtlcnZhdWx0LnJlcXVlc3QudjEiNgoLUGFpclJlcXVlc3QSEwoLZGV2aWNlX25hbWUYASABKAkSEgoKc2VydmVyX3VybBgCIAEoCSJNCgxQYWlyUmVzcG9uc2USFQoNY29ubmVjdGlvbl9pZBgBIAEoCRITCgtwaG9uZV90b2tlbhgCIAEoCRIRCglzZXJ2ZXJfaWQYAyABKAkiMAoXUmV2b2tlQ29ubmVjdGlvblJlcXVlc3QSFQoNY29ubmVjdGlvbl9pZBgBIAEoCSIaChhSZXZva2VDb25uZWN0aW9uUmVzcG9uc2UiUgoSTGlzdFBlbmRpbmdSZXF1ZXN0EhUKDWNvbm5lY3Rpb25faWQYASABKAkSEQoJcGFnZV9zaXplGAIgASgNEhIKCnBhZ2VfdG9rZW4YAyABKAkiZwoTTGlzdFBlbmRpbmdSZXNwb25zZRI3CghyZXF1ZXN0cxgBIAMoCzIlLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuQWN0aW9uUmVxdWVzdBIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiRAoRR2V0UmVxdWVzdFJlcXVlc3QSLwoDcmVmGAEgASgLMiIuc2Vla2VydmF1bHQucmVxdWVzdC52MS5SZXF1ZXN0UmVmIkwKEkdldFJlcXVlc3RSZXNwb25zZRI2CgdyZXF1ZXN0GAEgASgLMiUuc2Vla2VydmF1bHQucmVxdWVzdC52MS5BY3Rpb25SZXF1ZXN0IkgKFVByZXBhcmVSZXF1ZXN0UmVxdWVzdBIvCgNyZWYYASABKAsyIi5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlJlcXVlc3RSZWYiVwoWUHJlcGFyZVJlcXVlc3RSZXNwb25zZRI9CghwcmVwYXJlZBgBIAEoCzIrLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUHJlcGFyZWRUcmFuc2FjdGlvbiKkBAoTU3VibWl0UmVzdWx0UmVxdWVzdBIvCgNyZWYYASABKAsyIi5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlJlcXVlc3RSZWYSQgoPYWNrbm93bGVkZ2VtZW50GAIgASgLMicuc2Vla2VydmF1bHQucmVxdWVzdC52MS5BY2tub3dsZWRnZW1lbnRIABI2CglyZWplY3Rpb24YAyABKAsyIS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlJlamVjdGlvbkgAEjQKCGFwcHJvdmFsGAQgASgLMiAuc2Vla2VydmF1bHQucmVxdWVzdC52MS5BcHByb3ZhbEgAEkUKEW1lc3NhZ2Vfc2lnbmF0dXJlGAUgASgLMiguc2Vla2VydmF1bHQucmVxdWVzdC52MS5NZXNzYWdlU2lnbmF0dXJlSAASTwoWdHJhbnNhY3Rpb25fc3VibWlzc2lvbhgGIAEoCzItLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuVHJhbnNhY3Rpb25TdWJtaXNzaW9uSAASRQoRZXhlY3V0aW9uX2ZhaWx1cmUYByABKAsyKC5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkV4ZWN1dGlvbkZhaWx1cmVIABJBCg91bmtub3duX291dGNvbWUYCCABKAsyJi5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlVua25vd25PdXRjb21lSABCCAoGcmVzdWx0Ik4KFFN1Ym1pdFJlc3VsdFJlc3BvbnNlEjYKB3JlcXVlc3QYASABKAsyJS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkFjdGlvblJlcXVlc3QiRQoSQ2hlY2tTdGF0dXNSZXF1ZXN0Ei8KA3JlZhgBIAEoCzIiLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUmVxdWVzdFJlZiJNChNDaGVja1N0YXR1c1Jlc3BvbnNlEjYKB3JlcXVlc3QYASABKAsyJS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkFjdGlvblJlcXVlc3QiZQoUUHVibGlzaFdhbGxldFJlcXVlc3QSFQoNY29ubmVjdGlvbl9pZBgBIAEoCRI2CgdiaW5kaW5nGAIgASgLMiUuc2Vla2VydmF1bHQucmVxdWVzdC52MS5XYWxsZXRCaW5kaW5nIoYBChVQdWJsaXNoV2FsbGV0UmVzcG9uc2USNgoHYmluZGluZxgBIAEoCzIlLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuV2FsbGV0QmluZGluZxI1CgljYW5jZWxsZWQYAiADKAsyIi5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlJlcXVlc3RSZWYiEQoPQWNrbm93bGVkZ2VtZW50IgsKCVJlamVjdGlvbiIlChBNZXNzYWdlU2lnbmF0dXJlEhEKCXNpZ25hdHVyZRgBIAEoDCIqChVUcmFuc2FjdGlvblN1Ym1pc3Npb24SEQoJc2lnbmF0dXJlGAEgASgMIiIKEEV4ZWN1dGlvbkZhaWx1cmUSDgoGZGV0YWlsGAEgASgJIiAKDlVua25vd25PdXRjb21lEg4KBmRldGFpbBgBIAEoCTLaAQoOUGFpcmluZ1NlcnZpY2USUQoEUGFpchIjLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUGFpclJlcXVlc3QaJC5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlBhaXJSZXNwb25zZRJ1ChBSZXZva2VDb25uZWN0aW9uEi8uc2Vla2VydmF1bHQucmVxdWVzdC52MS5SZXZva2VDb25uZWN0aW9uUmVxdWVzdBowLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUmV2b2tlQ29ubmVjdGlvblJlc3BvbnNlMo8FCg5SZXF1ZXN0U2VydmljZRJmCgtMaXN0UGVuZGluZxIqLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuTGlzdFBlbmRpbmdSZXF1ZXN0Gisuc2Vla2VydmF1bHQucmVxdWVzdC52MS5MaXN0UGVuZGluZ1Jlc3BvbnNlEmMKCkdldFJlcXVlc3QSKS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkdldFJlcXVlc3RSZXF1ZXN0Giouc2Vla2VydmF1bHQucmVxdWVzdC52MS5HZXRSZXF1ZXN0UmVzcG9uc2USbwoOUHJlcGFyZVJlcXVlc3QSLS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlByZXBhcmVSZXF1ZXN0UmVxdWVzdBouLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUHJlcGFyZVJlcXVlc3RSZXNwb25zZRJpCgxTdWJtaXRSZXN1bHQSKy5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlN1Ym1pdFJlc3VsdFJlcXVlc3QaLC5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlN1Ym1pdFJlc3VsdFJlc3BvbnNlEmYKC0NoZWNrU3RhdHVzEiouc2Vla2VydmF1bHQucmVxdWVzdC52MS5DaGVja1N0YXR1c1JlcXVlc3QaKy5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkNoZWNrU3RhdHVzUmVzcG9uc2USbAoNUHVibGlzaFdhbGxldBIsLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUHVibGlzaFdhbGxldFJlcXVlc3QaLS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlB1Ymxpc2hXYWxsZXRSZXNwb25zZUKyAQooaW8uZ2l0aHViLmJycmVuYXQuc2Vla2VydmF1bHQucmVxdWVzdC52MUIMU2VydmljZVByb3RvUAGiAgNTUliqAhZTZWVrZXJ2YXVsdC5SZXF1ZXN0LlYxygIWU2Vla2VydmF1bHRcUmVxdWVzdFxWMeICIlNlZWtlcnZhdWx0XFJlcXVlc3RcVjFcR1BCTWV0YWRhdGHqAhhTZWVrZXJ2YXVsdDo6UmVxdWVzdDo6VjFiBnByb3RvMw", [file_seekervault_request_v1_request]);
+  fileDesc("CiRzZWVrZXJ2YXVsdC9yZXF1ZXN0L3YxL3NlcnZpY2UucHJvdG8SFnNlZWtlcnZhdWx0LnJlcXVlc3QudjEiNgoLUGFpclJlcXVlc3QSEwoLZGV2aWNlX25hbWUYASABKAkSEgoKc2VydmVyX3VybBgCIAEoCSKIAQoMUGFpclJlc3BvbnNlEhUKDWNvbm5lY3Rpb25faWQYASABKAkSEwoLcGhvbmVfdG9rZW4YAiABKAkSEQoJc2VydmVyX2lkGAMgASgJEjkKB3VwZGF0ZXMYBCABKAsyKC5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlVwZGF0ZUNhcGFiaWxpdHkiPgoQVXBkYXRlQ2FwYWJpbGl0eRIYChBwcm90b2NvbF92ZXJzaW9uGAEgASgNEhAKCGdycGNfdXJsGAIgASgJIjkKIEdldENvbm5lY3Rpb25DYXBhYmlsaXRpZXNSZXF1ZXN0EhUKDWNvbm5lY3Rpb25faWQYASABKAkiXgohR2V0Q29ubmVjdGlvbkNhcGFiaWxpdGllc1Jlc3BvbnNlEjkKB3VwZGF0ZXMYASABKAsyKC5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlVwZGF0ZUNhcGFiaWxpdHkiMAoXUmV2b2tlQ29ubmVjdGlvblJlcXVlc3QSFQoNY29ubmVjdGlvbl9pZBgBIAEoCSIaChhSZXZva2VDb25uZWN0aW9uUmVzcG9uc2UiUgoSTGlzdFBlbmRpbmdSZXF1ZXN0EhUKDWNvbm5lY3Rpb25faWQYASABKAkSEQoJcGFnZV9zaXplGAIgASgNEhIKCnBhZ2VfdG9rZW4YAyABKAkiZwoTTGlzdFBlbmRpbmdSZXNwb25zZRI3CghyZXF1ZXN0cxgBIAMoCzIlLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuQWN0aW9uUmVxdWVzdBIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiRAoRR2V0UmVxdWVzdFJlcXVlc3QSLwoDcmVmGAEgASgLMiIuc2Vla2VydmF1bHQucmVxdWVzdC52MS5SZXF1ZXN0UmVmIkwKEkdldFJlcXVlc3RSZXNwb25zZRI2CgdyZXF1ZXN0GAEgASgLMiUuc2Vla2VydmF1bHQucmVxdWVzdC52MS5BY3Rpb25SZXF1ZXN0IkgKFVByZXBhcmVSZXF1ZXN0UmVxdWVzdBIvCgNyZWYYASABKAsyIi5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlJlcXVlc3RSZWYiVwoWUHJlcGFyZVJlcXVlc3RSZXNwb25zZRI9CghwcmVwYXJlZBgBIAEoCzIrLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUHJlcGFyZWRUcmFuc2FjdGlvbiKkBAoTU3VibWl0UmVzdWx0UmVxdWVzdBIvCgNyZWYYASABKAsyIi5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlJlcXVlc3RSZWYSQgoPYWNrbm93bGVkZ2VtZW50GAIgASgLMicuc2Vla2VydmF1bHQucmVxdWVzdC52MS5BY2tub3dsZWRnZW1lbnRIABI2CglyZWplY3Rpb24YAyABKAsyIS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlJlamVjdGlvbkgAEjQKCGFwcHJvdmFsGAQgASgLMiAuc2Vla2VydmF1bHQucmVxdWVzdC52MS5BcHByb3ZhbEgAEkUKEW1lc3NhZ2Vfc2lnbmF0dXJlGAUgASgLMiguc2Vla2VydmF1bHQucmVxdWVzdC52MS5NZXNzYWdlU2lnbmF0dXJlSAASTwoWdHJhbnNhY3Rpb25fc3VibWlzc2lvbhgGIAEoCzItLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuVHJhbnNhY3Rpb25TdWJtaXNzaW9uSAASRQoRZXhlY3V0aW9uX2ZhaWx1cmUYByABKAsyKC5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkV4ZWN1dGlvbkZhaWx1cmVIABJBCg91bmtub3duX291dGNvbWUYCCABKAsyJi5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlVua25vd25PdXRjb21lSABCCAoGcmVzdWx0Ik4KFFN1Ym1pdFJlc3VsdFJlc3BvbnNlEjYKB3JlcXVlc3QYASABKAsyJS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkFjdGlvblJlcXVlc3QiRQoSQ2hlY2tTdGF0dXNSZXF1ZXN0Ei8KA3JlZhgBIAEoCzIiLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUmVxdWVzdFJlZiJNChNDaGVja1N0YXR1c1Jlc3BvbnNlEjYKB3JlcXVlc3QYASABKAsyJS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkFjdGlvblJlcXVlc3QiZQoUUHVibGlzaFdhbGxldFJlcXVlc3QSFQoNY29ubmVjdGlvbl9pZBgBIAEoCRI2CgdiaW5kaW5nGAIgASgLMiUuc2Vla2VydmF1bHQucmVxdWVzdC52MS5XYWxsZXRCaW5kaW5nIoYBChVQdWJsaXNoV2FsbGV0UmVzcG9uc2USNgoHYmluZGluZxgBIAEoCzIlLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuV2FsbGV0QmluZGluZxI1CgljYW5jZWxsZWQYAiADKAsyIi5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlJlcXVlc3RSZWYiEQoPQWNrbm93bGVkZ2VtZW50IgsKCVJlamVjdGlvbiIlChBNZXNzYWdlU2lnbmF0dXJlEhEKCXNpZ25hdHVyZRgBIAEoDCIqChVUcmFuc2FjdGlvblN1Ym1pc3Npb24SEQoJc2lnbmF0dXJlGAEgASgMIiIKEEV4ZWN1dGlvbkZhaWx1cmUSDgoGZGV0YWlsGAEgASgJIiAKDlVua25vd25PdXRjb21lEg4KBmRldGFpbBgBIAEoCTLtAgoOUGFpcmluZ1NlcnZpY2USUQoEUGFpchIjLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUGFpclJlcXVlc3QaJC5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlBhaXJSZXNwb25zZRKQAQoZR2V0Q29ubmVjdGlvbkNhcGFiaWxpdGllcxI4LnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuR2V0Q29ubmVjdGlvbkNhcGFiaWxpdGllc1JlcXVlc3QaOS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkdldENvbm5lY3Rpb25DYXBhYmlsaXRpZXNSZXNwb25zZRJ1ChBSZXZva2VDb25uZWN0aW9uEi8uc2Vla2VydmF1bHQucmVxdWVzdC52MS5SZXZva2VDb25uZWN0aW9uUmVxdWVzdBowLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUmV2b2tlQ29ubmVjdGlvblJlc3BvbnNlMo8FCg5SZXF1ZXN0U2VydmljZRJmCgtMaXN0UGVuZGluZxIqLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuTGlzdFBlbmRpbmdSZXF1ZXN0Gisuc2Vla2VydmF1bHQucmVxdWVzdC52MS5MaXN0UGVuZGluZ1Jlc3BvbnNlEmMKCkdldFJlcXVlc3QSKS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkdldFJlcXVlc3RSZXF1ZXN0Giouc2Vla2VydmF1bHQucmVxdWVzdC52MS5HZXRSZXF1ZXN0UmVzcG9uc2USbwoOUHJlcGFyZVJlcXVlc3QSLS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlByZXBhcmVSZXF1ZXN0UmVxdWVzdBouLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUHJlcGFyZVJlcXVlc3RSZXNwb25zZRJpCgxTdWJtaXRSZXN1bHQSKy5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlN1Ym1pdFJlc3VsdFJlcXVlc3QaLC5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlN1Ym1pdFJlc3VsdFJlc3BvbnNlEmYKC0NoZWNrU3RhdHVzEiouc2Vla2VydmF1bHQucmVxdWVzdC52MS5DaGVja1N0YXR1c1JlcXVlc3QaKy5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLkNoZWNrU3RhdHVzUmVzcG9uc2USbAoNUHVibGlzaFdhbGxldBIsLnNlZWtlcnZhdWx0LnJlcXVlc3QudjEuUHVibGlzaFdhbGxldFJlcXVlc3QaLS5zZWVrZXJ2YXVsdC5yZXF1ZXN0LnYxLlB1Ymxpc2hXYWxsZXRSZXNwb25zZUKyAQooaW8uZ2l0aHViLmJycmVuYXQuc2Vla2VydmF1bHQucmVxdWVzdC52MUIMU2VydmljZVByb3RvUAGiAgNTUliqAhZTZWVrZXJ2YXVsdC5SZXF1ZXN0LlYxygIWU2Vla2VydmF1bHRcUmVxdWVzdFxWMeICIlNlZWtlcnZhdWx0XFJlcXVlc3RcVjFcR1BCTWV0YWRhdGHqAhhTZWVrZXJ2YXVsdDo6UmVxdWVzdDo6VjFiBnByb3RvMw", [file_seekervault_request_v1_request]);
 
 /**
  * Describes the message seekervault.request.v1.PairRequest.
@@ -26,144 +26,165 @@ export const PairResponseSchema = /*@__PURE__*/
   messageDesc(file_seekervault_request_v1_service, 1);
 
 /**
+ * Describes the message seekervault.request.v1.UpdateCapability.
+ * Use `create(UpdateCapabilitySchema)` to create a new message.
+ */
+export const UpdateCapabilitySchema = /*@__PURE__*/
+  messageDesc(file_seekervault_request_v1_service, 2);
+
+/**
+ * Describes the message seekervault.request.v1.GetConnectionCapabilitiesRequest.
+ * Use `create(GetConnectionCapabilitiesRequestSchema)` to create a new message.
+ */
+export const GetConnectionCapabilitiesRequestSchema = /*@__PURE__*/
+  messageDesc(file_seekervault_request_v1_service, 3);
+
+/**
+ * Describes the message seekervault.request.v1.GetConnectionCapabilitiesResponse.
+ * Use `create(GetConnectionCapabilitiesResponseSchema)` to create a new message.
+ */
+export const GetConnectionCapabilitiesResponseSchema = /*@__PURE__*/
+  messageDesc(file_seekervault_request_v1_service, 4);
+
+/**
  * Describes the message seekervault.request.v1.RevokeConnectionRequest.
  * Use `create(RevokeConnectionRequestSchema)` to create a new message.
  */
 export const RevokeConnectionRequestSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 2);
+  messageDesc(file_seekervault_request_v1_service, 5);
 
 /**
  * Describes the message seekervault.request.v1.RevokeConnectionResponse.
  * Use `create(RevokeConnectionResponseSchema)` to create a new message.
  */
 export const RevokeConnectionResponseSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 3);
+  messageDesc(file_seekervault_request_v1_service, 6);
 
 /**
  * Describes the message seekervault.request.v1.ListPendingRequest.
  * Use `create(ListPendingRequestSchema)` to create a new message.
  */
 export const ListPendingRequestSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 4);
+  messageDesc(file_seekervault_request_v1_service, 7);
 
 /**
  * Describes the message seekervault.request.v1.ListPendingResponse.
  * Use `create(ListPendingResponseSchema)` to create a new message.
  */
 export const ListPendingResponseSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 5);
+  messageDesc(file_seekervault_request_v1_service, 8);
 
 /**
  * Describes the message seekervault.request.v1.GetRequestRequest.
  * Use `create(GetRequestRequestSchema)` to create a new message.
  */
 export const GetRequestRequestSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 6);
+  messageDesc(file_seekervault_request_v1_service, 9);
 
 /**
  * Describes the message seekervault.request.v1.GetRequestResponse.
  * Use `create(GetRequestResponseSchema)` to create a new message.
  */
 export const GetRequestResponseSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 7);
+  messageDesc(file_seekervault_request_v1_service, 10);
 
 /**
  * Describes the message seekervault.request.v1.PrepareRequestRequest.
  * Use `create(PrepareRequestRequestSchema)` to create a new message.
  */
 export const PrepareRequestRequestSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 8);
+  messageDesc(file_seekervault_request_v1_service, 11);
 
 /**
  * Describes the message seekervault.request.v1.PrepareRequestResponse.
  * Use `create(PrepareRequestResponseSchema)` to create a new message.
  */
 export const PrepareRequestResponseSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 9);
+  messageDesc(file_seekervault_request_v1_service, 12);
 
 /**
  * Describes the message seekervault.request.v1.SubmitResultRequest.
  * Use `create(SubmitResultRequestSchema)` to create a new message.
  */
 export const SubmitResultRequestSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 10);
+  messageDesc(file_seekervault_request_v1_service, 13);
 
 /**
  * Describes the message seekervault.request.v1.SubmitResultResponse.
  * Use `create(SubmitResultResponseSchema)` to create a new message.
  */
 export const SubmitResultResponseSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 11);
+  messageDesc(file_seekervault_request_v1_service, 14);
 
 /**
  * Describes the message seekervault.request.v1.CheckStatusRequest.
  * Use `create(CheckStatusRequestSchema)` to create a new message.
  */
 export const CheckStatusRequestSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 12);
+  messageDesc(file_seekervault_request_v1_service, 15);
 
 /**
  * Describes the message seekervault.request.v1.CheckStatusResponse.
  * Use `create(CheckStatusResponseSchema)` to create a new message.
  */
 export const CheckStatusResponseSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 13);
+  messageDesc(file_seekervault_request_v1_service, 16);
 
 /**
  * Describes the message seekervault.request.v1.PublishWalletRequest.
  * Use `create(PublishWalletRequestSchema)` to create a new message.
  */
 export const PublishWalletRequestSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 14);
+  messageDesc(file_seekervault_request_v1_service, 17);
 
 /**
  * Describes the message seekervault.request.v1.PublishWalletResponse.
  * Use `create(PublishWalletResponseSchema)` to create a new message.
  */
 export const PublishWalletResponseSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 15);
+  messageDesc(file_seekervault_request_v1_service, 18);
 
 /**
  * Describes the message seekervault.request.v1.Acknowledgement.
  * Use `create(AcknowledgementSchema)` to create a new message.
  */
 export const AcknowledgementSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 16);
+  messageDesc(file_seekervault_request_v1_service, 19);
 
 /**
  * Describes the message seekervault.request.v1.Rejection.
  * Use `create(RejectionSchema)` to create a new message.
  */
 export const RejectionSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 17);
+  messageDesc(file_seekervault_request_v1_service, 20);
 
 /**
  * Describes the message seekervault.request.v1.MessageSignature.
  * Use `create(MessageSignatureSchema)` to create a new message.
  */
 export const MessageSignatureSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 18);
+  messageDesc(file_seekervault_request_v1_service, 21);
 
 /**
  * Describes the message seekervault.request.v1.TransactionSubmission.
  * Use `create(TransactionSubmissionSchema)` to create a new message.
  */
 export const TransactionSubmissionSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 19);
+  messageDesc(file_seekervault_request_v1_service, 22);
 
 /**
  * Describes the message seekervault.request.v1.ExecutionFailure.
  * Use `create(ExecutionFailureSchema)` to create a new message.
  */
 export const ExecutionFailureSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 20);
+  messageDesc(file_seekervault_request_v1_service, 23);
 
 /**
  * Describes the message seekervault.request.v1.UnknownOutcome.
  * Use `create(UnknownOutcomeSchema)` to create a new message.
  */
 export const UnknownOutcomeSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_request_v1_service, 21);
+  messageDesc(file_seekervault_request_v1_service, 24);
 
 /**
  * PairingService connects a phone to this sidecar and disconnects it. A sidecar has one active

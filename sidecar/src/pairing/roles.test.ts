@@ -121,6 +121,15 @@ const RPCS: ReadonlyArray<{
       }),
   },
   {
+    name: "PairingService.GetConnectionCapabilities",
+    role: "phone",
+    // Another connection's ID: past authentication, this gets NOT_FOUND and discloses nothing.
+    call: (token) =>
+      pairingClient(sidecar.url, token).getConnectionCapabilities({
+        connectionId: UNKNOWN,
+      }),
+  },
+  {
     name: "PairingService.RevokeConnection",
     role: "phone",
     // Another connection's ID: past authentication, this gets NOT_FOUND and revokes nothing.
@@ -354,12 +363,21 @@ describe("roles", () => {
     );
   });
 
+  it("reports that this new sidecar has no production update endpoint configured yet", async () => {
+    const capabilities = await pairingClient(
+      sidecar.url,
+      phone.phoneToken,
+    ).getConnectionCapabilities({ connectionId: phone.connectionId });
+    assert.equal(capabilities.updates, undefined);
+  });
+
   it("pairs with the code, replaces the phone, and then revokes itself", async () => {
     const newest = await pairingClient(sidecar.url, pairingToken).pair({
       serverUrl: sidecar.url,
       deviceName: "Newest phone",
     });
     assert.equal(newest.serverId, sidecar.serverId);
+    assert.equal(newest.updates, undefined);
     assert.equal(
       await outcome(
         requestClient(sidecar.url, phone.phoneToken).listPending({
