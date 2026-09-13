@@ -48,6 +48,7 @@ fun ConnectionsScreen(
     onInbox: () -> Unit = {},
     wallet: SelectedWallet? = null,
     onWallet: () -> Unit = {},
+    onGlobalRules: () -> Unit = {},
     /** How many actions this phone has recorded (SAW-023); null leaves the row out. */
     activity: Int? = null,
     onActivity: () -> Unit = {},
@@ -81,9 +82,16 @@ fun ConnectionsScreen(
     ) { innerPadding ->
         // The wallet row comes first and is always there: the owner can connect a wallet before
         // they pair with anything.
-        LazyColumn(contentPadding = innerPadding) {
+        LazyColumn(
+            contentPadding = innerPadding,
+            modifier = Modifier.testTag(ConnectionsTags.LIST),
+        ) {
             item(key = "wallet") {
                 WalletItem(wallet, onWallet)
+                HorizontalDivider()
+            }
+            item(key = "global-rules") {
+                GlobalRulesItem(onGlobalRules)
                 HorizontalDivider()
             }
             if (inbox != null && state.connections.isNotEmpty()) {
@@ -113,6 +121,15 @@ fun ConnectionsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun GlobalRulesItem(onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.global_rules_row)) },
+        supportingContent = { Text(stringResource(R.string.global_rules_row_note)) },
+        modifier = Modifier.clickable(onClick = onClick).testTag(ConnectionsTags.GLOBAL_RULES),
+    )
 }
 
 @Composable

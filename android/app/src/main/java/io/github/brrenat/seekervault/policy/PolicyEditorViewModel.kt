@@ -3,7 +3,8 @@ package io.github.brrenat.seekervault.policy
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
-import io.github.brrenat.seekervault.policy.storage.StoredPolicy
+import io.github.brrenat.seekervault.policy.storage.StoredConnectionOverrides
+import io.github.brrenat.seekervault.policy.storage.StoredGlobalPolicy
 import io.github.brrenat.seekervault.policy.storage.UnreadableReason
 import java.io.IOException
 import java.time.Instant
@@ -16,6 +17,19 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Which of the two separate phone-local documents is open. */
+enum class PolicyEditorScope {
+    Global,
+    Connection,
+}
+
+/** The two forms deliberately have different semantics even though they share Material controls. */
+sealed interface PolicyEditorDraft {
+    data class Global(val rules: PolicyDraft) : PolicyEditorDraft
+
+    data class Connection(val rules: ConnectionPolicyDraft) : PolicyEditorDraft
+}
+
 /** What the editor has to tell the owner after it did something. */
 enum class PolicyMessage {
     Saved,
@@ -24,45 +38,40 @@ enum class PolicyMessage {
     SaveFailed,
 }
 
-/** Everything the policy editor shows. */
+/** Everything either policy editor shows. */
 data class PolicyUiState(
-    /** The connection being edited, or null before one is opened. */
+    val scope: PolicyEditorScope? = null,
+    /** The connection being edited; null for the global document and before anything is opened. */
     val connectionId: String? = null,
-    /** False until the stored rules have been read. Nothing is editable before that. */
+    /** False until the active document and any required global context have been read. */
     val loaded: Boolean = false,
-    /**
-     * Set when rules are stored and this build can't read them. The form is not opened over them: a
-     * blank form saved on top would delete rules the owner set and never saw.
-     */
+    /** The active document is stored but this build cannot read it. */
     val unreadable: UnreadableReason? = null,
-    /**
-     * Whether the owner chose to start over on top of rules this build couldn't read. What is on
-     * disk is then unknown, so anything the draft says is a change worth saving — including nothing
-     * at all, which removes the rules that couldn't be read.
-     */
+    /** A connection editor keeps an unreadable global document distinct from no global rules. */
+    val globalUnreadable: UnreadableReason? = null,
+    /** The readable global rules shown as inherited context by a connection editor. */
+    val global: GlobalPolicy? = null,
+    /** The owner explicitly chose to replace an unreadable active document. */
     val replacing: Boolean = false,
-    val draft: PolicyDraft = PolicyDraft(""),
-    /** What is stored, as a draft, so the screen can tell whether anything was changed. */
-    val stored: PolicyDraft = PolicyDraft(""),
-    /** When the rules were last saved, or null when this connection has none. */
+    val draft: PolicyEditorDraft? = null,
+    val stored: PolicyEditorDraft? = null,
+    /** When the active document was last saved, or null when it has no document. */
     val storedAt: Instant? = null,
     val saving: Boolean = false,
     val message: PolicyMessage? = null,
 ) {
-    /** Whether the draft says anything different from what is stored. */
     val changed: Boolean
-        get() = replacing || draft != stored
+        get() = replacing || (draft != null && draft != stored)
 }
 
 /**
- * State and actions of the policy editor (docs/guides/policies.md).
+ * State and actions for both phone-local rules documents (docs/guides/policies.md).
  *
- * It reads one connection's rules, holds the owner's edits until they save, and writes them back.
- * That is the whole of what it does: it reaches no network, opens no wallet, and tells no agent
- * anything. A policy edited here changes what the owner is *told* about a request and nothing about
- * what the app will do with one.
+ * The editor reaches no network and no wallet. A second instance may hold an unsaved connection
+ * draft while the global editor is on top of it; [refreshGlobal] then refreshes inherited context
+ * without touching a single local edit.
  */
-class PolicyEditorViewModel(
+open class PolicyEditorViewModel(
     private val policies: PolicyStore,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -70,25 +79,21 @@ class PolicyEditorViewModel(
     private val _state = MutableStateFlow(PolicyUiState())
     val state: StateFlow<PolicyUiState> = _state.asStateFlow()
 
-    /**
-     * Opens [connectionId]'s rules, reading them from disk. Opening the connection that is already
-     * open does nothing, so a rotation keeps edits that haven't been saved.
-     */
-    fun open(connectionId: String) {
+    /** Opens the global document. Reopening it after rotation keeps its unsaved draft. */
+    fun openGlobal() {
         val current = _state.value
-        if (current.connectionId == connectionId && current.loaded) return
-        _state.value = PolicyUiState(connectionId = connectionId)
+        if (current.scope == PolicyEditorScope.Global && current.loaded) return
+        _state.value = PolicyUiState(scope = PolicyEditorScope.Global)
         viewModelScope.launch {
-            val stored = withContext(io) { policies.get(connectionId) }
-            // Another connection was opened while this one was being read.
-            if (_state.value.connectionId != connectionId) return@launch
-            val policy = (stored as? StoredPolicy.Policy)?.policy
-            val draft = draftOf(connectionId, policy)
+            val stored = withContext(io) { policies.getGlobal() }
+            if (_state.value.scope != PolicyEditorScope.Global) return@launch
+            val policy = (stored as? StoredGlobalPolicy.Policy)?.policy
+            val draft = PolicyEditorDraft.Global(globalDraftOf(policy))
             _state.value =
                 PolicyUiState(
-                    connectionId = connectionId,
+                    scope = PolicyEditorScope.Global,
                     loaded = true,
-                    unreadable = (stored as? StoredPolicy.Unreadable)?.why,
+                    unreadable = (stored as? StoredGlobalPolicy.Unreadable)?.why,
                     draft = draft,
                     stored = draft,
                     storedAt = policy?.updatedAt,
@@ -96,81 +101,212 @@ class PolicyEditorViewModel(
         }
     }
 
-    /** The owner changed something. Nothing is written until they save. */
-    fun edit(draft: PolicyDraft) {
+    /** Opens one connection's override document and the global document it inherits from. */
+    fun open(connectionId: String) {
+        val current = _state.value
+        if (
+            current.scope == PolicyEditorScope.Connection &&
+                current.connectionId == connectionId &&
+                current.loaded
+        ) {
+            return
+        }
+        _state.value =
+            PolicyUiState(scope = PolicyEditorScope.Connection, connectionId = connectionId)
+        viewModelScope.launch {
+            val (storedGlobal, storedConnection) =
+                withContext(io) { policies.getGlobal() to policies.getOverrides(connectionId) }
+            val active = _state.value
+            if (
+                active.scope != PolicyEditorScope.Connection || active.connectionId != connectionId
+            ) {
+                return@launch
+            }
+            val global = (storedGlobal as? StoredGlobalPolicy.Policy)?.policy
+            val overrides = (storedConnection as? StoredConnectionOverrides.Policy)?.overrides
+            val draft = PolicyEditorDraft.Connection(connectionDraftOf(connectionId, overrides))
+            _state.value =
+                PolicyUiState(
+                    scope = PolicyEditorScope.Connection,
+                    connectionId = connectionId,
+                    loaded = true,
+                    unreadable = (storedConnection as? StoredConnectionOverrides.Unreadable)?.why,
+                    globalUnreadable = (storedGlobal as? StoredGlobalPolicy.Unreadable)?.why,
+                    global = global,
+                    draft = draft,
+                    stored = draft,
+                    storedAt = overrides?.updatedAt,
+                )
+        }
+    }
+
+    /** Refreshes inherited values after the global editor closes, preserving the local draft. */
+    fun refreshGlobal() {
+        val before = _state.value
+        if (before.scope != PolicyEditorScope.Connection || !before.loaded) return
+        val connectionId = before.connectionId ?: return
+        viewModelScope.launch {
+            val stored = withContext(io) { policies.getGlobal() }
+            _state.update { current ->
+                if (
+                    current.scope != PolicyEditorScope.Connection ||
+                        current.connectionId != connectionId
+                ) {
+                    current
+                } else {
+                    current.copy(
+                        global = (stored as? StoredGlobalPolicy.Policy)?.policy,
+                        globalUnreadable = (stored as? StoredGlobalPolicy.Unreadable)?.why,
+                    )
+                }
+            }
+        }
+    }
+
+    /** The owner changed the active draft. Nothing is written until Save. */
+    fun edit(draft: PolicyEditorDraft) {
         if (!_state.value.loaded || _state.value.unreadable != null) return
         _state.update { it.copy(draft = draft) }
     }
 
-    /**
-     * Starts from no rules, over rules this build couldn't read. The owner asks for this: it
-     * replaces what is stored, and nothing here can show them what they are replacing.
-     */
+    /** Explicitly replaces an active document this build could not read. */
     fun startOver() {
-        val connectionId = _state.value.connectionId ?: return
+        val state = _state.value
+        val draft =
+            when (state.scope) {
+                PolicyEditorScope.Global -> PolicyEditorDraft.Global(globalDraftOf(null))
+                PolicyEditorScope.Connection ->
+                    PolicyEditorDraft.Connection(
+                        connectionDraftOf(state.connectionId ?: return, null)
+                    )
+                null -> return
+            }
         _state.update {
             it.copy(
                 unreadable = null,
                 replacing = true,
-                draft = PolicyDraft(connectionId),
-                stored = PolicyDraft(connectionId),
+                draft = draft,
+                stored = draft,
                 storedAt = null,
             )
         }
     }
 
-    /**
-     * Writes the draft. A draft that configures nothing removes the connection's rules instead of
-     * storing a document that says nothing.
-     */
+    /** Resets only the connection draft to inheritance. Nothing is deleted until Save. */
+    fun resetConnectionOverrides() {
+        val state = _state.value
+        if (state.scope != PolicyEditorScope.Connection || state.unreadable != null) return
+        val connectionId = state.connectionId ?: return
+        edit(PolicyEditorDraft.Connection(ConnectionPolicyDraft(connectionId)))
+    }
+
+    /** Writes the active draft to its own document, or removes only that document when empty. */
     fun save() {
         val state = _state.value
-        val connectionId = state.connectionId ?: return
         if (state.saving || !state.loaded || state.unreadable != null) return
-        // The draft that is about to be written, held apart from the one on screen: the form stays
-        // interactive while a slow write runs, and marking whatever is typed by the time it
-        // finishes as "stored" would lose those edits without a word.
-        val writing = state.draft
-        val review = writing.review(now())
-        val policy =
-            when (review) {
-                is DraftReview.Ready -> review.policy
-                DraftReview.NoRules -> null
-                // The Save button is off while anything is wrong, so this is a draft that was
-                // built rather than typed. It is refused rather than written half.
-                is DraftReview.Problems -> return
-            }
+        val writing = state.draft ?: return
+        val document = documentOf(writing, now()) ?: return
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             val written =
                 withContext(io) {
                     try {
-                        if (policy == null) policies.delete(connectionId) else policies.put(policy)
+                        when (document) {
+                            is Document.Global ->
+                                if (document.policy == null) policies.deleteGlobal()
+                                else policies.putGlobal(document.policy)
+                            is Document.Connection ->
+                                if (document.overrides == null) {
+                                    policies.delete(document.connectionId)
+                                } else {
+                                    policies.putOverrides(document.overrides)
+                                }
+                        }
                         true
-                    } catch (e: IOException) {
+                    } catch (_: IOException) {
                         false
                     }
                 }
             _state.update { current ->
-                if (current.connectionId != connectionId) return@update current
+                if (current.scope != state.scope || current.connectionId != state.connectionId) {
+                    return@update current
+                }
                 if (!written) {
-                    return@update current.copy(saving = false, message = PolicyMessage.SaveFailed)
+                    return@update current.copy(
+                        saving = false,
+                        message = PolicyMessage.SaveFailed,
+                    )
                 }
                 current.copy(
                     saving = false,
                     replacing = false,
                     stored = writing,
-                    storedAt = policy?.updatedAt,
-                    message = if (policy == null) PolicyMessage.Removed else PolicyMessage.Saved,
+                    storedAt = document.updatedAt,
+                    message =
+                        if (document.updatedAt == null) PolicyMessage.Removed
+                        else PolicyMessage.Saved,
                 )
             }
         }
     }
 
-    /** The owner left the editor. The next connection opened is read from disk again. */
+    /** The next open reads its document again. */
     fun close() {
         _state.value = PolicyUiState()
     }
 
     fun messageShown() = _state.update { it.copy(message = null) }
+
+    private sealed interface Document {
+        val updatedAt: Instant?
+
+        data class Global(val policy: GlobalPolicy?) : Document {
+            override val updatedAt: Instant?
+                get() = policy?.updatedAt
+        }
+
+        data class Connection(
+            val connectionId: String,
+            val overrides: ConnectionPolicyOverrides?,
+        ) : Document {
+            override val updatedAt: Instant?
+                get() = overrides?.updatedAt
+        }
+    }
+
+    /** Null means validation refused the write; a document containing null means delete it. */
+    private fun documentOf(draft: PolicyEditorDraft, at: Instant): Document? =
+        when (draft) {
+            is PolicyEditorDraft.Global ->
+                when (val review = draft.rules.copy(connectionId = GLOBAL_DRAFT_ID).review(at)) {
+                    DraftReview.NoRules -> Document.Global(null)
+                    is DraftReview.Problems -> null
+                    is DraftReview.Ready ->
+                        Document.Global(
+                            GlobalPolicy(
+                                actions = review.policy.actions,
+                                assets = review.policy.assets,
+                                recipients = review.policy.recipients,
+                                programs = review.policy.programs,
+                                limits = review.policy.limits,
+                                updatedAt = review.policy.updatedAt,
+                            )
+                        )
+                }
+            is PolicyEditorDraft.Connection ->
+                when (val review = draft.rules.review(at)) {
+                    ConnectionDraftReview.InheritAll ->
+                        Document.Connection(draft.rules.connectionId, null)
+                    is ConnectionDraftReview.Problems -> null
+                    is ConnectionDraftReview.Ready ->
+                        Document.Connection(draft.rules.connectionId, review.overrides)
+                }
+        }
 }
+
+/** A distinct ViewModel key whose only purpose is retaining the global form above a local form. */
+class GlobalPolicyEditorViewModel(
+    policies: PolicyStore,
+    now: () -> Instant = Instant::now,
+    io: CoroutineDispatcher = Dispatchers.IO,
+) : PolicyEditorViewModel(policies, now, io)

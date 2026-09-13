@@ -5,6 +5,8 @@
     <string name="live_test">Live test</string>
     <string name="add_connection">Add connection</string>
     <string name="connections_empty">No connections yet. To add one, run pnpm pair on the computer that runs the sidecar, then tap Add connection.</string>
+    <string name="global_rules_row">Global rules</string>
+    <string name="global_rules_row_note">Defaults used by connections unless their Rules screen overrides a section.</string>
     <string name="back">Back</string>
     <string name="cancel">Cancel</string>
     <string name="working">Working…</string>

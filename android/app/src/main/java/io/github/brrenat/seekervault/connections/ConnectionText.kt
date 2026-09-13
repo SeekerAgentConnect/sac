@@ -47,6 +47,8 @@ object ConnectionsTags {
     const val INBOX = "inbox"
     const val WALLET = "walletRow"
     const val PENDING = "pendingRequests"
+    const val GLOBAL_RULES = "globalRules"
+    const val LIST = "connectionsList"
 
     fun item(id: String) = "connection:$id"
 
