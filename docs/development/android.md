@@ -19,14 +19,14 @@ The source-of-truth comparison and verification record are in [`docs/testing/see
 
 ## Shared synchronization and cache (SAW-050)
 
-`SynchronizationRepository` is the one application-scoped convergence path for `UpdateService.Sync` responses and revisioned stream events. Manual Refresh uses it now; the foreground owner and the network-constrained periodic caller attach to the same object in SAW-051 and SAW-052. `ConnectionRepository.synchronizeAll()` is the process-start entry point: it loads connection metadata, encrypted credentials, stored answers, Activity, and the sync cache without constructing an Activity or ViewModel.
+`SynchronizationRepository` is the one application-scoped convergence path for `UpdateService.Sync` responses and revisioned stream events. Manual Refresh and the SAW-051 foreground owner use it now; the network-constrained periodic caller attaches to the same object in SAW-052. `ConnectionRepository.synchronizeAll()` is the process-start entry point: it loads connection metadata, encrypted credentials, stored answers, Activity, and the sync cache without constructing an Activity or ViewModel.
 
 The code is under `sync/`:
 
 | File | Role |
 | --- | --- |
 | `SynchronizationRepository.kt` | Discovers capabilities, coalesces one in-flight Sync per connection, pages and validates a complete snapshot, applies request revisions monotonically, buffers bounded stream overlap, rotates more than 100 nonterminal Activity references across later runs, and publishes `SynchronizationState` |
-| `ConnectUpdateTransport.kt`, `UpdateTransport.kt` | Existing-connection capability discovery over Connect and unary `UpdateService.Sync` over gRPC/HTTP2. The bearer credential is accepted only as a transient call argument and is redacted by the sole access object's `toString()` |
+| `ConnectUpdateTransport.kt`, `UpdateTransport.kt` | Existing-connection capability discovery over Connect, unary `UpdateService.Sync`, and a genuine bidirectional gRPC subscription whose send side remains open for heartbeats. The bearer credential is accepted only as a transient call argument and is redacted by the sole access object's `toString()` |
 | `SyncState.kt` | Observable capability, endpoint, request/status, cursor, last-success, and recovery state; no credential, wallet authorization, policy, assessment, or local answer |
 | `storage/SyncStore.kt` | One versioned `AtomicFile` document per connection at `filesDir/sync/<connection ID>.json` |
 
@@ -35,6 +35,16 @@ Each document is replaced whole. Snapshot pages remain in memory until the final
 Per-request revisions reject duplicates and stale delivery, equal-revision conflicts, gaps, changed request identity, and state rollback. A complete snapshot may remove cached pending state by absence; it never removes a `LocalResult` or Activity row. At most 512 removal markers are retained to reject late duplicates without turning the cache into server history. A connection deletion or revocation increments its local epoch, cancels its in-flight call, deletes its document, and makes any late response or older stream generation inert.
 
 Synchronization has deliberately narrow authority. Before reading a snapshot it asks `ConnectionRepository` to retry only results already stored by the owner's earlier action. Server state may advance the request copy inside such a result and the existing Activity row derived from it. It cannot create an answer or Activity record, evaluate a policy, prepare a transaction, invoke Mobile Wallet Adapter, sign, send, simulate, or replace a transaction. Credentials remain encrypted in `noBackupFilesDir/credentials/`; they are never placed in the sync document, observable state, worker input, or a log.
+
+## Foreground update lifecycle (SAW-051)
+
+`ForegroundUpdateManager` belongs to `SeekerVaultApplication`. `MainActivity.onStart` announces foreground once, while `onStop` announces background only when it is not a configuration change. Consequently navigation and rotation retain the same per-connection jobs and cannot open a competing stream. A pairing observed on `ConnectionRepository.connections` starts one; removal or revocation cancels it and invalidates its generation before late responses can apply.
+
+Each foreground connection first calls the shared Sync path, then subscribes from the cursor that call made durable. A retained cursor replays through `ReplayComplete`; a restart, gap, invalid cursor, or overflow starts barrier Sync while subsequent responses enter the repository's bounded buffer. The resulting cache publishes through the existing `StateFlow`s, so Home counts, Inbox, Request details, Activity, and connection status recompose without screen entry or manual refresh. One connection has a supervisor-isolated loop: another server being offline does not interrupt it.
+
+The connection status is runtime state, not proof that cached data is current. Screens show **Connecting**, **Live**, **Reconnecting**, actionable unreachable/certificate/cleartext failures, **Revoked**, and update-protocol/configuration failures separately from **Last synced**. Intentional background is **Live updates paused**, never an outage. The bidirectional send side remains open for client heartbeats; three unanswered 15–60 second intervals are the liveness deadline. Transient failures retry with jittered exponential delays from one second through a 30-second cap.
+
+Closing these jobs cannot cancel or start Mobile Wallet Adapter work. The foreground return still invokes the existing unresolved-wallet/result reconciliation, while the stream only retries a result already stored and observes request/Activity state. SAW-051 adds no worker, service, FCM component, preparation, approval, signing, sending, or transaction replacement.
 
 ## Connections
 
@@ -86,7 +96,7 @@ How the code works:
 - **Following a sent transaction is asking the server, and nothing else (SAW-022).** `InboxViewModel.checkStatus` calls `ConnectionRepository.checkStatus`, which calls `RequestService.CheckStatus` and writes only the returned `ActionRequest` onto the stored answer: the owner's answer, the wallet's outcome, and how it was delivered all stand. It opens no wallet, sends no result again, and is offered only while `LocalResult.awaitingChain` — an accepted transfer whose state is not terminal. A check that fails says so (`SigningProblem.NotChecked`) and changes nothing about the transaction.
 - **An answer the phone never received is unresolved (SAW-017).** If the app dies while the action is with the wallet, or the wallet never answers within ten minutes, the approval is settled as `SigningOutcome.Unresolved`: the screen says this phone never learned what the wallet did. For a message the sidecar is told the request failed; for a transfer it is told the outcome is UNKNOWN, because the wallet may have sent it (SAW-021). `InboxViewModel.onAppVisible`, from `MainActivity.onStart`, settles them on every return to the foreground, skipping the signings still in flight in this process; `ConnectionRepository.load` does the same when the app starts. Neither ever asks a wallet, and the first outcome stored stands, so an answer that turns up afterwards changes nothing. See [`docs/testing/wallet-lifecycle.md`](../testing/wallet-lifecycle.md).
 - **A signature is kept only if it's over the bytes that were asked for.** A wallet that reports other bytes has signed nothing this request asked for, and the phone records a failure instead.
-- **Nothing runs in the background.** The app fetches when a connection is opened, on **Refresh**, and when it opens or comes back to the foreground (`ConnectionsViewModel`). `MainActivity` reports the return in `onStart`, after an `onStop` that wasn't a rotation. Loading the inbox sends no answer.
+- **Nothing runs in the background yet.** The application-owned production streams run only while foreground. It still fetches when a connection is opened, on **Refresh**, and when it opens or comes back to the foreground. `MainActivity` reports a real return in `onStart`, after an `onStop` that wasn't a rotation. Loading the inbox and receiving an update send no new answer.
 
 ## Wallet
 

@@ -131,7 +131,7 @@ flowchart LR
 
 - **The live diagnostic (Stage 1)** proves the transport. An agent's call waits while the text shows on the open live-test screen, and the user's OK comes back as the tool's result. It's in memory and foreground-only, and it stays as a diagnostic.
 - **The durable workflow (Stage 2 on)** carries the product. The sidecar stores an agent's request and answers with its ID at once. The phone fetches it later, and the agent reads the result when it's ready.
-- **The production update transport (Stage 5.2)** observes the durable workflow: the sidecar serves bidirectional gRPC and unary Sync, and Android manual Refresh and headless callers now converge through one persistent revisioned cache. Foreground ownership and eventual background scheduling arrive in SAW-051–052. It creates no third kind of request and makes no decision.
+- **The production update transport (Stage 5.2)** observes the durable workflow: the sidecar serves bidirectional gRPC and unary Sync, while Android foreground streams, manual Refresh, and headless callers converge through one persistent revisioned cache. The app process owns the foreground streams, not any screen. Eventual background scheduling arrives in SAW-052. It creates no third kind of request and makes no decision.
 
 The two workflows share the sidecar process and the text rules, and nothing else; the production update transport belongs only to durable requests. See [Compatibility with Stage 1](protocol.md#compatibility-with-stage-1).
 

@@ -41,15 +41,22 @@
     <string name="working">Working…</string>
 
     <string name="connection_status_not_checked">Not checked yet.</string>
-    <string name="connection_status_ok">Connected · %1$d pending</string>
-    <string name="connection_status_ok_more">Connected · more than %1$d pending</string>
+    <string name="connection_status_ok">Last sync found %1$d pending requests.</string>
+    <string name="connection_status_ok_more">Last sync found more than %1$d pending requests.</string>
     <string name="connection_status_unreachable">Couldn\'t reach the server.</string>
     <string name="connection_status_certificate">The server\'s certificate isn\'t trusted, or it\'s for another host name.</string>
     <string name="connection_status_cleartext">This build allows plain HTTP only to 127.0.0.1.</string>
     <string name="connection_status_failed">The last check failed.</string>
     <string name="connection_status_revoked">The server no longer accepts this phone. Pair again to reconnect.</string>
     <string name="connection_status_credential_missing">This phone no longer has the credential for this connection. Pair again to reconnect.</string>
-    <string name="checked_at">Checked %1$s</string>
+    <string name="connection_status_background">Live updates paused while the app is in the background.</string>
+    <string name="connection_status_connecting">Connecting for live updates…</string>
+    <string name="connection_status_live">Live updates connected.</string>
+    <string name="connection_status_reconnecting">Live updates interrupted. Reconnecting…</string>
+    <string name="connection_status_updates_not_configured">Live updates are not configured. Refresh still works.</string>
+    <string name="connection_status_upgrade_required">This sidecar must be upgraded for live updates. Refresh still works.</string>
+    <string name="connection_status_updates_incompatible">This sidecar advertised an incompatible live-update address. Check its configuration.</string>
+    <string name="checked_at">Last synced %1$s</string>
 
     <string name="field_server">Server</string>
     <string name="field_server_id">Server ID</string>

@@ -554,9 +554,9 @@ The durable contract leaves the live diagnostic as it was.
 - **`vault_display_command` and its tests are unchanged.**
 - **The durable rules reuse two live rules without changing them:** an `ack`'s text follows `invalidTextReason`, and `expires_at` has `isExpired`'s boundary.
 
-## Production updates (SAW-048, SAW-049)
+## Production updates (SAW-048–SAW-051)
 
-The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar; SAW-050 gives Android one persistent, headless reconciliation path; and foreground ownership and WorkManager scheduling follow in SAW-051–052.
+The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar; SAW-050 gives Android one persistent, headless reconciliation path; SAW-051 owns the foreground streams; and WorkManager scheduling follows in SAW-052.
 
 | RPC | Wire protocol | Lifetime | Purpose |
 | --- | --- | --- | --- |
@@ -599,6 +599,8 @@ Cursors are opaque and used only in the order the sidecar sends them. A phone du
 `ready` chooses a heartbeat interval from 15 through 60 seconds; version 1 defaults to 30. After one quiet interval each peer sends a heartbeat, and after three intervals without any answer it closes the call. Client sequences increase within the stream; repeating one is harmless and decreasing one is invalid. Heartbeats, IDs, cursors, page tokens, and all request events count toward the 65,536-byte per-message limit. There is no application ping faster than 15 seconds.
 
 Caller cancellation is final for that foreground generation: the Kotlin client closes the receive side, which cancels the OkHttp HTTP/2 call and reaches the Node handler's abort signal. It must not itself schedule a reconnect. A later lifecycle owner may reconnect after a network failure with bounded exponential backoff, but navigation/rotation handoff, background transition, connection deletion, revocation, and explicit cancellation are not retry failures.
+
+Android keeps the client send side open after its initial subscribe and sends its durably applied cursor with each heartbeat. Any server message resets its quiet timer. Three unanswered negotiated intervals close the call — 45 seconds at the minimum 15-second interval and 180 seconds at the maximum 60-second interval — after which the foreground owner retries from one second up to a 30-second cap with jitter. A normal event has no polling delay: expected screen delivery is one HTTP/2 transit plus validation and one atomic cache write, subject to network and Android scheduling. No wall-clock delivery guarantee is claimed.
 
 ### What `Sync` reconciles
 

@@ -45,7 +45,11 @@ class MainActivity : ComponentActivity() {
         viewModelFactory {
             initializer {
                 val app = application as SeekerVaultApplication
-                ConnectionsViewModel(app.connectionRepository, app::isCleartextPermitted)
+                ConnectionsViewModel(
+                    repository = app.connectionRepository,
+                    foregroundUpdates = app.foregroundUpdates.state,
+                    cleartextPermitted = app::isCleartextPermitted,
+                )
             }
         }
     }
@@ -129,6 +133,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        (application as SeekerVaultApplication).foregroundUpdates.onForeground()
         viewModel.onAppVisible()
         connections.onAppVisible()
         // Also after coming back from the wallet app: an approval whose answer never arrived is
@@ -145,6 +150,7 @@ class MainActivity : ComponentActivity() {
         // A rotation recreates the activity but keeps the ViewModels, the open stream, and the
         // fetched inbox.
         if (!isChangingConfigurations) {
+            (application as SeekerVaultApplication).foregroundUpdates.onBackground()
             viewModel.onAppHidden()
             connections.onAppHidden()
             wallet.onAppHidden()

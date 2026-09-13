@@ -68,7 +68,9 @@ class MainActivityTest {
     @Test
     fun rotationKeepsTheStreamTheCommandAndASingleOk() {
         connectAndReceive()
+        assertTrue(app.foregroundUpdates.state.value.foreground)
         scenario.recreate()
+        assertTrue(app.foregroundUpdates.state.value.foreground)
         compose.onNodeWithTag(LiveCommandTags.COMMAND_TEXT).assertTextEquals("Hello Seeker")
         assertEquals(1, sidecar.streams.size)
         assertTrue(sidecar.stream.open)
@@ -98,9 +100,11 @@ class MainActivityTest {
         connectAndReceive()
         scenario.moveToState(Lifecycle.State.CREATED) // onStop without a configuration change
         compose.waitForIdle()
+        assertFalse(app.foregroundUpdates.state.value.foreground)
         assertFalse(sidecar.streams[0].open)
         scenario.moveToState(Lifecycle.State.RESUMED)
         compose.waitForIdle()
+        assertTrue(app.foregroundUpdates.state.value.foreground)
         assertEquals(2, sidecar.streams.size)
         compose.onNodeWithTag(LiveCommandTags.COMMAND_TEXT).assertDoesNotExist()
         compose.runOnIdle { sidecar.stream.ready() }

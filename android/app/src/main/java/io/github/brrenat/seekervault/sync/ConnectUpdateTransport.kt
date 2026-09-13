@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.sync
 
+import com.connectrpc.BidirectionalStreamInterface
 import com.connectrpc.Code
 import com.connectrpc.ConnectException
 import com.connectrpc.ProtocolClientConfig
@@ -9,19 +10,29 @@ import com.connectrpc.impl.ProtocolClient
 import com.connectrpc.okhttp.ConnectOkHttpClient
 import com.connectrpc.protocols.NetworkProtocol
 import com.connectrpc.simpleTimeouts
+import com.google.protobuf.Timestamp
 import io.github.brrenat.seekervault.request.v1.PairingServiceClient
 import io.github.brrenat.seekervault.request.v1.getConnectionCapabilitiesRequest
+import io.github.brrenat.seekervault.update.v1.SubscribeRequest
+import io.github.brrenat.seekervault.update.v1.SubscribeResponse
 import io.github.brrenat.seekervault.update.v1.SyncRequest
 import io.github.brrenat.seekervault.update.v1.SyncResponse
 import io.github.brrenat.seekervault.update.v1.UpdateServiceClient
+import io.github.brrenat.seekervault.update.v1.clientHeartbeat
+import io.github.brrenat.seekervault.update.v1.subscribe
+import io.github.brrenat.seekervault.update.v1.subscribeRequest
 import java.io.IOException
 import java.net.UnknownServiceException
 import java.security.cert.CertPathValidatorException
 import java.security.cert.CertificateException
+import java.time.Instant
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 /** The production update calls, using Connect for discovery and genuine gRPC for UpdateService. */
@@ -50,6 +61,64 @@ class ConnectUpdateTransport(private val httpClient: OkHttpClient) : UpdateTrans
     ): SyncResponse = call {
         UpdateServiceClient(client(endpoint.grpcUrl, NetworkProtocol.GRPC))
             .sync(request, bearer(credential))
+    }
+
+    override suspend fun subscribe(
+        endpoint: UpdateEndpoint,
+        credential: String,
+        connectionId: String,
+        resumeCursor: String,
+        serverInstanceId: String,
+    ): UpdateSubscription {
+        val stream =
+            try {
+                UpdateServiceClient(client(endpoint.grpcUrl, NetworkProtocol.GRPC))
+                    .subscribe(bearer(credential))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw classify(e)
+            }
+        val first = subscribeRequest {
+            this.connectionId = connectionId
+            subscribe = subscribe {
+                protocolVersion = PROTOCOL_VERSION
+                this.resumeCursor = resumeCursor
+                this.serverInstanceId = serverInstanceId
+            }
+        }
+        stream.send(first).exceptionOrNull()?.let { error ->
+            withContext(NonCancellable) { runCatching { stream.receiveClose() } }
+            throw classify(error)
+        }
+        return ConnectUpdateSubscription(connectionId, stream)
+    }
+
+    private class ConnectUpdateSubscription(
+        private val connectionId: String,
+        private val stream: BidirectionalStreamInterface<SubscribeRequest, SubscribeResponse>,
+    ) : UpdateSubscription {
+        override val responses: ReceiveChannel<SubscribeResponse> = stream.responseChannel()
+
+        override suspend fun heartbeat(sequence: Long, appliedCursor: String, sentAt: Instant) {
+            val message = subscribeRequest {
+                connectionId = this@ConnectUpdateSubscription.connectionId
+                heartbeat = clientHeartbeat {
+                    this.sequence = sequence
+                    this.appliedCursor = appliedCursor
+                    this.sentAt =
+                        Timestamp.newBuilder()
+                            .setSeconds(sentAt.epochSecond)
+                            .setNanos(sentAt.nano)
+                            .build()
+                }
+            }
+            stream.send(message).exceptionOrNull()?.let { throw classify(it) }
+        }
+
+        override suspend fun close() {
+            withContext(NonCancellable) { runCatching { stream.receiveClose() } }
+        }
     }
 
     private fun client(host: String, protocol: NetworkProtocol) =
@@ -85,6 +154,7 @@ class ConnectUpdateTransport(private val httpClient: OkHttpClient) : UpdateTrans
         // Sync can include the sidecar's existing bounded confirmation pass (four 20-second chain
         // reads in parallel), so it gets room beyond a normal database-only unary call.
         val TIMEOUT = 30.seconds
+        const val PROTOCOL_VERSION = 1
 
         fun classify(error: Throwable): UpdateTransportException {
             val causes = causesOf(error)

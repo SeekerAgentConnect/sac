@@ -144,7 +144,11 @@ fun ConnectionsScreen(
             itemsIndexed(state.connections, key = { _, connection -> connection.id }) {
                 _,
                 connection ->
-                ConnectionItem(connection, onClick = { onOpen(connection.id) })
+                ConnectionItem(
+                    connection,
+                    state.updates.connections[connection.id],
+                    onClick = { onOpen(connection.id) },
+                )
             }
             if (state.loaded && state.connections.isEmpty()) {
                 item(key = "empty") {
@@ -707,7 +711,11 @@ private fun ActivityItem(recorded: Int, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ConnectionItem(connection: Connection, onClick: () -> Unit) {
+private fun ConnectionItem(
+    connection: Connection,
+    live: io.github.brrenat.seekervault.sync.ForegroundConnectionState?,
+    onClick: () -> Unit,
+) {
     SeekerCard(
         modifier =
             Modifier.padding(horizontal = 16.dp).testTag(ConnectionsTags.item(connection.id)),
@@ -722,7 +730,7 @@ private fun ConnectionItem(connection: Connection, onClick: () -> Unit) {
                 Modifier.size(40.dp)
                     .clip(CircleShape)
                     .background(
-                        if (hasProblem(connection))
+                        if (hasProblem(connection, live))
                             MaterialTheme.colorScheme.surfaceContainerHighest
                         else MaterialTheme.colorScheme.tertiaryContainer
                     ),
@@ -732,17 +740,17 @@ private fun ConnectionItem(connection: Connection, onClick: () -> Unit) {
                     initials(connection.label),
                     style = MaterialTheme.typography.labelLarge,
                     color =
-                        if (hasProblem(connection)) MaterialTheme.colorScheme.onSurfaceVariant
+                        if (hasProblem(connection, live)) MaterialTheme.colorScheme.onSurfaceVariant
                         else MaterialTheme.colorScheme.onTertiaryContainer,
                 )
             }
             Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                 Text(connection.label, style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    statusText(connection),
+                    statusText(connection, live),
                     style = MaterialTheme.typography.bodyMedium,
                     color =
-                        if (hasProblem(connection)) SeekerTheme.colors.errorText
+                        if (hasProblem(connection, live)) SeekerTheme.colors.errorText
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
