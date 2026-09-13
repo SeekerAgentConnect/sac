@@ -160,7 +160,7 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.activity.ActivityKind",
                 "io.github.brrenat.seekervault.activity.ActivityOutcome",
                 "io.github.brrenat.seekervault.activity.ActivityRecord",
-                "io.github.brrenat.seekervault.connections.BackButton",
+                "io.github.brrenat.seekervault.connections.CloseButton",
                 "io.github.brrenat.seekervault.connections.formatInstant",
                 "io.github.brrenat.seekervault.connections.isConnectionId",
                 "io.github.brrenat.seekervault.request.v1.Action",
@@ -169,6 +169,11 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS",
                 "io.github.brrenat.seekervault.transactions.TransferInspection",
                 "io.github.brrenat.seekervault.transactions.formatBaseUnits",
+                "io.github.brrenat.seekervault.ui.SeekerCard",
+                "io.github.brrenat.seekervault.ui.SeekerSnackbarHost",
+                "io.github.brrenat.seekervault.ui.SolidDialog",
+                "io.github.brrenat.seekervault.ui.seekerListItemColors",
+                "io.github.brrenat.seekervault.ui.seekerTextFieldColors",
                 "io.github.brrenat.seekervault.wallet.isSolanaAddress",
             ),
             reaches,
@@ -343,6 +348,37 @@ class StageBoundaryTest {
             ),
             sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.sorted(),
         )
+    }
+
+    @Test
+    fun theV4PresentationUsesOnlySolidOpaqueLayers() {
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        val forbidden =
+            Regex(
+                """Color\.Transparent|copy\s*\(\s*alpha|\.alpha\s*\(|""" +
+                    """\bshadow\s*\(|\bblur\s*\(|graphicsLayer|drawBehind|""" +
+                    """\bBrush\.|\bfadeIn\s*\(|\bfadeOut\s*\("""
+            )
+        val effects = sources.flatMap { file ->
+            withoutComments(file).lines().mapIndexedNotNull { index, line ->
+                "${file.name}:${index + 1}: ${line.trim()}"
+                    .takeIf {
+                        forbidden.containsMatchIn(line)
+                    }
+            }
+        }
+        assertEquals(emptyList<String>(), effects)
+
+        val rgba = Regex("""Color\(0x([0-9A-Fa-f]{8})\)""")
+        val translucentTokens = sources.flatMap { file ->
+            rgba.findAll(withoutComments(file)).mapNotNull { match ->
+                "${file.name}: ${match.value}"
+                    .takeUnless {
+                        match.groupValues[1].startsWith("FF", ignoreCase = true)
+                    }
+            }
+        }
+        assertEquals(emptyList<String>(), translucentTokens)
     }
 
     @Test

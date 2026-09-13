@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The pending inbox and request details (SAW-013). -->
 <resources>
+    <string name="inbox_tab_pending">Pending %1$d</string>
+    <string name="inbox_tab_answered">Answered %1$d</string>
+    <string name="request_warning_badge">Warning</string>
     <string name="inbox_title">Pending requests</string>
     <string name="inbox_from">From %1$s</string>
     <string name="inbox_row">Pending requests</string>

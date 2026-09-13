@@ -2,12 +2,36 @@
 <!-- Pairing and the connection screens (SAW-012). -->
 <resources>
     <string name="connections_title">Connections</string>
+    <string name="home_title">Seeker Agent Connect</string>
+    <string name="network_none">No network</string>
+    <string name="copied">Copied</string>
+    <string name="requests_heading">Requests</string>
+    <string name="requests_none">No requests need your attention.</string>
+    <string name="review">Review</string>
+    <string name="waiting_for_you">Waiting for you</string>
+    <string name="requests_see_all">%1$d · see all</string>
+    <string name="carousel_hint">Swipe to browse, tap to review. The carousel only browses — nothing is answered here.</string>
+    <string name="requests_none_note">Requests arrive when the app opens, when you open a connection, or when you pull to refresh.</string>
+    <string name="rules_heading">Rules</string>
+    <string name="paired_servers_heading">Paired servers</string>
+    <string name="copy_wallet_address">Copy address</string>
+    <string name="request_funds_move">Funds move</string>
+    <string name="request_no_funds_move">No funds move</string>
+    <string name="request_nothing_signed">Nothing is signed</string>
+    <string name="request_review_required">Review required</string>
+    <string name="request_signature">Signature</string>
+    <string name="request_acknowledge">Acknowledge</string>
+    <string name="request_bytes">%1$d bytes</string>
+    <string name="request_source_asks">%1$s asks</string>
+    <string name="request_in_rules">In rules</string>
+    <string name="request_one_warning">1 warning</string>
     <string name="live_test">Live test</string>
     <string name="add_connection">Add connection</string>
     <string name="connections_empty">No connections yet. To add one, run pnpm pair on the computer that runs the sidecar, then tap Add connection.</string>
     <string name="global_rules_row">Global rules</string>
     <string name="global_rules_row_note">Defaults used by connections unless their Rules screen overrides a section.</string>
     <string name="back">Back</string>
+    <string name="close">Close</string>
     <string name="cancel">Cancel</string>
     <string name="working">Working…</string>
 

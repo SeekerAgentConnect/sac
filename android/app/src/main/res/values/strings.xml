@@ -1,5 +1,9 @@
 <resources>
     <string name="app_name">Seeker Vault</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_requests">Requests</string>
+    <string name="nav_wallet">Wallet</string>
+    <string name="nav_activity">Activity</string>
     <string name="live_title">Live test</string>
 
     <string name="server_url_label">Server URL</string>

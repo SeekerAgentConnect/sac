@@ -74,7 +74,7 @@ class ConnectionDetailsScreenTest {
             .performClick()
         compose.onNodeWithTag(ConnectionsTags.DISCONNECT).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.REMOVE).assertDoesNotExist()
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
         assertEquals(listOf("refresh", "disconnect", "back"), calls)
     }
 

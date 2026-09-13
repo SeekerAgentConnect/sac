@@ -78,6 +78,10 @@ class PendingRequestsScreenTest {
         // Below the fold: a lazy list composes it only once it's scrolled into view.
         compose
             .onNodeWithTag(InboxTags.LIST)
+            .performScrollToNode(hasTestTag(InboxTags.SECTION_TO_SEND))
+        compose.onNodeWithText(context.getString(R.string.inbox_tab_answered, 1)).performClick()
+        compose
+            .onNodeWithTag(InboxTags.LIST)
             .performScrollToNode(hasTestTag(InboxTags.item(ANSWERED.key)))
         compose.onNodeWithTag(InboxTags.SECTION_ANSWERED).assertExists()
         compose.onNodeWithTag(InboxTags.item(ANSWERED.key)).assertTextContains(acknowledged)

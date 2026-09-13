@@ -1,6 +1,18 @@
 # Android
 
-The app opens on **Connections**: the sidecars this phone is paired with (SAW-012). From there, **Pending requests** shows what agents asked (SAW-013), **Add connection** pairs with a new sidecar, a connection's details refresh, rename, or disconnect it, and **Live test** opens the Stage 1 live-test screen. That screen connects to the sidecar's `LiveCommandService` ([`docs/protocol.md`](../protocol.md)), shows an agent's text, and sends the user's OK back. The app uses stock Jetpack Compose and Material 3 components only, and no wallet.
+The app opens on **Home**, with the connected wallet, requests waiting for the owner, Global rules, and paired sidecars. **Home**, **Requests**, **Wallet**, and **Activity** are persistent root destinations; request, connection, policy, and record details open as a bottom-sheet stack over the selected root. **Add connection** pairs with a new sidecar, and the retained **Live test** route opens the Stage 1 diagnostic. That screen connects to the sidecar's `LiveCommandService` ([`docs/protocol.md`](../protocol.md)), shows an agent's text, and sends the user's OK back.
+
+## Material 3 v4 presentation (SEE-64)
+
+SEE-64 changes presentation and navigation structure only. Request preparation and answering, transaction inspection, policy evaluation and storage, wallet hand-off, connection pairing, Activity storage, and all of their security boundaries are unchanged.
+
+- `SeekerVaultTheme` follows the system light/dark setting. Its colour schemes use the exact opaque v4 tokens, and `SeekerTheme` carries the one extra semantic token whose light and dark values differ from the standard Material role.
+- `SeekerComponents.kt` owns the shared solid Material surfaces: buttons, cards, network chips, bottom navigation, sheets, dialogs, and transient messages. Every colour is fully opaque. Elevation shadows, translucent scrims, alpha fades, gradients, and blur-behind are deliberately absent.
+- Home keeps its 64 dp app bar outside the scrolling body. After 48 dp of body scroll it replaces the product title with the shortened wallet address and network chip. Waiting requests are whole-card actions in a horizontally snapping 204 by 192 dp carousel; answers remain on Request details.
+- The selected root remains mounted beneath a detail sheet; the active sheet covers the bottom bar, as in the reference. Each deeper detail adds an opaque 12 dp recessed backplate and becomes the active sheet. Close removes only that layer. Sheet entry is 260 ms and exit is 240 ms.
+- Identifiers use the theme's monospace style, controls use Material icons, cards are separated by solid containers rather than divider lines, and primary actions use the v4 lime tokens and shapes.
+
+The source-of-truth comparison and verification record are in [`docs/testing/see-64.md`](../testing/see-64.md).
 
 ## Connections
 

@@ -4,29 +4,30 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Answer
-import io.github.brrenat.seekervault.connections.BackButton
+import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.LocalResult
@@ -37,6 +38,11 @@ import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.transactions.transfer
+import io.github.brrenat.seekervault.ui.Identifier
+import io.github.brrenat.seekervault.ui.SeekerButton
+import io.github.brrenat.seekervault.ui.SeekerButtonRole
+import io.github.brrenat.seekervault.ui.SeekerCard
+import io.github.brrenat.seekervault.ui.seekerListItemColors
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.networkText
 import java.time.Instant
@@ -94,10 +100,19 @@ fun RequestDetailsScreen(
     val warns = assessment?.decision?.warns == true
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.request_title)) },
-                navigationIcon = { BackButton(onBack) },
+                actions = { CloseButton(onBack) },
+                expandedHeight = 56.dp,
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                    ),
             )
         },
     ) { innerPadding ->
@@ -123,7 +138,9 @@ fun RequestDetailsScreen(
             }
             if (sending || checking) {
                 LinearProgressIndicator(
-                    Modifier.fillMaxWidth().padding(16.dp).testTag(InboxTags.SENDING)
+                    Modifier.fillMaxWidth().padding(16.dp).testTag(InboxTags.SENDING),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 )
             }
             // What the server read from the chain, and whose word that is (SAW-022).
@@ -151,6 +168,7 @@ fun RequestDetailsScreen(
                     headlineContent = {
                         Text(text, modifier = Modifier.testTag(InboxTags.MESSAGE))
                     },
+                    colors = seekerListItemColors(),
                 )
             }
             val message = messagePreview(request)
@@ -161,6 +179,7 @@ fun RequestDetailsScreen(
                     headlineContent = {
                         Text(message.display, modifier = Modifier.testTag(InboxTags.MESSAGE))
                     },
+                    colors = seekerListItemColors(),
                 )
                 Field(
                     R.string.request_field_encoding,
@@ -240,6 +259,7 @@ fun RequestDetailsScreen(
                     overlineContent = { Text(stringResource(R.string.request_field_note)) },
                     headlineContent = { Text(request.agentNote) },
                     modifier = Modifier.testTag(InboxTags.NOTE),
+                    colors = seekerListItemColors(),
                 )
             }
             val created = request.createdAt.instant()
@@ -264,56 +284,48 @@ fun RequestDetailsScreen(
                     modifier = Modifier.padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (transfer != null) {
-                        // A transfer's Approve sits in the review above, next to the facts it
-                        // approves. Only Reject belongs down here with the other answers.
-                        Unit
-                    } else if (message == null) {
-                        Button(
-                            onClick = { onAnswer(Answer.Acknowledge) },
-                            enabled = !sending && (!warns || acknowledged),
-                            modifier = Modifier.testTag(InboxTags.ACKNOWLEDGE),
-                        ) {
-                            Text(
+                    if (transfer == null && message == null) {
+                        SeekerButton(
+                            text =
                                 stringResource(
                                     if (warns) R.string.acknowledge_despite_warnings
                                     else R.string.acknowledge
-                                )
-                            )
-                        }
+                                ),
+                            onClick = { onAnswer(Answer.Acknowledge) },
+                            enabled = !sending && (!warns || acknowledged),
+                            modifier = Modifier.testTag(InboxTags.ACKNOWLEDGE),
+                        )
                     } else {
                         // Approve is the only thing that reaches the wallet, and only once the
                         // owner has a wallet connected to sign with.
-                        Button(
-                            onClick = onApprove,
-                            enabled = !sending && wallet != null && (!warns || acknowledged),
-                            modifier = Modifier.testTag(InboxTags.APPROVE),
-                        ) {
-                            Text(
+                        SeekerButton(
+                            text =
                                 stringResource(
                                     if (warns) R.string.approve_despite_warnings
                                     else R.string.approve
-                                )
-                            )
-                        }
+                                ),
+                            onClick = onApprove,
+                            enabled = !sending && wallet != null && (!warns || acknowledged),
+                            modifier = Modifier.testTag(InboxTags.APPROVE),
+                        )
                     }
-                    OutlinedButton(
+                    SeekerButton(
+                        text = stringResource(R.string.reject),
                         onClick = { onAnswer(Answer.Reject) },
                         enabled = !sending,
+                        role = SeekerButtonRole.Neutral,
                         modifier = Modifier.testTag(InboxTags.REJECT),
-                    ) {
-                        Text(stringResource(R.string.reject))
-                    }
+                    )
                 }
             }
             if (result?.delivery == Delivery.Waiting) {
-                OutlinedButton(
+                SeekerButton(
+                    text = stringResource(R.string.send_again),
                     onClick = onSendAgain,
                     enabled = !sending,
+                    role = SeekerButtonRole.Neutral,
                     modifier = Modifier.padding(16.dp).testTag(InboxTags.SEND_AGAIN),
-                ) {
-                    Text(stringResource(R.string.send_again))
-                }
+                )
             }
             // Only while the chain could still settle it. It asks the server and nothing else: no
             // wallet is opened, and the transaction is never sent a second time.
@@ -329,13 +341,13 @@ fun RequestDetailsScreen(
                             Modifier.padding(horizontal = 16.dp).testTag(InboxTags.SIGNING_PROBLEM),
                     )
                 }
-                OutlinedButton(
+                SeekerButton(
+                    text = stringResource(R.string.check_status),
                     onClick = onCheckStatus,
                     enabled = !checking,
+                    role = SeekerButtonRole.Neutral,
                     modifier = Modifier.padding(16.dp).testTag(InboxTags.CHECK_STATUS),
-                ) {
-                    Text(stringResource(R.string.check_status))
-                }
+                )
             }
         }
     }
@@ -384,12 +396,12 @@ private fun TransferReview(
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_FAILED),
             )
-            OutlinedButton(
+            SeekerButton(
+                text = stringResource(R.string.transfer_prepare_again),
                 onClick = onPrepareAgain,
+                role = SeekerButtonRole.Neutral,
                 modifier = Modifier.padding(horizontal = 16.dp).testTag(InboxTags.TRANSFER_AGAIN),
-            ) {
-                Text(stringResource(R.string.transfer_prepare_again))
-            }
+            )
         }
         is Preparation.Ready -> {
             val inspection = preparation.inspection
@@ -486,13 +498,13 @@ private fun TransferReview(
             // they say changes nothing above: a transaction that failed its own inspection has no
             // Approve button whatever the rules made of it, and this never says otherwise.
             PolicyReview(assessment)
-            OutlinedButton(
+            SeekerButton(
+                text = stringResource(R.string.transfer_prepare_again),
                 onClick = onPrepareAgain,
                 enabled = !sending,
+                role = SeekerButtonRole.Neutral,
                 modifier = Modifier.padding(horizontal = 16.dp).testTag(InboxTags.TRANSFER_AGAIN),
-            ) {
-                Text(stringResource(R.string.transfer_prepare_again))
-            }
+            )
             if (!answered) {
                 if (inspection.approvable) {
                     // A warning is the owner's to overrule, and overruling it is a thing they say
@@ -500,18 +512,16 @@ private fun TransferReview(
                     if (warns) ApproveAnyway(acknowledged, onAcknowledge)
                     // The only thing that opens the wallet, and only for a transaction this phone
                     // read whole and found to match the request.
-                    Button(
-                        onClick = onApprove,
-                        enabled = !sending && wallet != null && (!warns || acknowledged),
-                        modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_APPROVE),
-                    ) {
-                        Text(
+                    SeekerButton(
+                        text =
                             stringResource(
                                 if (warns) R.string.approve_and_send_despite_warnings
                                 else R.string.approve_and_send
-                            )
-                        )
-                    }
+                            ),
+                        onClick = onApprove,
+                        enabled = !sending && wallet != null && (!warns || acknowledged),
+                        modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_APPROVE),
+                    )
                     if (wallet == null) {
                         Text(
                             stringResource(R.string.transfer_no_wallet),
@@ -553,10 +563,19 @@ private fun TransferReview(
 fun RequestGoneScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.request_title)) },
-                navigationIcon = { BackButton(onBack) },
+                actions = { CloseButton(onBack) },
+                expandedHeight = 56.dp,
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                    ),
             )
         },
     ) { innerPadding ->
@@ -569,9 +588,20 @@ fun RequestGoneScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 
 @Composable
 private fun Field(@StringRes label: Int, value: String, name: String) {
-    ListItem(
-        overlineContent = { Text(stringResource(label)) },
-        headlineContent = { Text(value) },
-        modifier = Modifier.testTag(InboxTags.field(name)),
-    )
+    SeekerCard(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 5.dp)
+                .testTag(InboxTags.field(name))
+                .semantics(mergeDescendants = true) {}
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                stringResource(label),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Identifier(value, Modifier.padding(top = 3.dp), maxLines = 6)
+        }
+    }
 }
