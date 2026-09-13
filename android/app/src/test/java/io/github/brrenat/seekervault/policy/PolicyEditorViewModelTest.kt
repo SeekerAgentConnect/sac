@@ -2,7 +2,8 @@ package io.github.brrenat.seekervault.policy
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
-import io.github.brrenat.seekervault.policy.storage.StoredPolicy
+import io.github.brrenat.seekervault.policy.storage.StoredConnectionOverrides
+import io.github.brrenat.seekervault.policy.storage.StoredGlobalPolicy
 import io.github.brrenat.seekervault.policy.storage.UnreadableReason
 import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
@@ -17,7 +18,6 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -26,7 +26,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 
-/** The editor's state: reading one connection's rules, editing them, and writing them back. */
+/** The two editors retain every inheritance distinction while writing separate documents. */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class PolicyEditorViewModelTest {
@@ -34,7 +34,7 @@ class PolicyEditorViewModelTest {
 
     private val scheduler = TestCoroutineScheduler()
     private val dispatcher = UnconfinedTestDispatcher(scheduler)
-    private val at = Instant.parse("2026-09-12T10:00:00Z")
+    private val at = Instant.parse("2026-09-13T10:00:00Z")
     private val dir by lazy { File(folder.root, "files/policies") }
     private val store by lazy { PolicyStore(dir) }
 
@@ -42,212 +42,320 @@ class PolicyEditorViewModelTest {
 
     @After fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(policies: PolicyStore = store) =
-        PolicyEditorViewModel(policies, { at }, dispatcher)
+    private fun viewModel(io: kotlinx.coroutines.CoroutineDispatcher = dispatcher) =
+        PolicyEditorViewModel(store, { at }, io)
 
-    private fun opened(connectionId: String = CONNECTION) =
-        viewModel().also { it.open(connectionId) }
+    private fun opened() = viewModel().also { it.open(CONNECTION) }
+
+    private fun PolicyEditorViewModel.connectionDraft(): ConnectionPolicyDraft =
+        (state.value.draft as PolicyEditorDraft.Connection).rules
+
+    private fun PolicyEditorViewModel.globalDraft(): PolicyDraft =
+        (state.value.draft as PolicyEditorDraft.Global).rules
+
+    private fun PolicyEditorViewModel.editConnection(
+        change: (ConnectionPolicyDraft) -> ConnectionPolicyDraft
+    ) = edit(PolicyEditorDraft.Connection(change(connectionDraft())))
+
+    private fun PolicyEditorViewModel.editGlobal(change: (PolicyDraft) -> PolicyDraft) =
+        edit(PolicyEditorDraft.Global(change(globalDraft())))
 
     @Test
-    fun aConnectionWithNoRulesOpensOnAnEmptyForm() {
-        val state = opened().state.value
-        assertTrue(state.loaded)
-        assertNull(state.unreadable)
-        assertNull(state.storedAt)
-        assertEquals(PolicyDraft(CONNECTION), state.draft)
-        assertFalse(state.changed)
-    }
-
-    @Test
-    fun whatIsSavedIsWhatIsOnDisk() {
+    fun aConnectionWithoutADocumentOpensInheritingEverySection() {
         val editor = opened()
-        editor.edit(
-            editor.state.value.draft.copy(
-                restrictActions = true,
-                actions = setOf(PolicyAction.Transfer),
-                assets = listOf(AssetDraft(Network.NETWORK_MAINNET, null, perOperation = "1.5")),
-            )
-        )
-        assertTrue(editor.state.value.changed)
-        editor.save()
-        assertEquals(PolicyMessage.Saved, editor.state.value.message)
+        assertTrue(editor.state.value.loaded)
+        assertEquals(ConnectionPolicyDraft(CONNECTION), editor.connectionDraft())
         assertFalse(editor.state.value.changed)
-        val stored = store.get(CONNECTION) as StoredPolicy.Policy
-        assertEquals(Allowlist.of(PolicyAction.Transfer), stored.policy.actions)
-        assertEquals(1_500_000_000UL, stored.policy.limitsFor(SOL).perOperation)
-        assertEquals(at, stored.policy.updatedAt)
+        assertEquals(ConnectionDraftReview.InheritAll, editor.connectionDraft().review(at))
     }
 
     @Test
-    fun rulesSurviveARestart() {
+    fun globalProgramsAndALocalRecipientRemainSeparateAndResolveTogether() {
+        store.putGlobal(GlobalPolicy(programs = Allowlist.of(SYSTEM), updatedAt = at))
         val editor = opened()
-        editor.edit(
-            editor.state.value.draft.copy(
+        editor.editConnection {
+            it.copy(
+                overrideRecipients = true,
                 restrictRecipients = true,
                 recipients = listOf(RECIPIENT),
             )
-        )
+        }
         editor.save()
-        // A new store and a new ViewModel is what the next start of the app is.
-        val again = PolicyEditorViewModel(PolicyStore(dir), { at }, dispatcher)
-        again.open(CONNECTION)
-        assertEquals(listOf(RECIPIENT), again.state.value.draft.recipients)
-        assertTrue(again.state.value.draft.restrictRecipients)
-        assertFalse(again.state.value.changed)
+
+        val local = (store.getOverrides(CONNECTION) as StoredConnectionOverrides.Policy).overrides
+        val effective = resolveEffectivePolicy(CONNECTION, global(), local)
+        assertEquals(Allowlist.of(SYSTEM), effective.programs.value)
+        assertEquals(RuleSource.Global, effective.programs.source)
+        assertEquals(Allowlist.of(RECIPIENT), effective.recipients.value)
+        assertEquals(RuleSource.ConnectionOverride, effective.recipients.source)
     }
 
     @Test
-    fun oneConnectionsRulesNeverShowUnderAnother() {
+    fun aProgramOverrideReplacesTheWholeGlobalList() {
+        store.putGlobal(GlobalPolicy(programs = Allowlist.of(SYSTEM, RECIPIENT), updatedAt = at))
         val editor = opened()
-        editor.edit(
-            editor.state.value.draft.copy(
+        editor.editConnection {
+            it.copy(
+                overridePrograms = true,
                 restrictPrograms = true,
-                programs = listOf(SYSTEM),
+                programs = listOf(STRANGER),
+            )
+        }
+        editor.save()
+        val local = (store.getOverrides(CONNECTION) as StoredConnectionOverrides.Policy).overrides
+        assertEquals(
+            Allowlist.of(STRANGER),
+            resolveEffectivePolicy(CONNECTION, global(), local).programs.value,
+        )
+    }
+
+    @Test
+    fun inheritNoCheckAndEmptyReplacementSurviveSaveAndRestart() {
+        val editor = opened()
+        editor.editConnection {
+            it.copy(
+                overrideActions = true,
+                restrictActions = false,
+                overridePrograms = true,
+                restrictPrograms = true,
+                programs = emptyList(),
+            )
+        }
+        editor.save()
+        val again = viewModel().also { it.open(CONNECTION) }.connectionDraft()
+        assertTrue(again.overrideActions)
+        assertFalse(again.restrictActions)
+        assertFalse(again.overrideRecipients)
+        assertTrue(again.overridePrograms)
+        assertTrue(again.restrictPrograms)
+        assertTrue(again.programs.isEmpty())
+    }
+
+    @Test
+    fun perRequestInheritanceAndOverrideAreIndependentOfTheAssetList() {
+        store.putGlobal(
+            GlobalPolicy(
+                assets = Allowlist.of(SOL),
+                limits = mapOf(SOL to AssetLimits(perOperation = 2_000_000_000UL)),
+                updatedAt = at,
             )
         )
+        val editor = opened()
+        editor.editConnection {
+            it.copy(
+                limits =
+                    listOf(
+                        ConnectionAssetDraft(
+                            Network.NETWORK_MAINNET,
+                            overridePerOperation = true,
+                            perOperation = "1",
+                        )
+                    )
+            )
+        }
         editor.save()
-        editor.close()
-        editor.open(OTHER_CONNECTION)
-        assertEquals(PolicyDraft(OTHER_CONNECTION), editor.state.value.draft)
-        assertEquals(StoredPolicy.None, store.get(OTHER_CONNECTION))
-        // And the first connection's rules are still its own.
-        editor.close()
-        editor.open(CONNECTION)
-        assertEquals(listOf(SYSTEM), editor.state.value.draft.programs)
+        val local = (store.getOverrides(CONNECTION) as StoredConnectionOverrides.Policy).overrides
+        val effective = resolveEffectivePolicy(CONNECTION, global(), local)
+        assertEquals(Allowlist.of(SOL), effective.assets.value)
+        assertEquals(RuleSource.Global, effective.assets.source)
+        assertEquals(1_000_000_000UL, effective.limitsFor(SOL).perOperation.value)
+        assertEquals(RuleSource.ConnectionOverride, effective.limitsFor(SOL).perOperation.source)
     }
 
     @Test
-    fun switchingConnectionsWithoutSavingDropsWhatWasTyped() {
+    fun bothDailyThresholdsRemainAfterLocalReset() {
+        store.putGlobal(
+            GlobalPolicy(
+                limits = mapOf(SOL to AssetLimits(daily = 10_000_000_000UL)),
+                updatedAt = at,
+            )
+        )
         val editor = opened()
-        editor.edit(editor.state.value.draft.copy(restrictActions = true))
-        editor.close()
-        editor.open(CONNECTION)
-        assertFalse(editor.state.value.draft.restrictActions)
-        assertEquals(StoredPolicy.None, store.get(CONNECTION))
+        editor.editConnection {
+            it.copy(limits = listOf(ConnectionAssetDraft(Network.NETWORK_MAINNET, daily = "3")))
+        }
+        editor.save()
+        var local = (store.getOverrides(CONNECTION) as StoredConnectionOverrides.Policy).overrides
+        var limits = resolveEffectivePolicy(CONNECTION, global(), local).limitsFor(SOL)
+        assertEquals(10_000_000_000UL, limits.globalDaily.value)
+        assertEquals(3_000_000_000UL, limits.connectionDaily.value)
+
+        editor.resetConnectionOverrides()
+        editor.save()
+        assertEquals(StoredConnectionOverrides.None, store.getOverrides(CONNECTION))
+        local = ConnectionPolicyOverrides.inheritAll(CONNECTION, at)
+        limits = resolveEffectivePolicy(CONNECTION, global(), local).limitsFor(SOL)
+        assertEquals(10_000_000_000UL, limits.globalDaily.value)
+        assertNull(limits.connectionDaily.value)
     }
 
     @Test
-    fun openingTheConnectionThatIsAlreadyOpenKeepsWhatWasTyped() {
-        val editor = opened()
-        editor.edit(editor.state.value.draft.copy(restrictActions = true))
-        // A rotation runs the screen's effect again with the same connection.
-        editor.open(CONNECTION)
-        assertTrue(editor.state.value.draft.restrictActions)
-        assertTrue(editor.state.value.changed)
-    }
-
-    @Test
-    fun turningEveryRuleOffRemovesTheConnectionsRules() {
-        val editor = opened()
-        editor.edit(
-            editor.state.value.draft.copy(
+    fun aGlobalEditorWritesAndRemovesOnlyTheGlobalDocument() {
+        val editor = viewModel().also { it.openGlobal() }
+        editor.editGlobal {
+            it.copy(
                 restrictActions = true,
                 actions = setOf(PolicyAction.Transfer),
+                assets = listOf(AssetDraft(Network.NETWORK_MAINNET, daily = "10")),
             )
-        )
+        }
         editor.save()
-        editor.edit(editor.state.value.draft.copy(restrictActions = false))
+        val saved = (store.getGlobal() as StoredGlobalPolicy.Policy).policy
+        assertEquals(Allowlist.of(PolicyAction.Transfer), saved.actions)
+        assertEquals(10_000_000_000UL, saved.limitsFor(SOL).daily)
+
+        editor.editGlobal {
+            it.copy(restrictActions = false, actions = emptySet(), assets = emptyList())
+        }
         editor.save()
-        assertEquals(PolicyMessage.Removed, editor.state.value.message)
-        assertEquals(StoredPolicy.None, store.get(CONNECTION))
-        assertNull(editor.state.value.storedAt)
+        assertEquals(StoredGlobalPolicy.None, store.getGlobal())
     }
 
     @Test
-    fun rulesThisBuildCantReadAreNeverSilentlyReplaced() {
+    fun resettingConnectionOverridesNeverDeletesGlobalRules() {
+        store.putGlobal(GlobalPolicy(actions = Allowlist.of(PolicyAction.Transfer), updatedAt = at))
+        val editor = opened()
+        editor.editConnection {
+            it.copy(overrideActions = true, restrictActions = true)
+        }
+        editor.save()
+        editor.resetConnectionOverrides()
+        editor.save()
+        assertTrue(store.getGlobal() is StoredGlobalPolicy.Policy)
+        assertEquals(StoredConnectionOverrides.None, store.getOverrides(CONNECTION))
+    }
+
+    @Test
+    fun refreshingGlobalContextKeepsAnUnsavedLocalDraft() {
+        store.putGlobal(GlobalPolicy(programs = Allowlist.of(SYSTEM), updatedAt = at))
+        val editor = opened()
+        editor.editConnection {
+            it.copy(
+                overrideRecipients = true,
+                restrictRecipients = true,
+                recipients = listOf(RECIPIENT),
+            )
+        }
+        store.putGlobal(
+            GlobalPolicy(programs = Allowlist.of(STRANGER), updatedAt = at.plusSeconds(1))
+        )
+        editor.refreshGlobal()
+        assertEquals(listOf(RECIPIENT), editor.connectionDraft().recipients)
+        assertEquals(Allowlist.of(STRANGER), editor.state.value.global?.programs)
+        assertTrue(editor.state.value.changed)
+    }
+
+    @Test
+    fun globalEditsChangeInheritedSectionsButNotOverriddenOnes() {
+        store.putGlobal(GlobalPolicy(programs = Allowlist.of(SYSTEM), updatedAt = at))
+        val editor = opened()
+        editor.editConnection {
+            it.copy(
+                overrideRecipients = true,
+                restrictRecipients = true,
+                recipients = listOf(RECIPIENT),
+            )
+        }
+        store.putGlobal(
+            GlobalPolicy(
+                programs = Allowlist.of(STRANGER),
+                recipients = Allowlist.of(STRANGER),
+                updatedAt = at.plusSeconds(1),
+            )
+        )
+        editor.refreshGlobal()
+        val local = (editor.connectionDraft().review(at) as ConnectionDraftReview.Ready).overrides
+        val effective = resolveEffectivePolicy(CONNECTION, editor.state.value.global, local)
+        assertEquals(Allowlist.of(STRANGER), effective.programs.value)
+        assertEquals(Allowlist.of(RECIPIENT), effective.recipients.value)
+    }
+
+    @Test
+    fun reopeningTheSameScopeForRotationKeepsUnsavedEdits() {
+        val editor = opened()
+        editor.editConnection { it.copy(overrideActions = true) }
+        editor.open(CONNECTION)
+        assertTrue(editor.connectionDraft().overrideActions)
+        assertTrue(editor.state.value.changed)
+    }
+
+    @Test
+    fun editsTypedWhileSavingAreNotMarkedAsSaved() {
+        val slow = StandardTestDispatcher(scheduler)
+        val editor = viewModel(slow)
+        editor.open(CONNECTION)
+        scheduler.advanceUntilIdle()
+        editor.editConnection {
+            it.copy(overrideActions = true, restrictActions = true)
+        }
+        editor.save()
+        editor.editConnection {
+            it.copy(overrideRecipients = true, restrictRecipients = true)
+        }
+        scheduler.advanceUntilIdle()
+        val stored = (editor.state.value.stored as PolicyEditorDraft.Connection).rules
+        assertFalse(stored.overrideRecipients)
+        assertTrue(editor.connectionDraft().overrideRecipients)
+        assertTrue(editor.state.value.changed)
+    }
+
+    @Test
+    fun unreadableDocumentsAreNeverOpenedAsBlankForms() {
         dir.mkdirs()
-        File(dir, "$CONNECTION.json").writeText("""{"version":99,"connectionId":"$CONNECTION"}""")
+        File(dir, "$CONNECTION.json").writeText("{\"version\":99}")
         val editor = opened()
         assertEquals(UnreadableReason.NewerVersion, editor.state.value.unreadable)
-        // Nothing is editable, so nothing can be saved on top of them by accident.
-        editor.edit(editor.state.value.draft.copy(restrictActions = true))
-        assertFalse(editor.state.value.draft.restrictActions)
-        editor.save()
-        assertEquals(
-            UnreadableReason.NewerVersion,
-            (store.get(CONNECTION) as StoredPolicy.Unreadable).why,
+        editor.edit(
+            PolicyEditorDraft.Connection(ConnectionPolicyDraft(CONNECTION, overrideActions = true))
         )
-    }
-
-    @Test
-    fun startingOverReplacesRulesThatCouldNotBeRead() {
-        dir.mkdirs()
-        File(dir, "$CONNECTION.json").writeText("not a policy")
-        val editor = opened()
-        assertEquals(UnreadableReason.Damaged, editor.state.value.unreadable)
+        editor.save()
+        assertTrue(store.getOverrides(CONNECTION) is StoredConnectionOverrides.Unreadable)
         editor.startOver()
-        assertNull(editor.state.value.unreadable)
-        // An empty form over an unreadable file is still a change: saving it takes the file away.
         assertTrue(editor.state.value.changed)
         editor.save()
-        assertEquals(PolicyMessage.Removed, editor.state.value.message)
-        assertEquals(StoredPolicy.None, store.get(CONNECTION))
-        assertFalse(editor.state.value.changed)
+        assertEquals(StoredConnectionOverrides.None, store.getOverrides(CONNECTION))
     }
 
     @Test
-    fun aDraftThatIsntFitToStoreIsNotWritten() {
+    fun anUnreadableGlobalDocumentIsNotReportedAsNoGlobalRules() {
+        dir.mkdirs()
+        File(dir, "global.json").writeText("{\"version\":99}")
         val editor = opened()
-        editor.edit(
-            editor.state.value.draft.copy(
-                assets = listOf(AssetDraft(Network.NETWORK_MAINNET, null, perOperation = "lots"))
-            )
-        )
+        assertEquals(UnreadableReason.NewerVersion, editor.state.value.globalUnreadable)
+        assertNull(editor.state.value.global)
+        assertNull(editor.state.value.unreadable)
+    }
+
+    @Test
+    fun theGlobalEditorNeverReplacesAnUnreadableDocumentUntilStartOver() {
+        dir.mkdirs()
+        File(dir, "global.json").writeText("{\"version\":99}")
+        val editor = viewModel().also { it.openGlobal() }
+        assertEquals(UnreadableReason.NewerVersion, editor.state.value.unreadable)
+        editor.edit(PolicyEditorDraft.Global(PolicyDraft(GLOBAL_DRAFT_ID, restrictActions = true)))
         editor.save()
-        assertNull(editor.state.value.message)
-        assertEquals(StoredPolicy.None, store.get(CONNECTION))
+        assertTrue(store.getGlobal() is StoredGlobalPolicy.Unreadable)
+
+        editor.startOver()
+        editor.save()
+        assertEquals(StoredGlobalPolicy.None, store.getGlobal())
     }
 
     @Test
-    fun aSaveThatFailsLeavesTheStoredRulesAlone() {
+    fun aFailedSaveKeepsTheDraftAndTheStoredDocumentAlone() {
         val editor = opened()
-        editor.edit(editor.state.value.draft.copy(restrictActions = true))
-        // A file where the directory has to go: the store can't write, and says so.
+        editor.editConnection {
+            it.copy(overrideActions = true, restrictActions = true)
+        }
         File(folder.root, "files").mkdirs()
         dir.writeText("in the way")
         editor.save()
         assertEquals(PolicyMessage.SaveFailed, editor.state.value.message)
-        // The draft is kept, so the owner doesn't lose what they typed.
-        assertTrue(editor.state.value.draft.restrictActions)
+        assertTrue(editor.connectionDraft().overrideActions)
         assertTrue(editor.state.value.changed)
     }
 
-    @Test
-    fun editsTypedWhileASaveIsInFlightAreNotMarkedAsSaved() {
-        // The form stays interactive while the write runs, so what was written and what is on
-        // screen can differ by the time it finishes. Only what actually reached the disk counts as
-        // stored; otherwise the later edits read as saved and closing the screen loses them.
-        val slow = StandardTestDispatcher(scheduler)
-        val editor = PolicyEditorViewModel(store, { at }, slow)
-        editor.open(CONNECTION)
-        scheduler.advanceUntilIdle()
-        editor.edit(editor.state.value.draft.copy(restrictActions = true))
-
-        editor.save()
-        // Typed while the write is still in the air.
-        editor.edit(editor.state.value.draft.copy(restrictRecipients = true))
-        scheduler.advanceUntilIdle()
-
-        assertTrue(editor.state.value.draft.restrictRecipients)
-        assertFalse(editor.state.value.stored.restrictRecipients)
-        assertTrue("the later edit is still unsaved", editor.state.value.changed)
-        // And what is on disk is what was written, not what was typed after it.
-        val stored = (store.get(CONNECTION) as StoredPolicy.Policy).policy
-        assertNotNull(stored.actions)
-        assertNull(stored.recipients)
-    }
-
-    @Test
-    fun openingRulesReadsThemRatherThanTheOnesInHand() {
-        val editor = opened()
-        editor.edit(editor.state.value.draft.copy(restrictActions = true))
-        editor.save()
-        // Something else wrote the file since — the connection was removed and paired again.
-        store.delete(CONNECTION)
-        editor.close()
-        editor.open(CONNECTION)
-        assertFalse(editor.state.value.draft.restrictActions)
-    }
+    private fun global() = (store.getGlobal() as StoredGlobalPolicy.Policy).policy
 
     private companion object {
         const val SYSTEM = "11111111111111111111111111111111"

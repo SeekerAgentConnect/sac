@@ -231,3 +231,199 @@ private fun PolicyDraft.policyOf(at: Instant): ConnectionPolicy {
 
 private val AmountEntry.baseUnits: ULong?
     get() = (this as? AmountEntry.Amount)?.baseUnits
+
+/** A valid, phone-local ID used only while the global form reuses [PolicyDraft]'s validation. */
+const val GLOBAL_DRAFT_ID = "00000000-0000-4000-8000-000000000000"
+
+/** The global document as the existing rules form expects it. */
+fun globalDraftOf(policy: GlobalPolicy?): PolicyDraft =
+    draftOf(
+        GLOBAL_DRAFT_ID,
+        policy?.let {
+            ConnectionPolicy(
+                connectionId = GLOBAL_DRAFT_ID,
+                actions = it.actions,
+                assets = it.assets,
+                recipients = it.recipients,
+                programs = it.programs,
+                limits = it.limits,
+                updatedAt = it.updatedAt,
+            )
+        },
+    )
+
+/** What one connection is editing for one asset, independently of its asset allowlist. */
+data class ConnectionAssetDraft(
+    val network: Network,
+    val mint: String? = null,
+    /** False inherits the global per-request threshold. True replaces it, or clears it if blank. */
+    val overridePerOperation: Boolean = false,
+    val perOperation: String = "",
+    /** A separate connection daily threshold. Blank removes only this local threshold. */
+    val daily: String = "",
+) {
+    val asset: PolicyAsset
+        get() = PolicyAsset(network, mint)
+
+    val decimals: Int
+        get() = if (mint == null) LAMPORT_DECIMALS else 0
+
+    val configuresSomething: Boolean
+        get() = overridePerOperation || daily.isNotBlank()
+
+    fun asAssetDraft() = AssetDraft(network, mint, perOperation, daily)
+}
+
+/**
+ * One connection's form. Each allowlist has an outer inheritance choice and its familiar inner
+ * switch. With Override selected, an off switch is an explicit no-check and an on empty list is an
+ * explicit list that allows nothing. Those three states must never collapse into one another.
+ */
+data class ConnectionPolicyDraft(
+    val connectionId: String,
+    val overrideActions: Boolean = false,
+    val restrictActions: Boolean = false,
+    val actions: Set<PolicyAction> = emptySet(),
+    val overrideAssets: Boolean = false,
+    val restrictAssets: Boolean = false,
+    /** Values in the connection replacement, not values inherited from the global document. */
+    val assets: List<PolicyAsset> = emptyList(),
+    val overrideRecipients: Boolean = false,
+    val restrictRecipients: Boolean = false,
+    val recipients: List<String> = emptyList(),
+    val overridePrograms: Boolean = false,
+    val restrictPrograms: Boolean = false,
+    val programs: List<String> = emptyList(),
+    /** Local threshold choices. Global context is held separately in [PolicyUiState]. */
+    val limits: List<ConnectionAssetDraft> = emptyList(),
+)
+
+/** What the connection form makes of the current draft. */
+sealed interface ConnectionDraftReview {
+    data class Ready(val overrides: ConnectionPolicyOverrides) : ConnectionDraftReview
+
+    /** Every section and threshold inherits, so saving deletes the override document only. */
+    data object InheritAll : ConnectionDraftReview
+
+    data class Problems(
+        val assets: Map<Int, AssetProblems>,
+        val policy: List<PolicyProblem>,
+    ) : ConnectionDraftReview
+}
+
+/** Reopens exactly the local choices in [overrides], without copying inherited values into them. */
+fun connectionDraftOf(
+    connectionId: String,
+    overrides: ConnectionPolicyOverrides?,
+): ConnectionPolicyDraft {
+    if (overrides == null) return ConnectionPolicyDraft(connectionId)
+    return ConnectionPolicyDraft(
+        connectionId = connectionId,
+        overrideActions = overrides.actions != RuleOverride.Inherit,
+        restrictActions = overrides.actions is RuleOverride.Replace,
+        actions = overrides.actions.replacement?.values.orEmpty(),
+        overrideAssets = overrides.assets != RuleOverride.Inherit,
+        restrictAssets = overrides.assets is RuleOverride.Replace,
+        assets = overrides.assets.replacement?.values.orEmpty().toList(),
+        overrideRecipients = overrides.recipients != RuleOverride.Inherit,
+        restrictRecipients = overrides.recipients is RuleOverride.Replace,
+        recipients = overrides.recipients.replacement?.values.orEmpty().toList(),
+        overridePrograms = overrides.programs != RuleOverride.Inherit,
+        restrictPrograms = overrides.programs is RuleOverride.Replace,
+        programs = overrides.programs.replacement?.values.orEmpty().toList(),
+        limits =
+            overrides.limits.map { (asset, value) ->
+                val replacement = value.perOperation.replacement
+                ConnectionAssetDraft(
+                    network = asset.network,
+                    mint = asset.mint,
+                    overridePerOperation = value.perOperation != RuleOverride.Inherit,
+                    perOperation =
+                        replacement
+                            ?.let {
+                                formatBaseUnits(
+                                    it,
+                                    if (asset.mint == null) LAMPORT_DECIMALS else 0,
+                                )
+                            }
+                            .orEmpty(),
+                    daily =
+                        value.daily
+                            ?.let {
+                                formatBaseUnits(
+                                    it,
+                                    if (asset.mint == null) LAMPORT_DECIMALS else 0,
+                                )
+                            }
+                            .orEmpty(),
+                )
+            },
+    )
+}
+
+/** Validates and materializes one connection override form without consulting inherited values. */
+fun ConnectionPolicyDraft.review(at: Instant): ConnectionDraftReview {
+    val assetProblems =
+        limits
+            .mapIndexed { index, asset ->
+                val base = problemsOf(asset.asAssetDraft())
+                index to
+                    base.copy(
+                        perOperation = if (asset.overridePerOperation) base.perOperation else null,
+                        dailyBelowPerOperation =
+                            asset.overridePerOperation && base.dailyBelowPerOperation,
+                    )
+            }
+            .filterNot { it.second.none }
+            .toMap()
+    if (assetProblems.isNotEmpty()) {
+        return ConnectionDraftReview.Problems(assetProblems, emptyList())
+    }
+    val overrides =
+        ConnectionPolicyOverrides(
+            connectionId = connectionId,
+            actions = allowlistOverride(overrideActions, restrictActions, actions),
+            assets = allowlistOverride(overrideAssets, restrictAssets, assets.toSet()),
+            recipients =
+                allowlistOverride(overrideRecipients, restrictRecipients, recipients.toSet()),
+            programs = allowlistOverride(overridePrograms, restrictPrograms, programs.toSet()),
+            limits =
+                limits
+                    .filter { it.configuresSomething }
+                    .associate { draft ->
+                        val perOperation =
+                            if (!draft.overridePerOperation) {
+                                RuleOverride.Inherit
+                            } else {
+                                when (val amount = readAmount(draft.perOperation, draft.decimals)) {
+                                    AmountEntry.None -> RuleOverride.NoCheck
+                                    is AmountEntry.Amount -> RuleOverride.Replace(amount.baseUnits)
+                                    is AmountEntry.Problem ->
+                                        error("validated amount became invalid")
+                                }
+                            }
+                        val daily =
+                            (readAmount(draft.daily, draft.decimals) as? AmountEntry.Amount)
+                                ?.baseUnits
+                        draft.asset to ConnectionAssetLimits(perOperation, daily)
+                    },
+            updatedAt = at,
+        )
+    val policyProblems = policyProblems(overrides)
+    if (policyProblems.isNotEmpty()) {
+        return ConnectionDraftReview.Problems(emptyMap(), policyProblems)
+    }
+    return if (overrides.hasNoOverrides) ConnectionDraftReview.InheritAll
+    else ConnectionDraftReview.Ready(overrides)
+}
+
+private fun <T : Any> allowlistOverride(
+    overrides: Boolean,
+    restricts: Boolean,
+    values: Set<T>,
+): RuleOverride<Allowlist<T>> =
+    when {
+        !overrides -> RuleOverride.Inherit
+        !restricts -> RuleOverride.NoCheck
+        else -> RuleOverride.Replace(Allowlist(values))
+    }

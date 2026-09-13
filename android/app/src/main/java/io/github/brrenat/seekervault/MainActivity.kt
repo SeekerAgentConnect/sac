@@ -16,6 +16,7 @@ import io.github.brrenat.seekervault.activity.ActivityViewModel
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
+import io.github.brrenat.seekervault.policy.GlobalPolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 
@@ -69,6 +70,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Kept separate so a local unsaved draft survives a visit to Global rules. */
+    private val globalPolicy: GlobalPolicyEditorViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val app = application as SeekerVaultApplication
+                GlobalPolicyEditorViewModel(app.policyStore, io = app.connectionIo)
+            }
+        }
+    }
+
     private val wallet: WalletViewModel by viewModels {
         viewModelFactory {
             initializer {
@@ -86,7 +97,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SeekerVaultTheme {
-                SeekerVaultApp(connections, inbox, wallet, history, policy, viewModel)
+                SeekerVaultApp(
+                    connections,
+                    inbox,
+                    wallet,
+                    history,
+                    policy,
+                    globalPolicy,
+                    viewModel,
+                )
             }
         }
     }

@@ -1,12 +1,14 @@
-# Set rules for a connection
+# Set global rules and connection overrides
 
-Every connection starts with no rules. Writing some tells the phone what you expect that agent to ask for, so that a request outside it is pointed out to you before you approve it. Open **Connections → the connection → Rules**.
+Open **Connections → Global rules** to set phone-wide defaults. Connections remains the dashboard. To make one agent differ, open **Connections → the connection → Rules**; every allowlist section and every per-request threshold starts on **Use global**.
+
+If there is no global value, **Use global** visibly means **Not configured** — it does not invent a check. A connection override replaces its whole section instead of adding items to a global list. The effective summary names the value and its source as **Global**, **Connection override**, or **Not configured** before you save.
 
 Before this, pair the phone ([`pairing.md`](pairing.md)). Rules are about requests, so they are most useful once an agent is actually asking for something ([`transfers.md`](transfers.md)).
 
 ## What rules are, and what they are not
 
-- **They are your own note to yourself.** They live on this phone, in this connection's own file, and nowhere else. The sidecar is never sent them. The agent cannot read them and cannot change them.
+- **They are your own note to yourself.** They live on this phone, in one global file and separate connection override files, and nowhere else. The sidecar is never sent them. The agent cannot read them and cannot change them.
 - **They approve nothing.** When everything matches, the review says *allowed* — which means the request matched what you wrote down, not that anything has been approved. You still approve by hand in the app and again in your wallet.
 - **They refuse nothing.** A request outside the rules is shown to you with the reasons, and you may go ahead anyway. There is no setting that makes the app turn a request down on its own.
 - **A threshold can only count what this app did.** Until this app has read its own history off the phone — and if that read fails — there is no day's total at all, and **Most per day** says *could not be checked* rather than passing as though nothing had been spent.
@@ -16,19 +18,20 @@ What *does* stop a request is different and comes first: a prepared transaction 
 
 ## The one thing worth reading twice
 
-**A switch that is off is not an empty list.**
+**Use global, an override with its switch off, and an override with an empty list are three different things.**
 
-| The switch | What it means |
+| Connection choice | Inner switch/list | What it means |
 | --- | --- |
-| Off | That parameter is not checked at all. The agent may ask for anything, and the review says the parameter wasn't covered. |
-| On, with things listed | Only what is listed passes. Anything else is outside the rules. |
-| On, with nothing listed | **Nothing passes.** That is a real rule, not a blank form. |
+| Use global | — | Use the global section. With no global section, no check is configured. |
+| Override | Off | Explicitly replace the global section with no check. |
+| Override | On, with things listed | Replace the entire global list with this list. Only these values pass. |
+| Override | On, with nothing listed | Replace the global list with a configured empty list. **Nothing passes.** |
 
-The editor says which of the three you are in, under every switch, in words. The summary at the top says it again.
+There is no union option. For example, global programs with a local recipient produces both checks because they are different sections. Global programs with a local program override uses only the local program list.
 
 ## Actions
 
-Which kinds of request this agent may make: acknowledge text, sign a message, transfer funds, swap.
+Which kinds of request every connection may make by default, or which kinds this connection may make after replacing the global section: acknowledge text, sign a message, transfer funds, swap.
 
 Start here. It is the one rule that applies to every request, including the ones that move nothing. An agent that should only ever ask you to sign a message gets a rule you can write in two taps.
 
@@ -37,9 +40,10 @@ Start here. It is the one rule that applies to every request, including the ones
 One list of assets, each with the two thresholds that are about it.
 
 - **Add an asset** and pick native SOL or a token by its mint, and the chain it is on. The chain is part of the asset: the same mint on devnet and on mainnet are not the same thing to spend, so a rule written for one is never read as covering the other.
-- **Only these assets may move** turns that same list into a check. Leave it off and the list is just a place to hang thresholds; turn it on and an asset that isn't listed is outside the rules.
-- **Most per request** is the largest amount one request may move.
-- **Most per day** is the largest amount this app may move in a local day. It is counted from the app's own records ([`docs/policy.md`](../policy.md#counters)).
+- **Only these assets may move** turns the list into a check. In a connection override, this replaces the whole global asset list; it does not add an asset to it.
+- **Most per request** is the largest amount one request may move. A connection chooses **Use global** or **Override** independently for each asset and network, regardless of whether its asset allowlist is inherited or replaced. A blank local override explicitly configures no per-request check for that asset.
+- **Most across all connections per day** appears only in **Global rules**. It is counted across retained Activity records from every connection for the same wallet, asset, and chain.
+- **Additional most for this connection per day** appears in a connection's Rules screen. The global daily value is shown there as read-only context with a route back to **Global rules**. The local field adds a second check; it never disables or replaces the global check. Clearing or resetting it leaves the global threshold in force.
 
 ### Units
 
@@ -79,13 +83,17 @@ Which programs the transaction may call.
 
 **Save** writes the rules to this phone. **Cancel** leaves them as they were, and asks first if you changed anything.
 
-**Saving with every switch off and no threshold removes this connection's rules.** A stored policy that configures nothing and no policy at all come to exactly the same thing, so nothing is kept. The summary says so before you save.
+Before a global save, the app explains that the change affects every connection inheriting an affected section. Overridden sections keep their local values, and local daily thresholds stay separate.
 
-Rules are stored per connection, in `filesDir/policies/<connection ID>.json`. Removing a connection removes its rules with it. Nothing on this phone is backed up, so rules do not travel to a new device.
+**Reset connection overrides** returns every section and per-request threshold to inheritance and removes only the connection daily thresholds. Saving that draft removes the connection override file. It does not remove a global list or threshold, so deleting local settings never reads as deleting inherited rules.
+
+Rules are stored in `filesDir/policies/global.json` and `filesDir/policies/<connection ID>.json`. Removing a connection removes its overrides and leaves global rules alone. Nothing on this phone is backed up, so rules do not travel to a new device.
+
+The form remains responsive while saving, but only the exact draft handed to storage is marked saved. Text entered while the write is in flight stays dirty. Opening or rotating a screen never writes a policy. When a global edit is opened from a connection screen, the unsaved local draft stays underneath; returning refreshes inherited values while overridden and unsaved local values remain unchanged.
 
 ## If the rules can't be read
 
-If this app finds rules it can't read — a file written by a later version, a rule it has no name for, or a damaged file — it does **not** open a blank form over them. It says what it found, and every request from that connection is shown as under restrictions until you settle it.
+If this app finds either document unreadable — a file written by a later version, a rule it has no name for, or a damaged file — it does **not** open a blank form over that document. An unreadable global file is not treated as absent on a connection screen: inherited effective values are withheld, while the owner may still edit the connection without overwriting global rules.
 
 **Start over from no rules** replaces what is stored. Nothing here can show you what you are replacing, which is exactly why it is a button you press on purpose rather than something that happens by opening the screen.
 
@@ -147,16 +155,16 @@ It keeps what you were told, never what you wrote. No threshold and no address f
 
 ## Worked examples
 
-One connection, one set of rules, and six requests against them. These are the scenarios the tests run (`PolicyScenarioTest`, [`docs/policy.md`](../policy.md#scenarios)), against transactions the sidecar really builds, so what is below is what the app does — not a sketch of it.
+One connection, no global document, one set of connection overrides, and six requests against them. These are the scenarios the tests run (`PolicyScenarioTest`, [`docs/policy.md`](../policy.md#scenarios)), against transactions the sidecar really builds, so what is below is what the app does — not a sketch of it.
 
 ### The rules
 
-On the connection's **Rules** screen:
+On the connection's **Rules** screen, choose **Override** for each allowlist section:
 
 | | |
 | --- | --- |
 | **Actions** | On. **Transfer funds** ticked, nothing else. |
-| **Assets** | On. Native SOL on devnet. **Most per request** `5` SOL, **Most per day** `10` SOL. The field reads back `5000000000` and `10000000000` base units as you type them. |
+| **Assets** | On. Native SOL on devnet. Override **Most per request** with `5` SOL and set the connection's additional daily threshold to `10` SOL. The fields read back `5000000000` and `10000000000` base units as you type them. |
 | **Recipients** | On. One address: `2VDW9dFE1ZXz4zWAbaBDQFynNVdRpQ73HyfSHMzBSL6Z`. |
 | **Programs** | On. One: `11111111111111111111111111111111`, the system program, which is what a plain SOL transfer calls. |
 

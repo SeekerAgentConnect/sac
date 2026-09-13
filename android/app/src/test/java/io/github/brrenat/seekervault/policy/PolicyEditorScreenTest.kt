@@ -41,7 +41,7 @@ class PolicyEditorScreenTest {
     private lateinit var ui: MutableState<PolicyUiState>
 
     private val draft: PolicyDraft
-        get() = ui.value.draft
+        get() = (ui.value.draft as PolicyEditorDraft.Global).rules
 
     private fun show(state: PolicyUiState) {
         compose.setContent {
@@ -57,10 +57,14 @@ class PolicyEditorScreenTest {
                             current.value.copy(
                                 unreadable = null,
                                 replacing = true,
-                                draft = PolicyDraft(CONNECTION),
+                                draft = PolicyEditorDraft.Global(PolicyDraft(GLOBAL_DRAFT_ID)),
                             )
                     },
-                    onSave = { saved += current.value.draft },
+                    onResetConnection = {},
+                    onOpenGlobal = {},
+                    onSave = {
+                        saved += (current.value.draft as PolicyEditorDraft.Global).rules
+                    },
                     onMessageShown = { current.value = current.value.copy(message = null) },
                     onClose = { calls += "close" },
                 )
@@ -76,10 +80,10 @@ class PolicyEditorScreenTest {
     ) =
         show(
             PolicyUiState(
-                connectionId = CONNECTION,
+                scope = PolicyEditorScope.Global,
                 loaded = true,
-                draft = draft,
-                stored = stored,
+                draft = PolicyEditorDraft.Global(draft),
+                stored = PolicyEditorDraft.Global(stored),
                 storedAt = storedAt,
             )
         )
@@ -110,8 +114,8 @@ class PolicyEditorScreenTest {
     @Test
     fun aConnectionWithNoRulesSaysSoAndHasNothingToSave() {
         open()
-        seen(R.string.policy_never_saved)
-        seen(R.string.policy_summary_none)
+        seen(R.string.policy_global_never_saved)
+        seen(R.string.policy_global_summary_none)
         seen(R.string.policy_summary_manual)
         for (list in listOf("actions", "assets", RECIPIENTS, PROGRAMS)) {
             compose.onNodeWithTag(PolicyTags.restrict(list)).performScrollTo().assertIsOff()
@@ -322,7 +326,7 @@ class PolicyEditorScreenTest {
         open(draft = stored, stored = stored, storedAt = Instant.parse("2026-09-12T10:00:00Z"))
         compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsNotEnabled()
         click(PolicyTags.restrict("actions"))
-        seen(R.string.policy_summary_removes)
+        seen(R.string.policy_global_summary_removes)
         compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()
     }
 
@@ -332,6 +336,9 @@ class PolicyEditorScreenTest {
         click(PolicyTags.restrict("actions"))
         click(PolicyTags.action(PolicyAction.Transfer))
         click(PolicyTags.SAVE)
+        seen(R.string.policy_global_confirm_title)
+        seen(R.string.policy_global_confirm_text)
+        compose.onNodeWithTag(PolicyTags.CONFIRM_GLOBAL_SAVE).performClick()
         assertEquals(1, saved.size)
         assertEquals(setOf(PolicyAction.Transfer), saved.single().actions)
     }
@@ -362,14 +369,14 @@ class PolicyEditorScreenTest {
     fun rulesThatCantBeReadOfferNoFormUntilTheOwnerAsksForOne() {
         show(
             PolicyUiState(
-                connectionId = CONNECTION,
+                scope = PolicyEditorScope.Global,
                 loaded = true,
                 unreadable = UnreadableReason.NewerVersion,
             )
         )
         compose.onNodeWithTag(PolicyTags.UNREADABLE).assertExists()
-        seen(R.string.policy_unreadable_newer)
-        seen(R.string.policy_unreadable_text)
+        seen(R.string.policy_global_unreadable_newer)
+        seen(R.string.policy_global_unreadable_text)
         // No form and nothing to save on top of what is stored.
         compose.onNodeWithTag(PolicyTags.SAVE).assertDoesNotExist()
         compose.onNodeWithTag(PolicyTags.restrict("actions")).assertDoesNotExist()
@@ -381,7 +388,7 @@ class PolicyEditorScreenTest {
 
     @Test
     fun nothingIsEditableUntilTheRulesHaveBeenRead() {
-        show(PolicyUiState(connectionId = CONNECTION, loaded = false))
+        show(PolicyUiState(scope = PolicyEditorScope.Global, loaded = false))
         compose.onNodeWithTag(PolicyTags.LOADING).assertExists()
         compose.onNodeWithTag(PolicyTags.SAVE).assertDoesNotExist()
     }
@@ -413,7 +420,7 @@ class PolicyEditorScreenTest {
                     actions = setOf(PolicyAction.Transfer),
                 )
         )
-        seen(R.string.policy_intro)
+        seen(R.string.policy_global_intro)
         seen(R.string.policy_summary_manual)
     }
 

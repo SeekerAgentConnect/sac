@@ -5,6 +5,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -67,6 +68,8 @@ class PolicyActivityTest {
     }
 
     private fun openRules(connection: Connection) {
+        val connectionIndex = app.connectionRepository.connections.value.indexOf(connection)
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(4 + connectionIndex)
         compose.onNodeWithTag(ConnectionsTags.item(connection.id)).performClick()
         compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().performClick()
     }
@@ -84,15 +87,24 @@ class PolicyActivityTest {
         val connection = pair()
         val scenario = launch()
         openRules(connection)
+        compose.onNodeWithTag(PolicyTags.override("actions")).performScrollTo().performClick()
         compose.onNodeWithTag(PolicyTags.restrict("actions")).performScrollTo().performClick()
         compose
             .onNodeWithTag(PolicyTags.action(PolicyAction.Transfer))
             .performScrollTo()
             .performClick()
-        compose.onNodeWithTag(PolicyTags.ADD_ASSET).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.ADD_LIMIT_ASSET).performScrollTo().performClick()
         compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
         compose
-            .onNodeWithTag(PolicyTags.perOperation(0))
+            .onNodeWithTag(
+                PolicyTags.overridePerOperation(PolicyAsset.sol(Network.NETWORK_MAINNET))
+            )
+            .performScrollTo()
+            .performClick()
+        compose
+            .onNodeWithTag(
+                PolicyTags.connectionPerOperation(PolicyAsset.sol(Network.NETWORK_MAINNET))
+            )
             .performScrollTo()
             .performTextReplacement("1.5")
         compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().performClick()
@@ -109,9 +121,12 @@ class PolicyActivityTest {
 
         // Still there when the app starts again, and shown as what was written.
         scenario.recreate()
-        compose.onNodeWithTag(PolicyTags.restrict("actions")).performScrollTo().assertExists()
+        compose.onNodeWithTag(PolicyTags.override("actions")).performScrollTo().assertExists()
         compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertExists()
-        compose.onNodeWithTag(PolicyTags.asset(0)).performScrollTo().assertExists()
+        compose
+            .onNodeWithTag(PolicyTags.connectionAsset(PolicyAsset.sol(Network.NETWORK_MAINNET)))
+            .performScrollTo()
+            .assertExists()
     }
 
     @Test
@@ -120,6 +135,7 @@ class PolicyActivityTest {
         val second = pair()
         launch()
         openRules(first)
+        compose.onNodeWithTag(PolicyTags.override(RECIPIENTS)).performScrollTo().performClick()
         compose.onNodeWithTag(PolicyTags.restrict(RECIPIENTS)).performScrollTo().performClick()
         compose
             .onNodeWithTag(PolicyTags.entryField(RECIPIENTS))
@@ -131,8 +147,17 @@ class PolicyActivityTest {
         compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
 
         openRules(second)
-        compose.onNodeWithTag(PolicyTags.restrict(RECIPIENTS)).performScrollTo().assertExists()
-        compose.onNodeWithText(app.getString(R.string.policy_summary_none)).assertExists()
+        compose.onNodeWithTag(PolicyTags.inherit(RECIPIENTS)).performScrollTo().assertExists()
+        compose
+            .onNodeWithText(
+                app.getString(
+                    R.string.policy_effective_line,
+                    app.getString(R.string.policy_section_recipients),
+                    app.getString(R.string.policy_effective_not_checked),
+                    app.getString(R.string.policy_source_none),
+                )
+            )
+            .assertExists()
         compose.onNodeWithTag(PolicyTags.entry(RECIPIENTS, RECIPIENT)).assertDoesNotExist()
         assertEquals(StoredPolicy.None, stored(second))
         assertEquals(setOf(first.id), app.policyStore.connectionIds())
@@ -147,7 +172,7 @@ class PolicyActivityTest {
         app.policyStore.putGlobal(global)
         launch()
         openRules(connection)
-        compose.onNodeWithTag(PolicyTags.restrict("actions")).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.override("actions")).performScrollTo().performClick()
         save()
         assertTrue(File(app.filesDir, "policies/${connection.id}.json").isFile)
         compose.onNodeWithTag(PolicyTags.CANCEL).performScrollTo().performClick()
@@ -164,13 +189,58 @@ class PolicyActivityTest {
         val connection = pair()
         launch()
         openRules(connection)
-        compose.onNodeWithTag(PolicyTags.restrict("actions")).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.override("actions")).performScrollTo().performClick()
         compose.onNodeWithTag(PolicyTags.CANCEL).performScrollTo().performClick()
         compose.onNodeWithTag(PolicyTags.DISCARD).performClick()
         assertEquals(StoredPolicy.None, stored(connection))
         // Back on the connection, and the editor opens again on what is stored: nothing.
         compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().performClick()
-        compose.onNodeWithText(app.getString(R.string.policy_summary_none)).assertExists()
+        compose.onNodeWithTag(PolicyTags.inherit("actions")).performScrollTo().assertExists()
+    }
+
+    @Test
+    fun aGlobalEditRefreshesInheritanceWithoutLosingTheLocalDraftUnderIt() {
+        val connection = pair()
+        launch()
+        openRules(connection)
+        compose.onNodeWithTag(PolicyTags.override(RECIPIENTS)).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.restrict(RECIPIENTS)).performScrollTo().performClick()
+        compose
+            .onNodeWithTag(PolicyTags.entryField(RECIPIENTS))
+            .performScrollTo()
+            .performTextReplacement(RECIPIENT)
+        compose.onNodeWithTag(PolicyTags.add(RECIPIENTS)).performScrollTo().performClick()
+
+        compose.onNodeWithTag(PolicyTags.OPEN_GLOBAL).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.restrict("actions")).performScrollTo().performClick()
+        compose
+            .onNodeWithTag(PolicyTags.action(PolicyAction.Transfer))
+            .performScrollTo()
+            .performClick()
+        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.CONFIRM_GLOBAL_SAVE).performClick()
+        compose.mainClock.advanceTimeBy(10_000)
+        // System Back must use the same close path as the app-bar button: the global editor has
+        // no dirty draft after saving, but the connection underneath still needs refreshed context.
+        checkNotNull(scenario).onActivity { it.onBackPressedDispatcher.onBackPressed() }
+
+        // The local recipient is still an unsaved connection override, while the inherited action
+        // summary has refreshed from the global document that was just saved.
+        compose
+            .onNodeWithTag(PolicyTags.entry(RECIPIENTS, RECIPIENT))
+            .performScrollTo()
+            .assertExists()
+        compose
+            .onNodeWithText(
+                app.getString(
+                    R.string.policy_effective_line,
+                    app.getString(R.string.policy_section_actions),
+                    app.getString(R.string.policy_action_transfer_short),
+                    app.getString(R.string.policy_source_global),
+                )
+            )
+            .assertExists()
+        assertEquals(StoredPolicy.None, stored(connection))
     }
 
     @Test

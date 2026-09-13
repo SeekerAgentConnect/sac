@@ -26,9 +26,19 @@ object PolicyTags {
     const val DIALOG_CANCEL = "policyDialogCancel"
     const val DISCARD = "policyDiscard"
     const val KEEP_EDITING = "policyKeepEditing"
+    const val CONFIRM_GLOBAL_SAVE = "policyConfirmGlobalSave"
+    const val OPEN_GLOBAL = "policyOpenGlobal"
+    const val RESET_OVERRIDES = "policyResetOverrides"
+    const val GLOBAL_UNREADABLE = "policyGlobalUnreadable"
+    const val ADD_ALLOWED_ASSET = "policyAddAllowedAsset"
+    const val ADD_LIMIT_ASSET = "policyAddLimitAsset"
 
     /** The switch that decides whether one list is a check at all. */
     fun restrict(list: String) = "policyRestrict:$list"
+
+    fun inherit(list: String) = "policyInherit:$list"
+
+    fun override(list: String) = "policyOverride:$list"
 
     fun action(action: PolicyAction) = "policyAction:${action.code}"
 
@@ -50,7 +60,26 @@ object PolicyTags {
     fun entry(list: String, value: String) = "policyEntry:$list:$value"
 
     fun removeEntry(list: String, value: String) = "policyRemoveEntry:$list:$value"
+
+    fun connectionAsset(asset: PolicyAsset) = "policyConnectionAsset:${asset.tagPart}"
+
+    fun removeAllowedAsset(asset: PolicyAsset) = "policyRemoveAllowedAsset:${asset.tagPart}"
+
+    fun inheritPerOperation(asset: PolicyAsset) = "policyInheritPerOperation:${asset.tagPart}"
+
+    fun overridePerOperation(asset: PolicyAsset) = "policyOverridePerOperation:${asset.tagPart}"
+
+    fun connectionPerOperation(asset: PolicyAsset) = "policyConnectionPerOperation:${asset.tagPart}"
+
+    fun globalDaily(asset: PolicyAsset) = "policyGlobalDaily:${asset.tagPart}"
+
+    fun connectionDaily(asset: PolicyAsset) = "policyConnectionDaily:${asset.tagPart}"
+
+    fun connectionDailySource(asset: PolicyAsset) = "policyConnectionDailySource:${asset.tagPart}"
 }
+
+private val PolicyAsset.tagPart: String
+    get() = "${network.name}:${mint ?: "SOL"}"
 
 /** The two address lists, by the name their tags carry. */
 const val RECIPIENTS = "recipients"
@@ -104,22 +133,51 @@ fun amountProblemText(problem: AmountProblem, asset: AssetDraft): String =
     }
 
 @Composable
-fun unreadableText(why: UnreadableReason): String =
+fun unreadableText(
+    why: UnreadableReason,
+    scope: PolicyEditorScope? = PolicyEditorScope.Connection,
+): String =
     stringResource(
-        when (why) {
-            UnreadableReason.Damaged -> R.string.policy_unreadable_damaged
-            UnreadableReason.NewerVersion -> R.string.policy_unreadable_newer
-            UnreadableReason.UnknownRule -> R.string.policy_unreadable_unknown
+        when (scope) {
+            PolicyEditorScope.Global ->
+                when (why) {
+                    UnreadableReason.Damaged -> R.string.policy_global_unreadable_damaged
+                    UnreadableReason.NewerVersion -> R.string.policy_global_unreadable_newer
+                    UnreadableReason.UnknownRule -> R.string.policy_global_unreadable_unknown
+                }
+            else ->
+                when (why) {
+                    UnreadableReason.Damaged -> R.string.policy_unreadable_damaged
+                    UnreadableReason.NewerVersion -> R.string.policy_unreadable_newer
+                    UnreadableReason.UnknownRule -> R.string.policy_unreadable_unknown
+                }
         }
     )
 
 @Composable
-fun messageText(message: PolicyMessage): String =
+fun messageText(
+    message: PolicyMessage,
+    scope: PolicyEditorScope? = PolicyEditorScope.Connection,
+): String =
     stringResource(
         when (message) {
-            PolicyMessage.Saved -> R.string.policy_saved
-            PolicyMessage.Removed -> R.string.policy_removed
+            PolicyMessage.Saved ->
+                if (scope == PolicyEditorScope.Global) R.string.policy_global_saved
+                else R.string.policy_saved
+            PolicyMessage.Removed ->
+                if (scope == PolicyEditorScope.Global) R.string.policy_global_removed
+                else R.string.policy_removed
             PolicyMessage.SaveFailed -> R.string.policy_save_failed
+        }
+    )
+
+@Composable
+fun sourceText(source: RuleSource): String =
+    stringResource(
+        when (source) {
+            RuleSource.Global -> R.string.policy_source_global
+            RuleSource.ConnectionOverride -> R.string.policy_source_connection
+            RuleSource.NotConfigured -> R.string.policy_source_none
         }
     )
 
@@ -138,7 +196,7 @@ fun amountText(baseUnits: ULong, asset: AssetDraft): String =
  * one that never changes: an assessment approves nothing.
  */
 @Composable
-fun summaryLines(draft: PolicyDraft): List<String> {
+fun summaryLines(draft: PolicyDraft, global: Boolean = false): List<String> {
     val lines = mutableListOf<String>()
     if (draft.restrictActions) {
         // Named in the order the checkboxes are in, so the summary reads back what was ticked.
@@ -187,7 +245,12 @@ fun summaryLines(draft: PolicyDraft): List<String> {
                 )
         }
     }
-    if (lines.isEmpty()) lines += stringResource(R.string.policy_summary_none)
+    if (lines.isEmpty()) {
+        lines +=
+            stringResource(
+                if (global) R.string.policy_global_summary_none else R.string.policy_summary_none
+            )
+    }
     val unchecked = uncheckedText(draft)
     if (unchecked.isNotEmpty()) {
         lines += stringResource(R.string.policy_summary_unchecked, unchecked.joinToString())

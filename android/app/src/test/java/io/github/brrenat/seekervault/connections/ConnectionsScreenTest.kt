@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
@@ -36,6 +37,7 @@ class ConnectionsScreenTest {
                 onMessageShown = {},
                 activity = activity,
                 onActivity = { actions += "activity" },
+                onGlobalRules = { actions += "global-rules" },
             )
         }
     }
@@ -51,6 +53,17 @@ class ConnectionsScreenTest {
             .assertTextContains("3", substring = true)
         compose.onNodeWithTag(ConnectionsTags.ACTIVITY).performClick()
         assertEquals(listOf("activity"), actions)
+    }
+
+    @Test
+    fun offersGlobalRulesFromTheConnectionsDashboard() {
+        show(ConnectionsUiState(loaded = true))
+        compose
+            .onNodeWithTag(ConnectionsTags.GLOBAL_RULES)
+            .assertTextContains(context.getString(R.string.global_rules_row))
+            .assertTextContains(context.getString(R.string.global_rules_row_note))
+            .performClick()
+        assertEquals(listOf("global-rules"), actions)
     }
 
     @Test
@@ -73,6 +86,7 @@ class ConnectionsScreenTest {
             .onNodeWithTag(ConnectionsTags.item(VPS.id))
             .assertTextContains("vps.example.com:8443")
             .assertTextContains(context.getString(R.string.connection_status_revoked))
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(4)
         compose
             .onNodeWithTag(ConnectionsTags.item(LAPTOP.id))
             .assertTextContains(context.getString(R.string.connection_status_certificate))

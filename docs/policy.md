@@ -2,7 +2,7 @@
 
 The global defaults and connection overrides the owner sets, and how a request is assessed against their effective rules. The rules live on the phone; the assessment is something the owner reads. Neither reaches an agent, and neither decides anything on its own.
 
-Stage 5 built the per-connection system in five steps: SAW-025 defined it, SAW-026 evaluated it, SAW-027 added the editor, SAW-028 put the assessment in review, and SAW-029 exercised the whole path. Stage 5.1 extends that system rather than adding another policy engine. **SAW-043 added the global and override documents, their migration, and the pure effective-policy resolver. SAW-044 feeds those effective rules and both daily scopes into evaluation.** SAW-045 will add the corresponding editors. Until that editor lands, the completed Stage 5 editor writes the local-only compatibility view while every assessment uses the effective model.
+Stage 5 built the per-connection system in five steps: SAW-025 defined it, SAW-026 evaluated it, SAW-027 added the editor, SAW-028 put the assessment in review, and SAW-029 exercised the whole path. Stage 5.1 extends that system rather than adding another policy engine. **SAW-043 added the global and override documents, their migration, and the pure effective-policy resolver. SAW-044 feeds those effective rules and both daily scopes into evaluation. SAW-045 exposes both persisted scopes through the owner-facing editor without collapsing inheritance.**
 
 ## What a policy is
 
@@ -15,7 +15,7 @@ A note the owner writes to themselves about what every connection may ask for by
 
 ## Schema
 
-Stage 5's `ConnectionPolicy` (`policy/Policy.kt`) remains the flat, local-only value consumed by the existing editor while Stage 5.1 lands in ordered tickets:
+Stage 5's `ConnectionPolicy` (`policy/Policy.kt`) remains the flat compatibility value used for version 1 migration and the original Stage 5 tests:
 
 | Field | Type | What it restricts |
 | --- | --- | --- |

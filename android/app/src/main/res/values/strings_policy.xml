@@ -2,13 +2,22 @@
     <string name="policy_rules">Rules</string>
     <string name="policy_title">Rules for %1$s</string>
     <string name="policy_loading">Reading this connection\'s rules…</string>
+    <string name="policy_global_title">Global rules</string>
+    <string name="policy_global_loading">Reading global rules…</string>
+    <string name="policy_global_intro">These rules are your phone-wide defaults. A connection uses each section unless you replace that section in the connection\'s own Rules screen. They approve nothing and refuse nothing; every request still needs your hand here and in your wallet.</string>
+    <string name="policy_connection_intro">Each section either uses Global rules or replaces that whole section for this connection. A connection override never adds items to a global list. These rules approve nothing and refuse nothing; every request still needs your hand here and in your wallet.</string>
     <string name="policy_intro">These rules are your own note about what this agent is expected to ask for. They approve nothing and refuse nothing. You approve every request by hand here and again in your wallet, whether the rules match it or not.</string>
     <string name="policy_saved_at">Last saved %1$s.</string>
     <string name="policy_never_saved">No rules saved yet.</string>
+    <string name="policy_global_never_saved">No global rules saved yet. Inheriting a section therefore means no rule is configured there.</string>
+    <string name="policy_override_saved_at">Connection overrides last saved %1$s.</string>
+    <string name="policy_override_never_saved">No connection overrides saved. Every section and per-request threshold inherits.</string>
 
     <string name="policy_summary_title">What these rules say</string>
     <string name="policy_summary_none">Nothing is checked. Every request from this connection is shown as under restrictions, with the reason that no rules are configured.</string>
+    <string name="policy_global_summary_none">No global check is configured. Connections that inherit therefore get no rule from this document.</string>
     <string name="policy_summary_removes">Nothing is checked any more. Saving removes this connection\'s rules.</string>
+    <string name="policy_global_summary_removes">Saving removes the global document. Connections that inherit then have no rule in those sections; their own overrides remain.</string>
     <string name="policy_summary_actions">May ask for: %1$s.</string>
     <string name="policy_summary_actions_empty">May ask for nothing at all.</string>
     <string name="policy_summary_assets">Only these may move: %1$s.</string>
@@ -18,7 +27,7 @@
     <string name="policy_summary_programs">May call: %1$s.</string>
     <string name="policy_summary_programs_empty">May call no program.</string>
     <string name="policy_summary_per_operation">At most %1$s of %2$s per request.</string>
-    <string name="policy_summary_daily">At most %1$s of %2$s a day, counted from what went through this app.</string>
+    <string name="policy_summary_daily">At most %1$s of %2$s across all connections per day, counted from what went through this app.</string>
     <string name="policy_base_units">%1$s base units</string>
     <string name="policy_summary_unchecked">Not checked: %1$s. A request that matches everything above still says nothing about these.</string>
     <string name="policy_summary_manual">Allowed and under restrictions both need your hand on the wallet. Neither is an approval, and neither stops anything.</string>
@@ -32,7 +41,7 @@
 
     <string name="policy_section_actions">Actions</string>
     <string name="policy_switch_actions">Only these actions may be asked for</string>
-    <string name="policy_actions_off">Not checked. This connection may ask for any kind of action, and the review says the kind of action was not covered.</string>
+    <string name="policy_actions_off">Not checked. Any kind of action may be requested, and the review says the kind of action was not covered.</string>
     <string name="policy_actions_on">Checked. A kind of action that is not ticked is outside the rules.</string>
     <string name="policy_actions_empty">Nothing is ticked, so every request is outside the rules. That is a rule, not a blank.</string>
     <string name="policy_action_ack">Acknowledge text</string>
@@ -53,9 +62,11 @@
     <string name="policy_add_asset">Add an asset</string>
     <string name="policy_asset_remove">Remove %1$s</string>
     <string name="policy_per_operation_sol">Most per request, in SOL</string>
-    <string name="policy_daily_sol">Most per day, in SOL</string>
+    <string name="policy_daily_sol">Most across all connections per day, in SOL</string>
     <string name="policy_per_operation_units">Most per request, in base units</string>
-    <string name="policy_daily_units">Most per day, in base units</string>
+    <string name="policy_daily_units">Most across all connections per day, in base units</string>
+    <string name="policy_connection_daily_sol">Additional most for this connection per day, in SOL</string>
+    <string name="policy_connection_daily_units">Additional most for this connection per day, in base units</string>
     <string name="policy_amount_stored">Stored as %1$s base units.</string>
     <string name="policy_amount_none">No threshold. Blank is not a threshold of zero.</string>
     <string name="policy_amount_not_a_number">Type a plain number, such as 1.5. No sign, no exponent, no spaces and no commas.</string>
@@ -68,6 +79,7 @@
     <string name="policy_section_recipients">Recipients</string>
     <string name="policy_switch_recipients">Only these wallets may receive funds</string>
     <string name="policy_recipients_off">Not checked. Funds may go anywhere, and the review says the recipient was not covered.</string>
+    <string name="policy_connection_recipients_off">Connection override: no recipient check. This replaces any global recipient list.</string>
     <string name="policy_recipients_on">Checked. A payment to a wallet that is not listed is outside the rules.</string>
     <string name="policy_recipients_empty">Nothing is listed, so no wallet may be paid. That is a rule, not a blank.</string>
     <string name="policy_recipient_field">Wallet address</string>
@@ -76,6 +88,7 @@
     <string name="policy_section_programs">Programs</string>
     <string name="policy_switch_programs">Only these programs may be called</string>
     <string name="policy_programs_off">Not checked. The transaction may call anything, and the review says the programs were not covered.</string>
+    <string name="policy_connection_programs_off">Connection override: no program check. This replaces any global program list.</string>
     <string name="policy_programs_on">Checked. A transaction that calls a program which is not listed is outside the rules.</string>
     <string name="policy_programs_empty">Nothing is listed, so no program may be called. That is a rule, not a blank.</string>
     <string name="policy_program_field">Program address</string>
@@ -98,8 +111,10 @@
 
     <string name="policy_save">Save</string>
     <string name="policy_cancel">Cancel</string>
-    <string name="policy_saved">Rules saved.</string>
-    <string name="policy_removed">Rules removed. This connection has none.</string>
+    <string name="policy_saved">Connection overrides saved.</string>
+    <string name="policy_removed">Connection overrides reset. Inherited global rules are unchanged.</string>
+    <string name="policy_global_saved">Global rules saved.</string>
+    <string name="policy_global_removed">Global rules removed. Connection overrides are unchanged.</string>
     <string name="policy_save_failed">Could not save. The rules on this phone are unchanged.</string>
     <string name="policy_discard_title">Leave without saving?</string>
     <string name="policy_discard_text">What you changed here has not been saved.</string>
@@ -112,6 +127,41 @@
     <string name="policy_unreadable_unknown">The stored rules name something this version has no name for.</string>
     <string name="policy_unreadable_text">Every request from this connection is shown as under restrictions until this is settled. Starting over replaces what is stored, and nothing here can show you what you are replacing.</string>
     <string name="policy_start_over">Start over from no rules</string>
+
+    <!-- Global rules and connection overrides (SAW-045). -->
+    <string name="policy_global_confirm_title">Change global rules?</string>
+    <string name="policy_global_confirm_text">This changes the effective value for every connection that uses Global rules in an affected section. Connection overrides keep replacing their sections, and connection daily thresholds remain separate.</string>
+    <string name="policy_global_confirm">Save global change</string>
+    <string name="policy_use_global">Use global</string>
+    <string name="policy_override">Override</string>
+    <string name="policy_inherit_section">Uses the global value. If no global rule is configured, this visibly means no check is configured.</string>
+    <string name="policy_override_replaces">Replaces this whole section for this connection. Items are not added to the global list.</string>
+    <string name="policy_connection_assets_off">Connection override: no asset allowlist check. This replaces any global asset list; thresholds remain independent.</string>
+    <string name="policy_effective_title">Effective rules for this connection</string>
+    <string name="policy_effective_line">%1$s: %2$s. Source: %3$s.</string>
+    <string name="policy_effective_nothing">allows nothing</string>
+    <string name="policy_effective_not_checked">not configured</string>
+    <string name="policy_effective_fix_errors">Fix the fields marked below to see an accurate effective summary.</string>
+    <string name="policy_source_global">Global</string>
+    <string name="policy_source_connection">Connection override</string>
+    <string name="policy_source_none">Not configured</string>
+    <string name="policy_open_global">Open Global rules</string>
+    <string name="policy_reset_overrides">Reset connection overrides</string>
+    <string name="policy_reset_overrides_note">Resetting returns every section and per-request threshold to inheritance and removes connection daily thresholds. It does not delete or disable any global rule.</string>
+    <string name="policy_connection_thresholds">Per-asset thresholds</string>
+    <string name="policy_connection_thresholds_note">A per-request threshold can inherit or be replaced independently of the asset allowlist. A connection daily threshold is additional; it never disables or replaces the global daily threshold.</string>
+    <string name="policy_effective_per_request">Effective per-request threshold: %1$s. Source: %2$s.</string>
+    <string name="policy_use_global_per_request">Use global per-request threshold</string>
+    <string name="policy_override_per_request">Override per-request threshold</string>
+    <string name="policy_local_per_request_none">This connection explicitly configures no per-request check for this asset. It does not affect either daily threshold.</string>
+    <string name="policy_global_daily_context">Global daily threshold: %1$s. Source: %2$s. It is read-only here.</string>
+    <string name="policy_connection_daily_effective">Connection daily threshold: %1$s. Source: %2$s. It is additional to the global threshold.</string>
+    <string name="policy_limit_unlisted">A local threshold names an asset that this connection\'s replacement asset list does not allow. Add the asset or remove the threshold.</string>
+    <string name="policy_global_context_unreadable">Global rules are stored but this build cannot read them. They are not treated as absent, so inherited effective values cannot be shown. You can still edit this connection without replacing the global document.</string>
+    <string name="policy_global_unreadable_damaged">Global rules are stored on this phone and this app cannot read the file.</string>
+    <string name="policy_global_unreadable_newer">Global rules were stored by a later version of this app. Showing them here would show fewer rules than were set.</string>
+    <string name="policy_global_unreadable_unknown">The stored global rules name something this version has no name for.</string>
+    <string name="policy_global_unreadable_text">Every inheriting connection is shown as under restrictions until this is settled. Starting over replaces the global document and can change every inheriting connection; no connection override is deleted.</string>
     <!-- The assessment on the request-review screen (SAW-028). -->
     <string name="policy_verdict_allowed">Matches your rules</string>
     <string name="policy_verdict_restricted">Outside your rules</string>

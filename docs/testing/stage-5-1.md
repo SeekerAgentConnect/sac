@@ -73,6 +73,40 @@ The counter mutations below were applied, run, observed failing, reverted, and f
 | A global scope was incorrectly restricted to one connection | Eight focused tests failed across global aggregation, cross-connection signature deduplication, dimension separation, overflow, current-attempt handling, deleted-connection retention, and the 11-of-10 acceptance scenario |
 | The current request was left in history before projecting it again | Both current-attempt exclusion tests failed, including the duplicate-signature case |
 
+## SAW-045 — global and connection override editors
+
+Automated on 2026-09-13 with Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1, Kotlin 2.4.20, and the build's pinned Temurin 21.0.12.1 toolchain. Gradle was launched by Oracle JDK 19.0.2. The installed Android SDK was supplied through `ANDROID_HOME`; no `local.properties` or other machine-specific file was written.
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS — Prettier, Buf format/lint, ESLint, both TypeScript type checks, 396 sidecar tests, and 29 test-agent tests |
+| `pnpm test:hello` | PASS — all 9 Stage 1 simulated-device acceptance cases |
+| `pnpm test:queue` | PASS — all 7 Stage 2 two-sidecar acceptance cases |
+| `ANDROID_HOME=… pnpm check:android` | PASS — Spotless, all 717 Android unit tests, Android lint, debug APK, and instrumentation APK |
+| `pnpm check:generated` | PASS — generated protocol code and fixtures are current; this ticket changes no protocol |
+| `git diff --check` and documentation Prettier | PASS |
+
+The draft, ViewModel, Compose, navigation, storage-wiring, and accessibility tests cover:
+
+- the Global rules row on the Connections dashboard and the retained connection Rules route;
+- global programs with a local recipient, a whole program-list replacement, and accurate Global, Connection override, and Not configured source labels;
+- inheritance, an explicit local no-check, a populated replacement, and an empty replacement as distinct visible and persisted states;
+- per-asset per-request inheritance and override independently from the asset allowlist;
+- read-only global daily context beside an additional connection daily threshold, including local reset retaining the global value;
+- global edits refreshing inherited sections while an overridden section and an unsaved local draft retain their values;
+- deleting/resetting either scope without deleting the other, including connection removal preserving the global document;
+- save failures, opening and rotation without a write, dirty-draft confirmation, edits during a save, and deliberate recovery for unreadable global or connection documents;
+- stock Material 3 controls at twice the system text size, complete address/asset removal labels for accessibility, and source/state information expressed in words rather than colour alone.
+
+### Deliberate breaks
+
+Both mutations were applied, run, observed failing, reverted, and followed by passing focused and complete runs:
+
+| Break | Expected failure observed |
+| --- | --- |
+| **Use global** was incorrectly materialized as a local no-check override | 8 of 15 `PolicyEditorViewModelTest` cases failed across empty-document inheritance, mixed global/local resolution, per-request inheritance, daily reset, unreadable recovery, and saved-state distinctions |
+| Refreshing global context replaced the unsaved local draft with its stored copy | Both focused preservation checks failed: the ViewModel state test and the real-activity navigation/storage test |
+
 ## Physical-Seeker checks
 
-**NOT RUN.** SAW-043 and SAW-044 change policy models, phone-local JSON storage, evaluation, and Activity accounting, with no new owner-facing screen or wallet behavior. Robolectric tests and successful APK builds do not count as a physical-device pass. Stage 5.1's later UI and end-to-end tickets own the new device walkthrough.
+**NOT RUN.** SAW-045 adds owner-facing policy screens, so its large-text, TalkBack, navigation, and comprehension checks still require the owner's physical Seeker. Robolectric tests and successful APK builds do not count as a physical-device pass. Stage 5.1's end-to-end ticket owns that device walkthrough. SAW-043 and SAW-044 themselves changed models, storage, evaluation, and accounting without new owner-facing UI.

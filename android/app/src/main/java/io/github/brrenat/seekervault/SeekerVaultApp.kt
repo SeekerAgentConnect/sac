@@ -37,10 +37,10 @@ import io.github.brrenat.seekervault.wallet.WalletViewModel
 import java.time.Instant
 
 /**
- * The app's screens: Connections first, then a connection's details, its Rules, Add connection,
- * Pending requests and Request details, Activity and one record, Wallet, and the Stage 1 live test.
- * The back stack is a list of route strings, so it survives rotation and process death; no route
- * carries a secret.
+ * The app's screens: Connections first, then Global rules or a connection's details and overrides,
+ * Add connection, Pending requests and Request details, Activity and one record, Wallet, and the
+ * Stage 1 live test. The back stack is a list of route strings, so it survives rotation and process
+ * death; no route carries a secret.
  */
 @Composable
 fun SeekerVaultApp(
@@ -49,6 +49,7 @@ fun SeekerVaultApp(
     wallet: WalletViewModel,
     history: ActivityViewModel,
     policy: PolicyEditorViewModel,
+    globalPolicy: PolicyEditorViewModel,
     live: LiveCommandViewModel,
 ) {
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.CONNECTIONS)) }
@@ -60,6 +61,7 @@ fun SeekerVaultApp(
     val walletState by wallet.state.collectAsStateWithLifecycle()
     val historyState by history.state.collectAsStateWithLifecycle()
     val policyState by policy.state.collectAsStateWithLifecycle()
+    val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
     val route = stack.last()
     when {
         route == Routes.CONNECTIONS -> {
@@ -76,6 +78,7 @@ fun SeekerVaultApp(
                 onWallet = { push(Routes.WALLET) },
                 activity = historyState.records.size,
                 onActivity = { push(Routes.ACTIVITY) },
+                onGlobalRules = { push(Routes.GLOBAL_POLICY) },
             )
         }
         route == Routes.WALLET ->
@@ -143,6 +146,8 @@ fun SeekerVaultApp(
                 state = policyState,
                 onEdit = policy::edit,
                 onStartOver = policy::startOver,
+                onResetConnection = policy::resetConnectionOverrides,
+                onOpenGlobal = { push(Routes.GLOBAL_POLICY) },
                 onSave = policy::save,
                 onMessageShown = policy::messageShown,
                 onClose = close,
@@ -150,6 +155,27 @@ fun SeekerVaultApp(
             // The rules are read from disk when the screen opens. Opening the connection that is
             // already open keeps unsaved edits, so a rotation doesn't throw them away.
             LaunchedEffect(id) { policy.open(id) }
+        }
+        route == Routes.GLOBAL_POLICY -> {
+            val close = {
+                globalPolicy.close()
+                pop()
+                // A local draft underneath stays byte-for-byte intact. Only the inherited context
+                // is read again after a global edit.
+                policy.refreshGlobal()
+            }
+            PolicyEditorScreen(
+                label = "",
+                state = globalPolicyState,
+                onEdit = globalPolicy::edit,
+                onStartOver = globalPolicy::startOver,
+                onResetConnection = {},
+                onOpenGlobal = {},
+                onSave = globalPolicy::save,
+                onMessageShown = globalPolicy::messageShown,
+                onClose = close,
+            )
+            LaunchedEffect(Unit) { globalPolicy.openGlobal() }
         }
         route == Routes.INBOX || route.startsWith(Routes.INBOX_FOR) ->
             PendingRequestsScreen(
@@ -220,6 +246,7 @@ private object Routes {
     const val RECORD = "record/"
     const val DETAILS = "details/"
     const val POLICY = "policy/"
+    const val GLOBAL_POLICY = "policy-global"
     const val INBOX = "inbox"
     const val INBOX_FOR = "inbox/"
     const val REQUEST = "request/"

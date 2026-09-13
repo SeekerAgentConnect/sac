@@ -57,7 +57,7 @@ import io.github.brrenat.seekervault.wallet.isSolanaAddress
 import java.time.Instant
 
 /**
- * The policy editor (docs/guides/policies.md): where the owner writes the rules for one connection.
+ * The policy editors (docs/guides/policies.md): global defaults and one connection's overrides.
  *
  * Stock Material 3 and nothing else — switches, checkboxes, radio buttons, chips, text fields,
  * lists, and Save and Cancel. There is no expression builder and no node canvas, because the model
@@ -65,8 +65,8 @@ import java.time.Instant
  * showing the owner a language they don't have.
  *
  * Two things this screen keeps saying, because both are easy to assume otherwise:
- * - **A switch that is off is not an empty list.** Off configures no check at all; on with an empty
- *   list allows nothing. Every section says which of the two it is in words.
+ * - **Inheritance, no check, and an empty list differ.** Each connection section first chooses the
+ *   global value or a full override; the inner switch then keeps no-check apart from empty.
  * - **Nothing here approves anything.** `ALLOWED` and `UNDER_RESTRICTIONS` both need the owner's
  *   hand on the wallet, and the summary says so every time it is read.
  */
@@ -75,15 +75,17 @@ import java.time.Instant
 fun PolicyEditorScreen(
     label: String,
     state: PolicyUiState,
-    onEdit: (PolicyDraft) -> Unit,
+    onEdit: (PolicyEditorDraft) -> Unit,
     onStartOver: () -> Unit,
+    onResetConnection: () -> Unit,
+    onOpenGlobal: () -> Unit,
     onSave: () -> Unit,
     onMessageShown: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
-    val message = state.message?.let { messageText(it) }
+    val message = state.message?.let { messageText(it, state.scope) }
     LaunchedEffect(state.message) {
         if (message != null) {
             snackbar.showSnackbar(message)
@@ -91,14 +93,25 @@ fun PolicyEditorScreen(
         }
     }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
+    var confirmGlobalSave by rememberSaveable { mutableStateOf(false) }
     val leave = { if (state.changed) confirmDiscard = true else onClose() }
-    // Backing out of unsaved rules asks first. Everything else about back is the app's own stack.
-    BackHandler(enabled = state.changed) { confirmDiscard = true }
+    // Route every system Back through the same close path as the app bar. Besides asking before a
+    // dirty draft is discarded, this lets the caller refresh inherited context after Global rules
+    // closes and clear the ViewModel for an ordinary connection exit.
+    BackHandler { leave() }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.policy_title, label)) },
+                title = {
+                    Text(
+                        if (state.scope == PolicyEditorScope.Global) {
+                            stringResource(R.string.policy_global_title)
+                        } else {
+                            stringResource(R.string.policy_title, label)
+                        }
+                    )
+                },
                 navigationIcon = { BackButton(leave) },
             )
         },
@@ -111,11 +124,32 @@ fun PolicyEditorScreen(
             when {
                 !state.loaded ->
                     Text(
-                        stringResource(R.string.policy_loading),
+                        stringResource(
+                            if (state.scope == PolicyEditorScope.Global) {
+                                R.string.policy_global_loading
+                            } else {
+                                R.string.policy_loading
+                            }
+                        ),
                         modifier = Modifier.padding(16.dp).testTag(PolicyTags.LOADING),
                     )
-                unreadable != null -> Unreadable(unreadable, onStartOver, leave)
-                else -> Editor(state, onEdit, onSave, leave)
+                unreadable != null -> Unreadable(unreadable, state.scope, onStartOver, leave)
+                state.scope == PolicyEditorScope.Global ->
+                    GlobalEditor(
+                        state,
+                        onEdit,
+                        { confirmGlobalSave = true },
+                        leave,
+                    )
+                else ->
+                    ConnectionEditor(
+                        state,
+                        onEdit,
+                        onResetConnection,
+                        onOpenGlobal,
+                        onSave,
+                        leave,
+                    )
             }
         }
     }
@@ -145,6 +179,32 @@ fun PolicyEditorScreen(
             },
         )
     }
+    if (confirmGlobalSave) {
+        AlertDialog(
+            onDismissRequest = { confirmGlobalSave = false },
+            title = { Text(stringResource(R.string.policy_global_confirm_title)) },
+            text = { Text(stringResource(R.string.policy_global_confirm_text)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmGlobalSave = false
+                        onSave()
+                    },
+                    modifier = Modifier.testTag(PolicyTags.CONFIRM_GLOBAL_SAVE),
+                ) {
+                    Text(stringResource(R.string.policy_global_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { confirmGlobalSave = false },
+                    modifier = Modifier.testTag(PolicyTags.DIALOG_CANCEL),
+                ) {
+                    Text(stringResource(R.string.policy_cancel))
+                }
+            },
+        )
+    }
 }
 
 /**
@@ -153,15 +213,26 @@ fun PolicyEditorScreen(
  * for by name.
  */
 @Composable
-private fun Unreadable(why: UnreadableReason, onStartOver: () -> Unit, onClose: () -> Unit) {
+private fun Unreadable(
+    why: UnreadableReason,
+    scope: PolicyEditorScope?,
+    onStartOver: () -> Unit,
+    onClose: () -> Unit,
+) {
     Text(
         stringResource(R.string.policy_unreadable_title),
         style = MaterialTheme.typography.titleMedium,
         modifier = Modifier.padding(16.dp).testTag(PolicyTags.UNREADABLE),
     )
-    Text(unreadableText(why), modifier = Modifier.padding(horizontal = 16.dp))
+    Text(unreadableText(why, scope), modifier = Modifier.padding(horizontal = 16.dp))
     Text(
-        stringResource(R.string.policy_unreadable_text),
+        stringResource(
+            if (scope == PolicyEditorScope.Global) {
+                R.string.policy_global_unreadable_text
+            } else {
+                R.string.policy_unreadable_text
+            }
+        ),
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.padding(16.dp),
     )
@@ -179,29 +250,34 @@ private fun Unreadable(why: UnreadableReason, onStartOver: () -> Unit, onClose: 
 }
 
 @Composable
-private fun Editor(
+private fun GlobalEditor(
     state: PolicyUiState,
-    onEdit: (PolicyDraft) -> Unit,
+    onEdit: (PolicyEditorDraft) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    val draft = state.draft
+    val draft = (state.draft as? PolicyEditorDraft.Global)?.rules ?: return
     // The instant only dates the document, and this review is about whether it is fit to save.
     val review = remember(draft) { draft.review(Instant.EPOCH) }
     Text(
-        stringResource(R.string.policy_intro),
+        stringResource(R.string.policy_global_intro),
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.padding(16.dp),
     )
     Text(
         state.storedAt?.let { stringResource(R.string.policy_saved_at, formatInstant(it)) }
-            ?: stringResource(R.string.policy_never_saved),
+            ?: stringResource(R.string.policy_global_never_saved),
         style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.padding(horizontal = 16.dp).testTag(PolicyTags.SAVED_AT),
     )
-    Summary(draft, removes = review is DraftReview.NoRules && (state.storedAt != null))
-    Actions(draft, onEdit)
-    Assets(draft, review, onEdit)
+    Summary(
+        draft,
+        removes = review is DraftReview.NoRules && (state.storedAt != null),
+        global = true,
+    )
+    val edit = { next: PolicyDraft -> onEdit(PolicyEditorDraft.Global(next)) }
+    Actions(draft, edit)
+    Assets(draft, review, edit)
     Addresses(
         list = RECIPIENTS,
         title = R.string.policy_section_recipients,
@@ -213,8 +289,8 @@ private fun Editor(
         note = R.string.policy_recipient_note,
         restricted = draft.restrictRecipients,
         values = draft.recipients,
-        onRestrict = { onEdit(draft.copy(restrictRecipients = it)) },
-        onChange = { onEdit(draft.copy(recipients = it)) },
+        onRestrict = { edit(draft.copy(restrictRecipients = it)) },
+        onChange = { edit(draft.copy(recipients = it)) },
     )
     Addresses(
         list = PROGRAMS,
@@ -227,8 +303,8 @@ private fun Editor(
         note = R.string.policy_program_note,
         restricted = draft.restrictPrograms,
         values = draft.programs,
-        onRestrict = { onEdit(draft.copy(restrictPrograms = it)) },
-        onChange = { onEdit(draft.copy(programs = it)) },
+        onRestrict = { edit(draft.copy(restrictPrograms = it)) },
+        onChange = { edit(draft.copy(programs = it)) },
     )
     HorizontalDivider(Modifier.padding(top = 16.dp))
     Row(
@@ -252,9 +328,555 @@ private fun Editor(
     }
 }
 
+@Composable
+private fun ConnectionEditor(
+    state: PolicyUiState,
+    onEdit: (PolicyEditorDraft) -> Unit,
+    onReset: () -> Unit,
+    onOpenGlobal: () -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val draft = (state.draft as? PolicyEditorDraft.Connection)?.rules ?: return
+    val review = remember(draft) { draft.review(Instant.EPOCH) }
+    val edit = { next: ConnectionPolicyDraft -> onEdit(PolicyEditorDraft.Connection(next)) }
+    Text(
+        stringResource(R.string.policy_connection_intro),
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(16.dp),
+    )
+    Text(
+        state.storedAt?.let { stringResource(R.string.policy_override_saved_at, formatInstant(it)) }
+            ?: stringResource(R.string.policy_override_never_saved),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(horizontal = 16.dp).testTag(PolicyTags.SAVED_AT),
+    )
+    if (state.globalUnreadable != null) {
+        Text(
+            stringResource(R.string.policy_global_context_unreadable),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(16.dp).testTag(PolicyTags.GLOBAL_UNREADABLE),
+        )
+    } else {
+        EffectiveSummary(draft, state.global, review)
+    }
+    TextButton(
+        onClick = onOpenGlobal,
+        modifier = Modifier.padding(horizontal = 8.dp).testTag(PolicyTags.OPEN_GLOBAL),
+    ) {
+        Text(stringResource(R.string.policy_open_global))
+    }
+
+    OverrideSelector(
+        title = R.string.policy_section_actions,
+        list = "actions",
+        overrides = draft.overrideActions,
+        onChange = {
+            edit(
+                if (it) draft.copy(overrideActions = true)
+                else
+                    draft.copy(
+                        overrideActions = false,
+                        restrictActions = false,
+                        actions = emptySet(),
+                    )
+            )
+        },
+    )
+    if (draft.overrideActions) {
+        val rules =
+            PolicyDraft(
+                draft.connectionId,
+                restrictActions = draft.restrictActions,
+                actions = draft.actions,
+            )
+        Actions(
+            rules,
+            {
+                edit(
+                    draft.copy(
+                        restrictActions = it.restrictActions,
+                        actions = it.actions,
+                    )
+                )
+            },
+            showHeader = false,
+        )
+    }
+
+    ConnectionAssets(draft, state.global, review, edit)
+    OverrideSelector(
+        title = R.string.policy_section_recipients,
+        list = RECIPIENTS,
+        overrides = draft.overrideRecipients,
+        onChange = {
+            edit(
+                if (it) draft.copy(overrideRecipients = true)
+                else
+                    draft.copy(
+                        overrideRecipients = false,
+                        restrictRecipients = false,
+                        recipients = emptyList(),
+                    )
+            )
+        },
+    )
+    if (draft.overrideRecipients) {
+        Addresses(
+            list = RECIPIENTS,
+            title = R.string.policy_section_recipients,
+            switchLabel = R.string.policy_switch_recipients,
+            off = R.string.policy_connection_recipients_off,
+            on = R.string.policy_recipients_on,
+            empty = R.string.policy_recipients_empty,
+            field = R.string.policy_recipient_field,
+            note = R.string.policy_recipient_note,
+            restricted = draft.restrictRecipients,
+            values = draft.recipients,
+            onRestrict = { edit(draft.copy(restrictRecipients = it)) },
+            onChange = { edit(draft.copy(recipients = it)) },
+            showHeader = false,
+        )
+    }
+    OverrideSelector(
+        title = R.string.policy_section_programs,
+        list = PROGRAMS,
+        overrides = draft.overridePrograms,
+        onChange = {
+            edit(
+                if (it) draft.copy(overridePrograms = true)
+                else
+                    draft.copy(
+                        overridePrograms = false,
+                        restrictPrograms = false,
+                        programs = emptyList(),
+                    )
+            )
+        },
+    )
+    if (draft.overridePrograms) {
+        Addresses(
+            list = PROGRAMS,
+            title = R.string.policy_section_programs,
+            switchLabel = R.string.policy_switch_programs,
+            off = R.string.policy_connection_programs_off,
+            on = R.string.policy_programs_on,
+            empty = R.string.policy_programs_empty,
+            field = R.string.policy_program_field,
+            note = R.string.policy_program_note,
+            restricted = draft.restrictPrograms,
+            values = draft.programs,
+            onRestrict = { edit(draft.copy(restrictPrograms = it)) },
+            onChange = { edit(draft.copy(programs = it)) },
+            showHeader = false,
+        )
+    }
+
+    HorizontalDivider(Modifier.padding(top = 16.dp))
+    TextButton(
+        onClick = onReset,
+        enabled = review !is ConnectionDraftReview.InheritAll && !state.saving,
+        modifier = Modifier.padding(horizontal = 8.dp).testTag(PolicyTags.RESET_OVERRIDES),
+    ) {
+        Text(stringResource(R.string.policy_reset_overrides))
+    }
+    Text(
+        stringResource(R.string.policy_reset_overrides_note),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+    Row(
+        modifier = Modifier.padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Button(
+            onClick = onSave,
+            enabled = state.changed && !state.saving && review !is ConnectionDraftReview.Problems,
+            modifier = Modifier.testTag(PolicyTags.SAVE),
+        ) {
+            Text(stringResource(R.string.policy_save))
+        }
+        OutlinedButton(
+            onClick = onCancel,
+            enabled = !state.saving,
+            modifier = Modifier.testTag(PolicyTags.CANCEL),
+        ) {
+            Text(stringResource(R.string.policy_cancel))
+        }
+    }
+}
+
+@Composable
+private fun EffectiveSummary(
+    draft: ConnectionPolicyDraft,
+    global: GlobalPolicy?,
+    review: ConnectionDraftReview,
+) {
+    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+    Text(
+        stringResource(R.string.policy_effective_title),
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+    val overrides =
+        when (review) {
+            ConnectionDraftReview.InheritAll ->
+                ConnectionPolicyOverrides.inheritAll(draft.connectionId, Instant.EPOCH)
+            is ConnectionDraftReview.Ready -> review.overrides
+            is ConnectionDraftReview.Problems -> null
+        }
+    if (overrides == null) {
+        Text(
+            stringResource(R.string.policy_effective_fix_errors),
+            modifier = Modifier.padding(16.dp).testTag(PolicyTags.SUMMARY),
+        )
+        return
+    }
+    val effective = resolveEffectivePolicy(draft.connectionId, global, overrides)
+    Column(Modifier.testTag(PolicyTags.SUMMARY)) {
+        EffectiveLine(
+            stringResource(R.string.policy_section_actions),
+            effective.actions,
+        ) { values ->
+            if (values.values.isEmpty()) {
+                stringResource(R.string.policy_effective_nothing)
+            } else {
+                val names = mutableListOf<String>()
+                for (action in values.values) names += actionsText(action)
+                names.joinToString()
+            }
+        }
+        EffectiveLine(
+            stringResource(R.string.policy_section_assets),
+            effective.assets,
+        ) { values ->
+            if (values.values.isEmpty()) stringResource(R.string.policy_effective_nothing)
+            else values.values.joinToString { assetLabel(it) }
+        }
+        EffectiveLine(
+            stringResource(R.string.policy_section_recipients),
+            effective.recipients,
+        ) { values ->
+            if (values.values.isEmpty()) stringResource(R.string.policy_effective_nothing)
+            else values.values.joinToString()
+        }
+        EffectiveLine(
+            stringResource(R.string.policy_section_programs),
+            effective.programs,
+        ) { values ->
+            if (values.values.isEmpty()) stringResource(R.string.policy_effective_nothing)
+            else values.values.joinToString()
+        }
+        Text(
+            stringResource(R.string.policy_summary_manual),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun <T : Any> EffectiveLine(
+    label: String,
+    rule: EffectiveRule<T>,
+    value: @Composable (T) -> String,
+) {
+    val rendered =
+        rule.value?.let { value(it) } ?: stringResource(R.string.policy_effective_not_checked)
+    Text(
+        stringResource(
+            R.string.policy_effective_line,
+            label,
+            rendered,
+            sourceText(rule.source),
+        ),
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+    )
+}
+
+@Composable
+private fun OverrideSelector(
+    @StringRes title: Int,
+    list: String,
+    overrides: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+    Text(
+        stringResource(title),
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+    Choice(
+        R.string.policy_use_global,
+        !overrides,
+        PolicyTags.inherit(list),
+    ) {
+        onChange(false)
+    }
+    Choice(
+        R.string.policy_override,
+        overrides,
+        PolicyTags.override(list),
+    ) {
+        onChange(true)
+    }
+    Note(if (overrides) R.string.policy_override_replaces else R.string.policy_inherit_section)
+}
+
+@Composable
+private fun ConnectionAssets(
+    draft: ConnectionPolicyDraft,
+    global: GlobalPolicy?,
+    review: ConnectionDraftReview,
+    onEdit: (ConnectionPolicyDraft) -> Unit,
+) {
+    OverrideSelector(
+        title = R.string.policy_section_assets,
+        list = "assets",
+        overrides = draft.overrideAssets,
+        onChange = {
+            onEdit(
+                if (it) draft.copy(overrideAssets = true)
+                else
+                    draft.copy(
+                        overrideAssets = false,
+                        restrictAssets = false,
+                        assets = emptyList(),
+                    )
+            )
+        },
+    )
+    if (draft.overrideAssets) {
+        Restrict(
+            title = R.string.policy_section_assets,
+            switchLabel = R.string.policy_switch_assets,
+            list = "assets",
+            checked = draft.restrictAssets,
+            off = R.string.policy_connection_assets_off,
+            on = R.string.policy_assets_on,
+            onCheckedChange = { onEdit(draft.copy(restrictAssets = it)) },
+            showHeader = false,
+        )
+        if (draft.restrictAssets) {
+            if (draft.assets.isEmpty()) Note(R.string.policy_assets_empty)
+            for (asset in draft.assets) {
+                val label = assetLabel(asset)
+                val removeDescription = stringResource(R.string.policy_asset_remove, label)
+                ListItem(
+                    headlineContent = { Text(label) },
+                    trailingContent = {
+                        TextButton(
+                            onClick = { onEdit(draft.copy(assets = draft.assets - asset)) },
+                            modifier =
+                                Modifier.testTag(PolicyTags.removeAllowedAsset(asset)).semantics {
+                                    contentDescription = removeDescription
+                                },
+                        ) {
+                            Text(stringResource(R.string.policy_remove))
+                        }
+                    },
+                )
+            }
+            AddPolicyAssetButton(
+                tag = PolicyTags.ADD_ALLOWED_ASSET,
+                listed = draft.assets,
+                onAdd = { onEdit(draft.copy(assets = draft.assets + it)) },
+            )
+        }
+    }
+    ConnectionThresholds(draft, global, review, onEdit)
+}
+
+@Composable
+private fun AddPolicyAssetButton(
+    tag: String,
+    listed: List<PolicyAsset>,
+    onAdd: (PolicyAsset) -> Unit,
+) {
+    var adding by rememberSaveable { mutableStateOf(false) }
+    OutlinedButton(
+        onClick = { adding = true },
+        modifier = Modifier.padding(16.dp).testTag(tag),
+    ) {
+        Text(stringResource(R.string.policy_add_asset))
+    }
+    if (adding) {
+        AddAsset(
+            listed = listed.map { AssetDraft(it.network, it.mint) },
+            onAdd = {
+                onAdd(it.asset)
+                adding = false
+            },
+            onDismiss = { adding = false },
+        )
+    }
+}
+
+@Composable
+private fun ConnectionThresholds(
+    draft: ConnectionPolicyDraft,
+    global: GlobalPolicy?,
+    review: ConnectionDraftReview,
+    onEdit: (ConnectionPolicyDraft) -> Unit,
+) {
+    Text(
+        stringResource(R.string.policy_connection_thresholds),
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+    Text(
+        stringResource(R.string.policy_connection_thresholds_note),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+    val assets = linkedSetOf<PolicyAsset>()
+    assets += global?.assets?.values.orEmpty()
+    assets += global?.limits.orEmpty().keys
+    assets += draft.assets
+    assets += draft.limits.map { it.asset }
+    val problems = (review as? ConnectionDraftReview.Problems)?.assets.orEmpty()
+    for (asset in assets) {
+        val index = draft.limits.indexOfFirst { it.asset == asset }
+        val local = draft.limits.getOrNull(index) ?: ConnectionAssetDraft(asset.network, asset.mint)
+        val rowProblem = problems[index] ?: AssetProblems()
+        val asAsset = local.asAssetDraft()
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text(
+            assetLabel(asset),
+            style = MaterialTheme.typography.titleSmall,
+            modifier =
+                Modifier.padding(horizontal = 16.dp).testTag(PolicyTags.connectionAsset(asset)),
+        )
+        val inherited = global?.limitsFor(asset)?.perOperation
+        val localPerOperation =
+            (readAmount(local.perOperation, local.decimals) as? AmountEntry.Amount)?.baseUnits
+        val effectivePerOperation = if (local.overridePerOperation) localPerOperation else inherited
+        val effectivePerOperationSource =
+            when {
+                local.overridePerOperation -> RuleSource.ConnectionOverride
+                inherited != null -> RuleSource.Global
+                else -> RuleSource.NotConfigured
+            }
+        Text(
+            stringResource(
+                R.string.policy_effective_per_request,
+                effectivePerOperation?.let { amountText(it, asAsset) }
+                    ?: stringResource(R.string.policy_effective_not_checked),
+                sourceText(effectivePerOperationSource),
+            ),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+        Choice(
+            R.string.policy_use_global_per_request,
+            !local.overridePerOperation,
+            PolicyTags.inheritPerOperation(asset),
+        ) {
+            updateConnectionLimit(
+                draft,
+                local.copy(overridePerOperation = false, perOperation = ""),
+                onEdit,
+            )
+        }
+        Choice(
+            R.string.policy_override_per_request,
+            local.overridePerOperation,
+            PolicyTags.overridePerOperation(asset),
+        ) {
+            updateConnectionLimit(draft, local.copy(overridePerOperation = true), onEdit)
+        }
+        if (local.overridePerOperation) {
+            Amount(
+                tag = PolicyTags.connectionPerOperation(asset),
+                value = local.perOperation,
+                label =
+                    if (asset.mint == null) R.string.policy_per_operation_sol
+                    else R.string.policy_per_operation_units,
+                asset = asAsset,
+                problem = rowProblem.perOperation,
+                onChange = {
+                    updateConnectionLimit(draft, local.copy(perOperation = it), onEdit)
+                },
+            )
+            if (local.perOperation.isBlank()) Note(R.string.policy_local_per_request_none)
+        }
+        val globalDaily = global?.limitsFor(asset)?.daily
+        Text(
+            stringResource(
+                R.string.policy_global_daily_context,
+                globalDaily?.let { amountText(it, asAsset) }
+                    ?: stringResource(R.string.policy_effective_not_checked),
+                sourceText(
+                    if (globalDaily == null) RuleSource.NotConfigured else RuleSource.Global
+                ),
+            ),
+            modifier =
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    .testTag(PolicyTags.globalDaily(asset)),
+        )
+        Amount(
+            tag = PolicyTags.connectionDaily(asset),
+            value = local.daily,
+            label =
+                if (asset.mint == null) R.string.policy_connection_daily_sol
+                else R.string.policy_connection_daily_units,
+            asset = asAsset,
+            problem = rowProblem.daily,
+            onChange = { updateConnectionLimit(draft, local.copy(daily = it), onEdit) },
+        )
+        val localDaily = (readAmount(local.daily, local.decimals) as? AmountEntry.Amount)?.baseUnits
+        Text(
+            stringResource(
+                R.string.policy_connection_daily_effective,
+                localDaily?.let { amountText(it, asAsset) }
+                    ?: stringResource(R.string.policy_effective_not_checked),
+                sourceText(
+                    if (localDaily == null) RuleSource.NotConfigured
+                    else RuleSource.ConnectionOverride
+                ),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            modifier =
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    .testTag(PolicyTags.connectionDailySource(asset)),
+        )
+        if (rowProblem.dailyBelowPerOperation) Note(R.string.policy_daily_below)
+    }
+    if (
+        (review as? ConnectionDraftReview.Problems)
+            ?.policy
+            .orEmpty()
+            .contains(PolicyProblem.LimitForUnlistedAsset)
+    ) {
+        Text(
+            stringResource(R.string.policy_limit_unlisted),
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+    AddPolicyAssetButton(
+        tag = PolicyTags.ADD_LIMIT_ASSET,
+        listed = assets.toList(),
+        onAdd = {
+            onEdit(draft.copy(limits = draft.limits + ConnectionAssetDraft(it.network, it.mint)))
+        },
+    )
+    if (assets.any { it.mint != null }) Note(R.string.policy_token_units)
+}
+
+private fun updateConnectionLimit(
+    draft: ConnectionPolicyDraft,
+    value: ConnectionAssetDraft,
+    onEdit: (ConnectionPolicyDraft) -> Unit,
+) {
+    val without = draft.limits.filterNot { it.asset == value.asset }
+    val limits = if (value.configuresSomething) without + value else without
+    onEdit(draft.copy(limits = limits))
+}
+
 /** The whole draft read back in plain language, and what it still doesn't cover. */
 @Composable
-private fun Summary(draft: PolicyDraft, removes: Boolean) {
+private fun Summary(draft: PolicyDraft, removes: Boolean, global: Boolean = false) {
     HorizontalDivider(Modifier.padding(vertical = 8.dp))
     Text(
         stringResource(R.string.policy_summary_title),
@@ -262,12 +884,15 @@ private fun Summary(draft: PolicyDraft, removes: Boolean) {
         modifier = Modifier.padding(horizontal = 16.dp),
     )
     Column(Modifier.testTag(PolicyTags.SUMMARY)) {
-        for (line in summaryLines(draft)) {
+        for (line in summaryLines(draft, global)) {
             Text(line, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
         }
         if (removes) {
             Text(
-                stringResource(R.string.policy_summary_removes),
+                stringResource(
+                    if (global) R.string.policy_global_summary_removes
+                    else R.string.policy_summary_removes
+                ),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
             )
         }
@@ -275,7 +900,11 @@ private fun Summary(draft: PolicyDraft, removes: Boolean) {
 }
 
 @Composable
-private fun Actions(draft: PolicyDraft, onEdit: (PolicyDraft) -> Unit) {
+private fun Actions(
+    draft: PolicyDraft,
+    onEdit: (PolicyDraft) -> Unit,
+    showHeader: Boolean = true,
+) {
     Restrict(
         title = R.string.policy_section_actions,
         switchLabel = R.string.policy_switch_actions,
@@ -284,6 +913,7 @@ private fun Actions(draft: PolicyDraft, onEdit: (PolicyDraft) -> Unit) {
         off = R.string.policy_actions_off,
         on = R.string.policy_actions_on,
         onCheckedChange = { onEdit(draft.copy(restrictActions = it)) },
+        showHeader = showHeader,
     )
     if (!draft.restrictActions) return
     if (draft.actions.isEmpty()) Note(R.string.policy_actions_empty)
@@ -550,8 +1180,9 @@ private fun Addresses(
     values: List<String>,
     onRestrict: (Boolean) -> Unit,
     onChange: (List<String>) -> Unit,
+    showHeader: Boolean = true,
 ) {
-    Restrict(title, switchLabel, list, restricted, off, on, onRestrict)
+    Restrict(title, switchLabel, list, restricted, off, on, onRestrict, showHeader)
     if (!restricted) return
     Note(note)
     if (values.isEmpty()) Note(empty)
@@ -627,13 +1258,16 @@ private fun Restrict(
     @StringRes off: Int,
     @StringRes on: Int,
     onCheckedChange: (Boolean) -> Unit,
+    showHeader: Boolean = true,
 ) {
-    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-    Text(
-        stringResource(title),
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(horizontal = 16.dp),
-    )
+    if (showHeader) {
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        Text(
+            stringResource(title),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+    }
     Row(
         modifier =
             Modifier.fillMaxWidth()
