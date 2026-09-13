@@ -353,6 +353,10 @@ class PolicyEditorViewModelTest {
         assertEquals(PolicyMessage.SaveFailed, editor.state.value.message)
         assertTrue(editor.connectionDraft().overrideActions)
         assertTrue(editor.state.value.changed)
+
+        editor.editConnection { it.copy(overrideRecipients = true) }
+        assertNull(editor.state.value.message)
+        assertTrue(editor.connectionDraft().overrideRecipients)
     }
 
     private fun global() = (store.getGlobal() as StoredGlobalPolicy.Policy).policy

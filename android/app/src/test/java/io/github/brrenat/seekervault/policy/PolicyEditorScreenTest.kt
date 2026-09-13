@@ -5,6 +5,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -122,15 +124,119 @@ class PolicyEditorScreenTest {
     @Test
     fun aConnectionWithNoRulesSaysSoAndHasNothingToSave() {
         open()
-        seen(R.string.policy_global_never_saved)
         seen(R.string.policy_global_intro)
-        seen(R.string.policy_global_caption)
+        seen(R.string.policy_global_empty_title)
+        seen(R.string.policy_global_empty_caption)
         for (list in listOf("actions", "assets", RECIPIENTS, PROGRAMS)) {
             compose.onNodeWithTag(PolicyTags.section(list)).performScrollTo().assertExists()
             compose.onNodeWithTag(PolicyTags.restrict(list)).performScrollTo().assertIsOff()
         }
+        for (list in listOf("assets", RECIPIENTS, PROGRAMS)) {
+            compose.onNodeWithTag(PolicyTags.empty(list)).performScrollTo().assertExists()
+        }
+        compose.onNodeWithTag(PolicyTags.CLEAR_GLOBAL).assertDoesNotExist()
         compose.onNodeWithTag(PolicyTags.SAVE).assertDoesNotExist()
         compose.onNodeWithTag(PolicyTags.CANCEL).assertDoesNotExist()
+    }
+
+    @Test
+    fun aConfiguredGlobalPolicyUsesTheV4CardHierarchy() {
+        val configured =
+            PolicyDraft(
+                connectionId = CONNECTION,
+                restrictActions = true,
+                actions =
+                    setOf(
+                        PolicyAction.Acknowledgement,
+                        PolicyAction.MessageSignature,
+                        PolicyAction.Transfer,
+                    ),
+                restrictAssets = true,
+                assets =
+                    listOf(
+                        AssetDraft(
+                            network = Network.NETWORK_DEVNET,
+                            perOperation = "2",
+                            daily = "10",
+                        )
+                    ),
+                restrictRecipients = true,
+                recipients = listOf(RECIPIENT),
+                restrictPrograms = true,
+                programs = listOf(SYSTEM),
+            )
+        open(draft = configured, stored = configured)
+
+        seen(R.string.policy_global_intro)
+        seen(R.string.policy_global_caption)
+        compose.onNodeWithText(text(R.string.policy_global_empty_title)).assertDoesNotExist()
+        compose.onAllNodesWithText(text(R.string.policy_source_global)).assertCountEquals(4)
+        compose.onAllNodesWithText(text(R.string.policy_section_on)).assertCountEquals(4)
+        for (list in listOf("actions", "assets", RECIPIENTS, PROGRAMS)) {
+            compose.onNodeWithTag(PolicyTags.restrict(list)).performScrollTo().assertIsOn()
+        }
+        for (action in
+            listOf(
+                PolicyAction.Acknowledgement,
+                PolicyAction.MessageSignature,
+                PolicyAction.Transfer,
+            )) {
+            compose
+                .onNodeWithTag(PolicyTags.action(action))
+                .performScrollTo()
+                .assertTextContains(text(R.string.policy_action_expected))
+        }
+        compose
+            .onNodeWithText(text(R.string.policy_asset_row_sol, "devnet"))
+            .performScrollTo()
+            .assertExists()
+        compose.onNodeWithText("2 per request · 10 a day, all connections").assertExists()
+        compose.onNodeWithTag(PolicyTags.CLEAR_GLOBAL).performScrollTo().assertExists()
+        seen(R.string.policy_global_daily_note)
+    }
+
+    @Test
+    fun clearAllIsAReversibleDraftEdit() {
+        val configured =
+            PolicyDraft(
+                connectionId = CONNECTION,
+                restrictActions = true,
+                actions = setOf(PolicyAction.Transfer),
+                restrictAssets = true,
+                assets = listOf(AssetDraft(Network.NETWORK_DEVNET, perOperation = "2")),
+                restrictRecipients = true,
+                recipients = listOf(RECIPIENT),
+                restrictPrograms = true,
+                programs = listOf(SYSTEM),
+            )
+        open(draft = configured, stored = configured)
+
+        click(PolicyTags.CLEAR_GLOBAL)
+
+        assertEquals(PolicyDraft(CONNECTION), draft)
+        seen(R.string.policy_global_empty_title)
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsEnabled()
+        compose.onNodeWithTag(PolicyTags.CANCEL).assertIsEnabled()
+    }
+
+    @Test
+    fun aFailedGlobalSaveUsesThePinnedDesignFooter() {
+        val changed = PolicyDraft(CONNECTION, restrictActions = true)
+        show(
+            PolicyUiState(
+                scope = PolicyEditorScope.Global,
+                loaded = true,
+                draft = PolicyEditorDraft.Global(changed),
+                stored = PolicyEditorDraft.Global(PolicyDraft(CONNECTION)),
+                message = PolicyMessage.SaveFailed,
+            )
+        )
+
+        compose.onNodeWithTag(PolicyTags.SAVE_ERROR).assertExists()
+        seen(R.string.policy_save_error_title)
+        seen(R.string.policy_not_saved_yet)
+        seen(R.string.policy_try_again)
+        seen(R.string.policy_discard)
     }
 
     @Test
