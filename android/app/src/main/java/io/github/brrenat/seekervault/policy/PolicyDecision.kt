@@ -98,6 +98,8 @@ data class PolicyCheckResult(
     val reason: PolicyReason? = null,
     /** What the check read, in the owner's terms. Display only; never parsed. */
     val detail: String? = null,
+    /** The effective document that supplied the rule; legacy flat decisions have no source. */
+    val source: RuleSource = RuleSource.NotConfigured,
 ) {
     init {
         val needsReason =
@@ -108,18 +110,56 @@ data class PolicyCheckResult(
     }
 
     companion object {
-        fun passed(check: PolicyCheck, detail: String? = null) =
-            PolicyCheckResult(check, PolicyCheckStatus.Passed, detail = detail)
+        fun passed(
+            check: PolicyCheck,
+            detail: String? = null,
+            source: RuleSource = RuleSource.NotConfigured,
+        ) = PolicyCheckResult(check, PolicyCheckStatus.Passed, detail = detail, source = source)
 
-        fun failed(check: PolicyCheck, reason: PolicyReason, detail: String? = null) =
-            PolicyCheckResult(check, PolicyCheckStatus.Failed, reason, detail)
+        fun failed(
+            check: PolicyCheck,
+            reason: PolicyReason,
+            detail: String? = null,
+            source: RuleSource = RuleSource.NotConfigured,
+        ) = PolicyCheckResult(check, PolicyCheckStatus.Failed, reason, detail, source)
 
-        fun unverified(check: PolicyCheck, reason: PolicyReason, detail: String? = null) =
-            PolicyCheckResult(check, PolicyCheckStatus.Unverified, reason, detail)
+        fun unverified(
+            check: PolicyCheck,
+            reason: PolicyReason,
+            detail: String? = null,
+            source: RuleSource = RuleSource.NotConfigured,
+        ) = PolicyCheckResult(check, PolicyCheckStatus.Unverified, reason, detail, source)
 
-        fun notConfigured(check: PolicyCheck) =
-            PolicyCheckResult(check, PolicyCheckStatus.NotConfigured)
+        fun notConfigured(
+            check: PolicyCheck,
+            source: RuleSource = RuleSource.NotConfigured,
+        ) = PolicyCheckResult(check, PolicyCheckStatus.NotConfigured, source = source)
     }
+}
+
+/** Which independently enforced daily threshold one result describes. */
+enum class DailyCheckScope(val code: String) {
+    Global("global"),
+    Connection("connection"),
+}
+
+/**
+ * One daily result with its scope and typed inputs retained for review. Both entries stay in a
+ * decision even when the first one already failed; the two rules are independent and advisory.
+ */
+data class DailyPolicyCheck(
+    val scope: DailyCheckScope,
+    val result: PolicyCheckResult,
+    val limit: ULong?,
+    val total: DailyTotal?,
+    val currentAmount: ULong?,
+) {
+    init {
+        require(result.check == PolicyCheck.DailyLimit) { "not a daily check" }
+    }
+
+    val projected: ULong?
+        get() = total?.projected?.let { before -> currentAmount?.let { before saturatingPlus it } }
 }
 
 /**
@@ -135,6 +175,8 @@ data class PolicyDecision(
     val checks: List<PolicyCheckResult>,
     /** Set when there were no rules to apply at all. */
     val reason: PolicyReason? = null,
+    /** Global then connection daily results, when this came from an effective Stage 5.1 policy. */
+    val dailyChecks: List<DailyPolicyCheck> = emptyList(),
 ) {
     val allowed: Boolean
         get() = assessment == PolicyAssessment.Allowed
@@ -156,7 +198,12 @@ data class PolicyDecision(
 
     /** Every reason behind the verdict, in check order, with [reason] first when there is one. */
     val reasons: List<PolicyReason>
-        get() = listOfNotNull(reason) + checks.mapNotNull { it.reason }
+        get() =
+            listOfNotNull(reason) +
+                checks
+                    .filterNot { dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit }
+                    .mapNotNull { it.reason } +
+                dailyChecks.mapNotNull { it.result.reason }
 
     /** The codes of [reasons]: what a stored or displayed assessment carries. */
     val reasonCodes: List<String>
@@ -190,18 +237,30 @@ data class PolicyDecision(
  * [checks] must name each [PolicyCheck] exactly once, so that a check can never be left out of an
  * assessment by being left out of the list.
  */
-fun assess(checks: List<PolicyCheckResult>): PolicyDecision {
+fun assess(
+    checks: List<PolicyCheckResult>,
+    dailyChecks: List<DailyPolicyCheck> = emptyList(),
+): PolicyDecision {
     require(checks.map { it.check } == PolicyCheck.entries.toList()) {
         "every check is assessed, once, in order"
+    }
+    require(
+        dailyChecks.isEmpty() ||
+            dailyChecks.map { it.scope } ==
+                listOf(DailyCheckScope.Global, DailyCheckScope.Connection)
+    ) {
+        "daily checks are retained once each, global then connection"
     }
     val ran = checks.filter { it.status != PolicyCheckStatus.NotConfigured }
     // Nothing configured is not a match. A policy that asks nothing of a request has said nothing
     // about it, and saying nothing must never read as approval.
-    if (ran.isEmpty()) return noPolicy(PolicyReason.NoPolicyConfigured)
+    if (ran.isEmpty()) {
+        return noPolicy(PolicyReason.NoPolicyConfigured).copy(dailyChecks = dailyChecks)
+    }
     val assessment =
         if (ran.all { it.status == PolicyCheckStatus.Passed }) PolicyAssessment.Allowed
         else PolicyAssessment.UnderRestrictions
-    return PolicyDecision(assessment, checks)
+    return PolicyDecision(assessment, checks, dailyChecks = dailyChecks)
 }
 
 /**

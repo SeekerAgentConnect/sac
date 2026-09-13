@@ -259,6 +259,7 @@ class RequestFactsTest {
         val facts = policyFacts(CONNECTION, request, Network.NETWORK_DEVNET)
 
         assertEquals(PolicyAction.Acknowledgement, facts.action)
+        assertEquals(request.ref.requestId, facts.requestId)
         assertFalse(facts.movesValue)
         assertTrue(facts.fullyRead)
         assertNull(facts.scope)

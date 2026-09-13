@@ -199,6 +199,141 @@ class DailySpendingTest {
     }
 
     @Test
+    fun aGlobalScopeCountsEveryConnectionAndKeepsCollidingRequestIdsDistinct() {
+        val spends =
+            spendsOf(
+                listOf(
+                    record("same", amount = "100"),
+                    record("same", connectionId = OTHER_CONNECTION, amount = "7"),
+                )
+            )
+
+        val total = dailyTotal(spends, GlobalSpendScope(WALLET, SOL), today, utc)
+
+        assertEquals(107UL, total.confirmed)
+        assertEquals(2, total.confirmedCount)
+    }
+
+    @Test
+    fun aConfirmedSignatureIsCountedOnceAcrossConnections() {
+        val spends =
+            spendsOf(
+                listOf(
+                    record(
+                        "a",
+                        amount = "500",
+                        outcome = ActivityOutcome.Sent,
+                        signature = "same-signature",
+                    ),
+                    record(
+                        "b",
+                        connectionId = OTHER_CONNECTION,
+                        amount = "500",
+                        outcome = ActivityOutcome.Confirmed,
+                        signature = "same-signature",
+                    ),
+                )
+            )
+
+        val total = dailyTotal(spends, GlobalSpendScope(WALLET, SOL), today, utc)
+
+        assertEquals(500UL, total.confirmed)
+        assertEquals(0UL, total.unresolved)
+        assertEquals(1, total.confirmedCount)
+    }
+
+    @Test
+    fun aSignatureRecordedAcrossMidnightBelongsToOneDayOnly() {
+        val spends =
+            spendsOf(
+                listOf(
+                    record(
+                        "a",
+                        answeredAt = Instant.parse("2026-09-12T23:59:59Z"),
+                        signature = "same-signature",
+                    ),
+                    record(
+                        "b",
+                        connectionId = OTHER_CONNECTION,
+                        answeredAt = Instant.parse("2026-09-13T00:00:01Z"),
+                        signature = "same-signature",
+                    ),
+                )
+            )
+        val scope = GlobalSpendScope(WALLET, SOL)
+
+        assertEquals(ONE_SOL, dailyTotal(spends, scope, today, utc).confirmed)
+        assertEquals(
+            0UL,
+            dailyTotal(spends, scope, LocalDate.of(2026, 9, 13), utc).confirmed,
+        )
+    }
+
+    @Test
+    fun aFailedChainResultSettlesDuplicateUnresolvedExposureAcrossConnections() {
+        val spends =
+            spendsOf(
+                listOf(
+                    record(
+                        "a",
+                        outcome = ActivityOutcome.Sent,
+                        signature = "same-signature",
+                    ),
+                    record(
+                        "b",
+                        connectionId = OTHER_CONNECTION,
+                        outcome = ActivityOutcome.ChainFailed,
+                        signature = "same-signature",
+                    ),
+                )
+            )
+
+        val total = dailyTotal(spends, GlobalSpendScope(WALLET, SOL), today, utc)
+
+        assertEquals(0UL, total.projected)
+        assertEquals(0, total.unresolvedCount)
+    }
+
+    @Test
+    fun theCurrentRequestsExistingAttemptIsNotProjectedTwice() {
+        val current = record("current", amount = "500", signature = "current-signature")
+        val spends =
+            spendsOf(
+                listOf(
+                    current,
+                    // The same signed attempt retained through another connection is excluded too.
+                    record(
+                        "duplicate",
+                        connectionId = OTHER_CONNECTION,
+                        amount = "500",
+                        signature = "current-signature",
+                    ),
+                    record("other", amount = "7"),
+                )
+            )
+
+        val local =
+            dailyTotal(
+                spends,
+                scope,
+                today,
+                utc,
+                excluding = SpendRequest(CONNECTION, "current"),
+            )
+        val global =
+            dailyTotal(
+                spends,
+                GlobalSpendScope(WALLET, SOL),
+                today,
+                utc,
+                excluding = SpendRequest(CONNECTION, "current"),
+            )
+
+        assertEquals(7UL, local.projected)
+        assertEquals(7UL, global.projected)
+    }
+
+    @Test
     fun twoWalletsSpendingOneMintAreCountedApart() {
         val usdc = SpendScope(CONNECTION, WALLET, USDC)
         val other = SpendScope(CONNECTION, OTHER_WALLET, USDC)
@@ -232,6 +367,37 @@ class DailySpendingTest {
     }
 
     @Test
+    fun aGlobalScopeStillSeparatesWalletsNetworksAndAssets() {
+        val spends =
+            spendsOf(
+                listOf(
+                    record("a", amount = "100"),
+                    record("b", connectionId = OTHER_CONNECTION, amount = "7"),
+                    record("c", wallet = OTHER_WALLET, amount = "1000"),
+                    record("d", network = Network.NETWORK_DEVNET, amount = "10000"),
+                    record("e", mint = MINT, amount = "100000"),
+                )
+            )
+
+        assertEquals(
+            107UL,
+            dailyTotal(spends, GlobalSpendScope(WALLET, SOL), today, utc).confirmed,
+        )
+        assertEquals(
+            1000UL,
+            dailyTotal(spends, GlobalSpendScope(OTHER_WALLET, SOL), today, utc).confirmed,
+        )
+        assertEquals(
+            10000UL,
+            dailyTotal(spends, GlobalSpendScope(WALLET, SOL_ON_DEVNET), today, utc).confirmed,
+        )
+        assertEquals(
+            100000UL,
+            dailyTotal(spends, GlobalSpendScope(WALLET, USDC), today, utc).confirmed,
+        )
+    }
+
+    @Test
     fun oneRecordThatDidNotReadBackMakesTheDayUnknown() {
         val totals =
             total(
@@ -258,6 +424,25 @@ class DailySpendingTest {
         assertEquals(ULong.MAX_VALUE, totals.unresolved)
         // Wrapping round would read as an empty day, which is the one answer that misleads.
         assertEquals(ULong.MAX_VALUE, totals.projected)
+    }
+
+    @Test
+    fun aGlobalAggregateThatWouldOverflowStopsAtTheLargestAmountThereIs() {
+        val totals =
+            dailyTotal(
+                spendsOf(
+                    listOf(
+                        record("a", amount = ULong.MAX_VALUE.toString()),
+                        record("b", connectionId = OTHER_CONNECTION, amount = "1"),
+                    )
+                ),
+                GlobalSpendScope(WALLET, SOL),
+                today,
+                utc,
+            )
+
+        assertEquals(ULong.MAX_VALUE, totals.confirmed)
+        assertEquals(2, totals.confirmedCount)
     }
 
     @Test

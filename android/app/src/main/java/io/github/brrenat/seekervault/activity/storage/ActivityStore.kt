@@ -16,6 +16,12 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
+/** One complete attempt to read Activity, including files whose contents could not be decoded. */
+data class ActivitySnapshot(
+    val records: List<ActivityRecord>,
+    val unreadableRecords: Int,
+)
+
 /**
  * The owner's own record of what this phone did (docs/security.md#local-storage-and-recovery): one
  * JSON file per request, `<dir>/<connection ID>/<request ID>.json`, written atomically. A request
@@ -27,17 +33,39 @@ import org.json.JSONObject
  */
 class ActivityStore(private val dir: File) {
     /**
-     * Every readable record, newest first. A single damaged file is skipped: one unreadable record
-     * is not a reason to lose the rest. A directory that exists and can't be listed is a different
-     * thing — that is the history itself being unreadable, and it throws rather than coming back
-     * looking empty, because an empty history and an unreadable one must never read the same.
+     * Every readable record, newest first. A single damaged file is skipped here: one unreadable
+     * record is not a reason to lose the rest. [snapshot] retains the count for policy evaluation.
+     * A directory that exists and can't be listed is a different thing — that is the history itself
+     * being unreadable, and it throws rather than coming back looking empty, because an empty
+     * history and an unreadable one must never read the same.
      */
-    fun list(): List<ActivityRecord> =
-        connectionIds()
-            .flatMap(::listFor)
-            .sortedWith(
-                compareByDescending<ActivityRecord> { it.answeredAt }.thenBy { it.requestId }
-            )
+    fun list(): List<ActivityRecord> = snapshot().records
+
+    /**
+     * Every readable record and the number that were present but unreadable.
+     *
+     * Activity can omit a damaged row from the owner's list and keep showing the rest, but a policy
+     * counter cannot treat that omission as zero: the row might be spending in the scope being
+     * checked. Keeping the count beside the records lets evaluation report the total as unverified.
+     */
+    fun snapshot(): ActivitySnapshot {
+        var unreadable = 0
+        val records =
+            connectionIds()
+                .flatMap { connectionId ->
+                    entriesOf(connectionDir(connectionId))
+                        .filter { it.name.endsWith(SUFFIX) }
+                        .mapNotNull { file ->
+                            read(connectionId, file.name.removeSuffix(SUFFIX)).also {
+                                if (it == null) unreadable++
+                            }
+                        }
+                }
+                .sortedWith(
+                    compareByDescending<ActivityRecord> { it.answeredAt }.thenBy { it.requestId }
+                )
+        return ActivitySnapshot(records, unreadable)
+    }
 
     fun listFor(connectionId: String): List<ActivityRecord> =
         entriesOf(connectionDir(connectionId))

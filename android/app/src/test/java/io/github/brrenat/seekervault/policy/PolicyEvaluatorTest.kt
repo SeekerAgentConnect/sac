@@ -32,9 +32,10 @@ class PolicyEvaluatorTest {
     private var clock = Instant.parse("2026-09-12T12:00:00Z")
     private var zone = ZoneId.of("UTC")
     private var records = emptyList<ActivityRecord>()
+    private var unreadableRecords = 0
 
     private fun evaluator(store: PolicyStore = PolicyStore(dir)) =
-        PolicyEvaluator(store, { records }, { clock }, { zone })
+        PolicyEvaluator(store, { records }, { clock }, { zone }, { unreadableRecords })
 
     private fun save(policy: ConnectionPolicy) = PolicyStore(dir).put(policy)
 
@@ -118,7 +119,9 @@ class PolicyEvaluatorTest {
 
         val afterUpgrade = evaluator().evaluate(facts)
 
-        assertEquals(evaluate(old, facts), afterUpgrade)
+        assertEquals(evaluate(old, facts).assessment, afterUpgrade.assessment)
+        assertEquals(evaluate(old, facts).reasonCodes, afterUpgrade.reasonCodes)
+        assertEquals(evaluate(old, facts).notChecked, afterUpgrade.notChecked)
         assertEquals(2, JSONObject(File(dir, "$CONNECTION.json").readText()).getInt("version"))
         assertEquals(StoredGlobalPolicy.None, PolicyStore(dir).getGlobal())
     }
@@ -249,6 +252,191 @@ class PolicyEvaluatorTest {
         records = emptyList()
 
         assertTrue(evaluator().evaluate(solFacts(amount = 1UL)).allowed)
+    }
+
+    @Test
+    fun globalAndConnectionDailyTotalsAreReadFromTheSameHistorySnapshot() {
+        PolicyStore(dir)
+            .putGlobal(
+                GlobalPolicy.default(NOW)
+                    .copy(limits = mapOf(SOL to AssetLimits(daily = 10UL * ONE_SOL)))
+            )
+        PolicyStore(dir)
+            .putOverrides(
+                ConnectionPolicyOverrides.inheritAll(CONNECTION, NOW)
+                    .copy(limits = mapOf(SOL to ConnectionAssetLimits(daily = 8UL * ONE_SOL)))
+            )
+        records =
+            listOf(
+                record(
+                    "a1111111-1111-4111-8111-111111111111",
+                    connectionId = OTHER_CONNECTION,
+                    amount = (6UL * ONE_SOL).toString(),
+                )
+            )
+
+        val decision = evaluator().evaluate(solFacts(amount = 5UL * ONE_SOL))
+
+        assertEquals(
+            listOf(PolicyCheckStatus.Failed, PolicyCheckStatus.Passed),
+            decision.dailyChecks.map { it.result.status },
+        )
+        assertEquals(6UL * ONE_SOL, decision.dailyChecks[0].total?.confirmed)
+        assertEquals(0UL, decision.dailyChecks[1].total?.confirmed)
+    }
+
+    @Test
+    fun bothDailyScopesUseOneRequiredHistoryRead() {
+        val store = PolicyStore(dir)
+        store.putGlobal(
+            GlobalPolicy.default(NOW).copy(limits = mapOf(SOL to AssetLimits(daily = ONE_SOL)))
+        )
+        store.putOverrides(
+            ConnectionPolicyOverrides.inheritAll(CONNECTION, NOW)
+                .copy(limits = mapOf(SOL to ConnectionAssetLimits(daily = ONE_SOL)))
+        )
+        var reads = 0
+        val evaluator =
+            PolicyEvaluator(
+                store,
+                records = {
+                    reads++
+                    records
+                },
+                now = { clock },
+                zone = { zone },
+            )
+
+        evaluator.evaluate(solFacts(amount = 1UL))
+
+        assertEquals(1, reads)
+    }
+
+    @Test
+    fun aRemovedConnectionsRetainedActivityStillCountsGlobally() {
+        PolicyStore(dir)
+            .putGlobal(
+                GlobalPolicy.default(NOW).copy(limits = mapOf(SOL to AssetLimits(daily = ONE_SOL)))
+            )
+        // There is no policy document or live connection for OTHER_CONNECTION. Activity outlives
+        // both, and the global threshold is a wallet-wide view of everything this app retained.
+        records =
+            listOf(
+                record(
+                    "a1111111-1111-4111-8111-111111111111",
+                    connectionId = OTHER_CONNECTION,
+                    amount = ONE_SOL.toString(),
+                )
+            )
+
+        val decision = evaluator().evaluate(solFacts(amount = 1UL))
+
+        assertFalse(decision.allowed)
+        assertEquals(PolicyCheckStatus.Failed, decision.dailyChecks[0].result.status)
+        assertEquals(ONE_SOL, decision.dailyChecks[0].total?.confirmed)
+    }
+
+    @Test
+    fun theCurrentRequestsExistingActivityIsExcludedBeforeItIsProjected() {
+        val current = "b2222222-2222-4222-8222-222222222222"
+        PolicyStore(dir)
+            .putGlobal(
+                GlobalPolicy.default(NOW).copy(limits = mapOf(SOL to AssetLimits(daily = ONE_SOL)))
+            )
+        records = listOf(record(current, amount = ONE_SOL.toString()))
+
+        val decision = evaluator().evaluate(solFacts(amount = ONE_SOL).copy(requestId = current))
+
+        assertTrue(decision.allowed)
+        assertEquals(0UL, decision.dailyChecks[0].total?.confirmed)
+        assertEquals(ONE_SOL, decision.dailyChecks[0].projected)
+    }
+
+    @Test
+    fun aPartiallyUnreadableHistoryNeverLooksLikeAnEmptyDay() {
+        PolicyStore(dir)
+            .putGlobal(
+                GlobalPolicy.default(NOW).copy(limits = mapOf(SOL to AssetLimits(daily = ONE_SOL)))
+            )
+        records = emptyList()
+        unreadableRecords = 1
+
+        val decision = evaluator().evaluate(solFacts(amount = 1UL))
+
+        assertFalse(decision.allowed)
+        assertEquals(PolicyCheckStatus.Unverified, decision.dailyChecks[0].result.status)
+        assertEquals(listOf("daily_total_unverified"), decision.reasonCodes)
+    }
+
+    @Test
+    fun eitherUnreadablePolicyDocumentPreventsAFallbackToTheOtherOne() {
+        val store = PolicyStore(dir)
+        store.putGlobal(
+            GlobalPolicy.default(NOW).copy(actions = Allowlist.of(PolicyAction.Transfer))
+        )
+        File(dir, "$CONNECTION.json").writeText("{ not json")
+
+        assertEquals(
+            listOf("policy_unreadable"),
+            evaluator(store).evaluate(solFacts()).reasonCodes,
+        )
+
+        store.putOverrides(
+            ConnectionPolicyOverrides.inheritAll(CONNECTION, NOW)
+                .copy(actions = RuleOverride.Replace(Allowlist.of(PolicyAction.Transfer)))
+        )
+        File(dir, "global.json").writeText("{ not json")
+
+        assertEquals(
+            listOf("policy_unreadable"),
+            evaluator(store).evaluate(solFacts()).reasonCodes,
+        )
+    }
+
+    @Test
+    fun effectiveRulesAndBothScopesSurviveAStoreRestart() {
+        val store = PolicyStore(dir)
+        store.putGlobal(
+            GlobalPolicy.default(NOW)
+                .copy(
+                    actions = Allowlist.of(PolicyAction.Transfer),
+                    limits = mapOf(SOL to AssetLimits(daily = 2UL * ONE_SOL)),
+                )
+        )
+        store.putOverrides(
+            ConnectionPolicyOverrides.inheritAll(CONNECTION, NOW)
+                .copy(limits = mapOf(SOL to ConnectionAssetLimits(daily = ONE_SOL)))
+        )
+
+        val before = evaluator(store).evaluate(solFacts(amount = ONE_SOL))
+        val after = evaluator(PolicyStore(dir)).evaluate(solFacts(amount = ONE_SOL))
+
+        assertEquals(before, after)
+        assertTrue(after.allowed)
+        assertEquals(2, after.dailyChecks.size)
+    }
+
+    @Test
+    fun globalHistoryUsesTheInjectedLocalDayAndTimezone() {
+        PolicyStore(dir)
+            .putGlobal(
+                GlobalPolicy.default(NOW).copy(limits = mapOf(SOL to AssetLimits(daily = ONE_SOL)))
+            )
+        records =
+            listOf(
+                record(
+                    "a1111111-1111-4111-8111-111111111111",
+                    connectionId = OTHER_CONNECTION,
+                    answeredAt = Instant.parse("2026-09-12T10:30:00Z"),
+                )
+            )
+        clock = Instant.parse("2026-09-13T05:00:00Z")
+
+        zone = ZoneId.of("Europe/Berlin")
+        assertTrue(evaluator().evaluate(solFacts(amount = 1UL)).allowed)
+
+        zone = ZoneId.of("Pacific/Honolulu")
+        assertFalse(evaluator().evaluate(solFacts(amount = 1UL)).allowed)
     }
 
     @Test

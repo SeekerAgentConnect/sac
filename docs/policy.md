@@ -2,7 +2,7 @@
 
 The global defaults and connection overrides the owner sets, and how a request is assessed against their effective rules. The rules live on the phone; the assessment is something the owner reads. Neither reaches an agent, and neither decides anything on its own.
 
-Stage 5 built the per-connection system in five steps: SAW-025 defined it, SAW-026 evaluated it, SAW-027 added the editor, SAW-028 put the assessment in review, and SAW-029 exercised the whole path. Stage 5.1 extends that system rather than adding another policy engine. **SAW-043 adds the global and override documents, their migration, and the pure effective-policy resolver.** SAW-044 will feed those effective rules and both daily scopes into evaluation; SAW-045 will add the corresponding editors. Until those follow-ups land, the completed Stage 5 editor and evaluator keep using their local-only compatibility view.
+Stage 5 built the per-connection system in five steps: SAW-025 defined it, SAW-026 evaluated it, SAW-027 added the editor, SAW-028 put the assessment in review, and SAW-029 exercised the whole path. Stage 5.1 extends that system rather than adding another policy engine. **SAW-043 added the global and override documents, their migration, and the pure effective-policy resolver. SAW-044 feeds those effective rules and both daily scopes into evaluation.** SAW-045 will add the corresponding editors. Until that editor lands, the completed Stage 5 editor writes the local-only compatibility view while every assessment uses the effective model.
 
 ## What a policy is
 
@@ -15,7 +15,7 @@ A note the owner writes to themselves about what every connection may ask for by
 
 ## Schema
 
-Stage 5's `ConnectionPolicy` (`policy/Policy.kt`) remains the flat, local-only value consumed by the existing editor and evaluator while Stage 5.1 lands in ordered tickets:
+Stage 5's `ConnectionPolicy` (`policy/Policy.kt`) remains the flat, local-only value consumed by the existing editor while Stage 5.1 lands in ordered tickets:
 
 | Field | Type | What it restricts |
 | --- | --- | --- |
@@ -117,6 +117,7 @@ A policy is applied to facts the phone established for itself, and to nothing el
 
 | Fact | Read from |
 | --- | --- |
+| the request identity used to exclude an existing attempt | the structured request reference, qualified by its connection |
 | the kind of action | the structured request: `ack`, `sign_message`, `transfer`, `swap` |
 | the asset, the amount, the recipient, the programs called | the prepared transaction's own bytes, decoded on the phone (SAW-020) |
 | the chain | the wallet the owner connected on this phone |
@@ -142,6 +143,15 @@ One conjunction of the checks the owner configured. There is no scripting langua
 | `program` | `programs` |
 | `per_operation_limit` | `limits[asset].perOperation` |
 | `daily_limit` | `limits[asset].daily` |
+
+Under the effective model, `daily_limit` has two explicit scope codes and two retained results:
+
+| Scope | Configured by | What it counts |
+| --- | --- | --- |
+| `global` | `GlobalPolicy.limits[asset].daily` | Every retained connection for this wallet, asset and network |
+| `connection` | `ConnectionPolicyOverrides.limits[asset].daily` | Only this connection for the same wallet, asset and network |
+
+The global result comes first, then the connection result. Both remain in `PolicyDecision.dailyChecks` even when the first fails, and each keeps its threshold, confirmed total, unresolved total, current amount, projected amount, status, reason and rule source. The existing `daily_limit` check row is their conjunction for the Stage 5 review screen; SAW-046 will render the two scoped rows directly.
 
 Each comes back as one of four things:
 
@@ -202,13 +212,13 @@ Every rule in the MVP is advisory, thresholds included.
 
 A counter is derived from the owner's own Activity records, which are read off the disk asynchronously and may fail to be read at all. **An empty list of records and a history nobody has read are not the same thing**, and the difference decides whether a daily threshold means anything: measured against an unread day, every request would read as though nothing had been spent, and every daily threshold would pass.
 
-So the evaluator is handed records that can be *absent*, not merely empty. Until the history has been read — and again after a read that fails — there is no day's total, the daily check is `daily_total_unverified`, and the request is UNDER_RESTRICTIONS. A history that was read and holds nothing is a day with nothing in it, and passes on its own terms.
+So the evaluator is handed records that can be *absent*, not merely empty. Until the history has been read — and again after a read that fails — there is no day's total, the daily check is `daily_total_unverified`, and the request is UNDER_RESTRICTIONS. A partial read is not treated as success either: Activity keeps the readable rows for the owner but reports how many files did not decode, and every required daily total is unverified because the missing row's scope cannot be guessed. A history that was read and holds nothing is a day with nothing in it, and passes on its own terms.
 
 This is the same rule as everywhere else here: a fact the phone couldn't establish is null, and null never passes a check.
 
 ### Re-evaluation
 
-There is no stored verdict. `PolicyEvaluator` (`policy/PolicyEvaluation.kt`) re-reads the connection's rules from disk and the app's own records on every call, so asking again immediately before the owner proceeds is the whole of re-evaluating — and a verdict read a minute ago is never the one acted on, because there is nothing kept to act on.
+There is no stored verdict. `PolicyEvaluator` (`policy/PolicyEvaluation.kt`) re-reads the global document, the connection override document and every Activity record required by an applicable daily threshold on each call, then resolves and evaluates them. An unreadable global document never falls back to local rules, and an unreadable connection document never falls back to inheritance. Asking again immediately before the owner proceeds is the whole of re-evaluating — and a verdict read a minute ago is never the one acted on, because there is nothing kept to act on.
 
 That matters at three moments: the policy may have been edited since the review opened, the day's counters may have moved, and a transfer is re-prepared as its blockhash expires. Each new preparation is new bytes and is read again from scratch.
 
@@ -286,11 +296,17 @@ What this app has moved today, counted from the owner's own Activity records (`a
 
 ### What a counter is counted for
 
-One counter is one `SpendScope`: **a connection, a wallet, an asset, and the chain the asset is on.** All four matter, and separating them is not a detail:
+There are two scopes, both still separated by wallet, asset and the chain the asset is on:
 
-- **Two connections using one wallet count apart.** A daily threshold is a rule about one agent, not about the wallet; one agent using up the day's allowance must not silently spend another's.
+- **A connection scope** is one `SpendScope`: a connection, wallet and `PolicyAsset`. Two connections using one wallet count apart for the connection daily check.
+- **A global scope** is one `GlobalSpendScope`: a wallet and `PolicyAsset`, across every retained Activity record. It includes connections that were removed or paired again under a new ID; removing a connection does not erase the owner's record of what went through it.
+
+Within either scope:
+
 - **Two wallets spending one mint count apart.** The money comes out of different places.
 - **One mint on two chains is two things to spend**, so devnet play money is never counted against a mainnet threshold.
+
+For example, with a global limit of 10 SOL and connection A already confirmed at 6, a 5 SOL request on connection B projects 11 globally even when B's own 8 SOL connection limit projects only 5. The global check warns and the connection check passes. With no earlier spending, a 4 SOL request under global 10 and connection 3 does the reverse. A local threshold above the global one never suppresses the global result.
 
 ### Confirmed, and not yet settled
 
@@ -319,7 +335,9 @@ The threshold warning is made from `projected` — the two of them plus the requ
 
 ### Counted once
 
-A movement is counted once, by **the transaction's signature when there is one, and otherwise by the request it belongs to**. So a request prepared three times, answered, re-sent after a failed delivery, and status-checked ten times is one payment; and two records that carry one signature are one payment. Where two records disagree, the one that knows the most wins: the chain's word settles what the phone's guess couldn't.
+A movement is counted once, by **the transaction's signature when there is one, and otherwise by the connection-qualified request it belongs to**. So a request prepared three times, answered, re-sent after a failed delivery, and status-checked ten times is one payment. Two unsigned requests with the same request ID under different connections remain distinct. In a global scope, two records under different connections that carry one transaction signature on the same network are one payment. Where duplicate records disagree, a confirmed or failed chain result settles unresolved exposure.
+
+When the request currently being reviewed already has an Activity attempt, that request — and any duplicate carrying its signature — is removed from the historical total before the current amount is projected. The amount therefore appears exactly once.
 
 ### The day a counter counts
 
@@ -399,7 +417,7 @@ An absent connection section or `perOperation` inherits. `no_check` is an explic
 - **A rule this build has no name for makes the whole document unreadable,** as `UnknownRule` — an action kind or a network it doesn't know. Reading a shorter list would be safe on its own, since these are allowlists and dropping an entry only makes them stricter. It is refused because of what happens next: the owner opens the editor, sees a policy missing a rule they wrote, saves it, and the rule is gone.
 - **Anything else that doesn't read back is `Damaged`,** including a document with the wrong scope, a file that names another connection, a malformed timestamp, a duplicate asset entry, an amount that isn't a whole number of base units, and a policy this app would have refused to write.
 
-Missing and unreadable remain different for both scopes. `StoredGlobalPolicy` and `StoredConnectionOverrides` each say `None`, `Policy`, or `Unreadable`; an unreadable global file does not become no global rules, and an unreadable connection file does not become inheritance. Reading either one never overwrites it. Stage 5's `StoredPolicy` is retained as the local-only compatibility view until SAW-044 moves evaluation to the effective model.
+Missing and unreadable remain different for both scopes. `StoredGlobalPolicy` and `StoredConnectionOverrides` each say `None`, `Policy`, or `Unreadable`; an unreadable global file does not become no global rules, and an unreadable connection file does not become inheritance. Reading either one never overwrites it. Stage 5's `StoredPolicy` remains only as the compatibility view used by the existing editor and legacy unit fixtures; `PolicyEvaluator` reads both stored scopes and evaluates `EffectivePolicy`.
 
 ## The protocol's `PolicyEvaluation`
 
@@ -434,10 +452,10 @@ Each scenario is also run through a second connection that has written no rules,
 | --- | --- |
 | `policy/Policy.kt` | The flat Stage 5 policy; `GlobalPolicy`; `ConnectionPolicyOverrides`; `RuleOverride`; assets, limits, validation, and migration conversions |
 | `policy/EffectivePolicy.kt` | `EffectivePolicy`, source metadata, separate daily scopes, and the pure resolver |
-| `policy/PolicyDecision.kt` | `PolicyAssessment`, `PolicyCheck`, `PolicyCheckStatus`, `PolicyReason`, `PolicyDecision`, `assess`, and `noPolicy` |
-| `policy/RequestFacts.kt` | `RequestFacts`, and `policyFacts`, which reads them off a request and its inspection |
-| `policy/PolicyEvaluation.kt` | `evaluate`, the six checks, and `PolicyEvaluator` |
-| `policy/DailySpending.kt` | `SpendScope`, `SpendStatus`, `Spend`, `DailyTotal`, `spendsOf`, and `dailyTotal` |
+| `policy/PolicyDecision.kt` | The assessment, effective-rule sources, scoped daily results, checks, reasons, `assess`, and `noPolicy` |
+| `policy/RequestFacts.kt` | `RequestFacts`, including the request identity needed to exclude its existing attempt, and `policyFacts` |
+| `policy/PolicyEvaluation.kt` | Flat-policy compatibility evaluation, effective evaluation, both daily checks, and `PolicyEvaluator` |
+| `policy/DailySpending.kt` | Connection and global scopes, spend identity/status, overflow-safe totals, deduplication, and current-request exclusion |
 | `policy/PolicyDraft.kt` | `PolicyDraft`, `AssetDraft`, `readAmount`, and `review` |
 | `policy/PolicyEditorViewModel.kt` | `PolicyUiState`, and load, edit, save, remove, start over |
 | `policy/PolicyEditorScreen.kt` | The editor itself |
@@ -447,6 +465,6 @@ Each scenario is also run through a second connection that has written no rules,
 | `inbox/InboxViewModel.kt` | `RequestAssessment`, when an assessment is made, and the re-read before an answer |
 | `activity/ActivityRecord.kt` | `ReviewedPolicy`, the snapshot kept with the record |
 
-Tests: `policy/PolicyTest`, `policy/EffectivePolicyTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyScenarioTest`, `policy/PolicyWordingTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, `policy/storage/PolicyStoreV2Test`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`.
+Tests: `policy/PolicyTest`, `policy/EffectivePolicyTest`, `policy/EffectivePolicyEvaluationTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyScenarioTest`, `policy/PolicyWordingTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, `policy/storage/PolicyStoreV2Test`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`.
 
 `StageBoundaryTest` keeps the package unable to act — the editor included. Everything it may reach into is a read: the connection ID rule, the protocol's requests and networks, what the phone read out of a transaction's bytes, the owner's own activity records, the address rule, and the app's own strings, back button, and date format. It may reach nothing that opens a wallet, a connection, or a socket.

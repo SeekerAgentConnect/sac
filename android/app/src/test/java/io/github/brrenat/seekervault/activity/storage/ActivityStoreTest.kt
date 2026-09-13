@@ -128,6 +128,8 @@ class ActivityStoreTest {
         File(dir, "$CONNECTION/$REQUEST.json").writeText("{ not json")
         assertNull(store.get(CONNECTION, REQUEST))
         assertEquals(listOf(other), store.list())
+        assertEquals(1, store.snapshot().unreadableRecords)
+        assertEquals(listOf(other), store.snapshot().records)
     }
 
     @Test
