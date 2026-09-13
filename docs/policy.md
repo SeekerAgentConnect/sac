@@ -2,7 +2,7 @@
 
 The global defaults and connection overrides the owner sets, and how a request is assessed against their effective rules. The rules live on the phone; the assessment is something the owner reads. Neither reaches an agent, and neither decides anything on its own.
 
-Stage 5 built the per-connection system in five steps: SAW-025 defined it, SAW-026 evaluated it, SAW-027 added the editor, SAW-028 put the assessment in review, and SAW-029 exercised the whole path. Stage 5.1 extends that system rather than adding another policy engine. **SAW-043 added the global and override documents, their migration, and the pure effective-policy resolver. SAW-044 feeds those effective rules and both daily scopes into evaluation. SAW-045 exposes both persisted scopes through the owner-facing editor without collapsing inheritance. SAW-046 carries effective sources and daily scopes into review, binds warning consent to the exact rules and preparation, and preserves that context in Activity without copying a policy.**
+Stage 5 built the per-connection system in five steps: SAW-025 defined it, SAW-026 evaluated it, SAW-027 added the editor, SAW-028 put the assessment in review, and SAW-029 exercised the whole path. Stage 5.1 extends that system rather than adding another policy engine. **SAW-043 added the global and override documents, their migration, and the pure effective-policy resolver. SAW-044 feeds those effective rules and both daily scopes into evaluation. SAW-045 exposes both persisted scopes through the owner-facing editor without collapsing inheritance. SAW-046 carries effective sources and daily scopes into review, binds warning consent to the exact rules and preparation, and preserves that context in Activity without copying a policy. SAW-047 exercises the combined path and records the owner walkthrough and its hardware status.**
 
 ## What a policy is
 
@@ -151,7 +151,7 @@ Under the effective model, `daily_limit` has two explicit scope codes and two re
 | `global` | `GlobalPolicy.limits[asset].daily` | Every retained connection for this wallet, asset and network |
 | `connection` | `ConnectionPolicyOverrides.limits[asset].daily` | Only this connection for the same wallet, asset and network |
 
-The global result comes first, then the connection result. Both remain in `PolicyDecision.dailyChecks` even when the first fails, and each keeps its threshold, confirmed total, unresolved total, current amount, projected amount, status, reason and rule source. The existing `daily_limit` check row is their conjunction for the Stage 5 review screen; SAW-046 will render the two scoped rows directly.
+The global result comes first, then the connection result. Both remain in `PolicyDecision.dailyChecks` even when the first fails, and each keeps its threshold, confirmed total, unresolved total, current amount, projected amount, status, reason and rule source. The existing `daily_limit` check row is their conjunction for Stage 5 compatibility; the request review renders the two scoped rows directly.
 
 Each comes back as one of four things:
 
@@ -359,6 +359,8 @@ A counter is a floor on the day's spending, never a ceiling. It does not see:
 
 And one movement can be counted as exposure that never happened: an `unresolved` amount whose transaction was dropped stays in the day's projection until something settles it. That direction is chosen on purpose — over-reporting exposure warns, under-reporting it misleads.
 
+The word **global** changes which retained records are grouped; it does not make the history complete. Removed and re-paired connections remain included only because Activity outlives them. Clearing Activity removes that evidence, uninstalling or changing phones leaves no history to carry over, and no wallet-only, other-app, fee, or external-chain movement is reconstructed.
+
 ## Storage
 
 `PolicyStore` keeps one global document at `<filesDir>/policies/global.json` and at most one override document per connection at `<filesDir>/policies/<connection ID>.json`. Every document is written whole with Android's `AtomicFile`. Nothing here is encrypted, because a policy holds no credential and no key: public addresses and the owner's own thresholds. Nothing on the phone is backed up.
@@ -446,6 +448,10 @@ The last two of those are the pair worth reading together. A transfer the rules 
 
 Each scenario is also run through a second connection that has written no rules, and again off a new store over the same directory, which is what the next launch has. And `PolicyWordingTest` holds every policy-facing string to what a verdict may claim: nothing here is called safe, secure, automatic, blocked, or guaranteed.
 
+`inbox/Stage51PolicyScenarioTest` is the Stage 5.1 acceptance layer (SAW-047). It starts from the existing sidecar-built SOL fixture, runs the phone's transaction inspection, reads real versioned global and connection files and real Activity files, and carries the resulting `RequestAssessment` into Request details. It asserts the verdict, exact reason order, source of every effective rule, both daily scopes and totals, input-verification precedence, and whether Approve, the deliberate warning step, and Reject are available.
+
+Its scenarios combine global programs with a connection recipient, prove a connection program list replaces rather than unions, reset the connection and evaluate a newly paired connection through inheritance, and exercise global-only, connection-only, dual-warning, equality, higher-local, and absent-local daily cases. Separate records cover two connections on one wallet, another wallet, another network, and a removed connection whose Activity remains. A Stage 5 version 1 file is migrated and read again after restart. Damaged global, connection, and Activity files remain unreadable rather than empty. Finally, same-looking global edits and cross-connection spending produce different consent, while the `InboxViewModelTest` lifecycle cases prove those differences stop an affirmative action before the sidecar or wallet.
+
 ## Where the code is
 
 | File | What it holds |
@@ -465,6 +471,6 @@ Each scenario is also run through a second connection that has written no rules,
 | `inbox/InboxViewModel.kt` | `RequestAssessment`, when an assessment is made, and the re-read before an answer |
 | `activity/ActivityRecord.kt` | `ReviewedPolicy`, the snapshot kept with the record |
 
-Tests: `policy/PolicyTest`, `policy/EffectivePolicyTest`, `policy/EffectivePolicyEvaluationTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyScenarioTest`, `policy/PolicyWordingTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, `policy/storage/PolicyStoreV2Test`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`.
+Tests: `policy/PolicyTest`, `policy/EffectivePolicyTest`, `policy/EffectivePolicyEvaluationTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyScenarioTest`, `policy/PolicyWordingTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, `policy/storage/PolicyStoreV2Test`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `inbox/Stage51PolicyScenarioTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`.
 
 `StageBoundaryTest` keeps the package unable to act — the editor included. Everything it may reach into is a read: the connection ID rule, the protocol's requests and networks, what the phone read out of a transaction's bytes, the owner's own activity records, the address rule, and the app's own strings, back button, and date format. It may reach nothing that opens a wallet, a connection, or a socket.
