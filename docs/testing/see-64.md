@@ -12,6 +12,7 @@ SEE-64 is a presentation-only pass over the Android app. The complete Linear des
 - content-hugging acknowledgement and signature reviews, with pinned v4 actions and compact advisory verdict cards;
 - animated sheet promotion and backplates using the design's 260 ms entrance, 240 ms exit, and 300 ms stack motion;
 - v4 request-list cards and connection details, including the status, fact, Rules, and destructive card hierarchy;
+- truthful three-state request badges, stable server/request identity in compact reviews, verified-before-advisory signing order, and radio semantics for wallet networks;
 - Global rules retained as the first-class rules layer above paired servers;
 - Material icons, compact identifier styling, source-ordered content, and v4 action hierarchy across the existing screens.
 
@@ -26,10 +27,10 @@ Run on 2026-09-13 with Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1, Kotlin 2.4.0,
 | `pnpm check` | PASS — Prettier, Buf format/lint, ESLint, both TypeScript type checks, 396 sidecar tests, and 29 test-agent tests |
 | `pnpm test:hello` | PASS — all 9 Stage 1 simulated-device acceptance cases |
 | `pnpm test:queue` | PASS — all 7 Stage 2 two-sidecar acceptance cases |
-| `ANDROID_HOME=… pnpm check:android` | PASS — Spotless, all 744 Android unit tests, Android lint, debug APK, and instrumentation APK |
+| `ANDROID_HOME=… pnpm check:android` | PASS — Spotless, all 746 Android unit tests, Android lint, debug APK, and instrumentation APK |
 | `pnpm check:generated` | PASS — protocol code and fixtures are current; this UI ticket changes neither |
 | `pnpm build` | PASS — sidecar and test-agent TypeScript builds |
-| Android unit suite | PASS — 744 tests, including exact theme tokens/opacity, the opaque-only source guard, Home carousel structure and connection-scoped keys, persistent navigation, sheet routes, and updated screen behavior |
+| Android unit suite | PASS — 746 tests, including exact theme tokens/opacity, the opaque-only source guard, Home carousel structure and connection-scoped keys, persistent navigation, sheet routes, and updated screen behavior |
 | Opaque-surface source audit | PASS — no alpha colour, transparent colour, gradient, non-zero shadow/tonal elevation, blur, or graphics-layer use in app UI source |
 | `git diff --check` | PASS |
 

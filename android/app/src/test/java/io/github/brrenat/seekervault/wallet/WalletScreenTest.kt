@@ -2,6 +2,8 @@ package io.github.brrenat.seekervault.wallet
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -46,6 +48,8 @@ class WalletScreenTest {
         compose
             .onNodeWithTag(WalletTags.STATUS)
             .assertTextContains(context.getString(R.string.wallet_none_title))
+        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Mainnet)).assertIsSelected()
+        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).assertIsNotSelected()
         compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).performClick()
         compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().performClick()
         assertEquals(listOf("network:Devnet", "connect"), actions)

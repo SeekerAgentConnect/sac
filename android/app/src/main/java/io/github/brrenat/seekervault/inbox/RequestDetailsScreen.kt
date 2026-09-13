@@ -521,50 +521,14 @@ private fun SimpleRequestReview(
                     trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 )
             }
-            PolicyReview(assessment, onRules = onRules)
-            SeekerCard(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                radius = 16.dp,
-            ) {
-                Text(
-                    stringResource(
-                        if (acknowledgement) R.string.request_acknowledgement_check
-                        else R.string.message_not_a_payment
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .padding(16.dp)
-                            .then(
-                                if (acknowledgement) Modifier
-                                else Modifier.testTag(InboxTags.NOT_A_PAYMENT)
-                            ),
-                )
+            // A message signature's byte-derived facts outrank advisory rules, so the owner reads
+            // them first. An acknowledgement follows the v4 reference with its verdict first.
+            if (!acknowledgement) {
+                SimpleRequestFacts(request, source, sourceLabel, wallet, walletAddress, message)
             }
-            RequestFact(
-                stringResource(R.string.request_field_from),
-                sourceLabel,
-                "from",
-            )
-            RequestFact(
-                stringResource(R.string.wallet_title),
-                walletAddress.ifBlank { stringResource(R.string.network_none) },
-                "signsWith",
-                mono = true,
-            )
-            RequestFact(
-                stringResource(R.string.request_fact_network),
-                wallet?.let { networkText(it.network) } ?: stringResource(R.string.network_none),
-                "network",
-            )
-            if (message?.hasHidden == true) {
-                Text(
-                    stringResource(R.string.message_hidden_characters),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp).testTag(InboxTags.HIDDEN),
-                )
+            PolicyReview(assessment, onRules = onRules)
+            if (acknowledgement) {
+                SimpleRequestFacts(request, source, sourceLabel, wallet, walletAddress, message)
             }
             if (request.agentNote.isNotEmpty()) {
                 SeekerCard(
@@ -687,7 +651,87 @@ private fun SimpleRequestReview(
 }
 
 @Composable
-private fun RequestFact(label: String, value: String, name: String, mono: Boolean = false) {
+private fun SimpleRequestFacts(
+    request: ActionRequest,
+    source: Connection?,
+    sourceLabel: String,
+    wallet: SelectedWallet?,
+    walletAddress: String,
+    message: MessagePreview?,
+) {
+    val acknowledgement = request.action.kindCase == Action.KindCase.ACK
+    SeekerCard(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        radius = 16.dp,
+    ) {
+        Text(
+            stringResource(
+                if (acknowledgement) R.string.request_acknowledgement_check
+                else R.string.message_not_a_payment
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(16.dp)
+                    .then(
+                        if (acknowledgement) Modifier else Modifier.testTag(InboxTags.NOT_A_PAYMENT)
+                    ),
+        )
+    }
+    RequestFact(stringResource(R.string.request_field_from), sourceLabel, "from")
+    source?.let {
+        RequestFact(
+            stringResource(R.string.field_server),
+            it.serverUrl,
+            "server",
+            mono = true,
+            shorten = false,
+        )
+    }
+    RequestFact(
+        stringResource(R.string.field_connection_id),
+        request.ref.connectionId,
+        "connectionId",
+        mono = true,
+        shorten = false,
+    )
+    RequestFact(
+        stringResource(R.string.request_field_id),
+        request.ref.requestId,
+        "requestId",
+        mono = true,
+        shorten = false,
+    )
+    RequestFact(
+        stringResource(R.string.wallet_title),
+        walletAddress.ifBlank { stringResource(R.string.network_none) },
+        "signsWith",
+        mono = true,
+    )
+    RequestFact(
+        stringResource(R.string.request_fact_network),
+        wallet?.let { networkText(it.network) } ?: stringResource(R.string.network_none),
+        "network",
+    )
+    if (message?.hasHidden == true) {
+        Text(
+            stringResource(R.string.message_hidden_characters),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp).testTag(InboxTags.HIDDEN),
+        )
+    }
+}
+
+@Composable
+private fun RequestFact(
+    label: String,
+    value: String,
+    name: String,
+    mono: Boolean = false,
+    shorten: Boolean = mono,
+) {
     SeekerCard(
         Modifier.fillMaxWidth()
             .padding(horizontal = 16.dp)
@@ -708,9 +752,9 @@ private fun RequestFact(label: String, value: String, name: String, mono: Boolea
             )
             if (mono) {
                 Identifier(
-                    shortIdentifier(value),
+                    if (shorten) shortIdentifier(value) else value,
                     modifier = Modifier.weight(1f),
-                    maxLines = 1,
+                    maxLines = if (shorten) 1 else 2,
                     textAlign = androidx.compose.ui.text.style.TextAlign.End,
                 )
             } else {

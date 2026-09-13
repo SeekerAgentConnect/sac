@@ -12,7 +12,14 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.inbox.key
+import io.github.brrenat.seekervault.policy.PolicyAction
+import io.github.brrenat.seekervault.policy.PolicyCheck
+import io.github.brrenat.seekervault.policy.PolicyCheckResult
+import io.github.brrenat.seekervault.policy.PolicyReason
+import io.github.brrenat.seekervault.policy.RequestFacts
+import io.github.brrenat.seekervault.policy.assess
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -33,7 +40,7 @@ class ConnectionsScreenTest {
         activity: Int? = null,
         inbox: InboxSummary? = null,
         requests: List<io.github.brrenat.seekervault.request.v1.ActionRequest> = emptyList(),
-        warnings: Set<RequestKey> = emptySet(),
+        assessments: Map<RequestKey, RequestAssessment> = emptyMap(),
     ) = compose.setContent {
         SeekerVaultTheme {
             ConnectionsScreen(
@@ -48,7 +55,7 @@ class ConnectionsScreenTest {
                 inbox = inbox,
                 onInbox = { actions += "inbox" },
                 requests = requests,
-                warningRequests = warnings,
+                requestAssessments = assessments,
             )
         }
     }
@@ -60,7 +67,7 @@ class ConnectionsScreenTest {
             state = ConnectionsUiState(connections = listOf(HOME), loaded = true),
             inbox = InboxSummary(waitingForYou = 1, toSend = 0),
             requests = listOf(request),
-            warnings = setOf(request.key),
+            assessments = mapOf(request.key to assessment(request, warns = true)),
         )
 
         compose.onNodeWithText(context.getString(R.string.waiting_for_you)).assertExists()
@@ -71,6 +78,20 @@ class ConnectionsScreenTest {
             .assertTextContains(context.getString(R.string.requests_see_all, 1))
             .performClick()
         assertEquals(listOf("inbox"), actions)
+    }
+
+    @Test
+    fun requestCarouselDoesNotCallAnUnassessedOrNoPolicyRequestInRules() {
+        val request = FakeConnectionGateway.request(HOME.id, text = "Still here?")
+        show(
+            state = ConnectionsUiState(connections = listOf(HOME), loaded = true),
+            inbox = InboxSummary(waitingForYou = 1, toSend = 0),
+            requests = listOf(request),
+            assessments = mapOf(request.key to assessment(request, warns = false)),
+        )
+
+        compose.onNodeWithText(context.getString(R.string.request_not_checked)).assertExists()
+        compose.onNodeWithText(context.getString(R.string.request_in_rules)).assertDoesNotExist()
     }
 
     @Test
@@ -154,6 +175,30 @@ class ConnectionsScreenTest {
         compose.onNodeWithTag(ConnectionsTags.ADD).performClick()
         compose.onNodeWithTag(ConnectionsTags.LIVE_TEST).performClick()
         assertEquals(listOf("add", "live"), actions)
+    }
+
+    private fun assessment(
+        request: io.github.brrenat.seekervault.request.v1.ActionRequest,
+        warns: Boolean,
+    ): RequestAssessment {
+        val checks =
+            PolicyCheck.entries.map {
+                if (warns && it == PolicyCheck.Action) {
+                    PolicyCheckResult.failed(it, PolicyReason.ActionNotAllowed)
+                } else {
+                    PolicyCheckResult.notConfigured(it)
+                }
+            }
+        return RequestAssessment(
+            decision = assess(checks),
+            facts =
+                RequestFacts.movesNothing(
+                    request.ref.connectionId,
+                    PolicyAction.Acknowledgement,
+                    request.ref.requestId,
+                ),
+            at = Instant.EPOCH,
+        )
     }
 
     @Test
