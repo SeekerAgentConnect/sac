@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
+import com.google.protobuf.timestamp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.CheckOutcome
@@ -27,6 +28,7 @@ import io.github.brrenat.seekervault.policy.assess
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.action
 import io.github.brrenat.seekervault.request.v1.actionRequest
 import io.github.brrenat.seekervault.request.v1.asset
@@ -80,6 +82,9 @@ class TransferReviewScreenTest {
                 requestId = "f7e6d5c4-b3a2-4918-8a7f-6e5d4c3b2a19"
             }
             agentNote = if (fields.has("note")) fields.getString("note") else ""
+            state = RequestState.REQUEST_STATE_PENDING
+            createdAt = timestamp { seconds = NOW.minusSeconds(60).epochSecond }
+            expiresAt = timestamp { seconds = NOW.plusSeconds(3600).epochSecond }
             action = action {
                 transfer = transferAction {
                     wallet = fields.getString("wallet")
@@ -273,7 +278,7 @@ class TransferReviewScreenTest {
         compose
             .onNodeWithTag(InboxTags.NOTE)
             .performScrollTo()
-            .assertTextContains(context.getString(R.string.request_field_note), substring = true)
+            .assertTextContains(context.getString(R.string.request_field_note_v4), substring = true)
         field("token")
             .performScrollTo()
             .assertTextContains(
@@ -286,7 +291,7 @@ class TransferReviewScreenTest {
     fun offersApprovalOnlyForATransactionItReadWholeAndFoundToMatch() {
         val case = case("sol_transfer")
         show(case, readyFrom(case))
-        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performClick()
         assertEquals(1, approvals)
     }
 
@@ -331,7 +336,7 @@ class TransferReviewScreenTest {
     fun cannotApproveWithoutAWalletToPayWith() {
         val case = case("sol_transfer")
         show(case, readyFrom(case), wallet = null)
-        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertIsNotEnabled()
         compose
             .onNodeWithTag(InboxTags.SIGNING_PROBLEM)
             .performScrollTo()
@@ -349,10 +354,9 @@ class TransferReviewScreenTest {
             .assertTextContains("3 SOL of 2 SOL today", substring = true)
         compose
             .onNodeWithTag(InboxTags.TRANSFER_APPROVE)
-            .performScrollTo()
             .assertIsNotEnabled()
             .assertTextEquals(context.getString(R.string.approve_and_send_despite_warnings))
-        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).performClick()
         assertEquals(listOf(true), ticks)
         assertEquals(0, approvals)
     }
@@ -361,7 +365,7 @@ class TransferReviewScreenTest {
     fun onceTheOwnerHasSaidSoTheTransferCanGoToTheWallet() {
         val case = case("sol_transfer")
         show(case, readyFrom(case), decision = overThreshold(), acknowledged = true)
-        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performClick()
         assertEquals(1, approvals)
     }
 

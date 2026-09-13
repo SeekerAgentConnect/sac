@@ -163,7 +163,7 @@
     <string name="policy_global_unreadable_unknown">The stored global rules name something this version has no name for.</string>
     <string name="policy_global_unreadable_text">Every inheriting connection is shown as under restrictions until this is settled. Starting over replaces the global document and can change every inheriting connection; no connection override is deleted.</string>
     <!-- The assessment on the request-review screen (SAW-028). -->
-    <string name="policy_verdict_allowed">Matches your rules</string>
+    <string name="policy_verdict_allowed">Within the rules you set</string>
     <string name="policy_verdict_restricted">Outside your rules</string>
 
     <string name="policy_review_check_action">Action</string>

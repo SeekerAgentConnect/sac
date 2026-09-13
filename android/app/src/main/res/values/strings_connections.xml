@@ -36,8 +36,8 @@
     <string name="working">Working…</string>
 
     <string name="connection_status_not_checked">Not checked yet.</string>
-    <string name="connection_status_ok">Connected. Pending requests: %1$d.</string>
-    <string name="connection_status_ok_more">Connected. Pending requests: more than %1$d.</string>
+    <string name="connection_status_ok">Connected · %1$d pending</string>
+    <string name="connection_status_ok_more">Connected · more than %1$d pending</string>
     <string name="connection_status_unreachable">Couldn\'t reach the server.</string>
     <string name="connection_status_certificate">The server\'s certificate isn\'t trusted, or it\'s for another host name.</string>
     <string name="connection_status_cleartext">This build allows plain HTTP only to 127.0.0.1.</string>
@@ -55,6 +55,8 @@
     <string name="rename">Rename</string>
     <string name="connection_disconnect">Disconnect</string>
     <string name="connection_remove">Remove from this phone</string>
+    <string name="connection_rules_note">Review this connection’s own rules and global defaults.</string>
+    <string name="connection_rules_advisory">Rules highlight requests that need attention. You still approve every request.</string>
 
     <string name="rename_title">Rename connection</string>
     <string name="rename_label">Name</string>

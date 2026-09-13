@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
@@ -74,14 +75,13 @@ class InboxActivityTest {
             .assertTextContains(app.getString(R.string.requests_see_all, 1))
             .performClick()
         assertTrue(gateway.submits.isEmpty())
-        compose
-            .onNodeWithTag(InboxTags.item(key))
-            .assertTextContains("Deploy finished")
-            .performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).assertExists()
+        compose.onNodeWithText("Deploy finished", substring = true).assertExists()
+        compose.onNodeWithText(app.getString(R.string.review)).performClick()
         compose
             .onNodeWithTag(InboxTags.MESSAGE, useUnmergedTree = true)
             .assertTextEquals("Deploy finished")
-        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).performClick()
         compose
             .onNodeWithTag(InboxTags.STATUS)
             .assertTextEquals(app.getString(R.string.status_acknowledged))
@@ -155,8 +155,9 @@ class InboxActivityTest {
         val scenario = launch()
 
         compose.onNodeWithTag(ConnectionsTags.INBOX).performClick()
-        compose.onNodeWithTag(InboxTags.item(key)).performClick()
-        compose.onNodeWithTag(InboxTags.APPROVE).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).assertExists()
+        compose.onNodeWithText(app.getString(R.string.review)).performClick()
+        compose.onNodeWithTag(InboxTags.APPROVE).performClick()
         compose.waitForIdle()
         // The approval has gone, and the message is with the wallet.
         assertEquals(1, adapter.signings.size)
@@ -226,9 +227,10 @@ class InboxActivityTest {
         val scenario = launch()
 
         compose.onNodeWithTag(ConnectionsTags.INBOX).performClick()
-        compose.onNodeWithTag(InboxTags.item(key)).performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).assertExists()
+        compose.onNodeWithText(app.getString(R.string.review)).performClick()
         compose.waitForIdle()
-        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performClick()
         compose.waitForIdle()
 
         // The approval was accepted before the wallet was opened, and the wallet got the bytes.

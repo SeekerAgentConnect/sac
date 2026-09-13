@@ -1,12 +1,26 @@
 package io.github.brrenat.seekervault.inbox
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Verified
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
 import androidx.compose.material3.Icon
@@ -16,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -51,7 +66,11 @@ import io.github.brrenat.seekervault.ui.SeekerCard
  * told exactly the same things.
  */
 @Composable
-fun PolicyReview(assessment: RequestAssessment?, modifier: Modifier = Modifier) {
+fun PolicyReview(
+    assessment: RequestAssessment?,
+    modifier: Modifier = Modifier,
+    onRules: (() -> Unit)? = null,
+) {
     if (assessment == null) {
         // The rules are read from disk when the request is opened. It is a moment, and it says so
         // rather than leaving a gap that could be read as "nothing to say".
@@ -70,103 +89,183 @@ fun PolicyReview(assessment: RequestAssessment?, modifier: Modifier = Modifier) 
         return
     }
     val decision = assessment.decision
-    SeekerCard(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        color =
-            if (decision.warns) MaterialTheme.colorScheme.tertiaryContainer
-            else MaterialTheme.colorScheme.primaryContainer,
-    ) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-            Text(
-                stringResource(R.string.policy_review_heading),
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
-            )
-            Text(
-                stringResource(assessmentText(decision.assessment)),
-                style = MaterialTheme.typography.bodyLarge,
-                // Colour where there is something to warn about, and never colour on its own: the
-                // verdict, every reason, and every check say what they mean in words.
-                color =
-                    if (decision.warns) MaterialTheme.colorScheme.onTertiaryContainer
-                    else MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier =
-                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        .testTag(InboxTags.POLICY_VERDICT),
-            )
-            // Why there was nothing to match, or why a match was withheld. It is the reason for the
-            // verdict itself rather than any one check's, so it stands above them.
-            decision.reason?.let { reason ->
-                Text(
-                    if (
-                        reason == PolicyReason.PolicyUnreadable &&
-                            decision.unreadableSources.isNotEmpty()
-                    ) {
-                        stringResource(unreadableText(decision.unreadableSources))
-                    } else {
-                        stringResource(reasonText(reason))
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier =
-                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                            .testTag(InboxTags.POLICY_REASON),
-                )
+    val allowed = decision.allowed
+    val verdictInk =
+        if (allowed) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onTertiaryContainer
+    val ordinaryChecks =
+        decision.checks.filterNot {
+            decision.dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit
+        }
+    val warningChecks = ordinaryChecks.filter {
+        it.status == PolicyCheckStatus.Failed || it.status == PolicyCheckStatus.Unverified
+    }
+    val deliberatelyOff =
+        ordinaryChecks
+            .filter {
+                it.status == PolicyCheckStatus.NotConfigured &&
+                    it.source != RuleSource.NotConfigured
             }
-            decision.checks
-                .filterNot {
-                    decision.dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit
+            .map { it.check }
+    val absent =
+        ordinaryChecks
+            .filter {
+                it.status == PolicyCheckStatus.NotConfigured &&
+                    it.source == RuleSource.NotConfigured
+            }
+            .map { it.check }
+
+    Column(
+        modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SeekerCard(
+            modifier = Modifier.fillMaxWidth(),
+            color =
+                if (allowed) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.tertiaryContainer,
+            radius = 16.dp,
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(
+                        if (allowed) Icons.Outlined.Verified else Icons.Outlined.WarningAmber,
+                        contentDescription = null,
+                        tint = verdictInk,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Text(
+                        stringResource(assessmentText(decision.assessment)),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = verdictInk,
+                        modifier = Modifier.weight(1f).testTag(InboxTags.POLICY_VERDICT),
+                    )
                 }
-                .forEach { Check(it) }
-            decision.dailyChecks.forEach { DailyCheck(it, assessment.facts.decimals) }
-            // Coverage, not compliance: ALLOWED is never a statement about a parameter nobody wrote
-            // a
-            // rule for, so the ones nothing covered are named.
-            if (decision.notChecked.isNotEmpty()) {
-                val names = decision.notChecked.map { stringResource(checkText(it)) }
-                Text(
-                    stringResource(R.string.policy_review_uncovered, names.joinToString()),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier =
-                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                            .testTag(InboxTags.POLICY_UNCOVERED),
-                )
+                decision.reason?.let { reason ->
+                    Text(
+                        if (
+                            reason == PolicyReason.PolicyUnreadable &&
+                                decision.unreadableSources.isNotEmpty()
+                        ) {
+                            stringResource(unreadableText(decision.unreadableSources))
+                        } else {
+                            stringResource(reasonText(reason))
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = verdictInk,
+                        modifier = Modifier.testTag(InboxTags.POLICY_REASON),
+                    )
+                }
+                warningChecks.forEach { WarningCheck(it, verdictInk) }
+                if (deliberatelyOff.isNotEmpty() || absent.isNotEmpty()) {
+                    Column(
+                        Modifier.testTag(InboxTags.POLICY_UNCOVERED).semantics(
+                            mergeDescendants = true
+                        ) {},
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (deliberatelyOff.isNotEmpty()) {
+                            Text(
+                                stringResource(
+                                    R.string.policy_review_deliberately_unchecked,
+                                    checkNames(deliberatelyOff),
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = verdictInk,
+                            )
+                        }
+                        if (absent.isNotEmpty()) {
+                            Text(
+                                stringResource(
+                                    R.string.policy_review_not_configured,
+                                    checkNames(absent),
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = verdictInk,
+                            )
+                        }
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.policy_review_manual),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = verdictInk,
+                        modifier = Modifier.weight(1f).testTag(InboxTags.POLICY_MANUAL),
+                    )
+                    onRules?.let { RulesButton(allowed, it) }
+                }
             }
-            // The line that never changes, under every verdict there is.
-            Text(
-                stringResource(R.string.policy_review_manual),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(16.dp).testTag(InboxTags.POLICY_MANUAL),
-            )
+        }
+        if (decision.dailyChecks.isNotEmpty()) {
+            DailySpend(decision.dailyChecks, assessment.facts.decimals)
         }
     }
 }
 
-/** One check: what it is about, what became of it, and what it read. */
 @Composable
-private fun Check(result: PolicyCheckResult) {
-    val name = stringResource(checkText(result.check))
-    SeekerCard(
+private fun WarningCheck(result: PolicyCheckResult, ink: androidx.compose.ui.graphics.Color) {
+    Row(
         modifier =
-            Modifier.fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 4.dp)
-                .testTag(InboxTags.policyCheck(result.check))
-                .semantics(mergeDescendants = true) {},
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        radius = 12.dp,
+            Modifier.fillMaxWidth().testTag(InboxTags.policyCheck(result.check)).semantics(
+                mergeDescendants = true
+            ) {},
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Icon(
+            Icons.Outlined.ErrorOutline,
+            contentDescription = null,
+            tint = ink,
+            modifier = Modifier.size(18.dp),
+        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                checkName(name, result.source, result.status),
-                style = MaterialTheme.typography.labelSmall,
+                stringResource(reasonText(checkNotNull(result.reason))),
+                style = MaterialTheme.typography.bodyMedium,
+                color = ink,
             )
-            Text(statusText(result), style = MaterialTheme.typography.bodyMedium)
+            result.detail?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = ink)
+            }
+            SourceChip(result.source)
         }
     }
 }
 
-/** The two daily scopes never collapse into one row: either one can independently warn. */
 @Composable
-private fun DailyCheck(check: DailyPolicyCheck, decimals: Int) {
+private fun DailySpend(checks: List<DailyPolicyCheck>, decimals: Int) {
+    SeekerCard(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        radius = 16.dp,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(R.string.policy_daily_title),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            checks.forEach { check ->
+                DailyRow(check, decimals)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyRow(check: DailyPolicyCheck, decimals: Int) {
     val name =
         stringResource(
             when (check.scope) {
@@ -174,23 +273,32 @@ private fun DailyCheck(check: DailyPolicyCheck, decimals: Int) {
                 DailyCheckScope.Connection -> R.string.policy_daily_connection
             }
         )
-    val total = check.total
-    val projected = check.projected
-    SeekerCard(
-        modifier =
-            Modifier.fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 4.dp)
-                .testTag(InboxTags.policyDaily(check.scope.code))
-                .semantics(mergeDescendants = true) {},
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        radius = 12.dp,
+    val warns =
+        check.result.status == PolicyCheckStatus.Failed ||
+            check.result.status == PolicyCheckStatus.Unverified
+    val ink = if (warns) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
+    Row(
+        Modifier.fillMaxWidth().testTag(InboxTags.policyDaily(check.scope.code)).semantics(
+            mergeDescendants = true
+        ) {},
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Icon(
+            if (warns) Icons.Outlined.WarningAmber else Icons.Outlined.CheckCircle,
+            contentDescription = null,
+            tint = ink,
+            modifier = Modifier.size(20.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            Text(statusText(check.result), style = MaterialTheme.typography.bodyMedium, color = ink)
             Text(
-                checkName(name, check.result.source, check.result.status),
-                style = MaterialTheme.typography.labelSmall,
+                name,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(statusText(check.result), style = MaterialTheme.typography.bodyMedium)
+            val total = check.total
+            val projected = check.projected
             if (total != null && projected != null) {
                 Text(
                     stringResource(
@@ -200,23 +308,80 @@ private fun DailyCheck(check: DailyPolicyCheck, decimals: Int) {
                         formatBaseUnits(projected, decimals),
                     ),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
+        SourceChip(check.result.source)
     }
 }
 
 @Composable
-private fun checkName(
-    name: String,
-    source: RuleSource,
-    status: PolicyCheckStatus,
-): String {
-    // A legacy flat decision did not carry source metadata. Do not call that "Not configured"
-    // when its check ran; current effective decisions always carry Global or Connection.
-    if (source == RuleSource.NotConfigured && status != PolicyCheckStatus.NotConfigured) return name
-    return stringResource(R.string.policy_check_with_source, name, sourceName(source))
+private fun RulesButton(allowed: Boolean, onClick: () -> Unit) {
+    val container =
+        if (allowed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+    val ink =
+        if (allowed) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary
+    Box(
+        Modifier.height(32.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(container)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            stringResource(R.string.rules_heading),
+            style = MaterialTheme.typography.labelMedium,
+            color = ink,
+        )
+    }
 }
+
+@Composable
+private fun SourceChip(source: RuleSource) {
+    val container =
+        if (source == RuleSource.ConnectionOverride) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        }
+    val ink =
+        if (source == RuleSource.ConnectionOverride) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+    Row(
+        Modifier.height(24.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(container)
+            .padding(horizontal = 9.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            when (source) {
+                RuleSource.Global -> Icons.Outlined.Public
+                RuleSource.ConnectionOverride -> Icons.Outlined.Edit
+                RuleSource.NotConfigured -> Icons.Outlined.Block
+            },
+            contentDescription = null,
+            tint = ink,
+            modifier = Modifier.size(13.dp),
+        )
+        Text(sourceName(source), style = MaterialTheme.typography.labelSmall, color = ink)
+    }
+}
+
+@Composable
+private fun checkNames(checks: List<PolicyCheck>): String =
+    checks.distinct().map { stringResource(checkText(it)) }.joinToString()
 
 @Composable
 private fun sourceName(source: RuleSource): String =

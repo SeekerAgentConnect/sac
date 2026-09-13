@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.policy
 
 import android.content.Context
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsEnabled
@@ -38,6 +39,7 @@ class PolicyEditorScreenTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val calls = mutableListOf<String>()
     private val saved = mutableListOf<PolicyDraft>()
+    private val closeRequest = mutableIntStateOf(0)
     private lateinit var ui: MutableState<PolicyUiState>
 
     private val draft: PolicyDraft
@@ -67,6 +69,7 @@ class PolicyEditorScreenTest {
                     },
                     onMessageShown = { current.value = current.value.copy(message = null) },
                     onClose = { calls += "close" },
+                    closeRequest = closeRequest.intValue,
                 )
             }
         }
@@ -348,12 +351,12 @@ class PolicyEditorScreenTest {
     fun leavingWithChangesAsksFirst() {
         open()
         click(PolicyTags.restrict("actions"))
-        click(PolicyTags.CANCEL)
+        compose.runOnIdle { closeRequest.intValue += 1 }
         compose.onNodeWithText(text(R.string.policy_discard_title)).assertExists()
         assertEquals(emptyList<String>(), calls)
         compose.onNodeWithTag(PolicyTags.KEEP_EDITING).performClick()
         compose.onNodeWithTag(PolicyTags.restrict("actions")).performScrollTo().assertIsOn()
-        click(PolicyTags.CANCEL)
+        compose.runOnIdle { closeRequest.intValue += 1 }
         compose.onNodeWithTag(PolicyTags.DISCARD).performClick()
         assertEquals(listOf("close"), calls)
     }

@@ -2,6 +2,8 @@ package io.github.brrenat.seekervault.connections
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +16,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -63,7 +72,7 @@ fun ConnectionDetailsScreen(
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(message, snackbar, onMessageShown)
     var renaming by rememberSaveable { mutableStateOf(false) }
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
@@ -74,7 +83,7 @@ fun ConnectionDetailsScreen(
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).padding(start = 8.dp),
                 )
-                CloseButton(onBack)
+                CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
             }
             Column(
                 Modifier.fillMaxSize()
@@ -84,37 +93,75 @@ fun ConnectionDetailsScreen(
             ) {
                 SeekerCard(
                     Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color =
+                        if (hasProblem(connection)) MaterialTheme.colorScheme.errorContainer
+                        else MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Row(
                         Modifier.fillMaxWidth().padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Box(
-                            Modifier.padding(end = 12.dp)
-                                .background(
-                                    if (hasProblem(connection)) MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.primary,
-                                    CircleShape,
-                                )
-                                .size(10.dp)
+                        Icon(
+                            if (hasProblem(connection)) Icons.Rounded.ErrorOutline
+                            else Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                            tint =
+                                if (hasProblem(connection)) {
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                },
                         )
                         Column(Modifier.weight(1f)) {
                             Text(
                                 statusText(connection),
                                 style = MaterialTheme.typography.titleMedium,
                                 color =
-                                    if (hasProblem(connection)) MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.onSurface,
+                                    if (hasProblem(connection)) {
+                                        MaterialTheme.colorScheme.onErrorContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    },
                                 modifier = Modifier.testTag(ConnectionsTags.STATUS),
                             )
                             connection.lastCheck?.let {
                                 Text(
                                     stringResource(R.string.checked_at, formatInstant(it.at)),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color =
+                                        if (hasProblem(connection)) {
+                                            MaterialTheme.colorScheme.onErrorContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        },
                                 )
                             }
+                        }
+                        Box(
+                            Modifier.size(40.dp)
+                                .background(
+                                    if (hasProblem(connection)) {
+                                        MaterialTheme.colorScheme.errorContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    },
+                                    CircleShape,
+                                )
+                                .clickable(
+                                    enabled = connection.usable && !refreshing,
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    onClick = onRefresh,
+                                )
+                                .testTag(ConnectionsTags.REFRESH),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Refresh,
+                                contentDescription = stringResource(R.string.refresh),
+                            )
                         }
                     }
                 }
@@ -125,62 +172,110 @@ fun ConnectionDetailsScreen(
                         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                     )
                 }
-                SeekerCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(vertical = 4.dp)) {
-                        Field(R.string.field_server, connection.serverUrl, "server")
-                        Field(R.string.field_server_id, connection.serverId, "serverId")
-                        Field(R.string.field_connection_id, connection.id, "connectionId")
-                        Field(R.string.field_paired, formatInstant(connection.pairedAt), "paired")
-                        Field(R.string.field_device_name, connection.deviceName, "deviceName")
+                Field(R.string.field_server, connection.serverUrl, "server")
+                Field(R.string.field_server_id, connection.serverId, "serverId")
+                Field(R.string.field_connection_id, connection.id, "connectionId")
+                Field(R.string.field_paired, formatInstant(connection.pairedAt), "paired")
+                Field(R.string.field_device_name, connection.deviceName, "deviceName")
+                if (onRules != null) {
+                    SeekerCard(
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    onClick = onRules,
+                                )
+                                .testTag(PolicyTags.RULES)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(14.dp, 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier.size(40.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        CircleShape,
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(Icons.Rounded.Tune, contentDescription = null)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.policy_rules),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    stringResource(R.string.connection_rules_note),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Icon(
+                                Icons.Rounded.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
+                Text(
+                    stringResource(R.string.connection_rules_advisory),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SeekerButton(
-                        text = stringResource(R.string.refresh),
-                        onClick = onRefresh,
-                        enabled = connection.usable && !refreshing,
-                        role = SeekerButtonRole.Neutral,
-                        modifier = Modifier.weight(1f).testTag(ConnectionsTags.REFRESH),
-                    )
                     SeekerButton(
                         text = stringResource(R.string.rename),
                         onClick = { renaming = true },
                         role = SeekerButtonRole.Neutral,
                         modifier = Modifier.weight(1f).testTag(ConnectionsTags.RENAME),
                     )
+                    if (onPendingRequests != null && connection.usable) {
+                        SeekerButton(
+                            text = stringResource(R.string.pending_requests),
+                            onClick = onPendingRequests,
+                            role = SeekerButtonRole.Neutral,
+                            modifier = Modifier.weight(1f).testTag(ConnectionsTags.PENDING),
+                        )
+                    }
                 }
-                if (onRules != null) {
-                    SeekerButton(
-                        text = stringResource(R.string.policy_rules),
-                        leading = "⌁",
-                        onClick = onRules,
-                        role = SeekerButtonRole.Tonal,
-                        modifier = Modifier.fillMaxWidth().testTag(PolicyTags.RULES),
-                    )
-                }
-                if (onPendingRequests != null && connection.usable) {
-                    SeekerButton(
-                        text = stringResource(R.string.pending_requests),
-                        onClick = onPendingRequests,
-                        role = SeekerButtonRole.Neutral,
-                        modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.PENDING),
-                    )
-                }
-                SeekerButton(
-                    text =
-                        stringResource(
-                            if (connection.usable) R.string.connection_disconnect
-                            else R.string.connection_remove
-                        ),
-                    onClick = onDisconnect,
-                    role = SeekerButtonRole.Error,
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .testTag(
-                                if (connection.usable) ConnectionsTags.DISCONNECT
-                                else ConnectionsTags.REMOVE
+                SeekerCard(
+                    Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            stringResource(
+                                if (connection.usable) R.string.disconnect_text
+                                else R.string.remove_text
                             ),
-                )
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        SeekerButton(
+                            text =
+                                stringResource(
+                                    if (connection.usable) R.string.connection_disconnect
+                                    else R.string.connection_remove
+                                ),
+                            onClick = onDisconnect,
+                            role = SeekerButtonRole.StrongError,
+                            modifier =
+                                Modifier.testTag(
+                                    if (connection.usable) ConnectionsTags.DISCONNECT
+                                    else ConnectionsTags.REMOVE
+                                ),
+                        )
+                    }
+                }
             }
         }
         SeekerSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
@@ -205,18 +300,19 @@ fun ConnectionDetailsScreen(
 
 @Composable
 private fun Field(@StringRes label: Int, value: String, name: String) {
-    Column(
-        Modifier.fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-            .testTag(ConnectionsTags.field(name))
-            .semantics(mergeDescendants = true) {}
+    SeekerCard(
+        Modifier.fillMaxWidth().testTag(ConnectionsTags.field(name)).semantics(
+            mergeDescendants = true
+        ) {}
     ) {
-        Text(
-            stringResource(label),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Identifier(value, Modifier.padding(top = 3.dp), maxLines = 3)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Text(
+                stringResource(label),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Identifier(value, Modifier.padding(top = 3.dp), maxLines = 3)
+        }
     }
 }
 

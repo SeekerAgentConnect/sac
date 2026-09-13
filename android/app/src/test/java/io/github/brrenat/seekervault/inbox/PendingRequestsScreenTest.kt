@@ -1,11 +1,15 @@
 package io.github.brrenat.seekervault.inbox
 
 import android.content.Context
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -54,16 +58,22 @@ class PendingRequestsScreenTest {
     }
 
     @Test
-    fun showsEachRequestWithItsSourceActionAgeAndExpiry() {
+    fun showsEachRequestWithItsSourceActionAndContext() {
         show(STATE)
         compose.onNodeWithTag(InboxTags.SECTION_PENDING).assertExists()
+        compose.onNodeWithTag(InboxTags.item(PENDING.key)).assertExists()
+        compose.onAllNodesWithText("Home Mac", substring = true).assertCountEquals(2)
+        compose.onNodeWithText("Deploy finished", substring = true).assertExists()
         compose
-            .onNodeWithTag(InboxTags.item(PENDING.key))
-            .assertTextContains("Home Mac")
-            .assertTextContains("Deploy finished")
-            .assertTextContains(context.getString(R.string.action_ack), substring = true)
-            .assertTextContains(relativeTime(PENDING.createdAt.instant(), NOW), substring = true)
-        compose.onNodeWithTag(InboxTags.item(PENDING.key)).performClick()
+            .onAllNodesWithText(context.getString(R.string.action_ack), substring = true)
+            .assertCountEquals(1)
+        compose
+            .onNodeWithTag(InboxTags.LIST)
+            .performScrollToNode(hasTestTag(InboxTags.item(PENDING.key)))
+        compose
+            .onNode(hasText(context.getString(R.string.acknowledge)) and hasClickAction())
+            .performClick()
+        // The prominent action opens the mandatory review; the list itself never answers.
         assertEquals(listOf(PENDING.key), opened)
     }
 
