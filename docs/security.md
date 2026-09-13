@@ -300,7 +300,9 @@ Two different things on the review screen look, at a glance, like the same kind 
 
 **Neither one approves.** `ALLOWED` means the parameters matched what the owner wrote down. The owner still approves by hand in the app, and their wallet asks them again.
 
-The assessment the owner read is kept with their own record of what they did, as codes ([`policy.md`](policy.md#the-stored-snapshot)). The rules never reach the sidecar, and neither does the assessment: no RPC carries one, and `StageBoundaryTest` holds the files that speak to a sidecar to having never heard of a policy.
+The review reloads the global rules, connection overrides, and Activity from disk when it opens, after each preparation, on foreground return, and immediately before an affirmative answer. Warning consent is bound to the applicable effective rules, both scoped daily results, independently established facts, and exact preparation — not merely to words that may happen to render the same. A global edit, local reset, or affected record from any connection therefore clears it. For a transfer the last read happens after waiting for the wallet-interaction lock, and any difference stops before either the sidecar or wallet is asked.
+
+The assessment the owner read is kept with their own record of what they did, as stable source/scope/status codes ([`policy.md`](policy.md#the-stored-snapshot)). It contains no rule or counter value, and older snapshots without the additive metadata remain readable. The rules never reach the sidecar, and neither does the assessment: no RPC carries one, and `StageBoundaryTest` holds the files that speak to a sidecar to having never heard of a policy.
 
 ## Logs and diagnostics
 

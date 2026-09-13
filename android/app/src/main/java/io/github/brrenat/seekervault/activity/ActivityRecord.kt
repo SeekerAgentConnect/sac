@@ -92,6 +92,25 @@ data class ReviewedPolicy(
     val assessedAt: Instant,
     /** Whether the owner answered with a warning on screen, having said so on purpose. */
     val approvedAnyway: Boolean = false,
+    /** Each effective non-daily check and the global/connection source code it showed. */
+    val ruleSources: List<ReviewedRuleSource> = emptyList(),
+    /** The separately shown global and connection daily results, retained as stable codes. */
+    val dailyChecks: List<ReviewedDailyCheck> = emptyList(),
+    /** Global/connection documents this build could not read. */
+    val unreadableSources: List<String> = emptyList(),
+)
+
+/** Source metadata only: no allowlist item or threshold is copied into Activity. */
+data class ReviewedRuleSource(val check: String, val source: String)
+
+/**
+ * One daily assessment's scope, source, outcome, and optional reason — never its counter values.
+ */
+data class ReviewedDailyCheck(
+    val scope: String,
+    val source: String,
+    val status: String,
+    val reason: String? = null,
 )
 
 /**

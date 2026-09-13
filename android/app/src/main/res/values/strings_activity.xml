@@ -64,6 +64,9 @@
     <string name="activity_summary">%1$s · %2$s</string>
     <!-- The assessment the owner read when they answered, kept with the record (SAW-028). -->
     <string name="activity_field_policy">Your rules when you answered</string>
+    <string name="activity_policy_rule_source">%1$s source: %2$s.</string>
+    <string name="activity_policy_daily_source">%1$s: %2$s. Source: %3$s.</string>
+    <string name="activity_policy_unreadable_sources">Unreadable rule documents: %1$s.</string>
     <string name="activity_policy_anyway">%1$s, and you went ahead anyway</string>
     <string name="activity_policy_uncovered">Nothing was checked for: %1$s.</string>
     <string name="activity_policy_unknown">This app has no name for what was recorded here.</string>

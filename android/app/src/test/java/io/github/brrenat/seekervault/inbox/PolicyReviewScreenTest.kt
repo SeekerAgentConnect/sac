@@ -20,16 +20,33 @@ import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.NOW
+import io.github.brrenat.seekervault.policy.Allowlist
+import io.github.brrenat.seekervault.policy.AssetLimits
+import io.github.brrenat.seekervault.policy.ConnectionAssetLimits
+import io.github.brrenat.seekervault.policy.ConnectionPolicyOverrides
+import io.github.brrenat.seekervault.policy.DailyCheckScope
+import io.github.brrenat.seekervault.policy.DailyTotal
+import io.github.brrenat.seekervault.policy.DailyTotals
+import io.github.brrenat.seekervault.policy.GlobalPolicy
+import io.github.brrenat.seekervault.policy.GlobalSpendScope
 import io.github.brrenat.seekervault.policy.PolicyAction
+import io.github.brrenat.seekervault.policy.PolicyAsset
 import io.github.brrenat.seekervault.policy.PolicyCheck
 import io.github.brrenat.seekervault.policy.PolicyCheckResult
 import io.github.brrenat.seekervault.policy.PolicyDecision
 import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.policy.RequestFacts
+import io.github.brrenat.seekervault.policy.RuleOverride
+import io.github.brrenat.seekervault.policy.RuleSource
+import io.github.brrenat.seekervault.policy.SpendScope
 import io.github.brrenat.seekervault.policy.assess
+import io.github.brrenat.seekervault.policy.evaluate
 import io.github.brrenat.seekervault.policy.noPolicy
+import io.github.brrenat.seekervault.policy.resolveEffectivePolicy
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.request.v1.Network
 import java.time.Instant
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -54,6 +71,7 @@ class PolicyReviewScreenTest {
         decision: PolicyDecision?,
         request: ActionRequest = ACK,
         acknowledged: Boolean = false,
+        facts: RequestFacts = RequestFacts.movesNothing(HOME.id, PolicyAction.Acknowledgement),
     ) = compose.setContent {
         SeekerVaultTheme {
             RequestDetailsScreen(
@@ -66,17 +84,20 @@ class PolicyReviewScreenTest {
                 onApprove = {},
                 onSendAgain = {},
                 onBack = {},
-                assessment = decision?.let { assessment(it) },
+                assessment = decision?.let { assessment(it, facts) },
                 acknowledged = acknowledged,
                 onAcknowledge = { ticks += it },
             )
         }
     }
 
-    private fun assessment(decision: PolicyDecision) =
+    private fun assessment(
+        decision: PolicyDecision,
+        facts: RequestFacts = RequestFacts.movesNothing(HOME.id, PolicyAction.Acknowledgement),
+    ) =
         RequestAssessment(
             decision,
-            RequestFacts.movesNothing(HOME.id, PolicyAction.Acknowledgement),
+            facts,
             Instant.parse("2026-09-11T12:00:00Z"),
         )
 
@@ -123,6 +144,125 @@ class PolicyReviewScreenTest {
         // A match asks for no word from the owner: there is nothing to overrule.
         compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).assertDoesNotExist()
         compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).performScrollTo().assertIsEnabled()
+    }
+
+    @Test
+    fun namesGlobalAndConnectionSourcesAndShowsBothDailyScopes() {
+        val asset = PolicyAsset.sol(Network.NETWORK_MAINNET)
+        val facts =
+            RequestFacts(
+                connectionId = HOME.id,
+                wallet = WALLET,
+                action = PolicyAction.Transfer,
+                movesValue = true,
+                asset = asset,
+                recipient = RECIPIENT,
+                programs = emptyList(),
+                amount = 2_500_000_000UL,
+                decimals = 9,
+                fullyRead = true,
+            )
+        val effective =
+            resolveEffectivePolicy(
+                HOME.id,
+                GlobalPolicy.default(NOW)
+                    .copy(
+                        actions = Allowlist.of(PolicyAction.Transfer),
+                        limits = mapOf(asset to AssetLimits(daily = 3_000_000_000UL)),
+                    ),
+                ConnectionPolicyOverrides.inheritAll(HOME.id, NOW)
+                    .copy(
+                        recipients = RuleOverride.Replace(Allowlist.of(RECIPIENT)),
+                        limits = mapOf(asset to ConnectionAssetLimits(daily = 5_000_000_000UL)),
+                    ),
+            )
+        val day = LocalDate.of(2026, 9, 11)
+        val decision =
+            evaluate(
+                effective,
+                facts,
+                DailyTotals(
+                    global =
+                        DailyTotal(
+                            GlobalSpendScope(WALLET, asset),
+                            day,
+                            1_000_000_000UL,
+                            500_000_000UL,
+                            1,
+                            1,
+                            0,
+                        ),
+                    connection =
+                        DailyTotal(
+                            SpendScope(HOME.id, WALLET, asset),
+                            day,
+                            500_000_000UL,
+                            0UL,
+                            1,
+                            0,
+                            0,
+                        ),
+                ),
+            )
+        show(decision, facts = facts)
+
+        check(PolicyCheck.Action)
+            .performScrollTo()
+            .assertTextContains(text(R.string.policy_source_global), substring = true)
+        check(PolicyCheck.Recipient)
+            .performScrollTo()
+            .assertTextContains(text(R.string.policy_source_connection), substring = true)
+        compose
+            .onNodeWithTag(InboxTags.policyDaily(DailyCheckScope.Global.code))
+            .performScrollTo()
+            .assertTextContains(text(R.string.policy_daily_global), substring = true)
+            .assertTextContains(text(R.string.policy_source_global), substring = true)
+            .assertTextContains("Confirmed: 1", substring = true)
+            .assertTextContains("Not yet settled: 0.5", substring = true)
+            .assertTextContains("Projected with this request: 4", substring = true)
+        compose
+            .onNodeWithTag(InboxTags.policyDaily(DailyCheckScope.Connection.code))
+            .performScrollTo()
+            .assertTextContains(text(R.string.policy_daily_connection), substring = true)
+            .assertTextContains(text(R.string.policy_source_connection), substring = true)
+            .assertTextContains("Projected with this request: 3", substring = true)
+        // The Stage 5 compatibility daily row is not duplicated beside the two scoped rows.
+        check(PolicyCheck.DailyLimit).assertDoesNotExist()
+    }
+
+    @Test
+    fun namesWhichStoredRuleDocumentsCouldNotBeRead() {
+        show(
+            noPolicy(
+                PolicyReason.PolicyUnreadable,
+                listOf(RuleSource.Global, RuleSource.ConnectionOverride),
+            )
+        )
+
+        compose
+            .onNodeWithTag(InboxTags.POLICY_REASON)
+            .performScrollTo()
+            .assertTextEquals(text(R.string.policy_unreadable_both))
+    }
+
+    @Test
+    fun namesAnUnreadableGlobalDocument() {
+        show(noPolicy(PolicyReason.PolicyUnreadable, listOf(RuleSource.Global)))
+
+        compose
+            .onNodeWithTag(InboxTags.POLICY_REASON)
+            .performScrollTo()
+            .assertTextEquals(text(R.string.policy_unreadable_global))
+    }
+
+    @Test
+    fun namesAnUnreadableConnectionDocument() {
+        show(noPolicy(PolicyReason.PolicyUnreadable, listOf(RuleSource.ConnectionOverride)))
+
+        compose
+            .onNodeWithTag(InboxTags.POLICY_REASON)
+            .performScrollTo()
+            .assertTextEquals(text(R.string.policy_unreadable_connection))
     }
 
     @Test
@@ -317,6 +457,7 @@ class PolicyReviewScreenTest {
         )
 
     private companion object {
+        const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
         const val RECIPIENT = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
         val ACK: ActionRequest =
             FakeConnectionGateway.request(HOME.id, createdAt = NOW.minusSeconds(60))

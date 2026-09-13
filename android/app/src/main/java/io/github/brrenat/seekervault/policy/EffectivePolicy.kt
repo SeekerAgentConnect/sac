@@ -2,11 +2,11 @@ package io.github.brrenat.seekervault.policy
 
 import io.github.brrenat.seekervault.connections.isConnectionId
 
-/** Where one effective rule came from. */
-enum class RuleSource {
-    Global,
-    ConnectionOverride,
-    NotConfigured,
+/** Where one effective rule came from. The code is stable when kept in an Activity snapshot. */
+enum class RuleSource(val code: String) {
+    Global("global"),
+    ConnectionOverride("connection"),
+    NotConfigured("not_configured"),
 }
 
 /**

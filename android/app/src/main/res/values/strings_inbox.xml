@@ -161,7 +161,7 @@
     <!-- What the owner\'s own rules make of the request (SAW-028). -->
     <string name="request_field_programs">Programs called</string>
     <string name="policy_review_heading">What your rules make of this</string>
-    <string name="policy_review_pending">Reading this connection\'s rules…</string>
+    <string name="policy_review_pending">Reading Global and connection rules, and this phone\'s Activity…</string>
     <string name="policy_status_passed">Matched — %1$s</string>
     <string name="policy_status_passed_plain">Matched</string>
     <string name="policy_status_failed">Outside the rules — %1$s</string>
@@ -169,6 +169,13 @@
     <string name="policy_status_unverified">Could not be checked — %1$s</string>
     <string name="policy_status_unverified_plain">Could not be checked</string>
     <string name="policy_status_not_configured">No rule set</string>
+    <string name="policy_check_with_source">%1$s · %2$s</string>
+    <string name="policy_daily_global">Global daily</string>
+    <string name="policy_daily_connection">Connection daily</string>
+    <string name="policy_daily_totals">Confirmed: %1$s. Not yet settled: %2$s. Projected with this request: %3$s.</string>
+    <string name="policy_unreadable_global">Global rules are stored and this app cannot read them, so no effective assessment can be made.</string>
+    <string name="policy_unreadable_connection">Connection rules are stored and this app cannot read them, so no effective assessment can be made.</string>
+    <string name="policy_unreadable_both">Global and connection rules are stored and this app cannot read them, so no effective assessment can be made.</string>
     <string name="policy_review_uncovered">Nothing was checked for: %1$s. Nothing above says anything about those.</string>
     <string name="policy_review_manual">Whatever this says, it approves nothing and stops nothing. Both verdicts need your approval here, and your wallet will ask you again.</string>
     <string name="policy_acknowledge">I have read the warnings above and want to go ahead anyway</string>

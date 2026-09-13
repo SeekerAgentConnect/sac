@@ -107,6 +107,39 @@ Both mutations were applied, run, observed failing, reverted, and followed by pa
 | **Use global** was incorrectly materialized as a local no-check override | 8 of 15 `PolicyEditorViewModelTest` cases failed across empty-document inheritance, mixed global/local resolution, per-request inheritance, daily reset, unreadable recovery, and saved-state distinctions |
 | Refreshing global context replaced the unsaved local draft with its stored copy | Both focused preservation checks failed: the ViewModel state test and the real-activity navigation/storage test |
 
+## SAW-046 — sourced review and fresh approval
+
+Automated on 2026-09-13 with Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1, Kotlin 2.4.20, and the build's pinned Temurin 21.0.12.1 toolchain. Gradle was launched by Oracle JDK 19.0.2. The installed Android SDK was supplied through `ANDROID_HOME`; no `local.properties` or other machine-specific file was written.
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS — Prettier, Buf format/lint, ESLint, both TypeScript type checks, 396 sidecar tests, and 29 test-agent tests |
+| `pnpm test:hello` | PASS — all 9 Stage 1 simulated-device acceptance cases |
+| `pnpm test:queue` | PASS — all 7 Stage 2 two-sidecar acceptance cases |
+| `ANDROID_HOME=… pnpm check:android` | PASS — Spotless, all 729 Android unit tests, Android lint, debug APK, and instrumentation APK |
+| `pnpm check:generated` | PASS — generated protocol code and fixtures are current; this ticket changes no protocol |
+| `git diff --check` and documentation Prettier | PASS |
+
+The evaluator, ViewModel, Compose, Activity storage/details, and existing boundary tests cover:
+
+- Global, Connection override, and Not configured source labels for every effective check, including a connection with no override inheriting configured global rules;
+- independent Global daily and Connection daily rows with confirmed, unresolved, and projected totals, including global-only, connection-only, both-warning, and neither-configured cases;
+- separately named unreadable global, connection, and both-document states, alongside accurate uncovered checks;
+- complete Activity reloads and both policy reads on review, new preparation, foreground return, and the final affirmative check;
+- a same-looking global edit while transfer approval waits for the wallet lock, a connection reset to inheritance, and a re-preparation all invalidating consent before the sidecar or wallet is asked;
+- cross-connection unresolved exposure, confirmation, and chain failure refreshing both scoped daily compositions and clearing affected consent;
+- both daily warnings using the existing one deliberate override step, while a matching verdict remains manual, Reject needs no override, and failed transaction verification cannot be overruled;
+- stable rule-source and daily scope/source/status/reason codes surviving later rule edits, additive decoding of old Activity snapshots, and no allowlist, threshold, counter, policy decision, or policy reason in a sidecar or wallet payload.
+
+### Deliberate breaks
+
+Both mutations were applied, run, observed failing, reverted, and followed by a passing focused run:
+
+| Break | Expected failure observed |
+| --- | --- |
+| Warning consent ignored the applicable effective policy | `InboxViewModelTest.aGlobalEditWithTheSameRenderedWarningStopsAfterTheWalletLockWait` failed at its `RulesChanged` assertion, proving a same-looking global edit would otherwise pass the stale assessment guard |
+| Assessment reused the process's Activity snapshot instead of reloading disk | Both focused cross-connection tests failed: newly unresolved exposure did not stop approval, and foreground confirmation/failure did not clear consent |
+
 ## Physical-Seeker checks
 
-**NOT RUN.** SAW-045 adds owner-facing policy screens, so its large-text, TalkBack, navigation, and comprehension checks still require the owner's physical Seeker. Robolectric tests and successful APK builds do not count as a physical-device pass. Stage 5.1's end-to-end ticket owns that device walkthrough. SAW-043 and SAW-044 themselves changed models, storage, evaluation, and accounting without new owner-facing UI.
+**NOT RUN.** SAW-045 and SAW-046 add owner-facing policy screens and review details, so their large-text, TalkBack, navigation, and comprehension checks still require the owner's physical Seeker. Robolectric tests and successful APK builds do not count as a physical-device pass. Stage 5.1's end-to-end ticket owns that device walkthrough. SAW-043 and SAW-044 themselves changed models, storage, evaluation, and accounting without new owner-facing UI.

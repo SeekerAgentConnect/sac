@@ -71,8 +71,8 @@ data class DailyTotals(
  * The verdict on [facts] under the resolved global and connection rules.
  *
  * Rule source metadata follows every effective check. The two daily checks are retained in global,
- * then connection order even when the first one fails; [checks] also carries their conjunction as
- * the Stage 5-compatible daily row until SAW-046 renders the scoped rows directly.
+ * then connection order even when the first one fails; [checks] also carries their conjunction as a
+ * Stage 5 compatibility value, while SAW-046 renders the scoped rows directly.
  */
 fun evaluate(
     policy: EffectivePolicy,
@@ -583,17 +583,19 @@ fun assetLabel(asset: PolicyAsset): String =
 /**
  * The phone's assessments, made from what is stored right now.
  *
- * Nothing is cached and nothing is precomputed: every call re-reads the connection's rules and the
- * app's own records, so asking again immediately before the owner proceeds is the whole of
- * re-evaluating (docs/policy.md#re-evaluation). A verdict read a minute ago is never the one acted
- * on, because there is no stored verdict to act on.
+ * No policy or verdict is cached: every call re-reads both rule documents and reads the current
+ * Activity snapshot supplied by the caller. InboxViewModel reloads that snapshot from disk before
+ * each review, so asking again immediately before the owner proceeds is the whole of re-evaluating
+ * (docs/policy.md#re-evaluation). A verdict read a minute ago is never the one acted on, because
+ * there is no stored verdict to act on.
  *
  * It reads. It writes nothing, answers nothing, and reaches no wallet and no server.
  */
 class PolicyEvaluator(
     private val policies: PolicyStore,
     /**
-     * The owner's own records, read afresh each time: the counters are what this app did.
+     * The owner's own current record snapshot, requested afresh each time: the counters are what
+     * this app did. The request-review caller reloads it from disk before invoking the evaluator.
      *
      * **Null when the history isn't known** — it hasn't been read off the disk yet, or reading it
      * failed. That is not the same as a day with nothing in it, and the difference decides whether
@@ -625,16 +627,32 @@ class PolicyEvaluator(
     }
 
     /** The verdict on [facts], under the rules and the records as they stand now. */
-    fun evaluate(facts: RequestFacts): PolicyDecision {
+    fun evaluate(facts: RequestFacts): PolicyDecision = evaluateCurrent(facts).decision
+
+    /**
+     * The verdict and the exact effective rules that produced it.
+     *
+     * [applicablePolicy] is retained only in the open review, to bind warning consent to the rules
+     * the owner actually read. It is never stored in Activity and never sent to a sidecar. Limits
+     * for another asset are omitted because they cannot affect this request; when the asset itself
+     * could not be established, every limit remains potentially applicable.
+     */
+    fun evaluateCurrent(facts: RequestFacts): CurrentPolicyEvaluation {
         // Both documents are read on every evaluation. Missing means inheritance; unreadable means
         // the effective policy cannot be established and must never fall back to a passing subset.
         val storedGlobal = policies.getGlobal()
         val storedConnection = policies.getOverrides(facts.connectionId)
-        if (
-            storedGlobal is StoredGlobalPolicy.Unreadable ||
-                storedConnection is StoredConnectionOverrides.Unreadable
-        ) {
-            return noPolicy(PolicyReason.PolicyUnreadable)
+        val unreadable = buildList {
+            if (storedGlobal is StoredGlobalPolicy.Unreadable) add(RuleSource.Global)
+            if (storedConnection is StoredConnectionOverrides.Unreadable) {
+                add(RuleSource.ConnectionOverride)
+            }
+        }
+        if (unreadable.isNotEmpty()) {
+            return CurrentPolicyEvaluation(
+                decision = noPolicy(PolicyReason.PolicyUnreadable, unreadable),
+                applicablePolicy = null,
+            )
         }
         val global = (storedGlobal as? StoredGlobalPolicy.Policy)?.policy
         val connection = (storedConnection as? StoredConnectionOverrides.Policy)?.overrides
@@ -677,6 +695,20 @@ class PolicyEvaluator(
                         ),
                 )
             }
-        return evaluate(effective, facts, totals)
+        return CurrentPolicyEvaluation(
+            decision = evaluate(effective, facts, totals),
+            applicablePolicy = effective.applicableTo(facts),
+        )
     }
+}
+
+/** One fresh policy read, including the effective rules warning consent is bound to. */
+data class CurrentPolicyEvaluation(
+    val decision: PolicyDecision,
+    val applicablePolicy: EffectivePolicy?,
+)
+
+private fun EffectivePolicy.applicableTo(facts: RequestFacts): EffectivePolicy {
+    val asset = facts.limitedAsset ?: return this
+    return copy(limits = mapOf(asset to limitsFor(asset)))
 }

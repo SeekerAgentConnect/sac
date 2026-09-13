@@ -2,7 +2,7 @@
 
 The global defaults and connection overrides the owner sets, and how a request is assessed against their effective rules. The rules live on the phone; the assessment is something the owner reads. Neither reaches an agent, and neither decides anything on its own.
 
-Stage 5 built the per-connection system in five steps: SAW-025 defined it, SAW-026 evaluated it, SAW-027 added the editor, SAW-028 put the assessment in review, and SAW-029 exercised the whole path. Stage 5.1 extends that system rather than adding another policy engine. **SAW-043 added the global and override documents, their migration, and the pure effective-policy resolver. SAW-044 feeds those effective rules and both daily scopes into evaluation. SAW-045 exposes both persisted scopes through the owner-facing editor without collapsing inheritance.**
+Stage 5 built the per-connection system in five steps: SAW-025 defined it, SAW-026 evaluated it, SAW-027 added the editor, SAW-028 put the assessment in review, and SAW-029 exercised the whole path. Stage 5.1 extends that system rather than adding another policy engine. **SAW-043 added the global and override documents, their migration, and the pure effective-policy resolver. SAW-044 feeds those effective rules and both daily scopes into evaluation. SAW-045 exposes both persisted scopes through the owner-facing editor without collapsing inheritance. SAW-046 carries effective sources and daily scopes into review, binds warning consent to the exact rules and preparation, and preserves that context in Activity without copying a policy.**
 
 ## What a policy is
 
@@ -218,11 +218,11 @@ This is the same rule as everywhere else here: a fact the phone couldn't establi
 
 ### Re-evaluation
 
-There is no stored verdict. `PolicyEvaluator` (`policy/PolicyEvaluation.kt`) re-reads the global document, the connection override document and every Activity record required by an applicable daily threshold on each call, then resolves and evaluates them. An unreadable global document never falls back to local rules, and an unreadable connection document never falls back to inheritance. Asking again immediately before the owner proceeds is the whole of re-evaluating — and a verdict read a minute ago is never the one acted on, because there is nothing kept to act on.
+There is no stored verdict. A review reloads Activity from disk, then `PolicyEvaluator` (`policy/PolicyEvaluation.kt`) re-reads the global document and the connection override document and resolves and evaluates them against that complete history snapshot. An unreadable global document never falls back to local rules, and an unreadable connection document never falls back to inheritance; the review names Global, Connection override, or both as unreadable. Assessments are serialized, and a preparation that changes during a disk read causes another complete read instead of letting an older result replace the newer one.
 
 That matters at three moments: the policy may have been edited since the review opened, the day's counters may have moved, and a transfer is re-prepared as its blockhash expires. Each new preparation is new bytes and is read again from scratch.
 
-The review reads again when the request is opened, whenever a preparation has been read, when the app comes back to the front, and once more at the moment the owner answers ([the review](#read-again-before-the-answer-not-after)).
+The review reads again when the request is opened, whenever a preparation has been read, when the app comes back to the front, and once more at the moment the owner answers ([the review](#read-again-before-the-answer-not-after)). Foreground work first resolves any wallet interaction that ended while the app was away, so a newly confirmed, unresolved, or failed record is part of the assessment that follows. A transfer's last read happens after it obtains the one wallet-interaction lock — where another wallet visit may have made it wait — and before either the sidecar or wallet is asked.
 
 ## The editor
 
@@ -258,7 +258,7 @@ The editor does not open a blank form over a `StoredPolicy.Unreadable`. It says 
 
 The order on that screen is the order of trust, and the assessment is last on purpose. The facts above it come from the transaction's own bytes. The assessment is the owner's own note to themselves about what they expected this agent to ask for, and it is the weakest thing on the screen: it cannot make anything executable, and it cannot stop anything.
 
-Every check is named with what it read and what became of it — matched, outside the rules, could not be checked, or no rule set — and the checks nothing covered are named too, so `ALLOWED` is never read as a statement about a parameter nobody wrote a rule for. Under every verdict is the line that never changes: both verdicts still need the owner's hand on the wallet.
+Every effective check is named with its source — Global, Connection override, or Not configured — what it read, and what became of it: matched, outside the rules, could not be checked, or no rule set. Global daily and Connection daily are separate rows with their own source and result, and each shows the confirmed amount, unresolved amount, and total projected with this request. The checks nothing covered are named too, so `ALLOWED` is never read as a statement about a parameter nobody wrote a rule for. Under every verdict is the line that never changes: both verdicts still need the owner's hand on the wallet.
 
 Nothing is said by colour alone. A reader who sees no colour, or who hears the screen rather than seeing it, is told the same things in the same words.
 
@@ -266,7 +266,7 @@ Nothing is said by colour alone. A reader who sees no colour, or who hears the s
 
 A warning the owner can tap straight past is a warning that teaches them to tap past warnings. So an affirmative answer to a request the assessment warns about takes a deliberate step: a checkbox saying they have read the warnings and want to go ahead anyway, next to the button that does it, and the button says what it would be doing. Rejecting never asks for anything — saying no is the safe answer.
 
-**What they agree to is the assessment, not the request.** The tick is bound to a `Consent` — the exact `PolicyDecision` it was given for *and* the `RequestFacts` it was about. Edited rules or a moved counter change the decision; a transaction prepared again changes the facts. Either is a different thing to agree to: the tick goes, and the reasons are there to be read again.
+**What they agree to is the assessment, not the request.** The tick is bound to a `Consent`: the exact `PolicyDecision`, including both daily totals and results; the effective rules applicable to this request; the `RequestFacts`; and the exact prepared transaction, including its bytes, version and content hash. These effective rules live only in the open review and are neither stored nor sent. An edit that produces the same displayed result, a local reset to inheritance, a moved counter, or a transaction prepared again is still a different thing to agree to: the tick goes, and the reasons are there to be read again.
 
 **Both halves, because the two don't always change together.** A rule the owner edits can leave this request's every check exactly as it was, and a transaction prepared again can carry another blockhash, another version, or another priority fee while what the rules make of it is word for word the same — and a raised priority fee is real value leaving the wallet that no threshold counts ([known limits](#known-limits)). Comparing decisions alone would carry a tick given for one preparation over to another. What the owner said yes to is *this assessment of this preparation*.
 
@@ -276,15 +276,15 @@ The moment an assessment was made is deliberately not part of consent. The same 
 
 ### Read again before the answer, not after
 
-The screen's assessment is a snapshot of a reading. The answer does not act on it: `InboxViewModel` reads the rules and the records again at the moment the owner answers, compares what comes back with what they were shown, and stops if it differs — nothing is answered, no wallet is opened, and the review on screen is replaced by the one that stands now. That is what makes a stale review unusable rather than merely unlikely.
+The screen's assessment is a snapshot of a reading. The answer does not act on it: `InboxViewModel` reloads Activity and both rule documents at the moment the owner answers and compares the decision, applicable effective rules, facts, and preparation with what they were shown. A difference stops before an answer or wallet interaction, clears warning consent, and replaces the review on screen. For a transfer this final comparison runs after waiting for the wallet lock, which closes the interval in which another request's wallet visit can change Activity. That is what makes a stale review unusable rather than merely unlikely.
 
 The advisory check comes second, always. A preparation that failed this phone's own inspection was refused before any of it ran ([`security.md`](security.md#verification-versus-advisory-rules)).
 
 ### The stored snapshot
 
-The assessment the owner read is kept with the record of what they did (`activity/ActivityRecord.kt`, `ReviewedPolicy`): the verdict's code, the reason codes, the codes of the checks nothing covered, when it was made, and whether they went ahead with a warning in front of them.
+The assessment the owner read is kept with the record of what they did (`activity/ActivityRecord.kt`, `ReviewedPolicy`): the verdict's code, the reason codes, the codes of the checks nothing covered, the source code for each effective check, each daily check's scope/source/status/reason codes, the scope codes of unreadable documents, when it was made, and whether they went ahead with a warning in front of them. The fields are additive: a Stage 5 Activity record that has none of this source metadata remains readable and keeps the assessment it already held.
 
-**It is codes, and never rules.** No threshold, no address, and no list is written into the history: the rules are stored once, in the one place they belong, and a snapshot that copied them would be a second copy to keep in step and a second thing to leak. Codes also mean what a code means can be said better later without the record having to be rewritten, and a code a later version invented is left out of the reading rather than shown as itself.
+**It is codes, and never rules or counter values.** No threshold, amount total, address, and no list is written into the history: the rules are stored once, in the one place they belong, and a snapshot that copied them would be a second copy to keep in step and a second thing to leak. Codes also mean what a code means can be said better later without the record having to be rewritten, and a code a later version invented is left out of the reading rather than shown as itself.
 
 Nothing reads it back to decide anything. It is written when the owner answers, carried forward unchanged when the record is written again — a status checked ten times later does not know what the review said, and must not take it away — and shown on Activity details.
 

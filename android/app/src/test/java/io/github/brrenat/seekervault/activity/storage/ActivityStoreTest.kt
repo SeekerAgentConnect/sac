@@ -69,7 +69,34 @@ class ActivityStoreTest {
         assertEquals(listOf("over_daily_limit"), stored.reasons)
         assertEquals(listOf("program"), stored.notChecked)
         assertTrue(stored.approvedAnyway)
+        assertEquals("global", stored.ruleSources.first().source)
+        assertEquals("global", stored.dailyChecks.single().scope)
+        assertEquals("failed", stored.dailyChecks.single().status)
         assertEquals(approved, ActivityStore(dir).get(CONNECTION, REQUEST))
+    }
+
+    @Test
+    fun readsAnOlderAssessmentSnapshotWithoutSourceMetadata() {
+        File(dir, CONNECTION).mkdirs()
+        File(dir, "$CONNECTION/$REQUEST.json")
+            .writeText(
+                """
+                {"version":1,"connectionId":"$CONNECTION","requestId":"$REQUEST",
+                 "source":"Hermes","serverHost":"sidecar.example:8443","kind":"Acknowledgement",
+                 "answeredAt":"2026-09-11T12:00:00.250Z","recordedAt":"2026-09-11T12:00:05.250Z",
+                 "outcome":"Acknowledged","policy":{"assessment":"under_restrictions",
+                 "reasons":["recipient_not_allowed"],"notChecked":["program"],
+                 "assessedAt":"2026-09-11T11:59:30.250Z","approvedAnyway":true}}
+                """
+                    .trimIndent()
+            )
+
+        val policy = checkNotNull(store.get(CONNECTION, REQUEST)?.policy)
+
+        assertEquals(listOf("recipient_not_allowed"), policy.reasons)
+        assertEquals(emptyList<Any>(), policy.ruleSources)
+        assertEquals(emptyList<Any>(), policy.dailyChecks)
+        assertEquals(emptyList<Any>(), policy.unreadableSources)
     }
 
     @Test

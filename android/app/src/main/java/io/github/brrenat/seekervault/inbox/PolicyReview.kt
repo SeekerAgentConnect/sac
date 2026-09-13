@@ -17,11 +17,17 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.policy.DailyCheckScope
+import io.github.brrenat.seekervault.policy.DailyPolicyCheck
+import io.github.brrenat.seekervault.policy.PolicyCheck
 import io.github.brrenat.seekervault.policy.PolicyCheckResult
 import io.github.brrenat.seekervault.policy.PolicyCheckStatus
+import io.github.brrenat.seekervault.policy.PolicyReason
+import io.github.brrenat.seekervault.policy.RuleSource
 import io.github.brrenat.seekervault.policy.assessmentText
 import io.github.brrenat.seekervault.policy.checkText
 import io.github.brrenat.seekervault.policy.reasonText
+import io.github.brrenat.seekervault.transactions.formatBaseUnits
 
 /**
  * What the owner's own rules made of the request, on the screen where they answer it (SAW-028,
@@ -73,14 +79,26 @@ fun PolicyReview(assessment: RequestAssessment?, modifier: Modifier = Modifier) 
         // verdict itself rather than any one check's, so it stands above them.
         decision.reason?.let { reason ->
             Text(
-                stringResource(reasonText(reason)),
+                if (
+                    reason == PolicyReason.PolicyUnreadable &&
+                        decision.unreadableSources.isNotEmpty()
+                ) {
+                    stringResource(unreadableText(decision.unreadableSources))
+                } else {
+                    stringResource(reasonText(reason))
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 modifier =
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                         .testTag(InboxTags.POLICY_REASON),
             )
         }
-        decision.checks.forEach { Check(it) }
+        decision.checks
+            .filterNot {
+                decision.dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit
+            }
+            .forEach { Check(it) }
+        decision.dailyChecks.forEach { DailyCheck(it, assessment.facts.decimals) }
         // Coverage, not compliance: ALLOWED is never a statement about a parameter nobody wrote a
         // rule for, so the ones nothing covered are named.
         if (decision.notChecked.isNotEmpty()) {
@@ -105,26 +123,91 @@ fun PolicyReview(assessment: RequestAssessment?, modifier: Modifier = Modifier) 
 /** One check: what it is about, what became of it, and what it read. */
 @Composable
 private fun Check(result: PolicyCheckResult) {
-    val detail = result.detail
-    val status =
-        when (result.status) {
-            PolicyCheckStatus.Passed ->
-                if (detail == null) stringResource(R.string.policy_status_passed_plain)
-                else stringResource(R.string.policy_status_passed, detail)
-            PolicyCheckStatus.Failed ->
-                if (detail == null) stringResource(R.string.policy_status_failed_plain)
-                else stringResource(R.string.policy_status_failed, detail)
-            PolicyCheckStatus.Unverified ->
-                if (detail == null) stringResource(R.string.policy_status_unverified_plain)
-                else stringResource(R.string.policy_status_unverified, detail)
-            PolicyCheckStatus.NotConfigured -> stringResource(R.string.policy_status_not_configured)
-        }
+    val name = stringResource(checkText(result.check))
     ListItem(
-        overlineContent = { Text(stringResource(checkText(result.check))) },
-        headlineContent = { Text(status) },
+        overlineContent = { Text(checkName(name, result.source, result.status)) },
+        headlineContent = { Text(statusText(result)) },
         modifier = Modifier.testTag(InboxTags.policyCheck(result.check)),
     )
 }
+
+/** The two daily scopes never collapse into one row: either one can independently warn. */
+@Composable
+private fun DailyCheck(check: DailyPolicyCheck, decimals: Int) {
+    val name =
+        stringResource(
+            when (check.scope) {
+                DailyCheckScope.Global -> R.string.policy_daily_global
+                DailyCheckScope.Connection -> R.string.policy_daily_connection
+            }
+        )
+    val total = check.total
+    val projected = check.projected
+    ListItem(
+        overlineContent = { Text(checkName(name, check.result.source, check.result.status)) },
+        headlineContent = { Text(statusText(check.result)) },
+        supportingContent =
+            if (total != null && projected != null) {
+                {
+                    Text(
+                        stringResource(
+                            R.string.policy_daily_totals,
+                            formatBaseUnits(total.confirmed, decimals),
+                            formatBaseUnits(total.unresolved, decimals),
+                            formatBaseUnits(projected, decimals),
+                        )
+                    )
+                }
+            } else null,
+        modifier = Modifier.testTag(InboxTags.policyDaily(check.scope.code)),
+    )
+}
+
+@Composable
+private fun checkName(
+    name: String,
+    source: RuleSource,
+    status: PolicyCheckStatus,
+): String {
+    // A legacy flat decision did not carry source metadata. Do not call that "Not configured"
+    // when its check ran; current effective decisions always carry Global or Connection.
+    if (source == RuleSource.NotConfigured && status != PolicyCheckStatus.NotConfigured) return name
+    return stringResource(R.string.policy_check_with_source, name, sourceName(source))
+}
+
+@Composable
+private fun sourceName(source: RuleSource): String =
+    stringResource(
+        when (source) {
+            RuleSource.Global -> R.string.policy_source_global
+            RuleSource.ConnectionOverride -> R.string.policy_source_connection
+            RuleSource.NotConfigured -> R.string.policy_source_none
+        }
+    )
+
+@Composable
+private fun statusText(result: PolicyCheckResult): String {
+    val detail = result.detail
+    return when (result.status) {
+        PolicyCheckStatus.Passed ->
+            if (detail == null) stringResource(R.string.policy_status_passed_plain)
+            else stringResource(R.string.policy_status_passed, detail)
+        PolicyCheckStatus.Failed ->
+            if (detail == null) stringResource(R.string.policy_status_failed_plain)
+            else stringResource(R.string.policy_status_failed, detail)
+        PolicyCheckStatus.Unverified ->
+            if (detail == null) stringResource(R.string.policy_status_unverified_plain)
+            else stringResource(R.string.policy_status_unverified, detail)
+        PolicyCheckStatus.NotConfigured -> stringResource(R.string.policy_status_not_configured)
+    }
+}
+
+private fun unreadableText(sources: List<RuleSource>): Int =
+    when (sources.toSet()) {
+        setOf(RuleSource.Global) -> R.string.policy_unreadable_global
+        setOf(RuleSource.ConnectionOverride) -> R.string.policy_unreadable_connection
+        else -> R.string.policy_unreadable_both
+    }
 
 /**
  * The step between a warning and an affirmative answer (SAW-028).

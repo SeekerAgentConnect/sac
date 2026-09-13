@@ -72,9 +72,10 @@ class SeekerVaultApplication : Application() {
     val policyStore: PolicyStore by lazy { PolicyStore(File(filesDir, "policies")) }
 
     /**
-     * What the rules make of a request (docs/policy.md#re-evaluation). It caches nothing: every
-     * assessment re-reads the connection's rules and the owner's own records, so the verdict on
-     * screen is always one that was just made. It reads, and does nothing else.
+     * What the rules make of a request (docs/policy.md#re-evaluation). It caches no policy or
+     * verdict: every evaluation reads both rule documents and uses the complete Activity snapshot
+     * that InboxViewModel reloaded from disk immediately beforehand. It reads, and does nothing
+     * else.
      */
     val policyEvaluator: PolicyEvaluator by lazy {
         PolicyEvaluator(

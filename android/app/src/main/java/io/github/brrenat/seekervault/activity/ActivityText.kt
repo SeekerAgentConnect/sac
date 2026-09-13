@@ -4,6 +4,9 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.policy.DailyCheckScope
+import io.github.brrenat.seekervault.policy.PolicyCheckStatus
+import io.github.brrenat.seekervault.policy.RuleSource
 import io.github.brrenat.seekervault.policy.assessmentOf
 import io.github.brrenat.seekervault.policy.assessmentText
 import io.github.brrenat.seekervault.policy.checkOf
@@ -140,5 +143,59 @@ fun policyText(policy: ReviewedPolicy): String {
     if (uncovered.isNotEmpty()) {
         lines += stringResource(R.string.activity_policy_uncovered, uncovered.joinToString())
     }
+    for (stored in policy.ruleSources) {
+        val check = checkOf(stored.check) ?: continue
+        val source = RuleSource.entries.firstOrNull { it.code == stored.source } ?: continue
+        lines +=
+            stringResource(
+                R.string.activity_policy_rule_source,
+                stringResource(checkText(check)),
+                reviewedSourceText(source),
+            )
+    }
+    for (stored in policy.dailyChecks) {
+        val scope = DailyCheckScope.entries.firstOrNull { it.code == stored.scope } ?: continue
+        val source = RuleSource.entries.firstOrNull { it.code == stored.source } ?: continue
+        val status = PolicyCheckStatus.entries.firstOrNull { it.code == stored.status } ?: continue
+        lines +=
+            stringResource(
+                R.string.activity_policy_daily_source,
+                stringResource(
+                    if (scope == DailyCheckScope.Global) R.string.policy_daily_global
+                    else R.string.policy_daily_connection
+                ),
+                reviewedStatusText(status),
+                reviewedSourceText(source),
+            )
+    }
+    val unreadable =
+        policy.unreadableSources.mapNotNull { code ->
+            RuleSource.entries.firstOrNull { it.code == code }?.let { reviewedSourceText(it) }
+        }
+    if (unreadable.isNotEmpty()) {
+        lines +=
+            stringResource(R.string.activity_policy_unreadable_sources, unreadable.joinToString())
+    }
     return lines.joinToString("\n")
 }
+
+@Composable
+private fun reviewedSourceText(source: RuleSource): String =
+    stringResource(
+        when (source) {
+            RuleSource.Global -> R.string.policy_source_global
+            RuleSource.ConnectionOverride -> R.string.policy_source_connection
+            RuleSource.NotConfigured -> R.string.policy_source_none
+        }
+    )
+
+@Composable
+private fun reviewedStatusText(status: PolicyCheckStatus): String =
+    stringResource(
+        when (status) {
+            PolicyCheckStatus.Passed -> R.string.policy_status_passed_plain
+            PolicyCheckStatus.Failed -> R.string.policy_status_failed_plain
+            PolicyCheckStatus.Unverified -> R.string.policy_status_unverified_plain
+            PolicyCheckStatus.NotConfigured -> R.string.policy_status_not_configured
+        }
+    )
