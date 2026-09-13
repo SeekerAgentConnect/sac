@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,7 +76,6 @@ fun PendingRequestsScreen(
     onRefresh: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    warningRequests: Set<RequestKey> = emptySet(),
     onReject: (RequestKey) -> Unit = {},
     inSheet: Boolean = false,
 ) {
@@ -197,7 +197,7 @@ fun PendingRequestsScreen(
                         request = it,
                         source = labels[it.ref.connectionId],
                         now = now,
-                        warning = it.key in warningRequests,
+                        assessment = state.assessments[it.key],
                         onOpen = onOpen,
                         onReject = onReject,
                     )
@@ -284,7 +284,7 @@ private fun RequestItem(
     request: ActionRequest,
     source: String?,
     now: Instant,
-    warning: Boolean,
+    assessment: RequestAssessment?,
     onOpen: (RequestKey) -> Unit,
     onReject: (RequestKey) -> Unit,
 ) {
@@ -350,18 +350,34 @@ private fun RequestItem(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                val allowed = assessment?.decision?.allowed == true
+                val warningCount =
+                    assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1) ?: 0
                 Text(
-                    stringResource(
-                        if (warning) R.string.request_warning_badge else R.string.request_in_rules
-                    ),
+                    when {
+                        warningCount > 0 ->
+                            pluralStringResource(
+                                R.plurals.request_warning_count,
+                                warningCount,
+                                warningCount,
+                            )
+                        allowed -> stringResource(R.string.request_in_rules)
+                        else -> stringResource(R.string.request_not_checked)
+                    },
                     color =
-                        if (warning) MaterialTheme.colorScheme.onTertiaryContainer
-                        else MaterialTheme.colorScheme.onPrimaryContainer,
+                        when {
+                            warningCount > 0 -> MaterialTheme.colorScheme.onTertiaryContainer
+                            allowed -> MaterialTheme.colorScheme.onPrimaryContainer
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     style = MaterialTheme.typography.labelSmall,
                     modifier =
                         Modifier.background(
-                                if (warning) MaterialTheme.colorScheme.tertiaryContainer
-                                else MaterialTheme.colorScheme.primaryContainer,
+                                when {
+                                    warningCount > 0 -> MaterialTheme.colorScheme.tertiaryContainer
+                                    allowed -> MaterialTheme.colorScheme.primaryContainer
+                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
                                 RoundedCornerShape(8.dp),
                             )
                             .padding(horizontal = 10.dp, vertical = 5.dp),

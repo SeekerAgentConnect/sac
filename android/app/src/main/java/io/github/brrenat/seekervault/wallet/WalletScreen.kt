@@ -2,7 +2,6 @@ package io.github.brrenat.seekervault.wallet
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
@@ -190,10 +191,12 @@ private fun NetworkChoice(state: WalletUiState, onChoose: (WalletNetwork) -> Uni
                                 if (selected) MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.surfaceContainerHighest
                             )
-                            .clickable(
+                            .selectable(
+                                selected = selected,
                                 enabled = !state.busy,
                                 indication = null,
                                 interactionSource = remember { MutableInteractionSource() },
+                                role = Role.RadioButton,
                                 onClick = { onChoose(network) },
                             )
                             .padding(horizontal = 14.dp)

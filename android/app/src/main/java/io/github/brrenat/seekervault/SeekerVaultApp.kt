@@ -102,7 +102,6 @@ fun SeekerVaultApp(
             }
         }
     }
-    BackHandler(enabled = stack.size > 1) { pop() }
     val state by connections.state.collectAsStateWithLifecycle()
     val inboxState by inbox.state.collectAsStateWithLifecycle()
     val walletState by wallet.state.collectAsStateWithLifecycle()
@@ -111,6 +110,9 @@ fun SeekerVaultApp(
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
     val root = stack.first()
     val route = stack.last()
+    BackHandler(enabled = stack.size > 1 || root != Routes.CONNECTIONS) {
+        if (stack.size > 1) pop() else stack = listOf(Routes.CONNECTIONS)
+    }
     LaunchedEffect(promotedRoute) {
         if (promotedRoute != null) {
             delay(320)
@@ -166,8 +168,7 @@ fun SeekerVaultApp(
                     onWallet = { stack = listOf(Routes.WALLET) },
                     onGlobalRules = { push(Routes.GLOBAL_POLICY) },
                     requests = pending,
-                    warningRequests =
-                        inboxState.assessments.filterValues { it.decision.warns }.keys,
+                    requestAssessments = inboxState.assessments,
                     onOpenRequest = {
                         push("${Routes.REQUEST}${it.connectionId}/${it.requestId}")
                     },
@@ -206,8 +207,6 @@ fun SeekerVaultApp(
                     onRefresh = { inbox.refresh(null) },
                     onBack = { stack = listOf(Routes.CONNECTIONS) },
                     modifier = rootModifier,
-                    warningRequests =
-                        inboxState.assessments.filterValues { it.decision.warns }.keys,
                     onReject = {
                         inbox.answer(
                             it,
@@ -357,8 +356,6 @@ fun SeekerVaultApp(
                                 )
                             },
                             onBack = pop,
-                            warningRequests =
-                                inboxState.assessments.filterValues { it.decision.warns }.keys,
                             onReject = {
                                 inbox.answer(
                                     it,

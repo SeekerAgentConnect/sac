@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.inbox
 
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -8,6 +10,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
@@ -23,6 +26,11 @@ import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.NOW
+import io.github.brrenat.seekervault.policy.PolicyAction
+import io.github.brrenat.seekervault.policy.PolicyCheck
+import io.github.brrenat.seekervault.policy.PolicyCheckResult
+import io.github.brrenat.seekervault.policy.RequestFacts
+import io.github.brrenat.seekervault.policy.assess
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
 import io.github.brrenat.seekervault.request.v1.ConfirmationLevel
@@ -38,6 +46,7 @@ import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -60,6 +69,7 @@ class RequestDetailsScreenTest {
         wallet: SelectedWallet? = null,
         signingProblem: SigningProblem? = null,
         checking: Boolean = false,
+        assessment: RequestAssessment? = null,
     ) = compose.setContent {
         SeekerVaultTheme {
             RequestDetailsScreen(
@@ -76,6 +86,7 @@ class RequestDetailsScreenTest {
                 signingProblem = signingProblem,
                 checking = checking,
                 onCheckStatus = { checks++ },
+                assessment = assessment,
             )
         }
     }
@@ -93,8 +104,15 @@ class RequestDetailsScreenTest {
         compose
             .onNodeWithTag(InboxTags.NOTE)
             .assertTextContains("Nightly release", substring = true)
-        // Technical IDs are deliberately absent from the compact owner-facing review.
-        compose.onNodeWithTag(InboxTags.field("requestId")).assertDoesNotExist()
+        compose
+            .onNodeWithTag(InboxTags.field("server"))
+            .assertTextContains(HOME.serverUrl, substring = true)
+        compose
+            .onNodeWithTag(InboxTags.field("connectionId"))
+            .assertTextContains(HOME.id, substring = true)
+        compose
+            .onNodeWithTag(InboxTags.field("requestId"))
+            .assertTextContains(REQUEST.ref.requestId, substring = true)
         compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).performClick()
         compose.onNodeWithTag(InboxTags.REJECT).performClick()
         assertEquals(listOf(Answer.Acknowledge, Answer.Reject), answers)
@@ -161,7 +179,7 @@ class RequestDetailsScreenTest {
 
     @Test
     fun showsTheWholeMessageTheWalletWouldSignAndWhoWouldSignIt() {
-        show(MESSAGE, wallet = SELECTED)
+        show(MESSAGE, wallet = SELECTED, assessment = allowedAssessment(MESSAGE))
         compose
             .onNodeWithTag(InboxTags.MESSAGE, useUnmergedTree = true)
             .assertTextEquals("Sign in to Example\u240D\u240A\nNonce: 7\u2409x")
@@ -174,6 +192,30 @@ class RequestDetailsScreenTest {
         // Invisible characters are called out, and a signature is never a payment.
         compose.onNodeWithTag(InboxTags.HIDDEN).assertExists()
         compose.onNodeWithTag(InboxTags.NOT_A_PAYMENT).assertExists()
+        fun tags(node: SemanticsNode): List<String> =
+            listOfNotNull(runCatching { node.config[SemanticsProperties.TestTag] }.getOrNull()) +
+                node.children.flatMap(::tags)
+        val semanticsOrder = tags(compose.onRoot(useUnmergedTree = true).fetchSemanticsNode())
+        val verdictPosition = semanticsOrder.indexOf(InboxTags.POLICY_VERDICT)
+        assertTrue("the advisory verdict must exist", verdictPosition >= 0)
+        for (fact in
+            listOf("from", "server", "connectionId", "requestId", "signsWith", "network")) {
+            val factPosition = semanticsOrder.indexOf(InboxTags.field(fact))
+            assertTrue(
+                "$fact must appear before the advisory verdict",
+                factPosition >= 0 && factPosition < verdictPosition,
+            )
+        }
+        val noPaymentPosition = semanticsOrder.indexOf(InboxTags.NOT_A_PAYMENT)
+        assertTrue(
+            "the no-payment fact must appear before the advisory verdict",
+            noPaymentPosition >= 0 && noPaymentPosition < verdictPosition,
+        )
+        val hiddenPosition = semanticsOrder.indexOf(InboxTags.HIDDEN)
+        assertTrue(
+            "the hidden-character warning must appear before the advisory verdict",
+            hiddenPosition >= 0 && hiddenPosition < verdictPosition,
+        )
         // Approve is the only way to the wallet, and Acknowledge doesn't apply to a message.
         compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertDoesNotExist()
         compose.onNodeWithTag(InboxTags.APPROVE).performClick()
@@ -364,6 +406,24 @@ class RequestDetailsScreenTest {
             NOW,
             request,
             delivery,
+        )
+
+    private fun allowedAssessment(request: ActionRequest) =
+        RequestAssessment(
+            decision =
+                assess(
+                    PolicyCheck.entries.map {
+                        if (it == PolicyCheck.Action) PolicyCheckResult.passed(it)
+                        else PolicyCheckResult.notConfigured(it)
+                    }
+                ),
+            facts =
+                RequestFacts.movesNothing(
+                    request.ref.connectionId,
+                    PolicyAction.MessageSignature,
+                    request.ref.requestId,
+                ),
+            at = NOW,
         )
 
     private companion object {

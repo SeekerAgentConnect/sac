@@ -24,7 +24,12 @@
     <string name="request_bytes">%1$d bytes</string>
     <string name="request_source_asks">%1$s asks</string>
     <string name="request_in_rules">In rules</string>
+    <string name="request_not_checked">Not checked</string>
     <string name="request_one_warning">1 warning</string>
+    <plurals name="request_warning_count">
+        <item quantity="one">%1$d warning</item>
+        <item quantity="other">%1$d warnings</item>
+    </plurals>
     <string name="live_test">Live test</string>
     <string name="add_connection">Add connection</string>
     <string name="connections_empty">No connections yet. To add one, run pnpm pair on the computer that runs the sidecar, then tap Add connection.</string>

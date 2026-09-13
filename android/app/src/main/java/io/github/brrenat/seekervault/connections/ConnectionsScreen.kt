@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.SeekerTheme
+import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.inbox.actionText
 import io.github.brrenat.seekervault.inbox.key
 import io.github.brrenat.seekervault.inbox.messagePreview
@@ -100,7 +101,7 @@ fun ConnectionsScreen(
     activity: Int? = null,
     onActivity: () -> Unit = {},
     requests: List<ActionRequest> = emptyList(),
-    warningRequests: Set<RequestKey> = emptySet(),
+    requestAssessments: Map<RequestKey, RequestAssessment> = emptyMap(),
     onOpenRequest: (RequestKey) -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -120,7 +121,7 @@ fun ConnectionsScreen(
                     RequestCarousel(
                         requests = requests,
                         connections = state.connections,
-                        warningRequests = warningRequests,
+                        requestAssessments = requestAssessments,
                         onOpen = onOpenRequest,
                         inbox = inbox,
                         onInbox = onInbox,
@@ -313,7 +314,7 @@ private fun WalletCard(wallet: SelectedWallet?, onClick: () -> Unit) {
 private fun RequestCarousel(
     requests: List<ActionRequest>,
     connections: List<Connection>,
-    warningRequests: Set<RequestKey>,
+    requestAssessments: Map<RequestKey, RequestAssessment>,
     onOpen: (RequestKey) -> Unit,
     inbox: InboxSummary?,
     onInbox: () -> Unit,
@@ -368,7 +369,7 @@ private fun RequestCarousel(
                     RequestTile(
                         request = request,
                         source = source,
-                        warning = request.key in warningRequests,
+                        assessment = requestAssessments[request.key],
                         active = index == carouselState.firstVisibleItemIndex,
                         onOpen = { onOpen(request.key) },
                     )
@@ -461,7 +462,7 @@ private fun requestTileCopy(request: ActionRequest, source: Connection?): Reques
 private fun RequestTile(
     request: ActionRequest,
     source: Connection?,
-    warning: Boolean,
+    assessment: RequestAssessment?,
     active: Boolean,
     onOpen: () -> Unit,
 ) {
@@ -522,25 +523,30 @@ private fun RequestTile(
                     style = MaterialTheme.typography.bodySmall,
                     color = secondary,
                 )
-                RequestPill(warning = warning, active = active)
+                RequestPill(assessment = assessment, active = active)
             }
         }
     }
 }
 
 @Composable
-private fun RequestPill(warning: Boolean, active: Boolean) {
+private fun RequestPill(assessment: RequestAssessment?, active: Boolean) {
+    val allowed = assessment?.decision?.allowed == true
+    val warningCount =
+        assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1) ?: 0
     val background =
         when {
-            warning -> MaterialTheme.colorScheme.tertiaryContainer
-            active -> MaterialTheme.colorScheme.onPrimaryContainer
-            else -> MaterialTheme.colorScheme.primaryContainer
+            warningCount > 0 -> MaterialTheme.colorScheme.tertiaryContainer
+            allowed && active -> MaterialTheme.colorScheme.onPrimaryContainer
+            allowed -> MaterialTheme.colorScheme.primaryContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerHighest
         }
     val foreground =
         when {
-            warning -> MaterialTheme.colorScheme.onTertiaryContainer
-            active -> MaterialTheme.colorScheme.primaryContainer
-            else -> MaterialTheme.colorScheme.onPrimaryContainer
+            warningCount > 0 -> MaterialTheme.colorScheme.onTertiaryContainer
+            allowed && active -> MaterialTheme.colorScheme.primaryContainer
+            allowed -> MaterialTheme.colorScheme.onPrimaryContainer
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
         }
     Box(
         Modifier.height(24.dp)
@@ -550,9 +556,16 @@ private fun RequestPill(warning: Boolean, active: Boolean) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            stringResource(
-                if (warning) R.string.request_one_warning else R.string.request_in_rules
-            ),
+            when {
+                warningCount > 0 ->
+                    pluralStringResource(
+                        R.plurals.request_warning_count,
+                        warningCount,
+                        warningCount,
+                    )
+                allowed -> stringResource(R.string.request_in_rules)
+                else -> stringResource(R.string.request_not_checked)
+            },
             style = MaterialTheme.typography.labelMedium,
             color = foreground,
         )
