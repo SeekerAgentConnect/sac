@@ -379,6 +379,12 @@ class StageBoundaryTest {
             }
         }
         assertEquals(emptyList<String>(), translucentTokens)
+
+        val theme = File(main, "java/io/github/brrenat/seekervault/MainActivity.kt").readText()
+        assertTrue(
+            "Raw app bars must inherit the current scheme's surface ink in dark and light themes",
+            theme.contains("LocalContentColor provides colors.onSurface"),
+        )
     }
 
     @Test
