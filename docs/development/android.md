@@ -17,6 +17,25 @@ SEE-64 changes presentation and navigation structure only. Request preparation a
 
 The source-of-truth comparison and verification record are in [`docs/testing/see-64.md`](../testing/see-64.md).
 
+## Shared synchronization and cache (SAW-050)
+
+`SynchronizationRepository` is the one application-scoped convergence path for `UpdateService.Sync` responses and revisioned stream events. Manual Refresh uses it now; the foreground owner and the network-constrained periodic caller attach to the same object in SAW-051 and SAW-052. `ConnectionRepository.synchronizeAll()` is the process-start entry point: it loads connection metadata, encrypted credentials, stored answers, Activity, and the sync cache without constructing an Activity or ViewModel.
+
+The code is under `sync/`:
+
+| File | Role |
+| --- | --- |
+| `SynchronizationRepository.kt` | Discovers capabilities, coalesces one in-flight Sync per connection, pages and validates a complete snapshot, applies request revisions monotonically, buffers bounded stream overlap, rotates more than 100 nonterminal Activity references across later runs, and publishes `SynchronizationState` |
+| `ConnectUpdateTransport.kt`, `UpdateTransport.kt` | Existing-connection capability discovery over Connect and unary `UpdateService.Sync` over gRPC/HTTP2. The bearer credential is accepted only as a transient call argument and is redacted by the sole access object's `toString()` |
+| `SyncState.kt` | Observable capability, endpoint, request/status, cursor, last-success, and recovery state; no credential, wallet authorization, policy, assessment, or local answer |
+| `storage/SyncStore.kt` | One versioned `AtomicFile` document per connection at `filesDir/sync/<connection ID>.json` |
+
+Each document is replaced whole. Snapshot pages remain in memory until the final page passes connection, instance, cursor, reference, revision, size, and duplicate checks; the complete snapshot and every buffered event after it are then one atomic write with the cursor that covers them. A process killed before `finishWrite` reads the previous complete document. A damaged document or unknown future version is not partially decoded: the phone keeps owner-owned results and Activity, starts from no cursor, and rebuilds server state with a full Sync. There is no schema predecessor to migrate in version 1; later versions must either migrate the complete document atomically or take that same full-sync recovery path.
+
+Per-request revisions reject duplicates and stale delivery, equal-revision conflicts, gaps, changed request identity, and state rollback. A complete snapshot may remove cached pending state by absence; it never removes a `LocalResult` or Activity row. At most 512 removal markers are retained to reject late duplicates without turning the cache into server history. A connection deletion or revocation increments its local epoch, cancels its in-flight call, deletes its document, and makes any late response or older stream generation inert.
+
+Synchronization has deliberately narrow authority. Before reading a snapshot it asks `ConnectionRepository` to retry only results already stored by the owner's earlier action. Server state may advance the request copy inside such a result and the existing Activity row derived from it. It cannot create an answer or Activity record, evaluate a policy, prepare a transaction, invoke Mobile Wallet Adapter, sign, send, simulate, or replace a transaction. Credentials remain encrypted in `noBackupFilesDir/credentials/`; they are never placed in the sync document, observable state, worker input, or a log.
+
 ## Connections
 
 The owner's walkthrough is [`docs/guides/pairing.md`](../guides/pairing.md), and the security model, including what the phone stores, is [`docs/security.md`](../security.md#local-storage-and-recovery).
@@ -32,8 +51,8 @@ The code is in `connections/`:
 | File | Role |
 | --- | --- |
 | `PairingCode.kt` | Reads `seekervault://pair` codes by the sidecar's rules. Plain HTTP is accepted only where the platform's network security policy permits cleartext: loopback, in debug builds. |
-| `ConnectConnectionGateway.kt` | `Pair`, `ListPending`, and `RevokeConnection` over Connect-Kotlin and OkHttp, with the platform's certificate and host name checks. It classifies errors for the screens, including a certificate failure that OkHttp suppressed behind another address's failure. |
-| `ConnectionRepository.kt` | Pairs, refreshes, renames, disconnects, and removes. It checks each `PairResponse`, sends each credential only to its own URL, counts only the connection's own requests, and deletes a credential the sidecar rejects. |
+| `ConnectConnectionGateway.kt` | `Pair`, legacy `ListPending`, and `RevokeConnection` over Connect-Kotlin and OkHttp, with the platform's certificate and host name checks. It classifies errors for the screens, including a certificate failure that OkHttp suppressed behind another address's failure. |
+| `ConnectionRepository.kt` | Pairs, refreshes, renames, disconnects, and removes. Refresh delegates to the shared update synchronizer and retains `ListPending` for old or unconfigured sidecars. It checks each `PairResponse`, sends each credential only to its own URL, counts only the connection's own requests, and deletes a credential the sidecar rejects. |
 | `storage/ConnectionStore.kt`, `storage/CredentialVault.kt`, `storage/AndroidKeystoreKey.kt` | The app's only storage: one JSON file per connection in `filesDir/connections/`, and the credentials, AES-256-GCM under a Keystore key, in `noBackupFilesDir/credentials/` |
 | `ConnectionsViewModel.kt` | The screens' state: the pairing flow, refreshes, dialogs, and messages. The code being entered stays in memory, never in saved state. |
 | `ConnectionsScreen.kt`, `ConnectionDetailsScreen.kt`, `AddConnectionScreen.kt`, `ConnectionText.kt` | The stateless screens, the camera permission, and their texts |
@@ -41,7 +60,7 @@ The code is in `connections/`:
 
 `SeekerVaultApp.kt` holds the navigation: a back stack of route strings in saved state, so a rotation or a process restart keeps the screen. No route carries a secret.
 
-- **The app fetches when it opens and when the owner opens a connection** ([`docs/protocol.md`](../protocol.md#phone-api)), and on **Refresh**. Nothing runs in the background.
+- **The app fetches when it opens and when the owner opens a connection** ([`docs/protocol.md`](../protocol.md#phone-api)), and on **Refresh**. A configured Stage 5.2 sidecar uses the shared frozen Sync path; old or unconfigured sidecars use `ListPending`. SAW-050 schedules nothing in the background.
 - **The camera is optional** (`android.hardware.camera.any`, not required). Without a camera, or with the permission denied, the owner enters the code. **Open settings** leads to the app's permission settings.
 - **Nothing is backed up.** The manifest sets `allowBackup="false"`, and `data_extraction_rules.xml` excludes every domain from cloud backup and device transfer.
 
@@ -56,8 +75,8 @@ The owner's guide is [`docs/guides/pending-requests.md`](../guides/pending-reque
 
 How the code works:
 
-- **`ConnectionRepository` does the fetching and answering,** because each call needs a connection's credential, which never leaves it:
-  - `refresh` first sends the answers still waiting, then reads every page of PENDING requests, up to 10 pages of 100, into an in-memory `Inbox`. It counts only the connection's own requests, and only those with a UUID request ID. One fetch per connection runs at a time, and a request whose answer settled meanwhile doesn't come back.
+- **`ConnectionRepository` owns the credentials and answers, while `SynchronizationRepository` owns cached server state:**
+  - `refresh` first retries answers already waiting, then atomically applies every page of a frozen Sync snapshot to the persistent cache and `Inbox`. Old or unconfigured sidecars retain the legacy paginated `ListPending` path. Both count only the connection's own UUID request IDs, and an answer that settled meanwhile cannot be brought back by an older response.
   - `answer` writes a `LocalResult` through `ResultStore` before calling `SubmitResult`, and a request gets one answer.
   - `deliver` sends a waiting answer, with at most one send per answer at a time. A send that finds another already running waits for it and then returns what that one settled, so an answer stored while a send was in the air still goes out; a refresh, which has other work to get through, leaves it to the send in flight instead (SAW-017). The sidecar's reply settles it: accepted, superseded (`INVALID_STATE`, with the request from the `RequestErrorDetail`), or undeliverable (revoked). A failure keeps it waiting. A reply is written only if the connection and the answer are still there, checked under the lock that removal holds, so a connection removed mid-send stays removed. A failure never turns an answer that a revocation settled back into a waiting one. `deliver` talks to a sidecar and never to a wallet.
 - **Settled answers are kept for a week from when they settled,** so a reopened request still shows its outcome. Removing a connection deletes its answers.

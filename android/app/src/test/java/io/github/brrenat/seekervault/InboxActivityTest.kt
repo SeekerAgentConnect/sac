@@ -15,6 +15,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.inbox.InboxTags
@@ -52,6 +53,7 @@ class InboxActivityTest {
     @Before
     fun useFakes() {
         app.connectionGateway = { gateway }
+        app.updateTransport = { LegacyUpdateTransport() }
         app.credentialKey = { key }
         app.connectionIo = Dispatchers.Unconfined
         app.walletAdapter = { adapter }

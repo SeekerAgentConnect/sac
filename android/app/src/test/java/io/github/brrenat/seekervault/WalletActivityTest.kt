@@ -11,6 +11,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
@@ -47,6 +48,7 @@ class WalletActivityTest {
     @Before
     fun useFakes() {
         app.connectionGateway = { gateway }
+        app.updateTransport = { LegacyUpdateTransport() }
         app.credentialKey = { key }
         app.connectionIo = Dispatchers.Unconfined
         app.walletAdapter = { adapter }

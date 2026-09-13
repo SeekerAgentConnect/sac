@@ -67,3 +67,30 @@ Run on 2026-09-13 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.
 | `pnpm build` | PASS: the sidecar and test-agent production TypeScript builds compile. |
 | Deliberate confirmation-bound break | PASS: changing the Sync confirmation limit from four to five failed `updates/confirmation.test.ts` because the required deferred record disappeared; restoring four passed both focused cases. |
 | Physical Seeker | **NOT RUN.** SAW-049 changes only the sidecar; the phone transport arrives in SAW-050. |
+
+## SAW-050 — shared Android synchronization and persistent state
+
+SAW-050 gives every Android trigger one application-scoped convergence path without scheduling a trigger itself. Manual Refresh uses it now, and the later foreground stream owner and WorkManager caller can use the same `SynchronizationRepository` without an Activity or ViewModel. It reads and reconciles server state; it cannot prepare, approve, invoke a wallet, sign, send, simulate, or create an owner decision.
+
+### Automated coverage
+
+- `SynchronizationRepositoryTest` covers a worker-style process restart, complete multi-page replacement, expiry and absence, duplicate and stale events, revision gaps and rollback, revisioned removal, per-connection overlap coalescing, the stronger stream-barrier follow-up, more than 100 known Activity records across runs, isolated healthy and failing servers, buffered revocation, deletion during an in-flight call, and rejection of an invalid advertised origin.
+- `SyncStoreTest` covers versioned atomic round trips, the absence of credentials from disk, an interrupted replacement retaining the preceding complete document, and corrupt or future-version state taking the empty-cursor full-sync recovery path.
+- `ConnectionSynchronizationTest` proves manual Refresh uses the shared Sync path instead of `ListPending`, a stored owner result is retried through the existing idempotent result-delivery path, Activity advances from that existing record, and a process started only through `synchronizeAll()` restores connections, credentials, pending cache, and state.
+- `ActivityLogTest` proves Sync can advance an existing sent transfer through the established server-confirmation interpretation, cannot regress a terminal record, preserves reviewed terms, signature, and policy assessment, and cannot fabricate Activity for an unknown request.
+- `StageBoundaryTest` scans the entire sync package for wallet adapter access and preparation, approval, signing, or sending entry points. The application-scoped host surface contains only state reads, retry of an already-recorded result, monotonic reconciliation, failure recording, and revocation.
+- Existing screen tests use an explicit legacy-only test transport. This both retains their previous RequestService assertions and proves capability fallback remains available to old or unconfigured sidecars.
+
+### Verification record
+
+Run on 2026-09-14 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, and the pinned Buf CLI 1.72.0. The Android SDK came from the machine's existing `ANDROID_HOME`; no machine path was written to the repository.
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, Buf format/lint, ESLint, TypeScript, 410/410 sidecar tests, and 29/29 test-agent tests. |
+| `pnpm test:hello` | PASS: all 9 Stage 1 simulated-device cases remain compatible. |
+| `pnpm test:queue` | PASS: all 7 Stage 2 durable queue cases remain compatible. |
+| `pnpm check:android` | PASS: Spotless, 767/767 JVM tests, Android lint, and debug and instrumentation APKs. |
+| `pnpm check:generated` | PASS: generated protocol code and fixtures are current. SAW-050 changes no schema. |
+| Deliberate synchronization break | PASS: changing the contiguous event rule from `old revision + 1` to `old revision + 2` failed `SynchronizationRepositoryTest.duplicateAndStaleEventsAreIdempotentButGapConflictAndRollbackRequireSync`; restoring the rule passed the focused suite and the complete Android check. |
+| Physical Seeker | **NOT RUN.** SAW-050 adds the phone's persistent Sync consumer, but no physical-device run was performed. |

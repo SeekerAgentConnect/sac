@@ -230,6 +230,48 @@ class ActivityLogTest {
     }
 
     @Test
+    fun syncAdvancesOnlyAnExistingRecordAfterItsDeliveryRowIsGone() {
+        val signature = signatureBytes()
+        log.record(
+            result(
+                transferRequest(
+                    state = RequestState.REQUEST_STATE_SUBMITTED,
+                    signature = signature,
+                ),
+                signing = SigningOutcome.Sent(signature),
+            ),
+            connection(),
+        )
+        val before = log.records.value.single()
+        val confirmed =
+            transferRequest(
+                state = RequestState.REQUEST_STATE_CONFIRMED,
+                signature = signature,
+                endpoint = "api.devnet.solana.com",
+                detail = "Verified by the existing confirmation path.",
+            )
+
+        log.reconcile(confirmed)
+
+        val after = log.records.value.single()
+        assertEquals(ActivityOutcome.Confirmed, after.outcome)
+        assertEquals(before.transfer, after.transfer)
+        assertEquals(before.signature, after.signature)
+        assertEquals(before.policy, after.policy)
+        assertEquals("api.devnet.solana.com", after.checkedWith)
+        log.reconcile(confirmed.toBuilder().setState(RequestState.REQUEST_STATE_SUBMITTED).build())
+        assertEquals(ActivityOutcome.Confirmed, log.records.value.single().outcome)
+        // Server state for a request this phone never acted on cannot fabricate Activity.
+        log.reconcile(
+            confirmed
+                .toBuilder()
+                .setRef(confirmed.ref.toBuilder().setRequestId(OTHER_REQUEST))
+                .build()
+        )
+        assertEquals(1, log.records.value.size)
+    }
+
+    @Test
     fun recordsAMessageSignatureAsASignatureAndNeverAsAPayment() {
         log.record(
             result(messageRequest(), signing = SigningOutcome.Signed(signatureBytes(3))),

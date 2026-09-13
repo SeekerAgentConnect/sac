@@ -16,6 +16,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.PairingCode
 import io.github.brrenat.seekervault.connections.softwareKey
 import java.io.File
@@ -48,6 +49,7 @@ class ConnectionsActivityTest {
     @Before
     fun useFakes() {
         app.connectionGateway = { gateway }
+        app.updateTransport = { LegacyUpdateTransport() }
         app.credentialKey = { key }
         // The repository's work runs on the main thread, where the Compose rule waits for it. On
         // Dispatchers.IO, an assertion could run before a disconnect had reached the screen.

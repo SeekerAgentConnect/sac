@@ -556,7 +556,7 @@ The durable contract leaves the live diagnostic as it was.
 
 ## Production updates (SAW-048, SAW-049)
 
-The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar, and the Android state/lifecycle work follows in SAW-050–052.
+The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar; SAW-050 gives Android one persistent, headless reconciliation path; and foreground ownership and WorkManager scheduling follow in SAW-051–052.
 
 | RPC | Wire protocol | Lifetime | Purpose |
 | --- | --- | --- | --- |
