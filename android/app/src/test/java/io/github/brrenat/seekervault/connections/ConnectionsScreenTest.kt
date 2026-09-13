@@ -24,6 +24,8 @@ import io.github.brrenat.seekervault.policy.PolicyCheckResult
 import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.policy.RequestFacts
 import io.github.brrenat.seekervault.policy.assess
+import io.github.brrenat.seekervault.sync.ForegroundConnectionState
+import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -243,6 +245,25 @@ class ConnectionsScreenTest {
         compose.onNodeWithTag(ConnectionsTags.item(VPS.id)).performClick()
         assertEquals(listOf(VPS.id), opened)
         compose.onNodeWithTag(ConnectionsTags.EMPTY).assertDoesNotExist()
+    }
+
+    @Test
+    fun liveStateReplacesStaleCheckTextWithoutChangingItsStoredTimestamp() {
+        show(
+            ConnectionsUiState(
+                connections = listOf(HOME),
+                loaded = true,
+                updates =
+                    ForegroundUpdatesState(
+                        foreground = true,
+                        connections = mapOf(HOME.id to ForegroundConnectionState.Live),
+                    ),
+            )
+        )
+
+        compose
+            .onNodeWithTag(ConnectionsTags.item(HOME.id))
+            .assertTextContains(context.getString(R.string.connection_status_live))
     }
 
     @Test

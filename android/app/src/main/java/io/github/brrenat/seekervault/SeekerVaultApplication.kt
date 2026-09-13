@@ -22,6 +22,7 @@ import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
+import io.github.brrenat.seekervault.sync.ForegroundUpdateManager
 import io.github.brrenat.seekervault.sync.UpdateTransport
 import io.github.brrenat.seekervault.sync.storage.SyncStore
 import io.github.brrenat.seekervault.wallet.MwaWalletAdapter
@@ -110,6 +111,15 @@ class SeekerVaultApplication : Application() {
             io = connectionIo,
             syncStore = SyncStore(File(filesDir, "sync")),
             updateTransport = updateTransport(),
+        )
+    }
+
+    /** One foreground owner for every paired sidecar, independent of activities and navigation. */
+    val foregroundUpdates: ForegroundUpdateManager by lazy {
+        ForegroundUpdateManager(
+            connections = connectionRepository.connections,
+            synchronization = checkNotNull(connectionRepository.synchronization),
+            dispatcher = connectionIo,
         )
     }
 

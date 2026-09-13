@@ -110,6 +110,8 @@ Don't use a self-signed certificate. The phone rightly refuses it, and the only 
 
 ## Local storage and recovery
 
+The SAW-051 foreground owner receives neither a token nor a wallet handle. `SynchronizationRepository` retrieves a connection credential only for the authenticated discovery, Sync, or Subscribe call and hands the lifecycle owner a generation-scoped stream interface. The stream closes on real background, removal, revocation, or cancellation; rotation and navigation do not replace it. Authentication failure revokes locally, version/configuration failures remain distinct from an outage, and a late response from a closed generation is inert. Stream status is runtime-only and is never substituted for the separately stored last successful Sync.
+
 What the phone keeps for each connection (SAW-012), and what happens when it's lost.
 
 | What | Where | Protection |

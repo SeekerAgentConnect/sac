@@ -20,6 +20,7 @@ import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.VPS
 import io.github.brrenat.seekervault.policy.PolicyTags
+import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -37,6 +38,7 @@ class ConnectionDetailsScreenTest {
         connection: Connection,
         disconnect: DisconnectState? = null,
         refreshing: Boolean = false,
+        live: ForegroundConnectionState? = null,
     ) = compose.setContent {
         SeekerVaultTheme {
             ConnectionDetailsScreen(
@@ -55,6 +57,7 @@ class ConnectionDetailsScreenTest {
                 onDismissDisconnect = { calls += "dismiss" },
                 onMessageShown = {},
                 onRules = { calls += "rules" },
+                live = live,
             )
         }
     }
@@ -78,6 +81,17 @@ class ConnectionDetailsScreenTest {
         compose.onNodeWithTag(ConnectionsTags.REMOVE).assertDoesNotExist()
         compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
         assertEquals(listOf("refresh", "disconnect", "back"), calls)
+    }
+
+    @Test
+    fun distinguishesLiveReconnectingAndBackgroundFromTheLastSync() {
+        show(HOME, live = ForegroundConnectionState.Reconnecting(2))
+        compose
+            .onNodeWithTag(ConnectionsTags.STATUS)
+            .assertTextEquals(context.getString(R.string.connection_status_reconnecting))
+        compose
+            .onNodeWithText(context.getString(R.string.checked_at, "").trim(), substring = true)
+            .assertExists()
     }
 
     @Test

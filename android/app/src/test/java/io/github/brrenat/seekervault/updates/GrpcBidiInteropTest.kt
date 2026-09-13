@@ -6,6 +6,8 @@ import com.connectrpc.impl.ProtocolClient
 import com.connectrpc.okhttp.ConnectOkHttpClient
 import com.connectrpc.protocols.NetworkProtocol
 import com.connectrpc.simpleTimeouts
+import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
+import io.github.brrenat.seekervault.sync.UpdateEndpoint
 import io.github.brrenat.seekervault.update.v1.ResumeDisposition
 import io.github.brrenat.seekervault.update.v1.SubscribeResponse
 import io.github.brrenat.seekervault.update.v1.UpdateServiceClient
@@ -14,6 +16,7 @@ import io.github.brrenat.seekervault.update.v1.subscribe
 import io.github.brrenat.seekervault.update.v1.subscribeRequest
 import java.io.File
 import java.nio.file.Files
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
@@ -32,6 +35,38 @@ import org.junit.Test
  * server. The helper serves only this proof; SEE-68 adds the production update service.
  */
 class GrpcBidiInteropTest {
+    @Test
+    fun productionTransportKeepsItsSendSideOpenForHeartbeats() = runBlocking {
+        ProofServer().use { server ->
+            withTimeout(30_000) {
+                val transport = ConnectUpdateTransport(http(server.certificate))
+                val subscription =
+                    transport.subscribe(
+                        UpdateEndpoint(1, server.url),
+                        PHONE_TOKEN,
+                        CONNECTION_ID,
+                        resumeCursor = "",
+                        serverInstanceId = "",
+                    )
+                assertEquals(
+                    SubscribeResponse.EventCase.READY,
+                    subscription.responses.receive().eventCase,
+                )
+
+                subscription.heartbeat(1, "", Instant.parse("2026-09-14T12:00:00Z"))
+                assertEquals(
+                    1L,
+                    subscription.responses.receive().heartbeat.acknowledgedSequence,
+                )
+                subscription.close()
+                assertEquals(
+                    """{"outcome":"cancelled","httpVersion":"2.0","protocol":"grpc","streamsStarted":1,"messages":2,"heartbeats":1}""",
+                    server.marker(),
+                )
+            }
+        }
+    }
+
     @Test
     fun clientAndServerMessagesInterleaveBeforeTheClientClosesItsSendSide() = runBlocking {
         ProofServer().use { server ->
@@ -98,15 +133,18 @@ class GrpcBidiInteropTest {
         }
     }
 
-    private fun client(url: String, certificate: HeldCertificate): UpdateServiceClient {
+    private fun http(certificate: HeldCertificate): OkHttpClient {
         val trust =
             HandshakeCertificates.Builder().addTrustedCertificate(certificate.certificate).build()
-        val http =
-            ConnectOkHttpClient.configureClient(
-                    OkHttpClient.Builder()
-                        .sslSocketFactory(trust.sslSocketFactory(), trust.trustManager)
-                )
-                .build()
+        return ConnectOkHttpClient.configureClient(
+                OkHttpClient.Builder()
+                    .sslSocketFactory(trust.sslSocketFactory(), trust.trustManager)
+            )
+            .build()
+    }
+
+    private fun client(url: String, certificate: HeldCertificate): UpdateServiceClient {
+        val http = http(certificate)
         return UpdateServiceClient(
             ProtocolClient(
                 ConnectOkHttpClient(http),

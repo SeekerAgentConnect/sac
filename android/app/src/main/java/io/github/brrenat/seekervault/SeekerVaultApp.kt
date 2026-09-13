@@ -518,6 +518,7 @@ private fun ConnectionDetailsRoute(
         onMessageShown = viewModel::messageShown,
         onPendingRequests = onPendingRequests,
         onRules = onRules,
+        live = state.updates.connections[id],
     )
 }
 

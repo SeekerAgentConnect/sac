@@ -94,3 +94,30 @@ Run on 2026-09-14 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.
 | `pnpm check:generated` | PASS: generated protocol code and fixtures are current. SAW-050 changes no schema. |
 | Deliberate synchronization break | PASS: changing the contiguous event rule from `old revision + 1` to `old revision + 2` failed `SynchronizationRepositoryTest.duplicateAndStaleEventsAreIdempotentButGapConflictAndRollbackRequireSync`; restoring the rule passed the focused suite and the complete Android check. |
 | Physical Seeker | **NOT RUN.** SAW-050 adds the phone's persistent Sync consumer, but no physical-device run was performed. |
+
+## SAW-051 — foreground streams and reactive screens
+
+SAW-051 attaches the real Android bidirectional client to application foreground state. It adds no worker or schedule: a true background transition closes every production stream, while a rotation or screen navigation retains the same application-owned stream. Every event and recovery snapshot enters the SAW-050 repository, so the existing observable Inbox and Activity state remains the only screen source.
+
+### Automated coverage
+
+- `ForegroundUpdateManagerTest` covers idempotent foreground/rotation/navigation signals, rapid background and foreground with a fresh reconciliation, pairing and removal while open, two independent servers with one initially unreachable, explicit authentication and version failures, a request event buffered behind a required barrier snapshot, reactive pending publication, client heartbeats, the three-interval liveness deadline, bounded retry, and recovery.
+- `GrpcBidiInteropTest.productionTransportKeepsItsSendSideOpenForHeartbeats` uses `ConnectUpdateTransport`, the generated client, TLS, and negotiated HTTP/2 against the Node proof server. It proves the production wrapper sends Subscribe, leaves its send side open for a later cursor-bearing heartbeat, receives the acknowledgement, and cancels the same RPC on close.
+- `MainActivityTest` now holds the application foreground owner across recreation and marks a real non-configuration stop as background. Existing wallet lifecycle tests continue to prove a wallet hand-off has one result and foreground return reconciles it; `StageBoundaryTest` proves the sync package has no wallet, preparation, approval, signing, or sending entry point.
+- `ConnectionsViewModelTest`, `ConnectionsScreenTest`, and `ConnectionDetailsScreenTest` prove liveness changes publish without refresh and render independently from the retained last-sync time.
+
+The negotiated heartbeat interval is 15–60 seconds. Any response resets the quiet timer; after three unanswered intervals the phone closes the stream, so the detection bound is 45–180 seconds. A normal event is not batched behind that timer: expected delivery is one network transit, validation, and one atomic cache write before the existing flows recompose. Android scheduling and network conditions mean this is not a wall-clock guarantee.
+
+### Verification record
+
+Run on 2026-09-14 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, the pinned Buf CLI 1.72.0, and the existing Android SDK selected through `ANDROID_HOME`. No machine path was written to the repository.
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, Buf format/lint, ESLint, TypeScript, 410/410 sidecar tests, and 29/29 test-agent tests. |
+| `pnpm test:hello` | PASS: all 9 Stage 1 simulated-device cases remain compatible. |
+| `pnpm test:queue` | PASS: all 7 Stage 2 durable queue cases remain compatible. |
+| `pnpm check:android` | PASS: Spotless, 777/777 JVM tests, Android lint, and debug and instrumentation APKs. |
+| `pnpm check:generated` | PASS: generated protocol code and fixtures are current. SAW-051 changes no schema. |
+| Deliberate liveness break | PASS: changing the missed-heartbeat limit from three to four failed `ForegroundUpdateManagerTest.unansweredHeartbeatDeadlineClosesThenReconnectsWithBoundedBackoff`; restoring three passed the focused suites and the complete Android check. |
+| Physical Seeker with Hermes | **NOT RUN.** Automatic appearance while Home/Inbox/Activity remain open, visible outage/recovery status, wallet return, and observed on-device delivery latency still require the Stage 5.2 device run. |

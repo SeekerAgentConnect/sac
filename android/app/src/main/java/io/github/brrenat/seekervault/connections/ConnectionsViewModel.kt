@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.connections
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +21,8 @@ data class ConnectionsUiState(
     val pairing: PairingState = PairingState.Idle,
     val disconnect: DisconnectState? = null,
     val message: ConnectionMessage? = null,
+    /** Current transport liveness; last successful sync remains on each [Connection]. */
+    val updates: ForegroundUpdatesState = ForegroundUpdatesState(),
 )
 
 /** A valid code, with what the phone already knows about its server. */
@@ -92,6 +95,7 @@ sealed interface ConnectionMessage {
  */
 class ConnectionsViewModel(
     private val repository: ConnectionRepository,
+    private val foregroundUpdates: StateFlow<ForegroundUpdatesState>? = null,
     private val cleartextPermitted: (host: String) -> Boolean,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConnectionsUiState())
@@ -103,6 +107,11 @@ class ConnectionsViewModel(
     init {
         viewModelScope.launch {
             repository.connections.collect { list -> _state.update { it.copy(connections = list) } }
+        }
+        foregroundUpdates?.let { updates ->
+            viewModelScope.launch {
+                updates.collect { current -> _state.update { it.copy(updates = current) } }
+            }
         }
         viewModelScope.launch {
             repository.load()

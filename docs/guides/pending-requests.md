@@ -2,7 +2,7 @@
 
 What an agent asks of you arrives on the phone as a **pending request**. You review each one and answer it yourself. The app answers nothing for you, and nothing runs while it's closed.
 
-> **Stage 5.2 status:** a configured current sidecar now uses the persistent bounded Sync path whenever this build fetches. Old or unconfigured sidecars keep manual Refresh through the earlier API. Foreground live updates and periodic background scheduling arrive in the next tickets; this ticket adds no push notification or automatic wallet action.
+> **Stage 5.2 status:** while the app is open, a configured current sidecar now delivers live request and outcome changes through one persistent stream. Old or unconfigured sidecars keep manual Refresh through the earlier API. Periodic background scheduling arrives later; there is no push notification or automatic wallet action.
 
 ## Where requests come from
 
@@ -14,7 +14,9 @@ The phone must be paired with the sidecar first ([`pairing.md`](pairing.md)).
 
 ## When the phone fetches
 
-The phone fetches a connection's requests at three moments: when the app opens or comes back to the foreground, when you open that connection, and when you tap **Refresh**. Rotating the phone doesn't fetch. There's no push and no background service. A request made while the app is closed or in the background shows up the next time you open it.
+The phone reconciles every connection when the app opens or comes back to the foreground, then keeps one live stream to each usable configured sidecar while the app remains open. A new request or changed result appears on Home, Inbox, Request details, and Activity without opening the screen again or tapping **Refresh**. Rotating the phone and moving between screens keep the same stream. Leaving for the wallet closes foreground streams without canceling the wallet action; returning reconciles stored answers and missed server changes before live delivery resumes.
+
+Connection status says whether live delivery is connecting, live, reconnecting, unreachable, revoked, unsupported, or intentionally paused in the background. **Last synced** is shown separately: an older successful sync does not mean a stream is live. **Refresh** remains available and its existing failure text remains actionable. There's no push or background service yet. A request made while the app is closed or in the background appears on the next foreground reconciliation.
 
 Requests remain authoritative on the sidecar. The phone keeps the last complete revisioned view so it survives process death. A complete multi-page refresh replaces that cache only after its final page arrives; if paging is interrupted, the preceding complete view remains. Duplicate or stale updates change nothing, while a cursor gap, conflicting revision, damaged cache, or sidecar restart requests a full snapshot. Removing or revoking a connection removes its cached server state, but Activity remains the owner's record.
 

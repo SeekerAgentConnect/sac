@@ -99,6 +99,12 @@ class SynchronizationRepository(
     private val _state = MutableStateFlow(SynchronizationState())
     val state: StateFlow<SynchronizationState> = _state.asStateFlow()
 
+    /** A transport stream whose generation is the only one allowed to mutate this connection. */
+    data class RegisteredStream(
+        val generation: Long,
+        val subscription: UpdateSubscription,
+    )
+
     /** Restores disk state and immediately publishes it to Inbox and Activity without any UI. */
     suspend fun load() = loading.withLock {
         if (_state.value.loaded) return@withLock
@@ -297,6 +303,63 @@ class SynchronizationRepository(
     }
 
     /**
+     * Opens a stream without exposing a credential to the lifecycle owner. The persisted cursor and
+     * sidecar instance are read at the last possible moment, and removal wins every race.
+     */
+    suspend fun openStream(connectionId: String): RegisteredStream? {
+        if (!isConnectionId(connectionId)) return null
+        if (!_state.value.loaded) load()
+        val current = _state.value.connections[connectionId] ?: return null
+        val endpoint =
+            current.endpoint?.takeIf { current.availability == UpdateAvailability.Available }
+                ?: return null
+        val access = host.access(connectionId) ?: return null
+        val safeEndpoint = validateEndpoint(access.serverUrl, endpoint) ?: return null
+        val generation = beginStream(connectionId)
+        if (generation == 0L) return null
+        val cursor = current.cursor.takeUnless { current.fullSyncRequired }.orEmpty()
+        val instance = current.serverInstanceId.takeIf { cursor.isNotEmpty() }.orEmpty()
+        val subscription =
+            try {
+                transport.subscribe(
+                    safeEndpoint,
+                    access.credential,
+                    connectionId,
+                    cursor,
+                    instance,
+                )
+            } catch (e: Throwable) {
+                endStream(connectionId, generation)
+                throw e
+            }
+        val coordinator = coordinators.getValue(connectionId)
+        val stillCurrent =
+            coordinator.control.withLock {
+                !coordinator.removed && coordinator.streamGeneration == generation
+            }
+        if (!stillCurrent) {
+            subscription.close()
+            return null
+        }
+        return RegisteredStream(generation, subscription)
+    }
+
+    /** Makes every response from a closed or replaced stream inert. */
+    suspend fun endStream(connectionId: String, generation: Long) {
+        val coordinator = coordinators[connectionId] ?: return
+        coordinator.control.withLock {
+            if (generation == 0L || generation != coordinator.streamGeneration) return
+            coordinator.streamGeneration++
+            coordinator.buffered.clear()
+            coordinator.overflowed = false
+        }
+    }
+
+    /** The cursor already made durable, for an authenticated client heartbeat. */
+    fun appliedCursor(connectionId: String): String =
+        _state.value.connections[connectionId]?.cursor.orEmpty()
+
+    /**
      * Applies one mutation and its cursor together. During Sync it is boundedly buffered, so a
      * post-snapshot event cannot be erased by snapshot absence. Unknown/conflicting order requests
      * another complete snapshot instead of guessing.
@@ -354,6 +417,12 @@ class SynchronizationRepository(
             withContext(io) { store.delete(connectionId) }
             _state.update { it.copy(connections = it.connections - connectionId) }
         }
+    }
+
+    /** Authentication failure from either unary sync or its foreground stream has one path. */
+    suspend fun revoke(connectionId: String) {
+        remove(connectionId)
+        host.revoke(connectionId)
     }
 
     private suspend fun runSync(
