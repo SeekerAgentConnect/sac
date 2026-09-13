@@ -6,8 +6,9 @@
     <string name="policy_global_loading">Reading global rules…</string>
     <string name="policy_global_intro">Rules highlight requests that need attention. You still approve every request.</string>
     <string name="policy_global_caption">These are the defaults every connection starts from.</string>
+    <string name="policy_global_empty_caption">Nothing is set, so connections that inherit compare nothing.</string>
     <string name="policy_global_empty_title">No global rules configured</string>
-    <string name="policy_global_empty_detail">Nothing is compared by default, so requests that inherit from here are flagged for attention. Connection overrides are unaffected.</string>
+    <string name="policy_global_empty_detail">Nothing is compared by default, so every request that inherits from here is flagged for attention. Connections with their own overrides are unaffected.</string>
     <string name="policy_help_rule">A rule never approves, stops or filters a request. It only decides whether the request is flagged when you review it.</string>
     <string name="policy_help_global">Global rules are the defaults. A connection either follows a section or replaces it outright — sections mix freely.</string>
     <string name="policy_help_daily">Daily limits are the exception: a global daily limit counts every connection and cannot be raised or removed locally.</string>
@@ -64,6 +65,7 @@
     <string name="policy_section_on">On. Anything not listed is flagged for attention.</string>
     <string name="policy_section_off">Off on purpose. This is not compared, and the review says so.</string>
     <string name="policy_section_empty">On with an empty list, so nothing matches and every request is flagged.</string>
+    <string name="policy_nothing_listed">Nothing listed yet.</string>
 
     <string name="policy_section_assets">Assets and thresholds</string>
     <string name="policy_switch_assets">Only these assets may move</string>
@@ -139,6 +141,11 @@
     <string name="policy_save">Save</string>
     <string name="policy_cancel">Cancel</string>
     <string name="policy_unsaved_changes">Unsaved changes</string>
+    <string name="policy_not_saved_yet">Not saved yet</string>
+    <string name="policy_try_again">Try again</string>
+    <string name="policy_save_error_title">Couldn\'t save</string>
+    <string name="policy_clear_global">Clear all global rules</string>
+    <string name="policy_global_daily_note">Daily limits set here count spending across every connection. A connection can add a tighter limit of its own, but cannot raise or remove this one.</string>
     <string name="policy_saved">Connection overrides saved.</string>
     <string name="policy_removed">Connection overrides reset. Inherited global rules are unchanged.</string>
     <string name="policy_global_saved">Global rules saved.</string>

@@ -2,6 +2,8 @@ package io.github.brrenat.seekervault.policy
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -33,6 +36,8 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DoNotDisturbOn
+import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Fingerprint
@@ -78,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.SeekerTheme
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.policy.storage.UnreadableReason
@@ -121,8 +127,11 @@ fun PolicyEditorScreen(
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
-    val message = state.message?.let { messageText(it, state.scope) }
-    LaunchedEffect(state.message) {
+    val inlineGlobalSaveFailure =
+        state.scope == PolicyEditorScope.Global && state.message == PolicyMessage.SaveFailed
+    val message =
+        state.message?.takeUnless { inlineGlobalSaveFailure }?.let { messageText(it, state.scope) }
+    LaunchedEffect(state.message, inlineGlobalSaveFailure) {
         if (message != null) {
             snackbar.showSnackbar(message)
             onMessageShown()
@@ -182,6 +191,7 @@ fun PolicyEditorScreen(
                     GlobalPolicyFooter(
                         saving = state.saving,
                         valid = globalReview !is DraftReview.Problems,
+                        saveFailed = inlineGlobalSaveFailure,
                         onCancel = leave,
                         onSave = { confirmGlobalSave = true },
                     )
@@ -333,15 +343,18 @@ private fun GlobalEditor(
     val draft = (state.draft as? PolicyEditorDraft.Global)?.rules ?: return
     // The instant only dates the document, and this review is about whether it is fit to save.
     val review = remember(draft) { draft.review(Instant.EPOCH) }
+    val empty = review is DraftReview.NoRules
     val edit = { next: PolicyDraft -> onEdit(PolicyEditorDraft.Global(next)) }
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         GlobalRulesHelp()
-        if (review is DraftReview.NoRules) GlobalEmptyWarning()
+        if (empty) GlobalEmptyWarning()
         Text(
-            stringResource(R.string.policy_global_caption),
+            stringResource(
+                if (empty) R.string.policy_global_empty_caption else R.string.policy_global_caption
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),
@@ -378,12 +391,19 @@ private fun GlobalEditor(
             onChange = { edit(draft.copy(programs = it)) },
             global = true,
         )
+        if (!empty) {
+            ErrorPolicyButton(
+                onClick = { edit(PolicyDraft(draft.connectionId)) },
+                modifier = Modifier.testTag(PolicyTags.CLEAR_GLOBAL),
+            ) {
+                Text(stringResource(R.string.policy_clear_global))
+            }
+        }
         Text(
-            state.storedAt?.let { stringResource(R.string.policy_saved_at, formatInstant(it)) }
-                ?: stringResource(R.string.policy_global_never_saved),
+            stringResource(R.string.policy_global_daily_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp).testTag(PolicyTags.SAVED_AT),
+            modifier = Modifier.padding(horizontal = 4.dp),
         )
     }
 }
@@ -392,36 +412,81 @@ private fun GlobalEditor(
 private fun GlobalPolicyFooter(
     saving: Boolean,
     valid: Boolean,
+    saveFailed: Boolean,
     onCancel: () -> Unit,
     onSave: () -> Unit,
 ) {
-    Row(
+    Column(
         modifier =
             Modifier.fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(
-            stringResource(R.string.policy_unsaved_changes),
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        NeutralPolicyButton(
-            onClick = onCancel,
-            enabled = !saving,
-            modifier = Modifier.testTag(PolicyTags.CANCEL),
-        ) {
-            Text(stringResource(R.string.policy_discard))
+        if (saveFailed) {
+            SeekerCard(
+                modifier = Modifier.fillMaxWidth().testTag(PolicyTags.SAVE_ERROR),
+                color = MaterialTheme.colorScheme.errorContainer,
+                radius = 16.dp,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Icon(
+                        Icons.Outlined.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            stringResource(R.string.policy_save_error_title),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            stringResource(R.string.policy_save_failed),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                }
+            }
         }
-        PrimaryPolicyButton(
-            onClick = onSave,
-            enabled = !saving && valid,
-            modifier = Modifier.testTag(PolicyTags.SAVE),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(stringResource(R.string.policy_save))
+            Text(
+                stringResource(
+                    if (saveFailed) R.string.policy_not_saved_yet
+                    else R.string.policy_unsaved_changes
+                ),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            NeutralPolicyButton(
+                onClick = onCancel,
+                enabled = !saving,
+                modifier = Modifier.testTag(PolicyTags.CANCEL),
+            ) {
+                Text(stringResource(R.string.policy_discard))
+            }
+            PrimaryPolicyButton(
+                onClick = onSave,
+                enabled = !saving && valid,
+                modifier = Modifier.testTag(PolicyTags.SAVE),
+            ) {
+                Text(
+                    stringResource(
+                        if (saveFailed) R.string.policy_try_again else R.string.policy_save
+                    )
+                )
+            }
         }
     }
 }
@@ -1102,7 +1167,7 @@ private fun GlobalSectionCard(
                 Icon(
                     icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = SeekerTheme.colors.primaryText,
                     modifier = Modifier.size(20.dp),
                 )
                 Text(
@@ -1232,7 +1297,7 @@ private fun ActionsContent(
                 if (ticked) Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank,
                 contentDescription = null,
                 tint =
-                    if (ticked) MaterialTheme.colorScheme.primary
+                    if (ticked) SeekerTheme.colors.primaryText
                     else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Column(Modifier.padding(start = 12.dp)) {
@@ -1310,14 +1375,25 @@ private fun AssetsContent(
             onToggle = { expandedAsset = if (expandedAsset == index) null else index },
         )
     }
+    if (global && draft.assets.isEmpty()) GlobalEmptyListRow("assets")
     if (draft.assets.any { it.mint != null }) Note(R.string.policy_token_units)
     var adding by rememberSaveable { mutableStateOf(false) }
-    NeutralPolicyButton(
-        onClick = { adding = true },
-        modifier =
-            Modifier.then(if (global) Modifier else Modifier.padding(16.dp))
-                .testTag(PolicyTags.ADD_ASSET),
-    ) {
+    val addButton: @Composable (@Composable RowScope.() -> Unit) -> Unit = { content ->
+        if (global) {
+            TonalPolicyButton(
+                onClick = { adding = true },
+                modifier = Modifier.testTag(PolicyTags.ADD_ASSET),
+                content = content,
+            )
+        } else {
+            NeutralPolicyButton(
+                onClick = { adding = true },
+                modifier = Modifier.padding(16.dp).testTag(PolicyTags.ADD_ASSET),
+                content = content,
+            )
+        }
+    }
+    addButton {
         Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(20.dp))
         Text(stringResource(R.string.policy_add_asset), modifier = Modifier.padding(start = 8.dp))
     }
@@ -1370,7 +1446,7 @@ private fun Asset(
                     Icon(
                         Icons.Outlined.Toll,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = SeekerTheme.colors.primaryText,
                         modifier = Modifier.size(20.dp),
                     )
                     Column(Modifier.weight(1f)) {
@@ -1788,6 +1864,7 @@ private fun AddressesContent(
             )
         }
     }
+    if (global && values.isEmpty()) GlobalEmptyListRow(list)
     var typed by rememberSaveable(list) { mutableStateOf("") }
     var problem by remember { mutableStateOf<Int?>(null) }
     SolidTextField(
@@ -1807,24 +1884,20 @@ private fun AddressesContent(
                 .then(if (global) Modifier else Modifier.padding(horizontal = 16.dp))
                 .testTag(PolicyTags.entryField(list)),
     )
-    NeutralPolicyButton(
-        onClick = {
-            val value = typed.trim()
-            problem =
-                when {
-                    !isSolanaAddress(value) -> R.string.policy_address_invalid
-                    value in values -> R.string.policy_address_listed
-                    else -> null
-                }
-            if (problem == null) {
-                onChange(values + value)
-                typed = ""
+    val addAddress = {
+        val value = typed.trim()
+        problem =
+            when {
+                !isSolanaAddress(value) -> R.string.policy_address_invalid
+                value in values -> R.string.policy_address_listed
+                else -> null
             }
-        },
-        modifier =
-            Modifier.then(if (global) Modifier else Modifier.padding(16.dp))
-                .testTag(PolicyTags.add(list)),
-    ) {
+        if (problem == null) {
+            onChange(values + value)
+            typed = ""
+        }
+    }
+    val addContent: @Composable RowScope.() -> Unit = {
         Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(20.dp))
         Text(
             stringResource(
@@ -1833,6 +1906,39 @@ private fun AddressesContent(
                 else R.string.policy_add_program
             ),
             modifier = Modifier.padding(start = 8.dp),
+        )
+    }
+    if (global) {
+        TonalPolicyButton(
+            onClick = addAddress,
+            modifier = Modifier.testTag(PolicyTags.add(list)),
+            content = addContent,
+        )
+    } else {
+        NeutralPolicyButton(
+            onClick = addAddress,
+            modifier = Modifier.padding(16.dp).testTag(PolicyTags.add(list)),
+            content = addContent,
+        )
+    }
+}
+
+@Composable
+private fun GlobalEmptyListRow(list: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().testTag(PolicyTags.empty(list)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            Icons.Outlined.DoNotDisturbOn,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            stringResource(R.string.policy_nothing_listed),
+            style = MaterialTheme.typography.bodyMedium,
         )
     }
 }
@@ -1858,7 +1964,7 @@ private fun GlobalAddressRow(
             Icon(
                 if (recipient) Icons.Outlined.AccountBalanceWallet else Icons.Outlined.Code,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = SeekerTheme.colors.primaryText,
                 modifier = Modifier.size(20.dp),
             )
             Column(Modifier.weight(1f)) {
@@ -1998,7 +2104,7 @@ private fun PrimaryPolicyButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
-) = SolidPolicyButton(onClick, modifier, enabled, primary = true, content)
+) = SolidPolicyButton(onClick, modifier, enabled, PolicyButtonTone.Primary, content)
 
 @Composable
 private fun NeutralPolicyButton(
@@ -2006,25 +2112,54 @@ private fun NeutralPolicyButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
-) = SolidPolicyButton(onClick, modifier, enabled, primary = false, content)
+) = SolidPolicyButton(onClick, modifier, enabled, PolicyButtonTone.Neutral, content)
+
+@Composable
+private fun TonalPolicyButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) = SolidPolicyButton(onClick, modifier, enabled, PolicyButtonTone.Tonal, content)
+
+@Composable
+private fun ErrorPolicyButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) = SolidPolicyButton(onClick, modifier, enabled, PolicyButtonTone.Error, content)
+
+private enum class PolicyButtonTone {
+    Primary,
+    Tonal,
+    Neutral,
+    Error,
+}
 
 @Composable
 private fun SolidPolicyButton(
     onClick: () -> Unit,
     modifier: Modifier,
     enabled: Boolean,
-    primary: Boolean,
+    tone: PolicyButtonTone,
     content: @Composable RowScope.() -> Unit,
 ) {
     val container =
         when {
             !enabled -> MaterialTheme.colorScheme.surfaceContainerHighest
-            primary -> MaterialTheme.colorScheme.primary
+            tone == PolicyButtonTone.Primary -> MaterialTheme.colorScheme.primary
+            tone == PolicyButtonTone.Error -> MaterialTheme.colorScheme.errorContainer
             else -> MaterialTheme.colorScheme.surfaceContainerHighest
         }
     val foreground =
-        if (primary && enabled) MaterialTheme.colorScheme.onPrimary
-        else MaterialTheme.colorScheme.onSurface
+        when {
+            !enabled -> MaterialTheme.colorScheme.onSurfaceVariant
+            tone == PolicyButtonTone.Primary -> MaterialTheme.colorScheme.onPrimary
+            tone == PolicyButtonTone.Tonal -> SeekerTheme.colors.primaryText
+            tone == PolicyButtonTone.Error -> MaterialTheme.colorScheme.error
+            else -> MaterialTheme.colorScheme.onSurface
+        }
     CompositionLocalProvider(LocalContentColor provides foreground) {
         Row(
             modifier =
@@ -2114,6 +2249,18 @@ private fun FilterChip(
 @Composable
 private fun SolidSwitch(checked: Boolean) {
     val shape = RoundedCornerShape(16.dp)
+    val knobSize by
+        animateDpAsState(
+            targetValue = if (checked) 24.dp else 16.dp,
+            animationSpec = tween(220),
+            label = "policySwitchKnobSize",
+        )
+    val knobOffset by
+        animateDpAsState(
+            targetValue = if (checked) 24.dp else 8.dp,
+            animationSpec = tween(220),
+            label = "policySwitchKnobOffset",
+        )
     Box(
         Modifier.size(width = 52.dp, height = 32.dp)
             .clip(shape)
@@ -2125,15 +2272,15 @@ private fun SolidSwitch(checked: Boolean) {
                 if (checked) Modifier
                 else Modifier.border(2.dp, MaterialTheme.colorScheme.outline, shape)
             )
-            .padding(if (checked) 4.dp else 8.dp)
     ) {
         Box(
-            Modifier.align(if (checked) Alignment.CenterEnd else Alignment.CenterStart)
-                .size(if (checked) 24.dp else 16.dp)
+            Modifier.align(Alignment.CenterStart)
+                .offset(x = knobOffset)
+                .size(knobSize)
                 .background(
                     if (checked) MaterialTheme.colorScheme.onPrimary
                     else MaterialTheme.colorScheme.outline,
-                    RoundedCornerShape(if (checked) 12.dp else 8.dp),
+                    RoundedCornerShape(knobSize / 2),
                 )
         )
     }

@@ -166,7 +166,7 @@ open class PolicyEditorViewModel(
     /** The owner changed the active draft. Nothing is written until Save. */
     fun edit(draft: PolicyEditorDraft) {
         if (!_state.value.loaded || _state.value.unreadable != null) return
-        _state.update { it.copy(draft = draft) }
+        _state.update { it.copy(draft = draft, message = null) }
     }
 
     /** Explicitly replaces an active document this build could not read. */
