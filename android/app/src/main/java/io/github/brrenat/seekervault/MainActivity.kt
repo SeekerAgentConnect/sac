@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
@@ -355,8 +356,9 @@ fun SeekerVaultTheme(
                 )
             }
     ) {
+        val colors = if (dark) DarkColors else LightColors
         MaterialTheme(
-            colorScheme = if (dark) DarkColors else LightColors,
+            colorScheme = colors,
             typography = SeekerTypography,
             shapes =
                 Shapes(
@@ -366,7 +368,10 @@ fun SeekerVaultTheme(
                     large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
                     extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
                 ),
-            content = content,
-        )
+        ) {
+            // Raw Box/Column app bars do not infer a foreground from their background.
+            // Keep their unqualified title and icon content on the scheme's surface ink.
+            CompositionLocalProvider(LocalContentColor provides colors.onSurface, content = content)
+        }
     }
 }
