@@ -354,7 +354,15 @@ class RequestDetailsScreenTest {
         show(TRANSFER, sent(RequestState.REQUEST_STATE_SUBMITTED))
         compose
             .onNodeWithTag(InboxTags.STATUS)
-            .assertTextContains("not been confirmed", substring = true)
+            .assertTextEquals(context.getString(R.string.transfer_status_sent))
+        compose
+            .onNodeWithTag(InboxTags.CONFIRMATION)
+            .assertTextEquals(context.getString(R.string.transfer_status_sent_detail, "2.5 SOL"))
+        compose
+            .onNodeWithText(context.getString(R.string.transfer_status_waiting_confirmation))
+            .assertExists()
+        compose.onNodeWithTag(InboxTags.TRANSACTION_ID).assertExists()
+        compose.onNodeWithTag(InboxTags.TRANSACTION_COPY).assertExists()
         // And the owner can ask, without anything going near the wallet.
         compose.onNodeWithTag(InboxTags.CHECK_STATUS).performClick()
         assertEquals(1, checks)
@@ -372,15 +380,15 @@ class RequestDetailsScreenTest {
         )
         compose
             .onNodeWithTag(InboxTags.STATUS)
-            .assertTextContains("went through on the network", substring = true)
-        // Whose word it is, said plainly: there is no second opinion behind it.
+            .assertTextEquals(context.getString(R.string.transfer_status_confirmed))
         compose
             .onNodeWithTag(InboxTags.CONFIRMATION)
-            .performScrollTo()
-            .assertTextContains("rpc.example.test", substring = true)
-        compose
-            .onNodeWithTag(InboxTags.CONFIRMATION)
-            .assertTextContains(context.getString(R.string.confirmation_trust), substring = true)
+            .assertTextEquals(
+                context.getString(R.string.transfer_status_confirmed_detail, "2.5 SOL")
+            )
+        // The endpoint is available as secondary technical evidence, not a competing status.
+        compose.onNodeWithTag(InboxTags.TECHNICAL_DETAILS).performScrollTo().performClick()
+        compose.onNodeWithText("rpc.example.test").performScrollTo().assertExists()
         compose.onNodeWithTag(InboxTags.CHECK_STATUS).assertDoesNotExist()
     }
 
@@ -396,20 +404,20 @@ class RequestDetailsScreenTest {
         )
         compose
             .onNodeWithTag(InboxTags.STATUS)
+            .assertTextEquals(context.getString(R.string.transfer_status_failed))
+        compose
+            .onNodeWithTag(InboxTags.CONFIRMATION)
             .assertTextContains("insufficient funds", substring = true)
         compose.onNodeWithTag(InboxTags.CHECK_STATUS).assertDoesNotExist()
     }
 
     @Test
-    fun saysTheServerHasNotLookedYetRatherThanNothing() {
+    fun saysItIsWaitingForNetworkConfirmationWithoutServerLanguage() {
         show(TRANSFER, sent(RequestState.REQUEST_STATE_SUBMITTED))
         compose
-            .onNodeWithTag(InboxTags.CONFIRMATION)
-            .performScrollTo()
-            .assertTextContains(
-                context.getString(R.string.confirmation_unchecked),
-                substring = true,
-            )
+            .onNodeWithText(context.getString(R.string.transfer_status_waiting_confirmation))
+            .assertExists()
+        compose.onNodeWithText("The server has not looked", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -428,6 +436,9 @@ class RequestDetailsScreenTest {
     @Test
     fun disablesTheCheckWhileOneIsRunning() {
         show(TRANSFER, sent(RequestState.REQUEST_STATE_SUBMITTED), checking = true)
+        compose
+            .onNodeWithTag(InboxTags.STATUS)
+            .assertTextEquals(context.getString(R.string.transfer_status_confirming))
         compose.onNodeWithTag(InboxTags.CHECK_STATUS).assertIsNotEnabled()
         compose.onNodeWithTag(InboxTags.SENDING).assertExists()
     }

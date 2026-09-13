@@ -1,7 +1,6 @@
 package io.github.brrenat.seekervault.connections
 
 import android.content.Context
-import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
@@ -78,6 +77,15 @@ class ConnectionsScreenTest {
         compose.onNodeWithText(context.getString(R.string.waiting_for_you)).assertExists()
         compose.onNodeWithText("Still here?").assertExists()
         compose.onNodeWithText(context.getString(R.string.request_one_warning)).assertExists()
+        val railBounds =
+            compose.onNodeWithTag(ConnectionsTags.CAROUSEL).fetchSemanticsNode().boundsInRoot
+        val onlyBounds =
+            compose
+                .onNodeWithTag(ConnectionsTags.request(request.key))
+                .assertIsSelected()
+                .fetchSemanticsNode()
+                .boundsInRoot
+        assertEquals(railBounds.center.x, onlyBounds.center.x, 1f)
         compose
             .onNodeWithTag(ConnectionsTags.INBOX)
             .assertTextContains(context.getString(R.string.requests_see_all, 1))
@@ -117,13 +125,11 @@ class ConnectionsScreenTest {
     }
 
     @Test
-    fun requestCarouselStartsLeadingThenCentersAndFocusesTheSnappedItem() {
+    fun requestCarouselStartsWithTheFirstItemCenteredAndCanCenterTheLastOfFive() {
         val requests =
-            listOf(
-                FakeConnectionGateway.request(HOME.id, "request-1", "First"),
-                FakeConnectionGateway.request(HOME.id, "request-2", "Second"),
-                FakeConnectionGateway.request(HOME.id, "request-3", "Third"),
-            )
+            (1..5).map {
+                FakeConnectionGateway.request(HOME.id, "request-$it", "Request $it")
+            }
         show(
             state = ConnectionsUiState(connections = listOf(HOME), loaded = true),
             inbox = InboxSummary(waitingForYou = requests.size, toSend = 0),
@@ -135,27 +141,54 @@ class ConnectionsScreenTest {
         val first =
             compose.onNodeWithTag(ConnectionsTags.request(requests[0].key)).assertIsSelected()
         val firstBounds = first.fetchSemanticsNode().boundsInRoot
-        assertEquals(
-            railBounds.left + 16 * context.resources.displayMetrics.density,
-            firstBounds.left,
-            1f,
+        assertEquals(railBounds.center.x, firstBounds.center.x, 1f)
+
+        repeat(5) {
+            rail.performTouchInput {
+                val travel = 240.dp.toPx()
+                swipe(
+                    start = center.copy(x = center.x + travel / 2),
+                    end = center.copy(x = center.x - travel / 2),
+                    durationMillis = 500,
+                )
+            }
+            compose.waitForIdle()
+        }
+
+        val focused =
+            compose.onNodeWithTag(ConnectionsTags.request(requests.last().key)).assertIsSelected()
+        val focusedBounds = focused.fetchSemanticsNode().boundsInRoot
+        assertEquals(railBounds.center.x, focusedBounds.center.x, 1f)
+    }
+
+    @Test
+    fun requestCarouselCanCenterTheLastOfTwoItems() {
+        val requests =
+            listOf(
+                FakeConnectionGateway.request(HOME.id, "request-1", "First"),
+                FakeConnectionGateway.request(HOME.id, "request-2", "Second"),
+            )
+        show(
+            state = ConnectionsUiState(connections = listOf(HOME), loaded = true),
+            inbox = InboxSummary(waitingForYou = requests.size, toSend = 0),
+            requests = requests,
         )
 
+        val rail = compose.onNodeWithTag(ConnectionsTags.CAROUSEL)
+        val railBounds = rail.fetchSemanticsNode().boundsInRoot
         rail.performTouchInput {
-            val travel = 120.dp.toPx()
+            val travel = 240.dp.toPx()
             swipe(
                 start = center.copy(x = center.x + travel / 2),
                 end = center.copy(x = center.x - travel / 2),
-                durationMillis = 600,
+                durationMillis = 500,
             )
         }
         compose.waitForIdle()
 
-        first.assertIsNotSelected()
-        val focused =
-            compose.onNodeWithTag(ConnectionsTags.request(requests[1].key)).assertIsSelected()
-        val focusedBounds = focused.fetchSemanticsNode().boundsInRoot
-        assertEquals(railBounds.center.x, focusedBounds.center.x, 1f)
+        val last =
+            compose.onNodeWithTag(ConnectionsTags.request(requests.last().key)).assertIsSelected()
+        assertEquals(railBounds.center.x, last.fetchSemanticsNode().boundsInRoot.center.x, 1f)
     }
 
     @Test
