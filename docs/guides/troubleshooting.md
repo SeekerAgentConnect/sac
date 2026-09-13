@@ -209,6 +209,14 @@ No phone is connected. Open Seeker Vault and tap **Connect**, and check that the
 
 ## Messages in the app
 
+### Background updates are late or stopped
+
+The background interval is configured to Android's 15-minute minimum, but it is not a delivery deadline. WorkManager waits for a connected network, and Doze, battery optimization, app standby, or the phone vendor's battery policy may defer an eligible run. Open the app for an immediate foreground reconciliation, or tap **Refresh**.
+
+If you used Android Settings → Apps → Seeker Vault → **Force stop**, scheduled work cannot resume by itself. Reopen Seeker Vault once. The app restores the existing unique schedule when it loads a usable connection; it does not create a tight catch-up loop. Removing or revoking the last usable connection cancels the schedule.
+
+Background work has no notification and opens no wallet. A pending request still waits for your manual review, and an already-submitted transfer may only have its existing status reconciled. There is no Firebase/push wake-up in Stage 5.2.
+
 ### "Could not reach the sidecar at http://127.0.0.1:8080. Is it running (pnpm dev:sidecar), and did you run adb reverse tcp:8080 tcp:8080?"
 
 The phone couldn't open a connection. The app shows this only when the first attempt fails; a connection that worked and then dropped says "Connection lost" instead. There are two usual causes:

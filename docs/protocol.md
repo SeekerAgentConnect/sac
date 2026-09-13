@@ -556,12 +556,12 @@ The durable contract leaves the live diagnostic as it was.
 
 ## Production updates (SAW-048–SAW-051)
 
-The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar; SAW-050 gives Android one persistent, headless reconciliation path; SAW-051 owns the foreground streams; and WorkManager scheduling follows in SAW-052.
+The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar; SAW-050 gives Android one persistent, headless reconciliation path; SAW-051 owns the foreground streams; and SAW-052 calls the same unary path from one unique, network-constrained periodic WorkManager job.
 
 | RPC | Wire protocol | Lifetime | Purpose |
 | --- | --- | --- | --- |
 | `Subscribe(stream SubscribeRequest) returns (stream SubscribeResponse)` | gRPC over HTTP/2 | One per usable paired connection while the app process is foreground | Server readiness, replay/live request changes and removals, revocation, sync-required signals, and bidirectional liveness |
-| `Sync(SyncRequest) returns (SyncResponse)` | Unary gRPC over HTTP/2 | One bounded call at a time per connection | A frozen, paginated view for first connection, missed-event recovery, Refresh, and later WorkManager runs |
+| `Sync(SyncRequest) returns (SyncResponse)` | Unary gRPC over HTTP/2 | One bounded call at a time per connection | A frozen, paginated view for first connection, missed-event recovery, Refresh, and periodic WorkManager runs |
 
 Every client and server message repeats `connection_id`, and every RPC carries that connection's phone credential. The server authenticates first and answers a mismatched connection, reference, cursor, snapshot, or page token as `not_found`. There is no cross-connection cursor and no process-global phone stream.
 

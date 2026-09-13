@@ -13,12 +13,12 @@ import org.w3c.dom.Element
  * owner's wallet selection and its authorization in `wallet/storage/` (SAW-015), the owner's own
  * record of what this phone did in `activity/storage/` (SAW-023), and the rules they set for one
  * connection in `policy/storage/` (SAW-025). Nothing is backed up. SAW-048 authorizes only the
- * `sync/` package to use the production sidecar transport, its own storage subpackage, and
- * WorkManager; FCM, services, jobs, alarms, receivers, and wallet automation remain excluded.
- * SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on purpose:
- * the app drives the wallet the owner already has. It still holds no wallet key of its own, and
- * Seed Vault's own SDK stays out. These checks fail when a limit is crossed early; the stage that
- * lifts one changes them.
+ * `sync/` package to use the production sidecar transport and its own storage subpackage; SAW-052
+ * adds WorkManager code there. FCM, foreground services, direct services, jobs, alarms, receivers,
+ * and wallet automation remain excluded. SAW-015 lifted the "no wallet library" limit for the
+ * Mobile Wallet Adapter client, on purpose: the app drives the wallet the owner already has. It
+ * still holds no wallet key of its own, and Seed Vault's own SDK stays out. These checks fail when
+ * a limit is crossed early; the stage that lifts one changes them.
  */
 class StageBoundaryTest {
     private val main =
@@ -314,13 +314,28 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun noWalletGeneralDatabaseOrPushLibraryIsOnTheClasspath() {
+    fun workManagerIsOnTheClasspathFromSaw052() {
+        assertEquals(
+            emptyList<String>(),
+            listOf(
+                    "androidx.work.WorkManager",
+                    "androidx.work.CoroutineWorker",
+                )
+                .filterNot { name ->
+                    runCatching { Class.forName(name, false, javaClass.classLoader) }.isSuccess
+                },
+        )
+    }
+
+    @Test
+    fun noSeedVaultDataStoreOrPushLibraryIsOnTheClasspath() {
         val present =
             listOf(
                     // SAW-015 adds the MWA client on purpose; Seed Vault's own SDK is Stage 3's
                     // signing task, not this one.
                     "com.solanamobile.seedvault.Wallet",
-                    "androidx.room.RoomDatabase",
+                    // WorkManager uses Room internally. The source scan above still rejects any
+                    // Room API in this app; only WorkManager's own implementation brings it in.
                     "androidx.datastore.core.DataStore",
                     "androidx.security.crypto.EncryptedSharedPreferences",
                     // Stage 5.2 permits WorkManager, but no push: FCM is SEE-73.
