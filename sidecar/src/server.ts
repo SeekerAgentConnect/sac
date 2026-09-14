@@ -33,6 +33,7 @@ import { LiveCommandBridge } from "./live/bridge.ts";
 import { createMcpEndpoint } from "./mcp-endpoint.ts";
 import { pairingRoutes } from "./pairing/service.ts";
 import { phoneRoutes } from "./phone-api.ts";
+import { createFcmSender, type FcmSender } from "./push/fcm.ts";
 import { ConfirmationTracker } from "./requests/confirmation.ts";
 import { requestRoutes } from "./requests/phone-service.ts";
 import { TransactionPreparer } from "./requests/preparation.ts";
@@ -73,6 +74,8 @@ export interface SidecarOptions {
   readonly now?: () => number;
   /** Shorter idle housekeeping interval for tests; committed updates wake streams immediately. */
   readonly updatePollMs?: number;
+  /** Replaces Firebase Admin construction in tests; never called when FCM_PROJECT_ID is absent. */
+  readonly fcmSenderFactory?: (projectId: string) => FcmSender;
 }
 
 // How long close() lets in-flight responses, such as a CANCELLED tool result, finish.
@@ -90,9 +93,22 @@ export async function startSidecar(
       console.log(`[sidecar] ${message}`);
     });
   const db = openDatabase(config.databasePath);
+  let fcmSender: FcmSender | undefined;
   try {
-    return await serve(config, db, log, options.now, options.updatePollMs);
+    fcmSender =
+      config.fcmProjectId === undefined
+        ? undefined
+        : (options.fcmSenderFactory ?? createFcmSender)(config.fcmProjectId);
+    return await serve(
+      config,
+      db,
+      log,
+      options.now,
+      options.updatePollMs,
+      fcmSender,
+    );
   } catch (error) {
+    await fcmSender?.close().catch(() => undefined);
     db.close();
     throw error;
   }
@@ -104,6 +120,7 @@ async function serve(
   log: (message: string) => void,
   now: (() => number) | undefined,
   updatePollMs: number | undefined,
+  fcmSender: FcmSender | undefined,
 ): Promise<Sidecar> {
   // Nothing is executed at startup: stored requests wait for the phone and the agent.
   const requests = new RequestStore(db, {
@@ -131,6 +148,11 @@ async function serve(
     config.demoTools === true
       ? "the demo tool vault_request_ack is on (MCP_DEMO_TOOLS=true)"
       : "the demo tool vault_request_ack is off; MCP_DEMO_TOOLS=true serves it",
+  );
+  log(
+    fcmSender === undefined
+      ? "FCM sender is off; FCM_PROJECT_ID is not configured"
+      : "FCM sender is configured through Application Default Credentials",
   );
 
   // Without an endpoint there is no vault_transfer and no preparation: the sidecar offers what it
@@ -297,6 +319,7 @@ async function serve(
         if (updateServer !== undefined) closeAll(updateServer);
         for (const session of updateSessions) session.destroy();
         await Promise.all([stopped, updatesStopped]);
+        await fcmSender?.close().catch(() => undefined);
         db.close();
         log("stopped");
       })();

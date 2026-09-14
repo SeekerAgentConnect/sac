@@ -1,0 +1,91 @@
+# Stage 5.3 verification
+
+Stage 5.3 adds optional FCM wake-up and user-visible request notifications on top of the completed
+Stage 5.2 convergence path. Firebase never becomes the source of truth: foreground Subscribe,
+unary Sync, and the periodic WorkManager job must continue to recover every durable request when
+push is absent, unavailable, delayed, duplicated, or dropped.
+
+## SAW-054 — optional Firebase client and sidecar sender
+
+SAW-054 is deployment plumbing only. Android has the current Firebase Messaging client and applies
+the Google Services plugin only for an operator-supplied project file. The sidecar can own one
+Firebase Admin sender behind `FCM_PROJECT_ID` and Application Default Credentials. There is no
+token registration/storage, invalidation call, app-defined messaging service, runtime notification
+permission request or channel, notification UI, deep link, or push-triggered work in this revision. The
+Firebase dependency's standard components and permissions do appear in the merged manifest, but
+there is no app-defined handler or runtime permission request. Messaging
+auto-init is explicitly false until SAW-055 can pair token creation with ownership and cleanup.
+
+### Automated behavior
+
+- `loadSidecarConfig` proves an absent/empty `FCM_PROJECT_ID` creates no setting, accepts a valid
+  trimmed project ID, and rejects invalid IDs without printing supplied values.
+- `FcmSender` tests exact message hand-off, opaque FCM message IDs, idempotent Firebase Admin app
+  deletion, and create/close without reading credentials or contacting FCM.
+- `server.test.ts` injects the sender boundary. Firebase-off startup never invokes the factory;
+  configured startup owns and closes one sender and logs neither the project ID nor credential
+  data.
+- Node `stage-boundary.test.ts` confines `firebase-admin` imports to `sidecar/src/push/` and rejects
+  logging from that credential-bearing module. No request lifecycle calls the sender.
+- Android `StageBoundaryTest` requires Firebase Messaging on the classpath while allowing only the
+  disabled-auto-init metadata beside `MainActivity`, `INTERNET`, and optional camera access in the
+  app's source manifest. It still rejects an app-declared service, receiver, alarm, foreground service,
+  legacy GCM, AndroidX Security credential store, or WorkManager use outside `sync/`.
+- A build from the normal checkout, with no `android/app/google-services.json`, passed all Android
+  checks. A temporary fake, credential-free file for the correct package made
+  `processDebugGoogleServices` and `assembleDebug` pass; the file was removed immediately and was
+  never tracked.
+- The complete Stage 5.2 production-path suite passed with Firebase off. Its real sidecar HTTP/2
+  tests and Android sync/lifecycle tests continue to use the same stream, Sync, cache, and worker.
+
+### Commands and results
+
+Run on **2026-09-14** on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, Gradle 9.7.1,
+launcher JDK 19.0.2, and the pinned Temurin 21 daemon criteria. New integration pins were Firebase
+Admin 14.4.0, Firebase Android BoM 34.19.0, and Google Services plugin 4.5.0.
+
+| Command | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | **PASS.** Lockfile and supply-chain policy accepted; Firebase web-app and protobuf warning-only postinstalls remain explicitly disabled. |
+| `pnpm test:updates` | **PASS.** 8/8 sidecar update tests plus Android sync and gRPC interoperability tests; run with no Firebase project file or sidecar project ID. |
+| `pnpm check` | **PASS.** Prettier, Buf format/lint, ESLint, both TypeScript checks, 417/417 sidecar tests, and 29/29 test-agent tests. |
+| `pnpm test:hello` | **PASS.** 9/9 Stage 1 simulated-device cases. |
+| `pnpm test:queue` | **PASS.** 7/7 Stage 2 two-sidecar cases. |
+| `pnpm check:android` | **PASS.** Spotless, all debug JVM tests, Android lint, debug APK, and instrumentation APK in the Firebase-off checkout. |
+| Temporary fake `google-services.json`; `:app:processDebugGoogleServices :app:assembleDebug` | **PASS.** Proved the configured Gradle branch and correct package selection; no real project, API key, or credential was used. |
+| `pnpm check:generated` | **PASS.** Generated protocol code and fixtures are current; SAW-054 changes no protocol. |
+| `pnpm build` | **PASS.** Sidecar and test-agent TypeScript builds. |
+
+### Deliberate failures
+
+The failure probes were reverted before the passing commands above:
+
+- Removing `implementation(libs.firebase.messaging)` made
+  `StageBoundaryTest.firebaseMessagingIsOnTheClasspathFromSaw054` fail.
+- Enabling Firebase Messaging auto-initialization in the manifest made
+  `StageBoundaryTest.manifestDeclaresOnlyTheActivityDisabledFcmTheNetworkAndAnOptionalCamera`
+  fail. SAW-054 must not create an unowned token before SAW-055 adds its authenticated lifecycle.
+- Removing `FcmSender.close()`'s one-time shutdown guard made the focused sender test fail with two
+  Admin-app deletions instead of one.
+
+### Physical Seeker
+
+`adb devices -l` listed no device on 2026-09-14.
+
+| Check | Result |
+| --- | --- |
+| Install and open the Firebase-off APK; exercise foreground updates, manual Refresh, and eventual WorkManager recovery | **NOT RUN:** no physical Seeker attached. Automated coverage and APK assembly do not count as a device pass. |
+| Install an operator-configured APK and inspect Firebase initialization | **NOT RUN:** no physical Seeker or real Firebase project/credential was used. SAW-054 has no delivery behavior to claim. |
+
+The later Stage 5.3 acceptance ticket owns real active/background/process-absent, screen-off/Doze,
+duplicate/drop, token-rotation, revoked-connection, denied-notification, two-sidecar, tap-routing,
+reboot, and Force-stop results. Those remain **NOT RUN** until a real Seeker and real deployment
+record them against a revision.
+
+### Pricing and quota verification
+
+The [setup guide](../guides/firebase.md#pricing-and-quotas-checked-for-saw-054) records the official
+Firebase pages checked on 2026-09-14: FCM was listed as no-cost, while current project/device and
+collapsible-message quotas were finite and explicitly subject to change. The documentation makes
+no permanent zero-cost infrastructure promise and directs operators to recheck pricing and the
+project's live Google Cloud quota page before deployment.

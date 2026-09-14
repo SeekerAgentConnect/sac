@@ -3,6 +3,15 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Firebase is an optional deployment integration. A normal checkout has no project-specific file,
+// does not apply the Google Services plugin, and keeps every Stage 5.2 path buildable. Operators
+// opt in by placing the Firebase console's untracked file here (docs/guides/firebase.md).
+val firebaseConfigured = layout.projectDirectory.file("google-services.json").asFile.isFile
+
+if (firebaseConfigured) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "io.github.brrenat.seekervault"
     compileSdk = 37
@@ -50,6 +59,7 @@ android {
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
+    implementation(platform(libs.firebase.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
@@ -57,6 +67,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.firebase.messaging)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.compose)
     implementation(libs.androidx.camera.core)

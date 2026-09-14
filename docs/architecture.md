@@ -101,6 +101,15 @@ SAW-053 validates this boundary as a joined system rather than only as isolated 
 
 That validation does not turn periodic work into notification delivery. In background there is no open stream and no mechanism that wakes the app immediately when a request is created. WorkManager is eventual and Android controls its actual delay. [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73) is the separate FCM stage; even it cannot bypass Force stop.
 
+SAW-054 opens that stage without adding a new runtime path. The Android Firebase client has an
+operator-supplied project configuration or remains dormant; the sidecar constructs a Firebase Admin
+sender only for an explicit project ID and Application Default Credentials. No request mutation
+calls it, no device token exists in either store, and no app-defined Android message handler or
+runtime permission request exists yet. The Firebase library's dormant manifest components are
+present but auto-init is false. Consequently the diagram and the Stage 5.2 convergence authority
+above are unchanged. The [Firebase guide](guides/firebase.md) defines the deployment and
+off/unavailable cases.
+
 ## Trust boundaries
 
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
@@ -165,6 +174,7 @@ These hold across the components, and every stage keeps them:
 | 4 | Transfer requests and fresh preparation (SAW-019), the phone's own inspection of the bytes (SAW-020), manual approval through the wallet (SAW-021), and on-chain confirmation (SAW-022) |
 | 5 | The policy model through end-to-end scenarios (SAW-025–029), then global defaults, connection overrides, two daily scopes, sourced review, and combined acceptance (Stage 5.1, SAW-043–047) |
 | 5.2 | Authenticated foreground bidirectional updates, shared reconciliation, a minimal phone cache, and eventual WorkManager sync (SAW-048–053; FCM excluded) |
+| 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds only the optional client/sender deployment boundary |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
 | 8 | Release checks |

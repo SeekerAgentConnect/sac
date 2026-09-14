@@ -11,7 +11,7 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 
 `pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`.
 
-`MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, and `SOLANA_RPC_TIMEOUT_MS` are optional, and an empty one counts as unset. The others are required.
+`MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, `SOLANA_RPC_TIMEOUT_MS`, and `FCM_PROJECT_ID` are optional, and an empty one counts as unset. The others are required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
@@ -32,6 +32,7 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 | `PAIRING_TOKEN_TTL_SECONDS` | Optional. How long a pairing code works | 60 to 3600; defaults to 600 (10 minutes) |
 | `SOLANA_RPC_URL` | Optional. The Solana JSON-RPC endpoint transfers are prepared against (SAW-019), and the one a sent transaction's outcome is read from (SAW-022). Without it the sidecar serves no `vault_transfer`, prepares no transaction, and can confirm nothing. | An `http://` or `https://` URL. It may carry an API key, so the sidecar never logs it or puts it in an error message; only its **host** is recorded, as the endpoint a confirmed or failed transfer's word came from. |
 | `SOLANA_RPC_TIMEOUT_MS` | Optional. How long one chain call may take | 1000 to 20000; defaults to 10000. A whole operation is bounded too: 20000 ms, however many calls it makes |
+| `FCM_PROJECT_ID` | Optional. The Firebase/Google Cloud project for the SAW-054 Firebase Admin sender | A 6–30 character lowercase Google Cloud project ID. Empty means no Firebase Admin app or sender is constructed. Credentials come from Application Default Credentials, not this value; see the [Firebase setup guide](../guides/firebase.md). |
 
 Generate each token with `openssl rand -hex 32`. If the configuration is invalid, the sidecar names every problem and exits with status 1. It never prints a token value.
 
@@ -47,6 +48,7 @@ The expected output is:
 ```text
 [sidecar] requests are stored in /path/to/SeekerAgentWallet/sidecar/data/sidecar.db (schema version 4); server 9fda5035-f3b4-4ec3-a68a-5e6caa02397a; no phone is paired: run pnpm pair
 [sidecar] the demo tool vault_request_ack is on (MCP_DEMO_TOOLS=true)
+[sidecar] FCM sender is off; FCM_PROJECT_ID is not configured
 [sidecar] listening on http://127.0.0.1:8080: MCP at http://127.0.0.1:8080/mcp, phone API at http://127.0.0.1:8080/seekervault.live.v1.LiveCommandService
 [sidecar] production updates are not configured
 ```
@@ -59,7 +61,8 @@ To stop it, press Ctrl+C or send SIGTERM. Stopping happens in this order:
 
 1. The in-flight live command, if any, is cancelled, and the agent gets `CANCELLED`.
 2. The Stage 1 stream and every production update stream end; update streams receive `unavailable`.
-3. The database closes, and the process exits within about a second.
+3. The optional named Firebase Admin app is deleted, the database closes, and the process exits
+   within about a second.
 
 A restart loses the in-flight live command by design, and nothing is replayed after it. Durable requests survive a restart unchanged; see [storage and lifecycle](#storage-and-lifecycle).
 
@@ -403,10 +406,11 @@ Typical log lines:
 | `sidecar/src/storage/update-store.ts` | Durable per-connection sequences/replay and disk-frozen Sync snapshots (SAW-049) |
 | `sidecar/src/storage/tls.ts` | Reads the configured production PEM identity inside the audited file-system boundary (SAW-049) |
 | `sidecar/src/updates/service.ts` | Authenticated bidirectional Subscribe, unary Sync, stream ownership/liveness, and bounded confirmation (SAW-049) |
+| `sidecar/src/push/fcm.ts` | The optional Firebase Admin messaging sender (SAW-054). It uses Application Default Credentials, logs nothing, and has no request-lifecycle caller until later Stage 5.3 tickets. |
 | `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010), `vault_get_address` (SAW-015), and `vault_sign_message` and `vault_get_capabilities` (SAW-016) |
 | `sidecar/src/requests/signature.ts` | Ed25519 verification (SAW-016): the sidecar checks a wallet's signature, and never makes one |
 | `sidecar/src/requests/preparation.ts` | `TransactionPreparer` (SAW-019): checks an asset before a request is stored, and builds and records the next prepared version |
-| `sidecar/src/solana/rpc.ts` | The chain client (SAW-019): the read-only JSON-RPC calls a preparation needs. The only code that reaches a network besides the sidecar's own listeners. |
+| `sidecar/src/solana/rpc.ts` | The chain client (SAW-019): the read-only JSON-RPC calls a preparation needs. It remains the only code that reaches a blockchain. The separately confined optional FCM sender can reach Firebase only once a later ticket gives it a caller. |
 | `sidecar/src/solana/transfer.ts` | Building a transfer (SAW-019): the network check, what is supported, and the unsigned transaction |
 | `sidecar/src/solana/token.ts`, `addresses.ts`, `network.ts` | The SPL Token layouts and instructions, the program addresses and the associated-token-account derivation, and each network's genesis hash |
 | `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
@@ -426,6 +430,7 @@ The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. Th
 
 - **`src/live/bridge.test.ts`** tests the waiter with mocked timers.
 - **`src/server.test.ts`** tests the real server with the MCP SDK client and a Connect client. It covers:
+  - Firebase-off startup constructs no Admin app, while configured startup owns and closes exactly one injected sender without logging its project
   - acknowledgement, OFFLINE, BUSY, and INVALID_TEXT
   - timeout, including a late acknowledgement
   - cancellation, both by the agent and by a dropped agent connection
@@ -434,6 +439,7 @@ The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. Th
   - the Host and Origin checks
   - `/healthz`
   - that no token or command text reaches the logs
+- **`src/push/fcm.test.ts`** tests exact message hand-off, opaque message IDs, idempotent Admin-app deletion, and initialization/cleanup without loading or contacting credentials.
 - **`src/restart.test.ts`** runs `src/main.ts` as a real process. It stops the process with SIGTERM and then with SIGKILL during a command, and checks that the original caller fails and nothing is replayed after the restart.
 - **`src/storage/request-store.test.ts`** tests the request store on an in-memory database with a controlled clock. It covers:
   - creation and validation

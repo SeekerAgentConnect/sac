@@ -2,7 +2,7 @@
 
 This is the repeatable MacBook → physical Seeker runbook for Stage 5.2. It starts the sidecar's real production `UpdateService`, pairs the phone, creates durable requests through Hermes, and checks foreground streaming and eventual WorkManager synchronization. The Stage 1 **Live test** is a separate diagnostic and is not evidence for this runbook.
 
-Stage 5.2 has no push transport. Foreground changes normally arrive at once over one authenticated gRPC/HTTP/2 stream per usable sidecar. In the background, Android may eventually run a network-constrained periodic unary sync. The 15-minute setting is a minimum interval, not a deadline: Doze, standby, battery policy, network state, and Force stop can delay or suppress it. Immediate background wake-up is deferred to [SEE-73 — FCM wake-up and request notifications](https://linear.app/seekeragentwallet/issue/SEE-73).
+Stage 5.2 has no push transport. Foreground changes normally arrive at once over one authenticated gRPC/HTTP/2 stream per usable sidecar. In the background, Android may eventually run a network-constrained periodic unary sync. The 15-minute setting is a minimum interval, not a deadline: Doze, standby, battery policy, network state, and Force stop can delay or suppress it. SAW-054 has opened [Stage 5.3](https://linear.app/seekeragentwallet/issue/SEE-73) with optional Firebase client/sender configuration only; it does not alter this runbook or provide an immediate wake-up. See the [Firebase setup guide](firebase.md).
 
 ## 1. Build and install
 
@@ -121,7 +121,7 @@ Run these cases separately and record the observed delay:
 - reboot, unlock, restore the USB reverse mappings if the sidecar is on the Mac, and wait for Android to make the persisted job eligible;
 - Android Settings → Apps → Seeker Vault → **Force stop**.
 
-For Force stop, no worker should run. Reopen the app explicitly; foreground reconciliation should catch up, and the unique schedule should be retained/re-established. Neither WorkManager nor the later FCM stage bypasses Android Force stop.
+For Force stop, no worker should run. Reopen the app explicitly; foreground reconciliation should catch up, and the unique schedule should be retained/re-established. Neither WorkManager nor FCM bypasses Android Force stop.
 
 For a submitted transfer, advance the controlled test-chain status while the app is backgrounded. A later unary sync may perform only the existing bounded, read-only confirmation check. On reopen, Activity should advance without tapping **Check status** and without the wallet opening. Never use mainnet for this check.
 
