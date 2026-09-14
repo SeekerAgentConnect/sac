@@ -161,6 +161,7 @@ function postMcp(options: {
 
 describe("durable requests over MCP and Connect", () => {
   it("lists the durable tools beside the live one, and says that storing isn't approval", async () => {
+    assert.match(agent.getInstructions() ?? "", /^Seeker Agent Connect puts /);
     const { tools } = await agent.listTools();
     assert.deepEqual(
       tools.map((tool) => tool.name).sort(),

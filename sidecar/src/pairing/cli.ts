@@ -66,7 +66,7 @@ function main(args: readonly string[]): number {
     const uri = pairingUri(issued);
     const minutes = Math.round(config.pairingTokenTtlSeconds / 60);
     const lines = [
-      `Scan this with seeker-vault on the phone to pair it with ${issued.serverUrl}.`,
+      `Scan this with Seeker Agent Connect on the phone to pair it with ${issued.serverUrl}.`,
       `The code works once, until ${new Date(issued.expiresAtMs).toTimeString().slice(0, 8)} (${minutes} minutes).`,
       "",
       renderUnicodeCompact(uri, { ecc: "M", border: 2 }),

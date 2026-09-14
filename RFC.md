@@ -1,6 +1,8 @@
-# seeker-vault — MVP Implementation Plan
+# Seeker Agent Connect — MVP Implementation Plan
 
-**Working name:** `seeker-vault`  
+**Product name:** Seeker Agent Connect
+
+**Compatibility identifiers:** existing `seeker-vault`/`seekervault` package, protocol, URI, and storage identifiers remain unchanged
 **Revision:** September 14, 2026. Stage 5.3 includes optional Firebase invalidation, notification permission, read-only current-request routing, joined acceptance, and a physical Seeker runbook; Stage 5.2 remains the complete Firebase-off path and no wallet action becomes automatic.
 
 **Purpose:** a master plan to be broken down into implementation tasks.

@@ -67,7 +67,7 @@ Platform-Tools aren't on your `PATH`. Add the `ANDROID_HOME` and `PATH` lines fr
 
 ### `INSTALL_FAILED_UPDATE_INCOMPATIBLE`
 
-A copy of Seeker Vault signed with a different debug key is already installed, for example one built on another Mac. Each Mac signs debug builds with its own key, in `~/.android/debug.keystore`. Remove the old copy, then install again:
+A copy of Seeker Agent Connect signed with a different debug key is already installed, for example one built on another Mac. Each Mac signs debug builds with its own key, in `~/.android/debug.keystore`. Remove the old copy, then install again:
 
 ```bash
 adb uninstall io.github.brrenat.seekervault
@@ -205,7 +205,7 @@ OFFLINE: no phone is watching; open the live-test screen and connect
 [ELIFECYCLE] Command failed with exit code 4.
 ```
 
-No phone is connected. Open Seeker Vault and tap **Connect**, and check that the status reads "Connected". Every exit code is listed in [`test-agent/README.md`](../../test-agent/README.md).
+No phone is connected. Open Seeker Agent Connect and tap **Connect**, and check that the status reads "Connected". Every exit code is listed in [`test-agent/README.md`](../../test-agent/README.md).
 
 ## Live and background updates
 
@@ -225,7 +225,7 @@ Use `adb shell dumpsys jobscheduler io.github.brrenat.seekervault` to inspect th
 
 The background interval is configured to Android's 15-minute minimum, but it is not a delivery deadline. WorkManager waits for a connected network, and Doze, battery optimization, app standby, or the phone vendor's battery policy may defer an eligible run. Open the app for an immediate foreground reconciliation, or tap **Refresh**.
 
-If you used Android Settings → Apps → Seeker Vault → **Force stop**, scheduled work cannot resume by itself. Reopen Seeker Vault once. The app restores the existing unique schedule when it loads a usable connection; it does not create a tight catch-up loop. Removing or revoking the last usable connection cancels the schedule.
+If you used Android Settings → Apps → Seeker Agent Connect → **Force stop**, scheduled work cannot resume by itself. Reopen Seeker Agent Connect once. The app restores the existing unique schedule when it loads a usable connection; it does not create a tight catch-up loop. Removing or revoking the last usable connection cancels the schedule.
 
 Background work opens no wallet. A pending request still waits for your manual review, and an already-submitted transfer may only have its existing status reconciled. Stage 5.2 has no immediate background-delivery guarantee. SAW-056 can send an optional content-free Firebase hint and SAW-057 gives it a bounded, deduplicated authoritative Sync handoff, but FCM acceptance is not device delivery: Doze, throttling, expiry, collapse, outages, or Force stop can delay or prevent it. A healthy foreground stream takes precedence; otherwise push and periodic workers share the same per-connection coordinator. SAW-058 may show a generic notification after a successful push Sync discovers a new pending request. The [Firebase guide](firebase.md#notifications-and-tap-to-open-saw-058) covers priority, TTL, collapse, handoff, notification permission, tap routing, and off/unavailable cases.
 

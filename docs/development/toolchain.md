@@ -66,7 +66,7 @@ instead, so installation remains deterministic and credential-independent.
 | Android SDK Platform-Tools, Command-line Tools | 37.0.1, 23.0.0 | Not pinned; any recent version works |
 | Android Studio | Quail 4 (2026.1.4) or newer, which supports AGP up to 9.4 | Not pinned; not run during verification (see below) |
 
-**Application ID and namespace: `io.github.brrenat.seekervault`.** Treat it as fixed: changing it would make the next build a different app on the device.
+**Display name: Seeker Agent Connect. Application ID and namespace: `io.github.brrenat.seekervault`.** The identifier remains fixed across the branding change: changing it would make the next build a different app on the device and would not preserve the existing installation's data.
 
 **Backups are disabled.** The manifest turns off backups and `res/xml/data_extraction_rules.xml` excludes all app data from cloud backup and device transfer, because the app stores connection credentials (SAW-012); see [`docs/security.md`](../security.md#local-storage-and-recovery).
 

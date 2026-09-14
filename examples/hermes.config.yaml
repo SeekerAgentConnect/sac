@@ -1,4 +1,4 @@
-# seeker-vault: a Hermes MCP server entry for the sidecar's tools.
+# Seeker Agent Connect: a Hermes MCP server entry for the sidecar's tools.
 #
 # Merge the `seeker_vault` entry into the `mcp_servers` section of your existing
 # ~/.hermes/config.yaml. Don't replace that file. Keep the token out of this file: put it in

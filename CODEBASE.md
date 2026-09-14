@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-`seeker-vault` (repo: SeekerAgentWallet) is an Android app for the Solana Seeker phone that acts as a control center for requests from external AI agents, plus the self-hosted server software it talks to. Agents propose actions (message signing, transfers, Jupiter swaps) over MCP to a self-hosted TypeScript sidecar; the user reviews each request on the phone against per-connection policies and approves it through Mobile Wallet Adapter and Seed Vault Wallet. The sidecar never holds keys or signs. Stack: Kotlin/Compose (Android), TypeScript/Node (sidecar, test agent), Protobuf + Buf + Connect (phone–sidecar contract), Docker Compose (gateway/deployment).
+Seeker Agent Connect (repository: `SeekerAgentWallet`; compatibility package name: `seeker-vault`) is an Android app for the Solana Seeker phone that acts as a control center for requests from external AI agents, plus the self-hosted server software it talks to. Agents propose actions (message signing, transfers, Jupiter swaps) over MCP to a self-hosted TypeScript sidecar; the user reviews each request on the phone against per-connection policies and approves it through Mobile Wallet Adapter and Seed Vault Wallet. The sidecar never holds keys or signs. Stack: Kotlin/Compose (Android), TypeScript/Node (sidecar, test agent), Protobuf + Buf + Connect (phone–sidecar contract), Docker Compose (gateway/deployment).
 
 **Status:** Stage 1 (wallet-free hello world) is accepted. Its automated checks pass, and the owner's Hermes → Seeker → OK → Hermes round trip passed on 2026-09-11 (`docs/testing/stage-1.md`). Done:
 

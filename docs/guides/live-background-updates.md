@@ -119,7 +119,7 @@ Run these cases separately and record the observed delay:
 - screen off with the process alive;
 - normal process death (remove the app from recents or let Android kill it—do not use Force stop);
 - reboot, unlock, restore the USB reverse mappings if the sidecar is on the Mac, and wait for Android to make the persisted job eligible;
-- Android Settings → Apps → Seeker Vault → **Force stop**.
+- Android Settings → Apps → Seeker Agent Connect → **Force stop**.
 
 For Force stop, no worker should run. Reopen the app explicitly; foreground reconciliation should catch up, and the unique schedule should be retained/re-established. Neither WorkManager nor FCM bypasses Android Force stop.
 

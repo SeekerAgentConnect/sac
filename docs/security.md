@@ -190,7 +190,7 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 
 ## The wallet
 
-The owner's wallet belongs to the wallet app, not to seeker-vault (SAW-015; [`docs/guides/wallet-setup.md`](guides/wallet-setup.md)).
+The owner's wallet belongs to the wallet app, not to Seeker Agent Connect (SAW-015; [`docs/guides/wallet-setup.md`](guides/wallet-setup.md)).
 
 - **No key, seed phrase, or recovery material ever reaches this app or a sidecar.** The app asks the installed wallet through Mobile Wallet Adapter and learns two things: the public address the owner picked, and an authorization token for talking to that wallet again.
 - **The authorization token is a secret and stays on the phone.** It is encrypted under the Keystore key, kept out of backups, never logged, and never sent to a sidecar. `WalletRepositoryTest` and `WalletActivityTest` check that it reaches no server.
