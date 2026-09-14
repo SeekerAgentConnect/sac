@@ -27,8 +27,16 @@ public interface PairingServiceClientInterface {
   public suspend fun getConnectionCapabilities(request: GetConnectionCapabilitiesRequest, headers: Headers = emptyMap()): ResponseMessage<GetConnectionCapabilitiesResponse>
 
   /**
+   *  SetFcmToken registers or rotates the caller's current FCM direct-send target. Clearing names
+   *  the target being removed so a late invalid-token or unregistration result cannot erase a newer
+   *  rotation. Neither the target nor the phone credential is returned or logged.
+   */
+  public suspend fun setFcmToken(request: SetFcmTokenRequest, headers: Headers = emptyMap()): ResponseMessage<SetFcmTokenResponse>
+
+  /**
    *  RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The
-   *  token stops working at once, and the connection's PENDING requests become CANCELLED.
+   *  credential stops working at once, its FCM target is deleted, and the connection's PENDING
+   *  requests become CANCELLED.
    *  Requests already approved are still resolved, and agents can still read every request.
    */
   public suspend fun revokeConnection(request: RevokeConnectionRequest, headers: Headers = emptyMap()): ResponseMessage<RevokeConnectionResponse>

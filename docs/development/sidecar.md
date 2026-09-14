@@ -46,7 +46,7 @@ pnpm dev:sidecar
 The expected output is:
 
 ```text
-[sidecar] requests are stored in /path/to/SeekerAgentWallet/sidecar/data/sidecar.db (schema version 4); server 9fda5035-f3b4-4ec3-a68a-5e6caa02397a; no phone is paired: run pnpm pair
+[sidecar] requests are stored in /path/to/SeekerAgentWallet/sidecar/data/sidecar.db (schema version 5); server 9fda5035-f3b4-4ec3-a68a-5e6caa02397a; no phone is paired: run pnpm pair
 [sidecar] the demo tool vault_request_ack is on (MCP_DEMO_TOOLS=true)
 [sidecar] FCM sender is off; FCM_PROJECT_ID is not configured
 [sidecar] listening on http://127.0.0.1:8080: MCP at http://127.0.0.1:8080/mcp, phone API at http://127.0.0.1:8080/seekervault.live.v1.LiveCommandService
@@ -122,6 +122,7 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
 | `/seekervault.request.v1.PairingService/Pair` | A phone that's pairing | `Authorization: Bearer <pairing token>`, from `pnpm pair` | Exchanges the pairing token for a connection and its credential |
 | `/seekervault.request.v1.PairingService/GetConnectionCapabilities` | The paired phone | `Authorization: Bearer <phone credential>` | Reports the caller's optional production-update capability without requiring re-pairing (SAW-048) |
+| `/seekervault.request.v1.PairingService/SetFcmToken` | The paired phone | `Authorization: Bearer <phone credential>` | Registers, rotates, or compare-clears the caller connection's private FCM target (SAW-055) |
 | `/seekervault.request.v1.PairingService/RevokeConnection` | The paired phone | `Authorization: Bearer <phone credential>` | Revokes the caller's own connection |
 | `/seekervault.request.v1.RequestService/ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, `CheckStatus`, and `PublishWallet` | The paired phone | `Authorization: Bearer <phone credential>` | Connect unary calls of the durable workflow, and the wallet the owner selected (SAW-015) |
 | `/seekervault.update.v1.UpdateService/Subscribe` | The paired phone, configured update origin | `Authorization: Bearer <phone credential>` | Bidirectional gRPC/HTTP2 replay and live durable request changes |
@@ -170,10 +171,10 @@ On the phone API:
 
 - **Token:** each service takes only its own credential, as the [role matrix](../protocol.md#roles) shows. Any other token, a revoked credential, or none fails with `unauthenticated`. The MCP token is refused on every phone RPC, and every phone-side token is refused on `/mcp`.
 - **Size:** each message is limited to 64 KiB, and a larger one fails with `resource_exhausted`.
-- **Connection:** the phone credential authenticates as its own connection. Every `RequestService` and capability-discovery call must name that connection, in `connection_id` or `ref`. A call that names another connection gets `not_found`.
+- **Connection:** the phone credential authenticates as its own connection. Every `RequestService`, capability-discovery, and FCM-registration call must name that connection, in `connection_id` or `ref`. A call that names another connection gets `not_found`.
 - **Errors:** every `PairingService` and `RequestService` error carries a `RequestErrorDetail`; see [request errors](../protocol.md#request-errors).
 
-**Tokens and logs:** tokens are read only from the `Authorization` header, and never logged. `MCP_TOKEN` and `PHONE_TOKEN` are compared in constant time. Pairing tokens and phone credentials are looked up by their SHA-256 hash, which is all the database keeps. Log lines carry command and request IDs, sizes, and states. They never carry command text, request text, or notes.
+**Tokens and logs:** bearer tokens are read only from the `Authorization` header, and never logged. `MCP_TOKEN` and `PHONE_TOKEN` are compared in constant time. Pairing tokens and phone credentials are looked up by their SHA-256 hash, which is all the database keeps. SAW-055's opaque FCM target must remain recoverable for the future sender, but no API returns it and neither success nor failure logs it. Log lines carry connection, command, and request IDs, sizes, and states. They never carry an FCM target, credential, command text, request text, or note.
 
 ## The MCP tools
 
@@ -271,17 +272,18 @@ Durable requests and production update state live in one SQLite file, `DATABASE_
 - **Confirmation is bounded observation.** Of the supplied SUBMITTED/UNKNOWN transfers, each Sync checks at most four concurrently through `ConfirmationTracker`; the durable rotation moves deferred records into later runs. It uses the same cluster and approved-byte verification as Check status and can only record that result. It never prepares, signs, simulates, sends, or resubmits.
 - **Run one sidecar per database file.**
 
-These are the tables at schema version 3:
+These are the tables at schema version 5:
 
 | Table | Holds |
 | --- | --- |
 | `server` | The sidecar's lasting ID, created with the database |
-| `connections` | Each phone that paired: its connection ID, the SHA-256 of its credential, its device name, when it paired and was revoked, and the wallet address and network it published. At most one isn't revoked. |
+| `connections` | Each phone that paired: its connection ID, the SHA-256 of its credential, its device name, when it paired and was revoked, the wallet address/network it published, and SAW-055's private current FCM target. At most one isn't revoked; revocation clears its target. |
 | `pairing_tokens` | Each pairing token's SHA-256, its server URL, when it was issued, expires, and was used, and the connection it created |
 | `requests` | Each request: its connection, kind, action (as Protobuf binary), note, state, times, and outcome |
 | `idempotency_keys` | Each key's request and action fingerprint, across the whole sidecar |
 | `results` | Every result the phone submitted and the sidecar accepted, so that a repeat changes nothing |
 | `prepared_transactions` | Prepared transaction versions. A SUBMITTED transfer's approved version is read back from here when the chain is checked (SAW-022). |
+| `update_sequences`, `update_events`, `sync_snapshots`, `sync_snapshot_items` | SAW-049's per-connection mutation revisions, bounded replay, and disk-frozen paginated Sync snapshots. |
 
 To look inside, run `sqlite3 sidecar/data/sidecar.db "SELECT request_id, kind, state FROM requests"`. States are `RequestState` numbers, from 1 (PENDING) to 10 (UNKNOWN).
 
@@ -293,6 +295,11 @@ To look inside, run `sqlite3 sidecar/data/sidecar.db "SELECT request_id, kind, s
 - **A shipped migration is never edited;** a schema change is a new migration. `sidecar/src/storage/fixtures/schema-v1.sql` freezes a v1 database, and `database.test.ts` opens it with the current code.
 - **Migration 2 adds pairing (SAW-011):** the `server` and `pairing_tokens` tables, and the credential and device name columns on `connections`. SAW-010's stand-in connection has no credential, so the migration revokes it and cancels its PENDING requests. Pair the phone after upgrading.
 - **Migration 3 adds the wallet binding (SAW-015):** `wallet_address`, `wallet_network`, and `wallet_bound_at_ms` on `connections`. All three are set together or all NULL, which means no wallet is connected. No key material and no wallet authorization token is ever stored; `wallet_address` is a public key. An upgraded database starts with no binding, so connect the wallet in the app after upgrading.
+- **Migration 4 adds production updates (SAW-049):** per-connection mutation sequences/events and
+  frozen Sync snapshot tables. Existing request data stays authoritative.
+- **Migration 5 adds FCM registration (SAW-055):** nullable `fcm_token` on each connection. Existing
+  and revoked connections start with no target; registration fills only the active connection, and
+  revocation clears it.
 
 ### The lifecycle in the sidecar
 
@@ -415,10 +422,10 @@ Typical log lines:
 | `sidecar/src/solana/token.ts`, `addresses.ts`, `network.ts` | The SPL Token layouts and instructions, the program addresses and the associated-token-account derivation, and each network's genesis hash |
 | `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
 | `sidecar/src/storage/database.ts` | Opening the database, migrations, and transactions (SAW-010) |
-| `sidecar/src/storage/migrations.ts` | The numbered schema migrations, including durable update revision/replay/snapshot tables (SAW-010, SAW-011, SAW-049) |
+| `sidecar/src/storage/migrations.ts` | The numbered schema migrations, including durable update revision/replay/snapshot tables and schema 5's nullable per-connection FCM target (SAW-010, SAW-011, SAW-049, SAW-055) |
 | `sidecar/src/pairing/uri.ts` | The pairing code's URI, and the server URL rule (SAW-011) |
-| `sidecar/src/storage/pairing-store.ts` | `PairingStore` (SAW-011): pairing tokens, pairing, phone credentials, revocation, and the server ID |
-| `sidecar/src/pairing/service.ts` | The Connect `PairingService` (SAW-011) |
+| `sidecar/src/storage/pairing-store.ts` | `PairingStore` (SAW-011, SAW-055): pairing tokens, pairing, phone credentials, one current private FCM target, revocation, and the server ID |
+| `sidecar/src/pairing/service.ts` | The Connect `PairingService`, including authenticated connection-scoped FCM registration (SAW-011, SAW-055) |
 | `sidecar/src/pairing/cli.ts` | `pnpm pair`, `pnpm pair status`, and `pnpm pair revoke` (SAW-011) |
 
 The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. The contract they implement is in [`docs/protocol.md`](../protocol.md#stage-2-durable-requests).
@@ -439,7 +446,7 @@ The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. Th
   - the Host and Origin checks
   - `/healthz`
   - that no token or command text reaches the logs
-- **`src/push/fcm.test.ts`** tests exact message hand-off, opaque message IDs, idempotent Admin-app deletion, and initialization/cleanup without loading or contacting credentials.
+- **`src/push/fcm.test.ts`** tests exact message hand-off, opaque message IDs, idempotent Admin-app deletion, and initialization/cleanup without loading or contacting credentials. `src/storage/pairing-store.test.ts` and `src/pairing/roles.test.ts` cover FCM target persistence, atomic rotation, compare-delete, revocation cleanup, authenticated ownership, and redacted logs.
 - **`src/restart.test.ts`** runs `src/main.ts` as a real process. It stops the process with SIGTERM and then with SIGKILL during a command, and checks that the original caller fails and nothing is replayed after the restart.
 - **`src/storage/request-store.test.ts`** tests the request store on an in-memory database with a controlled clock. It covers:
   - creation and validation

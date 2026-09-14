@@ -66,8 +66,27 @@ interface ConnectionGateway {
         binding: WalletBinding?,
     ): List<String>
 
+    /** Registers, rotates, or compare-clears this connection's private FCM direct-send target. */
+    suspend fun setFcmToken(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+        update: FcmTokenUpdate,
+    )
+
     /** Ends the connection at its sidecar: the credential stops working there at once. */
     suspend fun revoke(serverUrl: String, credential: String, connectionId: String)
+}
+
+/** An FCM target update whose diagnostic representation can never disclose the opaque value. */
+sealed class FcmTokenUpdate(val target: String) {
+    class Register(target: String) : FcmTokenUpdate(target) {
+        override fun toString() = "FcmTokenUpdate.Register(<redacted>)"
+    }
+
+    class ClearIfCurrent(target: String) : FcmTokenUpdate(target) {
+        override fun toString() = "FcmTokenUpdate.ClearIfCurrent(<redacted>)"
+    }
 }
 
 /** A `PairResponse`, before the repository has checked it. */

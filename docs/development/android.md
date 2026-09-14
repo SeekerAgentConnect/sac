@@ -66,7 +66,7 @@ The cases cross the runtime boundary instead of replacing either half with a fak
 
 Run the complete joined suite with `pnpm test:updates`; keep running `pnpm test:hello` separately for Stage 1. JVM/Robolectric and sidecar-process success never count as a physical Seeker result. The MacBook-to-Seeker setup, scheduling inspection, and device-only checklist are in the [live and background updates runbook](../guides/live-background-updates.md) and [Stage 5.2 verification record](../testing/stage-5-2.md).
 
-## Optional Firebase client (SAW-054)
+## Optional Firebase client and registration (SAW-054–SAW-055)
 
 The app pins the current Firebase Android BoM and its main `firebase-messaging` module. The Google
 Services plugin is present but conditional: `android/app/build.gradle.kts` applies it only when the
@@ -74,16 +74,29 @@ deployment supplies the ignored `android/app/google-services.json`. A clean chec
 builds the same debug and test APKs with no Firebase project configuration, while a configured
 operator build gets the resources generated from its own project file.
 
-SAW-054 sets `firebase_messaging_auto_init_enabled=false`, so a configured project does not start
-token generation ahead of SAW-055's authenticated lifecycle. App source defines no
-`FirebaseMessagingService`, token request/storage, runtime permission request, notification
-channel, deep link, or WorkManager trigger. The Firebase library still contributes its standard
-receiver, service, provider, and permission declarations to the merged manifest; they have no
-app-owned handler or token in this revision. The existing foreground manager, manual Refresh,
-unary reconciliation, and periodic worker have no Firebase import and remain the complete update
-behavior in the off configuration. Setup and the exact off/unavailable behavior are in the
-[optional Firebase guide](../guides/firebase.md); automated evidence is recorded in
-[Stage 5.3 verification](../testing/stage-5-3.md).
+The source default remains `firebase_messaging_auto_init_enabled=false`. SAW-055's
+`FcmRegistrationManager` explicitly enables current Firebase registration only after stored
+connections have loaded and at least one is usable; it unregisters and disables again after the
+last usable connection disappears. `firebase_messaging_installation_id_enabled=true` selects the
+current direct-send API. `SeekerVaultMessagingService` implements only `onRegistered` and
+`onUnregistered`; it has no `onMessageReceived` path.
+
+Registration callbacks and connection changes enter one application-scoped serialized channel.
+The current opaque target is sent through `ConnectionRepository` separately to every usable
+connection, using that connection's fixed sidecar URL and encrypted phone credential. A callback
+refresh atomically replaces each sidecar's older value. Unregistration sends a compare-clear, so a
+delayed callback for an older value cannot erase its replacement. The phone never persists the
+value and diagnostics redact it. An unconfigured build has no default `FirebaseApp`, so the client
+does nothing; an older or unavailable sidecar cannot stop the other sidecars or any Stage 5.2 path.
+
+There is still no FCM send caller, received-message payload, runtime permission request,
+notification channel/UI, deep link, tap route, or push-triggered Sync/WorkManager call. The Firebase
+library contributes its standard receiver, service, provider, and permission declarations to the
+merged manifest, and SAW-055 adds only its non-exported registration-callback service. The existing
+foreground manager, manual Refresh, unary reconciliation, and periodic worker have no Firebase
+import and remain authoritative. Setup and exact off/unavailable behavior are in the [optional
+Firebase guide](../guides/firebase.md); automated evidence is in [Stage 5.3
+verification](../testing/stage-5-3.md).
 
 ## Connections
 
@@ -100,7 +113,7 @@ The code is in `connections/`:
 | File | Role |
 | --- | --- |
 | `PairingCode.kt` | Reads `seekervault://pair` codes by the sidecar's rules. Plain HTTP is accepted only where the platform's network security policy permits cleartext: loopback, in debug builds. |
-| `ConnectConnectionGateway.kt` | `Pair`, legacy `ListPending`, and `RevokeConnection` over Connect-Kotlin and OkHttp, with the platform's certificate and host name checks. It classifies errors for the screens, including a certificate failure that OkHttp suppressed behind another address's failure. |
+| `ConnectConnectionGateway.kt` | `Pair`, legacy `ListPending`, authenticated FCM target updates, and `RevokeConnection` over Connect-Kotlin and OkHttp, with the platform's certificate and host name checks. It classifies errors for the screens, including a certificate failure that OkHttp suppressed behind another address's failure. |
 | `ConnectionRepository.kt` | Pairs, refreshes, renames, disconnects, and removes. Refresh delegates to the shared update synchronizer and retains `ListPending` for old or unconfigured sidecars. It checks each `PairResponse`, sends each credential only to its own URL, counts only the connection's own requests, and deletes a credential the sidecar rejects. |
 | `storage/ConnectionStore.kt`, `storage/CredentialVault.kt`, `storage/AndroidKeystoreKey.kt` | The app's only storage: one JSON file per connection in `filesDir/connections/`, and the credentials, AES-256-GCM under a Keystore key, in `noBackupFilesDir/credentials/` |
 | `ConnectionsViewModel.kt` | The screens' state: the pairing flow, refreshes, dialogs, and messages. The code being entered stays in memory, never in saved state. |
@@ -252,7 +265,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 - Every other host is still refused. The app then says to use `adb reverse` and `127.0.0.1`.
 - Release builds don't include this configuration, so Android's default applies: no cleartext traffic.
 - App code uses `INTERNET`, and requests `CAMERA` only when the owner taps **Scan QR code**. It makes no runtime notification- or biometric-permission request. The manifest also carries `io.github.brrenat.seekervault.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which AndroidX Core declares for the app's own non-exported receivers. That one is private to the app, signature-level, and never shown to the user.
-- **Libraries add manifest entries of their own.** CameraX brings a disabled, non-exported metadata service; AndroidX Startup and the profile installer add their components; WorkManager adds the scheduler components described above. From SAW-054, Firebase Messaging also merges its standard receiver, service, provider, and permissions, including `POST_NOTIFICATIONS`. The app does not request that runtime permission in this revision, auto-init is false, and no app-defined message handler or token lifecycle exists. Debug builds add the Compose preview and test activities.
+- **Libraries add manifest entries of their own.** CameraX brings a disabled, non-exported metadata service; AndroidX Startup and the profile installer add their components; WorkManager adds the scheduler components described above. From SAW-054, Firebase Messaging also merges its standard receiver, service, provider, and permissions, including `POST_NOTIFICATIONS`. SAW-055 adds one non-exported registration-callback service and explicit registration ownership, but does not request that runtime permission or handle a message. Debug builds add the Compose preview and test activities.
 - `NetworkSecurityPolicyTest` keeps it that way. It fails if the main source set sets `networkSecurityConfig` or `usesCleartextTraffic`, or if the debug exception covers anything but `127.0.0.1` and `localhost`.
 
 ## Lifecycle and its limits
@@ -285,7 +298,8 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `ConnectionsViewModelTest` | The pairing flow (malformed codes, confirmation, a known server, a refused code, a retry), disconnect and removal, rename, and the refresh when the app opens or comes back to the foreground, but not on a rotation |
 | `ConnectionsScreenTest`, `ConnectionDetailsScreenTest`, `AddConnectionRouteTest` | Compose on Robolectric: the statuses, rename errors, and every dialog; camera denial and grant through the activity result registry, and a phone without a camera; malformed codes; and no token or credential on screen |
 | `ConnectionsActivityTest` | The activity with the app's own storage and a fake sidecar: pairing, rotation, rename, disconnect, and where the secrets are on disk |
-| `ConnectConnectionGatewayTest`, `TwoSidecarsTest` | The real client against the real sidecar, `node sidecar/src/main.ts`. A code printed by `pnpm pair` is read by the app's parser and paired. They also cover pending requests, a reused code, a code for another address, revocation by the phone and by `pnpm pair revoke`, a replaced phone, a stopped sidecar, and two sidecars at once. |
+| `ConnectConnectionGatewayTest`, `TwoSidecarsTest` | The real client against the real sidecar, `node sidecar/src/main.ts`. A code printed by `pnpm pair` is read by the app's parser and paired. They also cover pending requests, authenticated FCM target register/rotate/compare-clear with redacted logs, a reused code, a code for another address, revocation by the phone and by `pnpm pair revoke`, a replaced phone, a stopped sidecar, and two sidecars at once. |
+| `FcmRegistrationManagerTest`, `ConnectionRepositoryTest` | Registration waits for loaded usable connections, covers initial registration, refresh/rotation, invalid callbacks, stale compare-clear, last-connection unregistration, independent multi-sidecar publication and failure, per-sidecar credential isolation, and revocation cleanup. |
 | `ConnectConnectionGatewayTlsTest` | HTTPS with MockWebServer: an untrusted certificate and a certificate for another host name fail before anything is sent, and a trusted one pairs |
 | `QrDecoderTest` | QR codes drawn by ZXing, decoded from luminance planes with and without row padding |
 | `InboxTest`, `InboxRealSidecarTest` | The inbox against fake sidecars and the real one:<ul><li>an approved message: the approval sent first and the signature after it, both kept while the server is unreachable and sent on the next refresh, the first outcome kept, a rejection with no approval, an approval of something that isn't a message refused, an approval the wallet never answered settled as unresolved when the app opens again or comes back to the foreground, a signing still with the wallet left alone, and a signature stored while an earlier send was running still delivered</li><li>publishing another wallet takes the requests it no longer fits off the inbox, and a binding goes only to its own connection's server</li><li>a request made while the app was closed, fetched, answered, and read back by the agent</li><li>every page, and nothing answered by a fetch</li><li>one answer per request</li><li>an answer kept through an unreachable server and a restart</li><li>a lost response sent again and recognized</li><li>overlapping sends</li><li>identical request IDs on two servers</li><li>a request cancelled first, and a revoked connection</li><li>a removed connection's answers, and pruning</li><li>an older fetch that returns last, and a fetch that crosses an answer</li><li>a request ID that isn't a UUID</li><li>retention counted from when an answer settled</li><li>a fetch that finishes after its connection was removed</li><li>a reply, successful or failed, that arrives after its connection was removed, and a failure that arrives after a revocation</li></ul> |
@@ -317,7 +331,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `ExplorerTest` | The cluster in the link for each network, no link for a message signature, and no link without a signature or without a cluster |
 | `ActivityViewModelTest` | Reading what is stored, a history that can't be read leaving the records on screen and saying so, recovery on the next read, a link nothing could open, and clearing |
 | `ActivityScreenTest`, `ActivityDetailsScreenTest` | Compose on Robolectric: the list and the empty state, the unreadable warning with the records still openable, Clear only after a confirmation, the record in full, the cluster named on every transfer, the explorer offered only for a sent transaction and on its own cluster, the words that say a message signature is not a payment, and the message when nothing can open a link |
-| `StageBoundaryTest` | The stage boundary. The source manifest declares only `MainActivity`, disabled Firebase Messaging auto-init metadata, `INTERNET`, and an optional camera. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, direct services, alarms, receivers, wallet-key APIs, and push-triggered work remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose (SAW-015, SAW-052, and SAW-054); Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. Room and DataStore may be transitive implementation details, but app sources cannot import their APIs. The explorer address lives in one file that holds no HTTP client, and the app's HTTP clients exist only where they talk to a sidecar (SAW-023). |
+| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, and only the non-exported registration-callback service, plus `INTERNET` and optional camera. Firebase imports stay under `push/`, and the service has no message handler. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, wallet-key APIs, notifications, and push-triggered work remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
 

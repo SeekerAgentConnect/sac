@@ -4,8 +4,9 @@
  * and only it runs SQL. SAW-019 lets it read a chain, and only from src/solana/, to build a
  * transfer the owner reviews; it still sends nothing. SAW-048 authorizes an HTTP/2 listener and
  * UpdateService only in server.ts and src/updates/, while durable cursors and snapshots still go
- * through src/storage/. SAW-054 allows Firebase Admin only in src/push/ and configures no request
- * mutation to send through it yet. These checks fail when that narrow boundary changes.
+ * through src/storage/. SAW-054 allows Firebase Admin only in src/push/. SAW-055 stores one
+ * connection-owned target through src/storage/ but still configures no request mutation to send
+ * through Firebase. These checks fail when that narrow boundary changes.
  */
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -188,6 +189,11 @@ describe("stage boundary", () => {
       readFileSync(join(SRC, "push/fcm.ts"), "utf8"),
       /console\.|\blog\(/,
       "the credential-bearing sender logs nothing",
+    );
+    assert.doesNotMatch(
+      readFileSync(join(SRC, "server.ts"), "utf8"),
+      /fcmSender\??\.send/,
+      "SAW-055 registers targets but does not dispatch a push",
     );
   });
 

@@ -1,7 +1,7 @@
 /**
  * The phone's PairingService over Connect (docs/protocol.md#pairing). Pair takes the one-use
- * pairing token as its bearer credential. GetConnectionCapabilities and RevokeConnection take the
- * phone's own credential. No token reaches the log.
+ * pairing token as its bearer credential. GetConnectionCapabilities, SetFcmToken, and
+ * RevokeConnection take the phone's own credential. No credential or FCM target reaches the log.
  */
 import type { ConnectRouter } from "@connectrpc/connect";
 
@@ -70,6 +70,50 @@ export function pairingRoutes(
           );
         }
         return { updates: updateCapability() };
+      },
+
+      setFcmToken(request, context) {
+        const connectionId = pairing.authenticate(
+          bearerToken(context.requestHeader.get("authorization")),
+        );
+        if (connectionId === undefined) {
+          log(
+            "rejected SetFcmToken: missing, wrong, or revoked phone credential",
+          );
+          throw connectError(
+            new RequestFailure(
+              RequestError.UNAUTHENTICATED,
+              "a valid phone credential is required",
+            ),
+          );
+        }
+        if (request.connectionId !== connectionId) {
+          throw connectError(
+            new RequestFailure(RequestError.NOT_FOUND, "no such connection"),
+          );
+        }
+        try {
+          let changed: boolean;
+          if (request.update.case === "token") {
+            changed = pairing.setFcmToken(connectionId, request.update.value);
+          } else if (request.update.case === "clearIfToken") {
+            changed = pairing.clearFcmToken(connectionId, request.update.value);
+          } else {
+            throw new RequestFailure(
+              RequestError.INVALID_PARAMETERS,
+              "one FCM token update is required",
+            );
+          }
+          log(
+            `connection ${connectionId} FCM registration ` +
+              (changed ? "updated" : "unchanged"),
+          );
+          return {};
+        } catch (error) {
+          if (!(error instanceof RequestFailure)) throw error;
+          log(`rejected SetFcmToken: ${error.code}`);
+          throw connectError(error);
+        }
       },
 
       revokeConnection(request, context) {

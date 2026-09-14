@@ -10,10 +10,10 @@ Each credential opens one role, and the sidecar accepts it in one place only:
 | --- | --- | --- | --- | --- |
 | `MCP_TOKEN` | The agent | The operator, in `.env` | `/mcp` | The value, in `.env` |
 | Pairing token | Whoever sees the pairing code | `pnpm pair`: one use, 10 minutes by default | `PairingService.Pair` | Its SHA-256 hash |
-| Phone credential (`phone_token`) | The paired phone | The `Pair` response, once | `RequestService`, and `PairingService.RevokeConnection` for its own connection | Its SHA-256 hash |
+| Phone credential (`phone_token`) | The paired phone | The `Pair` response, once | `RequestService`, `UpdateService`, and authenticated `PairingService` operations for its own connection | Its SHA-256 hash |
 | `PHONE_TOKEN` | The Stage 1 live-test screen | The operator, in `.env` | `LiveCommandService` only | The value, in `.env` |
 
-- **Only the paired phone can prepare, review, and answer requests.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool pairs, prepares, submits a result, or revokes. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `sidecar/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
+- **Only the paired phone can prepare, review, and answer requests or register an FCM target.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool pairs, prepares, submits a result, registers a target, or revokes. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `sidecar/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
 - **`PHONE_TOKEN` is the Stage 1 development exception, and it stays with the live diagnostic.** It can watch and acknowledge display-only live commands, and nothing else. It can't pair, and `RequestService` refuses it.
 - **The phone credential exists only on the phone.** The sidecar returns it once, in the `Pair` response, and stores only its hash. The database, its backups, and the log can't give it away.
 - **Pairing tokens and phone credentials are 32 random bytes,** written as 43 base64url characters. Because they're random, a single SHA-256 is enough to store them. A slow password hash only helps with guessable secrets.
@@ -75,6 +75,10 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 - **The phone revokes itself with `RevokeConnection`,** for example when the owner removes the connection.
 - **The operator revokes with `pnpm pair revoke`,** for example when the phone is lost. `pnpm pair status` shows the paired phone. Neither command prints a credential.
 - **To re-pair,** run `pnpm pair` again. An old credential never works again.
+- **An FCM target is connection-owned (SAW-055).** Only that connection's phone credential can set
+  it. Registration rotation replaces it atomically; a stale invalidation compare-clears nothing.
+  Replacement or either revocation path deletes it in the same transaction, before the old
+  credential can make another registration call.
 - **Upgrading from SAW-010:** migration 2 revokes the stand-in connection that SAW-010 created with the database, and cancels its PENDING requests. Pair the phone after upgrading.
 
 ## Transport security
@@ -110,6 +114,14 @@ Don't use a self-signed certificate. The phone rightly refuses it, and the only 
 
 ## Local storage and recovery
 
+SAW-055 stores no Firebase registration target on the phone. The current value exists in Firebase
+Messaging and in process memory only long enough to publish it through each connection's normal
+authenticated client. The sidecar must later address a send, so its SQLite connection row keeps
+the opaque target in recoverable form rather than hashing it. It is private deployment data: no
+read API returns it, no MCP tool exposes it, and validation, errors, diagnostic representations,
+and logs never repeat it. Revocation deletes it. It is not a bearer credential and grants no phone
+API, request, policy, wallet, approval, signing, or sending authority.
+
 The SAW-051 foreground owner receives neither a token nor a wallet handle. `SynchronizationRepository` retrieves a connection credential only for the authenticated discovery, Sync, or Subscribe call and hands the lifecycle owner a generation-scoped stream interface. The stream closes on real background, removal, revocation, or cancellation; rotation and navigation do not replace it. Authentication failure revokes locally, version/configuration failures remain distinct from an outage, and a late response from a closed generation is inert. Stream status is runtime-only and is never substituted for the separately stored last successful Sync.
 
 SAW-052's WorkManager request contains no URL, token, cursor, request, owner decision, or wallet data. A worker-only process reloads metadata from `filesDir` and decrypts a credential from `noBackupFilesDir` only inside `ConnectionRepository`, immediately before the same authenticated unary Sync calls. Its authority is identical to the shared repository's: observe server state, retry an already-recorded result, and reconcile an existing Activity record. It cannot prepare, approve, create a decision, open a wallet, sign, send, or replay a transaction. Authentication failure deletes the credential for that connection; transient unreachability uses WorkManager backoff without logging a secret.
@@ -122,6 +134,7 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 | The phone credential | `noBackupFilesDir/credentials/<connection ID>`, one file per connection | AES-256-GCM under an Android Keystore key |
 | Minimal server update state (SAW-050): validated endpoint capability, request/status bytes and revisions, bounded removal markers, cursor/instance, Activity rotation position, and last successful Sync | `filesDir/sync/<connection ID>.json`, one atomic versioned document per connection | App-private storage; it contains no credential, wallet authorization, policy, assessment, local answer, or signed transaction |
 | The pairing token | The app's memory, until pairing ends or the owner leaves the screen | Never written to disk or to saved instance state |
+| The current FCM direct-send target (SAW-055) | Firebase Messaging and application memory while it is being published | Never written by the app to disk, backup, saved instance state, or a log |
 | The owner's answers, each with the request it answered (SAW-013), and for an approved transfer the version, content hash, and exact bytes they approved (SAW-021) | `filesDir/results/<connection ID>/<request ID>.json`, one file per answer. A settled answer is kept for a week, and one that's waiting to be sent is kept until it's settled. | App-private storage; an answer holds no secret, and an approved transaction is unsigned bytes the sidecar built |
 | The wallet the owner selected: its address, network, label, and when they chose it (SAW-015) | `filesDir/wallet/wallet.json` | App-private storage; a public address holds no secret, and it's published to every paired sidecar |
 | The wallet's authorization token for this app (SAW-015) | `noBackupFilesDir/wallet/wallet-authorization` | AES-256-GCM under the same Android Keystore key, with its own associated data |
@@ -322,6 +335,7 @@ The assessment the owner read is kept with their own record of what they did, as
   ```text
   [sidecar] phone paired: connection de03846e-d435-4705-b2e3-ec67da539f12; revoked connection 5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f
   [sidecar] rejected Pair: UNAUTHENTICATED
+  [sidecar] connection de03846e-d435-4705-b2e3-ec67da539f12 FCM registration updated
   [sidecar] rejected ListPending: missing, wrong, or revoked phone credential
   [sidecar] connection de03846e-d435-4705-b2e3-ec67da539f12 revoked by the phone; 2 pending requests cancelled
   ```
@@ -330,4 +344,4 @@ The assessment the owner read is kept with their own record of what they did, as
 - **`pnpm pair` prints the pairing code,** because that's how pairing works. Show it only to the phone, and clear the terminal afterwards. Never paste it into a chat, an issue, or a log. An unused code stops working when it expires, or when the next one is issued.
 - **The test agent removes `MCP_TOKEN` and `PHONE_TOKEN` from all its output;** see [`test-agent/README.md`](../test-agent/README.md).
 
-`roles.test.ts` and `cli.test.ts` check that no token or credential appears in the sidecar's log or in the CLI's status and revoke output.
+`roles.test.ts` and `cli.test.ts` check that no bearer credential or FCM target appears in the sidecar's log or in the CLI's status and revoke output.

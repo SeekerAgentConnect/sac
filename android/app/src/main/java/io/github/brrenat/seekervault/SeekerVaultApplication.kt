@@ -21,6 +21,9 @@ import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
+import io.github.brrenat.seekervault.push.FcmRegistrationClient
+import io.github.brrenat.seekervault.push.FcmRegistrationManager
+import io.github.brrenat.seekervault.push.FirebaseFcmRegistrationClient
 import io.github.brrenat.seekervault.sync.BackgroundSyncScheduler
 import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
 import io.github.brrenat.seekervault.sync.ForegroundUpdateManager
@@ -61,6 +64,11 @@ class SeekerVaultApplication : Application() {
 
     /** The durable update endpoint. It shares the process HTTP client but never a credential. */
     var updateTransport: () -> UpdateTransport = { ConnectUpdateTransport(httpClient) }
+
+    /** The optional Firebase registration client. Tests replace it without configuring Firebase. */
+    var fcmRegistrationClient: () -> FcmRegistrationClient = {
+        FirebaseFcmRegistrationClient(this)
+    }
 
     /**
      * The key that encrypts phone credentials. Tests replace it, since Robolectric has no Keystore.
@@ -124,8 +132,25 @@ class SeekerVaultApplication : Application() {
                     scope = CoroutineScope(SupervisorJob() + connectionIo),
                 )
                 .also(BackgroundSyncScheduler::start)
+        fcmRegistration =
+            FcmRegistrationManager(
+                    loaded = repository.loaded,
+                    connections = repository.connections,
+                    client = fcmRegistrationClient(),
+                    loadConnections = repository::load,
+                    publish = { id, update -> repository.setFcmToken(id, update) },
+                    dispatcher = connectionIo,
+                )
+                .also(FcmRegistrationManager::start)
         repository
     }
+
+    /** Registration callbacks can start the process, so this getter also initializes the owner. */
+    val fcmRegistrations: FcmRegistrationManager
+        get() {
+            connectionRepository
+            return checkNotNull(fcmRegistration)
+        }
 
     /** One foreground owner for every paired sidecar, independent of activities and navigation. */
     val foregroundUpdates: ForegroundUpdateManager by lazy {
@@ -138,6 +163,9 @@ class SeekerVaultApplication : Application() {
 
     /** Keeps the scheduler and its application-scoped observer alive with the storage owner. */
     private var backgroundSync: BackgroundSyncScheduler? = null
+
+    /** Keeps the serialized registration owner alive with the application. */
+    private var fcmRegistration: FcmRegistrationManager? = null
 
     /**
      * Where storage and network calls run — the connections' and the policy editor's alike. Tests

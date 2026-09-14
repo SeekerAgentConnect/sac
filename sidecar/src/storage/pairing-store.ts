@@ -29,6 +29,7 @@ const REVOKED_OUTCOME = toBinary(
   create(OutcomeSchema, { detail: REVOKED_DETAIL }),
 );
 const MAX_DEVICE_NAME_BYTES = 128;
+export const MAX_FCM_TOKEN_BYTES = 4096;
 const { PENDING, CANCELLED } = RequestState;
 
 export interface PairingStoreOptions {
@@ -222,6 +223,67 @@ export class PairingStore {
     return row === undefined ? undefined : text(row.connection_id);
   }
 
+  /** The active connection's current private FCM target, for the later push dispatcher. */
+  fcmToken(connectionId: string): string | undefined {
+    const row = this.#db
+      .prepare(
+        `SELECT fcm_token FROM connections
+         WHERE connection_id = ? AND revoked_at_ms IS NULL`,
+      )
+      .get(connectionId);
+    return row === undefined || row.fcm_token === null
+      ? undefined
+      : text(row.fcm_token);
+  }
+
+  /** Registers or atomically rotates one active connection's opaque FCM target. */
+  setFcmToken(connectionId: string, token: string): boolean {
+    if (invalidFcmTokenReason(token) !== undefined) {
+      throw new RequestFailure(
+        RequestError.INVALID_PARAMETERS,
+        "fcm_token must be 1 to 4096 visible ASCII bytes",
+      );
+    }
+    return transaction(this.#db, () => {
+      const row = this.#db
+        .prepare(
+          `SELECT fcm_token FROM connections
+           WHERE connection_id = ? AND revoked_at_ms IS NULL`,
+        )
+        .get(connectionId);
+      if (row === undefined) {
+        throw new RequestFailure(RequestError.NOT_FOUND, "no such connection");
+      }
+      if (row.fcm_token === token) return false;
+      this.#db
+        .prepare("UPDATE connections SET fcm_token = ? WHERE connection_id = ?")
+        .run(token, connectionId);
+      return true;
+    });
+  }
+
+  /**
+   * Clears a target only if it is still current. A late invalid-target result for an older send
+   * therefore cannot erase a target the phone rotated to meanwhile.
+   */
+  clearFcmToken(connectionId: string, expectedToken: string): boolean {
+    if (invalidFcmTokenReason(expectedToken) !== undefined) {
+      throw new RequestFailure(
+        RequestError.INVALID_PARAMETERS,
+        "fcm_token must be 1 to 4096 visible ASCII bytes",
+      );
+    }
+    return transaction(this.#db, () => {
+      const { changes } = this.#db
+        .prepare(
+          `UPDATE connections SET fcm_token = NULL
+           WHERE connection_id = ? AND revoked_at_ms IS NULL AND fcm_token = ?`,
+        )
+        .run(connectionId, expectedToken);
+      return Number(changes) === 1;
+    });
+  }
+
   /**
    * Revokes a connection. Its credential stops working at once, and its PENDING requests are
    * cancelled. Requests the owner already approved stay as they are, and agents can still read
@@ -234,7 +296,8 @@ export class PairingStore {
   #revoke(connectionId: string, now: number): Revocation {
     const { changes } = this.#db
       .prepare(
-        "UPDATE connections SET revoked_at_ms = ? WHERE connection_id = ? AND revoked_at_ms IS NULL",
+        `UPDATE connections SET revoked_at_ms = ?, fcm_token = NULL
+         WHERE connection_id = ? AND revoked_at_ms IS NULL`,
       )
       .run(now, connectionId);
     if (Number(changes) === 0) return { revoked: false, cancelled: 0 };
@@ -300,6 +363,17 @@ export function invalidDeviceNameReason(name: string): string | undefined {
   return bytes > MAX_DEVICE_NAME_BYTES
     ? `device_name is ${bytes} UTF-8 bytes; the limit is ${MAX_DEVICE_NAME_BYTES}`
     : undefined;
+}
+
+/** FCM targets are opaque, bounded header-safe values. The reason never repeats the target. */
+export function invalidFcmTokenReason(token: string): string | undefined {
+  const bytes = Buffer.byteLength(token, "utf8");
+  if (bytes < 1 || bytes > MAX_FCM_TOKEN_BYTES) return "invalid FCM target";
+  for (let index = 0; index < token.length; index += 1) {
+    const code = token.charCodeAt(index);
+    if (code < 0x21 || code > 0x7e) return "invalid FCM target";
+  }
+  return undefined;
 }
 
 /** 32 random bytes in base64url: a pairing token or a phone credential. */

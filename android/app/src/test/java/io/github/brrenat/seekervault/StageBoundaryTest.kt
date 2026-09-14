@@ -15,9 +15,9 @@ import org.w3c.dom.Element
  * connection in `policy/storage/` (SAW-025). Nothing is backed up. SAW-048 authorizes only the
  * `sync/` package to use the production sidecar transport and its own storage subpackage; SAW-052
  * adds WorkManager code there. SAW-054 puts the optional Firebase Messaging client on the
- * classpath, but app source adds no handler, runtime permission request, token flow, or
- * push-triggered work; the dependency's standard manifest entries are documented separately.
- * App-defined foreground services, direct services, jobs, alarms, receivers, and wallet automation
+ * classpath. SAW-055 adds only one registration-callback service and a connection-scoped token flow
+ * under `push/`; it adds no message handler, runtime permission request, notification, or
+ * push-triggered work. Other app-defined services, jobs, alarms, receivers, and wallet automation
  * remain excluded. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter
  * client, on purpose: the app drives the wallet the owner already has. It still holds no wallet key
  * of its own, and Seed Vault's own SDK stays out. These checks fail when a limit is crossed early;
@@ -51,7 +51,7 @@ class StageBoundaryTest {
         }
 
     @Test
-    fun manifestDeclaresOnlyTheActivityDisabledFcmTheNetworkAndAnOptionalCamera() {
+    fun manifestDeclaresOnlyTheActivityFcmRegistrationTheNetworkAndAnOptionalCamera() {
         val manifest = xml("AndroidManifest.xml")
         val application = manifest.children("application").single()
         val components =
@@ -62,6 +62,8 @@ class StageBoundaryTest {
         assertEquals(
             listOf(
                 "meta-data firebase_messaging_auto_init_enabled",
+                "meta-data firebase_messaging_installation_id_enabled",
+                "service .push.SeekerVaultMessagingService",
                 "activity .MainActivity",
             ),
             components,
@@ -74,6 +76,21 @@ class StageBoundaryTest {
                     it.getAttribute("android:name") == "firebase_messaging_auto_init_enabled"
                 }
                 .getAttribute("android:value"),
+        )
+        assertEquals(
+            "true",
+            application
+                .children("meta-data")
+                .single {
+                    it.getAttribute("android:name") == "firebase_messaging_installation_id_enabled"
+                }
+                .getAttribute("android:value"),
+        )
+        val messaging = application.children("service").single()
+        assertEquals("false", messaging.getAttribute("android:exported"))
+        assertEquals(
+            listOf("com.google.firebase.MESSAGING_EVENT"),
+            messaging.children("action").map { it.getAttribute("android:name") },
         )
         assertEquals(
             listOf("android.permission.INTERNET", "android.permission.CAMERA"),
@@ -357,6 +374,30 @@ class StageBoundaryTest {
             }
                 .isSuccess
         )
+    }
+
+    @Test
+    fun saw055UsesFirebaseOnlyForRegistrationLifecycle() {
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        val firebaseImports = Regex("""^import com\.google\.firebase\.""", RegexOption.MULTILINE)
+        assertEquals(
+            setOf("FcmRegistrationManager.kt", "SeekerVaultMessagingService.kt"),
+            sources
+                .filter { firebaseImports.containsMatchIn(it.readText()) }
+                .map { it.name }
+                .toSet(),
+        )
+        val service =
+            withoutComments(
+                File(
+                    main,
+                    "java/io/github/brrenat/seekervault/push/SeekerVaultMessagingService.kt",
+                )
+            )
+        assertTrue("override fun onRegistered" in service)
+        assertTrue("override fun onUnregistered" in service)
+        assertTrue("onMessageReceived" !in service)
+        assertTrue("RemoteMessage" !in service)
     }
 
     @Test

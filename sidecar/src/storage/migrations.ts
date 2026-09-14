@@ -194,4 +194,15 @@ export const MIGRATIONS: readonly Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: 5,
+    description:
+      "one current FCM direct-send target per paired connection (SAW-055)",
+    sql: `
+      -- The current opaque FCM target must be available to the later sender, so unlike a bearer
+      -- credential it cannot be hashed. It is private deployment data: no RPC returns it and no log
+      -- names it. Revocation clears it in the same transaction that ends the connection.
+      ALTER TABLE connections ADD COLUMN fcm_token TEXT;
+    `,
+  },
 ];

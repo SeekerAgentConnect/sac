@@ -152,6 +152,7 @@ The queued acknowledgement (`ack`) takes a short path: `ListPending`, then `Subm
   - Every phone RPC names both. The sidecar answers a reference to another connection with `NOT_FOUND`, the same as for a request that doesn't exist.
 - **Both IDs are lowercase UUIDs,** assigned by the sidecar.
 - **Revoking a connection stops its phone credential at once, and cancels its PENDING requests.** The phone revokes with `RevokeConnection`, and the operator with `pnpm pair revoke`. Pairing a new phone revokes the previous one. Requests already approved are still resolved from the chain, and agents can still read every request. A new pairing is a new connection: it can't see or report the old connection's requests.
+- **One private FCM target may belong to an active connection (SAW-055).** The paired phone alone registers or rotates it through that connection's credential. Replacement or revocation deletes it; it is never shared between connections or returned by an API.
 
 ### Actions
 
@@ -320,6 +321,7 @@ The sidecar builds a transfer itself, from the chain and the stored action. Noth
 | --- | --- | --- | --- |
 | `PairingService` | `Pair` | Pairing token | Exchange a one-use pairing token for a new connection and its phone credential |
 | `PairingService` | `GetConnectionCapabilities` | Phone credential | Discover the versioned gRPC update origin for an existing connection (SAW-048) |
+| `PairingService` | `SetFcmToken` | Phone credential | Register, rotate, or compare-clear the caller connection's private FCM direct-send target (SAW-055) |
 | `PairingService` | `RevokeConnection` | Phone credential | End the caller's connection |
 | `RequestService` | `ListPending` | Phone credential | The connection's PENDING requests, oldest first (by `created_at`, then `request_id`). Pages hold 50 by default, up to 100. Paging never repeats a request, and never skips one that stays PENDING. |
 | `RequestService` | `GetRequest` | Phone credential | One request, in any state |
@@ -516,6 +518,32 @@ The phone reads the code by the same rules as `parsePairingUri` in [`sidecar/src
 
 `UpdateCapability.grpc_url` is an absolute origin with no path, query, user info, or fragment. In production it is HTTPS with a publicly trusted certificate and the same host as the paired `server_url`; only loopback development may use HTTP and another port. The credential remains the same phone token and is never sent to another host.
 
+<a id="fcm-registration-saw-055"></a>
+
+**`SetFcmToken` (SAW-055)** takes the phone's credential, and `connection_id` must be the caller's
+own. Its `update` oneof is exactly one of:
+
+- `token`: a current opaque FCM direct-send target. Repeating it is idempotent; a different value
+  atomically replaces the old one.
+- `clear_if_token`: delete the target only if the named value is still current. A delayed
+  unregistration or invalid-target callback for a pre-rotation value therefore cannot erase the
+  new one.
+
+Both values are 1 through 4096 visible ASCII bytes. An invalid value gets `INVALID_PARAMETERS`
+without being repeated in the error or log. Another connection ID gets `NOT_FOUND`; another role,
+an absent credential, or a revoked credential gets `UNAUTHENTICATED`. The empty response returns no
+target. The sidecar retains one value only for a future sender; pairing replacement, phone
+revocation, and operator revocation clear it in the same database transaction that ends the
+connection.
+
+Current Firebase Messaging calls this direct-send registration value a Firebase Installation ID
+and delivers initial and refreshed values through `onRegistered`; the wire name remains
+`fcm_token` as the stable Stage 5.3 protocol term. The Android app serializes those callbacks and
+sends the same current value to each usable sidecar separately with that connection's own URL and
+credential. It stores no copy on the phone. This registration contract does not define a push
+payload, send trigger, message handler, notification, tap route, Sync invocation, approval, or
+signature.
+
 **`RevokeConnection`** takes the phone's credential, and its `connection_id` must be the caller's own; another ID gets `NOT_FOUND`. It revokes the connection at once, and cancels the connection's PENDING requests; see [connections](#connections-and-request-identity).
 
 ### Roles
@@ -527,12 +555,13 @@ Each credential opens one role:
 | `/mcp`: every method and tool | Yes | 401 | 401 | 401 | 401 |
 | `PairingService.Pair` | `unauthenticated` | Yes, once | `unauthenticated` | `unauthenticated` | `unauthenticated` |
 | `PairingService.GetConnectionCapabilities` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
+| `PairingService.SetFcmToken` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `PairingService.RevokeConnection` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `RequestService`: `ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, `CheckStatus`, `PublishWallet` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `UpdateService.Subscribe`, `UpdateService.Sync` (from SAW-049) | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `LiveCommandService`: `WatchCommands`, `AcknowledgeCommand` (Stage 1) | `unauthenticated` | `unauthenticated` | `unauthenticated` | Yes | `unauthenticated` |
 
-- **Only the paired phone can prepare, review, or answer a request, or publish a wallet,** and only for its own connection. No MCP tool pairs, prepares, approves, submits a result, revokes, or changes the wallet, so an agent can't act as the phone. `vault_sign_message` only stores a request for the owner to decide; `vault_get_address` and `vault_get_capabilities` only read.
+- **Only the paired phone can prepare, review, or answer a request, publish a wallet, or register an FCM target,** and only for its own connection. No MCP tool pairs, prepares, approves, submits a result, registers a target, revokes, or changes the wallet, so an agent can't act as the phone. `vault_sign_message` only stores a request for the owner to decide; `vault_get_address` and `vault_get_capabilities` only read.
 - **`PHONE_TOKEN` is the Stage 1 development credential.** It opens the live diagnostic and nothing else.
 - **`GET /healthz` needs no credential.**
 - `sidecar/src/pairing/roles.test.ts` checks every cell, and every new RPC or tool joins that test.

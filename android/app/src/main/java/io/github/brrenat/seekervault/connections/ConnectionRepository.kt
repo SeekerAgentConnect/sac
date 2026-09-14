@@ -119,6 +119,28 @@ class ConnectionRepository(
     private val fetching = ConcurrentHashMap<String, Mutex>()
 
     /**
+     * Publishes one private FCM target update to exactly [id]'s URL with exactly [id]'s encrypted
+     * credential. Push registration is best-effort: an unavailable or older sidecar changes none of
+     * the Stage 5.2 update paths. A rejected credential follows the existing revocation path.
+     */
+    suspend fun setFcmToken(id: String, update: FcmTokenUpdate): Boolean {
+        val connection = find(id)?.takeIf { it.usable } ?: return false
+        val credential =
+            withContext(io) { vault.get(id) }
+                ?: run {
+                    forgetCredential(id)
+                    return false
+                }
+        return try {
+            gateway.setFcmToken(connection.serverUrl, credential, id, update)
+            true
+        } catch (e: GatewayException) {
+            if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(id)
+            false
+        }
+    }
+
+    /**
      * The single application-scoped synchronization component. Tests and legacy-only callers may
      * omit it; the production application always supplies both dependencies.
      */

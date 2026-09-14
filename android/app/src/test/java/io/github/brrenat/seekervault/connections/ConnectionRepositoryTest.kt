@@ -94,6 +94,37 @@ class ConnectionRepositoryTest {
     }
 
     @Test
+    fun registersAndRotatesFcmTargetsWithEachConnectionsOwnCredential() = runBlocking {
+        val a = repository.pair(serverA.issue(URL_A))
+        val b = repository.pair(serverB.issue(URL_B))
+        val credentialA = credentialOf(a.id)
+        val credentialB = credentialOf(b.id)
+        val old = "fcm-target-before-rotation"
+        val current = "fcm-target-after-rotation"
+
+        assertTrue(repository.setFcmToken(a.id, FcmTokenUpdate.Register(old)))
+        assertTrue(repository.setFcmToken(b.id, FcmTokenUpdate.Register(old)))
+        assertTrue(repository.setFcmToken(a.id, FcmTokenUpdate.Register(current)))
+        assertTrue(repository.setFcmToken(a.id, FcmTokenUpdate.ClearIfCurrent(old)))
+        assertEquals(current, serverA.fcmTokens[a.id])
+        assertEquals(old, serverB.fcmTokens[b.id])
+        assertEquals(
+            setOf(URL_A),
+            gateway.sent.filter { it.second == credentialA }.map { it.first }.toSet(),
+        )
+        assertEquals(
+            setOf(URL_B),
+            gateway.sent.filter { it.second == credentialB }.map { it.first }.toSet(),
+        )
+        assertFalse(FcmTokenUpdate.Register(current).toString().contains(current))
+
+        serverA.revoke(a.id)
+        assertFalse(repository.setFcmToken(a.id, FcmTokenUpdate.Register("must-not-stick")))
+        assertFalse(repository.get(a.id).usable)
+        assertNull(serverA.fcmTokens[a.id])
+    }
+
+    @Test
     fun recordsWhatThisPhoneDidOnceAndKeepsItAfterTheAnswerIsGone() = runBlocking {
         // The record is the owner's, and it outlives the answer the sidecar was owed: an answer is
         // dropped a week after it settles, and a record is not (SAW-023).

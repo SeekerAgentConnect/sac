@@ -15,8 +15,13 @@ service PairingService {
   // production update endpoint with its existing phone credential. Every field is scoped to the
   // authenticated connection, and connection_id must name that connection.
   rpc GetConnectionCapabilities(GetConnectionCapabilitiesRequest) returns (GetConnectionCapabilitiesResponse);
+  // SetFcmToken registers or rotates the caller's current FCM direct-send target. Clearing names
+  // the target being removed so a late invalid-token or unregistration result cannot erase a newer
+  // rotation. Neither the target nor the phone credential is returned or logged.
+  rpc SetFcmToken(SetFcmTokenRequest) returns (SetFcmTokenResponse);
   // RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The
-  // token stops working at once, and the connection's PENDING requests become CANCELLED.
+  // credential stops working at once, its FCM target is deleted, and the connection's PENDING
+  // requests become CANCELLED.
   // Requests already approved are still resolved, and agents can still read every request.
   rpc RevokeConnection(RevokeConnectionRequest) returns (RevokeConnectionResponse);
 }
@@ -92,6 +97,21 @@ message GetConnectionCapabilitiesResponse {
   // manual Refresh, but the phone distinguishes unavailable configuration from upgrade needed.
   UpdateCapability updates = 1;
 }
+
+message SetFcmTokenRequest {
+  // Must be the connection authenticated by the bearer phone credential.
+  string connection_id = 1;
+  oneof update {
+    // The current FCM direct-send target, as an opaque 1-4096 byte visible-ASCII value. Repeating
+    // the same value changes nothing; a different value atomically replaces it.
+    string token = 2;
+    // Deletes the registration only when this is still the stored target. This compare-and-delete
+    // makes a delayed invalid-token/unregistration result harmless after a rotation.
+    string clear_if_token = 3;
+  }
+}
+
+message SetFcmTokenResponse {}
 
 message RevokeConnectionRequest {
   string connection_id = 1;

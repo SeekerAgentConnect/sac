@@ -89,6 +89,34 @@ class ConnectConnectionGatewayTest {
     }
 
     @Test
+    fun registersRotatesAndCompareClearsWithoutLoggingPrivateValues() = runBlocking {
+        val paired = gateway.pair(code(), "Seeker")
+        val old = "real-sidecar-old-fcm-target"
+        val current = "real-sidecar-current-fcm-target"
+        gateway.setFcmToken(
+            sidecar.url,
+            paired.credential,
+            paired.connectionId,
+            FcmTokenUpdate.Register(old),
+        )
+        gateway.setFcmToken(
+            sidecar.url,
+            paired.credential,
+            paired.connectionId,
+            FcmTokenUpdate.Register(current),
+        )
+        gateway.setFcmToken(
+            sidecar.url,
+            paired.credential,
+            paired.connectionId,
+            FcmTokenUpdate.ClearIfCurrent(old),
+        )
+        assertFalse(old in sidecar.output)
+        assertFalse(current in sidecar.output)
+        assertFalse(paired.credential in sidecar.output)
+    }
+
+    @Test
     fun aNewPairingRevokesThePreviousPhone() = runBlocking {
         val first = gateway.pair(code(), "Old phone")
         val second = gateway.pair(code(), "New phone")

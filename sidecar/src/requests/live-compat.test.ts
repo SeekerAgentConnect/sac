@@ -61,6 +61,7 @@ describe("compatibility with the Stage 1 live diagnostic", () => {
       [
         ["Pair", "unary"],
         ["GetConnectionCapabilities", "unary"],
+        ["SetFcmToken", "unary"],
         ["RevokeConnection", "unary"],
         ["ListPending", "unary"],
         ["GetRequest", "unary"],

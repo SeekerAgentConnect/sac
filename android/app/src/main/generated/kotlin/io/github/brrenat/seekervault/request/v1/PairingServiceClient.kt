@@ -52,8 +52,26 @@ public class PairingServiceClient(
 
 
   /**
+   *  SetFcmToken registers or rotates the caller's current FCM direct-send target. Clearing names
+   *  the target being removed so a late invalid-token or unregistration result cannot erase a newer
+   *  rotation. Neither the target nor the phone credential is returned or logged.
+   */
+  override suspend fun setFcmToken(request: SetFcmTokenRequest, headers: Headers): ResponseMessage<SetFcmTokenResponse> = client.unary(
+    request,
+    headers,
+    MethodSpec(
+    "seekervault.request.v1.PairingService/SetFcmToken",
+      io.github.brrenat.seekervault.request.v1.SetFcmTokenRequest::class,
+      io.github.brrenat.seekervault.request.v1.SetFcmTokenResponse::class,
+      StreamType.UNARY,
+    ),
+  )
+
+
+  /**
    *  RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The
-   *  token stops working at once, and the connection's PENDING requests become CANCELLED.
+   *  credential stops working at once, its FCM target is deleted, and the connection's PENDING
+   *  requests become CANCELLED.
    *  Requests already approved are still resolved, and agents can still read every request.
    */
   override suspend fun revokeConnection(request: RevokeConnectionRequest, headers: Headers): ResponseMessage<RevokeConnectionResponse> = client.unary(
