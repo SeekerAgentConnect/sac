@@ -49,8 +49,11 @@ connections load, the app explicitly calls Firebase Messaging `register()` only 
 connection remains usable. Firebase reports the current Firebase Installation ID through
 `onRegistered`; it calls that callback for the initial value and again when registration is
 refreshed. The app serializes callbacks, atomically replaces the old value on every sidecar, and
-does not write the value to disk. After the last usable connection disappears it calls
-`unregister()` and returns auto-init to false.
+does not write the value to disk. A failed sidecar publication is retried independently after 5,
+10, and 20 seconds; successful sidecars are not repeated by that retry. The retry is deliberately
+bounded because registration is optional and the existing Stage 5.2 paths remain authoritative.
+After the last usable connection disappears the app calls `unregister()` and returns auto-init to
+false.
 
 The Firebase Messaging library contributes its normal receiver, service, provider, and permission
 entries to the merged APK manifest whether or not a project file is present. The app now declares
@@ -72,6 +75,8 @@ credential, or revoked credential is `UNAUTHENTICATED`. No read endpoint returns
   already stored, the stale clear changes nothing.
 - Pairing a replacement phone, `RevokeConnection`, and `pnpm pair revoke` clear the server value in
   the same SQLite transaction that revokes the connection.
+- Removing or revoking a local connection cancels all of its posted request alerts immediately;
+  cleanup does not wait for another FCM message or WorkManager run.
 - Empty, whitespace/control, non-ASCII, and values over 4096 bytes are ignored by Android and
   rejected by the sidecar without being copied into an error or log.
 
@@ -298,7 +303,7 @@ rather than copying Firebase routing values into diagnostics.
 | Invalid `FCM_PROJECT_ID` | Configuration fails with the variable name and format requirement, never a credential value. Unset the variable to return to the fully functional Firebase-off mode. |
 | Missing, expired, or unauthorized ADC; FCM outage; quota/throttling response | The best-effort send fails after the durable change has committed. Fixed logs name only `delivery unavailable`; the target and request stay unchanged, and Stage 5.2 recovery remains authoritative. |
 | Android and sidecar use different Firebase projects | Sends are rejected for the target rather than changing request state. Correct both deployment configurations; never copy a target into logs while diagnosing it. |
-| Old sidecar without `SetFcmToken`, or sidecar unavailable during registration | That connection misses this registration attempt. Other sidecars continue independently, and its foreground Subscribe, manual Refresh, unary Sync, and periodic recovery keep working. A later registration refresh or usable-connection change retries idempotently. |
+| Old sidecar without `SetFcmToken`, or sidecar unavailable during registration | Other sidecars continue independently. The failed connection gets three bounded in-process retries after 5, 10, and 20 seconds; a later registration refresh or usable-connection change also republishes idempotently. If it remains unavailable, foreground Subscribe, manual Refresh, unary Sync, and periodic recovery keep working. |
 | Firebase invalidates or unregisters an old value after rotation | Phone unregistration and a permanent send rejection both compare-clear the exact rejected value. A newer stored value remains untouched. |
 
 Turning FCM off never requires deleting a paired connection or the Stage 5.2 cache. Remove the

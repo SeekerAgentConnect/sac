@@ -10,6 +10,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -102,6 +103,7 @@ class FcmRegistrationManagerTest {
                 publish = { id, _ ->
                     if (id == A) error("sidecar unavailable")
                     updated += id
+                    true
                 },
                 dispatcher = StandardTestDispatcher(testScheduler),
             )
@@ -118,6 +120,63 @@ class FcmRegistrationManagerTest {
         assertEquals(listOf(B), updated)
         assertFalse(validFcmTarget("has space"))
         assertTrue(validFcmTarget("x".repeat(4_096)))
+        manager.close()
+    }
+
+    @Test
+    fun retriesOnlyTheFailedSidecarUntilItsCurrentTargetPublishes() = runTest {
+        val loaded = MutableStateFlow(true)
+        val connections = MutableStateFlow(listOf(connection(A), connection(B)))
+        val attempts = mutableMapOf<String, Int>()
+        val manager =
+            FcmRegistrationManager(
+                loaded,
+                connections,
+                FakeClient(),
+                loadConnections = {},
+                publish = { id, _ ->
+                    val attempt = attempts.getOrDefault(id, 0) + 1
+                    attempts[id] = attempt
+                    id != A || attempt > 1
+                },
+                dispatcher = StandardTestDispatcher(testScheduler),
+            )
+        manager.start()
+        runCurrent()
+
+        manager.onRegistered(TARGET)
+        runCurrent()
+        assertEquals(mapOf(A to 1, B to 1), attempts)
+
+        advanceUntilIdle()
+        assertEquals(mapOf(A to 2, B to 1), attempts)
+        manager.close()
+    }
+
+    @Test
+    fun boundsRetriesWhileStage52RemainsTheUnavailableSidecarsRecoveryPath() = runTest {
+        val loaded = MutableStateFlow(true)
+        val connections = MutableStateFlow(listOf(connection(A)))
+        var attempts = 0
+        val manager =
+            FcmRegistrationManager(
+                loaded,
+                connections,
+                FakeClient(),
+                loadConnections = {},
+                publish = { _, _ ->
+                    attempts++
+                    false
+                },
+                dispatcher = StandardTestDispatcher(testScheduler),
+            )
+        manager.start()
+        runCurrent()
+
+        manager.onRegistered(TARGET)
+        advanceUntilIdle()
+
+        assertEquals(1 + FcmRegistrationManager.MAX_PUBLISH_RETRIES, attempts)
         manager.close()
     }
 
@@ -180,7 +239,10 @@ class FcmRegistrationManagerTest {
             connections,
             client,
             loadConnections = {},
-            publish = { id, update -> updates += id to update },
+            publish = { id, update ->
+                updates += id to update
+                true
+            },
             dispatcher = StandardTestDispatcher(testScheduler),
         )
 
