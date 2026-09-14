@@ -6,3 +6,5 @@ android/
 # Written by `node sidecar/src/testing/transaction-fixtures.ts`; its own test checks it byte for
 # byte, so reformatting it here would only make the two disagree.
 fixtures/transactions/
+# Approved Linear design attachments; docs/design/README.md records their exact hashes.
+docs/design/*.html

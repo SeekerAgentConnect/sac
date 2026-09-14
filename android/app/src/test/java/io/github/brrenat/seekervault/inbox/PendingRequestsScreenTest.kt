@@ -66,7 +66,7 @@ class PendingRequestsScreenTest {
         compose.onNodeWithTag(InboxTags.SECTION_PENDING).assertExists()
         compose.onNodeWithTag(InboxTags.item(WAITING.key)).assertExists()
         compose.onNodeWithText("Home Mac").assertExists()
-        // Stock Material 3 typography can put the pending card just below the initial viewport.
+        // The pending card can sit just below the initial viewport in the test window.
         compose
             .onNodeWithTag(InboxTags.LIST)
             .performScrollToNode(hasTestTag(InboxTags.item(PENDING.key)))

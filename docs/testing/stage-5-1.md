@@ -96,7 +96,7 @@ The draft, ViewModel, Compose, navigation, storage-wiring, and accessibility tes
 - global edits refreshing inherited sections while an overridden section and an unsaved local draft retain their values;
 - deleting/resetting either scope without deleting the other, including connection removal preserving the global document;
 - save failures, opening and rotation without a write, dirty-draft confirmation, edits during a save, and deliberate recovery for unreadable global or connection documents;
-- stock Material 3 controls at twice the system text size, complete address/asset removal labels for accessibility, and source/state information expressed in words rather than colour alone.
+- Material 3 controls under the approved v4 theme at twice the system text size, complete address/asset removal labels for accessibility, and source/state information expressed in words rather than colour alone.
 
 ### Deliberate breaks
 

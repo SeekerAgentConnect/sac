@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.SeekerTheme
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.policy.storage.UnreadableReason
@@ -98,10 +99,10 @@ import java.time.Instant
 /**
  * The policy editors (docs/guides/policies.md): global defaults and one connection's overrides.
  *
- * Stock Material 3 and nothing else — switches, checkboxes, radio buttons, chips, text fields,
- * lists, and Save and Cancel. There is no expression builder and no node canvas, because the model
- * behind it is one conjunction of allowlists and thresholds and pretending otherwise would be
- * showing the owner a language they don't have.
+ * Material 3 controls under the approved v4 theme — switches, checkboxes, radio buttons, chips,
+ * text fields, lists, and Save and Cancel. There is no expression builder and no node canvas,
+ * because the model behind it is one conjunction of allowlists and thresholds and pretending
+ * otherwise would be showing the owner a language they don't have.
  *
  * Two things this screen keeps saying, because both are easy to assume otherwise:
  * - **Inheritance, no check, and an empty list differ.** Each connection section first chooses the
@@ -1166,7 +1167,7 @@ private fun GlobalSectionCard(
                 Icon(
                     icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = SeekerTheme.colors.primaryText,
                     modifier = Modifier.size(20.dp),
                 )
                 Text(
@@ -1296,7 +1297,7 @@ private fun ActionsContent(
                 if (ticked) Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank,
                 contentDescription = null,
                 tint =
-                    if (ticked) MaterialTheme.colorScheme.primary
+                    if (ticked) SeekerTheme.colors.primaryText
                     else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Column(Modifier.padding(start = 12.dp)) {
@@ -1445,7 +1446,7 @@ private fun Asset(
                     Icon(
                         Icons.Outlined.Toll,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = SeekerTheme.colors.primaryText,
                         modifier = Modifier.size(20.dp),
                     )
                     Column(Modifier.weight(1f)) {
@@ -1963,7 +1964,7 @@ private fun GlobalAddressRow(
             Icon(
                 if (recipient) Icons.Outlined.AccountBalanceWallet else Icons.Outlined.Code,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = SeekerTheme.colors.primaryText,
                 modifier = Modifier.size(20.dp),
             )
             Column(Modifier.weight(1f)) {
@@ -2155,7 +2156,7 @@ private fun SolidPolicyButton(
         when {
             !enabled -> MaterialTheme.colorScheme.onSurfaceVariant
             tone == PolicyButtonTone.Primary -> MaterialTheme.colorScheme.onPrimary
-            tone == PolicyButtonTone.Tonal -> MaterialTheme.colorScheme.primary
+            tone == PolicyButtonTone.Tonal -> SeekerTheme.colors.primaryText
             tone == PolicyButtonTone.Error -> MaterialTheme.colorScheme.error
             else -> MaterialTheme.colorScheme.onSurface
         }

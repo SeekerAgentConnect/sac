@@ -42,8 +42,10 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
 
 ## UI
 
-- Use stock Jetpack Compose and Material 3 components with default styling.
-- No custom theme, colors, typography, illustrations, animations, or branding.
+- The checked-in [approved SEE-64 v4 design](docs/design/README.md) governs Android theme and component presentation. Its system-following lime/dark and light palettes, typography, shapes, solid layers, semantic colour mappings, and screen hierarchy supersede earlier directions to use stock Material defaults, including historical stage descriptions that say “stock Material 3 only.”
+- Before changing UI or resolving a UI merge conflict, read both design HTML files, `SeekerVaultTheme`, and the affected components. Preserve approved decisions when an unrelated review or older stage instruction conflicts with them; record a genuine unresolved conflict instead of silently substituting Material defaults.
+- Use Jetpack Compose and Material 3 components with the approved v4 tokens. Do not replace the production theme with parameterless `darkColorScheme()` / `lightColorScheme()`, wallpaper-derived colours, or stock-purple defaults.
+- Keep changes to the approved design intentional and documented. Do not rewrite the reference HTML to match an implementation regression.
 
 ## Tests and checks
 
