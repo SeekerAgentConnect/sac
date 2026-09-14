@@ -36,7 +36,7 @@ import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
  * One record in full: who asked, what the owner reviewed, which network it was on, how it ended,
  * and the signature. A transfer that was sent offers the explorer for its own cluster; a signed
  * message says in words that it is not a payment and offers nothing, because there is nothing to
- * look at. Stock Material 3 only.
+ * look at, presented with the approved v4 Material 3 theme.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

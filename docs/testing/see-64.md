@@ -4,7 +4,7 @@ SEE-64 is a presentation-only pass over the Android app. The complete Linear des
 
 ## What changed
 
-- system-following stock light and dark Material 3 colour schemes, typography, and shapes;
+- system-following light and dark Material 3 colour, type, and shape tokens;
 - opaque-only shared cards, buttons, dialogs, sheets, transient messages, and navigation, with zero tonal or shadow elevation;
 - a Home dashboard with a scroll-reactive app bar and a request carousel whose viewport-derived end padding lets the first and last cards centre-snap, opens on the first request, and eases active colours over 200 ms;
 - persistent Home, Requests, Wallet, and Activity navigation;
@@ -32,7 +32,7 @@ Run on 2026-09-14 with Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1, Kotlin 2.4.0,
 | `ANDROID_HOME=… pnpm check:android` | PASS — Spotless, all 760 Android unit tests, Android lint, debug APK, and instrumentation APK |
 | `pnpm check:generated` | PASS — protocol code and fixtures are current; this UI ticket changes neither |
 | `pnpm build` | PASS — sidecar and test-agent TypeScript builds |
-| Android unit suite | PASS — 760 tests, including stock theme defaults, the opaque-only source guard, Home carousel endpoint centring for one, two, and five requests, bottom-nav list clearance, transaction hierarchy and technical-detail disclosure, Global rules configured/empty/error states and section hierarchy, complete request and policy review, selected-state semantics, large-text action wrapping, scrollable dialog copy, persistent navigation, sheet routes, and updated screen behavior |
+| Android unit suite | PASS — 760 tests, including exact theme tokens/opacity, the opaque-only source guard, Home carousel endpoint centring for one, two, and five requests, bottom-nav list clearance, transaction hierarchy and technical-detail disclosure, Global rules configured/empty/error states and section hierarchy, complete request and policy review, selected-state semantics, large-text action wrapping, scrollable dialog copy, persistent navigation, sheet routes, and updated screen behavior |
 | Opaque-surface source audit | PASS — no alpha colour, transparent colour, gradient, non-zero shadow/tonal elevation, blur, or graphics-layer use in app UI source |
 | `git diff --check` | PASS |
 
@@ -46,4 +46,4 @@ The ticket description, the expected dark Global rules capture, the reported mob
 
 **Physical Seeker: NOT RUN.** A Seeker was attached and the isolated `io.github.brrenat.seekervault.see64visual` visual fixture installed successfully beside the real app, but the device remained securely locked during the verification window, so no trustworthy dark/light screenshot comparison was recorded. The installed production package and its data were not replaced. Real Seed Vault Wallet hand-off, camera pairing, system light/dark transition, largest system text size, and TalkBack traversal have not been exercised on hardware for SEE-64. No request was approved, no wallet was opened, and no transaction was signed or sent.
 
-The dark and light HTML reference states were inspected directly. Automated Compose tests cover semantics and interaction paths, but they are not a substitute for a pixel comparison on the 390 by 844 Seeker viewport. The remaining owner check is therefore visual and device-specific: compare Home at the top and beyond 48 dp scroll, each root destination, nested sheets, Global and connection rules, all request verdict states, pairing, wallet, Activity, light/dark, largest text, and TalkBack against the attached design.
+The dark and light HTML reference states were inspected directly. SEE-82 later preserved those exact files under [`docs/design/`](../design/README.md) after repairing a theme regression. Automated Compose tests cover semantics and interaction paths, but they are not a substitute for a pixel comparison on the 390 by 844 Seeker viewport. The remaining owner check is therefore visual and device-specific: compare Home at the top and beyond 48 dp scroll, each root destination, nested sheets, Global and connection rules, all request verdict states, pairing, wallet, Activity, light/dark, largest text, and TalkBack against the checked-in design.

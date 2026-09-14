@@ -226,7 +226,7 @@ The review reads again when the request is opened, whenever a preparation has be
 
 ## The editor
 
-`PolicyEditorScreen` (`policy/PolicyEditorScreen.kt`), reached from a connection's details. Stock Material 3 — switches, checkboxes, radio buttons, chips, text fields, lists, Save and Cancel — and nothing else. There is no expression builder and no node canvas, because the model behind it is one conjunction of allowlists and thresholds, and pretending otherwise would be showing the owner a language they don't have.
+`PolicyEditorScreen` (`policy/PolicyEditorScreen.kt`), reached from a connection's details. Material 3 switches, checkboxes, radio buttons, chips, text fields, lists, Save and Cancel use the approved v4 theme; the presentation adds no policy capability. There is no expression builder and no node canvas, because the model behind it is one conjunction of allowlists and thresholds, and pretending otherwise would be showing the owner a language they don't have.
 
 `PolicyDraft` (`policy/PolicyDraft.kt`) is the form: text as it is being typed, including text that isn't a number yet. `review` is the one place a draft becomes a `ConnectionPolicy`, and it produces one only when the store would accept it.
 

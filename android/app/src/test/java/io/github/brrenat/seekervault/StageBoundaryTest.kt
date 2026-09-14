@@ -202,8 +202,9 @@ class StageBoundaryTest {
         // connection ID rule, the protocol's requests and networks, what the phone read out of a
         // transaction's own bytes (SAW-020), the owner's own record of what this app did (SAW-023),
         // and the address rule. SAW-027 added the editor, so three more: the app's strings, its
-        // back button, and its date format. Nothing that opens a wallet, a connection, or a socket
-        // — the screen the owner writes the rules on can't act on them either.
+        // back button, its date format, and the checked-in v4 theme's semantic accent. Nothing that
+        // opens a wallet, a connection, or a socket — the screen the owner writes the rules on
+        // can't act on them either.
         val reaches =
             sources
                 .flatMap { it.readLines() }
@@ -216,6 +217,7 @@ class StageBoundaryTest {
         assertEquals(
             listOf(
                 "io.github.brrenat.seekervault.R",
+                "io.github.brrenat.seekervault.SeekerTheme",
                 "io.github.brrenat.seekervault.activity.ActivityKind",
                 "io.github.brrenat.seekervault.activity.ActivityOutcome",
                 "io.github.brrenat.seekervault.activity.ActivityRecord",
@@ -557,13 +559,17 @@ class StageBoundaryTest {
 
         val theme = File(main, "java/io/github/brrenat/seekervault/MainActivity.kt").readText()
         assertTrue(
-            "The app theme must select the stock Material 3 light and dark schemes",
-            theme.contains("darkColorScheme()") && theme.contains("lightColorScheme()"),
+            "Raw app bars must inherit the approved scheme's surface ink in both themes",
+            theme.contains("LocalContentColor provides colors.onSurface"),
         )
         assertTrue(
-            "The app theme must not define a custom palette, typography, shapes, or colour local",
-            listOf("Color(", "Typography(", "Shapes(", "staticCompositionLocalOf")
-                .none(theme::contains),
+            "The production theme must retain the approved lime dark roles",
+            theme.contains("primary = Color(0xFFE7FC6E)") &&
+                theme.contains("primaryContainer = Color(0xFFC2E60F)"),
+        )
+        assertTrue(
+            "Parameterless Material defaults would replace the approved v4 design",
+            !Regex("""(?:dark|light)ColorScheme\s*\(\s*\)""").containsMatchIn(theme),
         )
     }
 

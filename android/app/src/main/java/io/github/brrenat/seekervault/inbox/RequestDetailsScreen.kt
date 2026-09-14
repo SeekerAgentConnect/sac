@@ -58,6 +58,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.SeekerTheme
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.Connection
@@ -1136,7 +1137,7 @@ private fun DeviceVerification(verdict: Verdict) {
             Icon(
                 if (verified) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
                 contentDescription = null,
-                tint = if (verified) MaterialTheme.colorScheme.primary else ink,
+                tint = if (verified) SeekerTheme.colors.primaryText else ink,
                 modifier = Modifier.size(22.dp),
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
