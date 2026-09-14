@@ -54,7 +54,7 @@ WorkManager persists its own database and can run `BackgroundSyncWorker` after o
 
 Headless work admits at most four sidecars at once. Each connection has a two-minute overall bound around the transport's existing 30-second per-RPC deadline, so one offline or pathological server cannot hold the others indefinitely. An unreachable connection makes the WorkManager run retry with exponential backoff. Authentication/revocation removes the credential and is permanent for that connection; certificate, cleartext, protocol, and malformed-response failures wait for the next normal period rather than tight-looping. When every usable connection already has a healthy foreground stream, the worker exits without adding a competing unary pass. If only some streams are healthy, the shared repository's per-connection coordinator safely coalesces or buffers overlap.
 
-Fifteen minutes is the minimum configured interval, not a delivery deadline. Doze, battery optimization, standby, network constraints, and vendor policy can defer or skip an eligible run. Android Settings **Force stop** suppresses WorkManager until the owner reopens the app. There is no foreground service, direct service, receiver, exact alarm, continuous background socket, artificial rescheduling loop, Firebase dependency, or push wake-up.
+Fifteen minutes is the minimum configured interval, not a delivery deadline. Doze, battery optimization, standby, network constraints, and vendor policy can defer or skip an eligible run. Android Settings **Force stop** suppresses WorkManager until the owner reopens the app. SAW-052 adds no foreground service, direct service, receiver, exact alarm, continuous background socket, artificial rescheduling loop, Firebase dependency, or push wake-up. SAW-054 later places the optional Firebase client on the classpath, but the worker neither imports nor invokes it.
 
 The worker has no preparation, approval, policy-decision, or wallet dependency. It cannot build or replace a transaction, open Mobile Wallet Adapter, sign, send, or repeat a transfer. Those boundaries remain enforced by `StageBoundaryTest`.
 
@@ -65,6 +65,25 @@ The worker has no preparation, approval, policy-decision, or wallet dependency. 
 The cases cross the runtime boundary instead of replacing either half with a fake: MCP mutations enter the durable SQLite queue, the production gRPC service publishes them, and the Android repository validates and persists them for the existing reactive screens. They cover foreground delivery, two independently paired sidecars, restart and expiry, background closure, worker-only unary recovery, offline result retry with bounded backoff, and stream cleanup. Sidecar update tests separately exercise secure TLS/HTTP/2 and automatic read-only confirmation of a submitted transfer without `CheckStatus`.
 
 Run the complete joined suite with `pnpm test:updates`; keep running `pnpm test:hello` separately for Stage 1. JVM/Robolectric and sidecar-process success never count as a physical Seeker result. The MacBook-to-Seeker setup, scheduling inspection, and device-only checklist are in the [live and background updates runbook](../guides/live-background-updates.md) and [Stage 5.2 verification record](../testing/stage-5-2.md).
+
+## Optional Firebase client (SAW-054)
+
+The app pins the current Firebase Android BoM and its main `firebase-messaging` module. The Google
+Services plugin is present but conditional: `android/app/build.gradle.kts` applies it only when the
+deployment supplies the ignored `android/app/google-services.json`. A clean checkout therefore
+builds the same debug and test APKs with no Firebase project configuration, while a configured
+operator build gets the resources generated from its own project file.
+
+SAW-054 sets `firebase_messaging_auto_init_enabled=false`, so a configured project does not start
+token generation ahead of SAW-055's authenticated lifecycle. App source defines no
+`FirebaseMessagingService`, token request/storage, runtime permission request, notification
+channel, deep link, or WorkManager trigger. The Firebase library still contributes its standard
+receiver, service, provider, and permission declarations to the merged manifest; they have no
+app-owned handler or token in this revision. The existing foreground manager, manual Refresh,
+unary reconciliation, and periodic worker have no Firebase import and remain the complete update
+behavior in the off configuration. Setup and the exact off/unavailable behavior are in the
+[optional Firebase guide](../guides/firebase.md); automated evidence is recorded in
+[Stage 5.3 verification](../testing/stage-5-3.md).
 
 ## Connections
 
@@ -232,8 +251,8 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 - `src/debug/AndroidManifest.xml` points to `src/debug/res/xml/network_security_config.xml`, which permits cleartext to `127.0.0.1` and `localhost` only.
 - Every other host is still refused. The app then says to use `adb reverse` and `127.0.0.1`.
 - Release builds don't include this configuration, so Android's default applies: no cleartext traffic.
-- The app requests `INTERNET`, and `CAMERA` only when the owner taps **Scan QR code**. It requests no notification or biometric permissions. The manifest also carries `io.github.brrenat.seekervault.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which AndroidX Core declares for the app's own non-exported receivers. That one is private to the app, signature-level, and never shown to the user.
-- **Libraries add a few manifest entries of their own.** CameraX brings `MetadataHolderService`, which is disabled and not exported, and holds only its configuration. AndroidX Startup's `InitializationProvider` isn't exported. The profile installer's receiver answers only `adb`. Debug builds add the Compose preview and test activities. None of them runs in the background.
+- App code uses `INTERNET`, and requests `CAMERA` only when the owner taps **Scan QR code**. It makes no runtime notification- or biometric-permission request. The manifest also carries `io.github.brrenat.seekervault.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which AndroidX Core declares for the app's own non-exported receivers. That one is private to the app, signature-level, and never shown to the user.
+- **Libraries add manifest entries of their own.** CameraX brings a disabled, non-exported metadata service; AndroidX Startup and the profile installer add their components; WorkManager adds the scheduler components described above. From SAW-054, Firebase Messaging also merges its standard receiver, service, provider, and permissions, including `POST_NOTIFICATIONS`. The app does not request that runtime permission in this revision, auto-init is false, and no app-defined message handler or token lifecycle exists. Debug builds add the Compose preview and test activities.
 - `NetworkSecurityPolicyTest` keeps it that way. It fails if the main source set sets `networkSecurityConfig` or `usesCleartextTraffic`, or if the debug exception covers anything but `127.0.0.1` and `localhost`.
 
 ## Lifecycle and its limits
@@ -298,7 +317,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `ExplorerTest` | The cluster in the link for each network, no link for a message signature, and no link without a signature or without a cluster |
 | `ActivityViewModelTest` | Reading what is stored, a history that can't be read leaving the records on screen and saying so, recovery on the next read, a link nothing could open, and clearing |
 | `ActivityScreenTest`, `ActivityDetailsScreenTest` | Compose on Robolectric: the list and the empty state, the unreadable warning with the records still openable, Clear only after a confirmation, the record in full, the cluster named on every transfer, the explorer offered only for a sent transaction and on its own cluster, the words that say a message signature is not a payment, and the message when nothing can open a link |
-| `StageBoundaryTest` | The stage boundary. The source manifest declares only `MainActivity`, `INTERNET`, and an optional camera. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, direct services, alarms, receivers, wallet-key APIs, and push dependencies remain absent. Nothing is backed up. The Mobile Wallet Adapter client and WorkManager are on the classpath on purpose (SAW-015 and SAW-052); Seed Vault's own SDK, Room, DataStore, and Firebase are not. The explorer address lives in one file that holds no HTTP client, and the app's HTTP clients exist only where they talk to a sidecar (SAW-023). |
+| `StageBoundaryTest` | The stage boundary. The source manifest declares only `MainActivity`, disabled Firebase Messaging auto-init metadata, `INTERNET`, and an optional camera. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, direct services, alarms, receivers, wallet-key APIs, and push-triggered work remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose (SAW-015, SAW-052, and SAW-054); Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. Room and DataStore may be transitive implementation details, but app sources cannot import their APIs. The explorer address lives in one file that holds no HTTP client, and the app's HTTP clients exist only where they talk to a sidecar (SAW-023). |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
 

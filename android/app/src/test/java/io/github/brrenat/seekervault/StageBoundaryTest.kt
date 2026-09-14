@@ -14,11 +14,14 @@ import org.w3c.dom.Element
  * record of what this phone did in `activity/storage/` (SAW-023), and the rules they set for one
  * connection in `policy/storage/` (SAW-025). Nothing is backed up. SAW-048 authorizes only the
  * `sync/` package to use the production sidecar transport and its own storage subpackage; SAW-052
- * adds WorkManager code there. FCM, foreground services, direct services, jobs, alarms, receivers,
- * and wallet automation remain excluded. SAW-015 lifted the "no wallet library" limit for the
- * Mobile Wallet Adapter client, on purpose: the app drives the wallet the owner already has. It
- * still holds no wallet key of its own, and Seed Vault's own SDK stays out. These checks fail when
- * a limit is crossed early; the stage that lifts one changes them.
+ * adds WorkManager code there. SAW-054 puts the optional Firebase Messaging client on the
+ * classpath, but app source adds no handler, runtime permission request, token flow, or
+ * push-triggered work; the dependency's standard manifest entries are documented separately.
+ * App-defined foreground services, direct services, jobs, alarms, receivers, and wallet automation
+ * remain excluded. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter
+ * client, on purpose: the app drives the wallet the owner already has. It still holds no wallet key
+ * of its own, and Seed Vault's own SDK stays out. These checks fail when a limit is crossed early;
+ * the stage that lifts one changes them.
  */
 class StageBoundaryTest {
     private val main =
@@ -48,7 +51,7 @@ class StageBoundaryTest {
         }
 
     @Test
-    fun manifestDeclaresOnlyTheActivityTheNetworkAndAnOptionalCamera() {
+    fun manifestDeclaresOnlyTheActivityDisabledFcmTheNetworkAndAnOptionalCamera() {
         val manifest = xml("AndroidManifest.xml")
         val application = manifest.children("application").single()
         val components =
@@ -56,7 +59,22 @@ class StageBoundaryTest {
                 .map { application.childNodes.item(it) }
                 .filterIsInstance<Element>()
                 .map { "${it.tagName} ${it.getAttribute("android:name")}" }
-        assertEquals(listOf("activity .MainActivity"), components)
+        assertEquals(
+            listOf(
+                "meta-data firebase_messaging_auto_init_enabled",
+                "activity .MainActivity",
+            ),
+            components,
+        )
+        assertEquals(
+            "false",
+            application
+                .children("meta-data")
+                .single {
+                    it.getAttribute("android:name") == "firebase_messaging_auto_init_enabled"
+                }
+                .getAttribute("android:value"),
+        )
         assertEquals(
             listOf("android.permission.INTERNET", "android.permission.CAMERA"),
             manifest.children("uses-permission").map { it.getAttribute("android:name") },
@@ -328,18 +346,30 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun noSeedVaultDataStoreOrPushLibraryIsOnTheClasspath() {
+    fun firebaseMessagingIsOnTheClasspathFromSaw054() {
+        assertTrue(
+            runCatching {
+                Class.forName(
+                    "com.google.firebase.messaging.FirebaseMessaging",
+                    false,
+                    javaClass.classLoader,
+                )
+            }
+                .isSuccess
+        )
+    }
+
+    @Test
+    fun noSeedVaultSecurityOrLegacyPushLibraryIsOnTheClasspath() {
         val present =
             listOf(
                     // SAW-015 adds the MWA client on purpose; Seed Vault's own SDK is Stage 3's
                     // signing task, not this one.
                     "com.solanamobile.seedvault.Wallet",
-                    // WorkManager uses Room internally. The source scan above still rejects any
-                    // Room API in this app; only WorkManager's own implementation brings it in.
-                    "androidx.datastore.core.DataStore",
+                    // WorkManager brings Room and Firebase brings DataStore internally. The source
+                    // scan above still rejects either storage API in this app's own code.
                     "androidx.security.crypto.EncryptedSharedPreferences",
-                    // Stage 5.2 permits WorkManager, but no push: FCM is SEE-73.
-                    "com.google.firebase.messaging.FirebaseMessaging",
+                    // SAW-054 uses current FCM, never the legacy GCM service.
                     "com.google.android.gms.gcm.GcmListenerService",
                 )
                 .filter { name ->

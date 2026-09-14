@@ -248,6 +248,22 @@ describe("loadSidecarConfig", () => {
     assert.equal(config.solanaRpcTimeoutMs, 2500);
   });
 
+  it("configures FCM only for an explicit valid project ID", () => {
+    assert.equal(loadSidecarConfig(validEnv).fcmProjectId, undefined);
+    assert.equal(
+      loadSidecarConfig({
+        ...validEnv,
+        FCM_PROJECT_ID: " seeker-vault-prod-123 ",
+      }).fcmProjectId,
+      "seeker-vault-prod-123",
+    );
+    for (const value of ["UPPERCASE", "short", "starts-with-a-dash-"]) {
+      assert.deepEqual(problemsFor({ ...validEnv, FCM_PROJECT_ID: value }), [
+        "FCM_PROJECT_ID must be a 6-30 character lowercase Google Cloud project ID.",
+      ]);
+    }
+  });
+
   it("configures either loopback HTTP/2 development or the production TLS listener", () => {
     assert.equal(
       loadSidecarConfig({ ...validEnv, SIDECAR_UPDATE_PORT: "8081" })

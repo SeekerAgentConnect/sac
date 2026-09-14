@@ -7,9 +7,16 @@ packages:
 # bufferutil and utf-8-validate are ws's optional native accelerators, pulled in by
 # @solana/web3.js. The sidecar opens no websocket, and ws works without them, so their
 # native builds stay off.
+# @firebase/util's postinstall reads FIREBASE_WEBAPP_CONFIG, can contact a Firebase endpoint, and
+# writes generated defaults into its package. The sidecar uses Firebase Admin with runtime ADC,
+# not that web-app path, so the install must stay deterministic and credential-independent.
+# protobufjs's postinstall only checks and warns about dependency version syntax; no build output
+# depends on it.
 allowBuilds:
   "@bufbuild/buf": false
+  "@firebase/util": false
   bufferutil: false
+  protobufjs: false
   utf-8-validate: false
 
 catalog:

@@ -4,7 +4,8 @@
  * and only it runs SQL. SAW-019 lets it read a chain, and only from src/solana/, to build a
  * transfer the owner reviews; it still sends nothing. SAW-048 authorizes an HTTP/2 listener and
  * UpdateService only in server.ts and src/updates/, while durable cursors and snapshots still go
- * through src/storage/. These checks fail when that narrow boundary changes.
+ * through src/storage/. SAW-054 allows Firebase Admin only in src/push/ and configures no request
+ * mutation to send through it yet. These checks fail when that narrow boundary changes.
  */
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -163,6 +164,30 @@ describe("stage boundary", () => {
     assert.deepEqual(
       protocolOutsideUpdates.map((file) => relative(ROOT, file)),
       [],
+    );
+  });
+
+  it("keeps the optional Firebase Admin client inside src/push", () => {
+    const firebaseAdmin = /from "firebase-admin\//;
+    const sources = shippedSources();
+    const outside = sources.filter(
+      (file) =>
+        !relative(SRC, file).startsWith("push/") &&
+        firebaseAdmin.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      outside.map((file) => relative(ROOT, file)),
+      [],
+    );
+    assert.match(
+      readFileSync(join(SRC, "push/fcm.ts"), "utf8"),
+      firebaseAdmin,
+      "push/fcm.ts is the one Firebase Admin boundary",
+    );
+    assert.doesNotMatch(
+      readFileSync(join(SRC, "push/fcm.ts"), "utf8"),
+      /console\.|\blog\(/,
+      "the credential-bearing sender logs nothing",
     );
   });
 

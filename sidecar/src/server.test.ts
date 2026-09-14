@@ -7,6 +7,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 
 import { AcknowledgementResult } from "./gen/seekervault/live/v1/live_pb.js";
 import { DISPLAY_COMMAND_TOOL } from "./mcp-endpoint.ts";
+import { FcmSender } from "./push/fcm.ts";
 import { startSidecar, type Sidecar } from "./server.ts";
 import {
   connectAgent,
@@ -66,6 +67,79 @@ after(async () => {
 });
 
 describe("sidecar", () => {
+  it("does not construct Firebase while FCM is unconfigured", async () => {
+    let constructions = 0;
+    const unconfigured = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        mcpToken: MCP_TOKEN,
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 1,
+        databasePath: ":memory:",
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
+      },
+      {
+        log: (line) => logs.push(line),
+        fcmSenderFactory: () => {
+          constructions += 1;
+          return new FcmSender({ send: () => Promise.resolve("unused") }, () =>
+            Promise.resolve(),
+          );
+        },
+      },
+    );
+    await unconfigured.close();
+
+    assert.equal(constructions, 0);
+    assert.ok(
+      logs.includes("FCM sender is off; FCM_PROJECT_ID is not configured"),
+    );
+  });
+
+  it("owns one optional Firebase sender without exposing its configuration in logs", async () => {
+    const configuredLogs: string[] = [];
+    const projects: string[] = [];
+    let closes = 0;
+    const configured = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        mcpToken: MCP_TOKEN,
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 1,
+        databasePath: ":memory:",
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
+        fcmProjectId: "seeker-vault-prod-123",
+      },
+      {
+        log: (line) => configuredLogs.push(line),
+        fcmSenderFactory: (projectId) => {
+          projects.push(projectId);
+          return new FcmSender(
+            { send: () => Promise.resolve("unused") },
+            () => {
+              closes += 1;
+              return Promise.resolve();
+            },
+          );
+        },
+      },
+    );
+    await Promise.all([configured.close(), configured.close()]);
+
+    assert.deepEqual(projects, ["seeker-vault-prod-123"]);
+    assert.equal(closes, 1);
+    assert.ok(
+      configuredLogs.includes(
+        "FCM sender is configured through Application Default Credentials",
+      ),
+    );
+    assert.doesNotMatch(configuredLogs.join("\n"), /seeker-vault-prod-123/);
+  });
+
   it("fails a tool call at once with OFFLINE when no phone is watching", async () => {
     const agent = await connectAgent(sidecar.url, MCP_TOKEN);
     try {
