@@ -34,6 +34,7 @@ import { createMcpEndpoint } from "./mcp-endpoint.ts";
 import { pairingRoutes } from "./pairing/service.ts";
 import { phoneRoutes } from "./phone-api.ts";
 import { createFcmSender, type FcmSender } from "./push/fcm.ts";
+import { FcmInvalidationDispatcher } from "./push/invalidation.ts";
 import { ConfirmationTracker } from "./requests/confirmation.ts";
 import { requestRoutes } from "./requests/phone-service.ts";
 import { TransactionPreparer } from "./requests/preparation.ts";
@@ -47,6 +48,7 @@ import { PairingStore } from "./storage/pairing-store.ts";
 import { RequestStore } from "./storage/request-store.ts";
 import { readTlsIdentity } from "./storage/tls.ts";
 import { UpdateStore } from "./storage/update-store.ts";
+import { observeCommittedRequestUpdates } from "./storage/update-store.ts";
 import {
   UPDATE_PROTOCOL_VERSION,
   UpdateCoordinator,
@@ -129,6 +131,16 @@ async function serve(
     now,
   });
   const pairing = new PairingStore(db, { now });
+  const invalidations =
+    fcmSender === undefined
+      ? undefined
+      : new FcmInvalidationDispatcher(pairing, fcmSender, log);
+  const stopInvalidations =
+    invalidations === undefined
+      ? undefined
+      : observeCommittedRequestUpdates(db, (update) =>
+          invalidations.invalidate(update),
+        );
   const serverId = pairing.serverId();
   const serverInstanceId = randomUUID();
   const updates = new UpdateStore(db, { serverInstanceId, now });
@@ -303,6 +315,7 @@ async function serve(
       closing ??= (async () => {
         bridge.shutdown();
         updateCoordinator.shutdown();
+        stopInvalidations?.();
         const stopped = stopServer(server);
         const updatesStopped =
           updateServer === undefined
@@ -319,6 +332,7 @@ async function serve(
         if (updateServer !== undefined) closeAll(updateServer);
         for (const session of updateSessions) session.destroy();
         await Promise.all([stopped, updatesStopped]);
+        await invalidations?.close();
         await fcmSender?.close().catch(() => undefined);
         db.close();
         log("stopped");

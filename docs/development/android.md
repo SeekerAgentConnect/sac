@@ -66,7 +66,7 @@ The cases cross the runtime boundary instead of replacing either half with a fak
 
 Run the complete joined suite with `pnpm test:updates`; keep running `pnpm test:hello` separately for Stage 1. JVM/Robolectric and sidecar-process success never count as a physical Seeker result. The MacBook-to-Seeker setup, scheduling inspection, and device-only checklist are in the [live and background updates runbook](../guides/live-background-updates.md) and [Stage 5.2 verification record](../testing/stage-5-2.md).
 
-## Optional Firebase client and registration (SAW-054–SAW-055)
+## Optional Firebase registration and invalidation Sync (SAW-054–SAW-056)
 
 The app pins the current Firebase Android BoM and its main `firebase-messaging` module. The Google
 Services plugin is present but conditional: `android/app/build.gradle.kts` applies it only when the
@@ -78,8 +78,8 @@ The source default remains `firebase_messaging_auto_init_enabled=false`. SAW-055
 `FcmRegistrationManager` explicitly enables current Firebase registration only after stored
 connections have loaded and at least one is usable; it unregisters and disables again after the
 last usable connection disappears. `firebase_messaging_installation_id_enabled=true` selects the
-current direct-send API. `SeekerVaultMessagingService` implements only `onRegistered` and
-`onUnregistered`; it has no `onMessageReceived` path.
+current direct-send API. `SeekerVaultMessagingService` implements `onRegistered` and
+`onUnregistered` for ownership, plus the exact SAW-056 invalidation handler below.
 
 Registration callbacks and connection changes enter one application-scoped serialized channel.
 The current opaque target is sent through `ConnectionRepository` separately to every usable
@@ -89,13 +89,21 @@ delayed callback for an older value cannot erase its replacement. The phone neve
 value and diagnostics redact it. An unconfigured build has no default `FirebaseApp`, so the client
 does nothing; an older or unavailable sidecar cannot stop the other sidecars or any Stage 5.2 path.
 
-There is still no FCM send caller, received-message payload, runtime permission request,
-notification channel/UI, deep link, tap route, or push-triggered Sync/WorkManager call. The Firebase
-library contributes its standard receiver, service, provider, and permission declarations to the
-merged manifest, and SAW-055 adds only its non-exported registration-callback service. The existing
-foreground manager, manual Refresh, unary reconciliation, and periodic worker have no Firebase
-import and remain authoritative. Setup and exact off/unavailable behavior are in the [optional
-Firebase guide](../guides/firebase.md); automated evidence is in [Stage 5.3
+SAW-056 accepts only data exactly equal to `kind=request_invalidation` and `version=1`. The handler
+does not deserialize a request or accept any extra field. It sends only the delivered priority to
+`PushSyncScheduler`, which persists one unique `push-authoritative-sync` request with empty input,
+a connected-network constraint, `KEEP` coalescing, and exponential transient retry. A delivered
+high-priority ping requests expedited WorkManager execution with non-expedited fallback. The
+headless worker invokes the application repository's bounded `synchronizeAll()`: it loads each
+paired connection and credential from its normal stores and fetches authoritative state over the
+existing authenticated unary protocol.
+
+The Firebase library contributes its standard receiver, service, provider, and permission
+declarations to the merged manifest. There is still no runtime notification permission request,
+notification channel/UI, deep link, tap route, or wallet action. Foreground streams, manual
+Refresh, unary reconciliation, and the periodic worker remain independent and authoritative when a
+hint is delayed, dropped, expired, throttled, or unavailable. Setup and exact delivery/off behavior
+are in the [optional Firebase guide](../guides/firebase.md); automated evidence is in [Stage 5.3
 verification](../testing/stage-5-3.md).
 
 ## Connections
@@ -265,7 +273,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 - Every other host is still refused. The app then says to use `adb reverse` and `127.0.0.1`.
 - Release builds don't include this configuration, so Android's default applies: no cleartext traffic.
 - App code uses `INTERNET`, and requests `CAMERA` only when the owner taps **Scan QR code**. It makes no runtime notification- or biometric-permission request. The manifest also carries `io.github.brrenat.seekervault.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which AndroidX Core declares for the app's own non-exported receivers. That one is private to the app, signature-level, and never shown to the user.
-- **Libraries add manifest entries of their own.** CameraX brings a disabled, non-exported metadata service; AndroidX Startup and the profile installer add their components; WorkManager adds the scheduler components described above. From SAW-054, Firebase Messaging also merges its standard receiver, service, provider, and permissions, including `POST_NOTIFICATIONS`. SAW-055 adds one non-exported registration-callback service and explicit registration ownership, but does not request that runtime permission or handle a message. Debug builds add the Compose preview and test activities.
+- **Libraries add manifest entries of their own.** CameraX brings a disabled, non-exported metadata service; AndroidX Startup and the profile installer add their components; WorkManager adds the scheduler components described above. From SAW-054, Firebase Messaging also merges its standard receiver, service, provider, and permissions, including `POST_NOTIFICATIONS`. SAW-055 adds one non-exported registration service and explicit registration ownership; SAW-056 lets it accept only a fixed data invalidation and schedule Sync, without requesting that runtime permission or displaying anything. Debug builds add the Compose preview and test activities.
 - `NetworkSecurityPolicyTest` keeps it that way. It fails if the main source set sets `networkSecurityConfig` or `usesCleartextTraffic`, or if the debug exception covers anything but `127.0.0.1` and `localhost`.
 
 ## Lifecycle and its limits
@@ -331,7 +339,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `ExplorerTest` | The cluster in the link for each network, no link for a message signature, and no link without a signature or without a cluster |
 | `ActivityViewModelTest` | Reading what is stored, a history that can't be read leaving the records on screen and saying so, recovery on the next read, a link nothing could open, and clearing |
 | `ActivityScreenTest`, `ActivityDetailsScreenTest` | Compose on Robolectric: the list and the empty state, the unreadable warning with the records still openable, Clear only after a confirmation, the record in full, the cluster named on every transfer, the explorer offered only for a sent transaction and on its own cluster, the words that say a message signature is not a payment, and the message when nothing can open a link |
-| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, and only the non-exported registration-callback service, plus `INTERNET` and optional camera. Firebase imports stay under `push/`, and the service has no message handler. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, wallet-key APIs, notifications, and push-triggered work remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. |
+| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, and only the non-exported messaging service, plus `INTERNET` and optional camera. Firebase imports stay under `push/`; the service has registration callbacks and only the fixed invalidation-to-`PushSyncScheduler` message path. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, wallet-key APIs, notification UI, and tap routing remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
 

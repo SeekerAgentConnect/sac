@@ -174,7 +174,15 @@ On the phone API:
 - **Connection:** the phone credential authenticates as its own connection. Every `RequestService`, capability-discovery, and FCM-registration call must name that connection, in `connection_id` or `ref`. A call that names another connection gets `not_found`.
 - **Errors:** every `PairingService` and `RequestService` error carries a `RequestErrorDetail`; see [request errors](../protocol.md#request-errors).
 
-**Tokens and logs:** bearer tokens are read only from the `Authorization` header, and never logged. `MCP_TOKEN` and `PHONE_TOKEN` are compared in constant time. Pairing tokens and phone credentials are looked up by their SHA-256 hash, which is all the database keeps. SAW-055's opaque FCM target must remain recoverable for the future sender, but no API returns it and neither success nor failure logs it. Log lines carry connection, command, and request IDs, sizes, and states. They never carry an FCM target, credential, command text, request text, or note.
+**Tokens and logs:** bearer tokens are read only from the `Authorization` header, and never logged. `MCP_TOKEN` and `PHONE_TOKEN` are compared in constant time. Pairing tokens and phone credentials are looked up by their SHA-256 hash, which is all the database keeps. SAW-055's opaque FCM target must remain recoverable for the sender, but no API returns it and neither success nor failure logs it. SAW-056 also discards Firebase error text, which can contain deployment details, and logs only a fixed invalid-target or unavailable classification beside the connection ID. Log lines never carry an FCM target, credential, command text, request text, note, policy, approval, or transaction authorization.
+
+**Invalidation dispatch:** `recordRequestUpdate` queues a content-free callback beside the durable
+event, and the callback verifies that exact event exists after the SQLite transaction returns. A
+rollback therefore sends nothing. The configured dispatcher coalesces same-turn events per
+connection, reads only that connection's current FID, and supplies the fixed message defined in
+[`docs/protocol.md`](../protocol.md#fcm-invalidation-saw-056). A new PENDING request is high
+priority; later events are normal. A permanent FID rejection compare-clears the rejected value;
+transient, quota, credential, and service errors change no durable request or target.
 
 ## The MCP tools
 
@@ -413,11 +421,12 @@ Typical log lines:
 | `sidecar/src/storage/update-store.ts` | Durable per-connection sequences/replay and disk-frozen Sync snapshots (SAW-049) |
 | `sidecar/src/storage/tls.ts` | Reads the configured production PEM identity inside the audited file-system boundary (SAW-049) |
 | `sidecar/src/updates/service.ts` | Authenticated bidirectional Subscribe, unary Sync, stream ownership/liveness, and bounded confirmation (SAW-049) |
-| `sidecar/src/push/fcm.ts` | The optional Firebase Admin messaging sender (SAW-054). It uses Application Default Credentials, logs nothing, and has no request-lifecycle caller until later Stage 5.3 tickets. |
+| `sidecar/src/push/fcm.ts` | The optional Firebase Admin messaging transport (SAW-054). It uses Application Default Credentials and logs nothing. |
+| `sidecar/src/push/invalidation.ts` | SAW-056's coalescing dispatcher and exact data-only payload. It addresses the current connection FID, classifies failures without error text, and compare-clears only a permanently rejected current target. |
 | `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010), `vault_get_address` (SAW-015), and `vault_sign_message` and `vault_get_capabilities` (SAW-016) |
 | `sidecar/src/requests/signature.ts` | Ed25519 verification (SAW-016): the sidecar checks a wallet's signature, and never makes one |
 | `sidecar/src/requests/preparation.ts` | `TransactionPreparer` (SAW-019): checks an asset before a request is stored, and builds and records the next prepared version |
-| `sidecar/src/solana/rpc.ts` | The chain client (SAW-019): the read-only JSON-RPC calls a preparation needs. It remains the only code that reaches a blockchain. The separately confined optional FCM sender can reach Firebase only once a later ticket gives it a caller. |
+| `sidecar/src/solana/rpc.ts` | The chain client (SAW-019): the read-only JSON-RPC calls a preparation needs. It remains the only code that reaches a blockchain. The separately confined optional FCM sender reaches only Firebase and has no chain or wallet authority. |
 | `sidecar/src/solana/transfer.ts` | Building a transfer (SAW-019): the network check, what is supported, and the unsigned transaction |
 | `sidecar/src/solana/token.ts`, `addresses.ts`, `network.ts` | The SPL Token layouts and instructions, the program addresses and the associated-token-account derivation, and each network's genesis hash |
 | `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
@@ -446,7 +455,7 @@ The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. Th
   - the Host and Origin checks
   - `/healthz`
   - that no token or command text reaches the logs
-- **`src/push/fcm.test.ts`** tests exact message hand-off, opaque message IDs, idempotent Admin-app deletion, and initialization/cleanup without loading or contacting credentials. `src/storage/pairing-store.test.ts` and `src/pairing/roles.test.ts` cover FCM target persistence, atomic rotation, compare-delete, revocation cleanup, authenticated ownership, and redacted logs.
+- **`src/push/fcm.test.ts`** tests exact message hand-off, opaque message IDs, idempotent Admin-app deletion, and initialization/cleanup without loading or contacting credentials. `src/push/invalidation.test.ts` audits the fixed two-field payload, priority, TTL, collapse key, post-commit/coalescing behavior, FID rotation races, permanent cleanup, transient preservation, and redacted failures. `src/storage/pairing-store.test.ts` and `src/pairing/roles.test.ts` cover target persistence, atomic rotation, compare-delete, revocation cleanup, authenticated ownership, and redacted logs.
 - **`src/restart.test.ts`** runs `src/main.ts` as a real process. It stops the process with SIGTERM and then with SIGKILL during a command, and checks that the original caller fails and nothing is replayed after the restart.
 - **`src/storage/request-store.test.ts`** tests the request store on an in-memory database with a controlled clock. It covers:
   - creation and validation

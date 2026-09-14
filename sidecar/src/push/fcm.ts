@@ -1,6 +1,6 @@
 /**
- * The optional Firebase Admin transport. SAW-054 configures this sender but deliberately gives it
- * no request-lifecycle caller: token ownership is SAW-055 and invalidation dispatch is SAW-056.
+ * The optional Firebase Admin transport. SAW-054 configures it, SAW-055 gives it a private
+ * connection-owned target, and SAW-056's audited dispatcher supplies content-free invalidations.
  *
  * Credentials come only from Application Default Credentials. They are not an argument or return
  * value of this module and are never logged here.
@@ -31,7 +31,7 @@ export class FcmSender {
     this.#deleteApp = deleteApp;
   }
 
-  /** Hands one already-bounded message to FCM; payload policy belongs to the later caller. */
+  /** Hands one already-audited message to FCM without logging its routing target or result. */
   send(message: Message): Promise<string> {
     return this.#messaging.send(message);
   }

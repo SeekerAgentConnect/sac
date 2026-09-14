@@ -79,6 +79,11 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
   it. Registration rotation replaces it atomically; a stale invalidation compare-clears nothing.
   Replacement or either revocation path deletes it in the same transaction, before the old
   credential can make another registration call.
+- **An invalidation carries no authority (SAW-056).** Its exact app-visible data is the fixed kind
+  `request_invalidation` and version `1`. It contains no connection or request identifier,
+  credential, policy, assessment, agent prose, message bytes, transaction, authorization,
+  approval, signature, amount, recipient, or program. Android rejects any additional field and
+  uses a valid hint only to schedule authenticated Sync from its own stored connection records.
 - **Upgrading from SAW-010:** migration 2 revokes the stand-in connection that SAW-010 created with the database, and cancels its PENDING requests. Pair the phone after upgrading.
 
 ## Transport security
@@ -122,6 +127,13 @@ read API returns it, no MCP tool exposes it, and validation, errors, diagnostic 
 and logs never repeat it. Revocation deletes it. It is not a bearer credential and grants no phone
 API, request, policy, wallet, approval, signing, or sending authority.
 
+SAW-056 stores no FCM payload. `SeekerVaultMessagingService` compares the in-memory data map to two
+fixed strings, then discards it. The unique WorkManager request has empty input and loads sidecar
+URLs and Keystore-encrypted phone credentials through `ConnectionRepository` only when it performs
+the existing unary Sync. A push cannot select a request or connection and cannot reach approval or
+wallet code. The sidecar's Firebase routing envelope necessarily names the current FID, but that
+value is not app-visible payload data and is never logged.
+
 The SAW-051 foreground owner receives neither a token nor a wallet handle. `SynchronizationRepository` retrieves a connection credential only for the authenticated discovery, Sync, or Subscribe call and hands the lifecycle owner a generation-scoped stream interface. The stream closes on real background, removal, revocation, or cancellation; rotation and navigation do not replace it. Authentication failure revokes locally, version/configuration failures remain distinct from an outage, and a late response from a closed generation is inert. Stream status is runtime-only and is never substituted for the separately stored last successful Sync.
 
 SAW-052's WorkManager request contains no URL, token, cursor, request, owner decision, or wallet data. A worker-only process reloads metadata from `filesDir` and decrypts a credential from `noBackupFilesDir` only inside `ConnectionRepository`, immediately before the same authenticated unary Sync calls. Its authority is identical to the shared repository's: observe server state, retry an already-recorded result, and reconcile an existing Activity record. It cannot prepare, approve, create a decision, open a wallet, sign, send, or replay a transaction. Authentication failure deletes the credential for that connection; transient unreachability uses WorkManager backoff without logging a secret.
@@ -135,6 +147,7 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 | Minimal server update state (SAW-050): validated endpoint capability, request/status bytes and revisions, bounded removal markers, cursor/instance, Activity rotation position, and last successful Sync | `filesDir/sync/<connection ID>.json`, one atomic versioned document per connection | App-private storage; it contains no credential, wallet authorization, policy, assessment, local answer, or signed transaction |
 | The pairing token | The app's memory, until pairing ends or the owner leaves the screen | Never written to disk or to saved instance state |
 | The current FCM direct-send target (SAW-055) | Firebase Messaging and application memory while it is being published | Never written by the app to disk, backup, saved instance state, or a log |
+| The fixed FCM invalidation data (SAW-056) | Firebase callback memory until exact validation | Never written to app storage or WorkManager input; discarded before authenticated Sync |
 | The owner's answers, each with the request it answered (SAW-013), and for an approved transfer the version, content hash, and exact bytes they approved (SAW-021) | `filesDir/results/<connection ID>/<request ID>.json`, one file per answer. A settled answer is kept for a week, and one that's waiting to be sent is kept until it's settled. | App-private storage; an answer holds no secret, and an approved transaction is unsigned bytes the sidecar built |
 | The wallet the owner selected: its address, network, label, and when they chose it (SAW-015) | `filesDir/wallet/wallet.json` | App-private storage; a public address holds no secret, and it's published to every paired sidecar |
 | The wallet's authorization token for this app (SAW-015) | `noBackupFilesDir/wallet/wallet-authorization` | AES-256-GCM under the same Android Keystore key, with its own associated data |
