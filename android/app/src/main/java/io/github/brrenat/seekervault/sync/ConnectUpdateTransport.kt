@@ -34,9 +34,16 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 
 /** The production update calls, using Connect for discovery and genuine gRPC for UpdateService. */
 class ConnectUpdateTransport(private val httpClient: OkHttpClient) : UpdateTransport {
+    // OkHttp negotiates h2 over TLS, but cleartext HTTP/2 has no ALPN negotiation. The sidecar only
+    // advertises cleartext updates on loopback, where the development listener expects prior
+    // knowledge. Keeping this client separate preserves HTTP/1.1 capability discovery.
+    private val cleartextGrpcHttpClient =
+        httpClient.newBuilder().protocols(listOf(Protocol.H2_PRIOR_KNOWLEDGE)).build()
+
     override suspend fun discover(
         serverUrl: String,
         credential: String,
@@ -59,7 +66,7 @@ class ConnectUpdateTransport(private val httpClient: OkHttpClient) : UpdateTrans
         credential: String,
         request: SyncRequest,
     ): SyncResponse = call {
-        UpdateServiceClient(client(endpoint.grpcUrl, NetworkProtocol.GRPC))
+        UpdateServiceClient(client(endpoint.grpcUrl, NetworkProtocol.GRPC, grpcHttp(endpoint)))
             .sync(request, bearer(credential))
     }
 
@@ -72,7 +79,9 @@ class ConnectUpdateTransport(private val httpClient: OkHttpClient) : UpdateTrans
     ): UpdateSubscription {
         val stream =
             try {
-                UpdateServiceClient(client(endpoint.grpcUrl, NetworkProtocol.GRPC))
+                UpdateServiceClient(
+                        client(endpoint.grpcUrl, NetworkProtocol.GRPC, grpcHttp(endpoint))
+                    )
                     .subscribe(bearer(credential))
             } catch (e: CancellationException) {
                 throw e
@@ -121,9 +130,13 @@ class ConnectUpdateTransport(private val httpClient: OkHttpClient) : UpdateTrans
         }
     }
 
-    private fun client(host: String, protocol: NetworkProtocol) =
+    private fun client(
+        host: String,
+        protocol: NetworkProtocol,
+        http: OkHttpClient = httpClient,
+    ) =
         ProtocolClient(
-            httpClient = ConnectOkHttpClient(httpClient),
+            httpClient = ConnectOkHttpClient(http),
             config =
                 ProtocolClientConfig(
                     host = host,
@@ -134,6 +147,9 @@ class ConnectUpdateTransport(private val httpClient: OkHttpClient) : UpdateTrans
         )
 
     private fun bearer(secret: String) = mapOf("Authorization" to listOf("Bearer $secret"))
+
+    private fun grpcHttp(endpoint: UpdateEndpoint): OkHttpClient =
+        if (endpoint.grpcUrl.startsWith("http://")) cleartextGrpcHttpClient else httpClient
 
     private suspend fun <T> call(block: suspend () -> ResponseMessage<T>): T {
         val response =

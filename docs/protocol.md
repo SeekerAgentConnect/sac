@@ -554,9 +554,11 @@ The durable contract leaves the live diagnostic as it was.
 - **`vault_display_command` and its tests are unchanged.**
 - **The durable rules reuse two live rules without changing them:** an `ack`'s text follows `invalidTextReason`, and `expires_at` has `isExpired`'s boundary.
 
-## Production updates (SAW-048–SAW-051)
+<a id="production-updates-saw-048"></a>
 
-The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar; SAW-050 gives Android one persistent, headless reconciliation path; SAW-051 owns the foreground streams; and SAW-052 calls the same unary path from one unique, network-constrained periodic WorkManager job.
+## Production updates (SAW-048–SAW-053)
+
+The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar; SAW-050 gives Android one persistent, headless reconciliation path; SAW-051 owns the foreground streams; SAW-052 calls the same unary path from one unique, network-constrained periodic WorkManager job; and SAW-053 validates that joined path across real sidecar processes, the MCP client, and the production Android transport.
 
 | RPC | Wire protocol | Lifetime | Purpose |
 | --- | --- | --- | --- |
@@ -622,6 +624,14 @@ Pairing URI version 1 stays unchanged. A new `PairResponse.updates`, or `Pairing
 `grpc_url` is an origin, not a new trust domain. In production it is HTTPS with a publicly trusted certificate and the same host as the paired URL; only loopback development can use HTTP and a different port. The production Node secure listener negotiates `h2` and `http/1.1` by ALPN (`allowHTTP1`): gRPC updates use HTTP/2, while existing Connect unary, pairing, health, and MCP clients remain compatible. A TLS terminator/reverse proxy is valid only when it preserves gRPC HTTP/2 to this listener; silently downgrading `Subscribe` to polling or server-only streaming is not compatibility.
 
 The proof in `GrpcBidiInteropTest` uses the pinned Connect Kotlin 0.9.0 client and OkHttp 5.4.0 against the pinned Connect Node 2.2.0 adapter on a real TLS HTTP/2 listener. It sends subscribe, receives ready, sends and receives two heartbeats in alternation while the Kotlin send side is still open, and asserts the Node handler saw protocol `grpc` and HTTP version `2.0`. Its second case closes the Kotlin receive side and asserts one Node stream observes cancellation and no replacement stream starts. SAW-049's sidecar tests then use the Node gRPC client against the actual secure production listener and its loopback h2c development mode, including the deployed capability origin and preserved HTTP/1 routes. No dependency change was required.
+
+### Joined-path acceptance (SAW-053)
+
+`pnpm test:updates` is the repeatable Stage 5.2 acceptance entry point. It is intentionally separate from `pnpm test:hello`: the latter remains the Stage 1 display-only diagnostic and is not evidence that durable updates work. The update suite starts real sidecar processes and uses the real MCP SDK client, durable SQLite queue, production Node gRPC service, generated protocol clients, production Android transport, persistent sync repository, and foreground lifecycle owner.
+
+The sidecar portion covers the secure TLS/ALPN HTTP/2 listener and loopback h2c development listener, authentication and isolation, durable publication, replay, frozen paging, restart and retention-gap recovery, revocation and cleanup, and bounded read-only confirmation without `CheckStatus`. The Android joined cases use explicit HTTP/2 prior knowledge only for the advertised loopback `http://` development endpoint; deployed `https://` endpoints retain normal certificate and host validation plus ALPN. They prove foreground delivery without Refresh, two-sidecar isolation, background stream closure and foreground recovery, a worker-only process loading and persisting unary Sync, expiry across restart, bounded retry, and idempotent delivery of a result already recorded by the owner.
+
+The suite deliberately does not simulate a push wake-up, wallet action, or transaction send. Periodic WorkManager runs are eligible no more often than Android's 15-minute minimum and can be deferred by the OS; Force stop suppresses them until the owner reopens the app. Stage 5.2 therefore has no immediate background-delivery guarantee. Push-triggered reconciliation is the separate follow-up [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73).
 
 ## Generated code
 

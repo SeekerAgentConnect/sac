@@ -129,6 +129,7 @@ This table was revised on September 11, 2026:
 - The earlier end-to-end stage is split into persistent requests (Stage 2) and wallet message signing (Stage 3).
 - Policies are now a stage of their own (Stage 5).
 - Stage 5.2 adds foreground updates and eventual WorkManager sync; FCM stays in a later stage.
+- Stage 5.2 is complete in automated cross-component verification. Its periodic worker does not provide immediate background wake-up; push-triggered wake-up remains [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73), and physical Seeker timing remains explicitly device-verified rather than inferred from an emulator.
 - Reliability work is built into every stage, with a final regression pass in Stage 8.
 
 | Stage | Scope | Outcome |
@@ -138,7 +139,7 @@ This table was revised on September 11, 2026:
 | **3. Wallet connection and message signing** | MWA integration bound to a wallet and network; async message signing; wallet lifecycle and reliable result delivery | The agent receives the result of an actual manual signature on Seeker |
 | **4. Transfers** | Fresh transaction preparation; independent on-phone parsing; MWA sign-and-send; on-chain confirmation and recovery of uncertain outcomes; activity history | A transfer completes the full workflow, and its outcome is confirmed on chain |
 | **5. Policies** | Policy model and evaluation semantics; global defaults and connection overrides; connection-wide and global daily counters; the Policy Builder; policy results in request review | A transfer shows an `ALLOWED` or `UNDER_RESTRICTIONS` assessment with its reasons and rule sources |
-| **5.2 Live and background updates** | Versioned update protocol; full-duplex gRPC/HTTP/2; cursor replay and frozen reconciliation; shared Android state; foreground lifecycle; unique network-constrained WorkManager sync | Open screens update without Refresh, missed changes converge after disconnect/restart, and delayed background results survive process death without opening a wallet |
+| **5.2 Live and background updates** | Versioned update protocol; full-duplex gRPC/HTTP/2; cursor replay and frozen reconciliation; shared Android state; foreground lifecycle; unique network-constrained WorkManager sync; cross-component acceptance and Seeker runbook | Open screens update without Refresh, missed changes converge after disconnect/restart, and delayed background results survive process death without opening a wallet. Background work is eventual, not an immediate wake-up. |
 | **6. Jupiter** | `/build`; swap parameter checks; output amount and slippage display; refreshing expired transactions | Swaps use the same review and approval workflow |
 | **7. Packaging and integrations** | Docker Compose; a TLS gateway; an OAuth gateway for hosted MCP clients; the test-agent CLI; real Hermes integration; a self-hosting guide | The project can be deployed and connected by following the instructions |
 | **8. Release and submission** | Cross-component reliability and security regression checks; a signed release APK; verified guides; the demo and presentation | Retries don't cause duplicate execution; uncertain outcomes are clearly reported; the release can be installed and reproduced |

@@ -2,6 +2,8 @@
 
 This guide starts from a MacBook with nothing installed and ends with the Stage 1 hello world: the test agent on the Mac sends "Hello Seeker", the Seeker shows it, you tap **OK**, and the agent prints the acknowledgement. It assumes no Android development experience. The phone needs only USB debugging: no bootloader unlock, no root, and no wallet setup.
 
+For the durable Stage 5.2 gRPC/HTTP2 stream, its second USB port mapping, WorkManager behavior, and scheduling/connection inspection, complete the setup here and then follow [Live and background updates on a Seeker](live-background-updates.md). Passing this Stage 1 diagnostic does not count as a Stage 5.2 update pass.
+
 ```text
 Mac: pnpm agent ──MCP──▶ sidecar on 127.0.0.1:8080 ◀──USB, adb reverse── Seeker: the Seeker Vault app
 ```

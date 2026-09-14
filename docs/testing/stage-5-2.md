@@ -150,3 +150,64 @@ Run on 2026-09-14 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.
 | `pnpm check:android` | PASS: Spotless, 787/787 JVM tests, Android lint, and debug and instrumentation APKs. |
 | `pnpm check:generated` | PASS: generated protocol code and fixtures are current. SAW-052 changes no schema. |
 | Physical Seeker background, screen-off, process-death, and reboot checks | **NOT RUN.** No physical Seeker is attached; actual scheduling delays and the persisted result on reopen remain for the SAW-053 owner run. |
+
+## SAW-053 — cross-component acceptance and Seeker runbook
+
+SAW-053 validates Stage 5.2 as one system without folding the Stage 1 Live diagnostic into its evidence. `pnpm test:updates` runs the sidecar's production update suites and the Android update/gRPC suites. `Stage52AcceptanceTest` starts real sidecar processes with their SQLite stores, pairs through the production API, creates and cancels requests through the MCP SDK client, and consumes those mutations through Android's production gRPC transport, synchronization repository, persistent cache, and foreground lifecycle owner over loopback HTTP/2.
+
+### Repeatable automated acceptance
+
+| Scenario | Automated evidence |
+| --- | --- |
+| Foreground updates | A real MCP request appears in the Android cache and pending count while the foreground stream is live, without Refresh; agent cancellation removes it. The sidecar records one stream across repeated foreground/navigation-style ownership calls. |
+| Two-sidecar isolation | Two independently paired real processes stay live together. Stopping A leaves B live, and a request from B appears only under B. Restarting A catches up its own state without affecting B. |
+| Lifecycle and persistent recovery | A sidecar restart and clock advance expire a request, a true background signal closes the stream, and a worker-only repository process catches up through unary HTTP/2 and commits a cache that another offline process can load. |
+| Faults and backoff | A stopped sidecar leaves the owner's stored answer waiting while another connection proceeds. Foreground retry begins at one second, stays within the 30-second cap, and after restart delivers only that already-recorded answer. Separate protocol suites cover authentication, invalid cursors/pages/revisions, retained-history gaps, revocation, TLS, and h2c failures. |
+| Confirmation without **Check status** | `sidecar/src/updates/confirmation.test.ts` uses the production secure HTTP/2 listener and a controlled read-only chain. Unary Sync settles a submitted transfer only after matching the approved bytes, publishes the result, checks at most four concurrently, and rotates the deferred record. It exposes no send or simulation operation and invokes no wallet. |
+| Cleanup | Background closes each real stream; removal, revocation, replacement, shutdown, and bounded replay/snapshot cleanup are covered by the production sidecar suites. The worker schedule/constraint/Force-stop semantics remain covered by `BackgroundSynchronizationTest` and the physical checklist below. |
+
+The automated agent is the repository's real MCP SDK client, not Hermes running on a physical workflow. Its evidence proves the same MCP boundary and real sidecar process but does not turn the Hermes-on-Seeker rows below into PASS. A deliberate change from h2c HTTP/2 prior knowledge to HTTP/1.1 made the joined foreground case fail before reaching `ready`; restoring HTTP/2 made it pass.
+
+### Physical Seeker checklist (SAW-053)
+
+Use the [MacBook → Seeker live/background runbook](../guides/live-background-updates.md). Record the physical device identity, revision, observed delivery times, and one of PASS, FAIL, or NOT RUN for every row. Emulator, Robolectric, a mock, a manual worker start, and successful APK installation are not physical-device passes.
+
+No physical Seeker was attached on 2026-09-14, so checks 101–120 are honestly NOT RUN. They remain the owner's device acceptance record rather than being inferred from automated coverage.
+
+| # | Physical Seeker check | Status and evidence |
+| --- | --- | --- |
+| 101 | Record `git rev-parse HEAD`, Seeker brand/model, Android release, app build, and Mac tool versions. | **NOT RUN:** no physical Seeker attached. |
+| 102 | Install the debug APK, reverse both the main and update ports, and verify the sidecar advertises the h2c HTTP/2 update origin. | **NOT RUN:** no physical Seeker attached. |
+| 103 | Pair the Seeker and observe one foreground update stream show **Live updates connected.** with **Last synced** separate. | **NOT RUN:** no physical Seeker attached. |
+| 104 | From real Hermes, create a request while Home/Requests is open; verify it and the pending count appear without Refresh and record latency. | **NOT RUN:** no physical Seeker attached or Hermes-on-device run. |
+| 105 | Cancel and expire real requests; verify the row/count changes without Refresh and no duplicate remains. | **NOT RUN:** no physical Seeker attached. |
+| 106 | Keep Home, Requests, Request details, and Activity open in turn; verify request and terminal outcome changes recompose in place. | **NOT RUN:** no physical Seeker attached. |
+| 107 | Pair two real sidecars, stop A, and prove B remains live and isolated; restart A and prove catch-up without duplicate/rollback. | **NOT RUN:** no physical Seeker attached. |
+| 108 | Rotate and navigate repeatedly; prove one logical stream stays open and no competing stream is created. | **NOT RUN:** no physical Seeker attached. |
+| 109 | Press Home and return repeatedly; prove each real background closes the stream and each foreground reconciles before one replacement opens. | **NOT RUN:** no physical Seeker attached. |
+| 110 | Remove and restore the network/adb mappings; verify actionable status and bounded recovery while another sidecar remains live. | **NOT RUN:** no physical Seeker attached. |
+| 111 | Hand an approved request to the real wallet and return; prove one wallet interaction/result while stream lifecycle recovers independently. | **NOT RUN:** no physical Seeker attached and no wallet action was attempted. |
+| 112 | With the screen off and process alive, wait for the OS-scheduled unary worker, record actual delay, and verify persisted catch-up on reopen. | **NOT RUN:** no physical Seeker attached. |
+| 113 | After ordinary process death (not Force stop), wait for persisted scheduled work and verify its result survives the next process start. | **NOT RUN:** no physical Seeker attached. |
+| 114 | Reboot, unlock, restore USB forwarding, and verify the persisted unique job eventually runs; record actual delay. | **NOT RUN:** no physical Seeker attached. |
+| 115 | Force stop the app and verify no worker runs; reopen it and verify foreground catch-up and the unique schedule return. | **NOT RUN:** no physical Seeker attached. |
+| 116 | Answer while its sidecar is offline, then restore it; verify only the saved result is retried and the answer is neither lost nor duplicated. | **NOT RUN:** no physical Seeker attached. |
+| 117 | On a controlled non-mainnet chain, advance an already-submitted transfer; verify Activity confirms after Sync without **Check status**, another wallet call, or another send. | **NOT RUN:** no physical Seeker attached and no controlled device chain run. |
+| 118 | Exercise expiry, revocation, sidecar restart, and an unsupported update version; verify each remains distinct and manual Refresh stays available where specified. | **NOT RUN:** no physical Seeker attached. |
+| 119 | Remove a connection and verify its stream/cache/schedule ownership are cleaned up while other connections and Activity remain. | **NOT RUN:** no physical Seeker attached. |
+| 120 | Capture `dumpsys jobscheduler`, device-idle/package stopped state, safe stream logs, and actual timings sufficient to diagnose any scheduling or connection failure. | **NOT RUN:** no physical Seeker attached. |
+
+### SAW-053 verification record
+
+Run on 2026-09-14 on macOS 26.5.2 (Apple silicon), from branch `superset/feat/see-66` based on revision `469af03`. The final immutable revision is recorded in the SEE-72 Linear completion comment. The commands used Node 24.21.0, pnpm 12.3.4, Buf 1.72.0, Gradle 9.7.1/Kotlin 2.4.0, a Java 19 launcher with the pinned Java 21 Gradle daemon, compile/target SDK 37, and the dependency versions in the pinned [toolchain](../development/toolchain.md). The Android SDK was selected through `ANDROID_HOME`; no machine path is written to the repository.
+
+| Check | Result |
+| --- | --- |
+| `pnpm test:updates` | PASS: 8/8 production sidecar update cases and 37/37 focused Android sync/gRPC tests, including both `Stage52AcceptanceTest` joined cases. |
+| Deliberate HTTP/2 break | PASS: forcing the joined h2c Android client to HTTP/1.1 failed `Stage52AcceptanceTest`; restoring HTTP/2 prior knowledge passed the focused test and `pnpm test:updates`. |
+| `pnpm check` | PASS: Prettier, Buf format/lint, ESLint, TypeScript, 410/410 sidecar tests, and 29/29 test-agent tests. |
+| `pnpm test:hello` | PASS: all 9 Stage 1 simulated-device cases; it remains a separate diagnostic and is not a Seeker pass. |
+| `pnpm test:queue` | PASS: all 7 Stage 2 durable unary/MCP cases. |
+| `pnpm check:android` | PASS: Spotless, 789/789 JVM tests, Android lint, and the debug and instrumentation APKs. |
+| `pnpm check:generated` | PASS: generated protocol code and fixtures are current. SAW-053 changes no protocol schema. |
+| Physical Seeker background/screen-off/process-death/reboot/force-stop and Hermes checks | **NOT RUN:** `adb devices -l` reported no attached device on 2026-09-14. |
