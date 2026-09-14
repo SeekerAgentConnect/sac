@@ -3,8 +3,9 @@
 SAW-054 prepares the optional Android Firebase client and self-hosted sidecar sender. SAW-055 binds
 the client's current direct-send registration to paired connections: initial registration and
 later refreshes are sent to each sidecar through that connection's authenticated phone API.
-SAW-056 sends a content-free invalidation after committed request changes and has Android schedule
-the existing authoritative Sync path. This revision still does **not** request runtime notification
+SAW-056 sends a content-free invalidation after committed request changes. SAW-057 keeps receipt
+inside the Firebase callback budget, deduplicates the handoff, and schedules only the connections
+that need the existing authoritative Sync path. This revision still does **not** request runtime notification
 permission, show a notification, create a channel, or route a tap. Adding or removing Firebase does
 not change the Stage 5.2 foreground stream, manual **Refresh**, unary Sync, or periodic WorkManager
 recovery.
@@ -183,9 +184,39 @@ and [throttling and quota](https://firebase.google.com/docs/cloud-messaging/thro
 documentation checked on 2026-09-14. Delivery is intentionally never an acceptance condition for
 the durable request commit.
 
+<a id="service-handoff-and-sync-recovery-saw-057"></a>
+
+## Service handoff and Sync recovery (SAW-057)
+
+`FirebaseMessagingService.onMessageReceived` performs only two bounded steps: compare the complete
+data map with the fixed version-1 invalidation, then enqueue unique WorkManager work. It does not
+load the cache, open a sidecar connection, or wait for Sync. The network-constrained worker performs
+that longer work after Android accepts the handoff; its input remains empty.
+
+Deduplication happens at each boundary without treating a ping as state:
+
+- Firebase may collapse several undelivered messages under
+  `seeker-vault-request-state-v1`; the newest still means only “fetch current state.”
+- Repeated callbacks enqueue one `push-authoritative-sync` work name with `KEEP`, so a queued or
+  active job is not replaced by each duplicate.
+- At execution time, push and periodic workers omit usable connections whose foreground gRPC stream
+  is already Live. Other connections enter the existing four-sidecar-bounded synchronization
+  repository. One connection has one snapshot coordinator, and stream events are buffered while a
+  snapshot commits, so simultaneous Refresh, stream recovery, periodic work, and push work converge
+  rather than applying independent copies.
+
+These rules reduce redundant work; they do not create a delivery guarantee. A hint that arrives
+while equivalent work is active may add no separate fetch, and a hint may be delayed, collapsed,
+expired, throttled, or dropped before the app sees it. Durable requests remain on the sidecar.
+Foreground entry reconciles before opening Subscribe, a healthy foreground stream carries later
+events, manual **Refresh** calls the same Sync path, and the persisted 15-minute-minimum periodic job
+eventually fetches every usable non-Live connection. A Firebase-off build has exactly those Stage
+5.2 paths. Normal process death can still be followed by WorkManager or FCM subject to Android
+policy; Settings **Force stop** blocks both until the owner reopens the app.
+
 ## Off, unavailable, and incorrectly configured
 
-| Condition | Behavior through SAW-056 |
+| Condition | Behavior through SAW-057 |
 | --- | --- |
 | No Android `google-services.json` | The Google Services plugin is not applied, no default Firebase app exists, and registration calls are no-ops. The app and every Stage 5.2 path still build and run. |
 | No sidecar `FCM_PROJECT_ID` | No Firebase Admin app, dispatcher, listener, or sender is constructed. Durable events still commit and feed Stage 5.2 normally. |

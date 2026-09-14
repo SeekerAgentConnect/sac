@@ -312,6 +312,12 @@ class ConnectionRepository(
         return synchronization?.synchronizeAll().orEmpty()
     }
 
+    /** Recovery entry point that leaves connections with healthy foreground streams alone. */
+    suspend fun synchronizeConnections(ids: Set<String>): Map<String, SynchronizeOutcome> {
+        load()
+        return synchronization?.synchronizeConnections(ids).orEmpty()
+    }
+
     private suspend fun fetch(id: String) {
         val connection = find(id) ?: return
         if (!connection.usable) return

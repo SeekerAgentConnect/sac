@@ -116,6 +116,7 @@ class BackgroundSynchronizationTest {
     fun healthyForegroundStreamsSkipTheWorkerButOneUnhealthyStreamUsesUnarySync() = runTest {
         val connections = listOf(connection(A), connection(B))
         var calls = 0
+        val requested = mutableListOf<Set<String>>()
         val foreground =
             ForegroundUpdatesState(
                 foreground = true,
@@ -130,14 +131,16 @@ class BackgroundSynchronizationTest {
                 load = {},
                 connections = { connections },
                 foreground = { foreground },
-                synchronizeAll = {
+                synchronizeConnections = { ids ->
                     calls++
+                    requested += ids
                     emptyMap()
                 },
             )
 
         assertEquals(BackgroundSyncDecision.Complete, healthy.run())
         assertEquals(0, calls)
+        assertTrue(requested.isEmpty())
 
         val recovering =
             BackgroundSyncRunner(
@@ -150,13 +153,15 @@ class BackgroundSynchronizationTest {
                                 (B to ForegroundConnectionState.Reconnecting(1))
                     )
                 },
-                synchronizeAll = {
+                synchronizeConnections = { ids ->
                     calls++
+                    requested += ids
                     mapOf(A to updated(A), B to updated(B))
                 },
             )
         assertEquals(BackgroundSyncDecision.Complete, recovering.run())
         assertEquals(1, calls)
+        assertEquals(listOf(setOf(B)), requested)
     }
 
     @Test
@@ -170,6 +175,26 @@ class BackgroundSynchronizationTest {
         assertEquals(BackgroundSyncDecision.Retry, unavailable.run())
         assertEquals(BackgroundSyncDecision.Complete, configuration.run())
         assertEquals(BackgroundSyncDecision.Complete, revoked.run())
+    }
+
+    @Test
+    fun droppedPushStillRecoversThroughThePeriodicStage52Path() = runTest {
+        var requested = emptySet<String>()
+        val periodic =
+            BackgroundSyncRunner(
+                load = {},
+                connections = { listOf(connection(A), connection(B)) },
+                foreground = { ForegroundUpdatesState() },
+                synchronizeConnections = { ids ->
+                    requested = ids
+                    ids.associateWith(::updated)
+                },
+            )
+
+        // No FCM callback or push work is invoked. The persisted periodic worker still fetches
+        // every usable connection through the Stage 5.2 synchronization component.
+        assertEquals(BackgroundSyncDecision.Complete, periodic.run())
+        assertEquals(setOf(A, B), requested)
     }
 
     @Test
@@ -225,7 +250,7 @@ class BackgroundSynchronizationTest {
             load = {},
             connections = { listOf(connection(A)) },
             foreground = { ForegroundUpdatesState() },
-            synchronizeAll = { outcomes },
+            synchronizeConnections = { outcomes },
         )
 
     private fun updated(id: String) =

@@ -124,7 +124,7 @@ internal class BackgroundSyncRunner(
     private val load: suspend () -> Unit,
     private val connections: () -> List<Connection>,
     private val foreground: () -> ForegroundUpdatesState,
-    private val synchronizeAll: suspend () -> Map<String, SynchronizeOutcome>,
+    private val synchronizeConnections: suspend (Set<String>) -> Map<String, SynchronizeOutcome>,
 ) {
     suspend fun run(): BackgroundSyncDecision {
         load()
@@ -132,17 +132,20 @@ internal class BackgroundSyncRunner(
         if (usable.isEmpty()) return BackgroundSyncDecision.Complete
 
         val live = foreground()
-        if (
-            live.foreground &&
-                usable.all { id -> live.connections[id] == ForegroundConnectionState.Live }
-        ) {
-            return BackgroundSyncDecision.Complete
-        }
+        val recovery =
+            if (live.foreground) {
+                usable.filterTo(mutableSetOf()) { id ->
+                    live.connections[id] != ForegroundConnectionState.Live
+                }
+            } else {
+                usable
+            }
+        if (recovery.isEmpty()) return BackgroundSyncDecision.Complete
 
-        val outcomes = synchronizeAll()
+        val outcomes = synchronizeConnections(recovery)
         return if (
             outcomes.any { (id, outcome) ->
-                id in usable &&
+                id in recovery &&
                     outcome is SynchronizeOutcome.Failed &&
                     outcome.failure == CheckOutcome.Unreachable
             }
@@ -199,7 +202,7 @@ class BackgroundSyncWorker : CoroutineWorker {
                 load = repository::load,
                 connections = { repository.connections.value },
                 foreground = { application.foregroundUpdates.state.value },
-                synchronizeAll = repository::synchronizeAll,
+                synchronizeConnections = repository::synchronizeConnections,
             )
             .run()
     }
