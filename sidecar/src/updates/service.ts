@@ -131,31 +131,38 @@ export function updateRoutes(
   const pollMs = options.pollMs ?? UPDATE_POLL_MS;
 
   return (router) =>
-    router.service(UpdateService, {
-      subscribe: (messages, context) =>
-        subscribe(
-          messages,
-          context,
-          pairing,
-          requests,
-          updates,
-          serverInstanceId,
-          coordinator,
-          log,
-          heartbeatSeconds,
-          pollMs,
-        ),
-      sync: (request, context) =>
-        sync(
-          request,
-          context,
-          pairing,
-          requests,
-          updates,
-          serverInstanceId,
-          options.tracker,
-        ),
-    });
+    router.service(
+      UpdateService,
+      {
+        subscribe: (messages, context) =>
+          subscribe(
+            messages,
+            context,
+            pairing,
+            requests,
+            updates,
+            serverInstanceId,
+            coordinator,
+            log,
+            heartbeatSeconds,
+            pollMs,
+          ),
+        sync: (request, context) =>
+          sync(
+            request,
+            context,
+            pairing,
+            requests,
+            updates,
+            serverInstanceId,
+            options.tracker,
+          ),
+      },
+      {
+        readMaxBytes: UPDATE_MAX_MESSAGE_BYTES,
+        writeMaxBytes: UPDATE_MAX_MESSAGE_BYTES,
+      },
+    );
 }
 
 async function* subscribe(

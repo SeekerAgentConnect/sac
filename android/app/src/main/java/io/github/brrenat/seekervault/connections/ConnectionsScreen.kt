@@ -68,7 +68,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerTheme
 import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.inbox.actionText
 import io.github.brrenat.seekervault.inbox.key
@@ -340,7 +339,7 @@ private fun RequestCarousel(
             Text(
                 stringResource(R.string.waiting_for_you),
                 style = MaterialTheme.typography.labelLarge,
-                color = SeekerTheme.colors.primaryText,
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f),
             )
             Row(
@@ -359,7 +358,7 @@ private fun RequestCarousel(
                 Text(
                     stringResource(R.string.requests_see_all, waiting),
                     style = MaterialTheme.typography.labelMedium,
-                    color = SeekerTheme.colors.primaryText,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
         }
@@ -641,7 +640,7 @@ private fun SectionHeading(text: String) {
         text,
         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp),
         style = MaterialTheme.typography.labelLarge,
-        color = SeekerTheme.colors.primaryText,
+        color = MaterialTheme.colorScheme.primary,
     )
 }
 
@@ -750,7 +749,7 @@ private fun ConnectionItem(
                     statusText(connection, live),
                     style = MaterialTheme.typography.bodyMedium,
                     color =
-                        if (hasProblem(connection, live)) SeekerTheme.colors.errorText
+                        if (hasProblem(connection, live)) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

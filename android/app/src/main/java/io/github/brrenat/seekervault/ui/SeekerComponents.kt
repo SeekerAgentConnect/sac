@@ -75,7 +75,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
-import io.github.brrenat.seekervault.SeekerTheme
 import kotlinx.coroutines.delay
 
 private val SheetEnterEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
@@ -378,7 +377,7 @@ fun SeekerBottomBar(
                     destination.label,
                     style = MaterialTheme.typography.labelSmall,
                     color =
-                        if (active) SeekerTheme.colors.primaryText
+                        if (active) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -523,7 +522,7 @@ fun SheetBackplate(depth: Int, title: String, onClick: () -> Unit) {
                     interactionSource = remember { MutableInteractionSource() },
                     onClick = onClick,
                 ),
-        color = SeekerTheme.colors.dim,
+        color = MaterialTheme.colorScheme.surfaceDim,
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         shadowElevation = 0.dp,
@@ -563,7 +562,7 @@ fun SolidDialog(
             ),
     ) {
         val dialogWindow = (LocalView.current.parent as DialogWindowProvider).window
-        val dim = SeekerTheme.colors.dim
+        val dim = MaterialTheme.colorScheme.surfaceDim
         SideEffect {
             // Dialog is the input and accessibility barrier; its own window draws only solid
             // tokens and explicitly disables the platform's translucent dim-behind treatment.

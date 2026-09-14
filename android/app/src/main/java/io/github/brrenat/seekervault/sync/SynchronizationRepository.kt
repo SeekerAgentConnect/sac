@@ -1127,8 +1127,9 @@ class SynchronizationRepository(
         const val MAX_BUFFERED_EVENTS = 512
         const val MAX_TOMBSTONES = 512
         const val MAX_HEADLESS_CONCURRENCY = 4
-        // A paginated run is bounded beyond the transport's 30-second deadline for every call.
-        const val PER_CONNECTION_TIMEOUT_MILLIS = 2 * 60 * 1_000L
+        // A large valid queue can require hundreds of size-trimmed pages. Keep the whole run
+        // bounded while allowing active pagination substantially longer than one RPC deadline.
+        const val PER_CONNECTION_TIMEOUT_MILLIS = 10 * 60 * 1_000L
         val TERMINAL =
             setOf(
                 RequestState.REQUEST_STATE_CONFIRMED,

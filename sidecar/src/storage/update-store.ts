@@ -20,6 +20,7 @@ import {
 import { transaction, type DatabaseSync, type Row } from "./database.ts";
 
 export const DEFAULT_UPDATE_RETAINED_EVENTS = 512;
+/** Active pagination renews this inactivity lease after every valid page. */
 export const SNAPSHOT_TTL_MS = 2 * 60 * 1000;
 const MAX_SNAPSHOTS_PER_CONNECTION = 4;
 const SNAPSHOT_REQUEST = 1;
@@ -384,6 +385,11 @@ export class UpdateStore {
           .get(snapshotId)?.n,
       );
       if (offset < 0 || offset > total) throw new InvalidSnapshot();
+      this.#db
+        .prepare(
+          "UPDATE update_snapshots SET expires_at_ms = ? WHERE snapshot_id = ?",
+        )
+        .run(now + SNAPSHOT_TTL_MS, snapshotId);
       const items = this.#db
         .prepare(
           `SELECT kind, revision, payload FROM update_snapshot_items

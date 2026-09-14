@@ -82,7 +82,8 @@ export interface SidecarOptions {
 
 // How long close() lets in-flight responses, such as a CANCELLED tool result, finish.
 const CLOSE_GRACE_MS = 1000;
-const PHONE_API_MAX_MESSAGE_BYTES = 64 * 1024;
+// Keep every phone request bounded without imposing the same cap on existing response contracts.
+const PHONE_API_MAX_REQUEST_BYTES = 64 * 1024;
 
 /** Starts listening on `config.host:config.port`; port 0 picks a free port. */
 export async function startSidecar(
@@ -226,8 +227,7 @@ async function serve(
           )(router);
         }
       },
-      readMaxBytes: PHONE_API_MAX_MESSAGE_BYTES,
-      writeMaxBytes: PHONE_API_MAX_MESSAGE_BYTES,
+      readMaxBytes: PHONE_API_MAX_REQUEST_BYTES,
     });
   const phoneApi = routes(updatesConfigured && config.updatePort === undefined);
 

@@ -202,9 +202,8 @@ class StageBoundaryTest {
         // connection ID rule, the protocol's requests and networks, what the phone read out of a
         // transaction's own bytes (SAW-020), the owner's own record of what this app did (SAW-023),
         // and the address rule. SAW-027 added the editor, so three more: the app's strings, its
-        // back button, and its date format. SEE-74 adds one read-only presentation dependency for
-        // the v4 semantic icon colour. Nothing that opens a wallet, a connection, or a socket —
-        // the screen the owner writes the rules on can't act on them either.
+        // back button, and its date format. Nothing that opens a wallet, a connection, or a socket
+        // — the screen the owner writes the rules on can't act on them either.
         val reaches =
             sources
                 .flatMap { it.readLines() }
@@ -217,7 +216,6 @@ class StageBoundaryTest {
         assertEquals(
             listOf(
                 "io.github.brrenat.seekervault.R",
-                "io.github.brrenat.seekervault.SeekerTheme",
                 "io.github.brrenat.seekervault.activity.ActivityKind",
                 "io.github.brrenat.seekervault.activity.ActivityOutcome",
                 "io.github.brrenat.seekervault.activity.ActivityRecord",
@@ -559,8 +557,13 @@ class StageBoundaryTest {
 
         val theme = File(main, "java/io/github/brrenat/seekervault/MainActivity.kt").readText()
         assertTrue(
-            "Raw app bars must inherit the current scheme's surface ink in dark and light themes",
-            theme.contains("LocalContentColor provides colors.onSurface"),
+            "The app theme must select the stock Material 3 light and dark schemes",
+            theme.contains("darkColorScheme()") && theme.contains("lightColorScheme()"),
+        )
+        assertTrue(
+            "The app theme must not define a custom palette, typography, shapes, or colour local",
+            listOf("Color(", "Typography(", "Shapes(", "staticCompositionLocalOf")
+                .none(theme::contains),
         )
     }
 

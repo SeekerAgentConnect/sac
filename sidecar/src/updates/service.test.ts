@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { create } from "@bufbuild/protobuf";
+import { create, toBinary } from "@bufbuild/protobuf";
 import {
   Code,
   ConnectError,
@@ -25,9 +25,11 @@ import {
 
 import {
   ActionSchema,
+  Network,
   RequestState,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import {
+  ListPendingResponseSchema,
   PairingService,
   RequestService,
 } from "../gen/seekervault/request/v1/service_pb.js";
@@ -47,7 +49,9 @@ import { startSidecar, type Sidecar } from "../server.ts";
 import { openDatabase } from "../storage/database.ts";
 import { PairingStore } from "../storage/pairing-store.ts";
 import { RequestStore } from "../storage/request-store.ts";
+import { SNAPSHOT_TTL_MS } from "../storage/update-store.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
+import { UPDATE_MAX_MESSAGE_BYTES } from "./service.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);
@@ -150,6 +154,50 @@ async function fixture(
 }
 
 describe("production updates over gRPC HTTP/2", () => {
+  it("keeps the update message cap off existing RequestService responses", async () => {
+    const f = await fixture({ cleartext: true });
+    try {
+      await requestClient(f.sidecar.url, f.phoneToken).publishWallet({
+        connectionId: f.connectionId,
+        binding: {
+          wallet: "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW",
+          network: Network.DEVNET,
+        },
+      });
+      for (let index = 0; index < 14; index += 1) {
+        f.store.create({
+          action: create(ActionSchema, {
+            kind: {
+              case: "signMessage",
+              value: {
+                wallet: "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW",
+                content: { case: "data", value: new Uint8Array(4096) },
+              },
+            },
+          }),
+          agentNote: "n".repeat(1024),
+          idempotencyKey: `large-list-${index}`,
+        });
+      }
+
+      const response = await requestClient(
+        f.sidecar.url,
+        f.phoneToken,
+      ).listPending({
+        connectionId: f.connectionId,
+        pageSize: 100,
+      });
+
+      assert.equal(response.requests.length, 14);
+      assert.ok(
+        toBinary(ListPendingResponseSchema, response).byteLength >
+          UPDATE_MAX_MESSAGE_BYTES,
+      );
+    } finally {
+      await f.close();
+    }
+  });
+
   it("serves the deployed TLS route while preserving health, pairing, and unary RequestService", async () => {
     const f = await fixture({ updatePollMs: 60_000 });
     try {
@@ -412,6 +460,59 @@ describe("production updates over gRPC HTTP/2", () => {
       assert.equal(replayed.event.value.request?.state, RequestState.CANCELLED);
       assert.equal((await next(stream)).event.case, "replayComplete");
       abort.abort();
+    } finally {
+      await f.close();
+    }
+  });
+
+  it("renews an active snapshot lease but expires an idle page token", async () => {
+    const clock = { now: Date.UTC(2026, 8, 13, 12) };
+    const f = await fixture({ cleartext: true, now: () => clock.now });
+    try {
+      for (let index = 0; index < 4; index += 1) {
+        f.store.create(ack(`Page ${index}`, `lease-${index}`));
+      }
+      const client = updateClient(
+        f.sidecar.updateUrl ?? "",
+        f.phoneToken,
+        false,
+      );
+      const first = await client.sync({
+        connectionId: f.connectionId,
+        protocolVersion: 1,
+        pageSize: 1,
+      });
+      assert.ok(first.nextPageToken);
+
+      clock.now += SNAPSHOT_TTL_MS - 1;
+      const second = await client.sync({
+        connectionId: f.connectionId,
+        protocolVersion: 1,
+        pageSize: 1,
+        pageToken: first.nextPageToken,
+      });
+      clock.now += SNAPSHOT_TTL_MS - 1;
+      const third = await client.sync({
+        connectionId: f.connectionId,
+        protocolVersion: 1,
+        pageSize: 1,
+        pageToken: second.nextPageToken,
+      });
+      assert.ok(
+        third.nextPageToken,
+        "active paging outlives the original lease",
+      );
+
+      clock.now += SNAPSHOT_TTL_MS;
+      await assert.rejects(
+        client.sync({
+          connectionId: f.connectionId,
+          protocolVersion: 1,
+          pageSize: 1,
+          pageToken: third.nextPageToken,
+        }),
+        updateFailure(UpdateError.SNAPSHOT_INVALID),
+      );
     } finally {
       await f.close();
     }

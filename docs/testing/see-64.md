@@ -4,7 +4,7 @@ SEE-64 is a presentation-only pass over the Android app. The complete Linear des
 
 ## What changed
 
-- system-following light and dark Material 3 colour, type, and shape tokens;
+- system-following stock light and dark Material 3 colour schemes, typography, and shapes;
 - opaque-only shared cards, buttons, dialogs, sheets, transient messages, and navigation, with zero tonal or shadow elevation;
 - a Home dashboard with a scroll-reactive app bar and a request carousel whose viewport-derived end padding lets the first and last cards centre-snap, opens on the first request, and eases active colours over 200 ms;
 - persistent Home, Requests, Wallet, and Activity navigation;
@@ -32,7 +32,7 @@ Run on 2026-09-14 with Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1, Kotlin 2.4.0,
 | `ANDROID_HOME=… pnpm check:android` | PASS — Spotless, all 760 Android unit tests, Android lint, debug APK, and instrumentation APK |
 | `pnpm check:generated` | PASS — protocol code and fixtures are current; this UI ticket changes neither |
 | `pnpm build` | PASS — sidecar and test-agent TypeScript builds |
-| Android unit suite | PASS — 760 tests, including exact theme tokens/opacity, the opaque-only source guard, Home carousel endpoint centring for one, two, and five requests, bottom-nav list clearance, transaction hierarchy and technical-detail disclosure, Global rules configured/empty/error states and section hierarchy, complete request and policy review, selected-state semantics, large-text action wrapping, scrollable dialog copy, persistent navigation, sheet routes, and updated screen behavior |
+| Android unit suite | PASS — 760 tests, including stock theme defaults, the opaque-only source guard, Home carousel endpoint centring for one, two, and five requests, bottom-nav list clearance, transaction hierarchy and technical-detail disclosure, Global rules configured/empty/error states and section hierarchy, complete request and policy review, selected-state semantics, large-text action wrapping, scrollable dialog copy, persistent navigation, sheet routes, and updated screen behavior |
 | Opaque-surface source audit | PASS — no alpha colour, transparent colour, gradient, non-zero shadow/tonal elevation, blur, or graphics-layer use in app UI source |
 | `git diff --check` | PASS |
 

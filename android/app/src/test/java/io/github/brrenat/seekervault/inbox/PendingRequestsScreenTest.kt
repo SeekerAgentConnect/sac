@@ -1,7 +1,6 @@
 package io.github.brrenat.seekervault.inbox
 
 import android.content.Context
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -11,7 +10,6 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -66,15 +64,23 @@ class PendingRequestsScreenTest {
     fun showsEachRequestWithItsSourceActionAndContext() {
         show(STATE)
         compose.onNodeWithTag(InboxTags.SECTION_PENDING).assertExists()
-        compose.onNodeWithTag(InboxTags.item(PENDING.key)).assertExists()
-        compose.onAllNodesWithText("Home Mac", substring = true).assertCountEquals(2)
-        compose.onNodeWithText("Deploy finished", substring = true).assertExists()
-        compose
-            .onAllNodesWithText(context.getString(R.string.action_ack), substring = true)
-            .assertCountEquals(1)
+        compose.onNodeWithTag(InboxTags.item(WAITING.key)).assertExists()
+        compose.onNodeWithText("Home Mac").assertExists()
+        // Stock Material 3 typography can put the pending card just below the initial viewport.
         compose
             .onNodeWithTag(InboxTags.LIST)
             .performScrollToNode(hasTestTag(InboxTags.item(PENDING.key)))
+        compose.onNodeWithTag(InboxTags.item(PENDING.key)).assertExists()
+        compose
+            .onNodeWithText(
+                context.getString(
+                    R.string.request_card_ack_summary,
+                    "Home Mac",
+                    "Deploy finished",
+                )
+            )
+            .assertExists()
+        compose.onNodeWithText(context.getString(R.string.action_ack)).assertExists()
         compose
             .onNode(hasText(context.getString(R.string.acknowledge)) and hasClickAction())
             .performClick()

@@ -48,7 +48,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerTheme
 import io.github.brrenat.seekervault.connections.BackButton
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.Connection
@@ -242,14 +241,14 @@ private fun RequestTab(
             text,
             style = MaterialTheme.typography.labelLarge,
             color =
-                if (selected) SeekerTheme.colors.primaryText
+                if (selected) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Box(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(3.dp)
-                .background(if (selected) SeekerTheme.colors.primaryText else containerColor)
+                .background(if (selected) MaterialTheme.colorScheme.primary else containerColor)
         )
     }
 }
@@ -344,7 +343,7 @@ private fun RequestItem(
                             else -> Icons.Rounded.NorthEast
                         },
                         contentDescription = null,
-                        tint = SeekerTheme.colors.primaryText,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(22.dp),
                     )
                     Text(

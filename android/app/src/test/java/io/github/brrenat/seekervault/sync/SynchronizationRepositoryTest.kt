@@ -24,6 +24,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -388,7 +389,15 @@ class SynchronizationRepositoryTest {
         transport.pages[B] = ArrayDeque(listOf(snapshot(B, emptyList())))
         transport.onSync = { id -> if (id == A) awaitCancellation() }
 
-        val outcomes = repository().synchronizeAll()
+        val running = async { repository().synchronizeAll() }
+        runCurrent()
+        assertEquals(1, transport.syncCalls[B])
+        advanceTimeBy(10 * 60 * 1_000L - 1)
+        runCurrent()
+        assertFalse(running.isCompleted)
+        advanceTimeBy(1)
+        runCurrent()
+        val outcomes = running.await()
 
         assertEquals(
             CheckOutcome.Unreachable,
