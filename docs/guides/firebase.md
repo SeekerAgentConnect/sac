@@ -259,6 +259,35 @@ still schedule Sync but cannot show the alert; sustained high-priority traffic w
 notifications may be deprioritized by FCM. Doze, quota, throttling, the five-minute TTL, the shared
 collapse key, non-guaranteed ordering, and Force-stop behavior described above still apply.
 
+## Validate one deployment (SAW-059)
+
+Use the [Stage 5.3 Seeker runbook](../testing/stage-5-3.md#physical-seeker-runbook-saw-059) after
+both halves above are configured. Record the exact Git revision, APK variant, device model/build,
+Firebase project alias (never a credential), sidecar host/revision, permission/channel state, and
+observed timestamps. Mark every check **PASS**, **FAIL**, or **NOT RUN**. An injected sender,
+Robolectric, emulator, successful Admin `send()` response, or assembled APK does not prove physical
+delivery.
+
+The repeatable automated preflight uses no real Firebase credentials:
+
+```bash
+pnpm test:push
+pnpm test:updates
+```
+
+`test:push` exercises target ownership/rotation/revocation and exact invalidations at the real
+sidecar APIs, then real two-sidecar MCP requests and production Android HTTP/2 Sync under delayed,
+dropped, duplicate, and process-reloaded timing. `test:updates` is the Firebase-off Stage 5.2
+control. Before attaching the device, also confirm `git status --short` does not list
+`google-services.json`, a service-account file, `.env`, `local.properties`, a database, or a
+keystore.
+
+For the physical run, keep sidecar logs at their normal redacted level. They may say that FCM is
+configured, that a connection's registration changed, or that delivery is unavailable; they must
+not print a target, bearer credential, ADC path/content, request body, or Firebase error text. Use
+an ordinary agent request to trigger the flow, and inspect request state from the agent and app
+rather than copying Firebase routing values into diagnostics.
+
 ## Off, unavailable, and incorrectly configured
 
 | Condition | Behavior through SAW-058 |

@@ -237,6 +237,28 @@ channel. If permission or the channel was denied, enable it in Android Settings.
 stop foreground streams, manual Refresh, unary Sync, periodic recovery, registration, or
 push-triggered Sync.
 
+Check the boundaries in this order:
+
+1. The sidecar startup line says `FCM sender is configured through Application Default
+   Credentials`. If it says FCM is off, set `FCM_PROJECT_ID` and restart that sidecar.
+2. The installed APK was built while the matching `android/app/google-services.json` existed. A
+   file copied in after assembly cannot configure an already-built APK.
+3. The connection is usable and has had a registration update. Do not print or query the target;
+   the protocol intentionally has no read API for it.
+4. Create a fresh request and wait for authoritative Sync. An Admin message ID proves only that FCM
+   accepted a send, not that Android delivered it. Open the app or tap **Refresh**: if the request
+   appears, the durable Stage 5.2 path is healthy and the problem is notification delivery or
+   presentation rather than request storage.
+5. Inspect Android Settings for both app notification permission and the **Requests waiting for
+   review** channel. A denied permission or disabled channel suppresses alerts without disabling
+   Sync.
+
+Project mismatch, invalid/rotated installation IDs, Doze, the five-minute TTL, collapse,
+throttling, network policy, uninstall, reboot, and Force stop can all explain a missed alert. The
+[physical Stage 5.3 checklist](../testing/stage-5-3.md#physical-seeker-runbook-saw-059) separates
+these cases and requires timestamps plus PASS/FAIL/NOT RUN results. Never add target or credential
+values to logs while diagnosing them.
+
 A notification is a reminder, not server state. A cancellation, expiry, or remote answer can race
 with a dropped or delayed status hint and leave an old alert in the shade. Tap it: the app fetches
 that paired sidecar before showing controls and reports no longer waiting, removed, revoked, or
