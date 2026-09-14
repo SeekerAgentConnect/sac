@@ -103,8 +103,8 @@
     <string name="continue_pairing">Continue</string>
 
     <string name="code_not_a_code">That isn\'t a pairing code. Enter the whole line that starts with seekervault://pair.</string>
-    <string name="code_not_seeker_vault">That isn\'t a seeker-vault pairing code. Those start with seekervault://pair.</string>
-    <string name="code_other_version">This pairing code is for another version of seeker-vault. Update the app or the sidecar.</string>
+    <string name="code_not_seeker_vault">That isn\'t a Seeker Agent Connect pairing code. Those start with seekervault://pair.</string>
+    <string name="code_other_version">This pairing code is for another version of Seeker Agent Connect. Update the app or the sidecar.</string>
     <string name="code_bad_server_url">The server URL in the code isn\'t valid.</string>
     <string name="code_insecure_server_url">The code\'s server URL doesn\'t use HTTPS. Only a debug build accepts plain HTTP, and only to 127.0.0.1 over adb reverse.</string>
     <string name="code_bad_server_id">The server ID in the code isn\'t valid.</string>

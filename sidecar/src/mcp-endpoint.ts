@@ -25,7 +25,7 @@ export const DISPLAY_COMMAND_TOOL = "vault_display_command";
 /** What the server tells an agent when it connects; it names only the tools it serves. */
 function instructionsFor(demoTools: boolean, transfers: boolean): string {
   return [
-    "seeker-vault puts an agent's requests in front of the owner on their Seeker phone.",
+    "Seeker Agent Connect puts an agent's requests in front of the owner on their Seeker phone.",
     "Every request waits for the owner to approve it by hand; vault_get_capabilities says what this sidecar actually serves.",
     "vault_display_command is a live diagnostic: it shows text on the open live-test screen and waits for the owner's OK.",
     "vault_get_address reads the wallet the owner connected, and vault_sign_message asks that wallet to sign a message, returning at once with a request_id.",

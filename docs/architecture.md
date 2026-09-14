@@ -1,6 +1,6 @@
 # Architecture
 
-seeker-vault has four parts: the agent, the sidecar, the Android app, and the wallet. This page covers what each part owns, how they talk, and which safety rules hold across them. The wire contract is in [`protocol.md`](protocol.md), and the plan in [`RFC.md`](../RFC.md).
+Seeker Agent Connect has four parts: the agent, the sidecar, the Android app, and the wallet. This page covers what each part owns, how they talk, and which safety rules hold across them. The wire contract is in [`protocol.md`](protocol.md), and the plan in [`RFC.md`](../RFC.md).
 
 ## Components
 
@@ -18,7 +18,7 @@ flowchart LR
 | **Agent** | Proposing actions and reading their results | Approve, sign, or see the phone's policy |
 | **Sidecar** (`sidecar/`) | The MCP and phone endpoints. From SAW-010 and SAW-011 on, it also holds requests and their states, prepared transactions, results, idempotency records, and pairing; Stage 5.2 adds durable update revisions/cursors and bounded snapshots. | Hold keys, sign, decide for the user, or execute anything on its own after a restart |
 | **Android app** (`android/`) | Connections and their credentials, policies and their assessments, the user's decision, invoking the wallet, results the sidecar hasn't acknowledged yet, and Stage 5.2's minimal server-state cache/sync metadata | Sign without the user's approval, or trust the agent's description over the transaction's contents |
-| **Seed Vault Wallet** | Keys, signing, and sending | Know anything about seeker-vault |
+| **Seed Vault Wallet** | Keys, signing, and sending | Know anything about Seeker Agent Connect |
 
 ### The wallet adapter boundary
 

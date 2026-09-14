@@ -97,7 +97,7 @@ For example, with the token elided:
 
 ```text
 $ pnpm pair
-Scan this with seeker-vault on the phone to pair it with https://mac.tailnet.ts.net.
+Scan this with Seeker Agent Connect on the phone to pair it with https://mac.tailnet.ts.net.
 The code works once, until 15:19:50 (10 minutes).
 
 <the QR code>

@@ -87,11 +87,13 @@ export function parsePairingUri(text: string): ParsedPairingUri {
     return failure("this isn't a pairing code");
   }
   if (uri.protocol !== "seekervault:" || uri.hostname !== "pair") {
-    return failure("this isn't a seeker-vault pairing code");
+    return failure("this isn't a Seeker Agent Connect pairing code");
   }
   const query = uri.searchParams;
   if (query.get("v") !== PAIRING_URI_VERSION) {
-    return failure("this pairing code is for another version of seeker-vault");
+    return failure(
+      "this pairing code is for another version of Seeker Agent Connect",
+    );
   }
   const serverUrl = query.get("url") ?? "";
   const serverId = query.get("server") ?? "";

@@ -25,7 +25,7 @@ The first-time setup is in the [MacBook → Seeker quickstart](../guides/macbook
 
 1. Configure and start the sidecar with `pnpm dev:sidecar`; see [`docs/development/sidecar.md`](../development/sidecar.md).
 2. Connect the phone over USB and run `adb reverse tcp:8080 tcp:8080`; see [`docs/development/android.md`](../development/android.md).
-3. On the Seeker, open Seeker Vault, tap **Live test**, enter the phone token, and tap **Connect**. The status reads "Connected".
+3. On the Seeker, open Seeker Agent Connect, tap **Live test**, enter the phone token, and tap **Connect**. The status reads "Connected".
 4. On the Mac, run `pnpm --silent agent hello "Hello Seeker"`.
 5. The Seeker shows "Hello Seeker". Tap **OK**.
 6. The agent should exit with code 0 and print `{"id":"<uuid>","result":"OK"}`. The ID must match the sidecar's log line `command <uuid> acknowledged`.

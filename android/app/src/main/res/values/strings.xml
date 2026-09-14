@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Seeker Vault</string>
+    <string name="app_name">Seeker Agent Connect</string>
     <string name="nav_home">Home</string>
     <string name="nav_requests">Requests</string>
     <string name="nav_wallet">Wallet</string>
