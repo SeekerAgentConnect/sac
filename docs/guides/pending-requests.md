@@ -26,6 +26,11 @@ Requests remain authoritative on the sidecar. The phone keeps the last complete 
 
 ## Reviewing a request
 
+Home previews waiting requests in a horizontal carousel. Its first card begins at the left content
+edge. As you swipe, cards between the endpoints settle in the centre; the final card settles at the
+right content edge. The spacing and ordinary horizontal swipe gesture stay the same. The carousel
+only browses requests—tap a card to review it and answer on Request details.
+
 1. On **Connections**, tap **Pending requests**, the first row. Or open a connection and tap **Pending requests** there for only that connection's.
 2. The list has up to three parts:
    - **Waiting for you:** requests you haven't answered. Each shows the connection it came from, the action, how long ago the agent made it, and when it expires.
