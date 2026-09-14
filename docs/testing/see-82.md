@@ -14,7 +14,22 @@ The audit compared the UI-related diff in `d180549` with pre-regression revision
 
 ## Automated verification
 
-Results will be recorded against the implementation revision after the required commands run.
+Implementation revision `8731f203ff2dc850b53112e17f42842856940d8f` was tested on 2026-09-15 on macOS 26.5.2 arm64 with Node.js 24.21.0, pnpm 12.3.4, Gradle 9.7.1, the project-pinned Kotlin plugin 2.4.20, and the configured Java 21 Temurin Gradle daemon (Java 19.0.2 launcher). The Android SDK was supplied through `ANDROID_HOME`; no machine-specific path was written to the repository.
+
+| Command | Result |
+| --- | --- |
+| Focused `SeekerVaultThemeTest` and `StageBoundaryTest` Gradle run | **PASS** |
+| `pnpm test:push` | **PASS** — 35 sidecar tests and the selected Android push, notification, tap, and recovery suite |
+| `pnpm test:updates` | **PASS** — 10 sidecar tests and the selected Android HTTP/2/update suite |
+| `pnpm check` | **PASS** — formatting, lint, generated-protocol check, TypeScript types, 430 sidecar tests, and 29 test-agent tests |
+| `pnpm test:hello` | **PASS** — 9 tests |
+| `pnpm test:queue` | **PASS** — 7 tests |
+| `pnpm check:android` | **PASS** — Spotless, 854 Android unit tests with zero failures/errors, lint, debug APK, and instrumentation APK |
+| `pnpm check:generated` | **PASS** — generated protocol code and fixtures are current |
+
+### Deliberate break
+
+The production theme selection was temporarily replaced with parameterless `darkColorScheme()` and `lightColorScheme()` calls. `productionEntryPointUsesTheApprovedThemeAndRejectsParameterlessDefaults` then **FAILED as expected**. The approved scheme selection was restored with the patch tool, and the complete focused theme/boundary run passed. The deliberate break was never committed.
 
 ## Visual and device checks
 
