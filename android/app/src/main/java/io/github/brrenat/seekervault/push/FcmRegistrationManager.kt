@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -57,14 +58,15 @@ class FirebaseFcmRegistrationClient(context: Context) : FcmRegistrationClient {
  * Firebase callbacks and connection changes enter one serialized channel. A rotation is therefore
  * published after the old target and to every currently usable sidecar. The sidecar's
  * compare-and-delete operation also makes a delayed unregistration for the old target harmless. No
- * target is stored on the phone or written to a log.
+ * target is stored on the phone or written to a log. A sidecar publication that fails is retried
+ * independently with a bounded exponential delay; Stage 5.2 remains the eventual recovery path.
  */
 class FcmRegistrationManager(
     private val loaded: StateFlow<Boolean>,
     private val connections: StateFlow<List<Connection>>,
     private val client: FcmRegistrationClient,
     private val loadConnections: suspend () -> Unit,
-    private val publish: suspend (String, FcmTokenUpdate) -> Unit,
+    private val publish: suspend (String, FcmTokenUpdate) -> Boolean,
     dispatcher: CoroutineDispatcher,
 ) {
     private sealed interface Event {
@@ -73,6 +75,12 @@ class FcmRegistrationManager(
         class Registered(val target: String) : Event
 
         class Unregistered(val target: String) : Event
+
+        class Retry(
+            val update: FcmTokenUpdate,
+            val ids: List<String>,
+            val attempt: Int,
+        ) : Event
     }
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -137,11 +145,49 @@ class FcmRegistrationManager(
                 if (currentTarget == event.target) currentTarget = null
                 publishToAll(FcmTokenUpdate.ClearIfCurrent(event.target))
             }
+            is Event.Retry -> {
+                if (!event.update.isCurrent()) return
+                publishTo(event.ids.filter { it in activeIds }, event.update, event.attempt)
+            }
         }
     }
 
     private suspend fun publishToAll(update: FcmTokenUpdate) {
-        for (id in activeIds) bestEffort { publish(id, update) }
+        publishTo(activeIds, update, attempt = 0)
+    }
+
+    private suspend fun publishTo(ids: List<String>, update: FcmTokenUpdate, attempt: Int) {
+        val failed = mutableListOf<String>()
+        for (id in ids) {
+            if (!bestEffortResult { publish(id, update) }) failed += id
+        }
+        if (failed.isEmpty() || attempt == MAX_PUBLISH_RETRIES) return
+
+        val nextAttempt = attempt + 1
+        scope.launch {
+            delay(RETRY_BASE_DELAY_MILLIS * (1L shl (nextAttempt - 1)))
+            events.trySend(Event.Retry(update, failed, nextAttempt))
+        }
+    }
+
+    private fun FcmTokenUpdate.isCurrent(): Boolean =
+        when (this) {
+            is FcmTokenUpdate.Register -> currentTarget == target
+            is FcmTokenUpdate.ClearIfCurrent -> currentTarget != target
+        }
+
+    private suspend fun bestEffortResult(block: suspend () -> Boolean): Boolean =
+        try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+
+    internal companion object {
+        internal const val MAX_PUBLISH_RETRIES = 3
+        internal const val RETRY_BASE_DELAY_MILLIS = 5_000L
     }
 
     private suspend fun bestEffort(block: suspend () -> Unit) {

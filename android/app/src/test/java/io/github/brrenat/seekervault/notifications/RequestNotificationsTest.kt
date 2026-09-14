@@ -113,6 +113,41 @@ class RequestNotificationsTest {
     }
 
     @Test
+    fun removingAConnectionCancelsOnlyItsPostedRequestAlerts() {
+        shadowOf(application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val otherKey = RequestKey(OTHER_CONNECTION_ID, OTHER_REQUEST_ID)
+        val otherConnection = CONNECTION.copy(id = OTHER_CONNECTION_ID, label = "Other sidecar")
+        notifications.reconcile(
+            emptySet(),
+            setOf(KEY, otherKey),
+            listOf(CONNECTION, otherConnection),
+        )
+
+        notifications.cancelConnection(CONNECTION_ID)
+
+        assertEquals(
+            otherKey,
+            RequestNotificationIntent.destination(
+                shadowOf(platform.activeNotifications.single().notification.contentIntent)
+                    .savedIntent
+            ),
+        )
+    }
+
+    @Test
+    fun anUnusableConnectionCannotReceiveANewAlert() {
+        shadowOf(application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+
+        notifications.reconcile(
+            emptySet(),
+            setOf(KEY),
+            listOf(CONNECTION.copy(revokedAt = Instant.parse("2026-09-14T12:01:00Z"))),
+        )
+
+        assertTrue(platform.activeNotifications.isEmpty())
+    }
+
+    @Test
     fun rejectsAnyNonNotificationActionOrMalformedOpaqueId() {
         assertNull(RequestNotificationIntent.destination(null))
         assertNull(RequestNotificationIntent.destination(Intent()))
@@ -140,6 +175,7 @@ class RequestNotificationsTest {
         const val CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         const val REQUEST_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
         const val OTHER_REQUEST_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        const val OTHER_CONNECTION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
         val KEY = RequestKey(CONNECTION_ID, REQUEST_ID)
         val CONNECTION =
             Connection(

@@ -100,6 +100,7 @@ class ConnectionRepository(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     syncStore: SyncStore? = null,
     updateTransport: UpdateTransport? = null,
+    private val onConnectionUnavailable: (String) -> Unit = {},
 ) : SynchronizationHost {
     private val lock = Mutex()
     private val loading = Mutex()
@@ -837,6 +838,7 @@ class ConnectionRepository(
             _inbox.update { it.copy(pending = it.pending - id) }
             publish()
         }
+        onConnectionUnavailable(id)
     }
 
     // The sidecar no longer accepts the credential: nothing waiting for it can be sent any more.
@@ -852,6 +854,7 @@ class ConnectionRepository(
             _inbox.update { it.copy(pending = it.pending - id) }
             publish()
         }
+        onConnectionUnavailable(id)
     }
 
     // A credential that can't be decrypted is useless; drop it so the screen says to pair again.

@@ -115,8 +115,9 @@ notification permission, displays nothing, and routes no tap.
   revoked credentials are refused; the paired phone can mutate only its own connection. The real
   handler test inspects SQLite and verifies neither targets nor credentials reached the log.
 - `FcmRegistrationManagerTest` covers the loaded/usable gate, initial registration, refresh
-  rotation, two sidecars, an isolated failed sidecar, invalid callbacks, stale unregistration, a
-  newly paired sidecar, and last-connection unregistration.
+  rotation, two sidecars, independent bounded retry of only a failed sidecar, the retry ceiling,
+  invalid callbacks, stale unregistration, a newly paired sidecar, and last-connection
+  unregistration.
 - `ConnectionRepositoryTest` proves two server credentials remain pinned to their own URLs while
   the same device target is registered, and that an authentication failure marks only that
   connection revoked. `ConnectConnectionGatewayTest` drives generated Kotlin through a real Node
@@ -327,9 +328,11 @@ work, or periodic recovery; a Firebase-off APK creates no channel, prompt, or no
 
 Presentation happens after the push worker's authoritative Sync. The worker compares complete
 pending-key sets before and after that fetch, posts generic alerts only for newly discovered keys,
-and cancels alerts for departed keys. The notification component accepts no request body or
-credential. Each alert's explicit immutable activity intent contains only its validated connection
-and request IDs and has distinct identity, so one request cannot replace another's route.
+and cancels alerts for departed keys. Removing or revoking a connection also cancels all of its
+posted alerts directly, without waiting for another push worker; an unusable connection cannot get
+a new alert. The notification component accepts no request body or credential. Each alert's
+explicit immutable activity intent contains only its validated connection and request IDs and has
+distinct identity, so one request cannot replace another's route.
 
 A cold or warm tap fetches the named paired sidecar before review controls appear. A current request
 opens the existing manual review; an answer stored on this phone opens that result. Expired,
@@ -344,8 +347,10 @@ after the owner's explicit approval.
 
 - `RequestNotificationsTest` proves configured-only channel creation, high importance, secret
   lock-screen visibility, denied-permission suppression, generic content, immutable exact routes,
-  distinct per-request identity, departed-key cancellation, malformed-ID rejection, and the
-  permission-request decision matrix.
+  distinct per-request identity, departed-key and whole-connection cancellation, refusal to post
+  for an unusable connection, malformed-ID rejection, and the permission-request decision matrix.
+- `ConnectionRepositoryTest` proves both local removal and authentication revocation invoke the
+  notification cleanup boundary after the connection becomes unavailable.
 - `PushSynchronizationTest` proves notification reconciliation runs only after authoritative Sync
   has discovered the new pending key. Existing push and Stage 5.2 tests keep the worker's empty
   input, bounded shared repository, foreground-stream exclusion, and dropped-hint recovery.
@@ -405,8 +410,8 @@ procedure below, and an honest physical-device report. Firebase remains optional
 checkout has no project file or sender project, while Stage 5.2 foreground Subscribe, manual
 **Refresh**, unary Sync, and the periodic worker remain the complete recovery path.
 
-**Revision under test:** the SEE-79 working tree on top of `ccda9c3` (SAW-058). The final SEE-79
-commit is recorded with the Linear handoff; a commit cannot contain its own SHA. No
+**Revision under test:** the review-fix working tree on top of `9b4739e` (rebased SEE-79). The final
+review-fix commit is recorded with the pull-request handoff; a commit cannot contain its own SHA. No
 `android/app/google-services.json`, `FCM_PROJECT_ID`, Application Default Credential path, real
 Firebase project, or physical Android device was present during this run.
 
@@ -469,7 +474,7 @@ repository.
 
 | Command | Result |
 | --- | --- |
-| `ANDROID_HOME=… pnpm test:push` | **PASS.** 35/35 Node ownership/sender/invalidation acceptance tests and 46/46 selected Android registration, callback, recovery, notification, tap, boundary, and joined two-sidecar tests. |
+| `ANDROID_HOME=… pnpm test:push` | **PASS.** 35/35 Node ownership/sender/invalidation acceptance tests and 51/51 selected Android registration, retry, removal cleanup, callback, recovery, notification, tap, boundary, and joined two-sidecar tests. |
 | Deliberate payload-content failure | **PASS.** Adding `request_id` to the app-visible data made the new joined sidecar audit fail with the unexpected third field. The change was reverted before every passing run. |
 | `ANDROID_HOME=… pnpm test:updates` | **PASS.** 8/8 production sidecar update cases and all selected Android Stage 5.2 Sync, worker, lifecycle, joined acceptance, and HTTP/2 tests with Firebase unconfigured. |
 | `pnpm check` | **PASS after a test-only type fix.** The first invocation stopped because the new TypeScript audit read the FID from Firebase's union `Message` type without narrowing it. The test now requires the FID variant explicitly; the complete rerun passed formatting, Buf, lint, both typechecks, 428/428 sidecar tests, and 29/29 test-agent tests. |
@@ -595,7 +600,8 @@ agent, record the durable request ID only in the private test record, and never 
 
 The Android platform tools were available through `ANDROID_HOME`, but `adb devices -l` listed no
 device. The checkout was Firebase-off and no real sender project or ADC was configured. Revision
-for every row is therefore `ccda9c3 + SEE-79 working tree`; all device/FCM claims are **NOT RUN**.
+for every row is therefore `9b4739e + review-fix working tree`; all device/FCM claims are **NOT
+RUN**.
 
 | ID | Physical check | Result |
 | --- | --- | --- |

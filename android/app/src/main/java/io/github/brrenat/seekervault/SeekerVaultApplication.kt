@@ -137,6 +137,7 @@ class SeekerVaultApplication : Application() {
                 io = connectionIo,
                 syncStore = SyncStore(File(filesDir, "sync")),
                 updateTransport = updateTransport(),
+                onConnectionUnavailable = requestNotifications::cancelConnection,
             )
         backgroundSync =
             BackgroundSyncScheduler.create(

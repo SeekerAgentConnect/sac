@@ -76,7 +76,7 @@ class RequestNotificationManager(
         }
         if (!notificationsGranted(context)) return
         createChannels()
-        val labels = connections.associate { it.id to it.label }
+        val labels = connections.filter(Connection::usable).associate { it.id to it.label }
         (after - before).forEach { key ->
             val label = labels[key.connectionId] ?: return@forEach
             try {
@@ -84,6 +84,19 @@ class RequestNotificationManager(
             } catch (_: SecurityException) {
                 // Revocation raced the post. Sync already succeeded and remains authoritative.
             }
+        }
+    }
+
+    /** Removes every posted request alert owned by a connection that is gone or unusable. */
+    fun cancelConnection(connectionId: String) {
+        if (!configured) return
+        val prefix = "request:$connectionId/"
+        try {
+            manager.activeNotifications
+                .filter { it.id == REQUEST_NOTIFICATION_ID && it.tag?.startsWith(prefix) == true }
+                .forEach { manager.cancel(it.tag, it.id) }
+        } catch (_: SecurityException) {
+            // Permission loss affects presentation only; connection removal already succeeded.
         }
     }
 

@@ -43,7 +43,10 @@ class ConnectionRepositoryTest {
     private fun history() =
         ActivityLog(ActivityStore(File(folder.root, "files/activity"))) { clock }
 
-    private fun repository(log: ActivityLog = history()) =
+    private fun repository(
+        log: ActivityLog = history(),
+        onConnectionUnavailable: (String) -> Unit = {},
+    ) =
         ConnectionRepository(
             store = ConnectionStore(File(folder.root, "files/connections")),
             vault = CredentialVault(File(folder.root, "no_backup/credentials")) { key() },
@@ -53,6 +56,7 @@ class ConnectionRepositoryTest {
             deviceName = "Seeker",
             now = { clock },
             io = Dispatchers.Unconfined,
+            onConnectionUnavailable = onConnectionUnavailable,
         )
 
     // Lazy: the temporary folder exists only once the rule has run.
@@ -267,6 +271,20 @@ class ConnectionRepositoryTest {
         repository.remove(a.id)
         assertTrue(connections().isEmpty())
         assertEquals(emptySet<String>(), vault().ids())
+    }
+
+    @Test
+    fun removingOrRevokingAConnectionRequestsNotificationCleanup() = runBlocking {
+        val cleaned = mutableListOf<String>()
+        val repository = repository(onConnectionUnavailable = { cleaned += it })
+        val removed = repository.pair(serverA.issue(URL_A))
+        repository.remove(removed.id)
+
+        val revoked = repository.pair(serverB.issue(URL_B))
+        serverB.revoke(revoked.id)
+        repository.refresh(revoked.id)
+
+        assertEquals(listOf(removed.id, revoked.id), cleaned)
     }
 
     @Test
