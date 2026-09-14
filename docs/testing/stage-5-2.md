@@ -16,7 +16,7 @@ SAW-048 defines the wire contract and proves the pinned Kotlin and Node librarie
 
 ### Full-duplex interoperability proof
 
-`GrpcBidiInteropTest` launches a test-only Connect Node adapter on a real TLS listener. The generated Connect-Kotlin 0.9.0 client uses OkHttp 5.4.0 with gRPC framing and negotiated HTTP/2. The test sends subscribe, receives ready, then sends and receives two heartbeat pairs while the client send side is still open. The Node handler records HTTP version `2.0`, protocol `grpc`, one stream, three client messages, and two heartbeats. A second case closes the Kotlin receive side and requires the Node abort signal to fire on that one stream, with no reconnect.
+`GrpcBidiInteropTest` launches a test-only Connect Node adapter on the real loopback h2c transport. The generated Connect-Kotlin 0.9.0 client uses OkHttp 5.4.0 with gRPC framing and explicit HTTP/2 prior knowledge, so HTTP/1 is not a fallback. The test sends subscribe, receives ready, then sends and receives two heartbeat pairs while the client send side is still open. The Node handler records HTTP version `2.0`, protocol `grpc`, one stream, three client messages, and two heartbeats. A second case closes the Kotlin receive side and requires the Node abort signal to fire on that one stream, with no reconnect. The production-listener tests separately cover TLS/ALPN HTTP/2 and preserved HTTP/1 calls on the secure origin.
 
 The proof uses Connect Node 2.2.0, protobuf-es/protoc-gen-es 2.14.1, Buf 1.72.0, the remote Java/Kotlin generators v36.1, protobuf-kotlin-lite 4.36.1, Node 24.21.0, and pnpm 12.3.4. These were already pinned; no dependency changed.
 
@@ -33,7 +33,7 @@ Run on 2026-09-13 on macOS 26.5.2 (Apple silicon). The Android SDK came from the
 | `pnpm test:hello` | PASS: all 9 Stage 1 cases remain compatible. |
 | `pnpm test:queue` | PASS: all 7 durable unary/MCP queue cases remain compatible. |
 | `pnpm check:android` | PASS: Spotless, 746/746 JVM tests including the real full-duplex proof, lint, and debug and instrumentation APKs. |
-| Deliberate transport break | PASS: requiring the HTTP/2 proof server to accept HTTP/1.1 made `GrpcBidiInteropTest` fail; the source was restored and the test passed. |
+| Deliberate transport break | PASS: forcing the proof client to HTTP/1.1 made `GrpcBidiInteropTest` fail; restoring HTTP/2 prior knowledge passed. |
 | Physical Seeker | **NOT RUN.** SAW-048 changes no production phone behavior. |
 
 ## SAW-049 — production sidecar stream and sync
@@ -102,7 +102,7 @@ SAW-051 attaches the real Android bidirectional client to application foreground
 ### Automated coverage
 
 - `ForegroundUpdateManagerTest` covers idempotent foreground/rotation/navigation signals, rapid background and foreground with a fresh reconciliation, pairing and removal while open, two independent servers with one initially unreachable, explicit authentication and version failures, a request event buffered behind a required barrier snapshot, reactive pending publication, client heartbeats, the three-interval liveness deadline, bounded retry, and recovery.
-- `GrpcBidiInteropTest.productionTransportKeepsItsSendSideOpenForHeartbeats` uses `ConnectUpdateTransport`, the generated client, TLS, and negotiated HTTP/2 against the Node proof server. It proves the production wrapper sends Subscribe, leaves its send side open for a later cursor-bearing heartbeat, receives the acknowledgement, and cancels the same RPC on close.
+- `GrpcBidiInteropTest.productionTransportKeepsItsSendSideOpenForHeartbeats` uses `ConnectUpdateTransport`, the generated client, and explicit HTTP/2 prior knowledge against the loopback Node proof server. It proves the production wrapper sends Subscribe, leaves its send side open for a later cursor-bearing heartbeat, receives the acknowledgement, and cancels the same RPC on close. The production-listener suite separately verifies TLS/ALPN.
 - `MainActivityTest` now holds the application foreground owner across recreation and marks a real non-configuration stop as background. Existing wallet lifecycle tests continue to prove a wallet hand-off has one result and foreground return reconciles it; `StageBoundaryTest` proves the sync package has no wallet, preparation, approval, signing, or sending entry point.
 - `ConnectionsViewModelTest`, `ConnectionsScreenTest`, and `ConnectionDetailsScreenTest` prove liveness changes publish without refresh and render independently from the retained last-sync time.
 

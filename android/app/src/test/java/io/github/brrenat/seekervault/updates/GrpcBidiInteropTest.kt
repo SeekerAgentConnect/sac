@@ -23,27 +23,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
-import okhttp3.tls.HandshakeCertificates
-import okhttp3.tls.HeldCertificate
+import okhttp3.Protocol
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.ExternalResource
 
 /**
  * A real Connect Kotlin 0.9.0/OkHttp 5.4.0 client against Connect Node 2.2.0 on Node's HTTP/2
  * server. The helper serves only this proof; SEE-68 adds the production update service.
  */
 class GrpcBidiInteropTest {
-    @get:Rule val jvmTlsPlatform: ExternalResource = JvmTlsPlatformRule()
-
     @Test
     fun productionTransportKeepsItsSendSideOpenForHeartbeats() = runBlocking {
         ProofServer().use { server ->
             withTimeout(30_000) {
-                val transport = ConnectUpdateTransport(http(server.certificate))
+                val transport = ConnectUpdateTransport(http())
                 val subscription =
                     transport.subscribe(
                         UpdateEndpoint(1, server.url),
@@ -75,7 +70,7 @@ class GrpcBidiInteropTest {
     fun clientAndServerMessagesInterleaveBeforeTheClientClosesItsSendSide() = runBlocking {
         ProofServer().use { server ->
             withTimeout(30_000) {
-                val stream = client(server.url, server.certificate).subscribe(headers())
+                val stream = client(server.url).subscribe(headers())
                 assertTrue(stream.send(subscribeMessage()).isSuccess)
 
                 val ready = stream.responseChannel().receive()
@@ -117,7 +112,7 @@ class GrpcBidiInteropTest {
     fun closingTheReceiveSideCancelsTheCallWithoutStartingAnotherStream() = runBlocking {
         ProofServer().use { server ->
             withTimeout(30_000) {
-                val stream = client(server.url, server.certificate).subscribe(headers())
+                val stream = client(server.url).subscribe(headers())
                 assertTrue(stream.send(subscribeMessage()).isSuccess)
                 assertEquals(
                     SubscribeResponse.EventCase.READY,
@@ -137,18 +132,14 @@ class GrpcBidiInteropTest {
         }
     }
 
-    private fun http(certificate: HeldCertificate): OkHttpClient {
-        val trust =
-            HandshakeCertificates.Builder().addTrustedCertificate(certificate.certificate).build()
-        return ConnectOkHttpClient.configureClient(
-                OkHttpClient.Builder()
-                    .sslSocketFactory(trust.sslSocketFactory(), trust.trustManager)
+    private fun http(): OkHttpClient =
+        ConnectOkHttpClient.configureClient(
+                OkHttpClient.Builder().protocols(listOf(Protocol.H2_PRIOR_KNOWLEDGE))
             )
             .build()
-    }
 
-    private fun client(url: String, certificate: HeldCertificate): UpdateServiceClient {
-        val http = http(certificate)
+    private fun client(url: String): UpdateServiceClient {
+        val http = http()
         return UpdateServiceClient(
             ProtocolClient(
                 ConnectOkHttpClient(http),
@@ -185,19 +176,6 @@ class GrpcBidiInteropTest {
             Files.createTempFile("seeker-vault-bidi-proof", ".json").also {
                 Files.delete(it)
             }
-        val certificate: HeldCertificate =
-            HeldCertificate.Builder()
-                .commonName("localhost")
-                .addSubjectAlternativeName("localhost")
-                .build()
-        private val certificatePath =
-            Files.createTempFile("seeker-vault-bidi-proof", ".crt").also {
-                Files.writeString(it, certificate.certificatePem())
-            }
-        private val privateKeyPath =
-            Files.createTempFile("seeker-vault-bidi-proof", ".key").also {
-                Files.writeString(it, certificate.privateKeyPkcs8Pem())
-            }
         private val process =
             ProcessBuilder("node", "src/testing/grpc-bidi-proof-server.ts")
                 .directory(File(repoRoot, "sidecar"))
@@ -209,8 +187,6 @@ class GrpcBidiInteropTest {
                                 "PROOF_PHONE_TOKEN" to PHONE_TOKEN,
                                 "PROOF_CONNECTION_ID" to CONNECTION_ID,
                                 "PROOF_MARKER_PATH" to marker.toString(),
-                                "PROOF_CERTIFICATE_PATH" to certificatePath.toString(),
-                                "PROOF_PRIVATE_KEY_PATH" to privateKeyPath.toString(),
                             )
                         )
                 }
@@ -218,7 +194,7 @@ class GrpcBidiInteropTest {
         private val output = process.inputStream.bufferedReader()
         val url: String =
             checkNotNull(output.readLine()) { "the Node proof server exited before listening" }
-                .also { check(it.startsWith("https://localhost:")) { it } }
+                .also { check(it.startsWith("http://127.0.0.1:")) { it } }
 
         suspend fun marker(): String {
             while (!Files.exists(marker)) {
@@ -234,35 +210,6 @@ class GrpcBidiInteropTest {
             process.destroy()
             process.waitFor(10, TimeUnit.SECONDS)
             Files.deleteIfExists(marker)
-            Files.deleteIfExists(certificatePath)
-            Files.deleteIfExists(privateKeyPath)
-        }
-    }
-
-    /**
-     * This Android source set resolves okhttp-android even though unit tests run on a JVM. A
-     * Robolectric test can leave its SDK visible before OkHttp initializes and select an Android
-     * socket adapter that cannot configure a JDK SSLSocket's ALPN. OkHttp's pinned test hook keeps
-     * this JVM transport proof isolated and the prior platform is restored after every case.
-     */
-    private class JvmTlsPlatformRule : ExternalResource() {
-        private val platformType = Class.forName("okhttp3.internal.platform.Platform")
-        private val companion = platformType.getField("Companion").get(null)
-        private val getPlatform = companion.javaClass.getMethod("get")
-        private val resetPlatform = companion.javaClass.getMethod("resetForTests", platformType)
-        private lateinit var previous: Any
-
-        override fun before() {
-            previous = checkNotNull(getPlatform.invoke(companion))
-            val jdkPlatform =
-                Class.forName("okhttp3.internal.platform.Jdk9Platform")
-                    .getConstructor()
-                    .newInstance()
-            resetPlatform.invoke(companion, jdkPlatform)
-        }
-
-        override fun after() {
-            resetPlatform.invoke(companion, previous)
         }
     }
 

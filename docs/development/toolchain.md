@@ -79,7 +79,7 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 
 ### Bidirectional gRPC support (SAW-048)
 
-The existing pins already support the production update protocol, so SAW-048 adds no dependency. Connect-Kotlin 0.9.0 generates a `BidirectionalStreamInterface` for `UpdateService.Subscribe`; its OkHttp transport 5.4.0 negotiates HTTP/2 over TLS, and Connect Node 2.2.0 serves the generated descriptor through its Node HTTP/2 adapter. `GrpcBidiInteropTest` exercises that exact combination, rather than a fake stream or an in-memory handler. See [`docs/testing/stage-5-2.md`](../testing/stage-5-2.md).
+The existing pins already support the production update protocol, so SAW-048 adds no dependency. Connect-Kotlin 0.9.0 generates a `BidirectionalStreamInterface` for `UpdateService.Subscribe`; its OkHttp transport 5.4.0 speaks explicit HTTP/2 prior knowledge on the loopback h2c development endpoint, and Connect Node 2.2.0 serves the generated descriptor through its Node HTTP/2 adapter. `GrpcBidiInteropTest` exercises that exact combination, rather than a fake stream or an in-memory handler. The production-listener tests separately exercise TLS/ALPN HTTP/2. See [`docs/testing/stage-5-2.md`](../testing/stage-5-2.md).
 
 ## MacBook setup
 

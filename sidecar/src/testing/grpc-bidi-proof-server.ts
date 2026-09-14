@@ -3,8 +3,8 @@
  * one job is to prove that the pinned Connect Kotlin/OkHttp client and Connect Node adapter can
  * exchange client and server messages in both directions before either side closes the stream.
  */
-import { readFileSync, writeFileSync } from "node:fs";
-import { createSecureServer } from "node:http2";
+import { writeFileSync } from "node:fs";
+import { createServer } from "node:http2";
 import type { ServerHttp2Session } from "node:http2";
 import type { AddressInfo } from "node:net";
 
@@ -25,8 +25,6 @@ import {
 const token = required("PROOF_PHONE_TOKEN");
 const connectionId = required("PROOF_CONNECTION_ID");
 const markerPath = required("PROOF_MARKER_PATH");
-const certificatePath = required("PROOF_CERTIFICATE_PATH");
-const privateKeyPath = required("PROOF_PRIVATE_KEY_PATH");
 let streamsStarted = 0;
 const sessions = new Set<ServerHttp2Session>();
 
@@ -39,24 +37,13 @@ const rpc = connectNodeAdapter({
   writeMaxBytes: 65_536,
 });
 
-const server = createSecureServer(
-  {
-    // This fixture proves a duplex gRPC call, which HTTP/1 cannot carry. Do not advertise the
-    // HTTP/1 fallback: some JVM/OpenSSL combinations select it during ALPN and Connect then fails
-    // before sending a message because OkHttp correctly refuses a duplex HTTP/1 request body.
-    allowHTTP1: false,
-    ALPNProtocols: ["h2"],
-    cert: readFileSync(certificatePath),
-    key: readFileSync(privateKeyPath),
-  },
-  (request, response) => {
-    if (request.httpVersion !== "2.0") {
-      response.writeHead(505).end();
-      return;
-    }
-    rpc(request, response);
-  },
-);
+const server = createServer((request, response) => {
+  if (request.httpVersion !== "2.0") {
+    response.writeHead(505).end();
+    return;
+  }
+  rpc(request, response);
+});
 server.on("session", (session) => {
   sessions.add(session);
   session.once("close", () => sessions.delete(session));
@@ -64,7 +51,7 @@ server.on("session", (session) => {
 
 server.listen(0, "127.0.0.1", () => {
   const { port } = server.address() as AddressInfo;
-  process.stdout.write(`https://localhost:${port}\n`);
+  process.stdout.write(`http://127.0.0.1:${port}\n`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
