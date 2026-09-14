@@ -31,8 +31,9 @@ public object SubscribeKt {
 
     /**
      * ```
-     * Version 1 is this contract. Other values fail with FAILED_PRECONDITION; the phone keeps unary
-     * manual Refresh available when it understands the older RequestService.
+     * Version 1 is this contract. Other values fail with FAILED_PRECONDITION and an
+     * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail; the phone keeps unary manual Refresh available when
+     * it understands the older RequestService.
      * ```
      *
      * `uint32 protocol_version = 1 [json_name = "protocolVersion"];`
@@ -46,8 +47,9 @@ public object SubscribeKt {
       }
     /**
      * ```
-     * Version 1 is this contract. Other values fail with FAILED_PRECONDITION; the phone keeps unary
-     * manual Refresh available when it understands the older RequestService.
+     * Version 1 is this contract. Other values fail with FAILED_PRECONDITION and an
+     * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail; the phone keeps unary manual Refresh available when
+     * it understands the older RequestService.
      * ```
      *
      * `uint32 protocol_version = 1 [json_name = "protocolVersion"];`

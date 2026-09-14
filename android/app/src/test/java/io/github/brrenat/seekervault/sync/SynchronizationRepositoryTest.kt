@@ -19,9 +19,11 @@ import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,6 +34,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class SynchronizationRepositoryTest {
     @get:Rule val folder = TemporaryFolder()
@@ -253,6 +256,39 @@ class SynchronizationRepositoryTest {
     }
 
     @Test
+    fun finalBufferDrainClosesBeforeAStreamEventCanBeStranded() = runTest {
+        host.add(A)
+        val cacheEntered = CompletableDeferred<Unit>()
+        val releaseCache = CompletableDeferred<Unit>()
+        host.beforeApplyCache = { state ->
+            if (state.cursor == "snapshot") {
+                cacheEntered.complete(Unit)
+                releaseCache.await()
+            }
+        }
+        val pending = request(A_REQUEST)
+        transport.pages[A] =
+            ArrayDeque(listOf(snapshot(A, listOf(pending to 1), cursor = "snapshot")))
+        val repository = repository()
+        val generation = repository.beginStream(A)
+        val syncing = async { repository.synchronize(A) }
+        cacheEntered.await()
+
+        val processing = pending.withState(RequestState.REQUEST_STATE_PROCESSING)
+        val event = async {
+            repository.applyEvent(A, generation, changed(A, processing, 2, "live"))
+        }
+        runCurrent()
+        assertFalse(event.isCompleted)
+
+        releaseCache.complete(Unit)
+        assertTrue(syncing.await() is SynchronizeOutcome.Updated)
+        assertEquals(EventApplyOutcome.Applied, event.await())
+        assertEquals("live", repository.state.value.connections.getValue(A).cursor)
+        assertEquals(2L, host.applied.getValue(A).requests.getValue(A_REQUEST).revision)
+    }
+
+    @Test
     fun oneUnreachableServerDoesNotBlockAHealthyConnection() = runTest {
         host.add(A)
         host.add(B)
@@ -424,6 +460,50 @@ class SynchronizationRepositoryTest {
     }
 
     @Test
+    fun snapshotCanContinuePastOneHundredMessageBoundPages() = runTest {
+        host.add(A)
+        val pageCount = 101
+        transport.pages[A] =
+            ArrayDeque(
+                (0 until pageCount).map { index ->
+                    val requestId = "00000000-0000-4000-8000-${index.toString().padStart(12, '0')}"
+                    snapshot(
+                        A,
+                        listOf(request(requestId) to 1),
+                        next = if (index == pageCount - 1) "" else "page-${index + 1}",
+                        cursor = "large-snapshot",
+                    )
+                }
+            )
+
+        val outcome = repository().synchronize(A) as SynchronizeOutcome.Updated
+
+        assertEquals(pageCount, transport.syncCalls[A])
+        assertEquals(pageCount, outcome.state.pending.size)
+        assertEquals("large-snapshot", outcome.state.cursor)
+    }
+
+    @Test
+    fun cachedEndpointProtocolFailureBecomesUpgradeRequiredWithoutRetryLoop() = runTest {
+        host.add(A)
+        transport.pages[A] = ArrayDeque(listOf(snapshot(A, emptyList())))
+        val repository = repository()
+        assertTrue(repository.synchronize(A) is SynchronizeOutcome.Updated)
+
+        transport.failures[A] =
+            UpdateTransportException(UpdateTransportException.Kind.UpgradeRequired, "version")
+        assertEquals(
+            SynchronizeOutcome.Legacy(UpdateAvailability.UpgradeRequired),
+            repository.synchronize(A),
+        )
+
+        val state = repository.state.value.connections.getValue(A)
+        assertEquals(UpdateAvailability.UpgradeRequired, state.availability)
+        assertNull(state.endpoint)
+        assertEquals(2, transport.syncCalls[A])
+    }
+
+    @Test
     fun revocationBufferedDuringFetchRemovesCacheAndLateResponseCannotRecreateIt() = runTest {
         host.add(A)
         val entered = CompletableDeferred<Unit>()
@@ -555,6 +635,7 @@ class SynchronizationRepositoryTest {
         val failures = mutableMapOf<String, CheckOutcome>()
         val revoked = mutableSetOf<String>()
         var activityDeletes = 0
+        var beforeApplyCache: suspend (ConnectionSyncState) -> Unit = {}
 
         fun add(connectionId: String) {
             ids += connectionId
@@ -579,6 +660,7 @@ class SynchronizationRepositoryTest {
         ): Map<String, ActionRequest> = authoritative[connectionId].orEmpty()
 
         override suspend fun applyCache(state: ConnectionSyncState) {
+            beforeApplyCache(state)
             applied[state.connectionId] = state
         }
 
@@ -621,8 +703,8 @@ class SynchronizationRepositoryTest {
             request: SyncRequest,
         ): SyncResponse {
             val id = request.connectionId
-            failures[id]?.let { throw it }
             syncCalls[id] = syncCalls.getOrDefault(id, 0) + 1
+            failures[id]?.let { throw it }
             requests.getOrPut(id) { mutableListOf() } += request
             beforeSync()
             onSync(id)

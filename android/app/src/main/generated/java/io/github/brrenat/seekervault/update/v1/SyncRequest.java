@@ -70,6 +70,11 @@ public  final class SyncRequest extends
   public static final int PROTOCOL_VERSION_FIELD_NUMBER = 2;
   private int protocolVersion_;
   /**
+   * <pre>
+   * Unsupported versions fail with FAILED_PRECONDITION and an
+   * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
+   * </pre>
+   *
    * <code>uint32 protocol_version = 2 [json_name = "protocolVersion"];</code>
    * @return The protocolVersion.
    */
@@ -78,6 +83,11 @@ public  final class SyncRequest extends
     return protocolVersion_;
   }
   /**
+   * <pre>
+   * Unsupported versions fail with FAILED_PRECONDITION and an
+   * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
+   * </pre>
+   *
    * <code>uint32 protocol_version = 2 [json_name = "protocolVersion"];</code>
    * @param value The protocolVersion to set.
    */
@@ -86,6 +96,11 @@ public  final class SyncRequest extends
     protocolVersion_ = value;
   }
   /**
+   * <pre>
+   * Unsupported versions fail with FAILED_PRECONDITION and an
+   * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
+   * </pre>
+   *
    * <code>uint32 protocol_version = 2 [json_name = "protocolVersion"];</code>
    */
   private void clearProtocolVersion() {
@@ -579,6 +594,11 @@ public  final class SyncRequest extends
     }
 
     /**
+     * <pre>
+     * Unsupported versions fail with FAILED_PRECONDITION and an
+     * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
+     * </pre>
+     *
      * <code>uint32 protocol_version = 2 [json_name = "protocolVersion"];</code>
      * @return The protocolVersion.
      */
@@ -587,6 +607,11 @@ public  final class SyncRequest extends
       return instance.getProtocolVersion();
     }
     /**
+     * <pre>
+     * Unsupported versions fail with FAILED_PRECONDITION and an
+     * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
+     * </pre>
+     *
      * <code>uint32 protocol_version = 2 [json_name = "protocolVersion"];</code>
      * @param value The protocolVersion to set.
      * @return This builder for chaining.
@@ -597,6 +622,11 @@ public  final class SyncRequest extends
       return this;
     }
     /**
+     * <pre>
+     * Unsupported versions fail with FAILED_PRECONDITION and an
+     * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
+     * </pre>
+     *
      * <code>uint32 protocol_version = 2 [json_name = "protocolVersion"];</code>
      * @return This builder for chaining.
      */

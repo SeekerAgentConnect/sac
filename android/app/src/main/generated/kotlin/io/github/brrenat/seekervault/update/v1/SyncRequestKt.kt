@@ -47,6 +47,11 @@ public object SyncRequestKt {
     }
 
     /**
+     * ```
+     * Unsupported versions fail with FAILED_PRECONDITION and an
+     * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
+     * ```
+     *
      * `uint32 protocol_version = 2 [json_name = "protocolVersion"];`
      */
     public var protocolVersion: kotlin.Int
@@ -57,6 +62,11 @@ public object SyncRequestKt {
         _builder.protocolVersion = value
       }
     /**
+     * ```
+     * Unsupported versions fail with FAILED_PRECONDITION and an
+     * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
+     * ```
+     *
      * `uint32 protocol_version = 2 [json_name = "protocolVersion"];`
      */
     public fun clearProtocolVersion() {

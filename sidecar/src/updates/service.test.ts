@@ -37,6 +37,8 @@ import {
   SubscribeRequestSchema,
   SubscribeSchema,
   SyncRequiredReason,
+  UpdateError,
+  UpdateErrorDetailSchema,
   UpdateService,
   type SubscribeRequest,
   type SubscribeResponse,
@@ -299,6 +301,21 @@ describe("production updates over gRPC HTTP/2", () => {
         f.sidecar.updateUrl ?? "",
         f.phoneToken,
         false,
+      );
+      await assert.rejects(
+        client.sync({
+          connectionId: f.connectionId,
+          protocolVersion: 2,
+        }),
+        updateFailure(UpdateError.PROTOCOL_UNSUPPORTED, 1),
+      );
+      await assert.rejects(
+        client.sync({
+          connectionId: f.connectionId,
+          protocolVersion: 1,
+          pageToken: "not-a-page-token",
+        }),
+        updateFailure(UpdateError.SNAPSHOT_INVALID),
       );
       const page1 = await client.sync({
         connectionId: f.connectionId,
@@ -725,6 +742,24 @@ function mcpRequest(
 
 function code(expected: Code): (error: unknown) => boolean {
   return (error) => error instanceof ConnectError && error.code === expected;
+}
+
+function updateFailure(
+  expected: UpdateError,
+  supportedProtocolVersion = 0,
+): (error: unknown) => boolean {
+  return (error) => {
+    if (
+      !(error instanceof ConnectError) ||
+      error.code !== Code.FailedPrecondition
+    )
+      return false;
+    const [detail] = error.findDetails(UpdateErrorDetailSchema);
+    return (
+      detail?.error === expected &&
+      detail.supportedProtocolVersion === supportedProtocolVersion
+    );
+  };
 }
 
 async function next(

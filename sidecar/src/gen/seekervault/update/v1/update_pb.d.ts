@@ -53,8 +53,9 @@ export declare const SubscribeRequestSchema: GenMessage<SubscribeRequest>;
  */
 export declare type Subscribe = Message<"seekervault.update.v1.Subscribe"> & {
   /**
-   * Version 1 is this contract. Other values fail with FAILED_PRECONDITION; the phone keeps unary
-   * manual Refresh available when it understands the older RequestService.
+   * Version 1 is this contract. Other values fail with FAILED_PRECONDITION and an
+   * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail; the phone keeps unary manual Refresh available when
+   * it understands the older RequestService.
    *
    * @generated from field: uint32 protocol_version = 1;
    */
@@ -375,6 +376,9 @@ export declare type SyncRequest = Message<"seekervault.update.v1.SyncRequest"> &
   connectionId: string;
 
   /**
+   * Unsupported versions fail with FAILED_PRECONDITION and an
+   * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
+   *
    * @generated from field: uint32 protocol_version = 2;
    */
   protocolVersion: number;
@@ -529,6 +533,33 @@ export declare type SyncedRequest = Message<"seekervault.update.v1.SyncedRequest
 export declare const SyncedRequestSchema: GenMessage<SyncedRequest>;
 
 /**
+ * UpdateErrorDetail distinguishes the FAILED_PRECONDITION cases that require a protocol upgrade
+ * from ones where the phone must discard a cursor or snapshot and retry page one.
+ *
+ * @generated from message seekervault.update.v1.UpdateErrorDetail
+ */
+export declare type UpdateErrorDetail = Message<"seekervault.update.v1.UpdateErrorDetail"> & {
+  /**
+   * @generated from field: seekervault.update.v1.UpdateError error = 1;
+   */
+  error: UpdateError;
+
+  /**
+   * Set for PROTOCOL_UNSUPPORTED so the phone can report incompatibility without guessing from
+   * human-readable error text.
+   *
+   * @generated from field: uint32 supported_protocol_version = 2;
+   */
+  supportedProtocolVersion: number;
+};
+
+/**
+ * Describes the message seekervault.update.v1.UpdateErrorDetail.
+ * Use `create(UpdateErrorDetailSchema)` to create a new message.
+ */
+export declare const UpdateErrorDetailSchema: GenMessage<UpdateErrorDetail>;
+
+/**
  * @generated from enum seekervault.update.v1.ResumeDisposition
  */
 export enum ResumeDisposition {
@@ -639,6 +670,31 @@ export enum SyncRequiredReason {
  * Describes the enum seekervault.update.v1.SyncRequiredReason.
  */
 export declare const SyncRequiredReasonSchema: GenEnum<SyncRequiredReason>;
+
+/**
+ * @generated from enum seekervault.update.v1.UpdateError
+ */
+export enum UpdateError {
+  /**
+   * @generated from enum value: UPDATE_ERROR_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: UPDATE_ERROR_PROTOCOL_UNSUPPORTED = 1;
+   */
+  PROTOCOL_UNSUPPORTED = 1,
+
+  /**
+   * @generated from enum value: UPDATE_ERROR_SNAPSHOT_INVALID = 2;
+   */
+  SNAPSHOT_INVALID = 2,
+}
+
+/**
+ * Describes the enum seekervault.update.v1.UpdateError.
+ */
+export declare const UpdateErrorSchema: GenEnum<UpdateError>;
 
 /**
  * UpdateService is the phone's production update transport for durable requests. It is separate

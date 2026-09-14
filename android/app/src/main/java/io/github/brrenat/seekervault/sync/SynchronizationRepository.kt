@@ -92,6 +92,7 @@ class SynchronizationRepository(
         var epoch = 0L
         var removed = false
         var active: ActiveSync? = null
+        var buffering = false
         var streamGeneration = 0L
         val buffered = ArrayDeque<Pair<Long, SubscribeResponse>>()
         var overflowed = false
@@ -175,6 +176,7 @@ class SynchronizationRepository(
                         )
                         .also {
                             coordinator.active = it
+                            coordinator.buffering = true
                             leader = true
                             publishRuntime(connectionId, syncing = true, failure = null)
                         }
@@ -214,14 +216,23 @@ class SynchronizationRepository(
                             try {
                                 runConvergingSync(
                                     connectionId,
-                                    active.copy(barrier = ""),
+                                    active,
                                     coordinator,
+                                    barrier = "",
                                 )
                             } catch (retry: UpdateTransportException) {
                                 if (retry.kind == UpdateTransportException.Kind.Unauthenticated) {
                                     remove(connectionId)
                                     host.revoke(connectionId)
                                     SynchronizeOutcome.Removed
+                                } else if (
+                                    retry.kind == UpdateTransportException.Kind.UpgradeRequired
+                                ) {
+                                    upgradeRequired(
+                                        connectionId,
+                                        coordinator,
+                                        active.epoch,
+                                    )
                                 } else {
                                     failed(
                                         connectionId,
@@ -253,6 +264,8 @@ class SynchronizationRepository(
                                 )
                             }
                         }
+                        UpdateTransportException.Kind.UpgradeRequired ->
+                            upgradeRequired(connectionId, coordinator, active.epoch)
                         else -> failed(connectionId, e.toOutcome(), coordinator, active.epoch)
                     }
                 } catch (e: IOException) {
@@ -273,11 +286,14 @@ class SynchronizationRepository(
             throw e
         } finally {
             withContext(NonCancellable) {
-                coordinator.control.withLock {
-                    if (coordinator.active === active) coordinator.active = null
-                }
                 coordinator.apply.withLock {
                     coordinator.control.withLock {
+                        if (coordinator.active === active) {
+                            coordinator.active = null
+                            coordinator.buffering = false
+                            coordinator.buffered.clear()
+                            coordinator.overflowed = false
+                        }
                         if (!coordinator.removed && coordinator.active == null) {
                             publishRuntime(connectionId, syncing = false)
                         }
@@ -297,10 +313,11 @@ class SynchronizationRepository(
         connectionId: String,
         active: ActiveSync,
         coordinator: Coordinator,
+        barrier: String = active.barrier,
     ): SynchronizeOutcome {
-        val first = runSync(connectionId, active, coordinator)
+        val first = runSync(connectionId, active, coordinator, barrier)
         if (first !is SynchronizeOutcome.Updated || !first.state.fullSyncRequired) return first
-        val recovered = runSync(connectionId, active.copy(barrier = ""), coordinator)
+        val recovered = runSync(connectionId, active, coordinator, barrier = "")
         if (recovered is SynchronizeOutcome.Updated && recovered.state.fullSyncRequired) {
             throw UpdateTransportException(
                 UpdateTransportException.Kind.SnapshotInvalid,
@@ -395,7 +412,7 @@ class SynchronizationRepository(
             if (generation == 0L || generation != coordinator.streamGeneration) {
                 return EventApplyOutcome.Ignored
             }
-            if (coordinator.active != null) {
+            if (coordinator.buffering) {
                 if (coordinator.buffered.size == MAX_BUFFERED_EVENTS) {
                     coordinator.buffered.clear()
                     coordinator.overflowed = true
@@ -427,6 +444,7 @@ class SynchronizationRepository(
                 coordinator.streamGeneration++
                 coordinator.buffered.clear()
                 coordinator.overflowed = false
+                coordinator.buffering = false
                 coordinator.active.also {
                     coordinator.active = null
                     it?.result?.complete(SynchronizeOutcome.Removed)
@@ -449,6 +467,7 @@ class SynchronizationRepository(
         connectionId: String,
         active: ActiveSync,
         coordinator: Coordinator,
+        barrier: String,
     ): SynchronizeOutcome {
         var access = host.access(connectionId) ?: return SynchronizeOutcome.Removed
         host.retryRecordedResults(connectionId)
@@ -475,7 +494,7 @@ class SynchronizationRepository(
                 pageSize = PAGE_SIZE
                 this.pageToken = pageToken
                 if (pageToken.isEmpty()) {
-                    this.subscriptionCursor = active.barrier
+                    this.subscriptionCursor = barrier
                     knownNonterminal.addAll(
                         known.map { local ->
                             val cached = previous.requests[local.key.requestId]
@@ -503,46 +522,65 @@ class SynchronizationRepository(
         var revokedByBuffer = false
         val applied =
             coordinator.apply.withLock {
+                var merged = mergeSnapshot(previous, pages, authoritative, nextKnownIndex)
                 coordinator.control.withLock {
-                    if (coordinator.removed || coordinator.epoch != active.epoch) {
+                    if (
+                        coordinator.removed ||
+                            coordinator.epoch != active.epoch ||
+                            coordinator.active !== active
+                    ) {
                         return SynchronizeOutcome.Removed
                     }
-                }
-                var merged = mergeSnapshot(previous, pages, authoritative, nextKnownIndex)
-                val buffered =
-                    coordinator.control.withLock {
+                    run {
                         val copy = coordinator.buffered.toList()
                         coordinator.buffered.clear()
                         val overflowed = coordinator.overflowed
                         coordinator.overflowed = false
-                        copy to overflowed
-                    }
-                if (buffered.second) {
-                    merged =
-                        merged.copy(cursor = "", serverInstanceId = "", fullSyncRequired = true)
-                } else {
-                    for ((eventGeneration, event) in buffered.first) {
-                        val one =
-                            mergeEvent(merged, connectionId, eventGeneration, event, coordinator)
-                        if (one.revoked) {
-                            revokedByBuffer = true
-                            break
-                        }
-                        if (one.outcome == EventApplyOutcome.FullSyncRequired) {
+                        if (overflowed) {
                             merged =
                                 merged.copy(
                                     cursor = "",
                                     serverInstanceId = "",
                                     fullSyncRequired = true,
                                 )
-                            break
+                        } else {
+                            for ((eventGeneration, event) in copy) {
+                                val one =
+                                    mergeEvent(
+                                        merged,
+                                        connectionId,
+                                        eventGeneration,
+                                        event,
+                                        coordinator,
+                                    )
+                                if (one.revoked) {
+                                    revokedByBuffer = true
+                                    break
+                                }
+                                if (one.outcome == EventApplyOutcome.FullSyncRequired) {
+                                    merged =
+                                        merged.copy(
+                                            cursor = "",
+                                            serverInstanceId = "",
+                                            fullSyncRequired = true,
+                                        )
+                                    break
+                                }
+                                merged = one.state ?: merged
+                            }
                         }
-                        merged = one.state ?: merged
+                    }
+                    // Closing the buffering window under the same control lock as the final drain
+                    // makes a later event observe no buffering sync and wait for the apply lock. A
+                    // conflicted first pass keeps buffering so the recovery snapshot is covered.
+                    if (!revokedByBuffer && !merged.fullSyncRequired) {
+                        coordinator.buffering = false
                     }
                 }
                 if (!revokedByBuffer) {
                     withContext(io) { store.put(merged.persistable()) }
                     publish(merged)
+                    host.applyCache(merged)
                 }
                 merged
             }
@@ -551,7 +589,6 @@ class SynchronizationRepository(
             host.revoke(connectionId)
             return SynchronizeOutcome.Removed
         }
-        host.applyCache(applied)
         return SynchronizeOutcome.Updated(applied)
     }
 
@@ -637,6 +674,31 @@ class SynchronizationRepository(
         val availability =
             _state.value.connections[connectionId]?.availability ?: UpdateAvailability.Unknown
         return SynchronizeOutcome.Legacy(availability)
+    }
+
+    private suspend fun upgradeRequired(
+        connectionId: String,
+        coordinator: Coordinator,
+        epoch: Long,
+    ): SynchronizeOutcome {
+        val current = _state.value.connections[connectionId] ?: emptyState(connectionId)
+        return if (
+            persist(
+                current.copy(
+                    availability = UpdateAvailability.UpgradeRequired,
+                    endpoint = null,
+                    cursor = "",
+                    serverInstanceId = "",
+                    fullSyncRequired = true,
+                ),
+                coordinator,
+                epoch,
+            )
+        ) {
+            SynchronizeOutcome.Legacy(UpdateAvailability.UpgradeRequired)
+        } else {
+            SynchronizeOutcome.Removed
+        }
     }
 
     private suspend fun failed(
@@ -1046,7 +1108,9 @@ class SynchronizationRepository(
     private companion object {
         const val PROTOCOL_VERSION = 1
         const val PAGE_SIZE = 100
-        const val MAX_PAGES = 100
+        // A configured sidecar can hold 10,000 pending requests and Sync can add the 100 named
+        // nonterminal Activity records. Message-size pagination may put only one item on a page.
+        const val MAX_PAGES = 10_100
         const val MAX_KNOWN = 100
         const val MAX_MESSAGE_BYTES = 65_536
         const val MAX_BUFFERED_EVENTS = 512
