@@ -12,7 +12,7 @@ import kotlin.concurrent.thread
  * demo tool `vault_request_ack` (MCP_DEMO_TOOLS), and [stop] and [start] restart it on the same
  * port and database. Needs Node 24 on PATH and `pnpm install`.
  */
-class RealSidecar : AutoCloseable {
+class RealSidecar(private val productionUpdates: Boolean = false) : AutoCloseable {
     private val sidecarDir =
         File(
             checkNotNull(System.getProperty("seekervault.repoRoot")) {
@@ -22,6 +22,10 @@ class RealSidecar : AutoCloseable {
         )
     private val port = ServerSocket(0).use { it.localPort }
     val url = "http://127.0.0.1:$port"
+    private val updatePort = if (productionUpdates) ServerSocket(0).use { it.localPort } else null
+    val updateUrl: String?
+        get() = updatePort?.let { "http://127.0.0.1:$it" }
+
     private val env =
         mapOf(
             "SIDECAR_HOST" to "127.0.0.1",
@@ -33,7 +37,7 @@ class RealSidecar : AutoCloseable {
             // A throwaway database, never the developer's sidecar/data/sidecar.db.
             "DATABASE_PATH" to
                 Files.createTempDirectory("seeker-vault-sidecar").resolve("sidecar.db").toString(),
-        )
+        ) + (updatePort?.let { mapOf("SIDECAR_UPDATE_PORT" to "$it") } ?: emptyMap())
     private val log = StringBuffer()
     private var process: Process? = null
     private var clockAheadSeconds = 0L

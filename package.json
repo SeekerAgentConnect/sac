@@ -25,7 +25,8 @@
     "agent": "node --env-file-if-exists=.env test-agent/src/main.ts",
     "test:hello": "node scripts/test-hello.mjs",
     "test:queue": "node --test --test-reporter=spec test-agent/src/stage2.acceptance.ts",
-    "test:transfer": "node --test --test-reporter=spec test-agent/src/stage4.acceptance.ts"
+    "test:transfer": "node --test --test-reporter=spec test-agent/src/stage4.acceptance.ts",
+    "test:updates": "node --test --test-reporter=spec sidecar/src/updates/*.test.ts && android/gradlew -p android :app:testDebugUnitTest --tests 'io.github.brrenat.seekervault.sync.*Test' --tests io.github.brrenat.seekervault.updates.GrpcBidiInteropTest"
   },
   "devDependencies": {
     "@bufbuild/buf": "1.72.0",

@@ -151,6 +151,8 @@ The main server stays at `http://127.0.0.1:8080`; the advertised update origin i
 
 The bearer credential is still the connection's phone token. The MCP token, pairing token, Stage 1 token, a revoked token, and another connection ID cannot open `Subscribe` or `Sync`. A second subscription for the same connection cancels the first. Pairing replacement and explicit revocation publish the terminal revocation event and close the stream; shutdown cancels all streams and destroys their HTTP/2 sessions.
 
+`pnpm test:updates` joins these production listeners to the Android synchronization and lifecycle implementation through real sidecar processes and MCP calls. It also runs the secure-listener, replay, paging, confirmation, isolation, and cleanup cases below. This suite remains separate from the Stage 1 `pnpm test:hello` diagnostic. For a physical phone, follow the [MacBook-to-Seeker runbook](../guides/live-background-updates.md).
+
 The sidecar checks requests to `/mcp` as follows, following the MCP transport specification's defense against DNS rebinding:
 
 - **Request target:** a target that isn't a path, such as `//[`, gets 400, and the sidecar keeps running.
@@ -420,6 +422,7 @@ The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. Th
 `pnpm check` runs these tests:
 
 - **`src/updates/service.test.ts`, `store.test.ts`, and `confirmation.test.ts`** test the actual TLS/h2 and loopback h2c listeners, preserved HTTP/1 routes, durable publication, replay, frozen paging, restart/gap recovery, isolation, replacement/revocation/cleanup, and bounded byte-verified confirmation.
+- **`pnpm test:updates`** runs those sidecar suites and the Android `Stage52AcceptanceTest`/gRPC tests. The joined cases use real sidecar processes, the MCP SDK client, the production h2c listener, and the production Android transport, repository, persistent cache, and foreground owner. Stage 1 still has its own acceptance command.
 
 - **`src/live/bridge.test.ts`** tests the waiter with mocked timers.
 - **`src/server.test.ts`** tests the real server with the MCP SDK client and a Connect client. It covers:

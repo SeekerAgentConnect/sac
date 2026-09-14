@@ -207,7 +207,19 @@ OFFLINE: no phone is watching; open the live-test screen and connect
 
 No phone is connected. Open Seeker Vault and tap **Connect**, and check that the status reads "Connected". Every exit code is listed in [`test-agent/README.md`](../../test-agent/README.md).
 
-## Messages in the app
+## Live and background updates
+
+Production updates need both advertised endpoints. In the loopback development setup, port 8080 carries pairing, MCP, health, and the old Connect calls, while port 8081 carries gRPC over cleartext HTTP/2. Check both reverse mappings after every cable or adb restart:
+
+```bash
+adb reverse --list
+adb reverse tcp:8080 tcp:8080
+adb reverse tcp:8081 tcp:8081
+```
+
+The sidecar startup log must advertise production updates on `http://127.0.0.1:8081`; otherwise set `SIDECAR_UPDATE_PORT=8081` and restart it. A remote deployment must instead advertise an HTTPS origin whose listener or proxy preserves gRPC HTTP/2 and whose certificate is publicly trusted for that host. An HTTP/1-only proxy is not a polling fallback: the app reports the update connection failure and keeps manual Refresh available.
+
+Use `adb shell dumpsys jobscheduler io.github.brrenat.seekervault` to inspect the persisted job, `adb shell dumpsys deviceidle` to inspect Doze, and `adb logcat` filtered to the package when diagnosing a missed run. The full commands, expected connection states, two-sidecar procedure, and TLS checks are in the [MacBook-to-Seeker runbook](live-background-updates.md).
 
 ### Background updates are late or stopped
 
@@ -215,7 +227,15 @@ The background interval is configured to Android's 15-minute minimum, but it is 
 
 If you used Android Settings → Apps → Seeker Vault → **Force stop**, scheduled work cannot resume by itself. Reopen Seeker Vault once. The app restores the existing unique schedule when it loads a usable connection; it does not create a tight catch-up loop. Removing or revoking the last usable connection cancels the schedule.
 
-Background work has no notification and opens no wallet. A pending request still waits for your manual review, and an already-submitted transfer may only have its existing status reconciled. There is no Firebase/push wake-up in Stage 5.2.
+Background work has no notification and opens no wallet. A pending request still waits for your manual review, and an already-submitted transfer may only have its existing status reconciled. There is no Firebase/push wake-up or immediate background-delivery guarantee in Stage 5.2; push-triggered reconciliation is follow-up [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73).
+
+### Live updates stay on Connecting or Reconnecting
+
+First confirm that the ordinary endpoint is healthy with `curl -s http://127.0.0.1:8080/healthz`, then confirm the sidecar advertised its update origin and both adb reverse mappings exist. If only manual Refresh works, the update capability may be absent, the h2c port may not be reversed, or a remote proxy may be downgrading gRPC to HTTP/1. Restarting the sidecar changes its stream instance; the app should perform a full Sync and return to Live without duplicating a request.
+
+An authentication or revocation message is not a retryable network outage: pair again if the sidecar no longer accepts this phone. A certificate/host failure requires correcting the HTTPS deployment, never disabling validation. An unsupported update version requires upgrading the sidecar; old/unconfigured sidecars continue to offer manual Refresh.
+
+## Stage 1 Live diagnostic messages
 
 ### "Could not reach the sidecar at http://127.0.0.1:8080. Is it running (pnpm dev:sidecar), and did you run adb reverse tcp:8080 tcp:8080?"
 
