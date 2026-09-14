@@ -10,7 +10,6 @@ import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -363,13 +362,7 @@ private fun RequestCarousel(
             }
         }
         if (requests.isNotEmpty()) {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val itemWidth = 204.dp
-                // Symmetric real content padding lets the first and last items reach the exact
-                // same center snap point as every item between them. With it, index zero is also
-                // centered by the LazyRow's ordinary initial position — no corrective scroll or
-                // spacer item is needed after layout.
-                val edgePadding = ((maxWidth - itemWidth) / 2).coerceAtLeast(16.dp)
+            Box(Modifier.fillMaxWidth()) {
                 val carouselState = rememberLazyListState()
                 val activeIndex by
                     remember(carouselState) {
@@ -377,8 +370,8 @@ private fun RequestCarousel(
                             val layout = carouselState.layoutInfo
                             layout.visibleItemsInfo
                                 .minByOrNull { item ->
-                                    val centeredOffset =
-                                        SnapPosition.Center.position(
+                                    val snapOffset =
+                                        RequestCarouselSnapPosition.position(
                                             layout.viewportSize.width,
                                             item.size,
                                             layout.beforeContentPadding,
@@ -386,15 +379,16 @@ private fun RequestCarousel(
                                             item.index,
                                             layout.totalItemsCount,
                                         )
-                                    abs(item.offset - centeredOffset)
+                                    abs(item.offset - snapOffset)
                                 }
                                 ?.index ?: 0
                         }
                     }
                 LazyRow(
                     state = carouselState,
-                    flingBehavior = rememberSnapFlingBehavior(carouselState, SnapPosition.Center),
-                    contentPadding = PaddingValues(horizontal = edgePadding),
+                    flingBehavior =
+                        rememberSnapFlingBehavior(carouselState, RequestCarouselSnapPosition),
+                    contentPadding = PaddingValues(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.CAROUSEL),
                 ) {
@@ -436,6 +430,32 @@ private fun RequestCarousel(
                 }
             }
         }
+    }
+}
+
+private object RequestCarouselSnapPosition : SnapPosition {
+    override fun position(
+        layoutSize: Int,
+        itemSize: Int,
+        beforeContentPadding: Int,
+        afterContentPadding: Int,
+        itemIndex: Int,
+        itemCount: Int,
+    ): Int {
+        val position =
+            when {
+                itemIndex == 0 -> SnapPosition.Start
+                itemIndex == itemCount - 1 -> SnapPosition.End
+                else -> SnapPosition.Center
+            }
+        return position.position(
+            layoutSize,
+            itemSize,
+            beforeContentPadding,
+            afterContentPadding,
+            itemIndex,
+            itemCount,
+        )
     }
 }
 

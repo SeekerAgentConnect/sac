@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.connections
 
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
@@ -87,7 +88,11 @@ class ConnectionsScreenTest {
                 .assertIsSelected()
                 .fetchSemanticsNode()
                 .boundsInRoot
-        assertEquals(railBounds.center.x, onlyBounds.center.x, 1f)
+        assertEquals(
+            railBounds.left + with(compose.density) { 20.dp.toPx() },
+            onlyBounds.left,
+            1f,
+        )
         compose
             .onNodeWithTag(ConnectionsTags.INBOX)
             .assertTextContains(context.getString(R.string.requests_see_all, 1))
@@ -127,7 +132,7 @@ class ConnectionsScreenTest {
     }
 
     @Test
-    fun requestCarouselStartsWithTheFirstItemCenteredAndCanCenterTheLastOfFive() {
+    fun requestCarouselAlignsEndpointsToEdgesAndSnapsMiddleItemsToCenter() {
         val requests =
             (1..5).map {
                 FakeConnectionGateway.request(HOME.id, "request-$it", "Request $it")
@@ -143,9 +148,31 @@ class ConnectionsScreenTest {
         val first =
             compose.onNodeWithTag(ConnectionsTags.request(requests[0].key)).assertIsSelected()
         val firstBounds = first.fetchSemanticsNode().boundsInRoot
-        assertEquals(railBounds.center.x, firstBounds.center.x, 1f)
+        val edgeInset = with(compose.density) { 20.dp.toPx() }
+        assertEquals(railBounds.left + edgeInset, firstBounds.left, 1f)
 
-        repeat(5) {
+        rail.performTouchInput {
+            val travel = 240.dp.toPx()
+            swipe(
+                start = center.copy(x = center.x + travel / 2),
+                end = center.copy(x = center.x - travel / 2),
+                durationMillis = 500,
+            )
+        }
+        compose.waitForIdle()
+
+        val middle =
+            requests
+                .subList(1, requests.lastIndex)
+                .map { compose.onNodeWithTag(ConnectionsTags.request(it.key)) }
+                .single { it.fetchSemanticsNode().config[SemanticsProperties.Selected] }
+        assertEquals(
+            railBounds.center.x,
+            middle.fetchSemanticsNode().boundsInRoot.center.x,
+            1f,
+        )
+
+        repeat(4) {
             rail.performTouchInput {
                 val travel = 240.dp.toPx()
                 swipe(
@@ -160,11 +187,11 @@ class ConnectionsScreenTest {
         val focused =
             compose.onNodeWithTag(ConnectionsTags.request(requests.last().key)).assertIsSelected()
         val focusedBounds = focused.fetchSemanticsNode().boundsInRoot
-        assertEquals(railBounds.center.x, focusedBounds.center.x, 1f)
+        assertEquals(railBounds.right - edgeInset, focusedBounds.right, 1f)
     }
 
     @Test
-    fun requestCarouselCanCenterTheLastOfTwoItems() {
+    fun requestCarouselCanRightAlignTheLastOfTwoItems() {
         val requests =
             listOf(
                 FakeConnectionGateway.request(HOME.id, "request-1", "First"),
@@ -190,7 +217,11 @@ class ConnectionsScreenTest {
 
         val last =
             compose.onNodeWithTag(ConnectionsTags.request(requests.last().key)).assertIsSelected()
-        assertEquals(railBounds.center.x, last.fetchSemanticsNode().boundsInRoot.center.x, 1f)
+        assertEquals(
+            railBounds.right - with(compose.density) { 20.dp.toPx() },
+            last.fetchSemanticsNode().boundsInRoot.right,
+            1f,
+        )
     }
 
     @Test
