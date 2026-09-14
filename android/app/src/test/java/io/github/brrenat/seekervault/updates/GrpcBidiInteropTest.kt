@@ -28,13 +28,17 @@ import okhttp3.tls.HeldCertificate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.ExternalResource
 
 /**
  * A real Connect Kotlin 0.9.0/OkHttp 5.4.0 client against Connect Node 2.2.0 on Node's HTTP/2
  * server. The helper serves only this proof; SEE-68 adds the production update service.
  */
 class GrpcBidiInteropTest {
+    @get:Rule val jvmTlsPlatform: ExternalResource = JvmTlsPlatformRule()
+
     @Test
     fun productionTransportKeepsItsSendSideOpenForHeartbeats() = runBlocking {
         ProofServer().use { server ->
@@ -232,6 +236,33 @@ class GrpcBidiInteropTest {
             Files.deleteIfExists(marker)
             Files.deleteIfExists(certificatePath)
             Files.deleteIfExists(privateKeyPath)
+        }
+    }
+
+    /**
+     * This Android source set resolves okhttp-android even though unit tests run on a JVM. A
+     * Robolectric test can leave its SDK visible before OkHttp initializes and select an Android
+     * socket adapter that cannot configure a JDK SSLSocket's ALPN. OkHttp's pinned test hook keeps
+     * this JVM transport proof isolated and the prior platform is restored after every case.
+     */
+    private class JvmTlsPlatformRule : ExternalResource() {
+        private val platformType = Class.forName("okhttp3.internal.platform.Platform")
+        private val companion = platformType.getField("Companion").get(null)
+        private val getPlatform = companion.javaClass.getMethod("get")
+        private val resetPlatform = companion.javaClass.getMethod("resetForTests", platformType)
+        private lateinit var previous: Any
+
+        override fun before() {
+            previous = checkNotNull(getPlatform.invoke(companion))
+            val jdkPlatform =
+                Class.forName("okhttp3.internal.platform.Jdk9Platform")
+                    .getConstructor()
+                    .newInstance()
+            resetPlatform.invoke(companion, jdkPlatform)
+        }
+
+        override fun after() {
+            resetPlatform.invoke(companion, previous)
         }
     }
 
