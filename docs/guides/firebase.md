@@ -3,10 +3,11 @@
 SAW-054 prepares the optional Android Firebase client and self-hosted sidecar sender. SAW-055 binds
 the client's current direct-send registration to paired connections: initial registration and
 later refreshes are sent to each sidecar through that connection's authenticated phone API.
-This revision still does **not** send an invalidation, receive a message payload, request runtime
-notification permission, show a notification, route a tap, or trigger Sync from push. Adding or
-removing Firebase therefore does not change the Stage 5.2 foreground stream, manual **Refresh**,
-unary Sync, or periodic WorkManager recovery.
+SAW-056 sends a content-free invalidation after committed request changes and has Android schedule
+the existing authoritative Sync path. This revision still does **not** request runtime notification
+permission, show a notification, create a channel, or route a tap. Adding or removing Firebase does
+not change the Stage 5.2 foreground stream, manual **Refresh**, unary Sync, or periodic WorkManager
+recovery.
 
 ## What belongs to one deployment
 
@@ -51,10 +52,10 @@ does not write the value to disk. After the last usable connection disappears it
 
 The Firebase Messaging library contributes its normal receiver, service, provider, and permission
 entries—including `POST_NOTIFICATIONS`—to the merged APK manifest whether or not a project file is
-present. SAW-055 adds one non-exported `SeekerVaultMessagingService`, but it implements only
-`onRegistered` and `onUnregistered`; there is no `onMessageReceived`. The app makes no runtime
-notification-permission request. These entries and the registration lifecycle are plumbing, not a
-claim that notification delivery exists in this revision.
+present. SAW-055 adds one non-exported `SeekerVaultMessagingService` for `onRegistered` and
+`onUnregistered`; SAW-056 adds its exact-match data-message callback and Sync scheduling. The app
+makes no runtime notification-permission request and displays no notification in this revision.
+These entries are plumbing, not a claim of guaranteed delivery.
 
 ## Registration ownership and cleanup
 
@@ -118,22 +119,86 @@ FCM sender is configured through Application Default Credentials
 It does not log the project ID, credential path or contents. The Admin SDK does not fetch an access
 token at construction time, so a configured startup is not proof that the credential can send.
 
+<a id="invalidation-delivery-saw-056"></a>
+
+## Invalidation delivery (SAW-056)
+
+A sidecar sends only after a durable request event commits. Several changes ready in the same turn
+coalesce for that connection. The Admin request uses the connection's current Firebase Installation
+ID in the `fid` routing field, and its complete app-visible data is:
+
+```text
+kind=request_invalidation
+version=1
+```
+
+There is no Firebase notification object and no request or connection ID, URL, credential, policy,
+assessment, note, message-to-sign contents, transaction bytes, authorization, approval, signature,
+amount, recipient, or program. The FID is an address in the server-to-Firebase envelope, not a data
+field delivered to the app. Android accepts only the exact two-field map: an unknown version,
+missing field, or extra field is ignored.
+
+The hint is not the state. Receipt enqueues one unique, connected-network WorkManager request with
+empty input. Duplicate receipts keep the already-enqueued work. The worker loads every usable
+paired connection from phone storage and calls the same bounded authenticated `UpdateService.Sync`
+path used by Stage 5.2, so collapsing a hint from either of two sidecars loses no identity: the
+phone reconciles both. It retries only transient unreachability. It cannot prepare, approve, answer,
+open a wallet, sign, send a transaction, or choose a screen.
+
+### Priority, Doze, TTL, collapse, and throttling
+
+- **Priority:** only the first durable event for a new PENDING request is sent with Android `high`
+  priority, because that event is intended to become a time-sensitive user-visible notification
+  when the later notification child lands. State, outcome, confirmation, cancellation, and expiry
+  changes use `normal`. Firebase says normal messages may wait while the device is in Doze; high
+  priority attempts immediate delivery and limited processing, but should be reserved for
+  time-sensitive user-visible notifications. Repeated high-priority traffic that does not produce
+  user-visible notifications can be deprioritized. SAW-056 itself displays nothing, so the complete
+  Stage 5.3 feature must add the corresponding honest notification before deployment.
+- **Work after delivery:** a message delivered as high priority requests expedited WorkManager
+  execution immediately, with `RUN_AS_NON_EXPEDITED_WORK_REQUEST` fallback when expedited quota is
+  unavailable. Normal delivery requests ordinary work. A connected network is still required, the
+  operating system still schedules the work, and Force stop prevents handling until the owner
+  reopens the app.
+- **TTL:** every hint has a five-minute (`300000` ms) TTL. An older hint is deliberately allowed to
+  expire rather than wake the app much later for stale timing; foreground, manual, and periodic Sync
+  still recover the durable state.
+- **Collapse:** every hint uses Android collapse key `seeker-vault-request-state-v1`. FCM may replace
+  an undelivered hint with the newest for the same installation. That is safe because neither hint
+  carries state and every accepted receipt fetches the whole authoritative view. FCM does not
+  guarantee message order.
+- **Delivery and throttling:** an Admin `send()` message ID means FCM accepted the request, not that
+  a device received it. Offline devices, Doze, battery policy, quota, overload, per-device rate
+  limits, collapsible-message throttling, app uninstall, and Firebase outages can delay or discard a
+  hint. The dispatcher does not retry inside the request transaction. A permanent FID rejection
+  compare-clears only that rejected value; a concurrent rotation survives. Other failures keep the
+  target and durable request unchanged and log only `delivery unavailable`, never Firebase's error
+  text.
+
+These choices follow Firebase's current [Android priority and Doze
+guidance](https://firebase.google.com/docs/cloud-messaging/android-message-priority), [message
+lifespan](https://firebase.google.com/docs/cloud-messaging/customize-messages/setting-message-lifespan),
+[collapsible-message](https://firebase.google.com/docs/cloud-messaging/customize-messages/collapsible-message-types),
+and [throttling and quota](https://firebase.google.com/docs/cloud-messaging/throttling-and-quotas)
+documentation checked on 2026-09-14. Delivery is intentionally never an acceptance condition for
+the durable request commit.
+
 ## Off, unavailable, and incorrectly configured
 
-| Condition | Behavior through SAW-055 |
+| Condition | Behavior through SAW-056 |
 | --- | --- |
 | No Android `google-services.json` | The Google Services plugin is not applied, no default Firebase app exists, and registration calls are no-ops. The app and every Stage 5.2 path still build and run. |
-| No sidecar `FCM_PROJECT_ID` | No Firebase Admin app or sender is constructed. The authenticated phone may still store/rotate its target, but nothing sends to it; existing MCP, phone, stream, Sync, and WorkManager-facing paths are unchanged. |
+| No sidecar `FCM_PROJECT_ID` | No Firebase Admin app, dispatcher, listener, or sender is constructed. Durable events still commit and feed Stage 5.2 normally. |
 | Invalid `FCM_PROJECT_ID` | Configuration fails with the variable name and format requirement, never a credential value. Unset the variable to return to the fully functional Firebase-off mode. |
-| Missing, expired, or unauthorized ADC; FCM outage; quota/throttling response | Registration ownership is unaffected. The first future send will fail; SAW-055 still has no send caller. Later push dispatch must remain best-effort, while durable requests and Stage 5.2 recovery stay authoritative. |
-| Android and sidecar use different Firebase projects | Future sends will be rejected for the target rather than changing request state. Correct both deployment configurations; never copy a token into logs while diagnosing it. |
+| Missing, expired, or unauthorized ADC; FCM outage; quota/throttling response | The best-effort send fails after the durable change has committed. Fixed logs name only `delivery unavailable`; the target and request stay unchanged, and Stage 5.2 recovery remains authoritative. |
+| Android and sidecar use different Firebase projects | Sends are rejected for the target rather than changing request state. Correct both deployment configurations; never copy a target into logs while diagnosing it. |
 | Old sidecar without `SetFcmToken`, or sidecar unavailable during registration | That connection misses this registration attempt. Other sidecars continue independently, and its foreground Subscribe, manual Refresh, unary Sync, and periodic recovery keep working. A later registration refresh or usable-connection change retries idempotently. |
-| Firebase invalidates or unregisters an old value after rotation | The phone sends a compare-clear. The newer stored value remains untouched. |
+| Firebase invalidates or unregisters an old value after rotation | Phone unregistration and a permanent send rejection both compare-clear the exact rejected value. A newer stored value remains untouched. |
 
 Turning FCM off never requires deleting a paired connection or the Stage 5.2 cache. Remove the
 Android project file for the next APK, unset `FCM_PROJECT_ID` for the sidecar, and restart/rebuild as
 appropriate. A phone on an unconfigured build continues using foreground streams, manual Refresh,
-and the periodic worker. WorkManager remains eventual, and neither it nor later FCM delivery can
+and the periodic worker. WorkManager remains eventual, and neither it nor FCM delivery can
 bypass Android Settings **Force stop**; reopen the app after a force-stop.
 
 ## Pricing and quotas checked for SAW-054
@@ -163,5 +228,6 @@ operate near any published maximum.
 - [Add Firebase Admin to a server](https://firebase.google.com/docs/admin/setup)
 - [FCM server environment](https://firebase.google.com/docs/cloud-messaging/server-environment)
 - [Send with the Firebase Admin SDK](https://firebase.google.com/docs/cloud-messaging/send/admin-sdk)
+- [Firebase Admin FID message](https://firebase.google.com/docs/reference/admin/node/firebase-admin.messaging.fidmessage)
 - [Firebase Messaging Android API](https://firebase.google.com/docs/reference/android/com/google/firebase/messaging/FirebaseMessaging)
 - [Firebase Messaging service callbacks](https://firebase.google.com/docs/reference/android/com/google/firebase/messaging/FirebaseMessagingService)

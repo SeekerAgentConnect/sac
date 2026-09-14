@@ -25,6 +25,17 @@ const MAX_SNAPSHOTS_PER_CONNECTION = 4;
 const SNAPSHOT_REQUEST = 1;
 const SNAPSHOT_REMOVED = 2;
 const wakeups = new WeakMap<DatabaseSync, Map<string, Set<() => void>>>();
+const requestUpdateListeners = new WeakMap<
+  DatabaseSync,
+  Set<(update: CommittedRequestUpdate) => void>
+>();
+
+/** A content-free signal emitted only after its corresponding request event is durable. */
+export interface CommittedRequestUpdate {
+  readonly connectionId: string;
+  /** Only a newly created PENDING request is eligible for high-priority delivery. */
+  readonly timeSensitive: boolean;
+}
 
 export interface UpdateStoreOptions {
   /** Random for this sidecar process; cursors and snapshot tokens never survive a restart. */
@@ -93,6 +104,7 @@ export function recordRequestUpdate(
     .get(requestId);
   if (row === undefined)
     throw new Error(`request ${requestId} disappeared while publishing`);
+  const request = requestFromRow(row);
   db.prepare(
     `INSERT INTO update_events
        (connection_id, sequence, kind, request_id, revision, payload, created_at_ms)
@@ -102,12 +114,35 @@ export function recordRequestUpdate(
     sequence,
     requestId,
     revision,
-    toBinary(ActionRequestSchema, requestFromRow(row)),
+    toBinary(ActionRequestSchema, request),
     now,
   );
   prune(db, connectionId, sequence, retainedEvents);
   wakeAfterCommit(db, connectionId);
+  notifyRequestAfterCommit(db, {
+    connectionId,
+    sequence,
+    revision,
+    timeSensitive: revision === 1 && request.state === RequestState.PENDING,
+  });
   return revision;
+}
+
+/**
+ * Observes committed request invalidations without exposing their request payloads. The callback
+ * receives only routing urgency and the connection whose authoritative state changed.
+ */
+export function observeCommittedRequestUpdates(
+  db: DatabaseSync,
+  listener: (update: CommittedRequestUpdate) => void,
+): () => void {
+  const listeners = requestUpdateListeners.get(db) ?? new Set();
+  listeners.add(listener);
+  requestUpdateListeners.set(db, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) requestUpdateListeners.delete(db);
+  };
 }
 
 /** Appends the terminal connection event after revocation and its request cancellations commit together. */
@@ -496,6 +531,40 @@ function wakeAfterCommit(db: DatabaseSync, connectionId: string): void {
     const waiting = wakeups.get(db)?.get(connectionId);
     if (waiting === undefined) return;
     for (const wake of [...waiting]) wake();
+  });
+}
+
+/** A rolled-back event has no matching row, so its queued callback emits nothing. */
+function notifyRequestAfterCommit(
+  db: DatabaseSync,
+  update: CommittedRequestUpdate & {
+    readonly sequence: number;
+    readonly revision: number;
+  },
+): void {
+  queueMicrotask(() => {
+    let committed: boolean;
+    try {
+      committed =
+        db
+          .prepare(
+            `SELECT 1 AS found FROM update_events
+             WHERE connection_id = ? AND sequence = ? AND revision = ? AND kind = 'request'`,
+          )
+          .get(update.connectionId, update.sequence, update.revision) !==
+        undefined;
+    } catch {
+      // Closing a sidecar can close SQLite before an already-queued best-effort notification.
+      return;
+    }
+    if (!committed) return;
+    const listeners = requestUpdateListeners.get(db);
+    if (listeners === undefined) return;
+    const notification: CommittedRequestUpdate = {
+      connectionId: update.connectionId,
+      timeSensitive: update.timeSensitive,
+    };
+    for (const listener of [...listeners]) listener(notification);
   });
 }
 

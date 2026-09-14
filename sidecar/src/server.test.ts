@@ -4,19 +4,27 @@ import { after, before, describe, it } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { Code, ConnectError } from "@connectrpc/connect";
+import type { Message } from "firebase-admin/messaging";
 
 import { AcknowledgementResult } from "./gen/seekervault/live/v1/live_pb.js";
 import { DISPLAY_COMMAND_TOOL } from "./mcp-endpoint.ts";
+import { REQUEST_ACK_TOOL } from "./requests/mcp-tools.ts";
 import { FcmSender } from "./push/fcm.ts";
+import { FCM_INVALIDATION_DATA } from "./push/invalidation.ts";
 import { startSidecar, type Sidecar } from "./server.ts";
 import {
+  callTool,
   connectAgent,
   connectPhone,
   display,
   errorCode,
+  pairPhone,
+  pairingClient,
   phoneClient,
+  viewOf,
   waitFor,
 } from "./testing/clients.ts";
+import { temporaryDatabasePath } from "./testing/process.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);
@@ -138,6 +146,69 @@ describe("sidecar", () => {
       ),
     );
     assert.doesNotMatch(configuredLogs.join("\n"), /seeker-vault-prod-123/);
+  });
+
+  it("sends a fixed invalidation only after a durable request is created", async () => {
+    const databasePath = temporaryDatabasePath();
+    const configuredLogs: string[] = [];
+    const messages: Message[] = [];
+    const target = "private-routing-target-that-must-not-be-logged";
+    const configured = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        mcpToken: MCP_TOKEN,
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 1,
+        databasePath,
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
+        demoTools: true,
+        fcmProjectId: "seeker-vault-prod-123",
+      },
+      {
+        log: (line) => configuredLogs.push(line),
+        fcmSenderFactory: () =>
+          new FcmSender(
+            {
+              send: (message) => {
+                messages.push(message);
+                return Promise.resolve("opaque-message-id");
+              },
+            },
+            () => Promise.resolve(),
+          ),
+      },
+    );
+    const agent = await connectAgent(configured.url, MCP_TOKEN);
+    try {
+      const paired = await pairPhone(configured.url, databasePath);
+      await pairingClient(configured.url, paired.phoneToken).setFcmToken({
+        connectionId: paired.connectionId,
+        update: { case: "token", value: target },
+      });
+      const created = viewOf(
+        await callTool(agent, REQUEST_ACK_TOOL, {
+          text: "private request contents",
+          note: "private agent note",
+          idempotency_key: "push-after-commit",
+        }),
+      );
+      await waitFor(() => messages.length === 1, "FCM invalidation");
+
+      assert.equal(created.status, "PENDING");
+      assert.deepEqual(messages[0]?.data, FCM_INVALIDATION_DATA);
+      assert.equal(messages[0]?.android?.priority, "high");
+      assert.equal(messages[0]?.notification, undefined);
+      assert.doesNotMatch(
+        JSON.stringify(messages[0]?.data),
+        /private request contents|private agent note/,
+      );
+      assert.doesNotMatch(configuredLogs.join("\n"), new RegExp(target));
+    } finally {
+      await agent.close();
+      await configured.close();
+    }
   });
 
   it("fails a tool call at once with OFFLINE when no phone is watching", async () => {

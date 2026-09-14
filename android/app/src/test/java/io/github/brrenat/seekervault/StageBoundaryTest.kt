@@ -15,13 +15,14 @@ import org.w3c.dom.Element
  * connection in `policy/storage/` (SAW-025). Nothing is backed up. SAW-048 authorizes only the
  * `sync/` package to use the production sidecar transport and its own storage subpackage; SAW-052
  * adds WorkManager code there. SAW-054 puts the optional Firebase Messaging client on the
- * classpath. SAW-055 adds only one registration-callback service and a connection-scoped token flow
- * under `push/`; it adds no message handler, runtime permission request, notification, or
- * push-triggered work. Other app-defined services, jobs, alarms, receivers, and wallet automation
- * remain excluded. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter
- * client, on purpose: the app drives the wallet the owner already has. It still holds no wallet key
- * of its own, and Seed Vault's own SDK stays out. These checks fail when a limit is crossed early;
- * the stage that lifts one changes them.
+ * classpath. SAW-055 adds one connection-scoped registration service under `push/`. SAW-056 lets
+ * that service accept exactly one content-free invalidation and enqueue a unique WorkManager Sync
+ * under `sync/`; it adds no runtime permission request, notification, tap route, or wallet action.
+ * Other app-defined services, jobs, alarms, receivers, and wallet automation remain excluded.
+ * SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on purpose:
+ * the app drives the wallet the owner already has. It still holds no wallet key of its own, and
+ * Seed Vault's own SDK stays out. These checks fail when a limit is crossed early; the stage that
+ * lifts one changes them.
  */
 class StageBoundaryTest {
     private val main =
@@ -377,7 +378,7 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun saw055UsesFirebaseOnlyForRegistrationLifecycle() {
+    fun saw056UsesFirebaseOnlyForRegistrationAndFixedInvalidationSync() {
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         val firebaseImports = Regex("""^import com\.google\.firebase\.""", RegexOption.MULTILINE)
         assertEquals(
@@ -396,8 +397,14 @@ class StageBoundaryTest {
             )
         assertTrue("override fun onRegistered" in service)
         assertTrue("override fun onUnregistered" in service)
-        assertTrue("onMessageReceived" !in service)
-        assertTrue("RemoteMessage" !in service)
+        assertTrue("override fun onMessageReceived" in service)
+        assertTrue("RemoteMessage" in service)
+        assertTrue("PushSyncScheduler" in service)
+        assertTrue("Notification" !in service)
+        assertTrue("PendingIntent" !in service)
+        assertTrue("wallet" !in service.lowercase())
+        assertTrue("approve" !in service.lowercase())
+        assertTrue("signAndSendTransactions" !in service)
     }
 
     @Test

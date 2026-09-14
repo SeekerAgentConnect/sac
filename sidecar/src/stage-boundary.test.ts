@@ -193,7 +193,12 @@ describe("stage boundary", () => {
     assert.doesNotMatch(
       readFileSync(join(SRC, "server.ts"), "utf8"),
       /fcmSender\??\.send/,
-      "SAW-055 registers targets but does not dispatch a push",
+      "server routes sends through SAW-056's audited invalidation dispatcher",
+    );
+    assert.match(
+      readFileSync(join(SRC, "server.ts"), "utf8"),
+      /FcmInvalidationDispatcher/,
+      "SAW-056 connects durable request changes to the audited sender",
     );
   });
 

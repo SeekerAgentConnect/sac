@@ -99,7 +99,7 @@ flowchart LR
 
 SAW-053 validates this boundary as a joined system rather than only as isolated units. `Stage52AcceptanceTest` starts real sidecar processes, creates requests through a real MCP client, and drives the production Android repository, lifecycle owner, persistent cache, and headless sync across the real h2c development listener. `GrpcBidiInteropTest` covers cross-runtime bidirectional interleaving and cancellation on that HTTP/2 transport; the sidecar listener tests separately cover TLS/ALPN HTTP/2, frozen pagination, ordering faults, revocation, cleanup, and bounded read-only confirmation. The suite is `pnpm test:updates`; the physical timing and lifecycle cases are in the [Seeker checklist](testing/stage-5-2.md#physical-seeker-checklist-saw-053).
 
-That validation does not turn periodic work into notification delivery. In background there is no open stream and no mechanism that wakes the app immediately when a request is created. WorkManager is eventual and Android controls its actual delay. [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73) is the separate FCM stage; even it cannot bypass Force stop.
+That validation does not turn periodic work into exact notification delivery. In background there is no open stream, and Stage 5.2 has no request-created wake-up. [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73) adds optional FCM separately; even it is best-effort and cannot bypass Force stop.
 
 SAW-054 opens that stage without adding a new runtime path. The Android Firebase client has an
 operator-supplied project configuration or remains dormant; the sidecar constructs a Firebase Admin
@@ -108,9 +108,17 @@ application-scoped registration owner: while any usable connection exists it ask
 register, then sends each registration/rotation to every sidecar through that connection's own
 phone credential. The phone stores no target. Each sidecar stores one private target with the
 connection, and revocation deletes it. No request mutation calls the sender and the app still has no
-message-receipt, notification, tap, or runtime-permission path. Consequently the Stage 5.2
-convergence authority above is unchanged. The [Firebase guide](guides/firebase.md) defines the
-deployment and off/unavailable cases.
+message-receipt, notification, tap, or runtime-permission path in that child.
+
+SAW-056 joins only committed request events to that sender. The app-visible payload is the fixed
+pair `kind=request_invalidation`, `version=1`; even connection and request IDs stay out. Same-turn
+changes coalesce, undelivered messages share one collapse key and a five-minute TTL, and only a new
+PENDING request uses high priority. Android rejects every other payload shape and persists only an
+empty-input, unique WorkManager request. That worker calls bounded `synchronizeAll()` and obtains
+each sidecar URL and credential from phone storage, not from FCM. It cannot answer a request or
+reach a wallet. Consequently the Stage 5.2 convergence authority above remains unchanged when a
+push is delayed, dropped, throttled, or disabled. The [Firebase guide](guides/firebase.md) defines
+the deployment and off/unavailable cases.
 
 ## Trust boundaries
 
@@ -140,6 +148,7 @@ deployment and off/unavailable cases.
 | Daily counters | The phone, derived from the Activity records in `filesDir` | SAW-026 |
 | Update revisions, cursors, retained replay, and frozen snapshots | The sidecar's SQLite database, through `src/storage/` | SAW-048 contract; SAW-049 implementation |
 | One private current FCM target per active connection | The sidecar's SQLite database, through `src/storage/`; no phone copy and no read API | SAW-055 |
+| FCM invalidation payload | Nowhere; two fixed strings are validated and discarded before empty-input Sync work is enqueued | SAW-056 |
 | Minimal request/status cache and sync metadata | The phone in `filesDir`, through `sync/storage/`; never backed up | SAW-048 contract; SAW-050 implementation |
 | Keys | Seed Vault Wallet | Stage 3 |
 
@@ -177,7 +186,7 @@ These hold across the components, and every stage keeps them:
 | 4 | Transfer requests and fresh preparation (SAW-019), the phone's own inspection of the bytes (SAW-020), manual approval through the wallet (SAW-021), and on-chain confirmation (SAW-022) |
 | 5 | The policy model through end-to-end scenarios (SAW-025–029), then global defaults, connection overrides, two daily scopes, sourced review, and combined acceptance (Stage 5.1, SAW-043–047) |
 | 5.2 | Authenticated foreground bidirectional updates, shared reconciliation, a minimal phone cache, and eventual WorkManager sync (SAW-048–053; FCM excluded) |
-| 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing and SAW-055 adds authenticated per-connection registration/rotation only |
+| 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, and SAW-056 content-free invalidation-to-Sync handling |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
 | 8 | Release checks |

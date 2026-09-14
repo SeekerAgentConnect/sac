@@ -163,3 +163,80 @@ used.
 Delivery, background/process-absent handling, notification permission/UI, tap routing, reboot, and
 Force-stop behavior remain later Stage 5.3 work and are **NOT RUN**, not inferred from this
 registration-only implementation.
+
+## SAW-056 — minimal invalidation pings and authoritative Sync
+
+SAW-056 connects committed durable request events to the optional sender. Events coalesce per
+connection, and the only app-visible data is `kind=request_invalidation` and `version=1`. A new
+PENDING request is high priority; every other request state or outcome change is normal priority.
+Both use a five-minute TTL and `seeker-vault-request-state-v1` collapse key. There is no Firebase
+notification object and no request/connection identifier, credential, policy, message-to-sign
+content, transaction authorization, approval, or signature in the data.
+
+Android rejects any missing, unknown, or additional payload field. An accepted hint enqueues one
+unique connected-network WorkManager request with empty input; it then loads usable paired
+connections and their credentials from their existing stores and invokes the same bounded,
+authenticated `synchronizeAll()` path as Stage 5.2. A push cannot prepare, approve, answer, open a
+wallet, sign, send a transaction, display a notification, or select a tap destination.
+
+### Automated behavior
+
+- `invalidation.test.ts` drives real SQLite pairing and request stores. It proves same-turn
+  coalescing, high priority only for creation, normal priority for a later change, exact TTL and
+  collapse key, no notification object, no send for a rolled-back event, safe invalid-target
+  compare-clear across rotation, transient target retention, and fixed logs without Firebase error
+  text.
+- `server.test.ts` registers a target through the authenticated generated phone client, creates a
+  durable request through the real MCP tool, and observes the exact content-free send only after
+  creation succeeds. The request body, agent note, and target remain absent from payload data and
+  logs.
+- `SeekerVaultMessagingServiceTest` accepts the exact two fields at both delivered priorities and
+  rejects missing, unknown-version, extra, request-ID, and credential fields.
+- `PushSynchronizationTest` proves empty WorkManager input, connected-network constraint,
+  exponential backoff, expedited fallback only for a high-priority delivery, unique-work
+  coalescing, all-connection authoritative fetch, and retry only for transient unreachability.
+- `StageBoundaryTest` confines Firebase imports to the registration/message callback package and
+  WorkManager use to `sync/`. It rejects notification, `PendingIntent`, wallet, approval, and
+  signing behavior in the callback. The sidecar boundary requires the audited dispatcher instead
+  of a raw sender call.
+- The existing Firebase-off server test still proves no sender construction without
+  `FCM_PROJECT_ID`; the complete Stage 5.2 update and earlier acceptance suites pass unchanged.
+
+### Commands and results
+
+Run on **2026-09-14** on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, Gradle 9.7.1,
+launcher JDK 19.0.2, and the repository's pinned Firebase versions. The checkout contained neither
+`android/app/google-services.json` nor `android/local.properties`; the Android SDK path was supplied
+only to each process through `ANDROID_HOME`.
+
+| Command | Result |
+| --- | --- |
+| Focused sidecar invalidation/server/boundary tests and focused Android callback/scheduler/boundary tests | **PASS.** Exact-payload, commit ordering, priority, TTL, collapse, failure, authoritative-fetch, and no-wallet/no-notification assertions passed. |
+| `pnpm check` | **PASS.** Prettier, Buf format/lint, ESLint, both TypeScript checks, 427/427 sidecar tests, and 29/29 test-agent tests. |
+| `ANDROID_HOME=… pnpm test:updates` | **PASS.** 8/8 sidecar update tests and all selected Android Stage 5.2 sync/HTTP2 tests, including the new push Sync scheduler because it remains inside `sync/`. |
+| `pnpm test:hello` | **PASS.** 9/9 Stage 1 simulated-device cases. |
+| `pnpm test:queue` | **PASS.** 7/7 Stage 2 two-sidecar cases. |
+| `ANDROID_HOME=… pnpm check:android` | **PASS.** Spotless, 826/826 debug JVM tests, Android lint, debug APK, and instrumentation APK, with Firebase unconfigured. |
+| `pnpm check:generated` | **PASS.** Generated protocol clients and fixtures are current; SAW-056 changes no protocol schema. |
+| `pnpm build` | **PASS.** Sidecar and test-agent TypeScript builds. |
+
+### Deliberate failure
+
+An additional `request_id` field was temporarily added to the invalidation data map. The focused
+payload audit failed its exact object comparison and displayed the unexpected field. The field was
+removed before every passing command above.
+
+### Physical Seeker and Firebase delivery
+
+The Android SDK's `adb devices -l` listed no device on 2026-09-14, and no real Firebase project or
+credential was used.
+
+| Check | Result |
+| --- | --- |
+| Receive high- and normal-priority data on an active, backgrounded, Dozing, or process-absent physical Seeker and observe authoritative Sync | **NOT RUN:** no physical Seeker or Firebase deployment was available. JVM callbacks, WorkManager tests, and APK assembly do not count. |
+| Observe TTL expiry, collapse, throttling, duplicate/drop behavior, rotation, revocation, reboot, and Force stop against FCM | **NOT RUN:** no physical Seeker or Firebase deployment was available. These delivery conditions remain best-effort and require the later stage acceptance run. |
+
+Notification permission/UI, notification identity, and tap routing remain later tickets. The
+[Firebase guide](../guides/firebase.md#invalidation-delivery-saw-056) records the documented
+high-priority restriction, Doze and expedited-work behavior, five-minute TTL, shared collapse key,
+throttling, non-guaranteed delivery, and Firebase-off fallback verified for this child.

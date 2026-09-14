@@ -153,6 +153,7 @@ The queued acknowledgement (`ack`) takes a short path: `ListPending`, then `Subm
 - **Both IDs are lowercase UUIDs,** assigned by the sidecar.
 - **Revoking a connection stops its phone credential at once, and cancels its PENDING requests.** The phone revokes with `RevokeConnection`, and the operator with `pnpm pair revoke`. Pairing a new phone revokes the previous one. Requests already approved are still resolved from the chain, and agents can still read every request. A new pairing is a new connection: it can't see or report the old connection's requests.
 - **One private FCM target may belong to an active connection (SAW-055).** The paired phone alone registers or rotates it through that connection's credential. Replacement or revocation deletes it; it is never shared between connections or returned by an API.
+- **An FCM message is only a content-free invalidation (SAW-056).** After a request event commits, a configured sidecar may send the connection's current Firebase Installation ID exactly `kind=request_invalidation` and `version=1`. The message names no request, connection, state, credential, policy, content, transaction, approval, or signature. Android responds only by running authenticated Sync; the payload is never authority.
 
 ### Actions
 
@@ -540,9 +541,52 @@ Current Firebase Messaging calls this direct-send registration value a Firebase 
 and delivers initial and refreshed values through `onRegistered`; the wire name remains
 `fcm_token` as the stable Stage 5.3 protocol term. The Android app serializes those callbacks and
 sends the same current value to each usable sidecar separately with that connection's own URL and
-credential. It stores no copy on the phone. This registration contract does not define a push
-payload, send trigger, message handler, notification, tap route, Sync invocation, approval, or
-signature.
+credential. It stores no copy on the phone. SAW-055 itself defined no payload or send trigger;
+SAW-056 adds the separate content-free invalidation below.
+
+<a id="fcm-invalidation-saw-056"></a>
+
+### FCM invalidation and authoritative fetch (SAW-056)
+
+Every durable request creation or state/outcome/confirmation change already appends a complete
+`update_events` row in the same SQLite transaction. Only after that row commits may the optional
+dispatcher enqueue a hint for the event's connection. Failed or rolled-back writes emit nothing.
+Several same-turn changes for one connection coalesce before Firebase, and a connection with no
+current target or a sidecar with no configured sender sends nothing.
+
+The complete app-visible FCM data map is:
+
+```text
+kind=request_invalidation
+version=1
+```
+
+There is no notification payload and no request ID, connection ID, sidecar URL, state, timestamp,
+cursor, credential, device target, policy or assessment, agent note, message-to-sign content,
+transaction bytes, authorization, approval, signature, amount, recipient, or program. The Firebase
+Installation ID exists only in the Admin API's `fid` routing field and is not delivered as data.
+Android rejects a missing field, unknown version, unknown kind, or any additional data field.
+
+A new PENDING request (revision one) is the only high-priority send because it is the only event
+intended to become a time-sensitive user-visible notification in the completed stage. Later
+state/outcome changes use normal priority. Both use a five-minute TTL and the single collapse key
+`seeker-vault-request-state-v1`: if several undelivered hints compete, only the newest is needed
+because every receipt performs a complete authoritative fetch. FCM acceptance is not device
+delivery, order is not guaranteed, and delivery can be delayed, throttled, collapsed, expired, or
+dropped.
+
+Receipt enqueues unique `push-authoritative-sync` WorkManager work with a connected-network
+constraint, empty input, `KEEP` coalescing, and exponential retry only for transient unreachability.
+A delivered high-priority message requests expedited work with fallback to ordinary work when its
+quota is unavailable. The worker calls the same application-scoped, four-sidecar-bounded
+`synchronizeAll()` used by Stage 5.2 and retrieves each URL and credential only from that paired
+connection's stores. It does not trust or persist the FCM payload and has no operation that can
+prepare, approve, answer, open a wallet, sign, send a transaction, or route a tap.
+
+If Firebase permanently rejects the FID, the sidecar compare-clears only that exact stored value;
+a rotation that won the race survives. Other Firebase errors are logged only as a fixed delivery
+classification and change no request, target, or result. Foreground Subscribe, manual Refresh,
+unary Sync, and periodic WorkManager remain the recovery path when FCM is absent or misses.
 
 **`RevokeConnection`** takes the phone's credential, and its `connection_id` must be the caller's own; another ID gets `NOT_FOUND`. It revokes the connection at once, and cancels the connection's PENDING requests; see [connections](#connections-and-request-identity).
 
