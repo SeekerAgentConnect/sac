@@ -19,7 +19,7 @@ The source-of-truth comparison and verification record are in [`docs/testing/see
 
 ## Shared synchronization and cache (SAW-050)
 
-`SynchronizationRepository` is the one application-scoped convergence path for `UpdateService.Sync` responses and revisioned stream events. Manual Refresh, the SAW-051 foreground owner, and the SAW-052 periodic worker all use it. `ConnectionRepository.synchronizeAll()` is the process-start entry point: it loads connection metadata, encrypted credentials, stored answers, Activity, and the sync cache without constructing an Activity or ViewModel.
+`SynchronizationRepository` is the one application-scoped convergence path for `UpdateService.Sync` responses and revisioned stream events. Manual Refresh, the SAW-051 foreground owner, the SAW-052 periodic worker, and SAW-057 push recovery all use it. `ConnectionRepository.synchronizeAll()` is the process-start entry point: it loads connection metadata, encrypted credentials, stored answers, Activity, and the sync cache without constructing an Activity or ViewModel. Recovery workers may select only connections without a healthy foreground stream; the same four-server bound and per-connection coordinator apply.
 
 The code is under `sync/`:
 
@@ -50,9 +50,9 @@ Closing these jobs cannot cancel or start Mobile Wallet Adapter work. The foregr
 
 `BackgroundSyncScheduler` starts when the app is used and observes loaded connection state. It does nothing with the initial unknown empty list. Once storage is loaded, at least one usable connection keeps exactly one `sidecar-background-sync` periodic request; no usable connection cancels it. The request uses WorkManager 2.11.2, a connected-network constraint, a 15-minute repeat interval and initial delay, and exponential retry beginning at 30 seconds. `ExistingPeriodicWorkPolicy.KEEP` is deliberate: app starts, rotation, foreground/background transitions, renames, and other connection publications cannot replace the existing request and postpone its next eligible run.
 
-WorkManager persists its own database and can run `BackgroundSyncWorker` after ordinary process death or reboot. The worker takes no credential, URL, request, cursor, or wallet data as input. In a worker-only process it obtains `SeekerVaultApplication`, reloads the connection files and Keystore-encrypted credentials through `ConnectionRepository`, and calls `synchronizeAll()`. The shared path retries only a result already saved by the owner, asks the sidecar to reconcile existing nonterminal Activity (including bounded confirmation of already-submitted transfers), and atomically stores the request/status cache and last successful sync before returning. Reopening the app loads that disk result before a screen fetch is needed.
+WorkManager persists its own database and can run `BackgroundSyncWorker` after ordinary process death or reboot. The worker takes no credential, URL, request, cursor, or wallet data as input. In a worker-only process it obtains `SeekerVaultApplication`, reloads the connection files and Keystore-encrypted credentials through `ConnectionRepository`, and selects usable connections for synchronization. The shared path retries only a result already saved by the owner, asks the sidecar to reconcile existing nonterminal Activity (including bounded confirmation of already-submitted transfers), and atomically stores the request/status cache and last successful sync before returning. Reopening the app loads that disk result before a screen fetch is needed.
 
-Headless work admits at most four sidecars at once. Each connection has a two-minute overall bound around the transport's existing 30-second per-RPC deadline, so one offline or pathological server cannot hold the others indefinitely. An unreachable connection makes the WorkManager run retry with exponential backoff. Authentication/revocation removes the credential and is permanent for that connection; certificate, cleartext, protocol, and malformed-response failures wait for the next normal period rather than tight-looping. When every usable connection already has a healthy foreground stream, the worker exits without adding a competing unary pass. If only some streams are healthy, the shared repository's per-connection coordinator safely coalesces or buffers overlap.
+Headless work admits at most four sidecars at once. Each connection has a two-minute overall bound around the transport's existing 30-second per-RPC deadline, so one offline or pathological server cannot hold the others indefinitely. An unreachable connection makes the WorkManager run retry with exponential backoff. Authentication/revocation removes the credential and is permanent for that connection; certificate, cleartext, protocol, and malformed-response failures wait for the next normal period rather than tight-looping. Every usable connection whose foreground stream is already Live is excluded; a mixed two-sidecar run fetches only the connection that needs recovery. Any race with stream reconciliation, Refresh, or push work still reaches the repository's per-connection coordinator and safely coalesces or buffers overlap.
 
 Fifteen minutes is the minimum configured interval, not a delivery deadline. Doze, battery optimization, standby, network constraints, and vendor policy can defer or skip an eligible run. Android Settings **Force stop** suppresses WorkManager until the owner reopens the app. SAW-052 adds no foreground service, direct service, receiver, exact alarm, continuous background socket, artificial rescheduling loop, Firebase dependency, or push wake-up. SAW-054 later places the optional Firebase client on the classpath, but the worker neither imports nor invokes it.
 
@@ -66,7 +66,7 @@ The cases cross the runtime boundary instead of replacing either half with a fak
 
 Run the complete joined suite with `pnpm test:updates`; keep running `pnpm test:hello` separately for Stage 1. JVM/Robolectric and sidecar-process success never count as a physical Seeker result. The MacBook-to-Seeker setup, scheduling inspection, and device-only checklist are in the [live and background updates runbook](../guides/live-background-updates.md) and [Stage 5.2 verification record](../testing/stage-5-2.md).
 
-## Optional Firebase registration and invalidation Sync (SAW-054–SAW-056)
+## Optional Firebase registration and invalidation Sync (SAW-054–SAW-057)
 
 The app pins the current Firebase Android BoM and its main `firebase-messaging` module. The Google
 Services plugin is present but conditional: `android/app/build.gradle.kts` applies it only when the
@@ -89,14 +89,21 @@ delayed callback for an older value cannot erase its replacement. The phone neve
 value and diagnostics redact it. An unconfigured build has no default `FirebaseApp`, so the client
 does nothing; an older or unavailable sidecar cannot stop the other sidecars or any Stage 5.2 path.
 
-SAW-056 accepts only data exactly equal to `kind=request_invalidation` and `version=1`. The handler
-does not deserialize a request or accept any extra field. It sends only the delivered priority to
-`PushSyncScheduler`, which persists one unique `push-authoritative-sync` request with empty input,
-a connected-network constraint, `KEEP` coalescing, and exponential transient retry. A delivered
-high-priority ping requests expedited WorkManager execution with non-expedited fallback. The
-headless worker invokes the application repository's bounded `synchronizeAll()`: it loads each
-paired connection and credential from its normal stores and fetches authoritative state over the
-existing authenticated unary protocol.
+SAW-056 accepts only data exactly equal to `kind=request_invalidation` and `version=1`. SAW-057
+keeps the callback to that constant-time validation and `PushSyncScheduler.enqueue`; there is no
+sidecar or cache fetch inside `FirebaseMessagingService`'s execution budget. The scheduler persists
+one unique `push-authoritative-sync` request with empty input, a connected-network constraint,
+`KEEP` coalescing, and exponential transient retry. A delivered high-priority ping requests
+expedited WorkManager execution with non-expedited fallback.
+
+The worker loads usable connections and encrypted credentials from their normal stores. While the
+app is foreground, it omits every connection whose gRPC stream is already Live and fetches only the
+recovery set; in background or a worker-only process, every usable connection is eligible. Push
+and periodic recovery use the same selective, four-sidecar-bounded repository entry point. The
+repository coalesces one in-flight snapshot per connection and buffers stream events across it, so
+simultaneous Refresh, stream recovery, periodic work, and push work cannot become competing state
+writers. FCM collapse plus WorkManager unique work coalesce duplicate hints at both delivery
+boundaries.
 
 The Firebase library contributes its standard receiver, service, provider, and permission
 declarations to the merged manifest. There is still no runtime notification permission request,
@@ -273,7 +280,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 - Every other host is still refused. The app then says to use `adb reverse` and `127.0.0.1`.
 - Release builds don't include this configuration, so Android's default applies: no cleartext traffic.
 - App code uses `INTERNET`, and requests `CAMERA` only when the owner taps **Scan QR code**. It makes no runtime notification- or biometric-permission request. The manifest also carries `io.github.brrenat.seekervault.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, which AndroidX Core declares for the app's own non-exported receivers. That one is private to the app, signature-level, and never shown to the user.
-- **Libraries add manifest entries of their own.** CameraX brings a disabled, non-exported metadata service; AndroidX Startup and the profile installer add their components; WorkManager adds the scheduler components described above. From SAW-054, Firebase Messaging also merges its standard receiver, service, provider, and permissions, including `POST_NOTIFICATIONS`. SAW-055 adds one non-exported registration service and explicit registration ownership; SAW-056 lets it accept only a fixed data invalidation and schedule Sync, without requesting that runtime permission or displaying anything. Debug builds add the Compose preview and test activities.
+- **Libraries add manifest entries of their own.** CameraX brings a disabled, non-exported metadata service; AndroidX Startup and the profile installer add their components; WorkManager adds the scheduler components described above. From SAW-054, Firebase Messaging also merges its standard receiver, service, provider, and permissions, including `POST_NOTIFICATIONS`. SAW-055 adds one non-exported registration service and explicit registration ownership; SAW-056 lets it accept only a fixed data invalidation, and SAW-057 limits receipt to its unique-work handoff without requesting that runtime permission or displaying anything. Debug builds add the Compose preview and test activities.
 - `NetworkSecurityPolicyTest` keeps it that way. It fails if the main source set sets `networkSecurityConfig` or `usesCleartextTraffic`, or if the debug exception covers anything but `127.0.0.1` and `localhost`.
 
 ## Lifecycle and its limits
@@ -339,7 +346,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `ExplorerTest` | The cluster in the link for each network, no link for a message signature, and no link without a signature or without a cluster |
 | `ActivityViewModelTest` | Reading what is stored, a history that can't be read leaving the records on screen and saying so, recovery on the next read, a link nothing could open, and clearing |
 | `ActivityScreenTest`, `ActivityDetailsScreenTest` | Compose on Robolectric: the list and the empty state, the unreadable warning with the records still openable, Clear only after a confirmation, the record in full, the cluster named on every transfer, the explorer offered only for a sent transaction and on its own cluster, the words that say a message signature is not a payment, and the message when nothing can open a link |
-| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, and only the non-exported messaging service, plus `INTERNET` and optional camera. Firebase imports stay under `push/`; the service has registration callbacks and only the fixed invalidation-to-`PushSyncScheduler` message path. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, wallet-key APIs, notification UI, and tap routing remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. |
+| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, and only the non-exported messaging service, plus `INTERNET` and optional camera. Firebase imports stay under `push/`; the service has registration callbacks and only the fixed invalidation-to-`PushSyncScheduler` message path, with no repository, transport, coroutine, or wallet dependency in the callback. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, wallet-key APIs, notification UI, and tap routing remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
 

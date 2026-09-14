@@ -176,7 +176,7 @@ content, transaction authorization, approval, or signature in the data.
 Android rejects any missing, unknown, or additional payload field. An accepted hint enqueues one
 unique connected-network WorkManager request with empty input; it then loads usable paired
 connections and their credentials from their existing stores and invokes the same bounded,
-authenticated `synchronizeAll()` path as Stage 5.2. A push cannot prepare, approve, answer, open a
+authenticated synchronization repository as Stage 5.2. A push cannot prepare, approve, answer, open a
 wallet, sign, send a transaction, display a notification, or select a tap destination.
 
 ### Automated behavior
@@ -194,7 +194,8 @@ wallet, sign, send a transaction, display a notification, or select a tap destin
   rejects missing, unknown-version, extra, request-ID, and credential fields.
 - `PushSynchronizationTest` proves empty WorkManager input, connected-network constraint,
   exponential backoff, expedited fallback only for a high-priority delivery, unique-work
-  coalescing, all-connection authoritative fetch, and retry only for transient unreachability.
+  coalescing, bounded recovery-set authoritative fetch, and retry only for transient
+  unreachability.
 - `StageBoundaryTest` confines Firebase imports to the registration/message callback package and
   WorkManager use to `sync/`. It rejects notification, `PendingIntent`, wallet, approval, and
   signing behavior in the callback. The sidecar boundary requires the audited dispatcher instead
@@ -240,3 +241,76 @@ Notification permission/UI, notification identity, and tap routing remain later 
 [Firebase guide](../guides/firebase.md#invalidation-delivery-saw-056) records the documented
 high-priority restriction, Doze and expedited-work behavior, five-minute TTL, shared collapse key,
 throttling, non-guaranteed delivery, and Firebase-off fallback verified for this child.
+
+<a id="saw-057--service-handoff-deduplication-and-sync-recovery"></a>
+
+## SAW-057 — service handoff, deduplication, and Sync recovery
+
+SAW-057 keeps the Firebase service callback to exact-map validation and WorkManager enqueue. It
+performs no sidecar request, cache reconciliation, or coroutine-owned network work inside the
+callback execution budget. The existing unique work name and FCM collapse key coalesce duplicate
+hints without assigning any state or request identity to them.
+
+Push and periodic workers now calculate a recovery set after loading usable connections. While the
+app is foreground, every connection whose gRPC state is already Live is excluded; background and
+worker-only processes include every usable connection. The set enters the existing four-server
+bounded `SynchronizationRepository`, which still admits one snapshot per connection and buffers
+stream events across it. Refresh, foreground recovery, periodic work, and push work therefore share
+one monotonic cache writer.
+
+### Automated behavior
+
+- `SeekerVaultMessagingServiceTest` and `StageBoundaryTest` hold the callback to strict payload
+  validation plus `PushSyncScheduler`: no repository, update transport, coroutine scope,
+  notification, tap, approval, signing, or wallet dependency is present there.
+- `PushSynchronizationTest` keeps empty-input, connected-network, expedited-fallback, exponential
+  retry, and unique-work assertions. It additionally proves duplicate triggers do no unary work
+  while every foreground stream is Live, and a mixed two-sidecar state fetches only the sidecar
+  whose stream needs recovery.
+- `BackgroundSynchronizationTest` proves the periodic worker uses the same selective recovery set,
+  and explicitly runs a no-FCM/no-callback case in which the Stage 5.2 periodic path fetches both
+  usable background connections.
+- `SynchronizationRepositoryTest` starts push and periodic runners together while a newer stream
+  event arrives. They perform one unary call and one stored-result retry, buffer the stream event,
+  and finish with its newer revision. A separate case filters removed/unrequested connections.
+- The Firebase-off sidecar test still constructs no sender. `pnpm test:updates` and the complete
+  Android suite run without `google-services.json`, retaining foreground, manual, unary, periodic,
+  process-recovery, and multi-sidecar behavior.
+
+### Commands and results
+
+Run on **2026-09-14** on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, Gradle 9.7.1,
+launcher JDK 19.0.2, and WorkManager 2.11.2. The checkout contained neither
+`android/app/google-services.json` nor `android/local.properties`; the Android SDK path was supplied
+only to each process through `ANDROID_HOME`.
+
+| Command | Result |
+| --- | --- |
+| Focused Android callback, push, periodic, synchronization-repository, and stage-boundary tests | **PASS.** Duplicate handoff, Live-stream exclusion, mixed-sidecar recovery, cross-source coalescing, buffered stream advancement, dropped-ping periodic recovery, and callback limits passed. |
+| `pnpm check` | **PASS.** Prettier, Buf format/lint, ESLint, both TypeScript checks, 427/427 sidecar tests, and 29/29 test-agent tests. |
+| `ANDROID_HOME=… pnpm test:updates` | **PASS.** 8/8 sidecar update tests and the selected Android production Sync, worker, lifecycle, and HTTP/2 tests. |
+| `pnpm test:hello` | **PASS.** 9/9 Stage 1 simulated-device cases. |
+| `pnpm test:queue` | **PASS.** 7/7 Stage 2 two-sidecar cases. |
+| `ANDROID_HOME=… pnpm check:android` | **PASS after formatting.** The first run stopped at `spotlessKotlinCheck`; `./gradlew spotlessApply` made only formatting changes, and the complete rerun passed Spotless, 829/829 debug JVM tests, Android lint, debug APK, and instrumentation APK with Firebase unconfigured. |
+| `pnpm check:generated` | **PASS.** Generated protocol clients and fixtures are current; SAW-057 changes no schema. |
+| `pnpm build` | **PASS.** Sidecar and test-agent TypeScript builds. |
+
+### Deliberate failure
+
+The push recovery filter was temporarily inverted so it selected the Live connection instead of
+the one needing recovery. The focused mixed-sidecar test failed at its recovery-set assertion. The
+correct non-Live predicate was restored before the passing focused and full runs above.
+
+### Physical Seeker and Firebase delivery
+
+`adb devices -l` listed no device on 2026-09-14, and no real Firebase project or sender credential
+was used.
+
+| Check | Result |
+| --- | --- |
+| Receive duplicate pings while foreground streams are healthy and while one sidecar needs worker recovery | **NOT RUN:** no physical Seeker or Firebase deployment was available. JVM and WorkManager tests do not count. |
+| Drop every ping, then observe foreground and OS-scheduled periodic recovery across normal process death/reboot/Doze | **NOT RUN:** no physical Seeker was attached. Automated recovery passed, but it is not physical timing evidence. |
+
+Notification permission/UI, notification identity, tap routing, reboot delivery timing, and Force
+stop delivery remain outside SAW-057. A push tap still does not exist, and no update path approves,
+signs, or opens a wallet.

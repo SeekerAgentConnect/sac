@@ -13,6 +13,8 @@ import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import io.github.brrenat.seekervault.connections.CheckOutcome
+import io.github.brrenat.seekervault.connections.Connection
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -72,22 +74,62 @@ class PushSynchronizationTest {
     }
 
     @Test
-    fun receiptFetchesAllAuthoritativeStateAndRetriesOnlyTransientUnreachability() = runTest {
+    fun receiptLeavesLiveStreamsActiveAndFetchesOnlyConnectionsThatNeedRecovery() = runTest {
         var calls = 0
-        val complete = PushSyncRunner {
-            calls++
-            mapOf(
-                A to SynchronizeOutcome.Updated(ConnectionSyncState(A)),
-                B to SynchronizeOutcome.Failed(CheckOutcome.CertificateRejected),
+        var requested = emptySet<String>()
+        val complete =
+            runner(
+                foreground =
+                    ForegroundUpdatesState(
+                        foreground = true,
+                        connections =
+                            mapOf(
+                                A to ForegroundConnectionState.Live,
+                                B to ForegroundConnectionState.Reconnecting(1),
+                            ),
+                    ),
+                synchronizeConnections = { ids ->
+                    calls++
+                    requested = ids
+                    mapOf(B to SynchronizeOutcome.Failed(CheckOutcome.CertificateRejected))
+                },
             )
-        }
         assertEquals(BackgroundSyncDecision.Complete, complete.run())
         assertEquals(1, calls)
+        assertEquals(setOf(B), requested)
 
-        val transient = PushSyncRunner {
-            mapOf(A to SynchronizeOutcome.Failed(CheckOutcome.Unreachable))
-        }
+        val transient =
+            runner(
+                synchronizeConnections = {
+                    mapOf(A to SynchronizeOutcome.Failed(CheckOutcome.Unreachable))
+                }
+            )
         assertEquals(BackgroundSyncDecision.Retry, transient.run())
+    }
+
+    @Test
+    fun duplicatePushAndWorkerSignalsDoNoUnaryWorkWhileEveryForegroundStreamIsLive() = runTest {
+        var calls = 0
+        val runner =
+            runner(
+                foreground =
+                    ForegroundUpdatesState(
+                        foreground = true,
+                        connections =
+                            mapOf(
+                                A to ForegroundConnectionState.Live,
+                                B to ForegroundConnectionState.Live,
+                            ),
+                    ),
+                synchronizeConnections = {
+                    calls++
+                    emptyMap()
+                },
+            )
+
+        assertEquals(BackgroundSyncDecision.Complete, runner.run())
+        assertEquals(BackgroundSyncDecision.Complete, runner.run())
+        assertEquals(0, calls)
     }
 
     @Test
@@ -120,6 +162,27 @@ class PushSynchronizationTest {
                     null
                 }
         }
+
+    private fun runner(
+        foreground: ForegroundUpdatesState = ForegroundUpdatesState(),
+        synchronizeConnections: suspend (Set<String>) -> Map<String, SynchronizeOutcome>,
+    ) =
+        PushSyncRunner(
+            load = {},
+            connections = { listOf(connection(A), connection(B)) },
+            foreground = { foreground },
+            synchronizeConnections = synchronizeConnections,
+        )
+
+    private fun connection(id: String) =
+        Connection(
+            id = id,
+            label = id,
+            serverUrl = "https://$id.example",
+            serverId = "server-$id",
+            deviceName = "Seeker",
+            pairedAt = Instant.parse("2026-09-14T12:00:00Z"),
+        )
 
     private companion object {
         const val A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"

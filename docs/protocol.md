@@ -571,7 +571,7 @@ A new PENDING request (revision one) is the only high-priority send because it i
 intended to become a time-sensitive user-visible notification in the completed stage. Later
 state/outcome changes use normal priority. Both use a five-minute TTL and the single collapse key
 `seeker-vault-request-state-v1`: if several undelivered hints compete, only the newest is needed
-because every receipt performs a complete authoritative fetch. FCM acceptance is not device
+because every receipt requests authoritative convergence, not one operation per hint. FCM acceptance is not device
 delivery, order is not guaranteed, and delivery can be delayed, throttled, collapsed, expired, or
 dropped.
 
@@ -579,14 +579,25 @@ Receipt enqueues unique `push-authoritative-sync` WorkManager work with a connec
 constraint, empty input, `KEEP` coalescing, and exponential retry only for transient unreachability.
 A delivered high-priority message requests expedited work with fallback to ordinary work when its
 quota is unavailable. The worker calls the same application-scoped, four-sidecar-bounded
-`synchronizeAll()` used by Stage 5.2 and retrieves each URL and credential only from that paired
-connection's stores. It does not trust or persist the FCM payload and has no operation that can
+synchronization repository used by Stage 5.2 and retrieves each URL and credential only from that
+paired connection's stores. It does not trust or persist the FCM payload and has no operation that can
 prepare, approve, answer, open a wallet, sign, send a transaction, or route a tap.
 
 If Firebase permanently rejects the FID, the sidecar compare-clears only that exact stored value;
 a rotation that won the race survives. Other Firebase errors are logged only as a fixed delivery
 classification and change no request, target, or result. Foreground Subscribe, manual Refresh,
 unary Sync, and periodic WorkManager remain the recovery path when FCM is absent or misses.
+
+SAW-057 keeps `FirebaseMessagingService` inside its short callback budget: validation and durable
+WorkManager enqueue are the complete message-receipt path, while every network fetch runs later in
+the bounded worker. An undelivered FCM collapse key and Android's unique-work name each reduce a
+burst to an invalidation, never to a request count. At worker execution, a usable connection whose
+foreground stream is already Live is excluded; other usable connections enter the existing
+four-sidecar-bounded, per-connection-coalescing Sync repository. A simultaneous Refresh, periodic
+run, or stream reconciliation therefore awaits or buffers the same connection owner instead of
+applying another independent snapshot. If every hint is dropped or Firebase is unconfigured, app
+foreground reconciliation and the persisted Stage 5.2 periodic job still fetch all durable
+requests.
 
 **`RevokeConnection`** takes the phone's credential, and its `connection_id` must be the caller's own; another ID gets `NOT_FOUND`. It revokes the connection at once, and cancels the connection's PENDING requests; see [connections](#connections-and-request-identity).
 

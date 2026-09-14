@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.sync
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.CheckOutcome
+import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.request.v1.ActionRequest
@@ -171,7 +172,7 @@ class SynchronizationRepositoryTest {
     }
 
     @Test
-    fun overlappingCallersCoalesceAndRecordedResultsRetryOnce() = runTest {
+    fun overlappingPushPeriodicAndStreamUpdatesUseOneConnectionCoordinator() = runTest {
         host.add(A)
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
@@ -179,17 +180,62 @@ class SynchronizationRepositoryTest {
             entered.complete(Unit)
             release.await()
         }
-        transport.pages[A] = ArrayDeque(listOf(snapshot(A, listOf(request(A_REQUEST) to 1))))
+        val pending = request(A_REQUEST)
+        transport.pages[A] = ArrayDeque(listOf(snapshot(A, listOf(pending to 1))))
         val repository = repository()
+        val connections = listOf(connection(A))
+        val push =
+            PushSyncRunner(
+                load = repository::load,
+                connections = { connections },
+                foreground = { ForegroundUpdatesState() },
+                synchronizeConnections = repository::synchronizeConnections,
+            )
+        val periodic =
+            BackgroundSyncRunner(
+                load = repository::load,
+                connections = { connections },
+                foreground = { ForegroundUpdatesState() },
+                synchronizeConnections = repository::synchronizeConnections,
+            )
+        val generation = repository.beginStream(A)
 
-        val first = async { repository.synchronize(A) }
+        val first = async { push.run() }
         entered.await()
-        val second = async { repository.synchronize(A) }
+        val second = async { periodic.run() }
+        runCurrent()
+        assertEquals(
+            EventApplyOutcome.Buffered,
+            repository.applyEvent(
+                A,
+                generation,
+                changed(A, pending.withState(RequestState.REQUEST_STATE_PROCESSING), 2, "stream"),
+            ),
+        )
         release.complete(Unit)
-        assertTrue(first.await() is SynchronizeOutcome.Updated)
-        assertTrue(second.await() is SynchronizeOutcome.Updated)
+
+        assertEquals(BackgroundSyncDecision.Complete, first.await())
+        assertEquals(BackgroundSyncDecision.Complete, second.await())
         assertEquals(1, transport.syncCalls[A])
         assertEquals(1, host.retries[A])
+        assertEquals(
+            2L,
+            repository.state.value.connections.getValue(A).requests.getValue(A_REQUEST).revision,
+        )
+    }
+
+    @Test
+    fun recoverySyncFetchesOnlyTheRequestedActiveConnections() = runTest {
+        host.add(A)
+        host.add(B)
+        transport.pages[A] = ArrayDeque(listOf(snapshot(A, emptyList())))
+        transport.pages[B] = ArrayDeque(listOf(snapshot(B, emptyList())))
+
+        val outcomes = repository().synchronizeConnections(setOf(B, C))
+
+        assertEquals(setOf(B), outcomes.keys)
+        assertEquals(null, transport.syncCalls[A])
+        assertEquals(1, transport.syncCalls[B])
     }
 
     @Test
@@ -624,6 +670,16 @@ class SynchronizationRepositoryTest {
             .setCursor("revoked")
             .setRevoked(ConnectionRevoked.getDefaultInstance())
             .build()
+
+    private fun connection(id: String) =
+        Connection(
+            id = id,
+            label = id.take(4),
+            serverUrl = "https://$id.example",
+            serverId = "server-$id",
+            deviceName = "Seeker",
+            pairedAt = Instant.parse("2026-09-14T12:00:00Z"),
+        )
 
     private class FakeHost : SynchronizationHost {
         val ids = linkedSetOf<String>()

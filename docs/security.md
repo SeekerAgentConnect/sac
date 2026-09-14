@@ -84,6 +84,11 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
   credential, policy, assessment, agent prose, message bytes, transaction, authorization,
   approval, signature, amount, recipient, or program. Android rejects any additional field and
   uses a valid hint only to schedule authenticated Sync from its own stored connection records.
+- **Push is not a second state writer (SAW-057).** The Firebase callback performs no sidecar fetch.
+  Its empty-input WorkManager handoff reaches the same per-connection synchronization coordinator
+  used by foreground streams, Refresh, and periodic recovery. Duplicate delivery is coalesced, a
+  healthy foreground stream stays active, and missing delivery only postpones observation until a
+  Stage 5.2 path runs.
 - **Upgrading from SAW-010:** migration 2 revokes the stand-in connection that SAW-010 created with the database, and cancels its PENDING requests. Pair the phone after upgrading.
 
 ## Transport security

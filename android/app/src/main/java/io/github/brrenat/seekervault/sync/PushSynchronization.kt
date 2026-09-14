@@ -14,6 +14,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.github.brrenat.seekervault.SeekerVaultApplication
 import io.github.brrenat.seekervault.connections.CheckOutcome
+import io.github.brrenat.seekervault.connections.Connection
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
@@ -63,15 +64,37 @@ object PushSyncScheduler {
         }
 }
 
-/** Push receipt always fetches; foreground stream health does not turn the hint into authority. */
+/**
+ * A push is only a recovery signal. Healthy foreground streams remain the active path; every
+ * connection without one is fetched through the same bounded synchronization coordinator.
+ */
 internal class PushSyncRunner(
-    private val synchronizeAll: suspend () -> Map<String, SynchronizeOutcome>
+    private val load: suspend () -> Unit,
+    private val connections: () -> List<Connection>,
+    private val foreground: () -> ForegroundUpdatesState,
+    private val synchronizeConnections: suspend (Set<String>) -> Map<String, SynchronizeOutcome>,
 ) {
     suspend fun run(): BackgroundSyncDecision {
-        val outcomes = synchronizeAll()
+        load()
+        val usable = connections().filter(Connection::usable).mapTo(mutableSetOf(), Connection::id)
+        if (usable.isEmpty()) return BackgroundSyncDecision.Complete
+        val live = foreground()
+        val recovery =
+            if (live.foreground) {
+                usable.filterTo(mutableSetOf()) { id ->
+                    live.connections[id] != ForegroundConnectionState.Live
+                }
+            } else {
+                usable
+            }
+        if (recovery.isEmpty()) return BackgroundSyncDecision.Complete
+
+        val outcomes = synchronizeConnections(recovery)
         return if (
-            outcomes.any { (_, outcome) ->
-                outcome is SynchronizeOutcome.Failed && outcome.failure == CheckOutcome.Unreachable
+            outcomes.any { (id, outcome) ->
+                id in recovery &&
+                    outcome is SynchronizeOutcome.Failed &&
+                    outcome.failure == CheckOutcome.Unreachable
             }
         ) {
             BackgroundSyncDecision.Retry
@@ -119,6 +142,12 @@ class PushSyncWorker : CoroutineWorker {
             context.applicationContext as? SeekerVaultApplication
                 ?: return BackgroundSyncDecision.Failed
         val repository = application.connectionRepository
-        return PushSyncRunner(repository::synchronizeAll).run()
+        return PushSyncRunner(
+                load = repository::load,
+                connections = { repository.connections.value },
+                foreground = { application.foregroundUpdates.state.value },
+                synchronizeConnections = repository::synchronizeConnections,
+            )
+            .run()
     }
 }

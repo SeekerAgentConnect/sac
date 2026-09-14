@@ -129,7 +129,7 @@ This table was revised on September 11, 2026:
 - The earlier end-to-end stage is split into persistent requests (Stage 2) and wallet message signing (Stage 3).
 - Policies are now a stage of their own (Stage 5).
 - Stage 5.2 adds foreground updates and eventual WorkManager sync and is complete in automated cross-component verification. Its periodic worker does not provide immediate background wake-up, and physical Seeker timing remains explicitly device-verified rather than inferred from an emulator.
-- Stage 5.3 is [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73). SAW-054 opens optional Firebase project/credential plumbing, SAW-055 adds authenticated connection-scoped registration/rotation, and SAW-056 adds minimal invalidation-to-Sync handling; later children own notification UI/permission, identity, tap routing, and acceptance.
+- Stage 5.3 is [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73). SAW-054 opens optional Firebase project/credential plumbing, SAW-055 adds authenticated connection-scoped registration/rotation, SAW-056 adds minimal invalidations, and SAW-057 bounds the service handoff and coalesces push/worker/stream synchronization while Stage 5.2 remains the fallback; later children own notification UI/permission, identity, tap routing, and acceptance.
 - Reliability work is built into every stage, with a final regression pass in Stage 8.
 
 | Stage | Scope | Outcome |

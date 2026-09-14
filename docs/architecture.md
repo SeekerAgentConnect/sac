@@ -114,11 +114,20 @@ SAW-056 joins only committed request events to that sender. The app-visible payl
 pair `kind=request_invalidation`, `version=1`; even connection and request IDs stay out. Same-turn
 changes coalesce, undelivered messages share one collapse key and a five-minute TTL, and only a new
 PENDING request uses high priority. Android rejects every other payload shape and persists only an
-empty-input, unique WorkManager request. That worker calls bounded `synchronizeAll()` and obtains
-each sidecar URL and credential from phone storage, not from FCM. It cannot answer a request or
+empty-input, unique WorkManager request. That worker calls the bounded synchronization repository
+and obtains each sidecar URL and credential from phone storage, not from FCM. It cannot answer a request or
 reach a wallet. Consequently the Stage 5.2 convergence authority above remains unchanged when a
 push is delayed, dropped, throttled, or disabled. The [Firebase guide](guides/firebase.md) defines
 the deployment and off/unavailable cases.
+
+SAW-057 makes the handoff explicit. `FirebaseMessagingService` does only exact-map validation and
+the quick WorkManager enqueue; it performs no disk-backed reconciliation or sidecar call inside the
+callback budget. FCM collapse and unique work coalesce duplicate hints. At execution time, push and
+periodic recovery exclude connections whose foreground stream is already Live, then pass the rest
+to the same four-sidecar-bounded repository. That repository still serializes one snapshot per
+connection and buffers live events across it, so stream, Refresh, periodic, and push delivery
+converge rather than becoming independent writers. Dropping the push path removes only an early
+signal: foreground reconciliation and the persisted periodic schedule still read durable state.
 
 ## Trust boundaries
 
@@ -186,7 +195,7 @@ These hold across the components, and every stage keeps them:
 | 4 | Transfer requests and fresh preparation (SAW-019), the phone's own inspection of the bytes (SAW-020), manual approval through the wallet (SAW-021), and on-chain confirmation (SAW-022) |
 | 5 | The policy model through end-to-end scenarios (SAW-025–029), then global defaults, connection overrides, two daily scopes, sourced review, and combined acceptance (Stage 5.1, SAW-043–047) |
 | 5.2 | Authenticated foreground bidirectional updates, shared reconciliation, a minimal phone cache, and eventual WorkManager sync (SAW-048–053; FCM excluded) |
-| 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, and SAW-056 content-free invalidation-to-Sync handling |
+| 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, and SAW-057 bounded service handoff plus cross-source sync coalescing |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
 | 8 | Release checks |

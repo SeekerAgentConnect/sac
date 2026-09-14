@@ -17,12 +17,13 @@ import org.w3c.dom.Element
  * adds WorkManager code there. SAW-054 puts the optional Firebase Messaging client on the
  * classpath. SAW-055 adds one connection-scoped registration service under `push/`. SAW-056 lets
  * that service accept exactly one content-free invalidation and enqueue a unique WorkManager Sync
- * under `sync/`; it adds no runtime permission request, notification, tap route, or wallet action.
- * Other app-defined services, jobs, alarms, receivers, and wallet automation remain excluded.
- * SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on purpose:
- * the app drives the wallet the owner already has. It still holds no wallet key of its own, and
- * Seed Vault's own SDK stays out. These checks fail when a limit is crossed early; the stage that
- * lifts one changes them.
+ * under `sync/`. SAW-057 keeps the callback to validation and this durable handoff; network fetches
+ * stay in the bounded worker and coalesce with foreground/periodic synchronization. It adds no
+ * runtime permission request, notification, tap route, or wallet action. Other app-defined
+ * services, jobs, alarms, receivers, and wallet automation remain excluded. SAW-015 lifted the "no
+ * wallet library" limit for the Mobile Wallet Adapter client, on purpose: the app drives the wallet
+ * the owner already has. It still holds no wallet key of its own, and Seed Vault's own SDK stays
+ * out. These checks fail when a limit is crossed early; the stage that lifts one changes them.
  */
 class StageBoundaryTest {
     private val main =
@@ -378,7 +379,7 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun saw056UsesFirebaseOnlyForRegistrationAndFixedInvalidationSync() {
+    fun saw057KeepsFirebaseCallbackBoundedAndWithoutWalletOrNotificationAuthority() {
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         val firebaseImports = Regex("""^import com\.google\.firebase\.""", RegexOption.MULTILINE)
         assertEquals(
@@ -400,6 +401,10 @@ class StageBoundaryTest {
         assertTrue("override fun onMessageReceived" in service)
         assertTrue("RemoteMessage" in service)
         assertTrue("PushSyncScheduler" in service)
+        assertTrue("ConnectionRepository" !in service)
+        assertTrue("UpdateTransport" !in service)
+        assertTrue("synchronize" !in service)
+        assertTrue("CoroutineScope" !in service)
         assertTrue("Notification" !in service)
         assertTrue("PendingIntent" !in service)
         assertTrue("wallet" !in service.lowercase())

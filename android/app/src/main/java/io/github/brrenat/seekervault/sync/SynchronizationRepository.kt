@@ -129,7 +129,18 @@ class SynchronizationRepository(
     /** Headless entry point used by a process started only for synchronization. */
     suspend fun synchronizeAll(): Map<String, SynchronizeOutcome> {
         if (!_state.value.loaded) load()
-        val ids = host.connectionIds()
+        return synchronizeConnections(host.connectionIds())
+    }
+
+    /**
+     * Synchronizes only the requested active connections. Recovery workers use this to leave a
+     * healthy foreground stream as the active path while still bounding independent sidecars.
+     */
+    suspend fun synchronizeConnections(
+        connectionIds: Set<String>
+    ): Map<String, SynchronizeOutcome> {
+        if (!_state.value.loaded) load()
+        val ids = connectionIds.intersect(host.connectionIds())
         val permits = Semaphore(MAX_HEADLESS_CONCURRENCY)
         return coroutineScope {
             ids.associateWith { id ->
