@@ -41,6 +41,8 @@ import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.connections.InboxSummary
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.inbox.InboxViewModel
+import io.github.brrenat.seekervault.inbox.NotificationOpenStatus
+import io.github.brrenat.seekervault.inbox.NotificationRequestStateScreen
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreen
 import io.github.brrenat.seekervault.inbox.Preparation
 import io.github.brrenat.seekervault.inbox.RequestDetailsScreen
@@ -50,6 +52,7 @@ import io.github.brrenat.seekervault.inbox.inboxItems
 import io.github.brrenat.seekervault.inbox.key
 import io.github.brrenat.seekervault.live.LiveCommandRoute
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
+import io.github.brrenat.seekervault.notifications.RequestNotificationPermission
 import io.github.brrenat.seekervault.policy.PolicyEditorScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.ui.BottomDestination
@@ -61,6 +64,7 @@ import io.github.brrenat.seekervault.wallet.WalletScreen
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 import java.time.Instant
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -78,6 +82,7 @@ fun SeekerVaultApp(
     policy: PolicyEditorViewModel,
     globalPolicy: PolicyEditorViewModel,
     live: LiveCommandViewModel,
+    notificationTaps: StateFlow<MainActivity.NotificationTap?>,
 ) {
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.CONNECTIONS)) }
     var closingSheet by remember { mutableStateOf(false) }
@@ -109,8 +114,22 @@ fun SeekerVaultApp(
     val historyState by history.state.collectAsStateWithLifecycle()
     val policyState by policy.state.collectAsStateWithLifecycle()
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
+    val notificationTap by notificationTaps.collectAsStateWithLifecycle()
     val root = stack.first()
     val route = stack.last()
+    RequestNotificationPermission(
+        enabled =
+            BuildConfig.FIREBASE_CONFIGURED && state.loaded && state.connections.any { it.usable }
+    )
+    LaunchedEffect(notificationTap?.sequence) {
+        val key = notificationTap?.key ?: return@LaunchedEffect
+        closingSheet = false
+        promotedRoute = null
+        backplateTargetSize = null
+        requestedPolicyClose = null
+        stack = listOf(Routes.CONNECTIONS, requestRoute(key))
+        inbox.openFromNotification(key)
+    }
     BackHandler(enabled = stack.size > 1 || root != Routes.CONNECTIONS) {
         if (stack.size > 1) pop() else stack = listOf(Routes.CONNECTIONS)
     }
@@ -372,8 +391,28 @@ fun SeekerVaultApp(
                         val key = RequestKey(connectionId, requestId)
                         val result = inboxState.inbox.result(key)
                         val request = result?.request ?: inboxState.inbox.pendingRequest(key)
-                        if (request == null) {
-                            RequestGoneScreen(onBack = pop)
+                        val notificationOpen = inboxState.notificationOpen?.takeIf { it.key == key }
+                        if (
+                            notificationOpen?.status == NotificationOpenStatus.Loading ||
+                                notificationOpen?.status == NotificationOpenStatus.Removed ||
+                                notificationOpen?.status == NotificationOpenStatus.Revoked ||
+                                notificationOpen?.status == NotificationOpenStatus.Unavailable
+                        ) {
+                            NotificationRequestStateScreen(
+                                status = notificationOpen.status,
+                                onRetry = { inbox.openFromNotification(key) },
+                                onBack = pop,
+                            )
+                        } else if (request == null) {
+                            if (notificationOpen != null) {
+                                NotificationRequestStateScreen(
+                                    status = NotificationOpenStatus.Gone,
+                                    onRetry = { inbox.openFromNotification(key) },
+                                    onBack = pop,
+                                )
+                            } else {
+                                RequestGoneScreen(onBack = pop)
+                            }
                         } else {
                             RequestDetailsScreen(
                                 request = request,
@@ -485,6 +524,8 @@ private object Routes {
     const val INBOX_FOR = "inbox/"
     const val REQUEST = "request/"
 }
+
+private fun requestRoute(key: RequestKey) = "${Routes.REQUEST}${key.connectionId}/${key.requestId}"
 
 @Composable
 private fun ConnectionDetailsRoute(

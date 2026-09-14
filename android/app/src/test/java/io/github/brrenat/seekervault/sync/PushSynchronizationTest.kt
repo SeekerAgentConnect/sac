@@ -14,6 +14,7 @@ import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.connections.RequestKey
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.test.runTest
@@ -147,6 +148,25 @@ class PushSynchronizationTest {
         assertEquals(ListenableWorker.Result.retry(), retry.doWork())
     }
 
+    @Test
+    fun notificationsAreDerivedOnlyAfterAuthoritativeSyncFindsANewPendingRequest() = runTest {
+        var current = emptySet<RequestKey>()
+        val changes = mutableListOf<Pair<Set<RequestKey>, Set<RequestKey>>>()
+        val key = RequestKey(A, A_REQUEST)
+        val runner =
+            runner(
+                synchronizeConnections = {
+                    current = setOf(key)
+                    mapOf(A to SynchronizeOutcome.Updated(ConnectionSyncState(A)))
+                },
+                pending = { current },
+                reconcileNotifications = { before, after -> changes += before to after },
+            )
+
+        assertEquals(BackgroundSyncDecision.Complete, runner.run())
+        assertEquals(listOf(emptySet<RequestKey>() to setOf(key)), changes)
+    }
+
     private fun executeWorkerFactory(
         execute: suspend () -> BackgroundSyncDecision
     ): androidx.work.WorkerFactory =
@@ -166,12 +186,16 @@ class PushSynchronizationTest {
     private fun runner(
         foreground: ForegroundUpdatesState = ForegroundUpdatesState(),
         synchronizeConnections: suspend (Set<String>) -> Map<String, SynchronizeOutcome>,
+        pending: () -> Set<RequestKey> = { emptySet() },
+        reconcileNotifications: (Set<RequestKey>, Set<RequestKey>) -> Unit = { _, _ -> },
     ) =
         PushSyncRunner(
             load = {},
             connections = { listOf(connection(A), connection(B)) },
             foreground = { foreground },
             synchronizeConnections = synchronizeConnections,
+            pending = pending,
+            reconcileNotifications = reconcileNotifications,
         )
 
     private fun connection(id: String) =
@@ -187,5 +211,6 @@ class PushSynchronizationTest {
     private companion object {
         const val A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         const val B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        const val A_REQUEST = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
     }
 }

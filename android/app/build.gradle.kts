@@ -22,11 +22,17 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+        // Lets the UI omit an irrelevant permission prompt from Firebase-off deployments.
+        // It contains configuration presence only, never a Firebase identifier or credential.
+        buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
         // src/androidTest: the device round trip, run by `pnpm test:hello --device`.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        buildConfig = true
+        compose = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

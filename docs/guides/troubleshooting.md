@@ -227,7 +227,22 @@ The background interval is configured to Android's 15-minute minimum, but it is 
 
 If you used Android Settings → Apps → Seeker Vault → **Force stop**, scheduled work cannot resume by itself. Reopen Seeker Vault once. The app restores the existing unique schedule when it loads a usable connection; it does not create a tight catch-up loop. Removing or revoking the last usable connection cancels the schedule.
 
-Background work has no notification and opens no wallet. A pending request still waits for your manual review, and an already-submitted transfer may only have its existing status reconciled. Stage 5.2 has no immediate background-delivery guarantee. SAW-056 can send an optional content-free Firebase hint and SAW-057 gives it a bounded, deduplicated authoritative Sync handoff, but FCM acceptance is not device delivery: Doze, throttling, expiry, collapse, outages, or Force stop can delay or prevent it. A healthy foreground stream takes precedence; otherwise push and periodic workers share the same per-connection coordinator. Notification UI remains a later child of [Stage 5.3](https://linear.app/seekeragentwallet/issue/SEE-73), and the [Firebase guide](firebase.md#service-handoff-and-sync-recovery-saw-057) covers priority, TTL, collapse, handoff, and off/unavailable cases.
+Background work opens no wallet. A pending request still waits for your manual review, and an already-submitted transfer may only have its existing status reconciled. Stage 5.2 has no immediate background-delivery guarantee. SAW-056 can send an optional content-free Firebase hint and SAW-057 gives it a bounded, deduplicated authoritative Sync handoff, but FCM acceptance is not device delivery: Doze, throttling, expiry, collapse, outages, or Force stop can delay or prevent it. A healthy foreground stream takes precedence; otherwise push and periodic workers share the same per-connection coordinator. SAW-058 may show a generic notification after a successful push Sync discovers a new pending request. The [Firebase guide](firebase.md#notifications-and-tap-to-open-saw-058) covers priority, TTL, collapse, handoff, notification permission, tap routing, and off/unavailable cases.
+
+### Request notifications are missing or a tap is stale
+
+Notifications require an APK built with `android/app/google-services.json`, at least one usable
+connection, Android notification permission, and an enabled **Requests waiting for review**
+channel. If permission or the channel was denied, enable it in Android Settings. Denial does not
+stop foreground streams, manual Refresh, unary Sync, periodic recovery, registration, or
+push-triggered Sync.
+
+A notification is a reminder, not server state. A cancellation, expiry, or remote answer can race
+with a dropped or delayed status hint and leave an old alert in the shade. Tap it: the app fetches
+that paired sidecar before showing controls and reports no longer waiting, removed, revoked, or
+unavailable honestly. Retry an unavailable fetch or use **Refresh**. A tap never chooses an answer,
+approves, signs, or opens a wallet; like every Sync path, it may retry only an answer the owner
+already stored.
 
 ### Live updates stay on Connecting or Reconnecting
 

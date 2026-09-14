@@ -89,6 +89,15 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
   used by foreground streams, Refresh, and periodic recovery. Duplicate delivery is coalesced, a
   healthy foreground stream stays active, and missing delivery only postpones observation until a
   Stage 5.2 path runs.
+- **A notification is a route, never authority (SAW-058).** It is built locally only after
+  authenticated Sync and shows generic text with secret lock-screen visibility. Its immutable
+  explicit intent carries the two opaque IDs needed to find one connection/request, not request
+  content, policy data, credentials, or an authorization. A tap validates both IDs and fetches the
+  paired sidecar again before it can show answer controls. Loading, stale, removed, revoked, and
+  unreachable states have no such controls. A tap chooses or creates no answer, opens no wallet,
+  and approves or signs nothing; its Sync may retry only a result the owner already stored, exactly
+  like every other Stage 5.2 Sync. Denying `POST_NOTIFICATIONS` suppresses the alert and changes no
+  synchronization path.
 - **Upgrading from SAW-010:** migration 2 revokes the stand-in connection that SAW-010 created with the database, and cancels its PENDING requests. Pair the phone after upgrading.
 
 ## Transport security

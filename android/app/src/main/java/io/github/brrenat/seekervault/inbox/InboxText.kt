@@ -59,6 +59,9 @@ object InboxTags {
     const val SEND_AGAIN = "sendAgain"
     const val SENDING = "sending"
     const val GONE = "requestGone"
+    const val NOTIFICATION_LOADING = "notificationRequestLoading"
+    const val NOTIFICATION_STATE = "notificationRequestState"
+    const val NOTIFICATION_RETRY = "notificationRequestRetry"
 
     /** The phone's own verdict on a transfer's transaction (SAW-020). */
     const val TRANSFER_VERDICT = "transferVerdict"

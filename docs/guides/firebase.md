@@ -5,10 +5,11 @@ the client's current direct-send registration to paired connections: initial reg
 later refreshes are sent to each sidecar through that connection's authenticated phone API.
 SAW-056 sends a content-free invalidation after committed request changes. SAW-057 keeps receipt
 inside the Firebase callback budget, deduplicates the handoff, and schedules only the connections
-that need the existing authoritative Sync path. This revision still does **not** request runtime notification
-permission, show a notification, create a channel, or route a tap. Adding or removing Firebase does
-not change the Stage 5.2 foreground stream, manual **Refresh**, unary Sync, or periodic WorkManager
-recovery.
+that need the existing authoritative Sync path. SAW-058 adds one private request channel, an
+isolated runtime notification-permission request, and a read-only tap route which fetches current
+state before showing review controls. Adding or removing Firebase, or denying notification
+permission, does not change the Stage 5.2 foreground stream, manual **Refresh**, unary Sync, or
+periodic WorkManager recovery.
 
 ## What belongs to one deployment
 
@@ -52,11 +53,11 @@ does not write the value to disk. After the last usable connection disappears it
 `unregister()` and returns auto-init to false.
 
 The Firebase Messaging library contributes its normal receiver, service, provider, and permission
-entries—including `POST_NOTIFICATIONS`—to the merged APK manifest whether or not a project file is
-present. SAW-055 adds one non-exported `SeekerVaultMessagingService` for `onRegistered` and
-`onUnregistered`; SAW-056 adds its exact-match data-message callback and Sync scheduling. The app
-makes no runtime notification-permission request and displays no notification in this revision.
-These entries are plumbing, not a claim of guaranteed delivery.
+entries to the merged APK manifest whether or not a project file is present. The app now declares
+`POST_NOTIFICATIONS` explicitly. SAW-055 adds one non-exported `SeekerVaultMessagingService` for
+`onRegistered` and `onUnregistered`; SAW-056 adds its exact-match data-message callback and Sync
+scheduling. SAW-058 creates and uses a notification channel only when the project file was present
+at build time. These entries are plumbing, not a claim of guaranteed delivery.
 
 ## Registration ownership and cleanup
 
@@ -149,13 +150,13 @@ open a wallet, sign, send a transaction, or choose a screen.
 ### Priority, Doze, TTL, collapse, and throttling
 
 - **Priority:** only the first durable event for a new PENDING request is sent with Android `high`
-  priority, because that event is intended to become a time-sensitive user-visible notification
-  when the later notification child lands. State, outcome, confirmation, cancellation, and expiry
-  changes use `normal`. Firebase says normal messages may wait while the device is in Doze; high
-  priority attempts immediate delivery and limited processing, but should be reserved for
-  time-sensitive user-visible notifications. Repeated high-priority traffic that does not produce
-  user-visible notifications can be deprioritized. SAW-056 itself displays nothing, so the complete
-  Stage 5.3 feature must add the corresponding honest notification before deployment.
+  priority, because that event can become SAW-058's time-sensitive user-visible notification after
+  authoritative Sync. State, outcome, confirmation, cancellation, and expiry changes use `normal`.
+  Firebase says normal messages may wait while the device is in Doze; high priority attempts
+  immediate delivery and limited processing, but should be reserved for time-sensitive
+  user-visible notifications. Repeated high-priority traffic that does not produce user-visible
+  notifications can be deprioritized. SAW-056 itself displayed nothing; SAW-058 supplies the
+  corresponding generic alert when Android permission and the channel allow presentation.
 - **Work after delivery:** a message delivered as high priority requests expedited WorkManager
   execution immediately, with `RUN_AS_NON_EXPEDITED_WORK_REQUEST` fallback when expedited quota is
   unavailable. Normal delivery requests ordinary work. A connected network is still required, the
@@ -214,12 +215,57 @@ eventually fetches every usable non-Live connection. A Firebase-off build has ex
 5.2 paths. Normal process death can still be followed by WorkManager or FCM subject to Android
 policy; Settings **Force stop** blocks both until the owner reopens the app.
 
+<a id="notifications-and-tap-to-open-saw-058"></a>
+
+## Notifications and tap-to-open (SAW-058)
+
+A Firebase-configured APK creates one high-importance **Requests waiting for review** channel with
+secret lock-screen visibility. On Android 13 and later it asks for notification permission only
+after stored connections have loaded and at least one is usable. Denial suppresses presentation
+only: foreground streams, manual Refresh, unary Sync, the persisted periodic job, FCM registration,
+and push-triggered Sync continue unchanged. Android Settings is the place to enable a permission or
+channel that was denied or disabled. A Firebase-off APK creates no channel, makes no permission
+request, and posts no notification.
+
+The Firebase callback still displays nothing. After its worker finishes an authoritative Sync, the
+app compares the complete pending-key set from before and after that fetch. A newly discovered
+pending key gets one generic alert; a key that left PENDING has its earlier alert canceled. The
+notification says only that a request is waiting and names the owner's local connection label. It
+contains no action, request text, agent note, amount, recipient, policy, credential, authorization,
+transaction, signature, or answer, and its lock-screen content is private. Distinct requests have
+distinct immutable, explicit intents containing only the connection and request IDs needed to
+route inside this app.
+
+The shade can still contain stale information. A status-change hint may be dropped, expire, or be
+delayed, or the periodic worker may not have run yet. Tapping therefore never trusts notification
+state: it validates both IDs and fetches that paired sidecar before exposing any review controls.
+It then opens the current request, the answer already stored by this phone, or an honest state:
+
+- **no longer waiting** for an expired, canceled, or remotely answered request;
+- **connection removed** when its local pairing was deleted;
+- **connection revoked** when the stored connection is no longer usable; or
+- **current state unavailable** when the sidecar cannot be reached, with a retry that fetches again.
+
+Loading and stale/error states have no answer, approval, or wallet controls. A tap never chooses an
+answer, approves, signs, or opens a wallet. Its authoritative Sync may retry only an answer the
+owner already stored, as every Stage 5.2 Sync can. Once a current request is displayed, every
+existing manual review and wallet rule remains exactly the same: only the owner's later explicit
+action can answer it or start a wallet interaction.
+
+High-priority invalidations now correspond to the newly created, time-sensitive request that may
+produce this user-visible alert when permission is granted. Normal-priority state changes only
+reconcile and cancel/update local presentation. If permission is denied, high-priority receipt can
+still schedule Sync but cannot show the alert; sustained high-priority traffic without visible
+notifications may be deprioritized by FCM. Doze, quota, throttling, the five-minute TTL, the shared
+collapse key, non-guaranteed ordering, and Force-stop behavior described above still apply.
+
 ## Off, unavailable, and incorrectly configured
 
-| Condition | Behavior through SAW-057 |
+| Condition | Behavior through SAW-058 |
 | --- | --- |
-| No Android `google-services.json` | The Google Services plugin is not applied, no default Firebase app exists, and registration calls are no-ops. The app and every Stage 5.2 path still build and run. |
+| No Android `google-services.json` | The Google Services plugin is not applied, no default Firebase app exists, registration calls are no-ops, and the app creates no request channel, permission prompt, or notification. Every Stage 5.2 path still builds and runs. |
 | No sidecar `FCM_PROJECT_ID` | No Firebase Admin app, dispatcher, listener, or sender is constructed. Durable events still commit and feed Stage 5.2 normally. |
+| Notification permission denied, or the channel disabled | Alerts are absent. Push may still trigger authoritative Sync, and foreground streams, manual Refresh, unary Sync, and periodic recovery are unchanged. Enable the permission/channel in Android Settings if alerts are wanted. |
 | Invalid `FCM_PROJECT_ID` | Configuration fails with the variable name and format requirement, never a credential value. Unset the variable to return to the fully functional Firebase-off mode. |
 | Missing, expired, or unauthorized ADC; FCM outage; quota/throttling response | The best-effort send fails after the durable change has committed. Fixed logs name only `delivery unavailable`; the target and request stay unchanged, and Stage 5.2 recovery remains authoritative. |
 | Android and sidecar use different Firebase projects | Sends are rejected for the target rather than changing request state. Correct both deployment configurations; never copy a target into logs while diagnosing it. |

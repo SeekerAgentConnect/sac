@@ -2,7 +2,7 @@
 
 What an agent asks of you arrives on the phone as a **pending request**. You review each one and answer it yourself. The app answers nothing for you. While the app is closed, Android may let its bounded periodic worker fetch server state, but that worker cannot approve or open a wallet.
 
-> **Stage 5.3 status:** while the app is open, a configured current sidecar delivers live request and outcome changes through one persistent stream. In the background, one network-constrained WorkManager job periodically uses unary Sync. SAW-056 can additionally send a content-free, best-effort Firebase invalidation; SAW-057 hands it to unique work and omits connections whose foreground stream is already Live. The hint contains no request details and can be delayed, collapsed, expired, throttled, or dropped. Notification UI and tap routing remain later children of [Stage 5.3](https://linear.app/seekeragentwallet/issue/SEE-73). No update path performs an automatic wallet action.
+> **Stage 5.3 status:** while the app is open, a configured current sidecar delivers live request and outcome changes through one persistent stream. In the background, one network-constrained WorkManager job periodically uses unary Sync. SAW-056 can additionally send a content-free, best-effort Firebase invalidation; SAW-057 hands it to unique work and omits connections whose foreground stream is already Live. SAW-058 may show a generic request notification after that Sync, subject to Android permission. The hint contains no request details and can be delayed, collapsed, expired, throttled, or dropped. No update or notification-tap path performs an automatic wallet action.
 
 ## Where requests come from
 
@@ -18,7 +18,7 @@ The phone reconciles every connection when the app opens or comes back to the fo
 
 Connection status says whether live delivery is connecting, live, reconnecting, unreachable, revoked, unsupported, or intentionally paused in the background. **Last synced** is shown separately: an older successful sync does not mean a stream is live. **Refresh** remains available and its existing failure text remains actionable.
 
-With at least one usable connection, Android retains one periodic background job. Its configured interval is 15 minutes, which is Android's minimum—not a promise that every request appears within 15 minutes. Doze, battery restrictions, standby, lack of a network, and device policy can defer a run. Android Settings **Force stop** stops scheduled and push-triggered work until you reopen the app. A configured invalidation may prompt a sooner Sync, but delivery is never guaranteed and this child displays no notification. Duplicate hints coalesce, and if a foreground stream is already Live it remains the active path instead of a push worker fetching the same connection again. Open the app or use **Refresh** when you need to force the newest state. Setup and inspection steps are in the [live and background updates runbook](live-background-updates.md); optional Firebase behavior is in the [Firebase guide](firebase.md#service-handoff-and-sync-recovery-saw-057).
+With at least one usable connection, Android retains one periodic background job. Its configured interval is 15 minutes, which is Android's minimum—not a promise that every request appears within 15 minutes. Doze, battery restrictions, standby, lack of a network, and device policy can defer a run. Android Settings **Force stop** stops scheduled and push-triggered work until you reopen the app. A configured invalidation may prompt a sooner Sync, but delivery is never guaranteed. After a successful push Sync discovers a new pending request, the configured app may show a generic notification if Android permission and the request channel are enabled. Duplicate hints coalesce, and if a foreground stream is already Live it remains the active path instead of a push worker fetching the same connection again. Open the app or use **Refresh** when you need to force the newest state. Setup and inspection steps are in the [live and background updates runbook](live-background-updates.md); optional Firebase and notification behavior is in the [Firebase guide](firebase.md#notifications-and-tap-to-open-saw-058).
 
 A background run reloads stored connections and encrypted credentials, fetches a bounded unary snapshot, retries an answer you already recorded if needed, and saves the resulting requests, Activity outcomes, and last-sync time. It never prepares a transaction, answers a request, approves, opens the wallet, signs, sends, or repeats a transfer.
 
@@ -41,6 +41,20 @@ Requests remain authoritative on the sidecar. The phone keeps the last complete 
    - when it was made and when it expires
    - its request ID
 4. Tap **Acknowledge** or **Reject**. Both buttons stay disabled while your answer is sent, so a second tap does nothing.
+
+## Opening a notification
+
+Tap a request notification to open the connection and request named by its local route. The app
+first fetches current state from that paired sidecar. Until the fetch succeeds, the screen shows no
+answer, approval, or wallet controls. If the request expired, was canceled, or was answered
+elsewhere, the screen says it is no longer waiting. A removed or revoked connection is named as
+such; an unreachable sidecar offers a retry. An answer already stored on this phone opens its
+existing result.
+
+The notification is only a reminder. Tapping it never chooses an answer, approves, signs, or opens
+a wallet. Its current-state Sync may retry only an answer you already recorded, just like Refresh
+or background recovery. Continue with the same manual review described below only after the
+current request appears.
 
 ## What happens to your answer
 

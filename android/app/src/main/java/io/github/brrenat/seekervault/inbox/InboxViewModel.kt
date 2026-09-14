@@ -197,7 +197,20 @@ data class InboxUiState(
      * different thing to consent to, and this stops matching it.
      */
     val acknowledged: Map<RequestKey, Consent> = emptyMap(),
+    /** A notification tap remains read-only until its paired sidecar has answered a fresh fetch. */
+    val notificationOpen: NotificationOpen? = null,
 )
+
+enum class NotificationOpenStatus {
+    Loading,
+    Current,
+    Gone,
+    Removed,
+    Revoked,
+    Unavailable,
+}
+
+data class NotificationOpen(val key: RequestKey, val status: NotificationOpenStatus)
 
 /**
  * State and actions of Pending requests and Request details. It fetches only when asked, and it
@@ -238,6 +251,7 @@ class InboxViewModel(
         val checking: Set<RequestKey> = emptySet(),
         val assessments: Map<RequestKey, RequestAssessment> = emptyMap(),
         val acknowledged: Map<RequestKey, Consent> = emptyMap(),
+        val notificationOpen: NotificationOpen? = null,
     )
 
     private val activity = MutableStateFlow(Activity())
@@ -265,6 +279,7 @@ class InboxViewModel(
                     now.checking,
                     now.assessments,
                     now.acknowledged,
+                    now.notificationOpen,
                 )
             }
             .stateIn(
@@ -289,6 +304,54 @@ class InboxViewModel(
                 coroutineScope { ids.forEach { launch { repository.refresh(it) } } }
             } finally {
                 activity.update { it.copy(refreshing = false) }
+            }
+        }
+    }
+
+    /**
+     * Resolves a notification's opaque IDs against phone storage and then the paired sidecar. The
+     * fetch is the only automatic operation: it cannot choose or create an answer, prepare,
+     * approve, or reach a wallet. As with every Sync, it may retry only a result the owner already
+     * stored. Review controls remain off-screen until the result is known to be current.
+     */
+    fun openFromNotification(key: RequestKey) {
+        activity.update {
+            it.copy(notificationOpen = NotificationOpen(key, NotificationOpenStatus.Loading))
+        }
+        viewModelScope.launch {
+            repository.load()
+            val initial = repository.connections.value.firstOrNull { it.id == key.connectionId }
+            if (initial == null) {
+                updateNotificationOpen(key, NotificationOpenStatus.Removed)
+                return@launch
+            }
+            if (!initial.usable) {
+                updateNotificationOpen(key, NotificationOpenStatus.Revoked)
+                return@launch
+            }
+            repository.refresh(key.connectionId)
+            val connection = repository.connections.value.firstOrNull { it.id == key.connectionId }
+            val status =
+                when {
+                    connection == null -> NotificationOpenStatus.Removed
+                    !connection.usable -> NotificationOpenStatus.Revoked
+                    connection.lastCheck?.outcome != CheckOutcome.Ok ->
+                        NotificationOpenStatus.Unavailable
+                    repository.inbox.value.result(key) != null ||
+                        repository.inbox.value.pendingRequest(key) != null ->
+                        NotificationOpenStatus.Current
+                    else -> NotificationOpenStatus.Gone
+                }
+            updateNotificationOpen(key, status)
+        }
+    }
+
+    private fun updateNotificationOpen(key: RequestKey, status: NotificationOpenStatus) {
+        activity.update { current ->
+            if (current.notificationOpen?.key == key) {
+                current.copy(notificationOpen = NotificationOpen(key, status))
+            } else {
+                current
             }
         }
     }

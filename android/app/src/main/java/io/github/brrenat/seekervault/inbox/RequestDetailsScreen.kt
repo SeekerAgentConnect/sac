@@ -1950,6 +1950,72 @@ fun RequestGoneScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * A notification route does not expose review controls until its IDs have been resolved against
+ * current sidecar state. Every message states what is known and, just as importantly, that the tap
+ * did not approve or sign anything.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NotificationRequestStateScreen(
+    status: NotificationOpenStatus,
+    onRetry: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val message =
+        when (status) {
+            NotificationOpenStatus.Loading -> R.string.notification_open_loading
+            NotificationOpenStatus.Gone,
+            NotificationOpenStatus.Current -> R.string.notification_open_gone
+            NotificationOpenStatus.Removed -> R.string.notification_open_removed
+            NotificationOpenStatus.Revoked -> R.string.notification_open_revoked
+            NotificationOpenStatus.Unavailable -> R.string.notification_open_unavailable
+        }
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.request_title)) },
+                actions = { CloseButton(onBack) },
+                expandedHeight = 56.dp,
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                    ),
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            Modifier.padding(innerPadding).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (status == NotificationOpenStatus.Loading) {
+                LinearProgressIndicator(
+                    Modifier.fillMaxWidth().testTag(InboxTags.NOTIFICATION_LOADING),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                )
+            }
+            Text(stringResource(message), modifier = Modifier.testTag(InboxTags.NOTIFICATION_STATE))
+            if (
+                status == NotificationOpenStatus.Gone ||
+                    status == NotificationOpenStatus.Unavailable
+            ) {
+                SeekerButton(
+                    text = stringResource(R.string.notification_open_retry),
+                    onClick = onRetry,
+                    automationTag = InboxTags.NOTIFICATION_RETRY,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun Field(@StringRes label: Int, value: String, name: String) {
     SeekerCard(

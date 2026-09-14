@@ -15,6 +15,7 @@ import androidx.work.WorkerParameters
 import io.github.brrenat.seekervault.SeekerVaultApplication
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.connections.RequestKey
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
@@ -73,9 +74,12 @@ internal class PushSyncRunner(
     private val connections: () -> List<Connection>,
     private val foreground: () -> ForegroundUpdatesState,
     private val synchronizeConnections: suspend (Set<String>) -> Map<String, SynchronizeOutcome>,
+    private val pending: () -> Set<RequestKey> = { emptySet() },
+    private val reconcileNotifications: (Set<RequestKey>, Set<RequestKey>) -> Unit = { _, _ -> },
 ) {
     suspend fun run(): BackgroundSyncDecision {
         load()
+        val before = pending()
         val usable = connections().filter(Connection::usable).mapTo(mutableSetOf(), Connection::id)
         if (usable.isEmpty()) return BackgroundSyncDecision.Complete
         val live = foreground()
@@ -90,6 +94,7 @@ internal class PushSyncRunner(
         if (recovery.isEmpty()) return BackgroundSyncDecision.Complete
 
         val outcomes = synchronizeConnections(recovery)
+        reconcileNotifications(before, pending())
         return if (
             outcomes.any { (id, outcome) ->
                 id in recovery &&
@@ -147,6 +152,18 @@ class PushSyncWorker : CoroutineWorker {
                 connections = { repository.connections.value },
                 foreground = { application.foregroundUpdates.state.value },
                 synchronizeConnections = repository::synchronizeConnections,
+                pending = {
+                    repository.inbox.value.pending.values.flatten().mapTo(mutableSetOf()) {
+                        RequestKey(it.ref.connectionId, it.ref.requestId)
+                    }
+                },
+                reconcileNotifications = { before, after ->
+                    application.requestNotifications.reconcile(
+                        before,
+                        after,
+                        repository.connections.value,
+                    )
+                },
             )
             .run()
     }
