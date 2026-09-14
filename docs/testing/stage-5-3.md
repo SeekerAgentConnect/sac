@@ -394,3 +394,227 @@ was used.
 | Grant and deny Android notification permission on a configured physical Seeker; verify foreground and periodic recovery in both states | **NOT RUN:** no physical Seeker or Firebase deployment was available. JVM/Robolectric permission tests and APK assembly do not count. |
 | Receive distinct request alerts, tap current and stale requests from killed/background/foreground states, and verify no automatic wallet operation | **NOT RUN:** no physical Seeker or Firebase deployment was available. The automated cold-tap route is not physical-device evidence. |
 | Observe channel settings, lock-screen privacy, Doze/throttling/drop behavior, reboot, and Force stop | **NOT RUN:** no physical Seeker was attached. These timing and OS-presentation checks remain for Stage 5.3 acceptance. |
+
+<a id="saw-059--joined-acceptance-and-physical-seeker-runbook"></a>
+
+## SAW-059 — joined acceptance and physical Seeker runbook
+
+SAW-059 adds no new production authority or transport. It closes the stage with one repeatable
+`pnpm test:push` command, joined sidecar/Android acceptance coverage, the deployment validation
+procedure below, and an honest physical-device report. Firebase remains optional: the default
+checkout has no project file or sender project, while Stage 5.2 foreground Subscribe, manual
+**Refresh**, unary Sync, and the periodic worker remain the complete recovery path.
+
+**Revision under test:** the SEE-79 working tree on top of `ccda9c3` (SAW-058). The final SEE-79
+commit is recorded with the Linear handoff; a commit cannot contain its own SHA. No
+`android/app/google-services.json`, `FCM_PROJECT_ID`, Application Default Credential path, real
+Firebase project, or physical Android device was present during this run.
+
+### Joined automated acceptance
+
+`sidecar/src/push/stage53.acceptance.test.ts` starts two real configured sidecar listeners with
+throwaway SQLite databases and injected credential-free sender boundaries. Production Connect
+clients pair the phones and register targets; production MCP clients create, retry, cancel, and
+read durable requests. The test proves:
+
+- each phone credential can update only its own connection, and two sidecars remain independent;
+- registration, rotation, stale compare-clear, permanent-invalid-target cleanup, and revocation
+  preserve the current owner and never disclose a target or credential;
+- a committed creation sends the fixed high-priority data-only invalidation, a cancellation sends
+  normal priority, and both retain the five-minute TTL and shared collapse key;
+- an idempotent agent retry creates no second durable mutation or ping; and
+- the app-visible data contains exactly `kind=request_invalidation` and `version=1`, with no
+  Firebase notification object, request content, identifiers, policy, credential, transaction
+  authorization, approval, or signature.
+
+`Stage53AcceptanceTest` starts two real Node sidecar processes with production loopback HTTP/2
+updates. Real MCP requests enter their durable stores and Android's production connection gateway,
+update transport, persistent cache, bounded synchronization repository, push runner, and periodic
+runner consume the state. It proves:
+
+- registration/rotation calls use each stored connection and its own URL/credential;
+- a request whose ping is dropped is recovered on both sidecars by the unchanged Stage 5.2
+  periodic path;
+- a delayed ping after create-then-cancel fetches final state and creates no stale request alert;
+- duplicate pings produce one cached request and one new-request delta;
+- a worker-style process reload recovers from disk with no Activity and no Firebase callback; and
+- revoking one connection removes only it while the other sidecar continues to synchronize.
+
+The same command includes the role matrix, invalidation unit audit, registration manager, exact
+Firebase callback, push and periodic runners, notification permission/channel/identity, cold tap,
+stale tap, and both stage guards. The tap test loads the exact current request with zero result
+submissions, message-signing calls, or transaction-send calls. The Firebase-off registration test
+finds no default Firebase app, and `pnpm test:updates` separately reruns the full Stage 5.2
+production path with the normal unconfigured checkout.
+
+### Scenario evidence
+
+| Scenario | Automated evidence | Physical evidence required |
+| --- | --- | --- |
+| Active app | Healthy foreground streams stay active and duplicate push work performs no unary fetch; Stage 5.2 joined tests deliver live changes. | Observe a real configured Seeker with the app visible and confirm one current request, no duplicate, and no wallet launch. |
+| Background/process absent | Push handoff is bounded; a process-reloaded repository reads credentials/cache and performs authoritative Sync. | Observe real FCM plus WorkManager after Home/background and ordinary process removal. |
+| Screen off/Doze | Priority, expedited fallback, connected constraint, TTL, and collapse are asserted. | Record timestamps and Android idle state on a real Seeker; mocks cannot prove delivery timing. |
+| Delayed/dropped/duplicate | Delayed create/cancel yields final state; dropped hints recover through periodic Sync; duplicates yield one pending row/delta. | Exercise real network/FCM delay, sender-off drop, and any reproducible duplicate delivery without asserting exact timing. |
+| Token rotation/invalid target/revocation | Authenticated rotation, stale compare-clear, permanent rejection, replacement/revocation cleanup, and two-sidecar isolation pass through real sidecar APIs. | Reinstall/clear and re-pair for a new installation, uninstall for invalidation, and revoke one real connection while watching only redacted logs. |
+| Denied notifications | Permission denial suppresses posting only; push and every Stage 5.2 path remain uncoupled. | Deny permission on the Seeker and observe state convergence without an alert. |
+| Notification tap | Current and stale routes fetch the named paired sidecar; tests assert no answer or wallet call. | Tap real current/stale shade entries and verify no wallet UI or automatic request outcome. |
+| Firebase disabled | No default Firebase app, channel, prompt, sender, or dispatcher; `test:updates` retains Stage 5.2. | Install an APK built without the project file and repeat foreground, Refresh, periodic/process recovery. |
+
+### Commands and results
+
+Run on **2026-09-14** on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4,
+Gradle 9.7.1, Kotlin 2.4.0, launcher JDK 19.0.2, and the pinned Temurin 21 daemon criteria. The
+Android SDK was supplied through `ANDROID_HOME`; no machine-specific path is stored in the
+repository.
+
+| Command | Result |
+| --- | --- |
+| `ANDROID_HOME=… pnpm test:push` | **PASS.** 35/35 Node ownership/sender/invalidation acceptance tests and 46/46 selected Android registration, callback, recovery, notification, tap, boundary, and joined two-sidecar tests. |
+| Deliberate payload-content failure | **PASS.** Adding `request_id` to the app-visible data made the new joined sidecar audit fail with the unexpected third field. The change was reverted before every passing run. |
+| `ANDROID_HOME=… pnpm test:updates` | **PASS.** 8/8 production sidecar update cases and all selected Android Stage 5.2 Sync, worker, lifecycle, joined acceptance, and HTTP/2 tests with Firebase unconfigured. |
+| `pnpm check` | **PASS after a test-only type fix.** The first invocation stopped because the new TypeScript audit read the FID from Firebase's union `Message` type without narrowing it. The test now requires the FID variant explicitly; the complete rerun passed formatting, Buf, lint, both typechecks, 428/428 sidecar tests, and 29/29 test-agent tests. |
+| `pnpm test:hello` | **PASS.** 9/9 Stage 1 simulated-device cases. |
+| `pnpm test:queue` | **PASS.** 7/7 Stage 2 two-sidecar cases. |
+| `ANDROID_HOME=… pnpm check:android` | **PASS.** Spotless, 843/843 debug JVM tests, Android lint, debug APK, and instrumentation APK with Firebase unconfigured. |
+| `pnpm check:generated` | **PASS.** Generated protocol clients and fixtures are current; SAW-059 changes no schema. |
+| `pnpm build` | **PASS.** Sidecar and test-agent TypeScript builds. |
+
+<a id="physical-seeker-runbook-saw-059"></a>
+
+### Physical Seeker runbook
+
+This procedure changes a test device's app state, notification permission, idle mode, and possibly
+installed app data. Use a non-production Firebase project and sidecars with throwaway requests.
+Never run it against a wallet or funds you are unwilling to expose to a test UI. None of the steps
+requires approving a request; leave every wallet prompt untouched and treat any automatic wallet
+opening as a failure.
+
+Record this header before testing:
+
+```text
+Revision:
+APK variant and whether google-services.json was present at build time:
+Seeker model / Android build:
+Firebase project alias (not an ID if the alias is sensitive; never a credential):
+Sidecar A host and revision:
+Sidecar B host and revision:
+Notification permission / channel state:
+Started at (UTC):
+```
+
+#### 1. Preflight
+
+1. Run `git status --short`, `git rev-parse HEAD`, `pnpm test:push`, and `pnpm test:updates` from
+   the exact checkout to deploy. Do not continue from a failing preflight.
+2. Put the ignored Firebase Android file in `android/app/google-services.json`; configure each
+   sidecar with the same project and ADC as described in the [Firebase setup
+   guide](../guides/firebase.md). Never place the ADC JSON in the checkout or `.env`.
+3. Build/install the configured APK. Confirm the source file, any credential, `.env`,
+   `local.properties`, keystore, and database remain untracked.
+4. Confirm one authorized device with `adb devices -l`. For loopback development, allocate
+   different ordinary/update ports to sidecars A and B and reverse all four ports. Remote
+   sidecars instead need publicly trusted HTTPS and HTTP/2 as in the Stage 5.2 runbook.
+5. Pair both sidecars. Keep only normal redacted logs. A startup may say FCM is configured and a
+   connection registration changed; a log containing a target, bearer credential, request body,
+   ADC value/path, or raw Firebase error is **FAIL**.
+6. Grant notifications and leave **Requests waiting for review** enabled. Record
+   `adb shell dumpsys deviceidle` and `adb shell dumpsys jobscheduler
+   io.github.brrenat.seekervault` as baseline diagnostic state.
+
+#### 2. Delivery and convergence
+
+For each row below, create a uniquely named acknowledgement or message-signing request through the
+agent, record the durable request ID only in the private test record, and never approve it.
+
+1. **Active:** leave the app visible with both streams Live; create on A and then B. Each request
+   appears once without Refresh, no stream is duplicated, and no wallet opens. A push hint may be
+   coalesced with the already-current stream state; do not require an extra notification or fetch.
+2. **Background:** press Home, create on A, and record send, shade, and tap times. One generic alert
+   may appear; its text/lock-screen preview contains no request content. Tapping opens A's exact
+   current request only after a fetch and performs no answer or wallet operation.
+3. **Process absent:** background the app, then use `adb shell am kill
+   io.github.brrenat.seekervault` while it is eligible for background execution. Create on B. Record
+   whether FCM/WorkManager starts reconciliation and whether the request survives even if no alert
+   arrives. Do not use Force stop for this row.
+4. **Screen off:** turn the screen off, create a request, wait a recorded bounded observation
+   window, wake/unlock, and inspect the shade plus current app state. A late/missing notification is
+   not lost state if Sync later finds the request.
+5. **Doze:** with the app backgrounded, run `adb shell dumpsys battery unplug` and
+   `adb shell cmd deviceidle force-idle`; verify the idle state, then create a new request. Record
+   high-priority/notification and eventual Sync timing. Always restore with `adb shell cmd
+   deviceidle unforce` and `adb shell dumpsys battery reset`, even after failure.
+6. **Delayed:** disable network after a hint can be sent but before Sync completes, create and
+   cancel one request, then restore network. No review control or alert for a current request may be
+   invented; a stale shade entry must open the honest no-longer-waiting state.
+7. **Dropped/expired:** turn the sidecar sender off (or keep the phone offline beyond the
+   five-minute TTL), create a request, and receive no hint. Open the app for foreground recovery,
+   use **Refresh**, and leave enough time for an eligible periodic run in separate repetitions.
+   Each path must find the durable request without Firebase.
+8. **Duplicate/collapse:** when the deployment can reproducibly deliver duplicate fixed
+   invalidations, record how they were produced. The app must retain one unique work item, one
+   cached request, and one alert identity. If duplicates cannot be induced without extracting a
+   private target or adding a production endpoint, mark this row **NOT RUN**.
+
+#### 3. Registration, permission, and two-sidecar faults
+
+1. **Rotation:** clear app data or reinstall the configured APK, re-pair, and record the old
+   connection's replacement/revocation plus the new installation's registration using redacted
+   logs only. A later invalidation reaches the new installation; a delayed clear/rejection of the
+   old value cannot erase it. If same-connection refresh cannot be induced without test-only app
+   code, record that subcase **NOT RUN** and rely only on automated rotation evidence.
+2. **Invalid installation:** uninstall the configured app, then create a request so Firebase can
+   reject the obsolete installation. The sidecar may log only the fixed “target is no longer
+   valid” classification and compare-clear it. Reinstall/re-pair before continuing.
+3. **Revoked connection:** revoke A while B remains usable. A receives no later request state or
+   alert, B continues, and no stale A credential/target appears in output.
+4. **Permission denied:** deny app notification permission, create a request in background, then
+   open the app. No alert is expected; foreground streams, **Refresh**, unary/push Sync, and
+   periodic recovery still work. Re-enable the permission only for later presentation rows.
+5. **Two sidecars:** with both configured under the same Firebase project, create one request on
+   each while backgrounded. Authoritative Sync fetches both connections even though the payload
+   names neither. Alerts, taps, request lists, revocation, and outages stay connection-scoped.
+6. **Current and stale taps:** tap a current request and one canceled/expired/answered-elsewhere
+   before tapping. The first opens current review after fetch; the second states what current
+   evidence supports and exposes no answer controls. Neither tap opens a wallet or creates an
+   Activity/result record.
+
+#### 4. Firebase-off control, reboot, and Force stop
+
+1. Remove `android/app/google-services.json`, rebuild/install, and unset `FCM_PROJECT_ID` on both
+   sidecars. Confirm there is no Firebase channel/prompt/sender, then repeat live foreground,
+   **Refresh**, process-reloaded unary recovery, and an eligible periodic run. Compare with the
+   Stage 5.2 runbook; all four paths must remain functional.
+2. Reinstall the configured APK, reboot normally, unlock, and wait for Android to restore eligible
+   work. Create a request and record whether push or periodic recovery occurs; exact time is not
+   promised.
+3. Use Android Settings **Force stop**, then create a request. No FCM or WorkManager handling is
+   expected until the owner reopens the app. Reopen once; foreground reconciliation must recover
+   the request and restore the unique schedule without approving or opening a wallet.
+
+### Physical result record — 2026-09-14
+
+The Android platform tools were available through `ANDROID_HOME`, but `adb devices -l` listed no
+device. The checkout was Firebase-off and no real sender project or ADC was configured. Revision
+for every row is therefore `ccda9c3 + SEE-79 working tree`; all device/FCM claims are **NOT RUN**.
+
+| ID | Physical check | Result |
+| --- | --- | --- |
+| 101 | Configured APK/project and redacted sidecar preflight | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 102 | Active app delivery/coalescing across two healthy streams | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 103 | Background notification delivery and current-request tap | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 104 | Ordinary process-absent FCM/WorkManager recovery | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 105 | Screen-off delivery and later authoritative state | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 106 | Doze high-priority attempt, timing, and eventual recovery | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 107 | Delayed create/cancel convergence and honest stale tap | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 108 | Dropped/TTL-expired hint with foreground, Refresh, and periodic recovery | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 109 | Duplicate/collapsed hints produce one work/request/alert identity | **NOT RUN:** no physical Seeker or reproducible real FCM duplicate source. |
+| 110 | Installation/same-connection token rotation and stale compare-clear | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 111 | Uninstalled/invalid installation cleanup with redacted failure | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 112 | Revoked A is silent while sidecar B continues | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 113 | Denied notification permission leaves every Stage 5.2 path intact | **NOT RUN:** no physical Seeker. Automated permission and Firebase-off checks passed. |
+| 114 | Two configured sidecars synchronize and route independently | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 115 | Current notification opens exact request without automatic wallet operation | **NOT RUN:** no physical Seeker. Automated cold-tap test passed with zero wallet calls. |
+| 116 | Expired/canceled/answered/removed notification reports current evidence | **NOT RUN:** no physical Seeker. Automated stale-route cases passed. |
+| 117 | Firebase-off foreground, Refresh, unary/process, and periodic Stage 5.2 control | **NOT RUN:** no physical Seeker. The unconfigured automated production suite passed. |
+| 118 | Reboot restores eligible best-effort recovery | **NOT RUN:** no physical Seeker or real Firebase deployment. |
+| 119 | Force stop suppresses handling until reopen, then Sync recovers | **NOT RUN:** no physical Seeker or real Firebase deployment. |

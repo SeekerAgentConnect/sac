@@ -20,11 +20,13 @@ import org.w3c.dom.Element
  * under `sync/`. SAW-057 keeps the callback to validation and this durable handoff; network fetches
  * stay in the bounded worker and coalesce with foreground/periodic synchronization. SAW-058 adds
  * one private request channel, an isolated runtime permission prompt, generic notifications after
- * authoritative Sync, and a validated read-only tap route. Other app-defined services, jobs,
- * alarms, receivers, and wallet automation remain excluded. SAW-015 lifted the "no wallet library"
- * limit for the Mobile Wallet Adapter client, on purpose: the app drives the wallet the owner
- * already has. It still holds no wallet key of its own, and Seed Vault's own SDK stays out. These
- * checks fail when a limit is crossed early; the stage that lifts one changes them.
+ * authoritative Sync, and a validated read-only tap route. SAW-059 closes the stage with joined
+ * acceptance while keeping Firebase optional and every Stage 5.2 path independent. Other
+ * app-defined services, jobs, alarms, receivers, and wallet automation remain excluded. SAW-015
+ * lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on purpose: the app
+ * drives the wallet the owner already has. It still holds no wallet key of its own, and Seed
+ * Vault's own SDK stays out. These checks fail when a limit is crossed early; the stage that lifts
+ * one changes them.
  */
 class StageBoundaryTest {
     private val main =
@@ -446,6 +448,28 @@ class StageBoundaryTest {
                 push.indexOf("reconcileNotifications(before")
         )
         assertTrue("POST_NOTIFICATIONS" !in push)
+    }
+
+    @Test
+    fun saw059KeepsFirebaseOptionalAndOutOfStage52Recovery() {
+        val app = checkNotNull(main.parentFile?.parentFile)
+        val build = File(app, "build.gradle.kts").readText()
+        assertTrue("val firebaseConfigured" in build)
+        assertTrue("if (firebaseConfigured)" in build)
+        assertTrue("FIREBASE_CONFIGURED" in build)
+
+        val stage52 =
+            listOf(
+                    "sync/BackgroundSynchronization.kt",
+                    "sync/ForegroundUpdateManager.kt",
+                    "sync/SynchronizationRepository.kt",
+                )
+                .map { File(main, "java/io/github/brrenat/seekervault/$it") }
+                .onEach { assertTrue(it.path, it.isFile) }
+                .joinToString("\n") { withoutComments(it) }
+        assertTrue("Firebase" !in stage52)
+        assertTrue("POST_NOTIFICATIONS" !in stage52)
+        assertTrue("RequestNotification" !in stage52)
     }
 
     @Test
