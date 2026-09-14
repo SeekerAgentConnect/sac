@@ -103,12 +103,14 @@ That validation does not turn periodic work into notification delivery. In backg
 
 SAW-054 opens that stage without adding a new runtime path. The Android Firebase client has an
 operator-supplied project configuration or remains dormant; the sidecar constructs a Firebase Admin
-sender only for an explicit project ID and Application Default Credentials. No request mutation
-calls it, no device token exists in either store, and no app-defined Android message handler or
-runtime permission request exists yet. The Firebase library's dormant manifest components are
-present but auto-init is false. Consequently the diagram and the Stage 5.2 convergence authority
-above are unchanged. The [Firebase guide](guides/firebase.md) defines the deployment and
-off/unavailable cases.
+sender only for an explicit project ID and Application Default Credentials. SAW-055 adds one
+application-scoped registration owner: while any usable connection exists it asks current FCM to
+register, then sends each registration/rotation to every sidecar through that connection's own
+phone credential. The phone stores no target. Each sidecar stores one private target with the
+connection, and revocation deletes it. No request mutation calls the sender and the app still has no
+message-receipt, notification, tap, or runtime-permission path. Consequently the Stage 5.2
+convergence authority above is unchanged. The [Firebase guide](guides/firebase.md) defines the
+deployment and off/unavailable cases.
 
 ## Trust boundaries
 
@@ -137,6 +139,7 @@ off/unavailable cases.
 | Assessments | Nowhere — computed on demand from the rules and the records, never stored | SAW-026 |
 | Daily counters | The phone, derived from the Activity records in `filesDir` | SAW-026 |
 | Update revisions, cursors, retained replay, and frozen snapshots | The sidecar's SQLite database, through `src/storage/` | SAW-048 contract; SAW-049 implementation |
+| One private current FCM target per active connection | The sidecar's SQLite database, through `src/storage/`; no phone copy and no read API | SAW-055 |
 | Minimal request/status cache and sync metadata | The phone in `filesDir`, through `sync/storage/`; never backed up | SAW-048 contract; SAW-050 implementation |
 | Keys | Seed Vault Wallet | Stage 3 |
 
@@ -174,7 +177,7 @@ These hold across the components, and every stage keeps them:
 | 4 | Transfer requests and fresh preparation (SAW-019), the phone's own inspection of the bytes (SAW-020), manual approval through the wallet (SAW-021), and on-chain confirmation (SAW-022) |
 | 5 | The policy model through end-to-end scenarios (SAW-025–029), then global defaults, connection overrides, two daily scopes, sourced review, and combined acceptance (Stage 5.1, SAW-043–047) |
 | 5.2 | Authenticated foreground bidirectional updates, shared reconciliation, a minimal phone cache, and eventual WorkManager sync (SAW-048–053; FCM excluded) |
-| 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds only the optional client/sender deployment boundary |
+| 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing and SAW-055 adds authenticated per-connection registration/rotation only |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
 | 8 | Release checks |

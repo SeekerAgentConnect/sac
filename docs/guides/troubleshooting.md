@@ -227,7 +227,7 @@ The background interval is configured to Android's 15-minute minimum, but it is 
 
 If you used Android Settings → Apps → Seeker Vault → **Force stop**, scheduled work cannot resume by itself. Reopen Seeker Vault once. The app restores the existing unique schedule when it loads a usable connection; it does not create a tight catch-up loop. Removing or revoking the last usable connection cancels the schedule.
 
-Background work has no notification and opens no wallet. A pending request still waits for your manual review, and an already-submitted transfer may only have its existing status reconciled. Stage 5.2 has no immediate background-delivery guarantee. SAW-054 configures optional Firebase pieces but sends and displays nothing; push-triggered reconciliation remains a later child of [Stage 5.3](https://linear.app/seekeragentwallet/issue/SEE-73), and the [Firebase guide](firebase.md) covers the off and unavailable cases.
+Background work has no notification and opens no wallet. A pending request still waits for your manual review, and an already-submitted transfer may only have its existing status reconciled. Stage 5.2 has no immediate background-delivery guarantee. SAW-054 configures optional Firebase pieces and SAW-055 registers a connection-owned target, but neither sends or displays anything; push-triggered reconciliation remains a later child of [Stage 5.3](https://linear.app/seekeragentwallet/issue/SEE-73), and the [Firebase guide](firebase.md) covers the off and unavailable cases.
 
 ### Live updates stay on Connecting or Reconnecting
 

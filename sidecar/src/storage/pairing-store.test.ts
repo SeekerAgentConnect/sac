@@ -13,7 +13,12 @@ import { canTransition, type ActionKind } from "../requests/lifecycle.ts";
 import { RequestFailure } from "../requests/failure.ts";
 import { IN_MEMORY, openDatabase, type DatabaseSync } from "./database.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { PairingStore, REVOKED_DETAIL } from "./pairing-store.ts";
+import {
+  invalidFcmTokenReason,
+  MAX_FCM_TOKEN_BYTES,
+  PairingStore,
+  REVOKED_DETAIL,
+} from "./pairing-store.ts";
 import { RequestStore, type NewRequest } from "./request-store.ts";
 import { isSecret } from "../pairing/uri.ts";
 
@@ -175,6 +180,99 @@ describe("PairingStore: pairing tokens", () => {
         `${table} holds the credential`,
       );
     }
+  });
+});
+
+describe("PairingStore: one FCM target per connection", () => {
+  it("registers idempotently, rotates atomically, and survives a restart", () => {
+    const path = temporaryDatabasePath();
+    const before = setup(path);
+    const paired = pairWith(before.pairing);
+    const first = "first-fcm-target:APA91_example";
+    const second = "second-fcm-target:APA91_example";
+    assert.equal(before.pairing.fcmToken(paired.connectionId), undefined);
+    assert.equal(before.pairing.setFcmToken(paired.connectionId, first), true);
+    assert.equal(before.pairing.setFcmToken(paired.connectionId, first), false);
+    assert.equal(before.pairing.setFcmToken(paired.connectionId, second), true);
+    before.db.close();
+
+    const after = setup(path);
+    try {
+      assert.equal(after.pairing.fcmToken(paired.connectionId), second);
+    } finally {
+      after.db.close();
+    }
+  });
+
+  it("rejects malformed targets without echoing them", () => {
+    const { pairing } = setup();
+    const paired = pairWith(pairing);
+    for (const token of [
+      "",
+      "contains whitespace",
+      "unicode-🙂",
+      "x".repeat(MAX_FCM_TOKEN_BYTES + 1),
+    ]) {
+      assert.equal(invalidFcmTokenReason(token), "invalid FCM target");
+      assert.throws(
+        () => pairing.setFcmToken(paired.connectionId, token),
+        (thrown) => {
+          if (!refused(RequestError.INVALID_PARAMETERS)(thrown)) return false;
+          if (token !== "")
+            assert.ok(!(thrown as Error).message.includes(token));
+          return true;
+        },
+      );
+      assert.throws(
+        () => pairing.clearFcmToken(paired.connectionId, token),
+        (thrown) => {
+          if (!refused(RequestError.INVALID_PARAMETERS)(thrown)) return false;
+          if (token !== "")
+            assert.ok(!(thrown as Error).message.includes(token));
+          return true;
+        },
+      );
+    }
+  });
+
+  it("compare-and-deletes only the target that became invalid", () => {
+    const { pairing } = setup();
+    const paired = pairWith(pairing);
+    const old = "old-fcm-target";
+    const current = "current-fcm-target";
+    pairing.setFcmToken(paired.connectionId, old);
+    pairing.setFcmToken(paired.connectionId, current);
+
+    assert.equal(pairing.clearFcmToken(paired.connectionId, old), false);
+    assert.equal(pairing.fcmToken(paired.connectionId), current);
+    assert.equal(pairing.clearFcmToken(paired.connectionId, current), true);
+    assert.equal(pairing.clearFcmToken(paired.connectionId, current), false);
+    assert.equal(pairing.fcmToken(paired.connectionId), undefined);
+  });
+
+  it("deletes a target when its connection is revoked or replaced", () => {
+    const { db, pairing } = setup();
+    const first = pairWith(pairing);
+    pairing.setFcmToken(first.connectionId, "target-before-revocation");
+    pairing.revoke(first.connectionId);
+    assert.equal(pairing.fcmToken(first.connectionId), undefined);
+    assert.equal(
+      db
+        .prepare("SELECT fcm_token FROM connections WHERE connection_id = ?")
+        .get(first.connectionId)?.fcm_token,
+      null,
+    );
+
+    const second = pairWith(pairing);
+    pairing.setFcmToken(second.connectionId, "target-before-replacement");
+    pairWith(pairing);
+    assert.equal(pairing.fcmToken(second.connectionId), undefined);
+    assert.equal(
+      db
+        .prepare("SELECT fcm_token FROM connections WHERE connection_id = ?")
+        .get(second.connectionId)?.fcm_token,
+      null,
+    );
   });
 });
 

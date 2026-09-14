@@ -2,7 +2,7 @@
 
 This is the repeatable MacBook → physical Seeker runbook for Stage 5.2. It starts the sidecar's real production `UpdateService`, pairs the phone, creates durable requests through Hermes, and checks foreground streaming and eventual WorkManager synchronization. The Stage 1 **Live test** is a separate diagnostic and is not evidence for this runbook.
 
-Stage 5.2 has no push transport. Foreground changes normally arrive at once over one authenticated gRPC/HTTP/2 stream per usable sidecar. In the background, Android may eventually run a network-constrained periodic unary sync. The 15-minute setting is a minimum interval, not a deadline: Doze, standby, battery policy, network state, and Force stop can delay or suppress it. SAW-054 has opened [Stage 5.3](https://linear.app/seekeragentwallet/issue/SEE-73) with optional Firebase client/sender configuration only; it does not alter this runbook or provide an immediate wake-up. See the [Firebase setup guide](firebase.md).
+Stage 5.2 has no push transport. Foreground changes normally arrive at once over one authenticated gRPC/HTTP/2 stream per usable sidecar. In the background, Android may eventually run a network-constrained periodic unary sync. The 15-minute setting is a minimum interval, not a deadline: Doze, standby, battery policy, network state, and Force stop can delay or suppress it. SAW-054 opened [Stage 5.3](https://linear.app/seekeragentwallet/issue/SEE-73) with optional Firebase configuration, and SAW-055 adds authenticated registration only; neither sends a message or provides an immediate wake-up. See the [Firebase setup guide](firebase.md).
 
 ## 1. Build and install
 

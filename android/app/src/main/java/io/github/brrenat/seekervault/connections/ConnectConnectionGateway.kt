@@ -24,6 +24,7 @@ import io.github.brrenat.seekervault.request.v1.prepareRequestRequest
 import io.github.brrenat.seekervault.request.v1.publishWalletRequest
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.revokeConnectionRequest
+import io.github.brrenat.seekervault.request.v1.setFcmTokenRequest
 import java.io.IOException
 import java.net.UnknownServiceException
 import java.security.cert.CertPathValidatorException
@@ -142,6 +143,24 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
         call {
             PairingServiceClient(protocolClient(serverUrl))
                 .revokeConnection(request, bearer(credential))
+        }
+    }
+
+    override suspend fun setFcmToken(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+        update: FcmTokenUpdate,
+    ) {
+        val request = setFcmTokenRequest {
+            this.connectionId = connectionId
+            when (update) {
+                is FcmTokenUpdate.Register -> token = update.target
+                is FcmTokenUpdate.ClearIfCurrent -> clearIfToken = update.target
+            }
+        }
+        call {
+            PairingServiceClient(protocolClient(serverUrl)).setFcmToken(request, bearer(credential))
         }
     }
 

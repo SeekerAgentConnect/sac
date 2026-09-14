@@ -89,3 +89,77 @@ Firebase pages checked on 2026-09-14: FCM was listed as no-cost, while current p
 collapsible-message quotas were finite and explicitly subject to change. The documentation makes
 no permanent zero-cost infrastructure promise and directs operators to recheck pricing and the
 project's live Google Cloud quota page before deployment.
+
+## SAW-055 — connection-scoped registration and rotation
+
+SAW-055 adds the registration lifecycle only. `PairingService.SetFcmToken` authenticates the phone
+before it reads the connection ID or bounded opaque update. The sidecar keeps one current target per
+active connection; registration is idempotent, rotation replaces atomically, and invalidation is a
+compare-delete. The revocation transaction clears the target. No API reads it back and no log names
+it.
+
+Android's application-scoped `FcmRegistrationManager` waits for stored connections to load, enables
+current FCM registration only while one is usable, and serializes connection changes with
+`onRegistered`/`onUnregistered`. It publishes the current value to every usable sidecar separately
+through `ConnectionRepository`, which retrieves only that connection's credential and fixed URL.
+The phone persists no target. The app-defined Firebase service implements no message-receipt
+callback, so this child sends no FCM message, handles no payload, triggers no Sync, requests no
+notification permission, displays nothing, and routes no tap.
+
+### Automated behavior
+
+- `PairingStore` tests persistence across restart, idempotent set, atomic rotation, the 4096-byte
+  visible-ASCII bound, generic errors, stale compare-delete, and cleanup on both replacement and
+  revocation.
+- The complete role matrix includes `SetFcmToken`. Agent, pairing, Stage 1, absent, wrong, and
+  revoked credentials are refused; the paired phone can mutate only its own connection. The real
+  handler test inspects SQLite and verifies neither targets nor credentials reached the log.
+- `FcmRegistrationManagerTest` covers the loaded/usable gate, initial registration, refresh
+  rotation, two sidecars, an isolated failed sidecar, invalid callbacks, stale unregistration, a
+  newly paired sidecar, and last-connection unregistration.
+- `ConnectionRepositoryTest` proves two server credentials remain pinned to their own URLs while
+  the same device target is registered, and that an authentication failure marks only that
+  connection revoked. `ConnectConnectionGatewayTest` drives generated Kotlin through a real Node
+  sidecar for register/rotate/compare-clear and checks its process output for private values.
+- `StageBoundaryTest` allows only the non-exported registration-callback service, confines Firebase
+  imports to `push/`, and proves it has neither `onMessageReceived` nor `RemoteMessage`. The Node
+  boundary still rejects an FCM send caller.
+
+### Commands and results
+
+Run on **2026-09-14** on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, Gradle 9.7.1,
+launcher JDK 19.0.2, and the repository's pinned Firebase versions. The checkout contained neither
+`android/app/google-services.json` nor `android/local.properties`; the Android SDK path was supplied
+only to each process through `ANDROID_HOME`.
+
+| Command | Result |
+| --- | --- |
+| Focused sidecar storage/role tests and focused Android registration/repository/real-sidecar/boundary tests | **PASS.** The generated TypeScript and Kotlin clients exercised the new unary RPC. |
+| `pnpm check` | **PASS.** Formatting, Buf lint, ESLint, both TypeScript checks, 423/423 sidecar tests, and 29/29 test-agent tests. |
+| `ANDROID_HOME=… pnpm test:updates` | **PASS.** 8/8 sidecar update tests and all selected Android Stage 5.2 sync/HTTP2 tests. The first invocation without `ANDROID_HOME` completed the eight Node cases, then correctly stopped because this clean checkout has no machine-specific `local.properties`; the environment-configured rerun passed. |
+| `pnpm test:hello` | **PASS.** 9/9 Stage 1 simulated-device cases. |
+| `pnpm test:queue` | **PASS.** 7/7 Stage 2 two-sidecar cases. |
+| `ANDROID_HOME=… pnpm check:android` | **PASS.** Spotless, 820/820 debug JVM tests, Android lint, debug APK, and instrumentation APK, with Firebase unconfigured. |
+| `pnpm check:generated` | **PASS.** Generated protocol clients are current after adding `SetFcmToken`. |
+| `pnpm build` | **PASS.** Sidecar and test-agent TypeScript builds. |
+
+### Deliberate failure
+
+The compare-and-delete predicate was temporarily changed so any active connection would clear even
+when the invalidated value was stale. The focused `compare-and-deletes only the target that became
+invalid` test failed (`true !== false`). The predicate was restored before every passing command
+above.
+
+### Physical Seeker and Firebase project
+
+`adb devices -l` listed no device on 2026-09-14, and no real Firebase project or credential was
+used.
+
+| Check | Result |
+| --- | --- |
+| Initial registration and registration refresh on a configured physical Seeker | **NOT RUN:** no physical Seeker or Firebase project was available. JVM callbacks and APK assembly do not count. |
+| Two real sidecars receive one device target through their own credentials; revocation and final deletion unregister it | **NOT RUN:** no physical Seeker or Firebase deployment was available. Automated multi-sidecar and revocation coverage passed. |
+
+Delivery, background/process-absent handling, notification permission/UI, tap routing, reboot, and
+Force-stop behavior remain later Stage 5.3 work and are **NOT RUN**, not inferred from this
+registration-only implementation.

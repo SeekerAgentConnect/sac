@@ -148,6 +148,59 @@ export declare type GetConnectionCapabilitiesResponse = Message<"seekervault.req
 export declare const GetConnectionCapabilitiesResponseSchema: GenMessage<GetConnectionCapabilitiesResponse>;
 
 /**
+ * @generated from message seekervault.request.v1.SetFcmTokenRequest
+ */
+export declare type SetFcmTokenRequest = Message<"seekervault.request.v1.SetFcmTokenRequest"> & {
+  /**
+   * Must be the connection authenticated by the bearer phone credential.
+   *
+   * @generated from field: string connection_id = 1;
+   */
+  connectionId: string;
+
+  /**
+   * @generated from oneof seekervault.request.v1.SetFcmTokenRequest.update
+   */
+  update: {
+    /**
+     * The current FCM direct-send target, as an opaque 1-4096 byte visible-ASCII value. Repeating
+     * the same value changes nothing; a different value atomically replaces it.
+     *
+     * @generated from field: string token = 2;
+     */
+    value: string;
+    case: "token";
+  } | {
+    /**
+     * Deletes the registration only when this is still the stored target. This compare-and-delete
+     * makes a delayed invalid-token/unregistration result harmless after a rotation.
+     *
+     * @generated from field: string clear_if_token = 3;
+     */
+    value: string;
+    case: "clearIfToken";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message seekervault.request.v1.SetFcmTokenRequest.
+ * Use `create(SetFcmTokenRequestSchema)` to create a new message.
+ */
+export declare const SetFcmTokenRequestSchema: GenMessage<SetFcmTokenRequest>;
+
+/**
+ * @generated from message seekervault.request.v1.SetFcmTokenResponse
+ */
+export declare type SetFcmTokenResponse = Message<"seekervault.request.v1.SetFcmTokenResponse"> & {
+};
+
+/**
+ * Describes the message seekervault.request.v1.SetFcmTokenResponse.
+ * Use `create(SetFcmTokenResponseSchema)` to create a new message.
+ */
+export declare const SetFcmTokenResponseSchema: GenMessage<SetFcmTokenResponse>;
+
+/**
  * @generated from message seekervault.request.v1.RevokeConnectionRequest
  */
 export declare type RevokeConnectionRequest = Message<"seekervault.request.v1.RevokeConnectionRequest"> & {
@@ -618,8 +671,21 @@ export declare const PairingService: GenService<{
     output: typeof GetConnectionCapabilitiesResponseSchema;
   },
   /**
+   * SetFcmToken registers or rotates the caller's current FCM direct-send target. Clearing names
+   * the target being removed so a late invalid-token or unregistration result cannot erase a newer
+   * rotation. Neither the target nor the phone credential is returned or logged.
+   *
+   * @generated from rpc seekervault.request.v1.PairingService.SetFcmToken
+   */
+  setFcmToken: {
+    methodKind: "unary";
+    input: typeof SetFcmTokenRequestSchema;
+    output: typeof SetFcmTokenResponseSchema;
+  },
+  /**
    * RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The
-   * token stops working at once, and the connection's PENDING requests become CANCELLED.
+   * credential stops working at once, its FCM target is deleted, and the connection's PENDING
+   * requests become CANCELLED.
    * Requests already approved are still resolved, and agents can still read every request.
    *
    * @generated from rpc seekervault.request.v1.PairingService.RevokeConnection
