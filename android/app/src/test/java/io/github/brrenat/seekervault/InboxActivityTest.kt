@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault
 
+import android.content.Intent
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -19,6 +20,7 @@ import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.inbox.InboxTags
+import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
@@ -62,6 +64,11 @@ class InboxActivityTest {
     @After fun close() = scenario?.close() ?: Unit
 
     private fun launch() = ActivityScenario.launch(MainActivity::class.java).also { scenario = it }
+
+    private fun launch(intent: Intent) =
+        ActivityScenario.launch<MainActivity>(intent).also {
+            scenario = it
+        }
 
     @Test
     fun aRequestMadeWhileTheAppWasClosedIsAnsweredAndStaysAnswered() {
@@ -141,6 +148,43 @@ class InboxActivityTest {
         compose
             .onNodeWithTag(InboxTags.item(RequestKey(vps.id, theirs.ref.requestId)))
             .assertDoesNotExist()
+    }
+
+    @Test
+    fun notificationTapFetchesAndOpensTheExactRequestWithoutAnyWalletOperation() {
+        val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
+        val request = server.addPendingMessage(connection.id, WALLET, "Sign only after review")
+        val key = RequestKey(connection.id, request.ref.requestId)
+
+        launch(RequestNotificationIntent.intent(app, key))
+
+        compose
+            .onNodeWithTag(InboxTags.MESSAGE, useUnmergedTree = true)
+            .assertTextEquals("Sign only after review")
+        assertTrue(gateway.submits.isEmpty())
+        assertTrue(adapter.signings.isEmpty())
+        assertTrue(adapter.sendings.isEmpty())
+    }
+
+    @Test
+    fun staleNotificationTapShowsTheCheckedGoneStateAndNoReviewControls() {
+        val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
+        val request = server.addPending(connection.id, text = "Already gone")
+        val key = RequestKey(connection.id, request.ref.requestId)
+        runBlocking { app.connectionRepository.refresh(connection.id) }
+        server.cancel(connection.id, request.ref.requestId)
+
+        launch(RequestNotificationIntent.intent(app, key))
+
+        compose
+            .onNodeWithTag(InboxTags.NOTIFICATION_STATE)
+            .assertTextEquals(app.getString(R.string.notification_open_gone))
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.APPROVE).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertDoesNotExist()
+        assertTrue(gateway.submits.isEmpty())
+        assertTrue(adapter.signings.isEmpty())
+        assertTrue(adapter.sendings.isEmpty())
     }
 
     @Test

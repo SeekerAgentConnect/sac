@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Scanning a pairing QR code (SAW-012), asked for only when the owner taps Scan. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- SAW-058 asks at runtime only in a Firebase-configured build with a usable connection. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The camera is optional: a pairing code can also be entered by hand. -->
     <uses-feature
         android:name="android.hardware.camera.any"

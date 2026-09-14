@@ -129,6 +129,16 @@ connection and buffers live events across it, so stream, Refresh, periodic, and 
 converge rather than becoming independent writers. Dropping the push path removes only an early
 signal: foreground reconciliation and the persisted periodic schedule still read durable state.
 
+SAW-058 derives presentation only after that authoritative worker fetch. It compares the complete
+pending-key set before and after Sync, cancels alerts for keys that left PENDING, and posts one
+generic private alert for each newly discovered key. The notification contains neither request
+content nor a credential; its immutable explicit intent carries only the connection/request IDs
+needed for an internal route. That route validates both IDs and performs another authenticated
+fetch from the named paired connection before exposing review controls. A current pending request
+opens normally, a result this phone already recorded opens with that result, and absent, removed,
+revoked, or unreachable state gets a non-authorizing explanation. The permission decision governs
+presentation only and is not an input to registration, foreground streams, Sync, or either worker.
+
 ## Trust boundaries
 
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
@@ -195,7 +205,7 @@ These hold across the components, and every stage keeps them:
 | 4 | Transfer requests and fresh preparation (SAW-019), the phone's own inspection of the bytes (SAW-020), manual approval through the wallet (SAW-021), and on-chain confirmation (SAW-022) |
 | 5 | The policy model through end-to-end scenarios (SAW-025–029), then global defaults, connection overrides, two daily scopes, sourced review, and combined acceptance (Stage 5.1, SAW-043–047) |
 | 5.2 | Authenticated foreground bidirectional updates, shared reconciliation, a minimal phone cache, and eventual WorkManager sync (SAW-048–053; FCM excluded) |
-| 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, and SAW-057 bounded service handoff plus cross-source sync coalescing |
+| 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
 | 8 | Release checks |

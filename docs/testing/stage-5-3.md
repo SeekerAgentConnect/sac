@@ -314,3 +314,83 @@ was used.
 Notification permission/UI, notification identity, tap routing, reboot delivery timing, and Force
 stop delivery remain outside SAW-057. A push tap still does not exist, and no update path approves,
 signs, or opens a wallet.
+
+<a id="saw-058--notification-permission-and-tap-to-open"></a>
+
+## SAW-058 — notification permission and tap-to-open
+
+SAW-058 creates one high-importance request-review channel only in an APK built with an
+operator-supplied Firebase project file. The channel and each alert use secret lock-screen
+visibility. Android 13+ permission is requested only after stored connections load and one is
+usable. Denial has no input into FCM registration, foreground streams, manual or unary Sync, push
+work, or periodic recovery; a Firebase-off APK creates no channel, prompt, or notification.
+
+Presentation happens after the push worker's authoritative Sync. The worker compares complete
+pending-key sets before and after that fetch, posts generic alerts only for newly discovered keys,
+and cancels alerts for departed keys. The notification component accepts no request body or
+credential. Each alert's explicit immutable activity intent contains only its validated connection
+and request IDs and has distinct identity, so one request cannot replace another's route.
+
+A cold or warm tap fetches the named paired sidecar before review controls appear. A current request
+opens the existing manual review; an answer stored on this phone opens that result. Expired,
+canceled, remotely answered, removed, revoked, and unreachable routes show only the state current
+evidence supports. Loading and non-current screens contain no answer, approval, or wallet controls.
+The tap code chooses or creates no answer and invokes no approval, signing, or wallet method. Its
+shared Sync may retry only a result the owner already stored. After a current transfer appears, its
+existing screen may fetch and inspect a fresh unsigned preparation, but a wallet still opens only
+after the owner's explicit approval.
+
+### Automated behavior
+
+- `RequestNotificationsTest` proves configured-only channel creation, high importance, secret
+  lock-screen visibility, denied-permission suppression, generic content, immutable exact routes,
+  distinct per-request identity, departed-key cancellation, malformed-ID rejection, and the
+  permission-request decision matrix.
+- `PushSynchronizationTest` proves notification reconciliation runs only after authoritative Sync
+  has discovered the new pending key. Existing push and Stage 5.2 tests keep the worker's empty
+  input, bounded shared repository, foreground-stream exclusion, and dropped-hint recovery.
+- `InboxViewModelTest` proves each tap reloads storage and fetches its paired connection without an
+  answer or wallet call. It distinguishes current pending, this-phone answer, gone, removed,
+  revoked, and unavailable outcomes.
+- `InboxActivityTest` drives a cold exact-request tap and a stale canceled tap. The first opens the
+  current manual review with zero result submissions and zero wallet calls; the second shows no
+  acknowledgement, rejection, or approval control after its fresh fetch.
+- `StageBoundaryTest` requires `POST_NOTIFICATIONS`, the channel, immutable explicit activity route,
+  UUID validation, and Sync-before-presentation ordering. It rejects notification, wallet, or
+  network work in the Firebase callback; wallet, approval, scheduler, or background-component code
+  in the notification package; and permission coupling inside either worker.
+
+### Commands and results
+
+Run on **2026-09-14** on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.4, Gradle 9.7.1,
+Kotlin 2.4.0, launcher JDK 19.0.2, and the repository's pinned Firebase and WorkManager versions.
+The checkout contained neither `android/app/google-services.json` nor `android/local.properties`;
+the Android SDK path was supplied only to each process through `ANDROID_HOME`.
+
+| Command | Result |
+| --- | --- |
+| Focused notification, push synchronization, inbox-view-model, activity-route, and stage-boundary tests | **PASS.** 107/107 selected tests passed, covering permission denial, post-Sync delta, immutable route identity, current-state fetch, stale/removed/revoked/unreachable states, and no-answer/no-wallet assertions. |
+| `pnpm check` | **PASS.** Prettier, Buf format/lint, ESLint, both TypeScript checks, 427/427 sidecar tests, and 29/29 test-agent tests. |
+| `ANDROID_HOME=… pnpm test:updates` | **PASS.** 8/8 sidecar update tests and every selected Android Stage 5.2 Sync, worker, and HTTP/2 test with Firebase unconfigured. |
+| `pnpm test:hello` | **PASS.** 9/9 Stage 1 simulated-device cases. |
+| `pnpm test:queue` | **PASS.** 7/7 Stage 2 two-sidecar cases. |
+| `ANDROID_HOME=… pnpm check:android` | **PASS.** Spotless, 841/841 debug JVM tests, Android lint, debug APK, and instrumentation APK with Firebase unconfigured. |
+| `pnpm check:generated` | **PASS.** Generated protocol clients and fixtures are current; SAW-058 changes no schema. |
+| `pnpm build` | **PASS.** Sidecar and test-agent TypeScript builds. |
+
+### Deliberate failure
+
+The post-Sync notification delta was temporarily inverted from `after - before` to `before -
+after`. The focused new-request test failed because no alert existed. The correct delta was restored
+before all passing focused and full runs above.
+
+### Physical Seeker and Firebase notification delivery
+
+`adb devices -l` listed no device on 2026-09-14, and no real Firebase project or sender credential
+was used.
+
+| Check | Result |
+| --- | --- |
+| Grant and deny Android notification permission on a configured physical Seeker; verify foreground and periodic recovery in both states | **NOT RUN:** no physical Seeker or Firebase deployment was available. JVM/Robolectric permission tests and APK assembly do not count. |
+| Receive distinct request alerts, tap current and stale requests from killed/background/foreground states, and verify no automatic wallet operation | **NOT RUN:** no physical Seeker or Firebase deployment was available. The automated cold-tap route is not physical-device evidence. |
+| Observe channel settings, lock-screen privacy, Doze/throttling/drop behavior, reboot, and Force stop | **NOT RUN:** no physical Seeker was attached. These timing and OS-presentation checks remain for Stage 5.3 acceptance. |

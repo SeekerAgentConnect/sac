@@ -599,6 +599,16 @@ applying another independent snapshot. If every hint is dropped or Firebase is u
 foreground reconciliation and the persisted Stage 5.2 periodic job still fetch all durable
 requests.
 
+SAW-058 still assigns no request identity to the FCM message. Only after authenticated Sync commits
+does Android compare its prior and current pending-key sets and construct any notification locally.
+The notification's explicit immutable activity intent names one validated connection/request pair;
+it is neither a protocol credential nor an approval. Tapping performs a fresh fetch for that paired
+connection. If the request is pending it can then be reviewed normally; if this phone already
+answered it, the stored result is shown; and if it expired, was cancelled or answered elsewhere,
+was removed, the connection was revoked, or the sidecar cannot be reached, the phone says only what
+the fresh evidence supports. A tap creates no result and invokes no wallet action. The underlying
+Sync retains its existing authority to retry only a result the owner already stored.
+
 **`RevokeConnection`** takes the phone's credential, and its `connection_id` must be the caller's own; another ID gets `NOT_FOUND`. It revokes the connection at once, and cancels the connection's PENDING requests; see [connections](#connections-and-request-identity).
 
 ### Roles

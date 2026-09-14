@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -28,11 +29,23 @@ import io.github.brrenat.seekervault.activity.ActivityViewModel
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
+import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
 import io.github.brrenat.seekervault.policy.GlobalPolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.wallet.WalletViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class MainActivity : ComponentActivity() {
+    data class NotificationTap(
+        val sequence: Long,
+        val key: io.github.brrenat.seekervault.connections.RequestKey,
+    )
+
+    private var nextNotificationTap = 0L
+    private val _notificationTaps = MutableStateFlow<NotificationTap?>(null)
+    private val notificationTaps = _notificationTaps.asStateFlow()
+
     private val viewModel: LiveCommandViewModel by viewModels {
         viewModelFactory {
             initializer {
@@ -107,6 +120,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        acceptNotificationTap(intent)
         // Mobile Wallet Adapter starts the wallet from an Activity, and its sender has to be
         // registered before the activity is started.
         (application as SeekerVaultApplication).attachWalletActivity(this)
@@ -121,9 +135,24 @@ class MainActivity : ComponentActivity() {
                     policy,
                     globalPolicy,
                     viewModel,
+                    notificationTaps,
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        acceptNotificationTap(intent)
+    }
+
+    private fun acceptNotificationTap(intent: Intent?) {
+        val key = RequestNotificationIntent.destination(intent) ?: return
+        _notificationTaps.value = NotificationTap(++nextNotificationTap, key)
+        // The saved Compose route survives rotation. Do not interpret the same Activity intent as
+        // another owner tap when Android recreates only the screen.
+        intent?.action = null
     }
 
     override fun onDestroy() {

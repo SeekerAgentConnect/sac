@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
+import io.github.brrenat.seekervault.notifications.RequestNotificationManager
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.push.FcmRegistrationClient
@@ -48,6 +49,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 
 class SeekerVaultApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        requestNotifications.createChannels()
+    }
+
     // One HTTP client for the whole app, without OkHttp's read timeout, so an idle
     // WatchCommands stream stays open (Connect-Kotlin enforces the RPC deadlines).
     private val httpClient by lazy {
@@ -68,6 +74,14 @@ class SeekerVaultApplication : Application() {
     /** The optional Firebase registration client. Tests replace it without configuring Firebase. */
     var fcmRegistrationClient: () -> FcmRegistrationClient = {
         FirebaseFcmRegistrationClient(this)
+    }
+
+    /**
+     * User-visible alerts exist only in an APK built with an operator-supplied Firebase project.
+     * The manager holds no Firebase dependency or request data and permission denial is a no-op.
+     */
+    val requestNotifications: RequestNotificationManager by lazy {
+        RequestNotificationManager(this, BuildConfig.FIREBASE_CONFIGURED)
     }
 
     /**

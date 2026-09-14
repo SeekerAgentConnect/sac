@@ -18,12 +18,13 @@ import org.w3c.dom.Element
  * classpath. SAW-055 adds one connection-scoped registration service under `push/`. SAW-056 lets
  * that service accept exactly one content-free invalidation and enqueue a unique WorkManager Sync
  * under `sync/`. SAW-057 keeps the callback to validation and this durable handoff; network fetches
- * stay in the bounded worker and coalesce with foreground/periodic synchronization. It adds no
- * runtime permission request, notification, tap route, or wallet action. Other app-defined
- * services, jobs, alarms, receivers, and wallet automation remain excluded. SAW-015 lifted the "no
- * wallet library" limit for the Mobile Wallet Adapter client, on purpose: the app drives the wallet
- * the owner already has. It still holds no wallet key of its own, and Seed Vault's own SDK stays
- * out. These checks fail when a limit is crossed early; the stage that lifts one changes them.
+ * stay in the bounded worker and coalesce with foreground/periodic synchronization. SAW-058 adds
+ * one private request channel, an isolated runtime permission prompt, generic notifications after
+ * authoritative Sync, and a validated read-only tap route. Other app-defined services, jobs,
+ * alarms, receivers, and wallet automation remain excluded. SAW-015 lifted the "no wallet library"
+ * limit for the Mobile Wallet Adapter client, on purpose: the app drives the wallet the owner
+ * already has. It still holds no wallet key of its own, and Seed Vault's own SDK stays out. These
+ * checks fail when a limit is crossed early; the stage that lifts one changes them.
  */
 class StageBoundaryTest {
     private val main =
@@ -53,7 +54,7 @@ class StageBoundaryTest {
         }
 
     @Test
-    fun manifestDeclaresOnlyTheActivityFcmRegistrationTheNetworkAndAnOptionalCamera() {
+    fun manifestDeclaresOnlyTheActivityFcmRegistrationAndRequiredPermissions() {
         val manifest = xml("AndroidManifest.xml")
         val application = manifest.children("application").single()
         val components =
@@ -95,7 +96,11 @@ class StageBoundaryTest {
             messaging.children("action").map { it.getAttribute("android:name") },
         )
         assertEquals(
-            listOf("android.permission.INTERNET", "android.permission.CAMERA"),
+            listOf(
+                "android.permission.INTERNET",
+                "android.permission.CAMERA",
+                "android.permission.POST_NOTIFICATIONS",
+            ),
             manifest.children("uses-permission").map { it.getAttribute("android:name") },
         )
         assertEquals(
@@ -379,7 +384,7 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun saw057KeepsFirebaseCallbackBoundedAndWithoutWalletOrNotificationAuthority() {
+    fun saw058KeepsFirebaseCallbackBoundedAndNotificationTapWithoutWalletAuthority() {
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         val firebaseImports = Regex("""^import com\.google\.firebase\.""", RegexOption.MULTILINE)
         assertEquals(
@@ -410,6 +415,37 @@ class StageBoundaryTest {
         assertTrue("wallet" !in service.lowercase())
         assertTrue("approve" !in service.lowercase())
         assertTrue("signAndSendTransactions" !in service)
+
+        val notification =
+            withoutComments(
+                File(
+                    main,
+                    "java/io/github/brrenat/seekervault/notifications/RequestNotifications.kt",
+                )
+            )
+        assertTrue("NotificationChannel" in notification)
+        assertTrue("POST_NOTIFICATIONS" in notification)
+        assertTrue("PendingIntent.FLAG_IMMUTABLE" in notification)
+        assertTrue("MainActivity" in notification)
+        assertTrue("RequestKey" in notification)
+        assertTrue("ActionRequest" !in notification)
+        assertTrue("wallet" !in notification.lowercase())
+        assertTrue("approve" !in notification.lowercase())
+        assertTrue("signAndSendTransactions" !in notification)
+        assertTrue("WorkManager" !in notification)
+        assertTrue("ForegroundUpdateManager" !in notification)
+        assertTrue("BackgroundSyncScheduler" !in notification)
+
+        val push =
+            withoutComments(
+                File(main, "java/io/github/brrenat/seekervault/sync/PushSynchronization.kt")
+            )
+        assertTrue(push.indexOf("synchronizeConnections(recovery)") >= 0)
+        assertTrue(
+            push.indexOf("synchronizeConnections(recovery)") <
+                push.indexOf("reconcileNotifications(before")
+        )
+        assertTrue("POST_NOTIFICATIONS" !in push)
     }
 
     @Test
