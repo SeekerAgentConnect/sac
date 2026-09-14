@@ -23,6 +23,11 @@ public interface SyncRequestOrBuilder extends
       getConnectionIdBytes();
 
   /**
+   * <pre>
+   * Unsupported versions fail with FAILED_PRECONDITION and an
+   * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
+   * </pre>
+   *
    * <code>uint32 protocol_version = 2 [json_name = "protocolVersion"];</code>
    * @return The protocolVersion.
    */

@@ -17,6 +17,8 @@ import io.github.brrenat.seekervault.update.v1.SubscribeRequest
 import io.github.brrenat.seekervault.update.v1.SubscribeResponse
 import io.github.brrenat.seekervault.update.v1.SyncRequest
 import io.github.brrenat.seekervault.update.v1.SyncResponse
+import io.github.brrenat.seekervault.update.v1.UpdateError
+import io.github.brrenat.seekervault.update.v1.UpdateErrorDetail
 import io.github.brrenat.seekervault.update.v1.UpdateServiceClient
 import io.github.brrenat.seekervault.update.v1.clientHeartbeat
 import io.github.brrenat.seekervault.update.v1.subscribe
@@ -166,15 +168,21 @@ class ConnectUpdateTransport(private val httpClient: OkHttpClient) : UpdateTrans
         }
     }
 
-    private companion object {
+    companion object {
         // Sync can include the sidecar's existing bounded confirmation pass (four 20-second chain
         // reads in parallel), so it gets room beyond a normal database-only unary call.
-        val TIMEOUT = 30.seconds
-        const val PROTOCOL_VERSION = 1
+        private val TIMEOUT = 30.seconds
+        private const val PROTOCOL_VERSION = 1
 
-        fun classify(error: Throwable): UpdateTransportException {
+        internal fun classify(error: Throwable): UpdateTransportException {
             val causes = causesOf(error)
             val code = causes.firstNotNullOfOrNull { (it as? ConnectException)?.code }
+            val detail =
+                causes.filterIsInstance<ConnectException>().firstNotNullOfOrNull { exception ->
+                    runCatching { exception.unpackedDetails(UpdateErrorDetail::class) }
+                        .getOrNull()
+                        ?.firstOrNull()
+                }
             val kind =
                 when {
                     causes.any {
@@ -188,6 +196,9 @@ class ConnectUpdateTransport(private val httpClient: OkHttpClient) : UpdateTrans
                     } -> UpdateTransportException.Kind.CleartextBlocked
                     code == Code.UNAUTHENTICATED -> UpdateTransportException.Kind.Unauthenticated
                     code == Code.UNIMPLEMENTED -> UpdateTransportException.Kind.UpgradeRequired
+                    code == Code.FAILED_PRECONDITION &&
+                        detail?.error == UpdateError.UPDATE_ERROR_PROTOCOL_UNSUPPORTED ->
+                        UpdateTransportException.Kind.UpgradeRequired
                     code == Code.FAILED_PRECONDITION ->
                         UpdateTransportException.Kind.SnapshotInvalid
                     code == Code.INVALID_ARGUMENT || code == Code.NOT_FOUND ->
@@ -199,7 +210,7 @@ class ConnectUpdateTransport(private val httpClient: OkHttpClient) : UpdateTrans
             return UpdateTransportException(kind, error.message, error)
         }
 
-        fun causesOf(error: Throwable): List<Throwable> {
+        private fun causesOf(error: Throwable): List<Throwable> {
             val found = mutableListOf<Throwable>()
             val pending = ArrayDeque(listOf(error))
             while (pending.isNotEmpty() && found.size < 32) {

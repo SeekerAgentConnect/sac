@@ -9,6 +9,7 @@ import io.github.brrenat.seekervault.sync.storage.SyncStore
 import io.github.brrenat.seekervault.update.v1.ReplayComplete
 import io.github.brrenat.seekervault.update.v1.RequestChanged
 import io.github.brrenat.seekervault.update.v1.ResumeDisposition
+import io.github.brrenat.seekervault.update.v1.ServerHeartbeat
 import io.github.brrenat.seekervault.update.v1.ServerReady
 import io.github.brrenat.seekervault.update.v1.SubscribeResponse
 import io.github.brrenat.seekervault.update.v1.SyncRequest
@@ -27,6 +28,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -192,6 +194,25 @@ class ForegroundUpdateManagerTest {
         advanceTimeBy(999)
         runCurrent()
         assertEquals(2, fixture.transport.subscribeCalls[A])
+        assertEquals(ForegroundConnectionState.Live, fixture.manager.state.value.connections[A])
+    }
+
+    @Test
+    fun incomingServerHeartbeatsDoNotSuppressPeriodicClientHeartbeats() = runTest {
+        val fixture = fixture(A)
+        fixture.manager.onForeground()
+        runCurrent()
+        val stream = fixture.transport.subscriptions.getValue(A).single()
+
+        repeat(7) { sequence ->
+            advanceTimeBy(7_000)
+            stream.send(serverHeartbeat(A, sequence.toLong()))
+            runCurrent()
+        }
+
+        assertEquals(listOf(1L, 2L, 3L), stream.heartbeats)
+        assertFalse(stream.closed)
+        assertEquals(1, fixture.transport.subscribeCalls[A])
         assertEquals(ForegroundConnectionState.Live, fixture.manager.state.value.connections[A])
     }
 
@@ -406,6 +427,14 @@ class ForegroundUpdateManagerTest {
                         .setRequest(FakeConnectionGateway.request(id, requestId))
                         .setRevision(revision)
                 )
+                .build()
+
+        fun serverHeartbeat(id: String, sequence: Long) =
+            SubscribeResponse.newBuilder()
+                .setConnectionId(id)
+                .setServerInstanceId("instance-$id")
+                .setCursor("heartbeat-$sequence")
+                .setHeartbeat(ServerHeartbeat.getDefaultInstance())
                 .build()
     }
 }

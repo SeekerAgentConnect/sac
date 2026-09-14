@@ -40,8 +40,9 @@ message SubscribeRequest {
 }
 
 message Subscribe {
-  // Version 1 is this contract. Other values fail with FAILED_PRECONDITION; the phone keeps unary
-  // manual Refresh available when it understands the older RequestService.
+  // Version 1 is this contract. Other values fail with FAILED_PRECONDITION and an
+  // UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail; the phone keeps unary manual Refresh available when
+  // it understands the older RequestService.
   uint32 protocol_version = 1;
   // The last event cursor the phone durably applied. Empty requests an initial snapshot. A cursor
   // is meaningful only with the server_instance_id that issued it.
@@ -162,6 +163,8 @@ message ReplayComplete {
 
 message SyncRequest {
   string connection_id = 1;
+  // Unsupported versions fail with FAILED_PRECONDITION and an
+  // UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail, distinct from an invalid cursor or snapshot.
   uint32 protocol_version = 2;
   // 1..100, or zero for the server default of 50. The server may return fewer entries to stay
   // below 65,536 encoded bytes.
@@ -209,4 +212,19 @@ message SyncResponse {
 message SyncedRequest {
   seekervault.request.v1.ActionRequest request = 1;
   uint64 revision = 2;
+}
+
+// UpdateErrorDetail distinguishes the FAILED_PRECONDITION cases that require a protocol upgrade
+// from ones where the phone must discard a cursor or snapshot and retry page one.
+message UpdateErrorDetail {
+  UpdateError error = 1;
+  // Set for PROTOCOL_UNSUPPORTED so the phone can report incompatibility without guessing from
+  // human-readable error text.
+  uint32 supported_protocol_version = 2;
+}
+
+enum UpdateError {
+  UPDATE_ERROR_UNSPECIFIED = 0;
+  UPDATE_ERROR_PROTOCOL_UNSUPPORTED = 1;
+  UPDATE_ERROR_SNAPSHOT_INVALID = 2;
 }

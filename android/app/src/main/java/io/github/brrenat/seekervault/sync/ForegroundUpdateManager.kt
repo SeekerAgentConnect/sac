@@ -8,6 +8,7 @@ import io.github.brrenat.seekervault.update.v1.ResumeDisposition
 import io.github.brrenat.seekervault.update.v1.SubscribeResponse
 import java.io.IOException
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.min
 import kotlin.random.Random
@@ -31,7 +32,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 
 /** Live transport state. It is separate from the last successful durable synchronization. */
 sealed interface ForegroundConnectionState {
@@ -345,6 +345,7 @@ class ForegroundUpdateManager(
         }
 
         val signals = Channel<StreamSignal>(Channel.UNLIMITED)
+        val missedHeartbeats = AtomicInteger(0)
         val reader = launch {
             while (isActive) {
                 val received = subscription.responses.receiveCatching()
@@ -352,6 +353,7 @@ class ForegroundUpdateManager(
                     signals.send(StreamSignal.Closed(received.exceptionOrNull()))
                     return@launch
                 }
+                missedHeartbeats.set(0)
                 signals.send(StreamSignal.Response(received.getOrThrow()))
             }
         }
@@ -379,27 +381,36 @@ class ForegroundUpdateManager(
             else -> throw IOException("the sidecar sent no resume disposition")
         }
 
-        var heartbeatSequence = 0L
-        var quietIntervals = 0
         val intervalMillis = ready.heartbeatIntervalSeconds * 1_000L
-        try {
-            while (isCurrent(currentSession)) {
-                val signal = withTimeoutOrNull(intervalMillis) { signals.receive() }
-                if (signal == null) {
-                    quietIntervals++
-                    heartbeatSequence++
+        val heartbeatTimer = launch {
+            var sequence = 0L
+            while (isActive) {
+                delay(intervalMillis)
+                val missed = missedHeartbeats.incrementAndGet()
+                sequence++
+                try {
                     subscription.heartbeat(
-                        heartbeatSequence,
+                        sequence,
                         synchronization.appliedCursor(connectionId),
                         now(),
                     )
-                    if (quietIntervals >= MISSED_HEARTBEAT_LIMIT) {
-                        throw IOException("update stream missed its liveness deadline")
-                    }
-                    continue
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    signals.send(StreamSignal.Closed(e))
+                    return@launch
                 }
-                quietIntervals = 0
-                when (signal) {
+                if (missed >= MISSED_HEARTBEAT_LIMIT) {
+                    signals.send(StreamSignal.LivenessExpired)
+                    return@launch
+                }
+            }
+        }
+        try {
+            while (isCurrent(currentSession)) {
+                when (val signal = signals.receive()) {
+                    StreamSignal.LivenessExpired ->
+                        throw IOException("update stream missed its liveness deadline")
                     is StreamSignal.Closed ->
                         throw signal.cause ?: IOException("update stream ended")
                     is StreamSignal.Reconciled ->
@@ -464,6 +475,7 @@ class ForegroundUpdateManager(
                 }
             }
         } finally {
+            heartbeatTimer.cancel()
             reader.cancel()
             reconciliation?.cancel()
             signals.close()
@@ -536,6 +548,8 @@ class ForegroundUpdateManager(
     private fun String.utf8Size() = toByteArray(Charsets.UTF_8).size
 
     private sealed interface StreamSignal {
+        data object LivenessExpired : StreamSignal
+
         data class Response(val response: SubscribeResponse) : StreamSignal
 
         data class Reconciled(val outcome: SynchronizeOutcome) : StreamSignal

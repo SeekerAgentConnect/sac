@@ -12,8 +12,9 @@ public interface SubscribeOrBuilder extends
 
   /**
    * <pre>
-   * Version 1 is this contract. Other values fail with FAILED_PRECONDITION; the phone keeps unary
-   * manual Refresh available when it understands the older RequestService.
+   * Version 1 is this contract. Other values fail with FAILED_PRECONDITION and an
+   * UPDATE_ERROR_PROTOCOL_UNSUPPORTED detail; the phone keeps unary manual Refresh available when
+   * it understands the older RequestService.
    * </pre>
    *
    * <code>uint32 protocol_version = 1 [json_name = "protocolVersion"];</code>

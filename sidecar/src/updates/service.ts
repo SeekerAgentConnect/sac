@@ -29,6 +29,8 @@ import {
   SyncRequiredReason,
   SyncRequiredSchema,
   SyncResponseSchema,
+  UpdateError,
+  UpdateErrorDetailSchema,
   UpdateService,
   type KnownRequest,
   type SubscribeRequest,
@@ -390,9 +392,9 @@ async function sync(
           throw new InvalidCursor();
       } catch (error) {
         if (isCursorError(error)) {
-          throw new ConnectError(
+          throw updateFailedPrecondition(
             "subscription_cursor is not valid for this sidecar and connection",
-            Code.FailedPrecondition,
+            UpdateError.SNAPSHOT_INVALID,
           );
         }
         throw error;
@@ -453,9 +455,9 @@ async function sync(
       error instanceof InvalidSnapshot ||
       error instanceof SnapshotForAnotherConnection
     ) {
-      throw new ConnectError(
+      throw updateFailedPrecondition(
         "the sync snapshot is invalid or expired; restart from page one",
-        Code.FailedPrecondition,
+        UpdateError.SNAPSHOT_INVALID,
       );
     }
     throw error;
@@ -761,9 +763,9 @@ function decodePageToken(
     offset < 0 ||
     encodePageToken(instance ?? "", snapshotId ?? "", offset) !== token
   ) {
-    throw new ConnectError(
+    throw updateFailedPrecondition(
       "the sync page token is invalid or belongs to another sidecar process",
-      Code.FailedPrecondition,
+      UpdateError.SNAPSHOT_INVALID,
     );
   }
   return { snapshotId: snapshotId as string, offset };
@@ -776,11 +778,25 @@ function requireConnection(authenticated: string, claimed: string): void {
 
 function requireProtocol(version: number): void {
   if (version !== UPDATE_PROTOCOL_VERSION) {
-    throw new ConnectError(
+    throw updateFailedPrecondition(
       `update protocol ${version} is not supported; this sidecar serves version ${UPDATE_PROTOCOL_VERSION}`,
-      Code.FailedPrecondition,
+      UpdateError.PROTOCOL_UNSUPPORTED,
+      UPDATE_PROTOCOL_VERSION,
     );
   }
+}
+
+function updateFailedPrecondition(
+  message: string,
+  error: UpdateError,
+  supportedProtocolVersion = 0,
+): ConnectError {
+  return new ConnectError(message, Code.FailedPrecondition, undefined, [
+    {
+      desc: UpdateErrorDetailSchema,
+      value: { error, supportedProtocolVersion },
+    },
+  ]);
 }
 
 function requireOpaque(name: string, value: string): void {
