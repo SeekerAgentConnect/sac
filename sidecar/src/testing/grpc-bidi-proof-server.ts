@@ -41,7 +41,11 @@ const rpc = connectNodeAdapter({
 
 const server = createSecureServer(
   {
-    allowHTTP1: true,
+    // This fixture proves a duplex gRPC call, which HTTP/1 cannot carry. Do not advertise the
+    // HTTP/1 fallback: some JVM/OpenSSL combinations select it during ALPN and Connect then fails
+    // before sending a message because OkHttp correctly refuses a duplex HTTP/1 request body.
+    allowHTTP1: false,
+    ALPNProtocols: ["h2"],
     cert: readFileSync(certificatePath),
     key: readFileSync(privateKeyPath),
   },
