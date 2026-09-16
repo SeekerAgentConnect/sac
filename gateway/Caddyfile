@@ -1,0 +1,31 @@
+# The gateway's front door.
+#
+# The gateway shares the sidecar's network namespace (see compose.yaml), so the
+# sidecar is reachable here at 127.0.0.1:8080 and nowhere else: it binds loopback
+# only, which means neither the host nor any other container can reach it. This
+# listener is the single published entry point.
+#
+# SAW-034 serves plain HTTP here. SAW-035 replaces this block with the TLS
+# listener and SAW-036 adds the optional OAuth gateway; the address below is the
+# one thing those tasks change.
+{
+	# No admin API: nothing should be able to reconfigure the gateway at run time.
+	admin off
+	# The sidecar writes its own request log; this one records who reached the door.
+	log {
+		output stderr
+		format console
+	}
+}
+
+:8081 {
+	# The Host header is passed through unchanged, on purpose. The sidecar checks
+	# it against loopback plus MCP_ALLOWED_HOSTS as a DNS-rebinding defence
+	# (sidecar/src/mcp-endpoint.ts). Rewriting it here would quietly disable that
+	# check; instead, a deployment names its public hostname in MCP_ALLOWED_HOSTS.
+	reverse_proxy 127.0.0.1:8080 {
+		# The phone's update stream is gRPC over HTTP/2 and long-lived; no read
+		# deadline may cut it short.
+		flush_interval -1
+	}
+}
