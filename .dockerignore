@@ -1,0 +1,48 @@
+# Keeps the build context small and the image reproducible: nothing host-specific,
+# nothing secret, and nothing that would make two builds of one commit differ.
+
+# Dependencies and build outputs are produced inside the image.
+node_modules/
+dist/
+build/
+.gradle/
+.kotlin/
+*.apk
+*.aab
+
+# Local configuration and credentials never belong in a build context.
+.env
+.env.*
+!.env.example
+local.properties
+*.jks
+*.keystore
+keystore.properties
+google-services.json
+*.p12
+*.pem
+*.key
+
+# Local databases: the container's own live on the data volume.
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# The images build the Node workspace only.
+android/
+docs/
+examples/
+fixtures/
+proto/
+scripts/
+.claude/
+.github/
+.git/
+
+# IDE and OS files.
+.idea/
+*.iml
+.vscode/
+.DS_Store
+captures/
