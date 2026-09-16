@@ -1,7 +1,8 @@
 /**
- * The agent-facing MCP endpoint: Streamable HTTP at /mcp, authenticated with MCP_TOKEN. It serves
- * the Stage 1 tool `vault_display_command` and the durable request tools (requests/mcp-tools.ts),
- * with the demo tool `vault_request_ack` only when MCP_DEMO_TOOLS is set.
+ * The agent-facing MCP endpoint: Streamable HTTP at /mcp, authenticated with MCP_TOKEN, or with an
+ * OAuth access token when a hosted client's authorization server is configured (SAW-036). It
+ * serves the Stage 1 tool `vault_display_command` and the durable request tools
+ * (requests/mcp-tools.ts), with the demo tool `vault_request_ack` only when MCP_DEMO_TOOLS is set.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -12,9 +13,14 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
-import { bearerTokenMatches } from "./auth.ts";
+import { bearerToken, bearerTokenMatches } from "./auth.ts";
 import { LiveCommandFailure, type LiveCommandBridge } from "./live/bridge.ts";
 import { MAX_COMMAND_TEXT_BYTES } from "./live/command.ts";
+import {
+  challenge,
+  createAccessTokenVerifier,
+  type OAuthConfig,
+} from "./oauth.ts";
 import type { ConfirmationTracker } from "./requests/confirmation.ts";
 import { registerRequestTools } from "./requests/mcp-tools.ts";
 import type { TransactionPreparer } from "./requests/preparation.ts";
@@ -68,6 +74,12 @@ export interface McpEndpointOptions {
   readonly allowedHosts?: readonly string[];
   /** Serves the demo tool vault_request_ack (MCP_DEMO_TOOLS). */
   readonly demoTools?: boolean;
+  /**
+   * The authorization server a hosted MCP client's access tokens come from (MCP_OAUTH_ISSUER).
+   * With it, /mcp takes an access token issued for this deployment, and MCP_TOKEN opens it only
+   * from a loopback Host — the stack's own private endpoint, which is published nowhere.
+   */
+  readonly oauth?: OAuthConfig;
   /** Serves vault_transfer; absent when no Solana RPC endpoint is configured (SOLANA_RPC_URL). */
   readonly preparer?: TransactionPreparer;
   /** Checks a submitted transaction against the chain when a tool reads it (SAW-022). */
@@ -86,6 +98,9 @@ export function createMcpEndpoint(
     ...LOOPBACK_HOSTNAMES,
     ...(options.allowedHosts ?? []),
   ]);
+  const oauth = options.oauth;
+  const verifier =
+    oauth === undefined ? undefined : createAccessTokenVerifier(oauth);
   const sessions = new Map<string, StreamableHTTPServerTransport>();
   // Aborts when the connection carrying a tool call closes before its response is sent.
   const connectionClosed = new AsyncLocalStorage<AbortSignal>();
@@ -159,14 +174,11 @@ export function createMcpEndpoint(
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
-    const rejection = rejectionFor(req, mcpToken, hostnames);
+    const rejection =
+      hostRejectionFor(req, hostnames) ?? (await authorize(req));
     if (rejection !== undefined) {
       log(`rejected ${req.method ?? "?"} /mcp: ${rejection.reason}`);
-      const headers: Record<string, string> =
-        rejection.status === 401
-          ? { "WWW-Authenticate": 'Bearer realm="seeker-vault"' }
-          : {};
-      sendError(res, rejection.status, rejection.reason, headers);
+      sendError(res, rejection.status, rejection.reason, rejection.headers);
       return;
     }
 
@@ -215,6 +227,54 @@ export function createMcpEndpoint(
     await connectionClosed.run(closed.signal, () =>
       active.handleRequest(req, res, body),
     );
+  }
+
+  /**
+   * Which credential opens the endpoint. Without OAuth it is MCP_TOKEN, as it has always been.
+   * With OAuth it is an access token the configured authorization server issued for this
+   * deployment, and MCP_TOKEN is accepted only under a loopback Host: that is the stack's own
+   * private endpoint inside the container's network namespace (gateway/Caddyfile.public), which
+   * is published nowhere, and the public gateway closes any connection that claims it.
+   */
+  async function authorize(
+    req: IncomingMessage,
+  ): Promise<Rejection | undefined> {
+    const authorization = req.headers.authorization;
+    if (oauth === undefined || verifier === undefined) {
+      if (bearerTokenMatches(authorization, mcpToken)) return undefined;
+      return {
+        status: 401,
+        reason: "a valid MCP token is required",
+        headers: { "WWW-Authenticate": 'Bearer realm="seeker-vault"' },
+      };
+    }
+    if (
+      isLoopbackHost(req.headers.host) &&
+      bearerTokenMatches(authorization, mcpToken)
+    ) {
+      return undefined;
+    }
+    const presented = bearerToken(authorization);
+    if (presented === undefined) {
+      return {
+        status: 401,
+        reason:
+          "an access token from the configured authorization server is required",
+        headers: { "WWW-Authenticate": challenge(oauth) },
+      };
+    }
+    const verification = await verifier.verify(presented);
+    if (verification.ok) return undefined;
+    return {
+      status: verification.status,
+      reason: verification.description,
+      headers: {
+        "WWW-Authenticate": challenge(oauth, {
+          error: verification.error,
+          description: verification.description,
+        }),
+      },
+    };
   }
 
   async function close(): Promise<void> {
@@ -283,16 +343,24 @@ function readJsonBody(req: IncomingMessage): Promise<JsonBody> {
   });
 }
 
-function rejectionFor(
+/** A refusal, with the headers that go with it; a 401 always carries its challenge. */
+interface Rejection {
+  readonly status: 401 | 403;
+  readonly reason: string;
+  readonly headers: Record<string, string>;
+}
+
+/** The DNS-rebinding defence, which runs before any credential is looked at. */
+function hostRejectionFor(
   req: IncomingMessage,
-  mcpToken: string,
   hostnames: ReadonlySet<string>,
-): { readonly status: 401 | 403; readonly reason: string } | undefined {
+): Rejection | undefined {
   if (!isAllowed(hostnameOf(`http://${req.headers.host ?? ""}`), hostnames)) {
     return {
       status: 403,
       reason:
         "the Host header is not a loopback address or an MCP_ALLOWED_HOSTS entry",
+      headers: {},
     };
   }
   const origin = req.headers.origin;
@@ -301,12 +369,15 @@ function rejectionFor(
       status: 403,
       reason:
         "the Origin header is not a loopback origin or an MCP_ALLOWED_HOSTS entry",
+      headers: {},
     };
   }
-  if (!bearerTokenMatches(req.headers.authorization, mcpToken)) {
-    return { status: 401, reason: "a valid MCP token is required" };
-  }
   return undefined;
+}
+
+function isLoopbackHost(host: string | undefined): boolean {
+  const hostname = hostnameOf(`http://${host ?? ""}`);
+  return hostname !== undefined && LOOPBACK_HOSTNAMES.includes(hostname);
 }
 
 function hostnameOf(url: string): string | undefined {

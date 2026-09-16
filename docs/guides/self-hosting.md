@@ -106,7 +106,8 @@ The account key and the certificates live on the `gateway-data` volume, under `/
 
 | Path | On the internet | Authenticated by |
 | --- | --- | --- |
-| `/mcp` | yes | `MCP_TOKEN` |
+| `/mcp` | yes | `MCP_TOKEN`, or an OAuth access token when the OAuth profile is on |
+| `/.well-known/oauth-protected-resource` | yes, and only while the OAuth profile is on | nothing; a client reads it before it has a credential |
 | `/seekervault.request.v1.PairingService/*` | yes | a one-use pairing token |
 | `/seekervault.request.v1.RequestService/*` | yes | the paired phone's own credential |
 | `/seekervault.update.v1.UpdateService/*` | yes, but not served here — see below | the paired phone's own credential |
@@ -139,6 +140,27 @@ docker compose exec sidecar node sidecar/dist/pairing/cli.js
 ```
 
 The code carries `https://<your domain>`, because the overlay set `SIDECAR_PUBLIC_URL` from the domain. Scan it from **Connections → Add connection**. [`pairing.md`](pairing.md) covers the rest, including `status` and `revoke`.
+
+### A hosted MCP client: the optional OAuth profile
+
+A hosted client — Claude's custom connectors are the one this was written for — runs on somebody
+else's machine, and pasting `MCP_TOKEN` into it hands that product a secret everything else uses.
+The third overlay replaces it with OAuth: a person authorizes the client at an authorization
+server you choose, and the sidecar accepts the short-lived token it was issued.
+
+```sh
+docker compose -f compose.yaml -f compose.public.yaml -f compose.oauth.yaml up -d --build
+```
+
+It is optional, and off by default. Running Hermes or an agent of your own needs none of it.
+
+Nothing in this repository issues a token: the sidecar publishes the discovery document and
+validates what arrives, and the authorization server is a product you already run or sign up for.
+[`docs/integrations/claude.md`](../integrations/claude.md) is the whole setup — what that server
+has to support, the four values to write down, how to check it with `curl` before involving
+Claude, and what each refusal means. While the profile is on, `MCP_TOKEN` no longer opens `/mcp`
+under the public name; it still opens the stack's own private endpoint, which is what the health
+check and the test agent use.
 
 ### Never work around a certificate warning
 
@@ -211,6 +233,12 @@ A successful `docker buildx` for a platform is not evidence that the container r
 **Port 80 or 443 is already in use.** Another web server or reverse proxy on the host has it. Stop that one, or give it the domain and let it forward to this stack; two things cannot both answer the certificate authority on port 80.
 
 **A request gets no response at all — the connection simply closes.** That is the gateway refusing a path it does not serve, or a `Host` that is not `GATEWAY_DOMAIN`. On the internet-facing configuration only `/mcp`, pairing, and the phone's request and update services are forwarded; `/healthz` and the Stage 1 diagnostic are deliberately not. Check the URL, and check the hostname the client used.
+
+**Claude cannot find an authorization server.** The discovery document is public by design, and the client reads it before it has any credential. Check it from outside your network: `curl -s https://<domain>/.well-known/oauth-protected-resource`. A 404 means the OAuth profile is not on — `MCP_OAUTH_ISSUER` is unset, or the third overlay was left off the command.
+
+**Every access token is refused, and the reason names a claim.** The refusal says which check failed, in words, both in the `WWW-Authenticate` header and in `docker compose logs sidecar`. [`docs/integrations/claude.md`](../integrations/claude.md#when-it-does-not-work) has each one and what to change; a trailing slash on the issuer and an audience the authorization server never set are the two common ones.
+
+**The test agent stopped working after turning OAuth on.** It reaches `/mcp` through the stack's private endpoint, which still takes `MCP_TOKEN`; `AGENT_MCP_URL` must be the loopback one (`http://127.0.0.1:8081/mcp`), not the public domain. Under the public name only an access token is accepted.
 
 **The phone or an agent reports an untrusted certificate.** Read the gateway's log and fix the certificate. There is no setting here that turns the check off, and adding one would remove the only thing that makes a public endpoint safe.
 

@@ -109,7 +109,7 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 | `proto/` | Protobuf contract (a Buf module) and cross-runtime fixtures in `proto/fixtures`; see [`docs/protocol.md`](docs/protocol.md) |
 | `scripts/` | `generate.mjs`, which backs `pnpm generate` and `pnpm check:generated` |
 | `test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`test-agent/README.md`](test-agent/README.md). |
-| `gateway/` | Docker Compose, TLS, and OAuth gateway configuration, landing in Stage 7 |
+| `gateway/` | Docker Compose, the TLS gateway, and the optional OAuth overlay (Stage 7) |
 | `examples/` | Configuration to merge into other tools: `hermes.config.yaml`; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md) |
 | `docs/` | The architecture and the protocol, plus development docs, guides, testing notes, and the changelog |
 | `.github/workflows/ci.yml` | CI for pull requests and pushes |

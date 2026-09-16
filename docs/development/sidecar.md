@@ -11,7 +11,7 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 
 `pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`.
 
-`MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, `SOLANA_RPC_TIMEOUT_MS`, and `FCM_PROJECT_ID` are optional, and an empty one counts as unset. The others are required.
+`MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `MCP_OAUTH_ISSUER`, `MCP_OAUTH_RESOURCE`, `MCP_OAUTH_JWKS_URL`, `MCP_OAUTH_SCOPE`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, `SOLANA_RPC_TIMEOUT_MS`, and `FCM_PROJECT_ID` are optional, and an empty one counts as unset. The others are required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
@@ -23,6 +23,10 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 | `MCP_URL` | Not read by the sidecar; the test agent (SAW-005) uses it | None |
 | `MCP_ALLOWED_HOSTS` | Optional. Host names or IP addresses, comma-separated, that `/mcp` accepts in the `Host` and `Origin` headers besides loopback. It's for an agent that reaches the sidecar through a VPN address; see [Hermes over a VPN](../integrations/hermes.md#over-a-vpn-you-already-use). | No scheme, port, or wildcard |
 | `MCP_DEMO_TOOLS` | Optional. `true` serves the demo tool `vault_request_ack`, which queues a wallet-free acknowledgement, for development and demos. `.env.example` sets it. | `true` or `false`; unset or empty means `false` |
+| `MCP_OAUTH_ISSUER` | Optional, and the switch for SAW-036's OAuth profile: the authorization server whose access tokens `/mcp` accepts, for a hosted MCP client ([`claude.md`](../integrations/claude.md)). Unset means `/mcp` takes `MCP_TOKEN` and nothing else, and the metadata document below answers 404. | An `https://` URL — `http://` only on a loopback host — with no query or fragment. It must equal the tokens' `iss` claim **exactly**, trailing slash included. |
+| `MCP_OAUTH_RESOURCE` | Optional. This deployment's canonical MCP URI, which a token's `aud` claim must carry. | The same URL rules. Defaults to `SIDECAR_PUBLIC_URL` + `/mcp`. |
+| `MCP_OAUTH_JWKS_URL` | Optional. Where the authorization server publishes its public keys. | The same URL rules. Unset means the sidecar reads the issuer's RFC 8414 or OpenID Connect metadata and takes `jwks_uri` from it. |
+| `MCP_OAUTH_SCOPE` | Optional. Scopes a token must carry; they are advertised in the metadata document and in the `WWW-Authenticate` challenge, so a client knows what to ask for. | Scopes separated by spaces. A valid token without one gets 403 and `insufficient_scope`. |
 | `DATABASE_PATH` | Optional. The SQLite file for durable requests | Defaults to `sidecar/data/sidecar.db`, whatever the working directory. A relative path is resolved from the directory the sidecar starts in, and a missing directory is created. |
 | `REQUEST_TTL_SECONDS` | Optional. How long a request waits for the owner's decision when its agent doesn't choose | 60 to 604800; defaults to 86400 (a day) |
 | `REQUEST_PENDING_LIMIT` | Optional. The most requests that can wait for the owner at once | 1 to 10000; defaults to 100 |
@@ -117,7 +121,8 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | Path | Caller | Authentication | Purpose |
 | --- | --- | --- | --- |
 | `GET /healthz` | Anything on the machine | None | Liveness check: `{"status":"ok"}` |
-| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>` | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, the durable tools `vault_sign_message`, `vault_get_capabilities`, `vault_get_address`, `vault_get_request`, and `vault_cancel_request`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
+| `GET /.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` | A hosted MCP client, before it has a credential | None | RFC 9728 protected-resource metadata, naming the authorization server for `/mcp`. Served only while `MCP_OAUTH_ISSUER` is set; 404 otherwise (SAW-036) |
+| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>`, or an OAuth access token when `MCP_OAUTH_ISSUER` is set | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, the durable tools `vault_sign_message`, `vault_get_capabilities`, `vault_get_address`, `vault_get_request`, and `vault_cancel_request`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
 | `/seekervault.live.v1.LiveCommandService/WatchCommands` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect server stream of live commands |
 | `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
 | `/seekervault.request.v1.PairingService/Pair` | A phone that's pairing | `Authorization: Bearer <pairing token>`, from `pnpm pair` | Exchanges the pairing token for a connection and its credential |
@@ -163,6 +168,7 @@ The sidecar checks requests to `/mcp` as follows, following the MCP transport sp
 - **Host header:** must be a loopback name (`127.0.0.1`, `localhost`, or `[::1]`) or an `MCP_ALLOWED_HOSTS` entry, on any port so that SSH tunnels and port forwards work. Otherwise it returns 403.
 - **Origin header:** if present, it must also be a loopback origin or an `MCP_ALLOWED_HOSTS` entry. Otherwise it returns 403.
 - **Token:** a missing or wrong token gets 401 with `WWW-Authenticate: Bearer`.
+- **Access token, when `MCP_OAUTH_ISSUER` is set:** the token must be a JWT the authorization server made — an asymmetric signature over its published keys — with `iss` equal to the issuer, `aud` carrying `MCP_OAUTH_RESOURCE`, and an `exp` that has not passed. Anything else gets 401 and a challenge naming the metadata document, the scope to ask for, and which check failed; a valid token missing `MCP_OAUTH_SCOPE` gets 403 and `insufficient_scope`. `MCP_TOKEN` then opens `/mcp` only under a loopback `Host`, which is the deployment's own private endpoint.
 - **Body size:** a POST body over 64 KiB gets 413. When the length is declared, the sidecar answers without reading the body, and closes the connection.
 - **Session:** an unknown session ID gets 404, and the client then starts a new session.
 - **Request format:** the MCP SDK checks the `Accept` and `Content-Type` headers and the protocol version.

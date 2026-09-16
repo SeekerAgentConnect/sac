@@ -350,6 +350,83 @@ describe("loadSidecarConfig", () => {
     }
   });
 
+  it("configures the OAuth profile from the issuer, and takes the resource from the public URL", () => {
+    const config = loadSidecarConfig({
+      ...validEnv,
+      SIDECAR_PUBLIC_URL: "https://vault.example.com",
+      MCP_OAUTH_ISSUER: "https://auth.example.com/realms/seeker",
+      MCP_OAUTH_SCOPE: " seeker-vault:agent  openid ",
+    });
+    assert.deepEqual(config.oauth, {
+      issuer: "https://auth.example.com/realms/seeker",
+      resource: "https://vault.example.com/mcp",
+      scopes: ["seeker-vault:agent", "openid"],
+    });
+    // A trailing slash belongs to the issuer, because that is how some servers spell `iss`.
+    assert.equal(
+      loadSidecarConfig({
+        ...validEnv,
+        SIDECAR_PUBLIC_URL: "https://vault.example.com",
+        MCP_OAUTH_ISSUER: "https://tenant.example.com/",
+      }).oauth?.issuer,
+      "https://tenant.example.com/",
+    );
+  });
+
+  it("has no OAuth without an issuer, and says so rather than ignoring the rest", () => {
+    assert.equal(loadSidecarConfig(validEnv).oauth, undefined);
+    assert.deepEqual(
+      problemsFor({
+        ...validEnv,
+        MCP_OAUTH_RESOURCE: "https://vault.example.com/mcp",
+        MCP_OAUTH_SCOPE: "seeker-vault:agent",
+      }),
+      [
+        "MCP_OAUTH_RESOURCE, MCP_OAUTH_SCOPE needs MCP_OAUTH_ISSUER: without an authorization " +
+          "server /mcp takes MCP_TOKEN and nothing else.",
+      ],
+    );
+  });
+
+  it("refuses an authorization server, a resource, or a key set that is not on HTTPS", () => {
+    const base = {
+      ...validEnv,
+      SIDECAR_PUBLIC_URL: "https://vault.example.com",
+      MCP_OAUTH_ISSUER: "https://auth.example.com",
+    };
+    for (const name of [
+      "MCP_OAUTH_ISSUER",
+      "MCP_OAUTH_RESOURCE",
+      "MCP_OAUTH_JWKS_URL",
+    ]) {
+      for (const value of [
+        "http://auth.example.com",
+        "ftp://auth.example.com",
+        "auth.example.com",
+      ]) {
+        assert.match(
+          problemsFor({ ...base, [name]: value }).join("\n"),
+          new RegExp(`^${name} must be an`),
+          `${name}=${value}`,
+        );
+      }
+      // Loopback is the exception: a developer's own authorization server, and these tests.
+      assert.ok(
+        loadSidecarConfig({ ...base, [name]: "http://127.0.0.1:9000" }).oauth,
+      );
+    }
+    assert.deepEqual(
+      problemsFor({
+        ...base,
+        MCP_OAUTH_ISSUER: "https://auth.example.com/?a=1",
+      }),
+      ["MCP_OAUTH_ISSUER must carry no query string and no fragment."],
+    );
+    assert.deepEqual(problemsFor({ ...base, MCP_OAUTH_SCOPE: 'a "b"' }), [
+      'MCP_OAUTH_SCOPE must be scopes separated by spaces (invalid: "b").',
+    ]);
+  });
+
   it("never includes token values in the error message", () => {
     const secret = "do-not-print-this-token-value";
     try {

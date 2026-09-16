@@ -31,6 +31,11 @@ import { LiveCommandService } from "./gen/seekervault/live/v1/live_pb.js";
 import { UpdateCapabilitySchema } from "./gen/seekervault/request/v1/service_pb.js";
 import { LiveCommandBridge } from "./live/bridge.ts";
 import { createMcpEndpoint } from "./mcp-endpoint.ts";
+import {
+  PROTECTED_RESOURCE_PATHS,
+  protectedResourceMetadata,
+  type OAuthConfig,
+} from "./oauth.ts";
 import { pairingRoutes } from "./pairing/service.ts";
 import { phoneRoutes } from "./phone-api.ts";
 import { createFcmSender, type FcmSender } from "./push/fcm.ts";
@@ -199,7 +204,13 @@ async function serve(
     demoTools: config.demoTools,
     preparer,
     tracker,
+    ...(config.oauth === undefined ? {} : { oauth: config.oauth }),
   });
+  log(
+    config.oauth === undefined
+      ? "MCP OAuth is off; /mcp takes MCP_TOKEN (docs/integrations/claude.md configures a hosted client)"
+      : `MCP OAuth is on: /mcp takes an access token issued by ${config.oauth.issuer} for ${config.oauth.resource}`,
+  );
   let updateUrl: string | undefined;
   const routes = (includeUpdates: boolean) =>
     connectNodeAdapter({
@@ -244,6 +255,8 @@ async function serve(
     }
     if (path === "/healthz") {
       health(req, res);
+    } else if (PROTECTED_RESOURCE_PATHS.includes(path)) {
+      protectedResource(req, res, config.oauth);
     } else if (path === "/mcp") {
       mcp
         .handle(req as IncomingMessage, res as ServerResponse)
@@ -354,6 +367,38 @@ function health(req: MainRequest, res: MainResponse): void {
   }
   response.writeHead(200, { "Content-Type": "application/json" });
   if (req.method === "GET") response.end(JSON.stringify({ status: "ok" }));
+  else response.end();
+}
+
+/**
+ * RFC 9728's protected-resource metadata: the public document that tells a hosted MCP client which
+ * authorization server to send its user to (SAW-036). It is deliberately readable by anyone — it
+ * names no request, no owner, and no credential — and it exists only while OAuth is configured, so
+ * a deployment that uses MCP_TOKEN advertises no authorization it doesn't have.
+ */
+function protectedResource(
+  req: MainRequest,
+  res: MainResponse,
+  oauth: OAuthConfig | undefined,
+): void {
+  const response = res as ServerResponse;
+  if (oauth === undefined) {
+    response.writeHead(404, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ error: "not_found" }));
+    return;
+  }
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    response.writeHead(405, { Allow: "GET, HEAD" }).end();
+    return;
+  }
+  response.writeHead(200, {
+    "Content-Type": "application/json",
+    // A discovery document a client may fetch from a browser context, and cache for an hour.
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "public, max-age=3600",
+  });
+  if (req.method === "GET")
+    response.end(JSON.stringify(protectedResourceMetadata(oauth)));
   else response.end();
 }
 

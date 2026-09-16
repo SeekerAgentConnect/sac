@@ -9,11 +9,13 @@ Each credential opens one role, and the sidecar accepts it in one place only:
 | Credential | Held by | Issued by | Accepted by | The sidecar keeps |
 | --- | --- | --- | --- | --- |
 | `MCP_TOKEN` | The agent | The operator, in `.env` | `/mcp` | The value, in `.env` |
+| OAuth access token (optional, SAW-036) | A hosted MCP client | The operator's own authorization server, for a person who authorized that client | `/mcp` | Nothing: it is validated and discarded |
 | Pairing token | Whoever sees the pairing code | `pnpm pair`: one use, 10 minutes by default | `PairingService.Pair` | Its SHA-256 hash |
 | Phone credential (`phone_token`) | The paired phone | The `Pair` response, once | `RequestService`, `UpdateService`, and authenticated `PairingService` operations for its own connection | Its SHA-256 hash |
 | `PHONE_TOKEN` | The Stage 1 live-test screen | The operator, in `.env` | `LiveCommandService` only | The value, in `.env` |
 
 - **Only the paired phone can prepare, review, and answer requests or register an FCM target.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool pairs, prepares, submits a result, registers a target, or revokes. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `sidecar/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
+- **An access token is an agent's credential and no more.** When `MCP_OAUTH_ISSUER` is configured, `/mcp` also accepts a token issued by that authorization server for this deployment. It opens `/mcp` and nothing else — the same refusals as `MCP_TOKEN` apply to every phone RPC — and it authorizes asking, never answering: a request still waits for the owner's hand on the wallet. See [The authorization boundary](#the-authorization-boundary-saw-036).
 - **`PHONE_TOKEN` is the Stage 1 development exception, and it stays with the live diagnostic.** It can watch and acknowledge display-only live commands, and nothing else. It can't pair, and `RequestService` refuses it.
 - **The phone credential exists only on the phone.** The sidecar returns it once, in the `Pair` response, and stores only its hash. The database, its backups, and the log can't give it away.
 - **Pairing tokens and phone credentials are 32 random bytes,** written as 43 base64url characters. Because they're random, a single SHA-256 is enough to store them. A slow password hash only helps with guessable secrets.
@@ -108,7 +110,7 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 - **The app keeps Android's normal certificate and host name checks,** with no certificate pinning, custom CA, or trust-all.
 - **`SIDECAR_PUBLIC_URL` is the URL that pairing codes carry.** It must be `https://`, with one exception: `http://` on `127.0.0.1`, `localhost`, or `[::1]`, for development over `adb reverse`. That's the default, and it's the Stage 1 loopback exception. The debug build allows cleartext to `127.0.0.1` and `localhost` only, and release builds allow none. The URL can have a path, but no user name, password, query, or fragment.
 - **The secure listener preserves every existing route, `/mcp` included.** `/mcp` still refuses a public host name unless `MCP_ALLOWED_HOSTS` lists it, and it always needs `MCP_TOKEN`. The paired phone credential opens production updates; every other role is refused.
-- **The Stage 7 gateway terminates TLS in front of the sidecar,** with a certificate it obtains and renews itself for a domain the operator owns. It adds no authentication and removes none, so every boundary below is still the sidecar's own. The optional OAuth gateway is separate (SAW-036).
+- **The Stage 7 gateway terminates TLS in front of the sidecar,** with a certificate it obtains and renews itself for a domain the operator owns. It adds no authentication and removes none, so every boundary below is still the sidecar's own. The optional OAuth profile (SAW-036) changes nothing about that: it is the sidecar, as the MCP server, that validates an access token.
 
 ### The gateway (SAW-035)
 
@@ -121,6 +123,19 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 - **No credential reaches the access log.** Caddy redacts `Authorization`, `Cookie`, `Set-Cookie`, and `Proxy-Authorization` unless `log_credentials` is turned on, and it is not turned on in either file. Turning it on would put every agent token, phone credential, and pairing token into the log at once. Pairing codes never travel as a URL or a header — they are shown to the phone and sent in a request body, which is not logged.
 - **The admin API is off.** `admin off` in both files means Caddy opens no configuration port for anything to reconfigure it through.
 - **The live update stream is not carried.** `Subscribe` is gRPC over HTTP/2 and terminates at the sidecar's own TLS listener. Behind this gateway the sidecar speaks HTTP/1.1, no update endpoint is configured, and pairing therefore advertises none: nothing is promised that the endpoint cannot deliver.
+
+### The authorization boundary (SAW-036)
+
+An optional profile lets a hosted MCP client reach `/mcp` on a person's authorization instead of a shared token ([`docs/integrations/claude.md`](integrations/claude.md)). It is off unless `MCP_OAUTH_ISSUER` is set, and when it is off the sidecar advertises no authorization at all — the metadata document below answers 404.
+
+- **The sidecar is a resource server, and only that.** It publishes protected-resource metadata (RFC 9728) and validates the tokens that arrive. It issues none: there is no authorization endpoint, no token endpoint, no client registration, no consent screen, and no client secret anywhere in this repository. The authorization server is a product the operator already runs or signs up for, and the only thing read from it is public keys.
+- **A token is accepted only if it was issued for this deployment.** The `aud` claim must carry this deployment's canonical MCP URI (`MCP_OAUTH_RESOURCE`, by default `https://<domain>/mcp`), the `iss` claim must equal `MCP_OAUTH_ISSUER` exactly, the signature must verify against the authorization server's published keys, and `exp` must not have passed. A token that another resource server would accept opens nothing here. This is the check that the MCP specification exists to insist on.
+- **Only asymmetric signatures.** `RS*`, `PS*`, `ES*`, and `EdDSA` are accepted; a shared secret is not an algorithm this endpoint honours, and `none` never was. Opaque tokens are refused with an error that says so: there is no introspection call, so nothing is asked of the authorization server at request time.
+- **A token is never passed on.** It authorizes the MCP call and stops there. Nothing downstream ever sees it, and the sidecar has no upstream API to present it to.
+- **Scopes are a refusal, not a capability.** `MCP_OAUTH_SCOPE` names what a token must carry; a valid token without it is refused with `403` and `insufficient_scope`, which is how a client learns what to ask for. A scope grants nothing on its own — the tools an access token reaches are exactly the tools `MCP_TOKEN` reaches.
+- **There is no second way in.** While OAuth is on, `MCP_TOKEN` opens `/mcp` only under a loopback `Host`: that is the stack's own private endpoint inside the container's network namespace, which Compose cannot publish, and the public gateway closes any connection claiming a host it does not serve. A hosted client cannot fall back to it, and neither can anyone else.
+- **Revocation is bounded by the token's lifetime.** A signed token is not checked against the authorization server on each call, so revoking a grant stops the *next* token rather than the current one. Short access-token lifetimes are the answer, and removing `MCP_OAUTH_ISSUER` refuses every access token at once.
+- **The discovery document is public on purpose.** A client reads it before it has any credential. It names the authorization server, this resource, and the scope — no owner, no request, no connection, and no token.
 
 ### Trusted endpoints
 
