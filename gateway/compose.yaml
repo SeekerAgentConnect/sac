@@ -1,8 +1,14 @@
-# Self-hosting stack for the sidecar (SAW-034).
+# Self-hosting stack for the sidecar (SAW-034, SAW-035).
 #
 # Run it from this directory:
 #   cp .env.example .env    # then fill in the two tokens
 #   docker compose up -d --build
+#
+# That is the local-development configuration: plain HTTP, published on the
+# host's loopback address. The internet-facing one is this file plus an overlay,
+# which terminates TLS for a domain you own:
+#
+#   docker compose -f compose.yaml -f compose.public.yaml up -d --build
 #
 # Everything builds from this checkout. No image or package that has not been
 # published is required, and nothing is pulled from a registry but the two

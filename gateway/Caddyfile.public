@@ -1,0 +1,143 @@
+# The gateway's front door — internet-facing.
+#
+# Used by the `compose.public.yaml` overlay, which mounts this file instead of
+# `Caddyfile` and publishes ports 80 and 443:
+#
+#   docker compose -f compose.yaml -f compose.public.yaml up -d --build
+#
+# Caddy obtains and renews a publicly trusted certificate for $GATEWAY_DOMAIN by
+# itself (https://caddyserver.com/docs/automatic-https). That needs the domain's
+# A/AAAA record pointing at this host, ports 80 and 443 reachable from the
+# internet, and the `gateway-data` volume kept: it holds the account key and the
+# certificates, and losing it means re-issuing on every start and meeting the
+# certificate authority's rate limits.
+#
+# Plain HTTP exists here only as the redirect to HTTPS that Caddy adds itself.
+# No one is ever asked to ignore a certificate warning: a self-signed or
+# untrusted certificate is refused by the phone, and that refusal is correct.
+{
+	# No admin API: nothing should be able to reconfigure the gateway at run time,
+	# and its port (2019) must never appear on a public interface.
+	admin off
+	# Where the certificate authority sends expiry and problem notices.
+	email {$ACME_EMAIL}
+	# The gateway's own runtime messages: startup, certificates, errors. Request
+	# logging is configured per site below, because that is where Caddy puts it.
+	log {
+		output stderr
+		format console
+	}
+	# `log_credentials` is deliberately absent. Without it Caddy redacts the
+	# Authorization, Cookie, Set-Cookie, and Proxy-Authorization headers from
+	# every request log, so no agent token, phone credential, or pairing token is
+	# ever written. Turning it on would put them all in the log at once.
+}
+
+{$GATEWAY_DOMAIN} {
+	# One line per request, to stderr, where `docker compose logs gateway` finds
+	# it. Credentials are redacted; see the global block above.
+	log {
+		output stderr
+		format console
+	}
+	# The compose healthcheck asks every 30 seconds and is not news.
+	log_skip /healthz
+
+	header {
+		# This host is HTTPS-only from now on; a downgrade is not an option.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Only the endpoints below exist on the public interface. Everything else is
+	# refused at the door rather than forwarded.
+
+	# --- MCP: the agent's endpoint, authenticated by MCP_TOKEN ----------------
+	# The Host header is passed through unchanged, on purpose. The sidecar checks
+	# it against loopback plus MCP_ALLOWED_HOSTS as a DNS-rebinding defence
+	# (sidecar/src/mcp-endpoint.ts). Rewriting it here would quietly disable that
+	# check, so the overlay puts $GATEWAY_DOMAIN in MCP_ALLOWED_HOSTS instead.
+	@mcp path /mcp /mcp/*
+	handle @mcp {
+		# The same 64 KiB the sidecar itself enforces, applied one hop earlier.
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy 127.0.0.1:8080 {
+			# Streamable HTTP answers over SSE, so responses must not be buffered.
+			flush_interval -1
+		}
+	}
+
+	# --- Connect: pairing and the phone's durable request API -----------------
+	# Separate route, separate limit, and no shared credential: each service takes
+	# only its own token (docs/protocol.md#roles). The gateway neither adds nor
+	# removes an Authorization header, so those boundaries are the sidecar's alone.
+	#
+	# seekervault.live.v1.LiveCommandService is deliberately absent: it is the
+	# Stage 1 diagnostic, it carries a development token, and a public deployment
+	# has no use for it. `vault_display_command` therefore does not work here.
+	#
+	# seekervault.update.v1.UpdateService is routed, but a sidecar behind a
+	# TLS-terminating gateway does not serve it: `Subscribe` is gRPC over HTTP/2
+	# end to end and terminates at the sidecar's own TLS listener instead
+	# (docs/development/sidecar.md#production-update-listener). Nothing is
+	# advertised to the phone that this endpoint cannot deliver — pairing simply
+	# omits the update capability, and the phone keeps its manual refresh.
+	@connect path /seekervault.request.v1.PairingService/* /seekervault.request.v1.RequestService/* /seekervault.update.v1.UpdateService/*
+	handle @connect {
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy 127.0.0.1:8080 {
+			# Server-streaming responses are long-lived; no buffering, no deadline.
+			flush_interval -1
+		}
+	}
+
+	# /healthz is not published: it belongs to the operator, not to the internet.
+	handle {
+		abort
+	}
+}
+
+# A request that arrives over TLS for some other host is not this deployment's.
+# Caddy's own default for an unserved host is an empty 200; close the connection
+# instead, so nothing here answers for a name it does not hold.
+:443 {
+	abort
+}
+
+# The operator's private endpoint. It binds the namespace's loopback address, so
+# it cannot be published to the host at all: only the containers in this stack
+# can reach it — the compose healthcheck, and the test agent behind the `agent`
+# profile, which calls MCP from inside rather than over the public name.
+http://127.0.0.1:8081 {
+	# A site address restricts the Host header, not the interface: without this
+	# the socket would be open on every interface in the namespace, and compose
+	# could publish it to the host. This binds the namespace's loopback only.
+	bind 127.0.0.1
+
+	# One line per request, to stderr, where `docker compose logs gateway` finds
+	# it. Credentials are redacted; see the global block above.
+	log {
+		output stderr
+		format console
+	}
+	# The compose healthcheck asks every 30 seconds and is not news.
+	log_skip /healthz
+
+	@private path /healthz /mcp /mcp/*
+	handle @private {
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy 127.0.0.1:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		abort
+	}
+}

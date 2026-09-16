@@ -1,0 +1,46 @@
+# Internet-facing overlay for compose.yaml (SAW-035).
+#
+# The base file on its own is the local-development stack: plain HTTP on the
+# host's loopback address. This overlay is what makes the stack public, and it
+# is a deliberate, separate command rather than a default:
+#
+#   docker compose -f compose.yaml -f compose.public.yaml up -d --build
+#
+# Before the first start, the domain in GATEWAY_DOMAIN must already resolve to
+# this host (an A record, an AAAA record, or both), and ports 80 and 443 must be
+# reachable from the internet. Caddy answers the certificate authority's
+# challenge on port 80 and serves HTTPS on 443; it then renews on its own.
+#
+# What changes compared with the base file: the gateway serves Caddyfile.public
+# instead of Caddyfile, 80 and 443 are published on every interface, and the two
+# settings that a public deployment must not get wrong — the host names /mcp
+# accepts, and the URL a pairing code carries — are derived from the domain
+# rather than typed again.
+#
+# The base file's loopback GATEWAY_PORT mapping stays in place and is unused
+# here: in this configuration the gateway's private endpoint binds the network
+# namespace's own loopback address and is reachable only from inside the stack
+# (`docker compose exec gateway wget -qO- http://127.0.0.1:8081/healthz`).
+
+services:
+  sidecar:
+    # The sidecar still binds loopback inside the namespace and is still
+    # unpublished. These are the gateway's ports: it shares this namespace.
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # /mcp refuses a Host or Origin header it does not know, as a DNS-rebinding
+      # defence. The public name is the one agents will use, so it belongs here.
+      MCP_ALLOWED_HOSTS: ${GATEWAY_DOMAIN:?set GATEWAY_DOMAIN in gateway/.env - the public domain name, for example vault.example.com}
+      # The URL a pairing code gives the phone. HTTPS, and the same domain.
+      SIDECAR_PUBLIC_URL: https://${GATEWAY_DOMAIN:?set GATEWAY_DOMAIN in gateway/.env - the public domain name, for example vault.example.com}
+
+  gateway:
+    environment:
+      GATEWAY_DOMAIN: ${GATEWAY_DOMAIN:?set GATEWAY_DOMAIN in gateway/.env - the public domain name, for example vault.example.com}
+      # Where the certificate authority sends expiry and problem notices.
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in gateway/.env - the address your certificate authority should contact}
+    volumes:
+      # Replaces the development Caddyfile mounted by the base file.
+      - ./Caddyfile.public:/etc/caddy/Caddyfile:ro
