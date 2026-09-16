@@ -172,6 +172,9 @@ importers:
       firebase-admin:
         specifier: 14.4.0
         version: 14.4.0
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
       uqr:
         specifier: 0.1.3
         version: 0.1.3

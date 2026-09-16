@@ -8,6 +8,7 @@
  */
 import { fileURLToPath } from "node:url";
 
+import type { OAuthConfig } from "./oauth.ts";
 import { invalidServerUrlReason, normalizeServerUrl } from "./pairing/uri.ts";
 import { CHAIN_BUDGET_MS } from "./solana/rpc.ts";
 import {
@@ -24,6 +25,12 @@ export interface SidecarConfig {
   readonly liveCommandTimeoutSeconds: number;
   /** Host names besides loopback that /mcp accepts in Host and Origin (MCP_ALLOWED_HOSTS). */
   readonly mcpAllowedHosts?: readonly string[];
+  /**
+   * The authorization server /mcp accepts access tokens from, for a hosted MCP client (SAW-036).
+   * Absent unless MCP_OAUTH_ISSUER is set, and then the endpoint takes an access token issued for
+   * this deployment; the phone's API is never part of it (docs/integrations/claude.md).
+   */
+  readonly oauth?: OAuthConfig;
   /**
    * Serves vault_request_ack, which queues a wallet-free acknowledgement, for development and demos
    * (MCP_DEMO_TOOLS). Off unless it's set.
@@ -93,6 +100,8 @@ const BEARER_TOKEN = /^[A-Za-z0-9\-._~+/]+=*$/;
 // A DNS name or an IPv4 address, or an IPv6 address in brackets; no scheme, port, or wildcard.
 const HOSTNAME =
   /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$|^\[[0-9a-f:.]+\]$/;
+// RFC 6749's scope-token: printable ASCII without spaces, quotes, or backslashes.
+const SCOPE_TOKEN = /^[\x21\x23-\x5B\x5D-\x7E]+$/;
 const MAX_LIVE_COMMAND_TIMEOUT_SECONDS = 3600;
 const DEFAULT_REQUEST_TTL_SECONDS = 24 * 60 * 60;
 const DEFAULT_PENDING_LIMIT = 100;
@@ -166,6 +175,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     DEFAULT_PAIRING_TOKEN_TTL_SECONDS,
     problems,
   );
+  const oauth = oauthConfig(env, publicUrl, problems);
   const solanaRpcUrl = endpointUrl(env, problems);
   const solanaRpcTimeoutMs = optionalWholeNumber(
     env,
@@ -239,6 +249,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     pendingLimit,
     publicUrl,
     pairingTokenTtlSeconds,
+    ...(oauth === undefined ? {} : { oauth }),
     solanaRpcUrl,
     solanaRpcTimeoutMs,
     ...(updatePort === undefined ? {} : { updatePort }),
@@ -246,6 +257,100 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     ...(tlsPrivateKeyPath === undefined ? {} : { tlsPrivateKeyPath }),
     ...(fcmProjectId === undefined ? {} : { fcmProjectId }),
   };
+}
+
+/**
+ * MCP_OAUTH_*: the optional OAuth profile for a hosted MCP client (SAW-036). MCP_OAUTH_ISSUER is
+ * the switch; without it there is no OAuth at all, and the other three are a configuration error
+ * rather than settings that quietly do nothing. None of them is a secret: this sidecar is a
+ * resource server, so it reads the authorization server's public keys and holds no client
+ * credential of its own.
+ */
+function oauthConfig(
+  env: Env,
+  publicUrl: string | undefined,
+  problems: string[],
+): OAuthConfig | undefined {
+  const issuer = env.MCP_OAUTH_ISSUER?.trim();
+  const resource = env.MCP_OAUTH_RESOURCE?.trim();
+  const jwksUrl = env.MCP_OAUTH_JWKS_URL?.trim();
+  const scope = env.MCP_OAUTH_SCOPE?.trim();
+  if (!issuer) {
+    const orphans = [
+      ...(resource ? ["MCP_OAUTH_RESOURCE"] : []),
+      ...(jwksUrl ? ["MCP_OAUTH_JWKS_URL"] : []),
+      ...(scope ? ["MCP_OAUTH_SCOPE"] : []),
+    ];
+    if (orphans.length > 0) {
+      problems.push(
+        `${orphans.join(", ")} needs MCP_OAUTH_ISSUER: without an authorization server /mcp takes MCP_TOKEN and nothing else.`,
+      );
+    }
+    return undefined;
+  }
+
+  // The issuer is compared with a token's `iss` claim exactly as written, trailing slash and all,
+  // because that is how the comparison is defined; some authorization servers publish one.
+  const issuerUrl = publicEndpoint(issuer, "MCP_OAUTH_ISSUER", problems);
+  const canonical = resource
+    ? publicEndpoint(resource, "MCP_OAUTH_RESOURCE", problems)
+    : publicUrl === undefined
+      ? undefined
+      : publicEndpoint(
+          `${publicUrl.replace(/\/$/, "")}/mcp`,
+          "SIDECAR_PUBLIC_URL",
+          problems,
+        );
+  const keys = jwksUrl
+    ? publicEndpoint(jwksUrl, "MCP_OAUTH_JWKS_URL", problems)
+    : undefined;
+  const scopes = (scope ?? "").split(/\s+/).filter((entry) => entry !== "");
+  const invalidScopes = scopes.filter((entry) => !SCOPE_TOKEN.test(entry));
+  if (invalidScopes.length > 0) {
+    problems.push(
+      `MCP_OAUTH_SCOPE must be scopes separated by spaces (invalid: ${invalidScopes.join(", ")}).`,
+    );
+  }
+  if (issuerUrl === undefined || canonical === undefined) return undefined;
+  return {
+    issuer: issuerUrl,
+    resource: canonical,
+    ...(keys === undefined ? {} : { jwksUrl: keys }),
+    scopes,
+  };
+}
+
+/**
+ * An OAuth endpoint or resource identifier: absolute, https, and without a query or a fragment.
+ * http is allowed on a loopback host, which is how the tests and a developer's own authorization
+ * server run; a token that travelled over plain HTTP anywhere else is a token somebody else has.
+ */
+function publicEndpoint(
+  raw: string,
+  name: string,
+  problems: string[],
+): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    problems.push(`${name} must be an absolute https:// URL.`);
+    return undefined;
+  }
+  const loopback =
+    url.protocol === "http:" &&
+    LOOPBACK_HOSTS.has(url.hostname.replace(/^\[|\]$/g, ""));
+  if (url.protocol !== "https:" && !loopback) {
+    problems.push(
+      `${name} must be an https:// URL, or http:// on a loopback host for development.`,
+    );
+    return undefined;
+  }
+  if (url.search !== "" || url.hash !== "") {
+    problems.push(`${name} must carry no query string and no fragment.`);
+    return undefined;
+  }
+  return raw;
 }
 
 /** FCM_PROJECT_ID: optional and non-secret; unset means no Firebase Admin app or sender exists. */

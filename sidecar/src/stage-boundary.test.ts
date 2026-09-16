@@ -218,6 +218,44 @@ describe("stage boundary", () => {
     );
   });
 
+  it("keeps the optional OAuth profile on the agent's endpoint, and issues nothing", () => {
+    // SAW-036 makes the sidecar an OAuth resource server for /mcp and no more than that. The
+    // authorization server is somebody else's product: nothing here authorizes a user, registers a
+    // client, or mints a token, and the only thing it reads from that server is public keys.
+    const sources = shippedSources();
+    const jose = /from "jose"/;
+    const outside = sources.filter(
+      (file) =>
+        relative(SRC, file) !== "oauth.ts" &&
+        jose.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      outside.map((file) => relative(ROOT, file)),
+      [],
+      "token validation lives in oauth.ts",
+    );
+
+    // Three files know OAuth exists: the configuration that turns it on, the agent's endpoint
+    // that enforces it, and the server that publishes the metadata document. The phone's API,
+    // pairing, the request service, and the update stream have never heard of it.
+    const importers = sources
+      .filter((file) => /from "\.\/oauth\.ts"/.test(readFileSync(file, "utf8")))
+      .map((file) => relative(SRC, file))
+      .sort();
+    assert.deepEqual(importers, ["config.ts", "mcp-endpoint.ts", "server.ts"]);
+
+    const issuing =
+      /client_secret|SignJWT|registration_endpoint|token_endpoint/;
+    const issuers = sources.filter((file) =>
+      issuing.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      issuers.map((file) => relative(ROOT, file)),
+      [],
+      "nothing here issues or exchanges a token",
+    );
+  });
+
   it("serves nothing that swaps, sends, or needs a key of an agent's own", () => {
     // The tools an agent can call are named here on purpose. SAW-019 adds vault_transfer, which
     // only stores a request; a swap tool is Stage 6's work, and until then no agent can ask for

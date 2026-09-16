@@ -1,8 +1,8 @@
 # Stage 7 tests
 
-Stage 7 packages what the earlier stages built for the owner's own infrastructure. SAW-034 containerizes the sidecar and the test agent and gives them a Compose stack that builds from a checkout, and SAW-035 puts a TLS gateway in front of it and separates the public endpoints from the private ones ([`../guides/self-hosting.md`](../guides/self-hosting.md)).
+Stage 7 packages what the earlier stages built for the owner's own infrastructure. SAW-034 containerizes the sidecar and the test agent and gives them a Compose stack that builds from a checkout, SAW-035 puts a TLS gateway in front of it and separates the public endpoints from the private ones ([`../guides/self-hosting.md`](../guides/self-hosting.md)), and SAW-036 adds the optional OAuth profile a hosted MCP client needs ([`../integrations/claude.md`](../integrations/claude.md)).
 
-Nothing in this stage changes what the software does. The sidecar still holds no key and signs nothing, still binds loopback, and still serves no transfer tool without `SOLANA_RPC_URL`. Starting the stack creates no request, spends nothing, and launches no LLM.
+Nothing in this stage changes what the software does. An authorized client is a client that may ask; every request still waits for the owner's hand on their own wallet. The sidecar still holds no key and signs nothing, still binds loopback, and still serves no transfer tool without `SOLANA_RPC_URL`. Starting the stack creates no request, spends nothing, and launches no LLM.
 
 ## SAW-034 — the Compose stack
 
@@ -142,3 +142,99 @@ The pairing code's own side of that was checked: `node sidecar/dist/pairing/cli.
 | 2026-09-17 | Implementation environment, no Docker daemon, Caddy 2.10.2 in front of a real sidecar | Both configurations, every check in the three tables above | PASS |
 | — | A host with a public domain | Public certificate issuance, renewal, and the redirect | NOT RUN |
 | — | Physical Seeker | Pairing and an authenticated request over HTTPS | NOT RUN |
+
+## SAW-036 — the OAuth profile for a hosted MCP client
+
+### How these were run
+
+Two layers, and they are worth keeping apart.
+
+The first is automated and repeatable: `sidecar/src/oauth.test.ts` runs a real sidecar against a
+fake **authorization server** (`sidecar/src/testing/authorization-server.ts`) that publishes
+discovery metadata and a JWKS and mints real signed tokens. Those are the resource server's own
+checks against real signatures, and `pnpm check` and CI run them on every change. They need no
+account anywhere.
+
+The second is the same hand-run arrangement SAW-035 used: the **configurations this repository
+ships**, served by `caddy 2.10.2` — the version behind `caddy:2.10-alpine` — in front of a real
+sidecar started from `sidecar/src/main.ts`, with `MCP_OAUTH_ISSUER` pointed at that same fake
+authorization server. The accommodations were SAW-035's, and nothing else in the files changed:
+`GATEWAY_DOMAIN` was `vault.localhost:9443` so Caddy issued from its own local authority, the
+catch-all site moved from `:443` to `:9443` to match, and `skip_install_trust` kept the test out of
+the machine's trust store.
+
+What neither layer is: a hosted Claude client. No commercial authorization server was involved
+either. The ticket is explicit that a metadata endpoint returning JSON is not a passed integration
+test, and the table at the end of this section says so.
+
+### Configuration checks
+
+| Check | What it establishes | Result |
+| --- | --- | --- |
+| `caddy validate` on both Caddyfiles | The discovery route is valid in the development and the internet-facing configuration | PASS |
+| `caddy fmt --diff` on both | Both files are canonical | PASS |
+| `docker compose config` with all three files | The OAuth overlay composes on top of the public one and sets the four `MCP_OAUTH_*` variables | PASS |
+| The same without `MCP_OAUTH_ISSUER` | Compose refuses before a container starts, naming the variable and where to set it | PASS |
+| `pnpm check` | Format, lint, types, and 454 sidecar tests — 24 of them added here — plus the stage-boundary checks | PASS |
+
+### The resource server's own checks (automated)
+
+Each of these is a test that fails if the check is removed; the audience one was confirmed by
+deleting the check and watching it fail.
+
+| Check | Result |
+| --- | --- |
+| A real MCP session opened with an access token, listing the sidecar's own tools | PASS |
+| The protected-resource metadata document, at the root and at the path-inserted well-known URI | PASS |
+| That document is absent — 404 — when no authorization server is configured | PASS |
+| No token: `401` with a challenge naming the metadata document and the scope to ask for | PASS |
+| A token for another resource (`aud`) | `401 invalid_token` |
+| A token from another issuer | `401 invalid_token` |
+| An expired token | `401 invalid_token` |
+| A token signed with a key the authorization server does not publish | `401 invalid_token` |
+| A token signed with a shared secret (HS256) instead of a published key | `401 invalid_token` |
+| An opaque token that is not a JWT | `401 invalid_token` |
+| A valid token without the required scope | `403 insufficient_scope`, with the scope named |
+| `MCP_TOKEN` under the deployment's public host name, while OAuth is on | `401` |
+| `MCP_TOKEN` under a loopback host — the stack's own private endpoint | `200` |
+| An access token against the phone's API (`RequestService`, `PairingService`) | Refused; it is an agent's credential |
+| The keys found from the issuer alone, through RFC 8414 metadata, and read once | PASS |
+| The same through OpenID Connect discovery, under an issuer with a path | PASS |
+| The log: the reason for each refusal, and no token value anywhere | PASS |
+| The stage boundary: token validation in one file, three files know OAuth exists, nothing issues or exchanges a token | PASS |
+
+### The shipped configurations, behind TLS
+
+| Check | Result |
+| --- | --- |
+| The discovery document through the public HTTPS gateway | `200` over HTTP/2, naming the authorization server, this resource, and the scope |
+| The path-inserted well-known URI, the same way | `200` |
+| The discovery document on the private endpoint | The connection is closed; it is not routed there |
+| `POST /mcp` with no token | `401`, `WWW-Authenticate` naming `https://<domain>/.well-known/oauth-protected-resource/mcp` |
+| `POST /mcp` with an access token | `200`, a real `initialize` result from the sidecar |
+| Expired, wrong audience, unknown key, opaque | `401` each, with the reason in `error_description` |
+| A valid token missing the scope | `403`, `error="insufficient_scope"` |
+| `MCP_TOKEN` under the public name | `401`: there is no second way in |
+| `MCP_TOKEN` on the private endpoint, while OAuth is on | `200` — the health check and the `agent` profile keep working |
+| `node test-agent/src/main.ts tools` through the public HTTPS endpoint, authorized only by an access token | The sidecar's full tool list: a real MCP client, not a curl probe |
+| The same with an expired token | Refused: "the sidecar rejected MCP_TOKEN (HTTP 401)" |
+| The access log | `"Authorization": ["REDACTED"]`; no access token and no `MCP_TOKEN` in it |
+
+### What is NOT RUN
+
+| Check | What it needs | Status |
+| --- | --- | --- |
+| A hosted Claude client: the connector added, consent approved, tools discovered, and a real request answered on the Seeker | A public domain, a real authorization server, and an account. **This is the ticket's acceptance** | NOT RUN |
+| The client's product and version, and the steps as the product actually words them | The same | NOT RUN |
+| Denied consent | A real consent screen; the fake authorization server has none | NOT RUN |
+| Revocation at the authorization server, and the access token expiring after it | A real authorization server. What the sidecar does with an expired token is covered above | NOT RUN |
+| Client ID Metadata Documents, or dynamic client registration | Both are the authorization server's side of the flow, and nothing here implements either | NOT RUN |
+| Any commercial or self-hosted provider's own tokens | An account, or a Keycloak of one's own | NOT RUN |
+| The profile in containers, with the gateway's own image | A Docker daemon | NOT RUN |
+
+### Record
+
+| Date | Machine | What was run | Result |
+| --- | --- | --- | --- |
+| 2026-09-17 | Implementation environment, no Docker daemon | The automated suite, and both layers of checks above | PASS |
+| — | A host with a public domain and a real authorization server | A hosted Claude client's round trip | NOT RUN |

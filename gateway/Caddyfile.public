@@ -52,7 +52,23 @@
 	# Only the endpoints below exist on the public interface. Everything else is
 	# refused at the door rather than forwarded.
 
-	# --- MCP: the agent's endpoint, authenticated by MCP_TOKEN ----------------
+	# --- OAuth discovery: what a hosted MCP client reads before it has a token -
+	# RFC 9728's protected-resource metadata document, which names the
+	# authorization server that issues access tokens for /mcp (SAW-036). It is
+	# public and unauthenticated on purpose: a client reads it precisely because
+	# it has no credential yet. It names no owner, no request, and no token, and
+	# the sidecar serves it only while MCP_OAUTH_ISSUER is set — a deployment
+	# that uses MCP_TOKEN answers 404 here and advertises nothing.
+	@oauth path /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/*
+	handle @oauth {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	# --- MCP: the agent's endpoint, authenticated by the sidecar --------------
+	# MCP_TOKEN, or an OAuth access token when MCP_OAUTH_ISSUER is configured
+	# (docs/integrations/claude.md). Either way the check is the sidecar's: this
+	# gateway adds no Authorization header and strips none.
+	#
 	# The Host header is passed through unchanged, on purpose. The sidecar checks
 	# it against loopback plus MCP_ALLOWED_HOSTS as a DNS-rebinding defence
 	# (sidecar/src/mcp-endpoint.ts). Rewriting it here would quietly disable that

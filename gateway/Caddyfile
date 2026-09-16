@@ -41,6 +41,15 @@
 	# rather than forwarded, so a route the sidecar may grow later is not exposed
 	# by accident.
 
+	# --- OAuth discovery: what a hosted MCP client reads before it has a token -
+	# RFC 9728's protected-resource metadata (SAW-036), served only while
+	# MCP_OAUTH_ISSUER is configured; the sidecar answers 404 otherwise. Routed
+	# here too so the optional profile can be tried locally before it is public.
+	@oauth path /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/*
+	handle @oauth {
+		reverse_proxy 127.0.0.1:8080
+	}
+
 	# --- MCP: the agent's endpoint, authenticated by MCP_TOKEN ----------------
 	@mcp path /mcp /mcp/*
 	handle @mcp {
