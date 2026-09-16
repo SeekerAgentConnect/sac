@@ -14,5 +14,8 @@
       "Bash(git status:*)",
       "Bash(git:*)"
     ]
+  },
+  "enabledPlugins": {
+    "linear@claude-plugins-official": true
   }
 }
