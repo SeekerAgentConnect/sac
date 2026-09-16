@@ -50,6 +50,16 @@ export interface SidecarConfig {
   readonly solanaRpcUrl?: string;
   /** How long one chain call may take (SOLANA_RPC_TIMEOUT_MS); the default applies when unset. */
   readonly solanaRpcTimeoutMs?: number;
+  /** Cleartext HTTP/2 update listener for loopback development (SIDECAR_UPDATE_PORT). */
+  readonly updatePort?: number;
+  /** PEM identity for the production HTTP/2 + HTTP/1.1 TLS listener. */
+  readonly tlsCertificatePath?: string;
+  readonly tlsPrivateKeyPath?: string;
+  /**
+   * Firebase project used by the optional FCM sender (FCM_PROJECT_ID). Credentials are resolved
+   * separately through Application Default Credentials and never enter this configuration.
+   */
+  readonly fcmProjectId?: string;
 }
 
 export class ConfigError extends Error {
@@ -98,6 +108,9 @@ const MIN_SOLANA_RPC_TIMEOUT_MS = 1000;
  * waits on one unary RPC for the operation and gives up at its own deadline (solana/rpc.ts).
  */
 const MAX_SOLANA_RPC_TIMEOUT_MS = CHAIN_BUDGET_MS;
+// Google Cloud project IDs are 6-30 lowercase letters, digits, and hyphens; they start with a
+// letter and end with a letter or digit. Validate before handing the value to the Admin SDK.
+const FIREBASE_PROJECT_ID = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
 
 export function loadSidecarConfig(env: Env): SidecarConfig & {
   readonly demoTools: boolean;
@@ -162,6 +175,41 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     DEFAULT_SOLANA_RPC_TIMEOUT_MS,
     problems,
   );
+  const updatePort = optionalNumber(
+    env,
+    "SIDECAR_UPDATE_PORT",
+    1,
+    65_535,
+    problems,
+  );
+  const tlsCertificatePath = env.SIDECAR_TLS_CERT_PATH?.trim() || undefined;
+  const tlsPrivateKeyPath = env.SIDECAR_TLS_KEY_PATH?.trim() || undefined;
+  const fcmProjectId = firebaseProjectId(env, problems);
+  if (
+    (tlsCertificatePath === undefined) !==
+    (tlsPrivateKeyPath === undefined)
+  ) {
+    problems.push(
+      "SIDECAR_TLS_CERT_PATH and SIDECAR_TLS_KEY_PATH must both be set or both be unset.",
+    );
+  }
+  if (updatePort !== undefined && tlsCertificatePath !== undefined) {
+    problems.push(
+      "SIDECAR_UPDATE_PORT is the loopback development listener and cannot be combined with the production TLS listener.",
+    );
+  }
+  if (
+    tlsCertificatePath !== undefined &&
+    tlsPrivateKeyPath !== undefined &&
+    publicUrl !== undefined
+  ) {
+    const url = new URL(publicUrl);
+    if (url.protocol !== "https:") {
+      problems.push(
+        "SIDECAR_PUBLIC_URL must use https:// when the production TLS listener is configured.",
+      );
+    }
+  }
 
   if (
     problems.length > 0 ||
@@ -193,7 +241,24 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     pairingTokenTtlSeconds,
     solanaRpcUrl,
     solanaRpcTimeoutMs,
+    ...(updatePort === undefined ? {} : { updatePort }),
+    ...(tlsCertificatePath === undefined ? {} : { tlsCertificatePath }),
+    ...(tlsPrivateKeyPath === undefined ? {} : { tlsPrivateKeyPath }),
+    ...(fcmProjectId === undefined ? {} : { fcmProjectId }),
   };
+}
+
+/** FCM_PROJECT_ID: optional and non-secret; unset means no Firebase Admin app or sender exists. */
+function firebaseProjectId(env: Env, problems: string[]): string | undefined {
+  const value = env.FCM_PROJECT_ID?.trim();
+  if (!value) return undefined;
+  if (!FIREBASE_PROJECT_ID.test(value)) {
+    problems.push(
+      "FCM_PROJECT_ID must be a 6-30 character lowercase Google Cloud project ID.",
+    );
+    return undefined;
+  }
+  return value;
 }
 
 /**
@@ -309,6 +374,18 @@ function optionalWholeNumber(
   problems: string[],
 ): number | undefined {
   if (!env[name]?.trim()) return fallback;
+  return wholeNumber(env, name, min, max, problems);
+}
+
+/** Like wholeNumber, but an unset or empty variable is absent. */
+function optionalNumber(
+  env: Env,
+  name: string,
+  min: number,
+  max: number,
+  problems: string[],
+): number | undefined {
+  if (!env[name]?.trim()) return undefined;
   return wholeNumber(env, name, min, max, problems);
 }
 

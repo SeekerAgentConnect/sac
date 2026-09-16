@@ -55,6 +55,8 @@ class FakeConnectionGateway : ConnectionGateway {
         var wallet: WalletBinding? = null
         /** How many times the phone published a binding to this server. */
         var publications = 0
+        /** Each active connection's current private FCM target. */
+        val fcmTokens = mutableMapOf<String, String>()
         /** When set, every call to this server fails this way. */
         var failure: GatewayException.Kind? = null
         /** The next SubmitResult takes effect, but its response is lost on the way back. */
@@ -158,6 +160,7 @@ class FakeConnectionGateway : ConnectionGateway {
         fun revoke(connectionId: String) {
             revoked += connectionId
             pending.remove(connectionId)
+            fcmTokens.remove(connectionId)
         }
 
         fun authenticate(credential: String): String? =
@@ -493,6 +496,21 @@ class FakeConnectionGateway : ConnectionGateway {
     override suspend fun revoke(serverUrl: String, credential: String, connectionId: String) {
         val server = reach(serverUrl, credential)
         server.revoke(authenticated(server, credential, connectionId))
+    }
+
+    override suspend fun setFcmToken(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+        update: FcmTokenUpdate,
+    ) {
+        val server = reach(serverUrl, credential)
+        val id = authenticated(server, credential, connectionId)
+        when (update) {
+            is FcmTokenUpdate.Register -> server.fcmTokens[id] = update.target
+            is FcmTokenUpdate.ClearIfCurrent ->
+                if (server.fcmTokens[id] == update.target) server.fcmTokens.remove(id)
+        }
     }
 
     private fun reach(url: String, secret: String): Server {

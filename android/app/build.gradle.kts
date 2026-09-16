@@ -3,6 +3,15 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Firebase is an optional deployment integration. A normal checkout has no project-specific file,
+// does not apply the Google Services plugin, and keeps every Stage 5.2 path buildable. Operators
+// opt in by placing the Firebase console's untracked file here (docs/guides/firebase.md).
+val firebaseConfigured = layout.projectDirectory.file("google-services.json").asFile.isFile
+
+if (firebaseConfigured) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "io.github.brrenat.seekervault"
     compileSdk = 37
@@ -13,11 +22,17 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+        // Lets the UI omit an irrelevant permission prompt from Firebase-off deployments.
+        // It contains configuration presence only, never a Firebase identifier or credential.
+        buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
         // src/androidTest: the device round trip, run by `pnpm test:hello --device`.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        buildConfig = true
+        compose = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -50,11 +65,15 @@ android {
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
+    implementation(platform(libs.firebase.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.firebase.messaging)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.compose)
     implementation(libs.androidx.camera.core)
@@ -71,6 +90,7 @@ dependencies {
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.androidx.work.testing)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)

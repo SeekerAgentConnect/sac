@@ -2,15 +2,19 @@ package io.github.brrenat.seekervault.policy
 
 import android.content.Context
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -38,6 +42,7 @@ class PolicyEditorScreenTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val calls = mutableListOf<String>()
     private val saved = mutableListOf<PolicyDraft>()
+    private val closeRequest = mutableIntStateOf(0)
     private lateinit var ui: MutableState<PolicyUiState>
 
     private val draft: PolicyDraft
@@ -67,6 +72,7 @@ class PolicyEditorScreenTest {
                     },
                     onMessageShown = { current.value = current.value.copy(message = null) },
                     onClose = { calls += "close" },
+                    closeRequest = closeRequest.intValue,
                 )
             }
         }
@@ -90,7 +96,11 @@ class PolicyEditorScreenTest {
 
     private fun text(id: Int, vararg args: Any) = context.getString(id, *args)
 
-    private fun click(tag: String) = compose.onNodeWithTag(tag).performScrollTo().performClick()
+    private fun click(tag: String) {
+        val node = compose.onNodeWithTag(tag)
+        if (tag != PolicyTags.SAVE && tag != PolicyTags.CANCEL) node.performScrollTo()
+        node.performClick()
+    }
 
     private fun type(tag: String, value: String) =
         compose.onNodeWithTag(tag).performScrollTo().performTextReplacement(value)
@@ -114,43 +124,144 @@ class PolicyEditorScreenTest {
     @Test
     fun aConnectionWithNoRulesSaysSoAndHasNothingToSave() {
         open()
-        seen(R.string.policy_global_never_saved)
-        seen(R.string.policy_global_summary_none)
-        seen(R.string.policy_summary_manual)
+        seen(R.string.policy_global_intro)
+        seen(R.string.policy_global_empty_title)
+        seen(R.string.policy_global_empty_caption)
         for (list in listOf("actions", "assets", RECIPIENTS, PROGRAMS)) {
+            compose.onNodeWithTag(PolicyTags.section(list)).performScrollTo().assertExists()
             compose.onNodeWithTag(PolicyTags.restrict(list)).performScrollTo().assertIsOff()
         }
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsNotEnabled()
+        for (list in listOf("assets", RECIPIENTS, PROGRAMS)) {
+            compose.onNodeWithTag(PolicyTags.empty(list)).performScrollTo().assertExists()
+        }
+        compose.onNodeWithTag(PolicyTags.CLEAR_GLOBAL).assertDoesNotExist()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertDoesNotExist()
+        compose.onNodeWithTag(PolicyTags.CANCEL).assertDoesNotExist()
+    }
+
+    @Test
+    fun aConfiguredGlobalPolicyUsesTheV4CardHierarchy() {
+        val configured =
+            PolicyDraft(
+                connectionId = CONNECTION,
+                restrictActions = true,
+                actions =
+                    setOf(
+                        PolicyAction.Acknowledgement,
+                        PolicyAction.MessageSignature,
+                        PolicyAction.Transfer,
+                    ),
+                restrictAssets = true,
+                assets =
+                    listOf(
+                        AssetDraft(
+                            network = Network.NETWORK_DEVNET,
+                            perOperation = "2",
+                            daily = "10",
+                        )
+                    ),
+                restrictRecipients = true,
+                recipients = listOf(RECIPIENT),
+                restrictPrograms = true,
+                programs = listOf(SYSTEM),
+            )
+        open(draft = configured, stored = configured)
+
+        seen(R.string.policy_global_intro)
+        seen(R.string.policy_global_caption)
+        compose.onNodeWithText(text(R.string.policy_global_empty_title)).assertDoesNotExist()
+        compose.onAllNodesWithText(text(R.string.policy_source_global)).assertCountEquals(4)
+        compose.onAllNodesWithText(text(R.string.policy_section_on)).assertCountEquals(4)
+        for (list in listOf("actions", "assets", RECIPIENTS, PROGRAMS)) {
+            compose.onNodeWithTag(PolicyTags.restrict(list)).performScrollTo().assertIsOn()
+        }
+        for (action in
+            listOf(
+                PolicyAction.Acknowledgement,
+                PolicyAction.MessageSignature,
+                PolicyAction.Transfer,
+            )) {
+            compose
+                .onNodeWithTag(PolicyTags.action(action))
+                .performScrollTo()
+                .assertTextContains(text(R.string.policy_action_expected))
+        }
+        compose
+            .onNodeWithText(text(R.string.policy_asset_row_sol, "devnet"))
+            .performScrollTo()
+            .assertExists()
+        compose.onNodeWithText("2 per request · 10 a day, all connections").assertExists()
+        compose.onNodeWithTag(PolicyTags.CLEAR_GLOBAL).performScrollTo().assertExists()
+        seen(R.string.policy_global_daily_note)
+    }
+
+    @Test
+    fun clearAllIsAReversibleDraftEdit() {
+        val configured =
+            PolicyDraft(
+                connectionId = CONNECTION,
+                restrictActions = true,
+                actions = setOf(PolicyAction.Transfer),
+                restrictAssets = true,
+                assets = listOf(AssetDraft(Network.NETWORK_DEVNET, perOperation = "2")),
+                restrictRecipients = true,
+                recipients = listOf(RECIPIENT),
+                restrictPrograms = true,
+                programs = listOf(SYSTEM),
+            )
+        open(draft = configured, stored = configured)
+
+        click(PolicyTags.CLEAR_GLOBAL)
+
+        assertEquals(PolicyDraft(CONNECTION), draft)
+        seen(R.string.policy_global_empty_title)
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsEnabled()
+        compose.onNodeWithTag(PolicyTags.CANCEL).assertIsEnabled()
+    }
+
+    @Test
+    fun aFailedGlobalSaveUsesThePinnedDesignFooter() {
+        val changed = PolicyDraft(CONNECTION, restrictActions = true)
+        show(
+            PolicyUiState(
+                scope = PolicyEditorScope.Global,
+                loaded = true,
+                draft = PolicyEditorDraft.Global(changed),
+                stored = PolicyEditorDraft.Global(PolicyDraft(CONNECTION)),
+                message = PolicyMessage.SaveFailed,
+            )
+        )
+
+        compose.onNodeWithTag(PolicyTags.SAVE_ERROR).assertExists()
+        seen(R.string.policy_save_error_title)
+        seen(R.string.policy_not_saved_yet)
+        seen(R.string.policy_try_again)
+        seen(R.string.policy_discard)
     }
 
     @Test
     fun aSwitchThatIsOffIsNotAnEmptyList() {
         open()
         // Off: no check at all, and the review says so.
-        seen(R.string.policy_actions_off)
+        compose.onNodeWithTag(PolicyTags.restrict("actions")).assertIsOff()
         click(PolicyTags.restrict("actions"))
         // On with nothing ticked: a rule that matches nothing, said in words rather than shown
         // as a blank.
-        seen(R.string.policy_actions_on)
-        seen(R.string.policy_actions_empty)
-        seen(R.string.policy_summary_actions_empty)
+        seen(R.string.policy_section_empty)
         compose.onNodeWithTag(PolicyTags.restrict("actions")).assertIsOn()
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsEnabled()
     }
 
     @Test
-    fun tickingAnActionNamesItInTheSummary() {
+    fun tickingAnActionUpdatesItsCard() {
         open()
         click(PolicyTags.restrict("actions"))
         click(PolicyTags.action(PolicyAction.Transfer))
         click(PolicyTags.action(PolicyAction.Acknowledgement))
         assertEquals(setOf(PolicyAction.Transfer, PolicyAction.Acknowledgement), draft.actions)
-        seen(
-            R.string.policy_summary_actions,
-            text(R.string.policy_action_ack_short) +
-                ", " +
-                text(R.string.policy_action_transfer_short),
-        )
+        compose
+            .onNodeWithTag(PolicyTags.action(PolicyAction.Transfer))
+            .assertTextContains(text(R.string.policy_action_expected))
         // And unticking takes it back out.
         click(PolicyTags.action(PolicyAction.Transfer))
         assertEquals(setOf(PolicyAction.Acknowledgement), draft.actions)
@@ -160,14 +271,21 @@ class PolicyEditorScreenTest {
     fun anAmountOfSolIsShownInTheUnitsItIsStoredIn() {
         open()
         addSol()
-        compose.onNodeWithTag(PolicyTags.asset(0)).assertTextEquals("SOL on mainnet")
+        assertEquals(1, draft.assets.size)
+        compose.onNodeWithText(text(R.string.policy_asset_row_sol, "mainnet")).assertExists()
         compose
             .onNodeWithTag(PolicyTags.perOperation(0))
             .assertTextContains(text(R.string.policy_amount_none))
         type(PolicyTags.perOperation(0), "1.5")
         seen(R.string.policy_amount_stored, "1500000000")
-        seen(R.string.policy_summary_per_operation, "1.5", "SOL on mainnet")
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()
+        compose
+            .onNodeWithText(
+                text(R.string.policy_asset_per_request_value, "1.5"),
+                substring = true,
+                useUnmergedTree = true,
+            )
+            .assertExists()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsEnabled()
     }
 
     @Test
@@ -176,14 +294,14 @@ class PolicyEditorScreenTest {
         addSol()
         type(PolicyTags.perOperation(0), "lots")
         seen(R.string.policy_amount_not_a_number)
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsNotEnabled()
         type(PolicyTags.perOperation(0), "0")
         seen(R.string.policy_amount_zero)
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsNotEnabled()
         type(PolicyTags.perOperation(0), "18446744073.709551616")
         seen(R.string.policy_amount_too_large, ULong.MAX_VALUE.toString())
         type(PolicyTags.perOperation(0), "1")
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsEnabled()
     }
 
     @Test
@@ -193,27 +311,29 @@ class PolicyEditorScreenTest {
         type(PolicyTags.perOperation(0), "2")
         type(PolicyTags.daily(0), "1")
         seen(R.string.policy_daily_below)
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsNotEnabled()
         type(PolicyTags.daily(0), "2")
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsEnabled()
     }
 
     @Test
     fun aTokenIsTypedInItsOwnBaseUnitsAndSaysSo() {
         open()
         addToken()
-        compose.onNodeWithTag(PolicyTags.asset(0)).assertTextEquals("$MINT on mainnet")
+        compose.onNodeWithText(text(R.string.policy_asset_row_token, "mainnet")).assertExists()
         seen(R.string.policy_token_units)
         seen(R.string.policy_per_operation_units)
         type(PolicyTags.perOperation(0), "1.5")
         seen(R.string.policy_amount_too_precise, "$MINT on mainnet", 0)
         type(PolicyTags.perOperation(0), "1000000")
         seen(R.string.policy_amount_stored, "1000000")
-        seen(
-            R.string.policy_summary_per_operation,
-            text(R.string.policy_base_units, "1000000"),
-            "$MINT on mainnet",
-        )
+        compose
+            .onNodeWithText(
+                text(R.string.policy_asset_per_request_value, "1000000"),
+                substring = true,
+                useUnmergedTree = true,
+            )
+            .assertExists()
     }
 
     @Test
@@ -245,20 +365,33 @@ class PolicyEditorScreenTest {
     }
 
     @Test
+    fun addAssetNetworksExposeTheirExclusiveSelection() {
+        open()
+        click(PolicyTags.ADD_ASSET)
+        val mainnet = compose.onNodeWithTag(PolicyTags.network(Network.NETWORK_MAINNET))
+        val devnet = compose.onNodeWithTag(PolicyTags.network(Network.NETWORK_DEVNET))
+
+        mainnet.assertIsSelected()
+        devnet.assertIsNotSelected().performClick()
+        mainnet.assertIsNotSelected()
+        devnet.assertIsSelected()
+    }
+
+    @Test
     fun anAssetCanBeTakenBackOut() {
         open()
         addSol()
         type(PolicyTags.perOperation(0), "1")
         click(PolicyTags.removeAsset(0))
         assertEquals(emptyList<AssetDraft>(), draft.assets)
-        seen(R.string.policy_assets_none)
+        compose.onNodeWithTag(PolicyTags.section("assets")).assertExists()
     }
 
     @Test
     fun anAddressListKeepsWholeAddressesAndSaysWhenOneIsntOne() {
         open()
         click(PolicyTags.restrict(RECIPIENTS))
-        seen(R.string.policy_recipients_empty)
+        seen(R.string.policy_section_empty)
         type(PolicyTags.entryField(RECIPIENTS), "nonsense")
         click(PolicyTags.add(RECIPIENTS))
         seen(R.string.policy_address_invalid)
@@ -266,11 +399,11 @@ class PolicyEditorScreenTest {
         type(PolicyTags.entryField(RECIPIENTS), RECIPIENT)
         click(PolicyTags.add(RECIPIENTS))
         assertEquals(listOf(RECIPIENT), draft.recipients)
-        // The whole address, not the first few characters of it.
+        // The primary row is short enough to scan; the complete value remains in its remove action.
         compose
-            .onNodeWithTag(PolicyTags.entry(RECIPIENTS, RECIPIENT))
+            .onNodeWithText("${RECIPIENT.take(6)}…${RECIPIENT.takeLast(5)}")
             .performScrollTo()
-            .assertTextEquals(RECIPIENT)
+            .assertExists()
     }
 
     @Test
@@ -299,35 +432,28 @@ class PolicyEditorScreenTest {
         click(PolicyTags.add(PROGRAMS))
         assertEquals(listOf(SYSTEM), draft.programs)
         assertEquals(emptyList<String>(), draft.recipients)
-        seen(R.string.policy_summary_programs, SYSTEM)
+        seen(R.string.policy_program_system)
+        compose.onNodeWithText("${SYSTEM.take(6)}…${SYSTEM.takeLast(5)}").assertExists()
     }
 
     @Test
-    fun theSummarySaysWhichChecksArentCovered() {
+    fun theHelpCardExpandsToExplainTheRules() {
         open()
-        click(PolicyTags.restrict("actions"))
-        click(PolicyTags.action(PolicyAction.Transfer))
-        seen(
-            R.string.policy_summary_unchecked,
-            listOf(
-                    R.string.policy_check_asset,
-                    R.string.policy_check_recipient,
-                    R.string.policy_check_program,
-                    R.string.policy_check_per_operation,
-                    R.string.policy_check_daily,
-                )
-                .joinToString { text(it) },
-        )
+        compose.onNodeWithTag(PolicyTags.HELP_CONTENT).assertDoesNotExist()
+        compose.onNodeWithTag(PolicyTags.HELP).performClick()
+        compose.onNodeWithTag(PolicyTags.HELP_CONTENT).assertExists()
+        seen(R.string.policy_help_rule)
+        seen(R.string.policy_help_global)
     }
 
     @Test
     fun turningEveryRuleOffSaysTheRulesWillGo() {
         val stored = PolicyDraft(CONNECTION, restrictActions = true)
         open(draft = stored, stored = stored, storedAt = Instant.parse("2026-09-12T10:00:00Z"))
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertDoesNotExist()
         click(PolicyTags.restrict("actions"))
-        seen(R.string.policy_global_summary_removes)
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(PolicyTags.restrict("actions")).assertIsOff()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsEnabled()
     }
 
     @Test
@@ -347,12 +473,12 @@ class PolicyEditorScreenTest {
     fun leavingWithChangesAsksFirst() {
         open()
         click(PolicyTags.restrict("actions"))
-        click(PolicyTags.CANCEL)
+        compose.runOnIdle { closeRequest.intValue += 1 }
         compose.onNodeWithText(text(R.string.policy_discard_title)).assertExists()
         assertEquals(emptyList<String>(), calls)
         compose.onNodeWithTag(PolicyTags.KEEP_EDITING).performClick()
         compose.onNodeWithTag(PolicyTags.restrict("actions")).performScrollTo().assertIsOn()
-        click(PolicyTags.CANCEL)
+        compose.runOnIdle { closeRequest.intValue += 1 }
         compose.onNodeWithTag(PolicyTags.DISCARD).performClick()
         assertEquals(listOf("close"), calls)
     }
@@ -360,7 +486,7 @@ class PolicyEditorScreenTest {
     @Test
     fun leavingWithNothingChangedDoesntAsk() {
         open()
-        click(PolicyTags.CANCEL)
+        compose.runOnIdle { closeRequest.intValue += 1 }
         compose.onNodeWithText(text(R.string.policy_discard_title)).assertDoesNotExist()
         assertEquals(listOf("close"), calls)
     }
@@ -383,7 +509,7 @@ class PolicyEditorScreenTest {
         click(PolicyTags.START_OVER)
         compose.onNodeWithTag(PolicyTags.restrict("actions")).performScrollTo().assertIsOff()
         // Replacing rules nobody could read is itself a change worth saving.
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsEnabled()
     }
 
     @Test
@@ -406,8 +532,8 @@ class PolicyEditorScreenTest {
         addSol()
         type(PolicyTags.perOperation(0), "1.5")
         seen(R.string.policy_amount_stored, "1500000000")
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertIsEnabled()
-        compose.onNodeWithTag(PolicyTags.CANCEL).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(PolicyTags.SAVE).assertIsEnabled()
+        compose.onNodeWithTag(PolicyTags.CANCEL).assertIsEnabled()
     }
 
     @Test
@@ -421,7 +547,8 @@ class PolicyEditorScreenTest {
                 )
         )
         seen(R.string.policy_global_intro)
-        seen(R.string.policy_summary_manual)
+        compose.onNodeWithTag(PolicyTags.HELP).performClick()
+        seen(R.string.policy_help_wallet)
     }
 
     private companion object {

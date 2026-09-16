@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ActivityScenario
@@ -15,6 +16,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.PairingCode
 import io.github.brrenat.seekervault.connections.softwareKey
 import java.io.File
@@ -47,6 +49,7 @@ class ConnectionsActivityTest {
     @Before
     fun useFakes() {
         app.connectionGateway = { gateway }
+        app.updateTransport = { LegacyUpdateTransport() }
         app.credentialKey = { key }
         // The repository's work runs on the main thread, where the Compose rule waits for it. On
         // Dispatchers.IO, an assertion could run before a disconnect had reached the screen.
@@ -65,11 +68,12 @@ class ConnectionsActivityTest {
     fun pairsRenamesAndKeepsTheSecretsOffScreenAndOutOfBackups() {
         val scenario = launch()
         val code = server.issue(URL)
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(6)
         compose.onNodeWithTag(ConnectionsTags.EMPTY).assertExists()
         compose.onNodeWithTag(ConnectionsTags.ADD).performClick()
         compose.onNodeWithTag(ConnectionsTags.CODE_FIELD).performTextInput(text(code))
-        compose.onNodeWithTag(ConnectionsTags.CONTINUE).performClick()
-        compose.onNodeWithTag(ConnectionsTags.PAIR).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CONTINUE).performScrollTo().performClick()
+        compose.onNodeWithTag(ConnectionsTags.PAIR).performScrollTo().performClick()
 
         // The new connection's details replace the Add screen, and survive a rotation.
         val id = server.connections.keys.single()
@@ -85,7 +89,9 @@ class ConnectionsActivityTest {
         compose.onNodeWithTag(ConnectionsTags.RENAME).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.LABEL_FIELD).performTextReplacement("Home Mac")
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
+        compose.mainClock.advanceTimeBy(240)
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
         compose.onNodeWithTag(ConnectionsTags.item(id)).assertTextContains("Home Mac")
 
         for (secret in listOf(code.token, credential)) {
@@ -106,6 +112,7 @@ class ConnectionsActivityTest {
     fun disconnectingReturnsToTheListWithoutTheConnection() {
         val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
         launch()
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
         compose.onNodeWithTag(ConnectionsTags.item(connection.id)).performClick()
         compose.onNodeWithTag(ConnectionsTags.DISCONNECT).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()

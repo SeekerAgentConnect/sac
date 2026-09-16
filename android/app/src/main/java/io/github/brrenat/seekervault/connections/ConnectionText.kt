@@ -1,16 +1,30 @@
 package io.github.brrenat.seekervault.connections
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.sync.ForegroundConnectionState
+import io.github.brrenat.seekervault.sync.UpdateAvailability
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -23,6 +37,7 @@ object ConnectionsTags {
     const val EMPTY = "connectionsEmpty"
     const val ACTIVITY = "activityRow"
     const val BACK = "back"
+    const val CLOSE = "close"
     const val STATUS = "connectionStatus"
     const val REFRESH = "refresh"
     const val RENAME = "rename"
@@ -46,22 +61,40 @@ object ConnectionsTags {
     const val PAIRING_FAILURE = "pairingFailure"
     const val INBOX = "inbox"
     const val WALLET = "walletRow"
+    const val WALLET_COPY = "walletCopy"
     const val PENDING = "pendingRequests"
+    const val CAROUSEL = "requestCarousel"
     const val GLOBAL_RULES = "globalRules"
     const val LIST = "connectionsList"
 
     fun item(id: String) = "connection:$id"
+
+    fun request(key: RequestKey) = "request:${key.connectionId}/${key.requestId}"
 
     fun field(name: String) = "field:$name"
 }
 
 /** What the phone knows about the connection, in one sentence. */
 @Composable
-fun statusText(connection: Connection): String {
+fun statusText(
+    connection: Connection,
+    live: ForegroundConnectionState? = null,
+): String {
     val check = connection.lastCheck
     return when {
         connection.revokedAt != null -> stringResource(R.string.connection_status_revoked)
         !connection.hasCredential -> stringResource(R.string.connection_status_credential_missing)
+        live == ForegroundConnectionState.Background ->
+            stringResource(R.string.connection_status_background)
+        live == ForegroundConnectionState.Connecting ->
+            stringResource(R.string.connection_status_connecting)
+        live == ForegroundConnectionState.Live -> stringResource(R.string.connection_status_live)
+        live is ForegroundConnectionState.Reconnecting ->
+            stringResource(R.string.connection_status_reconnecting)
+        live is ForegroundConnectionState.Unreachable -> outcomeText(live.failure)
+        live == ForegroundConnectionState.Revoked ->
+            stringResource(R.string.connection_status_revoked)
+        live is ForegroundConnectionState.Unsupported -> availabilityText(live.availability)
         check == null -> stringResource(R.string.connection_status_not_checked)
         check.outcome == CheckOutcome.Ok && check.morePending ->
             stringResource(R.string.connection_status_ok_more, check.pending ?: 0)
@@ -72,8 +105,30 @@ fun statusText(connection: Connection): String {
 }
 
 /** Whether the connection needs the owner's attention. */
-fun hasProblem(connection: Connection): Boolean =
-    !connection.usable || connection.lastCheck.let { it != null && it.outcome != CheckOutcome.Ok }
+fun hasProblem(connection: Connection, live: ForegroundConnectionState? = null): Boolean =
+    !connection.usable ||
+        when (live) {
+            is ForegroundConnectionState.Unreachable,
+            ForegroundConnectionState.Revoked,
+            is ForegroundConnectionState.Unsupported -> true
+            ForegroundConnectionState.Background,
+            ForegroundConnectionState.Connecting,
+            ForegroundConnectionState.Live,
+            is ForegroundConnectionState.Reconnecting -> false
+            null -> connection.lastCheck.let { it != null && it.outcome != CheckOutcome.Ok }
+        }
+
+@Composable
+private fun availabilityText(availability: UpdateAvailability): String =
+    stringResource(
+        when (availability) {
+            UpdateAvailability.NotConfigured -> R.string.connection_status_updates_not_configured
+            UpdateAvailability.UpgradeRequired -> R.string.connection_status_upgrade_required
+            UpdateAvailability.Incompatible -> R.string.connection_status_updates_incompatible
+            UpdateAvailability.Unknown,
+            UpdateAvailability.Available -> R.string.connection_status_failed
+        }
+    )
 
 @Composable
 fun outcomeText(outcome: CheckOutcome): String =
@@ -155,10 +210,48 @@ fun MessageEffect(message: ConnectionMessage?, host: SnackbarHostState, onShown:
 
 @Composable
 fun BackButton(onBack: () -> Unit) {
-    IconButton(onClick = onBack, modifier = Modifier.testTag(ConnectionsTags.BACK)) {
+    Box(
+        modifier =
+            Modifier.size(48.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = onBack,
+                )
+                .testTag(ConnectionsTags.BACK),
+        contentAlignment = Alignment.Center,
+    ) {
         Icon(
             painterResource(R.drawable.ic_arrow_back),
             contentDescription = stringResource(R.string.back),
+        )
+    }
+}
+
+/** The trailing close action used by every detail sheet. */
+@Composable
+fun CloseButton(
+    onClose: () -> Unit,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+) {
+    Box(
+        modifier =
+            Modifier.size(48.dp)
+                .clip(CircleShape)
+                .background(containerColor)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = onClose,
+                )
+                .testTag(ConnectionsTags.CLOSE),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Rounded.Close,
+            contentDescription = stringResource(R.string.close),
         )
     }
 }

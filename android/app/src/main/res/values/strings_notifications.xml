@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_channel_requests">Requests waiting for review</string>
+    <string name="notification_channel_requests_description">Alerts when a paired sidecar has a request for you to review</string>
+    <string name="notification_request_title">Request waiting for review</string>
+    <string name="notification_request_text">Open the current request from %1$s.</string>
+    <string name="notification_open_loading">Fetching the current request from the paired sidecar…</string>
+    <string name="notification_open_gone">After checking the paired sidecar, this request is no longer pending. It may have expired, been canceled, or already been answered. Nothing was approved or signed.</string>
+    <string name="notification_open_removed">This connection is no longer on this phone, so the request cannot be opened. Nothing was approved or signed.</string>
+    <string name="notification_open_revoked">This phone can no longer authenticate to that connection. Pair it again before trusting any old notification. Nothing was approved or signed.</string>
+    <string name="notification_open_unavailable">The current request could not be fetched from the paired sidecar. The notification may be stale. Nothing was approved or signed.</string>
+    <string name="notification_open_retry">Try again</string>
+</resources>

@@ -13,6 +13,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.policy.Allowlist
 import io.github.brrenat.seekervault.policy.GlobalPolicy
@@ -55,6 +56,7 @@ class PolicyActivityTest {
     @Before
     fun useFakes() {
         app.connectionGateway = { gateway }
+        app.updateTransport = { LegacyUpdateTransport() }
         app.credentialKey = { key }
         app.connectionIo = Dispatchers.Unconfined
     }
@@ -68,8 +70,9 @@ class PolicyActivityTest {
     }
 
     private fun openRules(connection: Connection) {
-        val connectionIndex = app.connectionRepository.connections.value.indexOf(connection)
-        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(4 + connectionIndex)
+        val connectionIndex =
+            app.connectionRepository.connections.value.indexOfFirst { it.id == connection.id }
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5 + connectionIndex)
         compose.onNodeWithTag(ConnectionsTags.item(connection.id)).performClick()
         compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().performClick()
     }
@@ -144,7 +147,8 @@ class PolicyActivityTest {
         compose.onNodeWithTag(PolicyTags.add(RECIPIENTS)).performScrollTo().performClick()
         save()
         compose.onNodeWithTag(PolicyTags.CANCEL).performScrollTo().performClick()
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
+        compose.mainClock.advanceTimeBy(240)
 
         openRules(second)
         compose.onNodeWithTag(PolicyTags.inherit(RECIPIENTS)).performScrollTo().assertExists()
@@ -217,7 +221,7 @@ class PolicyActivityTest {
             .onNodeWithTag(PolicyTags.action(PolicyAction.Transfer))
             .performScrollTo()
             .performClick()
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.SAVE).performClick()
         compose.onNodeWithTag(PolicyTags.CONFIRM_GLOBAL_SAVE).performClick()
         compose.mainClock.advanceTimeBy(10_000)
         // System Back must use the same close path as the app-bar button: the global editor has

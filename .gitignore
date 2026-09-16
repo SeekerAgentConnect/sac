@@ -15,6 +15,7 @@ local.properties
 *.jks
 *.keystore
 keystore.properties
+google-services.json
 *.p12
 *.pem
 *.key

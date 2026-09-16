@@ -10,6 +10,7 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.request.v1.Action
+import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.transactions.mint
 import io.github.brrenat.seekervault.transactions.transfer
@@ -86,6 +87,47 @@ class ActivityLog(
             (_records.value.filterNot { it.key == stored.key } + stored).sortedWith(
                 compareByDescending<ActivityRecord> { it.answeredAt }.thenBy { it.requestId }
             )
+    }
+
+    /**
+     * Advances an existing Activity record from server state observed by Sync. It never creates an
+     * Activity row: only an action the owner already took can do that. It also preserves every
+     * locally authoritative field — reviewed terms, policy snapshot, signature, and answer time —
+     * while using the same request-state interpretation as [record].
+     */
+    fun reconcile(request: ActionRequest): ActivityRecord? {
+        if (!request.hasRef()) return null
+        val existing = store.get(request.ref.connectionId, request.ref.requestId) ?: return null
+        if (existing.kind != ActivityKind.Transfer || existing.signature == null) return existing
+        if (
+            existing.outcome == ActivityOutcome.Confirmed ||
+                existing.outcome == ActivityOutcome.ChainFailed
+        ) {
+            return existing
+        }
+        val outcome =
+            when (request.state) {
+                RequestState.REQUEST_STATE_CONFIRMED -> ActivityOutcome.Confirmed
+                RequestState.REQUEST_STATE_FAILED -> ActivityOutcome.ChainFailed
+                RequestState.REQUEST_STATE_UNKNOWN -> ActivityOutcome.Unknown
+                RequestState.REQUEST_STATE_SUBMITTED -> ActivityOutcome.Sent
+                else -> return existing
+            }
+        val confirmation = request.outcome.confirmation.takeIf { request.outcome.hasConfirmation() }
+        val updated =
+            existing.copy(
+                recordedAt = now(),
+                outcome = outcome,
+                detail = request.outcome.detail.takeIf(String::isNotEmpty) ?: existing.detail,
+                checkedWith =
+                    confirmation?.endpoint?.takeIf(String::isNotEmpty) ?: existing.checkedWith,
+            )
+        val stored = store.put(updated)
+        _records.value =
+            (_records.value.filterNot { it.key == stored.key } + stored).sortedWith(
+                compareByDescending<ActivityRecord> { it.answeredAt }.thenBy { it.requestId }
+            )
+        return stored
     }
 
     /**

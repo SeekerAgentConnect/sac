@@ -17,6 +17,10 @@ import {
   RequestService,
   file_seekervault_request_v1_service,
 } from "../gen/seekervault/request/v1/service_pb.js";
+import {
+  UpdateService,
+  file_seekervault_update_v1_update,
+} from "../gen/seekervault/update/v1/update_pb.js";
 
 function imports(file: DescFile): string[] {
   return file.dependencies.map((dependency) => dependency.name);
@@ -48,7 +52,7 @@ describe("compatibility with the Stage 1 live diagnostic", () => {
     ]);
   });
 
-  it("gives the durable workflow only unary RPCs, with no stream", () => {
+  it("keeps pairing and RequestService unary", () => {
     assert.deepEqual(
       [...PairingService.methods, ...RequestService.methods].map((method) => [
         method.name,
@@ -56,6 +60,8 @@ describe("compatibility with the Stage 1 live diagnostic", () => {
       ]),
       [
         ["Pair", "unary"],
+        ["GetConnectionCapabilities", "unary"],
+        ["SetFcmToken", "unary"],
         ["RevokeConnection", "unary"],
         ["ListPending", "unary"],
         ["GetRequest", "unary"],
@@ -63,6 +69,20 @@ describe("compatibility with the Stage 1 live diagnostic", () => {
         ["SubmitResult", "unary"],
         ["CheckStatus", "unary"],
         ["PublishWallet", "unary"],
+      ],
+    );
+  });
+
+  it("defines production updates as one bidirectional RPC and one unary recovery RPC", () => {
+    assert.deepEqual(imports(file_seekervault_update_v1_update), [
+      "google/protobuf/timestamp",
+      "seekervault/request/v1/request",
+    ]);
+    assert.deepEqual(
+      UpdateService.methods.map((method) => [method.name, method.methodKind]),
+      [
+        ["Subscribe", "bidi_streaming"],
+        ["Sync", "unary"],
       ],
     );
   });

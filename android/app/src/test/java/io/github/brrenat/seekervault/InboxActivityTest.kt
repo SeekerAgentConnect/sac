@@ -1,11 +1,14 @@
 package io.github.brrenat.seekervault
 
+import android.content.Intent
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -13,9 +16,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.inbox.InboxTags
+import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
@@ -50,6 +55,7 @@ class InboxActivityTest {
     @Before
     fun useFakes() {
         app.connectionGateway = { gateway }
+        app.updateTransport = { LegacyUpdateTransport() }
         app.credentialKey = { key }
         app.connectionIo = Dispatchers.Unconfined
         app.walletAdapter = { adapter }
@@ -58,6 +64,11 @@ class InboxActivityTest {
     @After fun close() = scenario?.close() ?: Unit
 
     private fun launch() = ActivityScenario.launch(MainActivity::class.java).also { scenario = it }
+
+    private fun launch(intent: Intent) =
+        ActivityScenario.launch<MainActivity>(intent).also {
+            scenario = it
+        }
 
     @Test
     fun aRequestMadeWhileTheAppWasClosedIsAnsweredAndStaysAnswered() {
@@ -70,17 +81,16 @@ class InboxActivityTest {
         // Opening the app fetched the request, and answered nothing.
         compose
             .onNodeWithTag(ConnectionsTags.INBOX)
-            .assertTextContains(app.getString(R.string.inbox_row_waiting, 1))
+            .assertTextContains(app.getString(R.string.requests_see_all, 1))
             .performClick()
         assertTrue(gateway.submits.isEmpty())
-        compose
-            .onNodeWithTag(InboxTags.item(key))
-            .assertTextContains("Deploy finished")
-            .performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).assertExists()
+        compose.onNodeWithText("Deploy finished", substring = true).assertExists()
+        compose.onNodeWithText(app.getString(R.string.review)).performClick()
         compose
             .onNodeWithTag(InboxTags.MESSAGE, useUnmergedTree = true)
             .assertTextEquals("Deploy finished")
-        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).performClick()
         compose
             .onNodeWithTag(InboxTags.STATUS)
             .assertTextEquals(app.getString(R.string.status_acknowledged))
@@ -91,7 +101,8 @@ class InboxActivityTest {
         )
 
         // Back in the list it's answered; reopened, it shows the outcome, not the buttons.
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
+        compose.mainClock.advanceTimeBy(240)
         compose.onNodeWithTag(InboxTags.SECTION_ANSWERED).assertExists()
         compose.onNodeWithTag(InboxTags.item(key)).performClick()
         scenario.recreate()
@@ -117,7 +128,7 @@ class InboxActivityTest {
         scenario.moveToState(Lifecycle.State.RESUMED)
         compose
             .onNodeWithTag(ConnectionsTags.INBOX)
-            .assertTextContains(app.getString(R.string.inbox_row_waiting, 1))
+            .assertTextContains(app.getString(R.string.requests_see_all, 1))
         assertTrue(gateway.submits.isEmpty())
     }
 
@@ -128,6 +139,7 @@ class InboxActivityTest {
         val mine = server.addPending(home.id, text = "For home")
         val theirs = other.addPending(vps.id, text = "For the VPS")
         launch()
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
         compose.onNodeWithTag(ConnectionsTags.item(home.id)).performClick()
         compose.onNodeWithTag(ConnectionsTags.PENDING).performScrollTo().performClick()
         compose
@@ -136,6 +148,43 @@ class InboxActivityTest {
         compose
             .onNodeWithTag(InboxTags.item(RequestKey(vps.id, theirs.ref.requestId)))
             .assertDoesNotExist()
+    }
+
+    @Test
+    fun notificationTapFetchesAndOpensTheExactRequestWithoutAnyWalletOperation() {
+        val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
+        val request = server.addPendingMessage(connection.id, WALLET, "Sign only after review")
+        val key = RequestKey(connection.id, request.ref.requestId)
+
+        launch(RequestNotificationIntent.intent(app, key))
+
+        compose
+            .onNodeWithTag(InboxTags.MESSAGE, useUnmergedTree = true)
+            .assertTextEquals("Sign only after review")
+        assertTrue(gateway.submits.isEmpty())
+        assertTrue(adapter.signings.isEmpty())
+        assertTrue(adapter.sendings.isEmpty())
+    }
+
+    @Test
+    fun staleNotificationTapShowsTheCheckedGoneStateAndNoReviewControls() {
+        val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
+        val request = server.addPending(connection.id, text = "Already gone")
+        val key = RequestKey(connection.id, request.ref.requestId)
+        runBlocking { app.connectionRepository.refresh(connection.id) }
+        server.cancel(connection.id, request.ref.requestId)
+
+        launch(RequestNotificationIntent.intent(app, key))
+
+        compose
+            .onNodeWithTag(InboxTags.NOTIFICATION_STATE)
+            .assertTextEquals(app.getString(R.string.notification_open_gone))
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.APPROVE).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertDoesNotExist()
+        assertTrue(gateway.submits.isEmpty())
+        assertTrue(adapter.signings.isEmpty())
+        assertTrue(adapter.sendings.isEmpty())
     }
 
     @Test
@@ -152,8 +201,9 @@ class InboxActivityTest {
         val scenario = launch()
 
         compose.onNodeWithTag(ConnectionsTags.INBOX).performClick()
-        compose.onNodeWithTag(InboxTags.item(key)).performClick()
-        compose.onNodeWithTag(InboxTags.APPROVE).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).assertExists()
+        compose.onNodeWithText(app.getString(R.string.review)).performClick()
+        compose.onNodeWithTag(InboxTags.APPROVE).performClick()
         compose.waitForIdle()
         // The approval has gone, and the message is with the wallet.
         assertEquals(1, adapter.signings.size)
@@ -223,9 +273,10 @@ class InboxActivityTest {
         val scenario = launch()
 
         compose.onNodeWithTag(ConnectionsTags.INBOX).performClick()
-        compose.onNodeWithTag(InboxTags.item(key)).performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).assertExists()
+        compose.onNodeWithText(app.getString(R.string.review)).performClick()
         compose.waitForIdle()
-        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performClick()
         compose.waitForIdle()
 
         // The approval was accepted before the wallet was opened, and the wallet got the bytes.

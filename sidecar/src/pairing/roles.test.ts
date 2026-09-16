@@ -31,6 +31,9 @@ import { PairingStore } from "../storage/pairing-store.ts";
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);
 const UNKNOWN = "a7e9c1b3-4d5f-4a6b-8c7d-9e0f1a2b3c4d";
+const OLD_FCM_TARGET = "fcm-target-before-rotation";
+const CURRENT_FCM_TARGET = "fcm-target-after-rotation";
+const FCM_TARGETS = [OLD_FCM_TARGET, CURRENT_FCM_TARGET];
 const logs: string[] = [];
 let sidecar: Sidecar;
 let databasePath: string;
@@ -118,6 +121,25 @@ const RPCS: ReadonlyArray<{
     call: (token) =>
       requestClient(sidecar.url, token).publishWallet({
         connectionId: phone.connectionId,
+      }),
+  },
+  {
+    name: "PairingService.GetConnectionCapabilities",
+    role: "phone",
+    // Another connection's ID: past authentication, this gets NOT_FOUND and discloses nothing.
+    call: (token) =>
+      pairingClient(sidecar.url, token).getConnectionCapabilities({
+        connectionId: UNKNOWN,
+      }),
+  },
+  {
+    name: "PairingService.SetFcmToken",
+    role: "phone",
+    // Another connection's ID: past authentication, this gets NOT_FOUND and stores nothing.
+    call: (token) =>
+      pairingClient(sidecar.url, token).setFcmToken({
+        connectionId: UNKNOWN,
+        update: { case: "token", value: OLD_FCM_TARGET },
       }),
   },
   {
@@ -354,12 +376,70 @@ describe("roles", () => {
     );
   });
 
+  it("reports that this new sidecar has no production update endpoint configured yet", async () => {
+    const capabilities = await pairingClient(
+      sidecar.url,
+      phone.phoneToken,
+    ).getConnectionCapabilities({ connectionId: phone.connectionId });
+    assert.equal(capabilities.updates, undefined);
+  });
+
+  it("lets only the owning phone register, rotate, and compare-clear its target", async () => {
+    const client = pairingClient(sidecar.url, phone.phoneToken);
+    await client.setFcmToken({
+      connectionId: phone.connectionId,
+      update: { case: "token", value: OLD_FCM_TARGET },
+    });
+    await client.setFcmToken({
+      connectionId: phone.connectionId,
+      update: { case: "token", value: CURRENT_FCM_TARGET },
+    });
+    // A delayed invalid-target result for the registration before rotation changes nothing.
+    await client.setFcmToken({
+      connectionId: phone.connectionId,
+      update: { case: "clearIfToken", value: OLD_FCM_TARGET },
+    });
+
+    const db = openDatabase(databasePath);
+    try {
+      assert.equal(
+        new PairingStore(db).fcmToken(phone.connectionId),
+        CURRENT_FCM_TARGET,
+      );
+    } finally {
+      db.close();
+    }
+
+    await assert.rejects(
+      pairingClient(sidecar.url, revoked.phoneToken).setFcmToken({
+        connectionId: revoked.connectionId,
+        update: { case: "token", value: "revoked-phone-target" },
+      }),
+      (error) =>
+        error instanceof ConnectError && error.code === Code.Unauthenticated,
+    );
+    await client.setFcmToken({
+      connectionId: phone.connectionId,
+      update: { case: "clearIfToken", value: CURRENT_FCM_TARGET },
+    });
+    const after = openDatabase(databasePath);
+    try {
+      assert.equal(
+        new PairingStore(after).fcmToken(phone.connectionId),
+        undefined,
+      );
+    } finally {
+      after.close();
+    }
+  });
+
   it("pairs with the code, replaces the phone, and then revokes itself", async () => {
     const newest = await pairingClient(sidecar.url, pairingToken).pair({
       serverUrl: sidecar.url,
       deviceName: "Newest phone",
     });
     assert.equal(newest.serverId, sidecar.serverId);
+    assert.equal(newest.updates, undefined);
     assert.equal(
       await outcome(
         requestClient(sidecar.url, phone.phoneToken).listPending({
@@ -402,6 +482,8 @@ describe("roles", () => {
       pairingToken,
       phone.phoneToken,
       revoked.phoneToken,
+      ...FCM_TARGETS,
+      "revoked-phone-target",
     ];
     for (const line of logs) {
       for (const secret of secrets) assert.ok(!line.includes(secret), line);

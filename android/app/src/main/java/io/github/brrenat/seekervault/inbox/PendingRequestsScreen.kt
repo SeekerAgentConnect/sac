@@ -1,44 +1,74 @@
 package io.github.brrenat.seekervault.inbox
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.Draw
+import androidx.compose.material.icons.rounded.NorthEast
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.SeekerTheme
 import io.github.brrenat.seekervault.connections.BackButton
+import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.hasProblem
 import io.github.brrenat.seekervault.connections.statusText as connectionStatusText
+import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.transactions.transfer
+import io.github.brrenat.seekervault.ui.NetworkChip
+import io.github.brrenat.seekervault.ui.SeekerButton
+import io.github.brrenat.seekervault.ui.SeekerButtonRole
+import io.github.brrenat.seekervault.ui.SeekerCard
+import io.github.brrenat.seekervault.wallet.networkText
 import java.time.Instant
 
 /**
- * Pending requests: what agents asked, from every connection or from [connectionId] only, with the
- * owner's answers that are waiting to be sent or already settled. Stock Material 3 only.
+ * Requests is one of the four root destinations; a connection-filtered copy can live in a sheet.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PendingRequestsScreen(
     state: InboxUiState,
@@ -48,69 +78,179 @@ fun PendingRequestsScreen(
     onRefresh: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onReject: (RequestKey) -> Unit = {},
+    inSheet: Boolean = false,
 ) {
+    val containerColor =
+        if (inSheet) MaterialTheme.colorScheme.surfaceContainerHigh
+        else MaterialTheme.colorScheme.surface
     val labels = state.connections.associate { it.id to it.label }
     val shown = state.connections.filter { connectionId == null || it.id == connectionId }
-    val items = inboxItems(state.inbox, connectionId)
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(stringResource(R.string.inbox_title))
-                        connectionId
-                            ?.let { labels[it] }
-                            ?.let {
-                                Text(
-                                    stringResource(R.string.inbox_from, it),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                    }
-                },
-                navigationIcon = { BackButton(onBack) },
-                actions = {
-                    TextButton(
-                        onClick = onRefresh,
-                        enabled = !state.refreshing,
-                        modifier = Modifier.testTag(InboxTags.REFRESH),
-                    ) {
-                        Text(stringResource(R.string.refresh))
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
-        LazyColumn(contentPadding = innerPadding, modifier = Modifier.testTag(InboxTags.LIST)) {
-            if (state.refreshing) {
-                item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            }
-            // A connection that couldn't be fetched says so; its last list stays below.
-            items(shown.filter(::hasProblem), key = { "problem:${it.id}" }) {
+    val inbox = inboxItems(state.inbox, connectionId)
+    val startTab =
+        if (inbox.pending.isEmpty() && inbox.toSend.isEmpty() && inbox.answered.isNotEmpty()) 1
+        else 0
+    var selected by rememberSaveable(startTab) { mutableIntStateOf(startTab) }
+    Column(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(containerColor)
+                .then(if (inSheet) Modifier else Modifier.statusBarsPadding())
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .height(if (inSheet) 56.dp else 64.dp)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (connectionId == null) BackButton(onBack)
+            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                 Text(
-                    stringResource(R.string.inbox_problem, it.label, connectionStatusText(it)),
-                    color = MaterialTheme.colorScheme.error,
-                    modifier =
-                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            .testTag(InboxTags.PROBLEM),
+                    stringResource(R.string.inbox_title),
+                    style = MaterialTheme.typography.titleLarge,
                 )
+                connectionId
+                    ?.let { labels[it] }
+                    ?.let {
+                        Text(
+                            stringResource(R.string.inbox_from, it),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+            }
+            state.wallet?.let { NetworkChip(networkText(it.network)) }
+            Box(
+                Modifier.size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .clickable(
+                        enabled = !state.refreshing,
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = onRefresh,
+                    )
+                    .testTag(InboxTags.REFRESH),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.Refresh, contentDescription = stringResource(R.string.refresh))
+            }
+            if (connectionId != null) CloseButton(onBack, containerColor)
+        }
+        Row(Modifier.fillMaxWidth().height(48.dp)) {
+            RequestTab(
+                text =
+                    stringResource(
+                        R.string.inbox_tab_pending,
+                        inbox.pending.size + inbox.toSend.size,
+                    ),
+                selected = selected == 0,
+                onClick = { selected = 0 },
+                containerColor = containerColor,
+                modifier = Modifier.weight(1f),
+            )
+            RequestTab(
+                text = stringResource(R.string.inbox_tab_answered, inbox.answered.size),
+                selected = selected == 1,
+                onClick = { selected = 1 },
+                containerColor = containerColor,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        LazyColumn(
+            contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.weight(1f).testTag(InboxTags.LIST),
+        ) {
+            if (state.refreshing) {
+                item {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    )
+                }
+            }
+            items(shown.filter(::hasProblem), key = { "problem:${it.id}" }) {
+                SeekerCard(
+                    modifier =
+                        Modifier.testTag(InboxTags.PROBLEM).semantics(mergeDescendants = true) {},
+                    color = MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Text(
+                        stringResource(R.string.inbox_problem, it.label, connectionStatusText(it)),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
             }
             when {
                 state.connections.isEmpty() ->
                     item { Message(R.string.inbox_no_connections, InboxTags.NO_CONNECTIONS) }
-                items.isEmpty() -> item { Message(R.string.inbox_empty, InboxTags.EMPTY) }
+                inbox.isEmpty() -> item { Message(R.string.inbox_empty, InboxTags.EMPTY) }
             }
-            section(R.string.inbox_section_to_send, InboxTags.SECTION_TO_SEND, items.toSend) {
-                ResultItem(it, labels[it.connectionId], onOpen)
-            }
-            section(R.string.inbox_section_pending, InboxTags.SECTION_PENDING, items.pending) {
-                RequestItem(it, labels[it.ref.connectionId], now, onOpen)
-            }
-            section(R.string.inbox_section_answered, InboxTags.SECTION_ANSWERED, items.answered) {
-                ResultItem(it, labels[it.connectionId], onOpen)
+            if (selected == 0) {
+                section(R.string.inbox_section_to_send, InboxTags.SECTION_TO_SEND, inbox.toSend) {
+                    ResultItem(it, labels[it.connectionId], onOpen)
+                }
+                section(R.string.inbox_section_pending, InboxTags.SECTION_PENDING, inbox.pending) {
+                    RequestItem(
+                        request = it,
+                        source = labels[it.ref.connectionId],
+                        now = now,
+                        assessment = state.assessments[it.key],
+                        onOpen = onOpen,
+                        onReject = onReject,
+                    )
+                }
+            } else {
+                section(
+                    R.string.inbox_section_answered,
+                    InboxTags.SECTION_ANSWERED,
+                    inbox.answered,
+                ) {
+                    ResultItem(it, labels[it.connectionId], onOpen)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun RequestTab(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    containerColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier,
+) {
+    Box(
+        modifier
+            .height(48.dp)
+            .background(containerColor)
+            .selectable(
+                selected = selected,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                role = Role.Tab,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            color =
+                if (selected) SeekerTheme.colors.primaryText
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box(
+            Modifier.align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(3.dp)
+                .background(if (selected) SeekerTheme.colors.primaryText else containerColor)
+        )
     }
 }
 
@@ -125,18 +265,22 @@ private fun <T> LazyListScope.section(
         Text(
             stringResource(title),
             style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(16.dp).testTag(tag),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp).testTag(tag),
         )
     }
-    items(entries) {
-        content(it)
-        HorizontalDivider()
-    }
+    items(entries) { content(it) }
 }
 
 @Composable
 private fun Message(@StringRes text: Int, tag: String) {
-    Text(stringResource(text), modifier = Modifier.padding(16.dp).testTag(tag))
+    SeekerCard(Modifier.fillMaxWidth()) {
+        Text(
+            stringResource(text),
+            modifier = Modifier.padding(18.dp).testTag(tag),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
@@ -144,42 +288,176 @@ private fun RequestItem(
     request: ActionRequest,
     source: String?,
     now: Instant,
+    assessment: RequestAssessment?,
     onOpen: (RequestKey) -> Unit,
+    onReject: (RequestKey) -> Unit,
 ) {
     val action = actionText(request)
-    ListItem(
-        overlineContent = { Text(source ?: request.ref.connectionId) },
-        headlineContent = {
-            Text(request.text() ?: action, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        },
-        supportingContent = {
-            Text(
+    val acknowledgement = request.action.kindCase == Action.KindCase.ACK
+    val signature = request.action.kindCase == Action.KindCase.SIGN_MESSAGE
+    val summary =
+        when {
+            acknowledgement ->
                 stringResource(
-                    R.string.inbox_request_summary,
-                    action,
-                    relativeTime(request.createdAt.instant(), now),
-                    shortTime(request.expiresAt.instant()),
+                    R.string.request_card_ack_summary,
+                    source ?: request.ref.connectionId,
+                    request.text() ?: action,
                 )
+            signature ->
+                stringResource(
+                    R.string.request_card_sign_summary,
+                    source ?: request.ref.connectionId,
+                    messagePreview(request)?.bytes ?: 0,
+                )
+            request.transfer() != null ->
+                stringResource(
+                    R.string.request_card_transfer_summary,
+                    source ?: request.ref.connectionId,
+                    relativeTime(request.expiresAt.instant(), now),
+                )
+            else ->
+                stringResource(
+                    R.string.request_card_other_summary,
+                    source ?: request.ref.connectionId,
+                    relativeTime(request.expiresAt.instant(), now),
+                )
+        }
+    SeekerCard(
+        modifier = Modifier.fillMaxWidth().testTag(InboxTags.item(request.key)),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        when {
+                            acknowledgement -> Icons.Rounded.DoneAll
+                            signature -> Icons.Rounded.Draw
+                            else -> Icons.Rounded.NorthEast
+                        },
+                        contentDescription = null,
+                        tint = SeekerTheme.colors.primaryText,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Text(
+                        action,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                val allowed = assessment?.decision?.allowed == true
+                val warningCount =
+                    assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1) ?: 0
+                Text(
+                    when {
+                        warningCount > 0 ->
+                            pluralStringResource(
+                                R.plurals.request_warning_count,
+                                warningCount,
+                                warningCount,
+                            )
+                        allowed -> stringResource(R.string.request_in_rules)
+                        else -> stringResource(R.string.request_not_checked)
+                    },
+                    color =
+                        when {
+                            warningCount > 0 -> MaterialTheme.colorScheme.onTertiaryContainer
+                            allowed -> MaterialTheme.colorScheme.onPrimaryContainer
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier =
+                        Modifier.background(
+                                when {
+                                    warningCount > 0 -> MaterialTheme.colorScheme.tertiaryContainer
+                                    allowed -> MaterialTheme.colorScheme.primaryContainer
+                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
+                                RoundedCornerShape(8.dp),
+                            )
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                )
+            }
+            Text(
+                summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
-        },
-        modifier = Modifier.clickable { onOpen(request.key) }.testTag(InboxTags.item(request.key)),
-    )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SeekerButton(
+                    text = stringResource(R.string.review),
+                    onClick = { onOpen(request.key) },
+                    role = SeekerButtonRole.Tonal,
+                    modifier = Modifier.weight(1f).height(40.dp),
+                )
+                // This is a shortcut into the mandatory review, never an answer from the list.
+                // Transfers still have to be decoded here and signatures still go to the wallet.
+                SeekerButton(
+                    text =
+                        stringResource(
+                            if (request.action.kindCase == Action.KindCase.ACK) {
+                                R.string.acknowledge
+                            } else {
+                                R.string.review_approve
+                            }
+                        ),
+                    onClick = { onOpen(request.key) },
+                    modifier = Modifier.weight(1f).height(40.dp),
+                    automationTag = InboxTags.QUICK_APPROVE,
+                )
+                Box(
+                    Modifier.size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = { onReject(request.key) },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.reject),
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun ResultItem(result: LocalResult, source: String?, onOpen: (RequestKey) -> Unit) {
-    ListItem(
-        overlineContent = { Text(source ?: result.connectionId) },
-        headlineContent = {
+    SeekerCard(
+        modifier = Modifier.fillMaxWidth().testTag(InboxTags.item(result.key)),
+        onClick = { onOpen(result.key) },
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(source ?: result.connectionId, style = MaterialTheme.typography.labelMedium)
             Text(
                 result.request.text() ?: actionText(result.request),
+                style = MaterialTheme.typography.titleMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-        },
-        supportingContent = { Text(resultSummary(result)) },
-        modifier = Modifier.clickable { onOpen(result.key) }.testTag(InboxTags.item(result.key)),
-    )
+            Text(
+                resultSummary(result),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 /** How many requests wait for the owner, and how many answers wait to be sent. */

@@ -19,8 +19,17 @@ import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
+import io.github.brrenat.seekervault.notifications.RequestNotificationManager
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
+import io.github.brrenat.seekervault.push.FcmRegistrationClient
+import io.github.brrenat.seekervault.push.FcmRegistrationManager
+import io.github.brrenat.seekervault.push.FirebaseFcmRegistrationClient
+import io.github.brrenat.seekervault.sync.BackgroundSyncScheduler
+import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
+import io.github.brrenat.seekervault.sync.ForegroundUpdateManager
+import io.github.brrenat.seekervault.sync.UpdateTransport
+import io.github.brrenat.seekervault.sync.storage.SyncStore
 import io.github.brrenat.seekervault.wallet.MwaWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletRepository
@@ -29,7 +38,9 @@ import java.io.File
 import javax.crypto.SecretKey
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -38,6 +49,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 
 class SeekerVaultApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        requestNotifications.createChannels()
+    }
+
     // One HTTP client for the whole app, without OkHttp's read timeout, so an idle
     // WatchCommands stream stays open (Connect-Kotlin enforces the RPC deadlines).
     private val httpClient by lazy {
@@ -51,6 +67,22 @@ class SeekerVaultApplication : Application() {
 
     /** How connections reach their sidecars. Tests replace it before the first activity starts. */
     var connectionGateway: () -> ConnectionGateway = { ConnectConnectionGateway(httpClient) }
+
+    /** The durable update endpoint. It shares the process HTTP client but never a credential. */
+    var updateTransport: () -> UpdateTransport = { ConnectUpdateTransport(httpClient) }
+
+    /** The optional Firebase registration client. Tests replace it without configuring Firebase. */
+    var fcmRegistrationClient: () -> FcmRegistrationClient = {
+        FirebaseFcmRegistrationClient(this)
+    }
+
+    /**
+     * User-visible alerts exist only in an APK built with an operator-supplied Firebase project.
+     * The manager holds no Firebase dependency or request data and permission denial is a no-op.
+     */
+    val requestNotifications: RequestNotificationManager by lazy {
+        RequestNotificationManager(this, BuildConfig.FIREBASE_CONFIGURED)
+    }
 
     /**
      * The key that encrypts phone credentials. Tests replace it, since Robolectric has no Keystore.
@@ -92,18 +124,63 @@ class SeekerVaultApplication : Application() {
      * metadata and answers in `filesDir`, and credentials, encrypted, in `noBackupFilesDir`.
      */
     val connectionRepository: ConnectionRepository by lazy {
-        ConnectionRepository(
-            store = ConnectionStore(File(filesDir, "connections")),
-            vault = CredentialVault(File(noBackupFilesDir, "credentials")) { credentialKey() },
-            results = ResultStore(File(filesDir, "results")),
-            gateway = connectionGateway(),
-            history = activityLog,
-            // A connection's overrides go when it does. Global rules are a separate document.
-            rules = policyStore,
-            deviceName = Build.MODEL,
-            io = connectionIo,
+        val repository =
+            ConnectionRepository(
+                store = ConnectionStore(File(filesDir, "connections")),
+                vault = CredentialVault(File(noBackupFilesDir, "credentials")) { credentialKey() },
+                results = ResultStore(File(filesDir, "results")),
+                gateway = connectionGateway(),
+                history = activityLog,
+                // A connection's overrides go when it does. Global rules are a separate document.
+                rules = policyStore,
+                deviceName = Build.MODEL,
+                io = connectionIo,
+                syncStore = SyncStore(File(filesDir, "sync")),
+                updateTransport = updateTransport(),
+                onConnectionUnavailable = requestNotifications::cancelConnection,
+            )
+        backgroundSync =
+            BackgroundSyncScheduler.create(
+                    context = this,
+                    loaded = repository.loaded,
+                    connections = repository.connections,
+                    scope = CoroutineScope(SupervisorJob() + connectionIo),
+                )
+                .also(BackgroundSyncScheduler::start)
+        fcmRegistration =
+            FcmRegistrationManager(
+                    loaded = repository.loaded,
+                    connections = repository.connections,
+                    client = fcmRegistrationClient(),
+                    loadConnections = repository::load,
+                    publish = { id, update -> repository.setFcmToken(id, update) },
+                    dispatcher = connectionIo,
+                )
+                .also(FcmRegistrationManager::start)
+        repository
+    }
+
+    /** Registration callbacks can start the process, so this getter also initializes the owner. */
+    val fcmRegistrations: FcmRegistrationManager
+        get() {
+            connectionRepository
+            return checkNotNull(fcmRegistration)
+        }
+
+    /** One foreground owner for every paired sidecar, independent of activities and navigation. */
+    val foregroundUpdates: ForegroundUpdateManager by lazy {
+        ForegroundUpdateManager(
+            connections = connectionRepository.connections,
+            synchronization = checkNotNull(connectionRepository.synchronization),
+            dispatcher = connectionIo,
         )
     }
+
+    /** Keeps the scheduler and its application-scoped observer alive with the storage owner. */
+    private var backgroundSync: BackgroundSyncScheduler? = null
+
+    /** Keeps the serialized registration owner alive with the application. */
+    private var fcmRegistration: FcmRegistrationManager? = null
 
     /**
      * Where storage and network calls run — the connections' and the policy editor's alike. Tests

@@ -10,10 +10,10 @@ Each credential opens one role, and the sidecar accepts it in one place only:
 | --- | --- | --- | --- | --- |
 | `MCP_TOKEN` | The agent | The operator, in `.env` | `/mcp` | The value, in `.env` |
 | Pairing token | Whoever sees the pairing code | `pnpm pair`: one use, 10 minutes by default | `PairingService.Pair` | Its SHA-256 hash |
-| Phone credential (`phone_token`) | The paired phone | The `Pair` response, once | `RequestService`, and `PairingService.RevokeConnection` for its own connection | Its SHA-256 hash |
+| Phone credential (`phone_token`) | The paired phone | The `Pair` response, once | `RequestService`, `UpdateService`, and authenticated `PairingService` operations for its own connection | Its SHA-256 hash |
 | `PHONE_TOKEN` | The Stage 1 live-test screen | The operator, in `.env` | `LiveCommandService` only | The value, in `.env` |
 
-- **Only the paired phone can prepare, review, and answer requests.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool pairs, prepares, submits a result, or revokes. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `sidecar/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
+- **Only the paired phone can prepare, review, and answer requests or register an FCM target.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool pairs, prepares, submits a result, registers a target, or revokes. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `sidecar/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
 - **`PHONE_TOKEN` is the Stage 1 development exception, and it stays with the live diagnostic.** It can watch and acknowledge display-only live commands, and nothing else. It can't pair, and `RequestService` refuses it.
 - **The phone credential exists only on the phone.** The sidecar returns it once, in the `Pair` response, and stores only its hash. The database, its backups, and the log can't give it away.
 - **Pairing tokens and phone credentials are 32 random bytes,** written as 43 base64url characters. Because they're random, a single SHA-256 is enough to store them. A slow password hash only helps with guessable secrets.
@@ -75,19 +75,46 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 - **The phone revokes itself with `RevokeConnection`,** for example when the owner removes the connection.
 - **The operator revokes with `pnpm pair revoke`,** for example when the phone is lost. `pnpm pair status` shows the paired phone. Neither command prints a credential.
 - **To re-pair,** run `pnpm pair` again. An old credential never works again.
+- **An FCM target is connection-owned (SAW-055).** Only that connection's phone credential can set
+  it. Registration rotation replaces it atomically; a stale invalidation compare-clears nothing.
+  Replacement or either revocation path deletes it in the same transaction, before the old
+  credential can make another registration call.
+- **An invalidation carries no authority (SAW-056).** Its exact app-visible data is the fixed kind
+  `request_invalidation` and version `1`. It contains no connection or request identifier,
+  credential, policy, assessment, agent prose, message bytes, transaction, authorization,
+  approval, signature, amount, recipient, or program. Android rejects any additional field and
+  uses a valid hint only to schedule authenticated Sync from its own stored connection records.
+- **Push is not a second state writer (SAW-057).** The Firebase callback performs no sidecar fetch.
+  Its empty-input WorkManager handoff reaches the same per-connection synchronization coordinator
+  used by foreground streams, Refresh, and periodic recovery. Duplicate delivery is coalesced, a
+  healthy foreground stream stays active, and missing delivery only postpones observation until a
+  Stage 5.2 path runs.
+- **A notification is a route, never authority (SAW-058).** It is built locally only after
+  authenticated Sync and shows generic text with secret lock-screen visibility. Its immutable
+  explicit intent carries the two opaque IDs needed to find one connection/request, not request
+  content, policy data, credentials, or an authorization. A tap validates both IDs and fetches the
+  paired sidecar again before it can show answer controls. Loading, stale, removed, revoked, and
+  unreachable states have no such controls. A tap chooses or creates no answer, opens no wallet,
+  and approves or signs nothing; its Sync may retry only a result the owner already stored, exactly
+  like every other Stage 5.2 Sync. Denying `POST_NOTIFICATIONS` suppresses the alert and changes no
+  synchronization path.
 - **Upgrading from SAW-010:** migration 2 revokes the stand-in connection that SAW-010 created with the database, and cancels its PENDING requests. Pair the phone after upgrading.
 
 ## Transport security
 
-- **The sidecar listens on loopback only,** over plain HTTP. `SIDECAR_HOST` can't be anything else.
-- **A phone on another network reaches it through a trusted TLS endpoint** on the same machine. The endpoint ends TLS with a certificate the phone already trusts, and forwards to the loopback port. The app keeps Android's normal certificate and host name checks, with no certificate pinning and no trust-all.
+- **The sidecar listens on loopback only.** `SIDECAR_HOST` can't be anything else. It uses plain HTTP by default; setting both TLS identity paths starts the production secure listener instead.
+- **Production updates terminate TLS at the sidecar's HTTP/2 listener.** `SIDECAR_TLS_CERT_PATH` and `SIDECAR_TLS_KEY_PATH` name its PEM identity, and `SIDECAR_PUBLIC_URL` must be HTTPS. The certificate is publicly trusted and matches the public host. The listener negotiates `h2` for gRPC and `http/1.1` for existing clients. A pass-through or gRPC-aware proxy may expose the loopback listener only if HTTP/2 reaches it intact.
+- **Loopback development may use a separate cleartext HTTP/2 port.** `SIDECAR_UPDATE_PORT` is for `adb reverse` on the same machine, never for a LAN or public listener. It cannot be combined with the TLS identity.
+- **The app keeps Android's normal certificate and host name checks,** with no certificate pinning, custom CA, or trust-all.
 - **`SIDECAR_PUBLIC_URL` is the URL that pairing codes carry.** It must be `https://`, with one exception: `http://` on `127.0.0.1`, `localhost`, or `[::1]`, for development over `adb reverse`. That's the default, and it's the Stage 1 loopback exception. The debug build allows cleartext to `127.0.0.1` and `localhost` only, and release builds allow none. The URL can have a path, but no user name, password, query, or fragment.
-- **The endpoint forwards everything, `/mcp` included.** `/mcp` still refuses a public host name unless `MCP_ALLOWED_HOSTS` lists it, and it always needs `MCP_TOKEN`.
+- **The secure listener preserves every existing route, `/mcp` included.** `/mcp` still refuses a public host name unless `MCP_ALLOWED_HOSTS` lists it, and it always needs `MCP_TOKEN`. The paired phone credential opens production updates; every other role is refused.
 - **Stage 7 adds the Docker gateway,** with TLS and optional OAuth.
 
-### A trusted endpoint for this stage's remote test
+### Trusted endpoints
 
-Either of these works, and the sidecar's configuration stays the same apart from `SIDECAR_PUBLIC_URL`.
+For production updates, configure the sidecar's TLS identity as shown in [`docs/development/sidecar.md`](development/sidecar.md#production-update-listener), then expose that secure loopback socket with a TLS pass-through or gRPC-aware HTTP/2 route. A proxy that speaks HTTP/1.1 to the sidecar can carry the old unary APIs but cannot carry the bidirectional `Subscribe` call. Never treat polling or a server-only stream as a transport fallback.
+
+The following older examples remain suitable for the Stage 1 diagnostic and unary pairing/manual-refresh path. Do not assume they carry the production update stream unless their configuration is separately proven to preserve HTTP/2 to the secure sidecar listener.
 
 **Tailscale Serve,** when the phone and the Mac are on the same tailnet:
 
@@ -100,11 +127,30 @@ Only devices on the tailnet can reach this endpoint.
 
 **Caddy,** on a machine with a public DNS name and ports 80 and 443 open: run `caddy reverse-proxy --from vault.example.com --to 127.0.0.1:8080`. Caddy gets a certificate automatically and forwards to the sidecar. Then set `SIDECAR_PUBLIC_URL=https://vault.example.com`.
 
-Don't use a self-signed certificate. The phone rightly refuses it, and the only way around that is weakening its checks.
+Don't use a self-signed certificate. The phone rightly refuses it, and the only way around that is weakening its checks. The automated production-listener test trusts a throwaway local certificate only inside the test process; no such trust configuration ships.
 
-`sidecar/src/pairing/tls.test.ts` runs a TLS endpoint in front of the sidecar and pairs through it. Pairing works with a trusted certificate. An untrusted certificate, or one for another host name, fails before the token is sent, and the token stays usable.
+`sidecar/src/pairing/tls.test.ts` covers legacy unary proxying and certificate refusal. `sidecar/src/updates/service.test.ts` drives gRPC over negotiated HTTP/2 into the actual secure sidecar listener while also proving its health, authenticated MCP, pairing, and RequestService HTTP/1 calls still work.
 
 ## Local storage and recovery
+
+SAW-055 stores no Firebase registration target on the phone. The current value exists in Firebase
+Messaging and in process memory only long enough to publish it through each connection's normal
+authenticated client. The sidecar must later address a send, so its SQLite connection row keeps
+the opaque target in recoverable form rather than hashing it. It is private deployment data: no
+read API returns it, no MCP tool exposes it, and validation, errors, diagnostic representations,
+and logs never repeat it. Revocation deletes it. It is not a bearer credential and grants no phone
+API, request, policy, wallet, approval, signing, or sending authority.
+
+SAW-056 stores no FCM payload. `SeekerVaultMessagingService` compares the in-memory data map to two
+fixed strings, then discards it. The unique WorkManager request has empty input and loads sidecar
+URLs and Keystore-encrypted phone credentials through `ConnectionRepository` only when it performs
+the existing unary Sync. A push cannot select a request or connection and cannot reach approval or
+wallet code. The sidecar's Firebase routing envelope necessarily names the current FID, but that
+value is not app-visible payload data and is never logged.
+
+The SAW-051 foreground owner receives neither a token nor a wallet handle. `SynchronizationRepository` retrieves a connection credential only for the authenticated discovery, Sync, or Subscribe call and hands the lifecycle owner a generation-scoped stream interface. The stream closes on real background, removal, revocation, or cancellation; rotation and navigation do not replace it. Authentication failure revokes locally, version/configuration failures remain distinct from an outage, and a late response from a closed generation is inert. Stream status is runtime-only and is never substituted for the separately stored last successful Sync.
+
+SAW-052's WorkManager request contains no URL, token, cursor, request, owner decision, or wallet data. A worker-only process reloads metadata from `filesDir` and decrypts a credential from `noBackupFilesDir` only inside `ConnectionRepository`, immediately before the same authenticated unary Sync calls. Its authority is identical to the shared repository's: observe server state, retry an already-recorded result, and reconcile an existing Activity record. It cannot prepare, approve, create a decision, open a wallet, sign, send, or replay a transaction. Authentication failure deletes the credential for that connection; transient unreachability uses WorkManager backoff without logging a secret.
 
 What the phone keeps for each connection (SAW-012), and what happens when it's lost.
 
@@ -112,7 +158,10 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 | --- | --- | --- |
 | Metadata: the name, the server URL and ID, the device name sent at pairing, when it paired, the last refresh, and any revocation | `filesDir/connections/<connection ID>.json`, one file per connection, written atomically | App-private storage |
 | The phone credential | `noBackupFilesDir/credentials/<connection ID>`, one file per connection | AES-256-GCM under an Android Keystore key |
+| Minimal server update state (SAW-050): validated endpoint capability, request/status bytes and revisions, bounded removal markers, cursor/instance, Activity rotation position, and last successful Sync | `filesDir/sync/<connection ID>.json`, one atomic versioned document per connection | App-private storage; it contains no credential, wallet authorization, policy, assessment, local answer, or signed transaction |
 | The pairing token | The app's memory, until pairing ends or the owner leaves the screen | Never written to disk or to saved instance state |
+| The current FCM direct-send target (SAW-055) | Firebase Messaging and application memory while it is being published | Never written by the app to disk, backup, saved instance state, or a log |
+| The fixed FCM invalidation data (SAW-056) | Firebase callback memory until exact validation | Never written to app storage or WorkManager input; discarded before authenticated Sync |
 | The owner's answers, each with the request it answered (SAW-013), and for an approved transfer the version, content hash, and exact bytes they approved (SAW-021) | `filesDir/results/<connection ID>/<request ID>.json`, one file per answer. A settled answer is kept for a week, and one that's waiting to be sent is kept until it's settled. | App-private storage; an answer holds no secret, and an approved transaction is unsigned bytes the sidecar built |
 | The wallet the owner selected: its address, network, label, and when they chose it (SAW-015) | `filesDir/wallet/wallet.json` | App-private storage; a public address holds no secret, and it's published to every paired sidecar |
 | The wallet's authorization token for this app (SAW-015) | `noBackupFilesDir/wallet/wallet-authorization` | AES-256-GCM under the same Android Keystore key, with its own associated data |
@@ -120,11 +169,13 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 
 - **The credential key lives in the Android Keystore** (`seekervault.credentials.v1`), created on first use. Its material never leaves the Keystore, so it can't be exported, backed up, or moved to another device. It protects credentials; it isn't a wallet key.
 - **Each credential file is bound to its connection.** The connection ID is the cipher's associated data, so a file copied under another connection's name doesn't decrypt. One file holds `1 || IV length || IV || ciphertext and tag`, and every write uses a fresh IV.
+- **Server cache state is replaceable; owner state is not.** All snapshot pages and buffered later events commit with their cursor in one atomic write. An interrupted write retains the preceding complete file; a damaged or future-version file loses only replaceable server cache and forces a full Sync. Snapshot absence and explicit removal can clear pending cache, never an answer, reviewed transaction, signature, policy, or Activity record.
+- **Deletion wins every race.** Removing or revoking a connection cancels its in-flight sync, deletes its cache, and invalidates its local epoch before network cleanup. A late response and an older stream generation cannot recreate it. Activity remains because it is the owner's history; a revoked connection's undelivered results become undeliverable through the existing result path.
 - **Connections are keyed by the connection ID** that the sidecar assigned. The app accepts a `PairResponse` only if the ID is a lowercase UUID (it names the files), the credential has the format of one, and the server ID matches the code's. Removing a connection deletes its credential file first, then its metadata, and touches no other connection. A refresh counts only requests whose reference names the connection, whatever the sidecar sends.
 - **Nothing is backed up or transferred.** The manifest sets `allowBackup="false"`. `data_extraction_rules.xml` excludes every domain from cloud backup and from device-to-device transfer, including `root`, which holds `no_backup/`. The Mobile Wallet Adapter authorization (SAW-015) is stored and excluded the same way. `StageBoundaryTest` checks the rules.
 - **The app logs nothing about connections,** and its screens show the URL, the IDs, and the status, never the credential or the token.
 - **An answer is written before it's sent,** so a crash or a lost response can't lose it. It goes only to the sidecar the request came from, keyed by both IDs, because two sidecars can use the same request ID. Removing a connection deletes its answers.
-- **A credential the sidecar rejects is deleted.** When a refresh gets `UNAUTHENTICATED`, the app marks the connection revoked, deletes its credential, and never sends it again.
+- **A credential the sidecar rejects is deleted.** When either update Sync or legacy refresh gets `UNAUTHENTICATED`, the app marks the connection revoked, deletes its credential and update cache, and never sends it again.
 - **The record outlives the answer, on purpose.** An answer is what the sidecar is owed, and it goes when it has been settled for a week or when its connection is removed. A record of what was spent is the owner's, and removing the agent that asked for a payment doesn't erase the payment. Nothing else deletes a record: the owner clears the history themselves, from the Activity screen, and that is the only way one goes.
 - **A record is written only for something that happened.** An approved transfer the sidecar never accepted opened no wallet and moved nothing, so it is removed rather than recorded (SAW-021).
 - **The history holds nothing a record shouldn't.** Public addresses, base units, a cluster, an outcome, and a signature. Not the approved transaction's bytes, not a credential, not a wallet authorization. A history that can't be read says so rather than reading as an empty one.
@@ -139,7 +190,7 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 
 ## The wallet
 
-The owner's wallet belongs to the wallet app, not to seeker-vault (SAW-015; [`docs/guides/wallet-setup.md`](guides/wallet-setup.md)).
+The owner's wallet belongs to the wallet app, not to Seeker Agent Connect (SAW-015; [`docs/guides/wallet-setup.md`](guides/wallet-setup.md)).
 
 - **No key, seed phrase, or recovery material ever reaches this app or a sidecar.** The app asks the installed wallet through Mobile Wallet Adapter and learns two things: the public address the owner picked, and an authorization token for talking to that wallet again.
 - **The authorization token is a secret and stays on the phone.** It is encrypted under the Keystore key, kept out of backups, never logged, and never sent to a sidecar. `WalletRepositoryTest` and `WalletActivityTest` check that it reaches no server.
@@ -311,6 +362,7 @@ The assessment the owner read is kept with their own record of what they did, as
   ```text
   [sidecar] phone paired: connection de03846e-d435-4705-b2e3-ec67da539f12; revoked connection 5d3c8f0e-2b7a-4c1d-9e6f-0a1b2c3d4e5f
   [sidecar] rejected Pair: UNAUTHENTICATED
+  [sidecar] connection de03846e-d435-4705-b2e3-ec67da539f12 FCM registration updated
   [sidecar] rejected ListPending: missing, wrong, or revoked phone credential
   [sidecar] connection de03846e-d435-4705-b2e3-ec67da539f12 revoked by the phone; 2 pending requests cancelled
   ```
@@ -319,4 +371,4 @@ The assessment the owner read is kept with their own record of what they did, as
 - **`pnpm pair` prints the pairing code,** because that's how pairing works. Show it only to the phone, and clear the terminal afterwards. Never paste it into a chat, an issue, or a log. An unused code stops working when it expires, or when the next one is issued.
 - **The test agent removes `MCP_TOKEN` and `PHONE_TOKEN` from all its output;** see [`test-agent/README.md`](../test-agent/README.md).
 
-`roles.test.ts` and `cli.test.ts` check that no token or credential appears in the sidecar's log or in the CLI's status and revoke output.
+`roles.test.ts` and `cli.test.ts` check that no bearer credential or FCM target appears in the sidecar's log or in the CLI's status and revoke output.

@@ -4,7 +4,15 @@
     <string name="policy_loading">Reading this connection\'s rules…</string>
     <string name="policy_global_title">Global rules</string>
     <string name="policy_global_loading">Reading global rules…</string>
-    <string name="policy_global_intro">These rules are your phone-wide defaults. A connection uses each section unless you replace that section in the connection\'s own Rules screen. They approve nothing and refuse nothing; every request still needs your hand here and in your wallet.</string>
+    <string name="policy_global_intro">Rules highlight requests that need attention. You still approve every request.</string>
+    <string name="policy_global_caption">These are the defaults every connection starts from.</string>
+    <string name="policy_global_empty_caption">Nothing is set, so connections that inherit compare nothing.</string>
+    <string name="policy_global_empty_title">No global rules configured</string>
+    <string name="policy_global_empty_detail">Nothing is compared by default, so every request that inherits from here is flagged for attention. Connections with their own overrides are unaffected.</string>
+    <string name="policy_help_rule">A rule never approves, stops or filters a request. It only decides whether the request is flagged when you review it.</string>
+    <string name="policy_help_global">Global rules are the defaults. A connection either follows a section or replaces it outright — sections mix freely.</string>
+    <string name="policy_help_daily">Daily limits are the exception: a global daily limit counts every connection and cannot be raised or removed locally.</string>
+    <string name="policy_help_wallet">Every request still needs your approval here, and the wallet asks again for anything it signs.</string>
     <string name="policy_connection_intro">Each section either uses Global rules or replaces that whole section for this connection. A connection override never adds items to a global list. These rules approve nothing and refuse nothing; every request still needs your hand here and in your wallet.</string>
     <string name="policy_intro">These rules are your own note about what this agent is expected to ask for. They approve nothing and refuse nothing. You approve every request by hand here and again in your wallet, whether the rules match it or not.</string>
     <string name="policy_saved_at">Last saved %1$s.</string>
@@ -52,6 +60,12 @@
     <string name="policy_action_sign_message_short">message signatures</string>
     <string name="policy_action_transfer_short">transfers</string>
     <string name="policy_action_swap_short">swaps</string>
+    <string name="policy_action_expected">Expected</string>
+    <string name="policy_action_not_expected">Not expected</string>
+    <string name="policy_section_on">On. Anything not listed is flagged for attention.</string>
+    <string name="policy_section_off">Off on purpose. This is not compared, and the review says so.</string>
+    <string name="policy_section_empty">On with an empty list, so nothing matches and every request is flagged.</string>
+    <string name="policy_nothing_listed">Nothing listed yet.</string>
 
     <string name="policy_section_assets">Assets and thresholds</string>
     <string name="policy_switch_assets">Only these assets may move</string>
@@ -60,6 +74,13 @@
     <string name="policy_assets_empty">Nothing is listed, so no asset may move. That is a rule, not a blank.</string>
     <string name="policy_assets_none">No asset listed. Add one to set a threshold for it.</string>
     <string name="policy_add_asset">Add an asset</string>
+    <string name="policy_asset_row_sol">Native SOL · %1$s</string>
+    <string name="policy_asset_row_token">Token · %1$s</string>
+    <string name="policy_asset_limits">%1$s · %2$s</string>
+    <string name="policy_asset_per_request_value">%1$s per request</string>
+    <string name="policy_asset_no_per_request">No per-request limit</string>
+    <string name="policy_asset_daily_value">%1$s a day, all connections</string>
+    <string name="policy_asset_no_daily">No daily limit</string>
     <string name="policy_asset_remove">Remove %1$s</string>
     <string name="policy_per_operation_sol">Most per request, in SOL</string>
     <string name="policy_daily_sol">Most across all connections per day, in SOL</string>
@@ -84,6 +105,8 @@
     <string name="policy_recipients_empty">Nothing is listed, so no wallet may be paid. That is a rule, not a blank.</string>
     <string name="policy_recipient_field">Wallet address</string>
     <string name="policy_recipient_note">Write the wallet that owns the funds, never a token account. The phone works the owner out of the transaction itself.</string>
+    <string name="policy_recipient_owner">Wallet that owns the funds</string>
+    <string name="policy_add_recipient">Add a wallet</string>
 
     <string name="policy_section_programs">Programs</string>
     <string name="policy_switch_programs">Only these programs may be called</string>
@@ -93,6 +116,12 @@
     <string name="policy_programs_empty">Nothing is listed, so no program may be called. That is a rule, not a blank.</string>
     <string name="policy_program_field">Program address</string>
     <string name="policy_program_note">Every program the transaction calls is checked, the compute budget program included.</string>
+    <string name="policy_program_system">System Program</string>
+    <string name="policy_program_compute_budget">Compute Budget</string>
+    <string name="policy_program_token">Token Program</string>
+    <string name="policy_program_token_2022">Token-2022 Program</string>
+    <string name="policy_program_unknown">Unknown program</string>
+    <string name="policy_add_program">Add a program</string>
 
     <string name="policy_add">Add</string>
     <string name="policy_remove">Remove</string>
@@ -111,6 +140,12 @@
 
     <string name="policy_save">Save</string>
     <string name="policy_cancel">Cancel</string>
+    <string name="policy_unsaved_changes">Unsaved changes</string>
+    <string name="policy_not_saved_yet">Not saved yet</string>
+    <string name="policy_try_again">Try again</string>
+    <string name="policy_save_error_title">Couldn\'t save</string>
+    <string name="policy_clear_global">Clear all global rules</string>
+    <string name="policy_global_daily_note">Daily limits set here count spending across every connection. A connection can add a tighter limit of its own, but cannot raise or remove this one.</string>
     <string name="policy_saved">Connection overrides saved.</string>
     <string name="policy_removed">Connection overrides reset. Inherited global rules are unchanged.</string>
     <string name="policy_global_saved">Global rules saved.</string>
@@ -163,7 +198,7 @@
     <string name="policy_global_unreadable_unknown">The stored global rules name something this version has no name for.</string>
     <string name="policy_global_unreadable_text">Every inheriting connection is shown as under restrictions until this is settled. Starting over replaces the global document and can change every inheriting connection; no connection override is deleted.</string>
     <!-- The assessment on the request-review screen (SAW-028). -->
-    <string name="policy_verdict_allowed">Matches your rules</string>
+    <string name="policy_verdict_allowed">Within the rules you set</string>
     <string name="policy_verdict_restricted">Outside your rules</string>
 
     <string name="policy_review_check_action">Action</string>

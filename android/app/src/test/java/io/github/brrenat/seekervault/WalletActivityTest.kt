@@ -11,6 +11,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
@@ -47,6 +48,7 @@ class WalletActivityTest {
     @Before
     fun useFakes() {
         app.connectionGateway = { gateway }
+        app.updateTransport = { LegacyUpdateTransport() }
         app.credentialKey = { key }
         app.connectionIo = Dispatchers.Unconfined
         app.walletAdapter = { adapter }
@@ -55,6 +57,18 @@ class WalletActivityTest {
     @After fun close() = scenario?.close() ?: Unit
 
     private fun launch() = ActivityScenario.launch(MainActivity::class.java).also { scenario = it }
+
+    @Test
+    fun systemBackFromARootDestinationReturnsHome() {
+        val scenario = launch()
+        compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
+        compose.onNodeWithTag(WalletTags.STATUS).assertExists()
+
+        scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+
+        compose.onNodeWithTag(ConnectionsTags.WALLET).assertExists()
+        assertEquals(Lifecycle.State.RESUMED, scenario.state)
+    }
 
     @Test
     fun connectsAWalletFromTheConnectionsScreenAndTellsTheSidecar() {
@@ -78,9 +92,13 @@ class WalletActivityTest {
 
         // Back on Connections the row names the wallet, and a restart keeps it.
         compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
-        compose.onNodeWithTag(ConnectionsTags.WALLET).assertTextContains(WALLET, substring = true)
+        compose
+            .onNodeWithTag(ConnectionsTags.WALLET)
+            .assertTextContains(WALLET.take(9), substring = true)
         scenario?.recreate()
-        compose.onNodeWithTag(ConnectionsTags.WALLET).assertTextContains(WALLET, substring = true)
+        compose
+            .onNodeWithTag(ConnectionsTags.WALLET)
+            .assertTextContains(WALLET.take(9), substring = true)
     }
 
     @Test

@@ -1,6 +1,8 @@
 # Pending requests
 
-What an agent asks of you arrives on the phone as a **pending request**. You review each one and answer it yourself. The app answers nothing for you, and nothing runs while it's closed.
+What an agent asks of you arrives on the phone as a **pending request**. You review each one and answer it yourself. The app answers nothing for you. While the app is closed, Android may let its bounded periodic worker fetch server state, but that worker cannot approve or open a wallet.
+
+> **Stage 5.3 status:** while the app is open, a configured current sidecar delivers live request and outcome changes through one persistent stream. In the background, one network-constrained WorkManager job periodically uses unary Sync. SAW-056 can additionally send a content-free, best-effort Firebase invalidation; SAW-057 hands it to unique work and omits connections whose foreground stream is already Live. SAW-058 may show a generic request notification after that Sync, subject to Android permission. The hint contains no request details and can be delayed, collapsed, expired, throttled, or dropped. No update or notification-tap path performs an automatic wallet action.
 
 ## Where requests come from
 
@@ -12,9 +14,22 @@ The phone must be paired with the sidecar first ([`pairing.md`](pairing.md)).
 
 ## When the phone fetches
 
-The phone fetches a connection's requests at three moments: when the app opens or comes back to the foreground, when you open that connection, and when you tap **Refresh**. Rotating the phone doesn't fetch. There's no push and no background service. A request made while the app is closed or in the background shows up the next time you open it.
+The phone reconciles every connection when the app opens or comes back to the foreground, then keeps one live stream to each usable configured sidecar while the app remains open. A new request or changed result appears on Home, Inbox, Request details, and Activity without opening the screen again or tapping **Refresh**. Rotating the phone and moving between screens keep the same stream. Leaving for the wallet closes foreground streams without canceling the wallet action; returning reconciles stored answers and missed server changes before live delivery resumes.
+
+Connection status says whether live delivery is connecting, live, reconnecting, unreachable, revoked, unsupported, or intentionally paused in the background. **Last synced** is shown separately: an older successful sync does not mean a stream is live. **Refresh** remains available and its existing failure text remains actionable.
+
+With at least one usable connection, Android retains one periodic background job. Its configured interval is 15 minutes, which is Android's minimum—not a promise that every request appears within 15 minutes. Doze, battery restrictions, standby, lack of a network, and device policy can defer a run. Android Settings **Force stop** stops scheduled and push-triggered work until you reopen the app. A configured invalidation may prompt a sooner Sync, but delivery is never guaranteed. After a successful push Sync discovers a new pending request, the configured app may show a generic notification if Android permission and the request channel are enabled. Duplicate hints coalesce, and if a foreground stream is already Live it remains the active path instead of a push worker fetching the same connection again. Open the app or use **Refresh** when you need to force the newest state. Setup and inspection steps are in the [live and background updates runbook](live-background-updates.md); optional Firebase and notification behavior is in the [Firebase guide](firebase.md#notifications-and-tap-to-open-saw-058).
+
+A background run reloads stored connections and encrypted credentials, fetches a bounded unary snapshot, retries an answer you already recorded if needed, and saves the resulting requests, Activity outcomes, and last-sync time. It never prepares a transaction, answers a request, approves, opens the wallet, signs, sends, or repeats a transfer.
+
+Requests remain authoritative on the sidecar. The phone keeps the last complete revisioned view so it survives process death. A complete multi-page refresh replaces that cache only after its final page arrives; if paging is interrupted, the preceding complete view remains. Duplicate or stale updates change nothing, while a cursor gap, conflicting revision, damaged cache, or sidecar restart requests a full snapshot. Removing or revoking a connection removes its cached server state, but Activity remains the owner's record.
 
 ## Reviewing a request
+
+Home previews waiting requests in a horizontal carousel. Its first card begins at the left content
+edge. As you swipe, cards between the endpoints settle in the centre; the final card settles at the
+right content edge. The spacing and ordinary horizontal swipe gesture stay the same. The carousel
+only browses requests—tap a card to review it and answer on Request details.
 
 1. On **Connections**, tap **Pending requests**, the first row. Or open a connection and tap **Pending requests** there for only that connection's.
 2. The list has up to three parts:
@@ -31,6 +46,20 @@ The phone fetches a connection's requests at three moments: when the app opens o
    - when it was made and when it expires
    - its request ID
 4. Tap **Acknowledge** or **Reject**. Both buttons stay disabled while your answer is sent, so a second tap does nothing.
+
+## Opening a notification
+
+Tap a request notification to open the connection and request named by its local route. The app
+first fetches current state from that paired sidecar. Until the fetch succeeds, the screen shows no
+answer, approval, or wallet controls. If the request expired, was canceled, or was answered
+elsewhere, the screen says it is no longer waiting. A removed or revoked connection is named as
+such; an unreachable sidecar offers a retry. An answer already stored on this phone opens its
+existing result.
+
+The notification is only a reminder. Tapping it never chooses an answer, approves, signs, or opens
+a wallet. Its current-state Sync may retry only an answer you already recorded, just like Refresh
+or background recovery. Continue with the same manual review described below only after the
+current request appears.
 
 ## What happens to your answer
 

@@ -2,8 +2,13 @@
  * Stage boundaries on the Node side (AGENTS.md). Nothing creates keys and nothing signs. The
  * sidecar stores durable requests (SAW-010): only src/storage/ imports the file system or SQLite,
  * and only it runs SQL. SAW-019 lets it read a chain, and only from src/solana/, to build a
- * transfer the owner reviews; it still sends nothing. These checks fail when that changes before
- * the stage that changes it on purpose.
+ * transfer the owner reviews; it still sends nothing. SAW-048 authorizes an HTTP/2 listener and
+ * UpdateService only in server.ts and src/updates/, while durable cursors and snapshots still go
+ * through src/storage/. SAW-054 allows Firebase Admin only in src/push/, SAW-055 stores one
+ * connection-owned target through src/storage/, and SAW-056 sends only an audited content-free
+ * invalidation after a durable commit. SAW-059 closes that optional push scope without giving the
+ * sender a request body, credential, policy, transaction authority, or wallet operation. These
+ * checks fail when that narrow boundary changes.
  */
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -135,6 +140,81 @@ describe("stage boundary", () => {
       readFileSync(join(SRC, "storage/request-store.ts"), "utf8"),
       sql,
       "the request store runs its SQL in storage",
+    );
+  });
+
+  it("keeps the production update transport in its server and updates packages", () => {
+    const sources = shippedSources();
+    const http2 = /from "node:http2"/;
+    const updateProtocol = /gen\/seekervault\/update\/v1\/update_pb\.js/;
+    const http2OutsideServer = sources.filter(
+      (file) =>
+        relative(SRC, file) !== "server.ts" &&
+        http2.test(readFileSync(file, "utf8")),
+    );
+    const protocolOutsideUpdates = sources.filter((file) => {
+      const path = relative(SRC, file);
+      return (
+        path !== "server.ts" &&
+        !path.startsWith("updates/") &&
+        updateProtocol.test(readFileSync(file, "utf8"))
+      );
+    });
+    assert.deepEqual(
+      http2OutsideServer.map((file) => relative(ROOT, file)),
+      [],
+    );
+    assert.deepEqual(
+      protocolOutsideUpdates.map((file) => relative(ROOT, file)),
+      [],
+    );
+  });
+
+  it("keeps the optional Firebase sender inside the audited Stage 5.3 boundary", () => {
+    const firebaseAdmin = /from "firebase-admin\//;
+    const sources = shippedSources();
+    const outside = sources.filter(
+      (file) =>
+        !relative(SRC, file).startsWith("push/") &&
+        firebaseAdmin.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(
+      outside.map((file) => relative(ROOT, file)),
+      [],
+    );
+    assert.match(
+      readFileSync(join(SRC, "push/fcm.ts"), "utf8"),
+      firebaseAdmin,
+      "push/fcm.ts is the one Firebase Admin boundary",
+    );
+    assert.doesNotMatch(
+      readFileSync(join(SRC, "push/fcm.ts"), "utf8"),
+      /console\.|\blog\(/,
+      "the credential-bearing sender logs nothing",
+    );
+    assert.doesNotMatch(
+      readFileSync(join(SRC, "server.ts"), "utf8"),
+      /fcmSender\??\.send/,
+      "server routes sends through SAW-056's audited invalidation dispatcher",
+    );
+    assert.match(
+      readFileSync(join(SRC, "server.ts"), "utf8"),
+      /FcmInvalidationDispatcher/,
+      "SAW-056 connects durable request changes to the audited sender",
+    );
+    const invalidation = readFileSync(
+      join(SRC, "push/invalidation.ts"),
+      "utf8",
+    );
+    assert.match(
+      invalidation,
+      /data: \{ \.\.\.FCM_INVALIDATION_DATA \}/,
+      "the app-visible data is copied only from the fixed two-field constant",
+    );
+    assert.doesNotMatch(
+      invalidation,
+      /notification\s*:/,
+      "the sidecar sends no Firebase notification body",
     );
   });
 

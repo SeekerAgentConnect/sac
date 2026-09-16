@@ -91,7 +91,7 @@ describe("pairing URIs", () => {
     assert.ok(isSecret(TOKEN));
   });
 
-  it("refuse codes that aren't seeker-vault's, are for another version, or are incomplete", () => {
+  it("refuses codes that aren't Seeker Agent Connect's, are for another version, or are incomplete", () => {
     const good = new URL(
       pairingUri({
         serverUrl: "https://vault.example.com",
@@ -110,12 +110,18 @@ describe("pairing URIs", () => {
       return copy.toString();
     };
     const cases: ReadonlyArray<readonly [string, string]> = [
-      ["https://vault.example.com", "this isn't a seeker-vault pairing code"],
-      ["seekervault://connect?v=1", "this isn't a seeker-vault pairing code"],
+      [
+        "https://vault.example.com",
+        "this isn't a Seeker Agent Connect pairing code",
+      ],
+      [
+        "seekervault://connect?v=1",
+        "this isn't a Seeker Agent Connect pairing code",
+      ],
       ["not a code", "this isn't a pairing code"],
       [
         withValue("v", "2"),
-        "this pairing code is for another version of seeker-vault",
+        "this pairing code is for another version of Seeker Agent Connect",
       ],
       [without("url"), "the server URL isn't a URL"],
       [without("server"), "server is missing"],

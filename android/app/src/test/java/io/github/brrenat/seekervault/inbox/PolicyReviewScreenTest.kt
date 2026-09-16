@@ -11,7 +11,6 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
@@ -112,7 +111,6 @@ class PolicyReviewScreenTest {
         show(null)
         compose
             .onNodeWithTag(InboxTags.POLICY_PENDING)
-            .performScrollTo()
             .assertTextEquals(text(R.string.policy_review_pending))
     }
 
@@ -125,25 +123,19 @@ class PolicyReviewScreenTest {
         )
         compose
             .onNodeWithTag(InboxTags.POLICY_VERDICT)
-            .performScrollTo()
             .assertTextEquals(text(R.string.policy_verdict_allowed))
+        // The compact verdict is still the complete assessment: every configured check says what
+        // the phone read, while checks without a rule are grouped in the coverage line.
         check(PolicyCheck.Action)
-            .performScrollTo()
             .assertTextContains(text(R.string.policy_review_check_action), substring = true)
-        check(PolicyCheck.Action)
             .assertTextContains(text(R.string.policy_status_passed, "ack"), substring = true)
-        // Every check is on screen, including the five nobody wrote a rule for.
-        PolicyCheck.entries.forEach { check(it).performScrollTo().assertExists() }
-        check(PolicyCheck.Recipient)
-            .assertTextContains(text(R.string.policy_status_not_configured), substring = true)
-        // And what ALLOWED does not say anything about is named, not left to be inferred.
+        PolicyCheck.entries.drop(1).forEach { check(it).assertDoesNotExist() }
         compose
             .onNodeWithTag(InboxTags.POLICY_UNCOVERED)
-            .performScrollTo()
             .assertTextContains(text(R.string.policy_review_check_recipient), substring = true)
         // A match asks for no word from the owner: there is nothing to overrule.
         compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).assertDoesNotExist()
-        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertIsEnabled()
     }
 
     @Test
@@ -206,15 +198,16 @@ class PolicyReviewScreenTest {
             )
         show(decision, facts = facts)
 
+        // Passing allowlist checks remain visible with what they read and which document supplied
+        // the rule. The two daily rows remain separate because their scopes are independent.
         check(PolicyCheck.Action)
-            .performScrollTo()
+            .assertTextContains(text(R.string.policy_status_passed_plain), substring = true)
             .assertTextContains(text(R.string.policy_source_global), substring = true)
         check(PolicyCheck.Recipient)
-            .performScrollTo()
+            .assertTextContains(RECIPIENT, substring = true)
             .assertTextContains(text(R.string.policy_source_connection), substring = true)
         compose
             .onNodeWithTag(InboxTags.policyDaily(DailyCheckScope.Global.code))
-            .performScrollTo()
             .assertTextContains(text(R.string.policy_daily_global), substring = true)
             .assertTextContains(text(R.string.policy_source_global), substring = true)
             .assertTextContains("Confirmed: 1", substring = true)
@@ -222,7 +215,6 @@ class PolicyReviewScreenTest {
             .assertTextContains("Projected with this request: 4", substring = true)
         compose
             .onNodeWithTag(InboxTags.policyDaily(DailyCheckScope.Connection.code))
-            .performScrollTo()
             .assertTextContains(text(R.string.policy_daily_connection), substring = true)
             .assertTextContains(text(R.string.policy_source_connection), substring = true)
             .assertTextContains("Projected with this request: 3", substring = true)
@@ -241,7 +233,6 @@ class PolicyReviewScreenTest {
 
         compose
             .onNodeWithTag(InboxTags.POLICY_REASON)
-            .performScrollTo()
             .assertTextEquals(text(R.string.policy_unreadable_both))
     }
 
@@ -251,7 +242,6 @@ class PolicyReviewScreenTest {
 
         compose
             .onNodeWithTag(InboxTags.POLICY_REASON)
-            .performScrollTo()
             .assertTextEquals(text(R.string.policy_unreadable_global))
     }
 
@@ -261,7 +251,6 @@ class PolicyReviewScreenTest {
 
         compose
             .onNodeWithTag(InboxTags.POLICY_REASON)
-            .performScrollTo()
             .assertTextEquals(text(R.string.policy_unreadable_connection))
     }
 
@@ -295,7 +284,6 @@ class PolicyReviewScreenTest {
             showing.value = verdict
             compose
                 .onNodeWithTag(InboxTags.POLICY_MANUAL)
-                .performScrollTo()
                 .assertTextEquals(text(R.string.policy_review_manual))
         }
     }
@@ -305,14 +293,10 @@ class PolicyReviewScreenTest {
         show(overThreshold())
         compose
             .onNodeWithTag(InboxTags.POLICY_VERDICT)
-            .performScrollTo()
             .assertTextEquals(text(R.string.policy_verdict_restricted))
         check(PolicyCheck.PerOperationLimit)
-            .performScrollTo()
-            .assertTextContains(
-                text(R.string.policy_status_failed, "2.5 SOL of 1 SOL"),
-                substring = true,
-            )
+            .assertTextContains(text(R.string.policy_reason_per_operation), substring = true)
+            .assertTextContains("2.5 SOL of 1 SOL", substring = true)
     }
 
     @Test
@@ -330,11 +314,8 @@ class PolicyReviewScreenTest {
             )
         )
         check(PolicyCheck.Recipient)
-            .performScrollTo()
-            .assertTextContains(
-                text(R.string.policy_status_failed, RECIPIENT),
-                substring = true,
-            )
+            .assertTextContains(text(R.string.policy_reason_recipient), substring = true)
+            .assertTextContains(RECIPIENT, substring = true)
     }
 
     @Test
@@ -367,19 +348,15 @@ class PolicyReviewScreenTest {
         show(decision)
         // Could not be checked, said as that and never as a match.
         check(PolicyCheck.Recipient)
-            .performScrollTo()
+            .assertTextContains(text(R.string.policy_reason_recipient_unverified), substring = true)
             .assertTextContains(
-                text(
-                    R.string.policy_status_unverified,
-                    "the bytes don't establish who receives it",
-                ),
+                "the bytes don't establish who receives it",
                 substring = true,
             )
         compose
             .onNodeWithTag(InboxTags.POLICY_REASON)
-            .performScrollTo()
             .assertTextEquals(text(R.string.policy_reason_request_unverified))
-        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).performScrollTo().assertExists()
+        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).assertExists()
     }
 
     @Test
@@ -387,14 +364,10 @@ class PolicyReviewScreenTest {
         show(noPolicy(PolicyReason.NoPolicyConfigured))
         compose
             .onNodeWithTag(InboxTags.POLICY_REASON)
-            .performScrollTo()
             .assertTextEquals(text(R.string.policy_reason_no_policy))
         // Otherwise every request on a phone with no rules would ask for one.
         compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).assertDoesNotExist()
-        compose
-            .onNodeWithTag(InboxTags.ACKNOWLEDGE)
-            .performScrollTo()
-            .assertTextEquals(text(R.string.acknowledge))
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertTextEquals(text(R.string.acknowledge))
     }
 
     @Test
@@ -402,9 +375,8 @@ class PolicyReviewScreenTest {
         show(noPolicy(PolicyReason.PolicyUnreadable))
         compose
             .onNodeWithTag(InboxTags.POLICY_REASON)
-            .performScrollTo()
             .assertTextEquals(text(R.string.policy_reason_unreadable))
-        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).performScrollTo().assertExists()
+        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).assertExists()
     }
 
     @Test
@@ -412,27 +384,22 @@ class PolicyReviewScreenTest {
         show(overThreshold())
         compose
             .onNodeWithTag(InboxTags.ACKNOWLEDGE)
-            .performScrollTo()
             .assertIsNotEnabled()
             .assertTextEquals(text(R.string.acknowledge_despite_warnings))
         // Rejecting never waits for anything: saying no is the safe answer.
-        compose.onNodeWithTag(InboxTags.REJECT).performScrollTo().assertIsEnabled().performClick()
+        compose.onNodeWithTag(InboxTags.REJECT).assertIsEnabled().performClick()
         assertEquals(listOf(Answer.Reject), answers)
 
         val tick = compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE)
-        tick.performScrollTo().assertIsOff().performClick()
+        tick.assertIsOff().performClick()
         assertEquals(listOf(true), ticks)
     }
 
     @Test
     fun onceTheOwnerHasSaidSoTheAnswerGoesThrough() {
         show(overThreshold(), acknowledged = true)
-        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).performScrollTo().assertIsOn()
-        compose
-            .onNodeWithTag(InboxTags.ACKNOWLEDGE)
-            .performScrollTo()
-            .assertIsEnabled()
-            .performClick()
+        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).assertIsOn()
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertIsEnabled().performClick()
         assertEquals(listOf(Answer.Acknowledge), answers)
     }
 

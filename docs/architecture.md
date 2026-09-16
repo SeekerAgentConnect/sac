@@ -1,13 +1,13 @@
 # Architecture
 
-seeker-vault has four parts: the agent, the sidecar, the Android app, and the wallet. This page covers what each part owns, how they talk, and which safety rules hold across them. The wire contract is in [`protocol.md`](protocol.md), and the plan in [`RFC.md`](../RFC.md).
+Seeker Agent Connect has four parts: the agent, the sidecar, the Android app, and the wallet. This page covers what each part owns, how they talk, and which safety rules hold across them. The wire contract is in [`protocol.md`](protocol.md), and the plan in [`RFC.md`](../RFC.md).
 
 ## Components
 
 ```mermaid
 flowchart LR
     Agent["Agent<br>(Hermes, test agent)"] -- "MCP over HTTP<br>(MCP token)" --> Sidecar
-    Phone["Seeker app<br>(Android)"] -- "Connect, unary<br>(phone credential)" --> Sidecar
+    Phone["Seeker app<br>(Android)"] -- "Connect unary + gRPC HTTP/2<br>(phone credential)" --> Sidecar
     Phone -- "Mobile Wallet Adapter" --> Wallet["Seed Vault Wallet"]
     Wallet -- "signs and sends" --> Solana[("Solana")]
     Sidecar -- "reads: blockhash,<br>confirmation, Jupiter" --> Solana
@@ -16,9 +16,9 @@ flowchart LR
 | Component | Owns | Never does |
 | --- | --- | --- |
 | **Agent** | Proposing actions and reading their results | Approve, sign, or see the phone's policy |
-| **Sidecar** (`sidecar/`) | The MCP and Connect endpoints. From SAW-010 and SAW-011 on, it also holds requests and their states, prepared transactions, results, idempotency records, and pairing. | Hold keys, sign, decide for the user, or execute anything on its own after a restart |
-| **Android app** (`android/`) | Connections and their credentials, policies and their assessments, the user's decision, invoking the wallet, and results the sidecar hasn't acknowledged yet | Sign without the user's approval, or trust the agent's description over the transaction's contents |
-| **Seed Vault Wallet** | Keys, signing, and sending | Know anything about seeker-vault |
+| **Sidecar** (`sidecar/`) | The MCP and phone endpoints. From SAW-010 and SAW-011 on, it also holds requests and their states, prepared transactions, results, idempotency records, and pairing; Stage 5.2 adds durable update revisions/cursors and bounded snapshots. | Hold keys, sign, decide for the user, or execute anything on its own after a restart |
+| **Android app** (`android/`) | Connections and their credentials, policies and their assessments, the user's decision, invoking the wallet, results the sidecar hasn't acknowledged yet, and Stage 5.2's minimal server-state cache/sync metadata | Sign without the user's approval, or trust the agent's description over the transaction's contents |
+| **Seed Vault Wallet** | Keys, signing, and sending | Know anything about Seeker Agent Connect |
 
 ### The wallet adapter boundary
 
@@ -74,6 +74,71 @@ sequenceDiagram
 
 **Nothing unverified reaches the wallet.** Only a preparation whose inspection came back `Verified` is offered for approval at all, and `InboxViewModel.approveTransfer` checks it again before sending anything. This is input validation, not a policy verdict, and the two are judged in that order: validation decides what is executable, and a policy can only add reasons to read ([`policy.md`](policy.md#precedence)). Stage 5 defines, evaluates, edits, reviews, and exercises the rules in SAW-025 to SAW-029. Stage 5.1 adds global defaults, explicit connection overrides, two daily scopes, sourced review, and the combined acceptance path in SAW-043 to SAW-047 — always under the facts and never in place of them ([`security.md`](security.md#verification-versus-advisory-rules)).
 
+### The update convergence boundary
+
+SAW-048 defines one production update service, separate from the Stage 1 diagnostic, and SAW-049 backs it with the sidecar's durable mutation sequence and frozen snapshots. The foreground stream, app resume, manual Refresh, and later WorkManager runs all converge through the same reconciliation operation instead of maintaining four versions of request state.
+
+```mermaid
+flowchart LR
+    Stream["Foreground Subscribe<br>gRPC / HTTP/2"] --> Sync["Per-connection reconciliation"]
+    Resume["App resume"] --> Sync
+    Refresh["Manual Refresh"] --> Sync
+    Worker["WorkManager<br>eventual, network constrained"] --> Sync
+    Sync --> Cache["sync/storage<br>request/status cache + cursors"]
+    Sync --> Activity["Activity outcomes"]
+    Sync -. "read-only, bounded" .-> Confirm["Sidecar confirmation"]
+    Sync -. "never" .-> Wallet["Wallet"]
+```
+
+- **One authenticated logical stream per usable connection, owned by app foreground state.** It is not tied to a screen, so navigation and rotation do not make competing subscriptions. Background transition, deletion, revocation, and caller cancellation close it; only a later lifecycle owner can reconnect.
+- **The stream is notification plus an ordered mutation log, not the source of truth.** A retained cursor replays; restart, history loss, overflow, or an unknown message forces unary `Sync`. Sync freezes a paginated snapshot behind the already-registered stream barrier, so a mutation is in the snapshot or after its cursor on the stream, never between them ([protocol details](protocol.md#stream-start-resume-and-the-snapshot-barrier)).
+- **State is connection-scoped and monotonic.** Every wire message repeats the authenticated connection ID; events carry per-request revisions; stale/duplicate events and an older stream generation cannot roll state back. One offline connection cannot stop another.
+- **Background means eventual observation only.** WorkManager may run late or not at all, and Force stop suppresses it until the owner opens the app. It performs unary Sync with stored credentials and no Activity. There is no foreground service and no FCM in Stage 5.2.
+- **No update path can act.** It can refresh pending requests, reconcile nonterminal Activity records, run a bounded read-only confirmation for an already submitted/unknown transfer, and retry delivery of a result already stored by the phone. It cannot prepare, approve, sign, open a wallet, send, re-execute, or apply a policy verdict.
+- **Compatibility is explicit.** Pairing remains version 1 and advertises a versioned gRPC origin. Existing connections discover it with their phone credential. An old sidecar is “upgrade required,” not “offline,” and manual Refresh over the existing unary API remains available.
+
+SAW-053 validates this boundary as a joined system rather than only as isolated units. `Stage52AcceptanceTest` starts real sidecar processes, creates requests through a real MCP client, and drives the production Android repository, lifecycle owner, persistent cache, and headless sync across the real h2c development listener. `GrpcBidiInteropTest` covers cross-runtime bidirectional interleaving and cancellation on that HTTP/2 transport; the sidecar listener tests separately cover TLS/ALPN HTTP/2, frozen pagination, ordering faults, revocation, cleanup, and bounded read-only confirmation. The suite is `pnpm test:updates`; the physical timing and lifecycle cases are in the [Seeker checklist](testing/stage-5-2.md#physical-seeker-checklist-saw-053).
+
+That validation does not turn periodic work into exact notification delivery. In background there is no open stream, and Stage 5.2 has no request-created wake-up. [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73) adds optional FCM separately; even it is best-effort and cannot bypass Force stop.
+
+SAW-054 opens that stage without adding a new runtime path. The Android Firebase client has an
+operator-supplied project configuration or remains dormant; the sidecar constructs a Firebase Admin
+sender only for an explicit project ID and Application Default Credentials. SAW-055 adds one
+application-scoped registration owner: while any usable connection exists it asks current FCM to
+register, then sends each registration/rotation to every sidecar through that connection's own
+phone credential. The phone stores no target. Each sidecar stores one private target with the
+connection, and revocation deletes it. No request mutation calls the sender and the app still has no
+message-receipt, notification, tap, or runtime-permission path in that child.
+
+SAW-056 joins only committed request events to that sender. The app-visible payload is the fixed
+pair `kind=request_invalidation`, `version=1`; even connection and request IDs stay out. Same-turn
+changes coalesce, undelivered messages share one collapse key and a five-minute TTL, and only a new
+PENDING request uses high priority. Android rejects every other payload shape and persists only an
+empty-input, unique WorkManager request. That worker calls the bounded synchronization repository
+and obtains each sidecar URL and credential from phone storage, not from FCM. It cannot answer a request or
+reach a wallet. Consequently the Stage 5.2 convergence authority above remains unchanged when a
+push is delayed, dropped, throttled, or disabled. The [Firebase guide](guides/firebase.md) defines
+the deployment and off/unavailable cases.
+
+SAW-057 makes the handoff explicit. `FirebaseMessagingService` does only exact-map validation and
+the quick WorkManager enqueue; it performs no disk-backed reconciliation or sidecar call inside the
+callback budget. FCM collapse and unique work coalesce duplicate hints. At execution time, push and
+periodic recovery exclude connections whose foreground stream is already Live, then pass the rest
+to the same four-sidecar-bounded repository. That repository still serializes one snapshot per
+connection and buffers live events across it, so stream, Refresh, periodic, and push delivery
+converge rather than becoming independent writers. Dropping the push path removes only an early
+signal: foreground reconciliation and the persisted periodic schedule still read durable state.
+
+SAW-058 derives presentation only after that authoritative worker fetch. It compares the complete
+pending-key set before and after Sync, cancels alerts for keys that left PENDING, and posts one
+generic private alert for each newly discovered key. The notification contains neither request
+content nor a credential; its immutable explicit intent carries only the connection/request IDs
+needed for an internal route. That route validates both IDs and performs another authenticated
+fetch from the named paired connection before exposing review controls. A current pending request
+opens normally, a result this phone already recorded opens with that result, and absent, removed,
+revoked, or unreachable state gets a non-authorizing explanation. The permission decision governs
+presentation only and is not an input to registration, foreground streams, Sync, or either worker.
+
 ## Trust boundaries
 
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
@@ -100,14 +165,19 @@ sequenceDiagram
 | The assessment the owner read when they answered | The phone, as codes on the Activity record; never the rules themselves, and never sent anywhere | SAW-028 |
 | Assessments | Nowhere — computed on demand from the rules and the records, never stored | SAW-026 |
 | Daily counters | The phone, derived from the Activity records in `filesDir` | SAW-026 |
+| Update revisions, cursors, retained replay, and frozen snapshots | The sidecar's SQLite database, through `src/storage/` | SAW-048 contract; SAW-049 implementation |
+| One private current FCM target per active connection | The sidecar's SQLite database, through `src/storage/`; no phone copy and no read API | SAW-055 |
+| FCM invalidation payload | Nowhere; two fixed strings are validated and discarded before empty-input Sync work is enqueued | SAW-056 |
+| Minimal request/status cache and sync metadata | The phone in `filesDir`, through `sync/storage/`; never backed up | SAW-048 contract; SAW-050 implementation |
 | Keys | Seed Vault Wallet | Stage 3 |
 
-## Two flows
+## Two workflows, three transports
 
 - **The live diagnostic (Stage 1)** proves the transport. An agent's call waits while the text shows on the open live-test screen, and the user's OK comes back as the tool's result. It's in memory and foreground-only, and it stays as a diagnostic.
 - **The durable workflow (Stage 2 on)** carries the product. The sidecar stores an agent's request and answers with its ID at once. The phone fetches it later, and the agent reads the result when it's ready.
+- **The production update transport (Stage 5.2)** observes the durable workflow: the sidecar serves bidirectional gRPC and unary Sync, while Android foreground streams, manual Refresh, and headless callers converge through one persistent revisioned cache. The app process owns the foreground streams, not any screen. Eventual background scheduling arrives in SAW-052. It creates no third kind of request and makes no decision.
 
-The two flows share the sidecar process and the text rules, and nothing else; see [Compatibility with Stage 1](protocol.md#compatibility-with-stage-1).
+The two workflows share the sidecar process and the text rules, and nothing else; the production update transport belongs only to durable requests. See [Compatibility with Stage 1](protocol.md#compatibility-with-stage-1).
 
 ## Invariants
 
@@ -122,7 +192,7 @@ These hold across the components, and every stage keeps them:
 7. **Exact values.** Amounts are integer base-unit strings, and messages are signed as the exact bytes sent.
 8. **The wallet is the owner's, and explicit.** The app and the sidecar never create a wallet or hold a key. A wallet action is stored only for the wallet and network the owner selected, and an agent that asks for an address when none is connected gets `WALLET_NOT_CONNECTED`.
 9. **The wallet is asked only after the owner approves.** No wallet call happens while a request is PENDING, and a signature is accepted only if it verifies against the request's wallet over the request's own bytes.
-10. **Only the chain settles a transaction, and only one endpoint says so.** A sent transaction is CONFIRMED or FAILED because a configured Solana RPC endpoint was asked and its answer was checked against the approved bytes; who was asked is recorded and disclosed. Nothing checks on its own, a check that settles nothing changes nothing, and no failure anywhere produces a replacement transaction (SAW-022).
+10. **Only the chain settles a transaction, and only one endpoint says so.** A sent transaction is CONFIRMED or FAILED because a configured Solana RPC endpoint was asked and its answer was checked against the approved bytes; who was asked is recorded and disclosed. The agent, the owner's Check status, and Stage 5.2's bounded Sync confirmation are only read triggers: a check that settles nothing changes nothing, and no failure anywhere produces a replacement transaction (SAW-022, SAW-048).
 11. **One interaction, one reported outcome.** The wallet is asked once per request; what it did is stored on the phone before it's sent; sending it again never reaches the wallet; and a repeated result returns the same terminal request. An answer the phone never received is reported as unresolved, never as a success (SAW-017). For a message that means FAILED, because nothing could have been broadcast. For a transfer it means UNKNOWN, because the wallet may have sent it, and the phone never asks a second time (SAW-021).
 
 ## Stages
@@ -134,6 +204,8 @@ These hold across the components, and every stage keeps them:
 | 3 | Mobile Wallet Adapter and the wallet binding (SAW-015), manual message signing (SAW-016), and the wallet lifecycle with reliable result delivery (SAW-017) |
 | 4 | Transfer requests and fresh preparation (SAW-019), the phone's own inspection of the bytes (SAW-020), manual approval through the wallet (SAW-021), and on-chain confirmation (SAW-022) |
 | 5 | The policy model through end-to-end scenarios (SAW-025–029), then global defaults, connection overrides, two daily scopes, sourced review, and combined acceptance (Stage 5.1, SAW-043–047) |
+| 5.2 | Authenticated foreground bidirectional updates, shared reconciliation, a minimal phone cache, and eventual WorkManager sync (SAW-048–053; FCM excluded) |
+| 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
 | 8 | Release checks |

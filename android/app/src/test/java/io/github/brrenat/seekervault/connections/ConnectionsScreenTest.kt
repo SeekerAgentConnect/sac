@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.connections
 
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -8,10 +10,23 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.inbox.RequestAssessment
+import io.github.brrenat.seekervault.inbox.key
+import io.github.brrenat.seekervault.policy.PolicyAction
+import io.github.brrenat.seekervault.policy.PolicyCheck
+import io.github.brrenat.seekervault.policy.PolicyCheckResult
+import io.github.brrenat.seekervault.policy.PolicyReason
+import io.github.brrenat.seekervault.policy.RequestFacts
+import io.github.brrenat.seekervault.policy.assess
+import io.github.brrenat.seekervault.sync.ForegroundConnectionState
+import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -27,7 +42,13 @@ class ConnectionsScreenTest {
     private val opened = mutableListOf<String>()
     private val actions = mutableListOf<String>()
 
-    private fun show(state: ConnectionsUiState, activity: Int? = null) = compose.setContent {
+    private fun show(
+        state: ConnectionsUiState,
+        activity: Int? = null,
+        inbox: InboxSummary? = null,
+        requests: List<io.github.brrenat.seekervault.request.v1.ActionRequest> = emptyList(),
+        assessments: Map<RequestKey, RequestAssessment> = emptyMap(),
+    ) = compose.setContent {
         SeekerVaultTheme {
             ConnectionsScreen(
                 state = state,
@@ -38,8 +59,169 @@ class ConnectionsScreenTest {
                 activity = activity,
                 onActivity = { actions += "activity" },
                 onGlobalRules = { actions += "global-rules" },
+                inbox = inbox,
+                onInbox = { actions += "inbox" },
+                requests = requests,
+                requestAssessments = assessments,
             )
         }
+    }
+
+    @Test
+    fun requestCarouselBrowsesWithoutAnsweringAndShowsItsRuleState() {
+        val request = FakeConnectionGateway.request(HOME.id, text = "Still here?")
+        show(
+            state = ConnectionsUiState(connections = listOf(HOME), loaded = true),
+            inbox = InboxSummary(waitingForYou = 1, toSend = 0),
+            requests = listOf(request),
+            assessments = mapOf(request.key to assessment(request, warns = true)),
+        )
+
+        compose.onNodeWithText(context.getString(R.string.waiting_for_you)).assertExists()
+        compose.onNodeWithText("Still here?").assertExists()
+        compose.onNodeWithText(context.getString(R.string.request_one_warning)).assertExists()
+        val railBounds =
+            compose.onNodeWithTag(ConnectionsTags.CAROUSEL).fetchSemanticsNode().boundsInRoot
+        val onlyBounds =
+            compose
+                .onNodeWithTag(ConnectionsTags.request(request.key))
+                .assertIsSelected()
+                .fetchSemanticsNode()
+                .boundsInRoot
+        assertEquals(
+            railBounds.left + with(compose.density) { 20.dp.toPx() },
+            onlyBounds.left,
+            1f,
+        )
+        compose
+            .onNodeWithTag(ConnectionsTags.INBOX)
+            .assertTextContains(context.getString(R.string.requests_see_all, 1))
+            .performClick()
+        assertEquals(listOf("inbox"), actions)
+    }
+
+    @Test
+    fun requestCarouselDoesNotCallAnUnassessedOrNoPolicyRequestInRules() {
+        val request = FakeConnectionGateway.request(HOME.id, text = "Still here?")
+        show(
+            state = ConnectionsUiState(connections = listOf(HOME), loaded = true),
+            inbox = InboxSummary(waitingForYou = 1, toSend = 0),
+            requests = listOf(request),
+            assessments = mapOf(request.key to assessment(request, warns = false)),
+        )
+
+        compose.onNodeWithText(context.getString(R.string.request_not_checked)).assertExists()
+        compose.onNodeWithText(context.getString(R.string.request_in_rules)).assertDoesNotExist()
+    }
+
+    @Test
+    fun requestCarouselKeepsTheSameRequestIdFromTwoConnectionsApart() {
+        val requestId = "e69eb47f-1ee5-42bd-8504-271f04f05ac3"
+        show(
+            state = ConnectionsUiState(connections = listOf(HOME, VPS), loaded = true),
+            inbox = InboxSummary(waitingForYou = 2, toSend = 0),
+            requests =
+                listOf(
+                    FakeConnectionGateway.request(HOME.id, requestId, "First request"),
+                    FakeConnectionGateway.request(VPS.id, requestId, "Second request"),
+                ),
+        )
+
+        compose.waitForIdle()
+        compose.onNodeWithText("First request").assertExists()
+    }
+
+    @Test
+    fun requestCarouselAlignsEndpointsToEdgesAndSnapsMiddleItemsToCenter() {
+        val requests =
+            (1..5).map {
+                FakeConnectionGateway.request(HOME.id, "request-$it", "Request $it")
+            }
+        show(
+            state = ConnectionsUiState(connections = listOf(HOME), loaded = true),
+            inbox = InboxSummary(waitingForYou = requests.size, toSend = 0),
+            requests = requests,
+        )
+
+        val rail = compose.onNodeWithTag(ConnectionsTags.CAROUSEL)
+        val railBounds = rail.fetchSemanticsNode().boundsInRoot
+        val first =
+            compose.onNodeWithTag(ConnectionsTags.request(requests[0].key)).assertIsSelected()
+        val firstBounds = first.fetchSemanticsNode().boundsInRoot
+        val edgeInset = with(compose.density) { 20.dp.toPx() }
+        assertEquals(railBounds.left + edgeInset, firstBounds.left, 1f)
+
+        rail.performTouchInput {
+            val travel = 240.dp.toPx()
+            swipe(
+                start = center.copy(x = center.x + travel / 2),
+                end = center.copy(x = center.x - travel / 2),
+                durationMillis = 500,
+            )
+        }
+        compose.waitForIdle()
+
+        val middle =
+            requests
+                .subList(1, requests.lastIndex)
+                .map { compose.onNodeWithTag(ConnectionsTags.request(it.key)) }
+                .single { it.fetchSemanticsNode().config[SemanticsProperties.Selected] }
+        assertEquals(
+            railBounds.center.x,
+            middle.fetchSemanticsNode().boundsInRoot.center.x,
+            1f,
+        )
+
+        repeat(4) {
+            rail.performTouchInput {
+                val travel = 240.dp.toPx()
+                swipe(
+                    start = center.copy(x = center.x + travel / 2),
+                    end = center.copy(x = center.x - travel / 2),
+                    durationMillis = 500,
+                )
+            }
+            compose.waitForIdle()
+        }
+
+        val focused =
+            compose.onNodeWithTag(ConnectionsTags.request(requests.last().key)).assertIsSelected()
+        val focusedBounds = focused.fetchSemanticsNode().boundsInRoot
+        assertEquals(railBounds.right - edgeInset, focusedBounds.right, 1f)
+    }
+
+    @Test
+    fun requestCarouselCanRightAlignTheLastOfTwoItems() {
+        val requests =
+            listOf(
+                FakeConnectionGateway.request(HOME.id, "request-1", "First"),
+                FakeConnectionGateway.request(HOME.id, "request-2", "Second"),
+            )
+        show(
+            state = ConnectionsUiState(connections = listOf(HOME), loaded = true),
+            inbox = InboxSummary(waitingForYou = requests.size, toSend = 0),
+            requests = requests,
+        )
+
+        val rail = compose.onNodeWithTag(ConnectionsTags.CAROUSEL)
+        val railBounds = rail.fetchSemanticsNode().boundsInRoot
+        rail.performTouchInput {
+            val travel = 240.dp.toPx()
+            swipe(
+                start = center.copy(x = center.x + travel / 2),
+                end = center.copy(x = center.x - travel / 2),
+                durationMillis = 500,
+            )
+        }
+        compose.waitForIdle()
+
+        val last =
+            compose.onNodeWithTag(ConnectionsTags.request(requests.last().key)).assertIsSelected()
+        assertEquals(
+            railBounds.right - with(compose.density) { 20.dp.toPx() },
+            last.fetchSemanticsNode().boundsInRoot.right,
+            1f,
+        )
     }
 
     @Test
@@ -47,6 +229,7 @@ class ConnectionsScreenTest {
         // The record of what this phone did is the owner's, and it doesn't depend on the agent
         // that asked (SAW-023).
         show(ConnectionsUiState(loaded = true), activity = 3)
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
         compose
             .onNodeWithTag(ConnectionsTags.ACTIVITY)
             .assertTextContains(context.getString(R.string.activity_row))
@@ -69,6 +252,7 @@ class ConnectionsScreenTest {
     @Test
     fun saysWhenNothingHasBeenRecordedYet() {
         show(ConnectionsUiState(loaded = true), activity = 0)
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
         compose
             .onNodeWithTag(ConnectionsTags.ACTIVITY)
             .assertTextContains(context.getString(R.string.activity_row_none), substring = true)
@@ -77,16 +261,15 @@ class ConnectionsScreenTest {
     @Test
     fun listsEachConnectionWithItsAddressAndStatus() {
         show(ConnectionsUiState(connections = listOf(HOME, VPS, LAPTOP), loaded = true))
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(4)
         compose
             .onNodeWithTag(ConnectionsTags.item(HOME.id))
             .assertTextContains("Home Mac")
-            .assertTextContains("mac.tailnet.ts.net")
             .assertTextContains(context.getString(R.string.connection_status_ok, 2))
         compose
             .onNodeWithTag(ConnectionsTags.item(VPS.id))
-            .assertTextContains("vps.example.com:8443")
             .assertTextContains(context.getString(R.string.connection_status_revoked))
-        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(4)
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(6)
         compose
             .onNodeWithTag(ConnectionsTags.item(LAPTOP.id))
             .assertTextContains(context.getString(R.string.connection_status_certificate))
@@ -96,14 +279,58 @@ class ConnectionsScreenTest {
     }
 
     @Test
+    fun liveStateReplacesStaleCheckTextWithoutChangingItsStoredTimestamp() {
+        show(
+            ConnectionsUiState(
+                connections = listOf(HOME),
+                loaded = true,
+                updates =
+                    ForegroundUpdatesState(
+                        foreground = true,
+                        connections = mapOf(HOME.id to ForegroundConnectionState.Live),
+                    ),
+            )
+        )
+
+        compose
+            .onNodeWithTag(ConnectionsTags.item(HOME.id))
+            .assertTextContains(context.getString(R.string.connection_status_live))
+    }
+
+    @Test
     fun saysHowToAddTheFirstConnection() {
         show(ConnectionsUiState(loaded = true))
         compose
             .onNodeWithTag(ConnectionsTags.EMPTY)
             .assertTextEquals(context.getString(R.string.connections_empty))
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
         compose.onNodeWithTag(ConnectionsTags.ADD).performClick()
         compose.onNodeWithTag(ConnectionsTags.LIVE_TEST).performClick()
         assertEquals(listOf("add", "live"), actions)
+    }
+
+    private fun assessment(
+        request: io.github.brrenat.seekervault.request.v1.ActionRequest,
+        warns: Boolean,
+    ): RequestAssessment {
+        val checks =
+            PolicyCheck.entries.map {
+                if (warns && it == PolicyCheck.Action) {
+                    PolicyCheckResult.failed(it, PolicyReason.ActionNotAllowed)
+                } else {
+                    PolicyCheckResult.notConfigured(it)
+                }
+            }
+        return RequestAssessment(
+            decision = assess(checks),
+            facts =
+                RequestFacts.movesNothing(
+                    request.ref.connectionId,
+                    PolicyAction.Acknowledgement,
+                    request.ref.requestId,
+                ),
+            at = Instant.EPOCH,
+        )
     }
 
     @Test

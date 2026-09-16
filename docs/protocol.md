@@ -152,6 +152,8 @@ The queued acknowledgement (`ack`) takes a short path: `ListPending`, then `Subm
   - Every phone RPC names both. The sidecar answers a reference to another connection with `NOT_FOUND`, the same as for a request that doesn't exist.
 - **Both IDs are lowercase UUIDs,** assigned by the sidecar.
 - **Revoking a connection stops its phone credential at once, and cancels its PENDING requests.** The phone revokes with `RevokeConnection`, and the operator with `pnpm pair revoke`. Pairing a new phone revokes the previous one. Requests already approved are still resolved from the chain, and agents can still read every request. A new pairing is a new connection: it can't see or report the old connection's requests.
+- **One private FCM target may belong to an active connection (SAW-055).** The paired phone alone registers or rotates it through that connection's credential. Replacement or revocation deletes it; it is never shared between connections or returned by an API.
+- **An FCM message is only a content-free invalidation (SAW-056).** After a request event commits, a configured sidecar may send the connection's current Firebase Installation ID exactly `kind=request_invalidation` and `version=1`. The message names no request, connection, state, credential, policy, content, transaction, approval, or signature. Android responds only by running authenticated Sync; the payload is never authority.
 
 ### Actions
 
@@ -319,6 +321,8 @@ The sidecar builds a transfer itself, from the chain and the stored action. Noth
 | Service | RPC | Credential | Purpose |
 | --- | --- | --- | --- |
 | `PairingService` | `Pair` | Pairing token | Exchange a one-use pairing token for a new connection and its phone credential |
+| `PairingService` | `GetConnectionCapabilities` | Phone credential | Discover the versioned gRPC update origin for an existing connection (SAW-048) |
+| `PairingService` | `SetFcmToken` | Phone credential | Register, rotate, or compare-clear the caller connection's private FCM direct-send target (SAW-055) |
 | `PairingService` | `RevokeConnection` | Phone credential | End the caller's connection |
 | `RequestService` | `ListPending` | Phone credential | The connection's PENDING requests, oldest first (by `created_at`, then `request_id`). Pages hold 50 by default, up to 100. Paging never repeats a request, and never skips one that stays PENDING. |
 | `RequestService` | `GetRequest` | Phone credential | One request, in any state |
@@ -326,8 +330,10 @@ The sidecar builds a transfer itself, from the chain and the stored action. Noth
 | `RequestService` | `SubmitResult` | Phone credential | A decision or a wallet result. It returns the request as it is afterwards. |
 | `RequestService` | `CheckStatus` | Phone credential | What became of a sent transaction, read from the chain. It reaches no wallet, and returns the request as it is afterwards (SAW-022). |
 | `RequestService` | `PublishWallet` | Phone credential | The wallet the owner selected, or none. It returns the stored binding and the requests it cancelled (SAW-015). |
+| `UpdateService` | `Subscribe` | Phone credential | Bidirectional foreground request/state events over gRPC and HTTP/2 (SAW-048 contract; served from SAW-049) |
+| `UpdateService` | `Sync` | Phone credential | Frozen, paginated reconciliation for foreground recovery, Refresh, and background work (SAW-048 contract; served from SAW-049) |
 
-Every RPC is unary. The phone fetches when the app opens or comes back to the foreground, when the user selects a connection, or when the user refreshes. Nothing is pushed, and the Stage 1 stream isn't needed. Credentials travel only in `Authorization: Bearer <token>`. [Pairing](#pairing) and [roles](#roles) define them, and [`docs/security.md`](security.md#transport-security) covers TLS.
+The Stage 2 `PairingService` and `RequestService` operations are unary. SAW-048 adds the separate production [`UpdateService`](#production-updates-saw-048): one bidirectional foreground RPC and one unary sync RPC, both scoped to the same paired-phone credential. The Stage 1 stream still isn't part of the durable workflow. Credentials travel only in `Authorization: Bearer <token>`. [Pairing](#pairing) and [roles](#roles) define them, and [`docs/security.md`](security.md#transport-security) covers TLS.
 
 A `SubmitResult` carries one result:
 
@@ -502,11 +508,106 @@ The phone reads the code by the same rules as `parsePairingUri` in [`sidecar/src
 | `PairResponse.connection_id` | The new connection's ID |
 | `PairResponse.phone_token` | The phone's credential for this connection. The sidecar returns it this once, and keeps only its hash. |
 | `PairResponse.server_id` | The sidecar's lasting ID, the same as the code's `server` |
+| `PairResponse.updates` | The optional `UpdateCapability`: protocol version 1 and its gRPC origin. Absent from old sidecars and from a new sidecar that has no update listener configured. |
 
 - **An unknown, expired, already used, or missing pairing token gets `UNAUTHENTICATED`,** with the same message in each case.
 - **A `server_url` that isn't the code's URL, or a device name that's too long, gets `INVALID_PARAMETERS`,** and the token stays usable.
 - **A successful `Pair` always creates a new connection,** and revokes the sidecar's previous one, since one phone is active at a time.
 - **The phone never changes an existing connection because of a code.** Every code is a new pairing, even when its `server` ID is one the phone knows. The phone sends each credential only to the URL it paired with.
+
+**`GetConnectionCapabilities`** takes the phone's credential, and its `connection_id` must be the caller's own. It lets an already-paired phone discover the same `UpdateCapability` without pairing again. A sidecar from before SAW-048 returns `unimplemented`; the phone labels that connection **Update unavailable — upgrade sidecar**, retains the existing unary RequestService, and keeps manual Refresh. A new sidecar whose HTTP/2 endpoint is not configured returns an absent capability instead, which is a configuration problem rather than a version guess.
+
+`UpdateCapability.grpc_url` is an absolute origin with no path, query, user info, or fragment. In production it is HTTPS with a publicly trusted certificate and the same host as the paired `server_url`; only loopback development may use HTTP and another port. The credential remains the same phone token and is never sent to another host.
+
+<a id="fcm-registration-saw-055"></a>
+
+**`SetFcmToken` (SAW-055)** takes the phone's credential, and `connection_id` must be the caller's
+own. Its `update` oneof is exactly one of:
+
+- `token`: a current opaque FCM direct-send target. Repeating it is idempotent; a different value
+  atomically replaces the old one.
+- `clear_if_token`: delete the target only if the named value is still current. A delayed
+  unregistration or invalid-target callback for a pre-rotation value therefore cannot erase the
+  new one.
+
+Both values are 1 through 4096 visible ASCII bytes. An invalid value gets `INVALID_PARAMETERS`
+without being repeated in the error or log. Another connection ID gets `NOT_FOUND`; another role,
+an absent credential, or a revoked credential gets `UNAUTHENTICATED`. The empty response returns no
+target. The sidecar retains one value only for a future sender; pairing replacement, phone
+revocation, and operator revocation clear it in the same database transaction that ends the
+connection.
+
+Current Firebase Messaging calls this direct-send registration value a Firebase Installation ID
+and delivers initial and refreshed values through `onRegistered`; the wire name remains
+`fcm_token` as the stable Stage 5.3 protocol term. The Android app serializes those callbacks and
+sends the same current value to each usable sidecar separately with that connection's own URL and
+credential. It stores no copy on the phone. SAW-055 itself defined no payload or send trigger;
+SAW-056 adds the separate content-free invalidation below.
+
+<a id="fcm-invalidation-saw-056"></a>
+
+### FCM invalidation and authoritative fetch (SAW-056)
+
+Every durable request creation or state/outcome/confirmation change already appends a complete
+`update_events` row in the same SQLite transaction. Only after that row commits may the optional
+dispatcher enqueue a hint for the event's connection. Failed or rolled-back writes emit nothing.
+Several same-turn changes for one connection coalesce before Firebase, and a connection with no
+current target or a sidecar with no configured sender sends nothing.
+
+The complete app-visible FCM data map is:
+
+```text
+kind=request_invalidation
+version=1
+```
+
+There is no notification payload and no request ID, connection ID, sidecar URL, state, timestamp,
+cursor, credential, device target, policy or assessment, agent note, message-to-sign content,
+transaction bytes, authorization, approval, signature, amount, recipient, or program. The Firebase
+Installation ID exists only in the Admin API's `fid` routing field and is not delivered as data.
+Android rejects a missing field, unknown version, unknown kind, or any additional data field.
+
+A new PENDING request (revision one) is the only high-priority send because it is the only event
+intended to become a time-sensitive user-visible notification in the completed stage. Later
+state/outcome changes use normal priority. Both use a five-minute TTL and the single collapse key
+`seeker-vault-request-state-v1`: if several undelivered hints compete, only the newest is needed
+because every receipt requests authoritative convergence, not one operation per hint. FCM acceptance is not device
+delivery, order is not guaranteed, and delivery can be delayed, throttled, collapsed, expired, or
+dropped.
+
+Receipt enqueues unique `push-authoritative-sync` WorkManager work with a connected-network
+constraint, empty input, `KEEP` coalescing, and exponential retry only for transient unreachability.
+A delivered high-priority message requests expedited work with fallback to ordinary work when its
+quota is unavailable. The worker calls the same application-scoped, four-sidecar-bounded
+synchronization repository used by Stage 5.2 and retrieves each URL and credential only from that
+paired connection's stores. It does not trust or persist the FCM payload and has no operation that can
+prepare, approve, answer, open a wallet, sign, send a transaction, or route a tap.
+
+If Firebase permanently rejects the FID, the sidecar compare-clears only that exact stored value;
+a rotation that won the race survives. Other Firebase errors are logged only as a fixed delivery
+classification and change no request, target, or result. Foreground Subscribe, manual Refresh,
+unary Sync, and periodic WorkManager remain the recovery path when FCM is absent or misses.
+
+SAW-057 keeps `FirebaseMessagingService` inside its short callback budget: validation and durable
+WorkManager enqueue are the complete message-receipt path, while every network fetch runs later in
+the bounded worker. An undelivered FCM collapse key and Android's unique-work name each reduce a
+burst to an invalidation, never to a request count. At worker execution, a usable connection whose
+foreground stream is already Live is excluded; other usable connections enter the existing
+four-sidecar-bounded, per-connection-coalescing Sync repository. A simultaneous Refresh, periodic
+run, or stream reconciliation therefore awaits or buffers the same connection owner instead of
+applying another independent snapshot. If every hint is dropped or Firebase is unconfigured, app
+foreground reconciliation and the persisted Stage 5.2 periodic job still fetch all durable
+requests.
+
+SAW-058 still assigns no request identity to the FCM message. Only after authenticated Sync commits
+does Android compare its prior and current pending-key sets and construct any notification locally.
+The notification's explicit immutable activity intent names one validated connection/request pair;
+it is neither a protocol credential nor an approval. Tapping performs a fresh fetch for that paired
+connection. If the request is pending it can then be reviewed normally; if this phone already
+answered it, the stored result is shown; and if it expired, was cancelled or answered elsewhere,
+was removed, the connection was revoked, or the sidecar cannot be reached, the phone says only what
+the fresh evidence supports. A tap creates no result and invokes no wallet action. The underlying
+Sync retains its existing authority to retry only a result the owner already stored.
 
 **`RevokeConnection`** takes the phone's credential, and its `connection_id` must be the caller's own; another ID gets `NOT_FOUND`. It revokes the connection at once, and cancels the connection's PENDING requests; see [connections](#connections-and-request-identity).
 
@@ -518,11 +619,14 @@ Each credential opens one role:
 | --- | --- | --- | --- | --- | --- |
 | `/mcp`: every method and tool | Yes | 401 | 401 | 401 | 401 |
 | `PairingService.Pair` | `unauthenticated` | Yes, once | `unauthenticated` | `unauthenticated` | `unauthenticated` |
+| `PairingService.GetConnectionCapabilities` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
+| `PairingService.SetFcmToken` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `PairingService.RevokeConnection` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
-| `RequestService`: `ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, `PublishWallet` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
+| `RequestService`: `ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, `CheckStatus`, `PublishWallet` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
+| `UpdateService.Subscribe`, `UpdateService.Sync` (from SAW-049) | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `LiveCommandService`: `WatchCommands`, `AcknowledgeCommand` (Stage 1) | `unauthenticated` | `unauthenticated` | `unauthenticated` | Yes | `unauthenticated` |
 
-- **Only the paired phone can prepare, review, or answer a request, or publish a wallet,** and only for its own connection. No MCP tool pairs, prepares, approves, submits a result, revokes, or changes the wallet, so an agent can't act as the phone. `vault_sign_message` only stores a request for the owner to decide; `vault_get_address` and `vault_get_capabilities` only read.
+- **Only the paired phone can prepare, review, or answer a request, publish a wallet, or register an FCM target,** and only for its own connection. No MCP tool pairs, prepares, approves, submits a result, registers a target, revokes, or changes the wallet, so an agent can't act as the phone. `vault_sign_message` only stores a request for the owner to decide; `vault_get_address` and `vault_get_capabilities` only read.
 - **`PHONE_TOKEN` is the Stage 1 development credential.** It opens the live diagnostic and nothing else.
 - **`GET /healthz` needs no credential.**
 - `sidecar/src/pairing/roles.test.ts` checks every cell, and every new RPC or tool joins that test.
@@ -544,6 +648,85 @@ The durable contract leaves the live diagnostic as it was.
 - **`vault_display_command` and its tests are unchanged.**
 - **The durable rules reuse two live rules without changing them:** an `ack`'s text follows `invalidTextReason`, and `expires_at` has `isExpired`'s boundary.
 
+<a id="production-updates-saw-048"></a>
+
+## Production updates (SAW-048–SAW-053)
+
+The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar; SAW-050 gives Android one persistent, headless reconciliation path; SAW-051 owns the foreground streams; SAW-052 calls the same unary path from one unique, network-constrained periodic WorkManager job; and SAW-053 validates that joined path across real sidecar processes, the MCP client, and the production Android transport.
+
+| RPC | Wire protocol | Lifetime | Purpose |
+| --- | --- | --- | --- |
+| `Subscribe(stream SubscribeRequest) returns (stream SubscribeResponse)` | gRPC over HTTP/2 | One per usable paired connection while the app process is foreground | Server readiness, replay/live request changes and removals, revocation, sync-required signals, and bidirectional liveness |
+| `Sync(SyncRequest) returns (SyncResponse)` | Unary gRPC over HTTP/2 | One bounded call at a time per connection | A frozen, paginated view for first connection, missed-event recovery, Refresh, and periodic WorkManager runs |
+
+Every client and server message repeats `connection_id`, and every RPC carries that connection's phone credential. The server authenticates first and answers a mismatched connection, reference, cursor, snapshot, or page token as `not_found`. There is no cross-connection cursor and no process-global phone stream.
+
+### Stream start, resume, and the snapshot barrier
+
+The ordering is the part that prevents a mutation from falling between “list” and “listen”:
+
+1. The phone opens `Subscribe` and sends exactly one `subscribe {protocol_version: 1, resume_cursor, server_instance_id}` as its first message. The server authenticates and registers the stream before it chooses the barrier cursor `B`.
+2. The first server message is `ready` at `B`, with the process's random `server_instance_id`, the resume disposition, heartbeat interval, 65,536-byte message limit, and page limit.
+3. With a retained cursor for that same instance, `resume` is `REPLAYING`. The server sends every durable `request_changed` or `request_removed` after the supplied cursor through `B`, in cursor order, then `replay_complete {through_cursor: B}`. Live events after `B` follow. Nothing is listed separately, so there is no replay/snapshot overlap.
+4. With no cursor, another instance ID, malformed/expired history, or a bounded-buffer overflow, `resume` is `FULL_SYNC_REQUIRED` and `sync_required` names the reason. The stream remains registered and the phone buffers later mutation events rather than closing the subscription.
+5. The phone starts `Sync` with `subscription_cursor: B`. When the sidecar begins page one it freezes a snapshot at high-water cursor `S`, after its store contains every mutation through `B`. Every page has the same `server_instance_id` and `snapshot_cursor: S`.
+6. Only after the final page arrives does the phone reconcile removals and absence from the complete pending set. It applies the snapshot, drops buffered events at or before `S`, and applies events after `S` in stream order. A mutation at or before `S` is therefore in the snapshot; a mutation after `S` is on the already-registered stream. There is no interval in which it can be in neither.
+
+If paging fails, the phone keeps its previous cache, abandons the incomplete snapshot, and starts page one again. `next_page_token` is opaque, connection- and instance-bound, at most 256 UTF-8 bytes, and has a two-minute inactivity lease renewed after every valid page; idle expiry or restart is `failed_precondition` with `UpdateErrorDetail.SNAPSHOT_INVALID`. An unsupported update protocol is also `failed_precondition`, but its `UpdateErrorDetail.PROTOCOL_UNSUPPORTED` keeps it distinct: a cached endpoint becomes upgrade-required and the foreground owner does not reconnect forever. Page size is 50 by default and at most 100, but the server returns fewer entries when another one would cross the message limit. The phone accepts up to 10,100 pages, the protocol maximum of 10,000 pending requests plus 100 named nonterminal Activity records even when the message bound permits only one item per page.
+
+The server is not a general event platform. Version 1 uses a durable per-connection mutation sequence, retains the newest 512 events, and keeps at most four short-lived frozen snapshots for a connection. Creation and every durable state, outcome, confirmation, wallet-binding cancellation, expiry, and revocation append their complete current form in the same SQLite transaction as the source mutation; a duplicate or failed operation appends nothing. Only after that commit may a subscriber read the event. Snapshot items are frozen on disk rather than held as an unbounded in-memory list. A process restart deliberately changes `server_instance_id`, invalidates cursors/page tokens, and causes a full sync; the database remains authoritative.
+
+### Events, revisions, and liveness
+
+`SubscribeResponse` has one event:
+
+| Event | Meaning |
+| --- | --- |
+| `ready` | The subscription is registered at its barrier, and names the selected limits and resume path. |
+| `request_changed` | The complete current `ActionRequest` and a nonzero per-request revision. It covers creation and every state/outcome/confirmation change, including cancellation, expiry, completion, rejection, failure, submission, confirmation, and UNKNOWN. |
+| `request_removed` | A revisioned request reference the sidecar no longer retains or can account for. It removes server cache state, never the owner's Activity record or locally stored decision. |
+| `revoked` | This connection was revoked. The phone deletes its credential and no reconnect is attempted. |
+| `sync_required` | Initial state, invalid cursor, retained-history gap, bounded-buffer overflow, or invalid snapshot requires the unary recovery above. |
+| `heartbeat` | Liveness only, echoing the last client heartbeat sequence. It acknowledges no mutation and commits no cursor. |
+| `replay_complete` | Every retained mutation through its cursor preceded this marker; following mutations are live. |
+
+Cursors are opaque and used only in the order the sidecar sends them. A phone durably stores the last applied cursor and each request revision. An event with the same or an older revision is a duplicate/stale delivery and changes nothing; a gap, unknown event/enum, state rollback, or conflicting equal revision triggers full sync. A newer stream generation owns delivery, so an event from an older canceled stream cannot overwrite the newer one.
+
+`ready` chooses a heartbeat interval from 15 through 60 seconds; version 1 defaults to 30. After one quiet interval each peer sends a heartbeat, and after three intervals without any answer it closes the call. Client sequences increase within the stream; repeating one is harmless and decreasing one is invalid. Heartbeats, IDs, cursors, page tokens, and all request events count toward the 65,536-byte per-message limit. There is no application ping faster than 15 seconds.
+
+Caller cancellation is final for that foreground generation: the Kotlin client closes the receive side, which cancels the OkHttp HTTP/2 call and reaches the Node handler's abort signal. It must not itself schedule a reconnect. A later lifecycle owner may reconnect after a network failure with bounded exponential backoff, but navigation/rotation handoff, background transition, connection deletion, revocation, and explicit cancellation are not retry failures.
+
+Android keeps the client send side open after its initial subscribe and sends its durably applied cursor with each heartbeat. Any server message resets its quiet timer. Three unanswered negotiated intervals close the call — 45 seconds at the minimum 15-second interval and 180 seconds at the maximum 60-second interval — after which the foreground owner retries from one second up to a 30-second cap with jitter. A normal event has no polling delay: expected screen delivery is one HTTP/2 transit plus validation and one atomic cache write, subject to network and Android scheduling. No wall-clock delivery guarantee is claimed.
+
+### What `Sync` reconciles
+
+Page one names up to 100 unique `known_nonterminal` records from the owner's Activity history, each by `RequestRef`, last revision, and observed state. The frozen response is the de-duplicated union of:
+
+- every request that is PENDING at `S`, so the pending cache/count can be made exact; and
+- the current server form of every named nonterminal Activity request, even when it is no longer pending, so SUBMITTED, UNKNOWN, CONFIRMED, FAILED, COMPLETED, CANCELLED, EXPIRED, and REJECTED outcomes reach Activity without a screen-specific fetch.
+
+A named reference the sidecar no longer has appears in `removed`. At the final page, a cached PENDING request absent from the snapshot is removed from the pending cache, but a locally stored answer or Activity record is retained. Automatic sync never replaces authoritative owner data with “nothing.” More than 100 nonterminal Activity records are sent in subsequent sync sessions; every complete session is internally consistent, and revisions prevent an older chunk from rolling a newer record back.
+
+Starting a sync also triggers confirmation for eligible SUBMITTED or UNKNOWN transfers in that supplied set. Version 1 checks at most four concurrently, rotates the remainder through `confirmation_deferred`, and gives every check the existing 20-second chain-operation budget. It uses exactly the [confirmation](#confirmation) rules: read the request's own cluster, verify the transaction against the approved bytes before settling, leave silence/mismatch unchanged, and never prepare, sign, send, resubmit, open a wallet, or contact a chain from the phone. This is automatic read-only observation, not automatic action.
+
+Stream events and sync responses contain requests and server state only. They never contain the phone's policy, assessment, wallet authorization, or unacknowledged local answer. Reconciliation may retry existing idempotent result delivery through the existing path; it may not invoke a wallet or turn a policy verdict into an answer.
+
+### Endpoint and compatibility
+
+Pairing URI version 1 stays unchanged. A new `PairResponse.updates`, or `PairingService.GetConnectionCapabilities` for an already-saved connection, advertises `UpdateCapability {protocol_version: 1, grpc_url}`. Old phones ignore the new field. New phones talking to an old sidecar get `unimplemented` from capability discovery and show an explicit upgrade-required state while leaving the old unary `RequestService` and manual Refresh usable.
+
+`grpc_url` is an origin, not a new trust domain. In production it is HTTPS with a publicly trusted certificate and the same host as the paired URL; only loopback development can use HTTP and a different port. The production Node secure listener negotiates `h2` and `http/1.1` by ALPN (`allowHTTP1`): gRPC updates use HTTP/2, while existing Connect unary, pairing, health, and MCP clients remain compatible. A TLS terminator/reverse proxy is valid only when it preserves gRPC HTTP/2 to this listener; silently downgrading `Subscribe` to polling or server-only streaming is not compatibility.
+
+The proof in `GrpcBidiInteropTest` uses the pinned Connect Kotlin 0.9.0 client and OkHttp 5.4.0 against the pinned Connect Node 2.2.0 adapter on the real loopback h2c development transport, with HTTP/2 prior knowledge rather than an HTTP/1 fallback. It sends subscribe, receives ready, sends and receives two heartbeats in alternation while the Kotlin send side is still open, and asserts the Node handler saw protocol `grpc` and HTTP version `2.0`. Its second case closes the Kotlin receive side and asserts one Node stream observes cancellation and no replacement stream starts. SAW-049's sidecar tests separately use the Node gRPC client against the actual secure production listener and its loopback h2c development mode, including TLS/ALPN, the deployed capability origin, and preserved HTTP/1 routes. No dependency change was required.
+
+### Joined-path acceptance (SAW-053)
+
+`pnpm test:updates` is the repeatable Stage 5.2 acceptance entry point. It is intentionally separate from `pnpm test:hello`: the latter remains the Stage 1 display-only diagnostic and is not evidence that durable updates work. The update suite starts real sidecar processes and uses the real MCP SDK client, durable SQLite queue, production Node gRPC service, generated protocol clients, production Android transport, persistent sync repository, and foreground lifecycle owner.
+
+The sidecar portion covers the secure TLS/ALPN HTTP/2 listener and loopback h2c development listener, authentication and isolation, durable publication, replay, frozen paging, restart and retention-gap recovery, revocation and cleanup, and bounded read-only confirmation without `CheckStatus`. The Android joined cases use explicit HTTP/2 prior knowledge only for the advertised loopback `http://` development endpoint; deployed `https://` endpoints retain normal certificate and host validation plus ALPN. They prove foreground delivery without Refresh, two-sidecar isolation, background stream closure and foreground recovery, a worker-only process loading and persisting unary Sync, expiry across restart, bounded retry, and idempotent delivery of a result already recorded by the owner.
+
+The suite deliberately does not simulate a push wake-up, wallet action, or transaction send. Periodic WorkManager runs are eligible no more often than Android's 15-minute minimum and can be deferred by the OS; Force stop suppresses them until the owner reopens the app. Stage 5.2 therefore has no immediate background-delivery guarantee. Push-triggered reconciliation is the separate follow-up [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73).
+
 ## Generated code
 
 | Runtime | Output | Generators | Runtime libraries |
@@ -554,7 +737,7 @@ The durable contract leaves the live diagnostic as it was.
 - **`pnpm generate`** regenerates the code and the binary fixtures. Commit the result, and never edit generated files by hand.
 - **`pnpm check:generated`** generates into a temporary directory and fails if any committed file differs. CI runs it, and running generation twice produces no diff.
 - **`pnpm check`** includes `buf format` and `buf lint` with the STANDARD rules.
-- **Buf managed mode** sets the Java and Kotlin package to `io.github.brrenat.<proto package>`: `io.github.brrenat.seekervault.live.v1` and `io.github.brrenat.seekervault.request.v1`.
+- **Buf managed mode** sets the Java and Kotlin package to `io.github.brrenat.<proto package>`: `io.github.brrenat.seekervault.live.v1`, `io.github.brrenat.seekervault.request.v1`, and `io.github.brrenat.seekervault.update.v1`.
 - **Kotlin reads uint32 and uint64 as a signed `Int` and `Long`.** Convert with `toUInt()` and `toULong()` before showing or comparing values such as `PreparedTransaction.last_valid_block_height`.
 - **Both generation commands need network access,** because the Kotlin plugins run remotely on the Buf Schema Registry.
 

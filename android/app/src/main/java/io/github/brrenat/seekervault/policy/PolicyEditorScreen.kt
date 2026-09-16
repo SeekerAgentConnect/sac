@@ -2,36 +2,66 @@ package io.github.brrenat.seekervault.policy
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DoNotDisturbOn
+import androidx.compose.material.icons.outlined.Error
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Toll
+import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.material.icons.rounded.CheckBox
+import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
+import androidx.compose.material.icons.rounded.RadioButtonChecked
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +70,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -48,21 +80,29 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.connections.BackButton
+import io.github.brrenat.seekervault.SeekerTheme
+import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.policy.storage.UnreadableReason
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.ui.SeekerCard
+import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
+import io.github.brrenat.seekervault.ui.SolidDialog
+import io.github.brrenat.seekervault.ui.seekerListItemColors
+import io.github.brrenat.seekervault.ui.seekerTextFieldColors
 import io.github.brrenat.seekervault.wallet.isSolanaAddress
 import java.time.Instant
 
 /**
  * The policy editors (docs/guides/policies.md): global defaults and one connection's overrides.
  *
- * Stock Material 3 and nothing else — switches, checkboxes, radio buttons, chips, text fields,
- * lists, and Save and Cancel. There is no expression builder and no node canvas, because the model
- * behind it is one conjunction of allowlists and thresholds and pretending otherwise would be
- * showing the owner a language they don't have.
+ * Material 3 controls under the approved v4 theme — switches, checkboxes, radio buttons, chips,
+ * text fields, lists, and Save and Cancel. There is no expression builder and no node canvas,
+ * because the model behind it is one conjunction of allowlists and thresholds and pretending
+ * otherwise would be showing the owner a language they don't have.
  *
  * Two things this screen keeps saying, because both are easy to assume otherwise:
  * - **Inheritance, no check, and an empty list differ.** Each connection section first chooses the
@@ -82,11 +122,16 @@ fun PolicyEditorScreen(
     onSave: () -> Unit,
     onMessageShown: () -> Unit,
     onClose: () -> Unit,
+    closeRequest: Int = 0,
+    onCloseRequestCancelled: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
-    val message = state.message?.let { messageText(it, state.scope) }
-    LaunchedEffect(state.message) {
+    val inlineGlobalSaveFailure =
+        state.scope == PolicyEditorScope.Global && state.message == PolicyMessage.SaveFailed
+    val message =
+        state.message?.takeUnless { inlineGlobalSaveFailure }?.let { messageText(it, state.scope) }
+    LaunchedEffect(state.message, inlineGlobalSaveFailure) {
         if (message != null) {
             snackbar.showSnackbar(message)
             onMessageShown()
@@ -95,115 +140,153 @@ fun PolicyEditorScreen(
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     var confirmGlobalSave by rememberSaveable { mutableStateOf(false) }
     val leave = { if (state.changed) confirmDiscard = true else onClose() }
+    val globalReview =
+        remember(state.draft) {
+            (state.draft as? PolicyEditorDraft.Global)?.rules?.review(Instant.EPOCH)
+        }
     // Route every system Back through the same close path as the app bar. Besides asking before a
     // dirty draft is discarded, this lets the caller refresh inherited context after Global rules
     // closes and clear the ViewModel for an ordinary connection exit.
     BackHandler { leave() }
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (state.scope == PolicyEditorScope.Global) {
-                            stringResource(R.string.policy_global_title)
-                        } else {
-                            stringResource(R.string.policy_title, label)
-                        }
-                    )
-                },
-                navigationIcon = { BackButton(leave) },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { innerPadding ->
-        Column(
-            Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).fillMaxWidth()
-        ) {
-            val unreadable = state.unreadable
-            when {
-                !state.loaded ->
-                    Text(
-                        stringResource(
+    // An exposed sheet backplate asks the active editor to leave through this same guarded path.
+    // Zero is the idle value so a newly composed editor does not close itself.
+    LaunchedEffect(closeRequest) { if (closeRequest > 0) leave() }
+    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
                             if (state.scope == PolicyEditorScope.Global) {
-                                R.string.policy_global_loading
+                                stringResource(R.string.policy_global_title)
                             } else {
-                                R.string.policy_loading
+                                stringResource(R.string.policy_title, label)
                             }
+                        )
+                    },
+                    actions = {
+                        CloseButton(leave, MaterialTheme.colorScheme.surfaceContainerHigh)
+                    },
+                    expandedHeight = 56.dp,
+                    windowInsets = WindowInsets(0, 0, 0, 0),
+                    colors =
+                        TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ),
-                        modifier = Modifier.padding(16.dp).testTag(PolicyTags.LOADING),
+                )
+            },
+            snackbarHost = { SeekerSnackbarHost(snackbar) },
+            bottomBar = {
+                if (
+                    state.scope == PolicyEditorScope.Global &&
+                        state.loaded &&
+                        state.unreadable == null &&
+                        state.changed &&
+                        globalReview != null
+                ) {
+                    GlobalPolicyFooter(
+                        saving = state.saving,
+                        valid = globalReview !is DraftReview.Problems,
+                        saveFailed = inlineGlobalSaveFailure,
+                        onCancel = leave,
+                        onSave = { confirmGlobalSave = true },
                     )
-                unreadable != null -> Unreadable(unreadable, state.scope, onStartOver, leave)
-                state.scope == PolicyEditorScope.Global ->
-                    GlobalEditor(
-                        state,
-                        onEdit,
-                        { confirmGlobalSave = true },
-                        leave,
-                    )
-                else ->
-                    ConnectionEditor(
-                        state,
-                        onEdit,
-                        onResetConnection,
-                        onOpenGlobal,
-                        onSave,
-                        leave,
-                    )
+                }
+            },
+        ) { innerPadding ->
+            Column(
+                Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).fillMaxWidth()
+            ) {
+                val unreadable = state.unreadable
+                when {
+                    !state.loaded ->
+                        Text(
+                            stringResource(
+                                if (state.scope == PolicyEditorScope.Global) {
+                                    R.string.policy_global_loading
+                                } else {
+                                    R.string.policy_loading
+                                }
+                            ),
+                            modifier = Modifier.padding(16.dp).testTag(PolicyTags.LOADING),
+                        )
+                    unreadable != null -> Unreadable(unreadable, state.scope, onStartOver, leave)
+                    state.scope == PolicyEditorScope.Global -> GlobalEditor(state, onEdit)
+                    else ->
+                        ConnectionEditor(
+                            state,
+                            onEdit,
+                            onResetConnection,
+                            onOpenGlobal,
+                            onSave,
+                            leave,
+                        )
+                }
             }
         }
-    }
-    if (confirmDiscard) {
-        AlertDialog(
-            onDismissRequest = { confirmDiscard = false },
-            title = { Text(stringResource(R.string.policy_discard_title)) },
-            text = { Text(stringResource(R.string.policy_discard_text)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmDiscard = false
-                        onClose()
-                    },
-                    modifier = Modifier.testTag(PolicyTags.DISCARD),
-                ) {
-                    Text(stringResource(R.string.policy_discard))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { confirmDiscard = false },
-                    modifier = Modifier.testTag(PolicyTags.KEEP_EDITING),
-                ) {
-                    Text(stringResource(R.string.policy_keep_editing))
-                }
-            },
-        )
-    }
-    if (confirmGlobalSave) {
-        AlertDialog(
-            onDismissRequest = { confirmGlobalSave = false },
-            title = { Text(stringResource(R.string.policy_global_confirm_title)) },
-            text = { Text(stringResource(R.string.policy_global_confirm_text)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmGlobalSave = false
-                        onSave()
-                    },
-                    modifier = Modifier.testTag(PolicyTags.CONFIRM_GLOBAL_SAVE),
-                ) {
-                    Text(stringResource(R.string.policy_global_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { confirmGlobalSave = false },
-                    modifier = Modifier.testTag(PolicyTags.DIALOG_CANCEL),
-                ) {
-                    Text(stringResource(R.string.policy_cancel))
-                }
-            },
-        )
+        if (confirmDiscard) {
+            SolidDialog(
+                title = stringResource(R.string.policy_discard_title),
+                body = { Text(stringResource(R.string.policy_discard_text)) },
+                actions = {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        NeutralPolicyButton(
+                            onClick = {
+                                confirmDiscard = false
+                                onCloseRequestCancelled()
+                            },
+                            modifier = Modifier.weight(1f).testTag(PolicyTags.KEEP_EDITING),
+                        ) {
+                            Text(stringResource(R.string.policy_keep_editing))
+                        }
+                        PrimaryPolicyButton(
+                            onClick = {
+                                confirmDiscard = false
+                                onClose()
+                            },
+                            modifier = Modifier.weight(1f).testTag(PolicyTags.DISCARD),
+                        ) {
+                            Text(stringResource(R.string.policy_discard))
+                        }
+                    }
+                },
+            )
+        }
+        if (confirmGlobalSave) {
+            SolidDialog(
+                title = stringResource(R.string.policy_global_confirm_title),
+                body = { Text(stringResource(R.string.policy_global_confirm_text)) },
+                actions = {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        NeutralPolicyButton(
+                            onClick = { confirmGlobalSave = false },
+                            modifier = Modifier.weight(1f).testTag(PolicyTags.DIALOG_CANCEL),
+                        ) {
+                            Text(stringResource(R.string.policy_cancel))
+                        }
+                        PrimaryPolicyButton(
+                            onClick = {
+                                confirmGlobalSave = false
+                                onSave()
+                            },
+                            modifier = Modifier.weight(1f).testTag(PolicyTags.CONFIRM_GLOBAL_SAVE),
+                        ) {
+                            Text(stringResource(R.string.policy_global_confirm))
+                        }
+                    }
+                },
+            )
+        }
     }
 }
 
@@ -240,10 +323,13 @@ private fun Unreadable(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Button(onClick = onStartOver, modifier = Modifier.testTag(PolicyTags.START_OVER)) {
+        PrimaryPolicyButton(
+            onClick = onStartOver,
+            modifier = Modifier.testTag(PolicyTags.START_OVER),
+        ) {
             Text(stringResource(R.string.policy_start_over))
         }
-        OutlinedButton(onClick = onClose, modifier = Modifier.testTag(PolicyTags.CANCEL)) {
+        NeutralPolicyButton(onClick = onClose, modifier = Modifier.testTag(PolicyTags.CANCEL)) {
             Text(stringResource(R.string.policy_cancel))
         }
     }
@@ -253,78 +339,249 @@ private fun Unreadable(
 private fun GlobalEditor(
     state: PolicyUiState,
     onEdit: (PolicyEditorDraft) -> Unit,
-    onSave: () -> Unit,
-    onCancel: () -> Unit,
 ) {
     val draft = (state.draft as? PolicyEditorDraft.Global)?.rules ?: return
     // The instant only dates the document, and this review is about whether it is fit to save.
     val review = remember(draft) { draft.review(Instant.EPOCH) }
-    Text(
-        stringResource(R.string.policy_global_intro),
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(16.dp),
-    )
-    Text(
-        state.storedAt?.let { stringResource(R.string.policy_saved_at, formatInstant(it)) }
-            ?: stringResource(R.string.policy_global_never_saved),
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.padding(horizontal = 16.dp).testTag(PolicyTags.SAVED_AT),
-    )
-    Summary(
-        draft,
-        removes = review is DraftReview.NoRules && (state.storedAt != null),
-        global = true,
-    )
+    val empty = review is DraftReview.NoRules
     val edit = { next: PolicyDraft -> onEdit(PolicyEditorDraft.Global(next)) }
-    Actions(draft, edit)
-    Assets(draft, review, edit)
-    Addresses(
-        list = RECIPIENTS,
-        title = R.string.policy_section_recipients,
-        switchLabel = R.string.policy_switch_recipients,
-        off = R.string.policy_recipients_off,
-        on = R.string.policy_recipients_on,
-        empty = R.string.policy_recipients_empty,
-        field = R.string.policy_recipient_field,
-        note = R.string.policy_recipient_note,
-        restricted = draft.restrictRecipients,
-        values = draft.recipients,
-        onRestrict = { edit(draft.copy(restrictRecipients = it)) },
-        onChange = { edit(draft.copy(recipients = it)) },
-    )
-    Addresses(
-        list = PROGRAMS,
-        title = R.string.policy_section_programs,
-        switchLabel = R.string.policy_switch_programs,
-        off = R.string.policy_programs_off,
-        on = R.string.policy_programs_on,
-        empty = R.string.policy_programs_empty,
-        field = R.string.policy_program_field,
-        note = R.string.policy_program_note,
-        restricted = draft.restrictPrograms,
-        values = draft.programs,
-        onRestrict = { edit(draft.copy(restrictPrograms = it)) },
-        onChange = { edit(draft.copy(programs = it)) },
-    )
-    HorizontalDivider(Modifier.padding(top = 16.dp))
-    Row(
-        modifier = Modifier.padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Button(
-            onClick = onSave,
-            enabled = state.changed && !state.saving && review !is DraftReview.Problems,
-            modifier = Modifier.testTag(PolicyTags.SAVE),
-        ) {
-            Text(stringResource(R.string.policy_save))
+        GlobalRulesHelp()
+        if (empty) GlobalEmptyWarning()
+        Text(
+            stringResource(
+                if (empty) R.string.policy_global_empty_caption else R.string.policy_global_caption
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        Actions(draft, edit, global = true)
+        Assets(draft, review, edit, global = true)
+        Addresses(
+            list = RECIPIENTS,
+            title = R.string.policy_section_recipients,
+            switchLabel = R.string.policy_switch_recipients,
+            off = R.string.policy_recipients_off,
+            on = R.string.policy_recipients_on,
+            empty = R.string.policy_recipients_empty,
+            field = R.string.policy_recipient_field,
+            note = R.string.policy_recipient_note,
+            restricted = draft.restrictRecipients,
+            values = draft.recipients,
+            onRestrict = { edit(draft.copy(restrictRecipients = it)) },
+            onChange = { edit(draft.copy(recipients = it)) },
+            global = true,
+        )
+        Addresses(
+            list = PROGRAMS,
+            title = R.string.policy_section_programs,
+            switchLabel = R.string.policy_switch_programs,
+            off = R.string.policy_programs_off,
+            on = R.string.policy_programs_on,
+            empty = R.string.policy_programs_empty,
+            field = R.string.policy_program_field,
+            note = R.string.policy_program_note,
+            restricted = draft.restrictPrograms,
+            values = draft.programs,
+            onRestrict = { edit(draft.copy(restrictPrograms = it)) },
+            onChange = { edit(draft.copy(programs = it)) },
+            global = true,
+        )
+        if (!empty) {
+            ErrorPolicyButton(
+                onClick = { edit(PolicyDraft(draft.connectionId)) },
+                modifier = Modifier.testTag(PolicyTags.CLEAR_GLOBAL),
+            ) {
+                Text(stringResource(R.string.policy_clear_global))
+            }
         }
-        OutlinedButton(
-            onClick = onCancel,
-            enabled = !state.saving,
-            modifier = Modifier.testTag(PolicyTags.CANCEL),
-        ) {
-            Text(stringResource(R.string.policy_cancel))
+        Text(
+            stringResource(R.string.policy_global_daily_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun GlobalPolicyFooter(
+    saving: Boolean,
+    valid: Boolean,
+    saveFailed: Boolean,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier.fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (saveFailed) {
+            SeekerCard(
+                modifier = Modifier.fillMaxWidth().testTag(PolicyTags.SAVE_ERROR),
+                color = MaterialTheme.colorScheme.errorContainer,
+                radius = 16.dp,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Icon(
+                        Icons.Outlined.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            stringResource(R.string.policy_save_error_title),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            stringResource(R.string.policy_save_failed),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                }
+            }
         }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                stringResource(
+                    if (saveFailed) R.string.policy_not_saved_yet
+                    else R.string.policy_unsaved_changes
+                ),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            NeutralPolicyButton(
+                onClick = onCancel,
+                enabled = !saving,
+                modifier = Modifier.testTag(PolicyTags.CANCEL),
+            ) {
+                Text(stringResource(R.string.policy_discard))
+            }
+            PrimaryPolicyButton(
+                onClick = onSave,
+                enabled = !saving && valid,
+                modifier = Modifier.testTag(PolicyTags.SAVE),
+            ) {
+                Text(
+                    stringResource(
+                        if (saveFailed) R.string.policy_try_again else R.string.policy_save
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlobalEmptyWarning() {
+    SeekerCard(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                Icons.Outlined.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.size(20.dp),
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(R.string.policy_global_empty_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Text(
+                    stringResource(R.string.policy_global_empty_detail),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlobalRulesHelp() {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    SeekerCard(
+        modifier = Modifier.fillMaxWidth().testTag(PolicyTags.HELP),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        onClick = { expanded = !expanded },
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                stringResource(R.string.policy_global_intro),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Icon(
+                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+    if (expanded) {
+        SeekerCard(
+            modifier = Modifier.fillMaxWidth().testTag(PolicyTags.HELP_CONTENT),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                HelpLine(Icons.Outlined.Block, R.string.policy_help_rule)
+                HelpLine(Icons.Outlined.Public, R.string.policy_help_global)
+                HelpLine(Icons.Outlined.Schedule, R.string.policy_help_daily)
+                HelpLine(Icons.Outlined.Fingerprint, R.string.policy_help_wallet)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HelpLine(icon: ImageVector, @StringRes text: Int) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            stringResource(text),
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -361,7 +618,7 @@ private fun ConnectionEditor(
     } else {
         EffectiveSummary(draft, state.global, review)
     }
-    TextButton(
+    NeutralPolicyButton(
         onClick = onOpenGlobal,
         modifier = Modifier.padding(horizontal = 8.dp).testTag(PolicyTags.OPEN_GLOBAL),
     ) {
@@ -479,8 +736,8 @@ private fun ConnectionEditor(
         )
     }
 
-    HorizontalDivider(Modifier.padding(top = 16.dp))
-    TextButton(
+    SectionGap(Modifier.padding(top = 16.dp))
+    NeutralPolicyButton(
         onClick = onReset,
         enabled = review !is ConnectionDraftReview.InheritAll && !state.saving,
         modifier = Modifier.padding(horizontal = 8.dp).testTag(PolicyTags.RESET_OVERRIDES),
@@ -496,14 +753,14 @@ private fun ConnectionEditor(
         modifier = Modifier.padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Button(
+        PrimaryPolicyButton(
             onClick = onSave,
             enabled = state.changed && !state.saving && review !is ConnectionDraftReview.Problems,
             modifier = Modifier.testTag(PolicyTags.SAVE),
         ) {
             Text(stringResource(R.string.policy_save))
         }
-        OutlinedButton(
+        NeutralPolicyButton(
             onClick = onCancel,
             enabled = !state.saving,
             modifier = Modifier.testTag(PolicyTags.CANCEL),
@@ -519,7 +776,7 @@ private fun EffectiveSummary(
     global: GlobalPolicy?,
     review: ConnectionDraftReview,
 ) {
-    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+    SectionGap(Modifier.padding(vertical = 8.dp))
     Text(
         stringResource(R.string.policy_effective_title),
         style = MaterialTheme.typography.titleMedium,
@@ -607,7 +864,7 @@ private fun OverrideSelector(
     overrides: Boolean,
     onChange: (Boolean) -> Unit,
 ) {
-    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+    SectionGap(Modifier.padding(vertical = 8.dp))
     Text(
         stringResource(title),
         style = MaterialTheme.typography.titleMedium,
@@ -673,7 +930,7 @@ private fun ConnectionAssets(
                 ListItem(
                     headlineContent = { Text(label) },
                     trailingContent = {
-                        TextButton(
+                        NeutralPolicyButton(
                             onClick = { onEdit(draft.copy(assets = draft.assets - asset)) },
                             modifier =
                                 Modifier.testTag(PolicyTags.removeAllowedAsset(asset)).semantics {
@@ -683,6 +940,7 @@ private fun ConnectionAssets(
                             Text(stringResource(R.string.policy_remove))
                         }
                     },
+                    colors = seekerListItemColors(),
                 )
             }
             AddPolicyAssetButton(
@@ -702,7 +960,7 @@ private fun AddPolicyAssetButton(
     onAdd: (PolicyAsset) -> Unit,
 ) {
     var adding by rememberSaveable { mutableStateOf(false) }
-    OutlinedButton(
+    NeutralPolicyButton(
         onClick = { adding = true },
         modifier = Modifier.padding(16.dp).testTag(tag),
     ) {
@@ -749,7 +1007,7 @@ private fun ConnectionThresholds(
         val local = draft.limits.getOrNull(index) ?: ConnectionAssetDraft(asset.network, asset.mint)
         val rowProblem = problems[index] ?: AssetProblems()
         val asAsset = local.asAssetDraft()
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        SectionGap(Modifier.padding(vertical = 8.dp))
         Text(
             assetLabel(asset),
             style = MaterialTheme.typography.titleSmall,
@@ -886,10 +1144,67 @@ private fun updateConnectionLimit(
     onEdit(draft.copy(limits = limits))
 }
 
+@Composable
+private fun GlobalSectionCard(
+    list: String,
+    @StringRes title: Int,
+    icon: ImageVector,
+    content: @Composable () -> Unit,
+) {
+    SeekerCard(
+        modifier = Modifier.fillMaxWidth().testTag(PolicyTags.section(list)),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = SeekerTheme.colors.primaryText,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    stringResource(title),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                GlobalChip()
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun GlobalChip() {
+    Row(
+        modifier =
+            Modifier.heightIn(min = 24.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                .padding(horizontal = 9.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(Icons.Outlined.Public, contentDescription = null, modifier = Modifier.size(13.dp))
+        Text(
+            stringResource(R.string.policy_source_global),
+            style = MaterialTheme.typography.labelSmall,
+        )
+    }
+}
+
 /** The whole draft read back in plain language, and what it still doesn't cover. */
 @Composable
 private fun Summary(draft: PolicyDraft, removes: Boolean, global: Boolean = false) {
-    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+    SectionGap(Modifier.padding(vertical = 8.dp))
     Text(
         stringResource(R.string.policy_summary_title),
         style = MaterialTheme.typography.titleMedium,
@@ -916,6 +1231,27 @@ private fun Actions(
     draft: PolicyDraft,
     onEdit: (PolicyDraft) -> Unit,
     showHeader: Boolean = true,
+    global: Boolean = false,
+) {
+    if (global) {
+        GlobalSectionCard(
+            list = "actions",
+            title = R.string.policy_section_actions,
+            icon = Icons.Outlined.Bolt,
+        ) {
+            ActionsContent(draft, onEdit, global = true)
+        }
+        return
+    }
+    ActionsContent(draft, onEdit, showHeader)
+}
+
+@Composable
+private fun ActionsContent(
+    draft: PolicyDraft,
+    onEdit: (PolicyDraft) -> Unit,
+    showHeader: Boolean = true,
+    global: Boolean = false,
 ) {
     Restrict(
         title = R.string.policy_section_actions,
@@ -926,30 +1262,88 @@ private fun Actions(
         on = R.string.policy_actions_on,
         onCheckedChange = { onEdit(draft.copy(restrictActions = it)) },
         showHeader = showHeader,
+        global = global,
+        empty = draft.actions.isEmpty(),
     )
-    if (!draft.restrictActions) return
-    if (draft.actions.isEmpty()) Note(R.string.policy_actions_empty)
-    for (action in PolicyAction.entries) {
+    if (!global && !draft.restrictActions) return
+    if (!global && draft.actions.isEmpty()) Note(R.string.policy_actions_empty)
+    for (action in PolicyAction.entries.filterNot { global && it == PolicyAction.Swap }) {
         val ticked = action in draft.actions
         Row(
             modifier =
                 Modifier.fillMaxWidth()
                     .testTag(PolicyTags.action(action))
-                    .toggleable(value = ticked, role = Role.Checkbox) { on ->
+                    .then(
+                        if (global) {
+                            Modifier.clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .toggleable(
+                        value = ticked,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        role = Role.Checkbox,
+                    ) { on ->
                         val actions = if (on) draft.actions + action else draft.actions - action
                         onEdit(draft.copy(actions = actions))
                     }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = if (global) 12.dp else 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Checkbox(checked = ticked, onCheckedChange = null)
-            Text(actionText(action), modifier = Modifier.padding(start = 16.dp))
+            Icon(
+                if (ticked) Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank,
+                contentDescription = null,
+                tint =
+                    if (ticked) SeekerTheme.colors.primaryText
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(Modifier.padding(start = 12.dp)) {
+                Text(actionText(action), style = MaterialTheme.typography.bodyMedium)
+                if (global) {
+                    Text(
+                        stringResource(
+                            if (ticked) R.string.policy_action_expected
+                            else R.string.policy_action_not_expected
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun Assets(draft: PolicyDraft, review: DraftReview, onEdit: (PolicyDraft) -> Unit) {
+private fun Assets(
+    draft: PolicyDraft,
+    review: DraftReview,
+    onEdit: (PolicyDraft) -> Unit,
+    global: Boolean = false,
+) {
+    if (global) {
+        GlobalSectionCard(
+            list = "assets",
+            title = R.string.policy_section_assets,
+            icon = Icons.Outlined.Toll,
+        ) {
+            AssetsContent(draft, review, onEdit, global = true)
+        }
+        return
+    }
+    AssetsContent(draft, review, onEdit)
+}
+
+@Composable
+private fun AssetsContent(
+    draft: PolicyDraft,
+    review: DraftReview,
+    onEdit: (PolicyDraft) -> Unit,
+    global: Boolean = false,
+) {
     Restrict(
         title = R.string.policy_section_assets,
         switchLabel = R.string.policy_switch_assets,
@@ -958,13 +1352,17 @@ private fun Assets(draft: PolicyDraft, review: DraftReview, onEdit: (PolicyDraft
         off = R.string.policy_assets_off,
         on = R.string.policy_assets_on,
         onCheckedChange = { onEdit(draft.copy(restrictAssets = it)) },
+        global = global,
+        empty = draft.assets.isEmpty(),
     )
     when {
         draft.assets.isNotEmpty() -> Unit
+        global -> Unit
         draft.restrictAssets -> Note(R.string.policy_assets_empty)
         else -> Note(R.string.policy_assets_none)
     }
     val problems = (review as? DraftReview.Problems)?.assets.orEmpty()
+    var expandedAsset by rememberSaveable { mutableStateOf<Int?>(null) }
     draft.assets.forEachIndexed { index, asset ->
         Asset(
             index = index,
@@ -972,21 +1370,39 @@ private fun Assets(draft: PolicyDraft, review: DraftReview, onEdit: (PolicyDraft
             problems = problems[index] ?: AssetProblems(),
             onChange = { onEdit(draft.copy(assets = draft.assets.replacing(index, it))) },
             onRemove = { onEdit(draft.copy(assets = draft.assets.removing(index))) },
+            global = global,
+            expanded = expandedAsset == index,
+            onToggle = { expandedAsset = if (expandedAsset == index) null else index },
         )
     }
+    if (global && draft.assets.isEmpty()) GlobalEmptyListRow("assets")
     if (draft.assets.any { it.mint != null }) Note(R.string.policy_token_units)
     var adding by rememberSaveable { mutableStateOf(false) }
-    OutlinedButton(
-        onClick = { adding = true },
-        modifier = Modifier.padding(16.dp).testTag(PolicyTags.ADD_ASSET),
-    ) {
-        Text(stringResource(R.string.policy_add_asset))
+    val addButton: @Composable (@Composable RowScope.() -> Unit) -> Unit = { content ->
+        if (global) {
+            TonalPolicyButton(
+                onClick = { adding = true },
+                modifier = Modifier.testTag(PolicyTags.ADD_ASSET),
+                content = content,
+            )
+        } else {
+            NeutralPolicyButton(
+                onClick = { adding = true },
+                modifier = Modifier.padding(16.dp).testTag(PolicyTags.ADD_ASSET),
+                content = content,
+            )
+        }
+    }
+    addButton {
+        Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+        Text(stringResource(R.string.policy_add_asset), modifier = Modifier.padding(start = 8.dp))
     }
     if (adding) {
         AddAsset(
             listed = draft.assets,
             onAdd = {
                 onEdit(draft.copy(assets = draft.assets + it))
+                if (global) expandedAsset = draft.assets.size
                 adding = false
             },
             onDismiss = { adding = false },
@@ -1001,14 +1417,114 @@ private fun Asset(
     problems: AssetProblems,
     onChange: (AssetDraft) -> Unit,
     onRemove: () -> Unit,
+    global: Boolean = false,
+    expanded: Boolean = true,
+    onToggle: () -> Unit = {},
 ) {
     val name = assetLabel(asset.asset)
-    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+    if (global) {
+        val remove = stringResource(R.string.policy_asset_remove, name)
+        SeekerCard(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            radius = 12.dp,
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                role = Role.Button,
+                                onClick = onToggle,
+                            )
+                            .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.Toll,
+                        contentDescription = null,
+                        tint = SeekerTheme.colors.primaryText,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (asset.mint == null) {
+                                stringResource(
+                                    R.string.policy_asset_row_sol,
+                                    networkText(asset.network),
+                                )
+                            } else {
+                                stringResource(
+                                    R.string.policy_asset_row_token,
+                                    networkText(asset.network),
+                                )
+                            },
+                            modifier = Modifier.testTag(PolicyTags.asset(index)),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            globalAssetLimits(asset),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (asset.mint != null) {
+                            Text(
+                                shortPolicyAddress(asset.mint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Box(
+                        modifier =
+                            Modifier.size(40.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainer)
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    role = Role.Button,
+                                    onClick = onRemove,
+                                )
+                                .testTag(PolicyTags.removeAsset(index))
+                                .semantics { contentDescription = remove },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Outlined.Delete, contentDescription = null)
+                    }
+                }
+                if (expanded) {
+                    AssetFields(index, asset, problems, onChange)
+                }
+            }
+        }
+        return
+    }
+    SectionGap(Modifier.padding(vertical = 8.dp))
     Text(
         name,
         style = MaterialTheme.typography.titleSmall,
         modifier = Modifier.padding(horizontal = 16.dp).testTag(PolicyTags.asset(index)),
     )
+    AssetFields(index, asset, problems, onChange)
+    NeutralPolicyButton(
+        onClick = onRemove,
+        modifier = Modifier.padding(horizontal = 8.dp).testTag(PolicyTags.removeAsset(index)),
+    ) {
+        Text(stringResource(R.string.policy_asset_remove, name))
+    }
+}
+
+@Composable
+private fun AssetFields(
+    index: Int,
+    asset: AssetDraft,
+    problems: AssetProblems,
+    onChange: (AssetDraft) -> Unit,
+) {
     Amount(
         tag = PolicyTags.perOperation(index),
         value = asset.perOperation,
@@ -1028,12 +1544,23 @@ private fun Asset(
         onChange = { onChange(asset.copy(daily = it)) },
     )
     if (problems.dailyBelowPerOperation) Note(R.string.policy_daily_below)
-    TextButton(
-        onClick = onRemove,
-        modifier = Modifier.padding(horizontal = 8.dp).testTag(PolicyTags.removeAsset(index)),
-    ) {
-        Text(stringResource(R.string.policy_asset_remove, name))
-    }
+}
+
+@Composable
+private fun globalAssetLimits(asset: AssetDraft): String {
+    val perRequest =
+        asset.perOperation
+            .ifBlank { null }
+            ?.let {
+                stringResource(R.string.policy_asset_per_request_value, it)
+            } ?: stringResource(R.string.policy_asset_no_per_request)
+    val daily =
+        asset.daily
+            .ifBlank { null }
+            ?.let {
+                stringResource(R.string.policy_asset_daily_value, it)
+            } ?: stringResource(R.string.policy_asset_no_daily)
+    return stringResource(R.string.policy_asset_limits, perRequest, daily)
 }
 
 /**
@@ -1051,7 +1578,7 @@ private fun Amount(
     onChange: (String) -> Unit,
 ) {
     val entry = readAmount(value, asset.decimals)
-    OutlinedTextField(
+    SolidTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(stringResource(label)) },
@@ -1085,81 +1612,105 @@ private fun AddAsset(
     var mint by rememberSaveable { mutableStateOf("") }
     var network by rememberSaveable { mutableStateOf(Network.NETWORK_MAINNET) }
     var problem by remember { mutableStateOf<Int?>(null) }
-    AlertDialog(
+    Popup(
+        alignment = Alignment.BottomCenter,
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.policy_asset_dialog_title)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                Choice(R.string.policy_asset_sol, !token, PolicyTags.ASSET_SOL) {
-                    token = false
-                    problem = null
-                }
-                Choice(R.string.policy_asset_token, token, PolicyTags.ASSET_TOKEN) {
-                    token = true
-                    problem = null
-                }
-                if (token) {
-                    OutlinedTextField(
-                        value = mint,
-                        onValueChange = {
-                            mint = it
-                            problem = null
-                        },
-                        label = { Text(stringResource(R.string.policy_mint_field)) },
-                        singleLine = true,
-                        isError = problem != null,
-                        modifier = Modifier.fillMaxWidth().testTag(PolicyTags.MINT_FIELD),
+        properties = PopupProperties(focusable = true),
+    ) {
+        Box(
+            Modifier.fillMaxSize()
+                .background(MaterialTheme.colorScheme.surfaceDim)
+                .padding(top = 80.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            SeekerCard(
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                radius = 28.dp,
+            ) {
+                Column(
+                    Modifier.fillMaxSize().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.policy_asset_dialog_title),
+                        style = MaterialTheme.typography.headlineSmall,
                     )
-                }
-                Text(
-                    stringResource(R.string.policy_network_field),
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(top = 16.dp),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (option in POLICY_NETWORKS) {
-                        FilterChip(
-                            selected = network == option,
-                            onClick = { network = option },
-                            label = { Text(networkText(option)) },
-                            modifier = Modifier.testTag(PolicyTags.network(option)),
+                    Column(
+                        Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Choice(R.string.policy_asset_sol, !token, PolicyTags.ASSET_SOL) {
+                            token = false
+                            problem = null
+                        }
+                        Choice(R.string.policy_asset_token, token, PolicyTags.ASSET_TOKEN) {
+                            token = true
+                            problem = null
+                        }
+                        if (token) {
+                            SolidTextField(
+                                value = mint,
+                                onValueChange = {
+                                    mint = it
+                                    problem = null
+                                },
+                                label = { Text(stringResource(R.string.policy_mint_field)) },
+                                singleLine = true,
+                                isError = problem != null,
+                                modifier = Modifier.fillMaxWidth().testTag(PolicyTags.MINT_FIELD),
+                            )
+                        }
+                        Text(
+                            stringResource(R.string.policy_network_field),
+                            style = MaterialTheme.typography.labelLarge,
                         )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            for (option in POLICY_NETWORKS) {
+                                FilterChip(
+                                    selected = network == option,
+                                    onClick = { network = option },
+                                    label = { Text(networkText(option)) },
+                                    modifier = Modifier.testTag(PolicyTags.network(option)),
+                                )
+                            }
+                        }
+                        problem?.let {
+                            Text(stringResource(it), color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        NeutralPolicyButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f).testTag(PolicyTags.DIALOG_CANCEL),
+                        ) {
+                            Text(stringResource(R.string.policy_cancel))
+                        }
+                        PrimaryPolicyButton(
+                            onClick = {
+                                val value = mint.trim().takeIf { token }
+                                problem =
+                                    when {
+                                        token && !isSolanaAddress(value.orEmpty()) ->
+                                            R.string.policy_address_invalid
+                                        listed.any { it.network == network && it.mint == value } ->
+                                            R.string.policy_address_listed
+                                        else -> null
+                                    }
+                                if (problem == null) onAdd(AssetDraft(network, value))
+                            },
+                            modifier = Modifier.weight(1f).testTag(PolicyTags.DIALOG_ADD),
+                        ) {
+                            Text(stringResource(R.string.policy_add))
+                        }
                     }
                 }
-                problem?.let {
-                    Text(
-                        stringResource(it),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val value = mint.trim().takeIf { token }
-                    problem =
-                        when {
-                            token && !isSolanaAddress(value.orEmpty()) ->
-                                R.string.policy_address_invalid
-                            listed.any { it.network == network && it.mint == value } ->
-                                R.string.policy_address_listed
-                            else -> null
-                        }
-                    if (problem == null) onAdd(AssetDraft(network, value))
-                },
-                modifier = Modifier.testTag(PolicyTags.DIALOG_ADD),
-            ) {
-                Text(stringResource(R.string.policy_add))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.testTag(PolicyTags.DIALOG_CANCEL)) {
-                Text(stringResource(R.string.policy_cancel))
-            }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -1168,11 +1719,23 @@ private fun Choice(@StringRes label: Int, selected: Boolean, tag: String, onSele
         modifier =
             Modifier.fillMaxWidth()
                 .testTag(tag)
-                .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+                .selectable(
+                    selected = selected,
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    role = Role.RadioButton,
+                    onClick = onSelect,
+                )
                 .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = null)
+        Icon(
+            if (selected) Icons.Rounded.RadioButtonChecked else Icons.Rounded.RadioButtonUnchecked,
+            contentDescription = null,
+            tint =
+                if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(stringResource(label), modifier = Modifier.padding(start = 16.dp))
     }
 }
@@ -1193,34 +1756,118 @@ private fun Addresses(
     onRestrict: (Boolean) -> Unit,
     onChange: (List<String>) -> Unit,
     showHeader: Boolean = true,
+    global: Boolean = false,
 ) {
-    Restrict(title, switchLabel, list, restricted, off, on, onRestrict, showHeader)
-    if (!restricted) return
-    Note(note)
-    if (values.isEmpty()) Note(empty)
+    if (global) {
+        GlobalSectionCard(
+            list = list,
+            title = title,
+            icon =
+                if (list == RECIPIENTS) Icons.Outlined.AccountBalanceWallet
+                else Icons.Outlined.Code,
+        ) {
+            AddressesContent(
+                list,
+                title,
+                switchLabel,
+                off,
+                on,
+                empty,
+                field,
+                note,
+                restricted,
+                values,
+                onRestrict,
+                onChange,
+                showHeader = false,
+                global = true,
+            )
+        }
+        return
+    }
+    AddressesContent(
+        list,
+        title,
+        switchLabel,
+        off,
+        on,
+        empty,
+        field,
+        note,
+        restricted,
+        values,
+        onRestrict,
+        onChange,
+        showHeader,
+    )
+}
+
+@Composable
+private fun AddressesContent(
+    list: String,
+    @StringRes title: Int,
+    @StringRes switchLabel: Int,
+    @StringRes off: Int,
+    @StringRes on: Int,
+    @StringRes empty: Int,
+    @StringRes field: Int,
+    @StringRes note: Int,
+    restricted: Boolean,
+    values: List<String>,
+    onRestrict: (Boolean) -> Unit,
+    onChange: (List<String>) -> Unit,
+    showHeader: Boolean = true,
+    global: Boolean = false,
+) {
+    Restrict(
+        title,
+        switchLabel,
+        list,
+        restricted,
+        off,
+        on,
+        onRestrict,
+        showHeader,
+        global = global,
+        empty = values.isEmpty(),
+    )
+    if (!global && !restricted) return
+    if (!global) Note(note)
+    if (!global && values.isEmpty()) Note(empty)
     for (value in values) {
         val remove = stringResource(R.string.policy_remove_entry, value)
-        ListItem(
-            // The whole address, wrapped rather than cut short: half an address read out of a
-            // list is worse than none, because it looks like the one the owner meant.
-            headlineContent = { Text(value) },
-            trailingContent = {
-                TextButton(
-                    onClick = { onChange(values - value) },
-                    modifier =
-                        Modifier.testTag(PolicyTags.removeEntry(list, value)).semantics {
-                            contentDescription = remove
-                        },
-                ) {
-                    Text(stringResource(R.string.policy_remove))
-                }
-            },
-            modifier = Modifier.testTag(PolicyTags.entry(list, value)),
-        )
+        if (global) {
+            GlobalAddressRow(
+                list = list,
+                value = value,
+                removeDescription = remove,
+                onRemove = { onChange(values - value) },
+            )
+        } else {
+            ListItem(
+                // The whole address, wrapped rather than cut short: half an address read out of a
+                // list is worse than none, because it looks like the one the owner meant.
+                headlineContent = { Text(value) },
+                trailingContent = {
+                    NeutralPolicyButton(
+                        onClick = { onChange(values - value) },
+                        modifier =
+                            Modifier.testTag(PolicyTags.removeEntry(list, value)).semantics {
+                                contentDescription = remove
+                            },
+                    ) {
+                        Text(stringResource(R.string.policy_remove))
+                    }
+                },
+                modifier = Modifier.testTag(PolicyTags.entry(list, value)),
+                colors = seekerListItemColors(),
+            )
+        }
     }
+    if (global && values.isEmpty()) GlobalEmptyListRow(list)
     var typed by rememberSaveable(list) { mutableStateOf("") }
     var problem by remember { mutableStateOf<Int?>(null) }
-    OutlinedTextField(
+    SolidTextField(
         value = typed,
         onValueChange = {
             typed = it
@@ -1234,28 +1881,144 @@ private fun Addresses(
         supportingText = problem?.let { { Text(stringResource(it)) } },
         modifier =
             Modifier.fillMaxWidth()
-                .padding(horizontal = 16.dp)
+                .then(if (global) Modifier else Modifier.padding(horizontal = 16.dp))
                 .testTag(PolicyTags.entryField(list)),
     )
-    OutlinedButton(
-        onClick = {
-            val value = typed.trim()
-            problem =
-                when {
-                    !isSolanaAddress(value) -> R.string.policy_address_invalid
-                    value in values -> R.string.policy_address_listed
-                    else -> null
-                }
-            if (problem == null) {
-                onChange(values + value)
-                typed = ""
+    val addAddress = {
+        val value = typed.trim()
+        problem =
+            when {
+                !isSolanaAddress(value) -> R.string.policy_address_invalid
+                value in values -> R.string.policy_address_listed
+                else -> null
             }
-        },
-        modifier = Modifier.padding(16.dp).testTag(PolicyTags.add(list)),
-    ) {
-        Text(stringResource(R.string.policy_add))
+        if (problem == null) {
+            onChange(values + value)
+            typed = ""
+        }
+    }
+    val addContent: @Composable RowScope.() -> Unit = {
+        Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+        Text(
+            stringResource(
+                if (!global) R.string.policy_add
+                else if (list == RECIPIENTS) R.string.policy_add_recipient
+                else R.string.policy_add_program
+            ),
+            modifier = Modifier.padding(start = 8.dp),
+        )
+    }
+    if (global) {
+        TonalPolicyButton(
+            onClick = addAddress,
+            modifier = Modifier.testTag(PolicyTags.add(list)),
+            content = addContent,
+        )
+    } else {
+        NeutralPolicyButton(
+            onClick = addAddress,
+            modifier = Modifier.padding(16.dp).testTag(PolicyTags.add(list)),
+            content = addContent,
+        )
     }
 }
+
+@Composable
+private fun GlobalEmptyListRow(list: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().testTag(PolicyTags.empty(list)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            Icons.Outlined.DoNotDisturbOn,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            stringResource(R.string.policy_nothing_listed),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+private fun GlobalAddressRow(
+    list: String,
+    value: String,
+    removeDescription: String,
+    onRemove: () -> Unit,
+) {
+    val recipient = list == RECIPIENTS
+    SeekerCard(
+        modifier = Modifier.fillMaxWidth().testTag(PolicyTags.entry(list, value)),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        radius = 12.dp,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                if (recipient) Icons.Outlined.AccountBalanceWallet else Icons.Outlined.Code,
+                contentDescription = null,
+                tint = SeekerTheme.colors.primaryText,
+                modifier = Modifier.size(20.dp),
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (recipient) shortPolicyAddress(value) else policyProgramName(value),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    if (recipient) stringResource(R.string.policy_recipient_owner)
+                    else shortPolicyAddress(value),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Box(
+                modifier =
+                    Modifier.size(40.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            role = Role.Button,
+                            onClick = onRemove,
+                        )
+                        .testTag(PolicyTags.removeEntry(list, value))
+                        .semantics { contentDescription = removeDescription },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Delete, contentDescription = null)
+            }
+        }
+    }
+}
+
+private fun shortPolicyAddress(value: String): String =
+    if (value.length <= 14) value else "${value.take(6)}…${value.takeLast(5)}"
+
+@Composable
+private fun policyProgramName(value: String): String =
+    stringResource(
+        when (value) {
+            SYSTEM_PROGRAM_ID -> R.string.policy_program_system
+            COMPUTE_BUDGET_PROGRAM_ID -> R.string.policy_program_compute_budget
+            TOKEN_PROGRAM_ID -> R.string.policy_program_token
+            TOKEN_2022_PROGRAM_ID -> R.string.policy_program_token_2022
+            else -> R.string.policy_program_unknown
+        }
+    )
+
+private const val SYSTEM_PROGRAM_ID = "11111111111111111111111111111111"
+private const val COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111"
+private const val TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+private const val TOKEN_2022_PROGRAM_ID = "TokenzQdYhJTJRPzxtMHvJkKYFjRkMNs9qYkQRiLT9"
 
 /**
  * One list's switch, with what it means in words both ways round. The switch decides whether the
@@ -1271,9 +2034,11 @@ private fun Restrict(
     @StringRes on: Int,
     onCheckedChange: (Boolean) -> Unit,
     showHeader: Boolean = true,
+    global: Boolean = false,
+    empty: Boolean = false,
 ) {
     if (showHeader) {
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        SectionGap(Modifier.padding(vertical = 8.dp))
         Text(
             stringResource(title),
             style = MaterialTheme.typography.titleMedium,
@@ -1284,14 +2049,34 @@ private fun Restrict(
         modifier =
             Modifier.fillMaxWidth()
                 .testTag(PolicyTags.restrict(list))
-                .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
-                .padding(16.dp),
+                .toggleable(
+                    value = checked,
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange,
+                )
+                .padding(vertical = if (global) 0.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(stringResource(switchLabel), modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = null)
+        SolidSwitch(checked)
     }
-    Note(if (checked) on else off)
+    if (global) {
+        Text(
+            stringResource(
+                when {
+                    !checked -> R.string.policy_section_off
+                    empty -> R.string.policy_section_empty
+                    else -> R.string.policy_section_on
+                }
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        Note(if (checked) on else off)
+    }
 }
 
 @Composable
@@ -1299,6 +2084,7 @@ private fun Note(@StringRes text: Int) {
     Text(
         stringResource(text),
         style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
     )
 }
@@ -1310,4 +2096,192 @@ private fun List<AssetDraft>.replacing(index: Int, asset: AssetDraft): List<Asse
 
 private fun List<AssetDraft>.removing(index: Int): List<AssetDraft> = filterIndexed { at, _ ->
     at != index
+}
+
+@Composable
+private fun PrimaryPolicyButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) = SolidPolicyButton(onClick, modifier, enabled, PolicyButtonTone.Primary, content)
+
+@Composable
+private fun NeutralPolicyButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) = SolidPolicyButton(onClick, modifier, enabled, PolicyButtonTone.Neutral, content)
+
+@Composable
+private fun TonalPolicyButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) = SolidPolicyButton(onClick, modifier, enabled, PolicyButtonTone.Tonal, content)
+
+@Composable
+private fun ErrorPolicyButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) = SolidPolicyButton(onClick, modifier, enabled, PolicyButtonTone.Error, content)
+
+private enum class PolicyButtonTone {
+    Primary,
+    Tonal,
+    Neutral,
+    Error,
+}
+
+@Composable
+private fun SolidPolicyButton(
+    onClick: () -> Unit,
+    modifier: Modifier,
+    enabled: Boolean,
+    tone: PolicyButtonTone,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val container =
+        when {
+            !enabled -> MaterialTheme.colorScheme.surfaceContainerHighest
+            tone == PolicyButtonTone.Primary -> MaterialTheme.colorScheme.primary
+            tone == PolicyButtonTone.Error -> MaterialTheme.colorScheme.errorContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerHighest
+        }
+    val foreground =
+        when {
+            !enabled -> MaterialTheme.colorScheme.onSurfaceVariant
+            tone == PolicyButtonTone.Primary -> MaterialTheme.colorScheme.onPrimary
+            tone == PolicyButtonTone.Tonal -> SeekerTheme.colors.primaryText
+            tone == PolicyButtonTone.Error -> MaterialTheme.colorScheme.error
+            else -> MaterialTheme.colorScheme.onSurface
+        }
+    CompositionLocalProvider(LocalContentColor provides foreground) {
+        Row(
+            modifier =
+                modifier
+                    .heightIn(min = 40.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(container)
+                    .clickable(
+                        enabled = enabled,
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        role = Role.Button,
+                        onClick = onClick,
+                    )
+                    .padding(horizontal = 18.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun SectionGap(modifier: Modifier = Modifier) {
+    Spacer(modifier.height(12.dp))
+}
+
+@Composable
+private fun SolidTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: @Composable (() -> Unit)? = null,
+    singleLine: Boolean = false,
+    isError: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    supportingText: @Composable (() -> Unit)? = null,
+) {
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        label = label,
+        singleLine = singleLine,
+        isError = isError,
+        keyboardOptions = keyboardOptions,
+        supportingText = supportingText,
+        colors = seekerTextFieldColors(),
+    )
+}
+
+@Composable
+private fun FilterChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    CompositionLocalProvider(
+        LocalContentColor provides
+            if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurface
+    ) {
+        Row(
+            modifier =
+                modifier
+                    .heightIn(min = 40.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                    .selectable(
+                        selected = selected,
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        role = Role.RadioButton,
+                        onClick = onClick,
+                    )
+                    .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = { label() },
+        )
+    }
+}
+
+@Composable
+private fun SolidSwitch(checked: Boolean) {
+    val shape = RoundedCornerShape(16.dp)
+    val knobSize by
+        animateDpAsState(
+            targetValue = if (checked) 24.dp else 16.dp,
+            animationSpec = tween(220),
+            label = "policySwitchKnobSize",
+        )
+    val knobOffset by
+        animateDpAsState(
+            targetValue = if (checked) 24.dp else 8.dp,
+            animationSpec = tween(220),
+            label = "policySwitchKnobOffset",
+        )
+    Box(
+        Modifier.size(width = 52.dp, height = 32.dp)
+            .clip(shape)
+            .background(
+                if (checked) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.surfaceContainerHighest
+            )
+            .then(
+                if (checked) Modifier
+                else Modifier.border(2.dp, MaterialTheme.colorScheme.outline, shape)
+            )
+    ) {
+        Box(
+            Modifier.align(Alignment.CenterStart)
+                .offset(x = knobOffset)
+                .size(knobSize)
+                .background(
+                    if (checked) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.outline,
+                    RoundedCornerShape(knobSize / 2),
+                )
+        )
+    }
 }

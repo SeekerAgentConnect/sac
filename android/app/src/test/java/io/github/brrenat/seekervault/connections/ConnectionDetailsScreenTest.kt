@@ -1,11 +1,13 @@
 package io.github.brrenat.seekervault.connections
 
 import android.content.Context
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -18,6 +20,7 @@ import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.VPS
 import io.github.brrenat.seekervault.policy.PolicyTags
+import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -35,6 +38,7 @@ class ConnectionDetailsScreenTest {
         connection: Connection,
         disconnect: DisconnectState? = null,
         refreshing: Boolean = false,
+        live: ForegroundConnectionState? = null,
     ) = compose.setContent {
         SeekerVaultTheme {
             ConnectionDetailsScreen(
@@ -53,6 +57,7 @@ class ConnectionDetailsScreenTest {
                 onDismissDisconnect = { calls += "dismiss" },
                 onMessageShown = {},
                 onRules = { calls += "rules" },
+                live = live,
             )
         }
     }
@@ -74,8 +79,19 @@ class ConnectionDetailsScreenTest {
             .performClick()
         compose.onNodeWithTag(ConnectionsTags.DISCONNECT).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.REMOVE).assertDoesNotExist()
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
         assertEquals(listOf("refresh", "disconnect", "back"), calls)
+    }
+
+    @Test
+    fun distinguishesLiveReconnectingAndBackgroundFromTheLastSync() {
+        show(HOME, live = ForegroundConnectionState.Reconnecting(2))
+        compose
+            .onNodeWithTag(ConnectionsTags.STATUS)
+            .assertTextEquals(context.getString(R.string.connection_status_reconnecting))
+        compose
+            .onNodeWithText(context.getString(R.string.checked_at, "").trim(), substring = true)
+            .assertExists()
     }
 
     @Test
@@ -127,7 +143,7 @@ class ConnectionDetailsScreenTest {
         compose
             .onNodeWithText(context.getString(R.string.disconnect_title, "Home Mac"))
             .assertExists()
-        compose.onNodeWithText(context.getString(R.string.disconnect_text)).assertExists()
+        compose.onAllNodesWithText(context.getString(R.string.disconnect_text)).assertCountEquals(2)
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()
         compose.onNodeWithTag(ConnectionsTags.DIALOG_DISMISS).performClick()
         assertEquals(listOf("confirm disconnect", "dismiss"), calls)

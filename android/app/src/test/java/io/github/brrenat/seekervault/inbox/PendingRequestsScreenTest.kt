@@ -2,14 +2,20 @@ package io.github.brrenat.seekervault.inbox
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
@@ -25,6 +31,7 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.request.v1.RequestState
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,28 +61,51 @@ class PendingRequestsScreenTest {
     }
 
     @Test
-    fun showsEachRequestWithItsSourceActionAgeAndExpiry() {
+    fun showsEachRequestWithItsSourceActionAndContext() {
         show(STATE)
         compose.onNodeWithTag(InboxTags.SECTION_PENDING).assertExists()
+        compose.onNodeWithTag(InboxTags.item(WAITING.key)).assertExists()
+        compose.onNodeWithText("Home Mac").assertExists()
+        // The pending card can sit just below the initial viewport in the test window.
         compose
-            .onNodeWithTag(InboxTags.item(PENDING.key))
-            .assertTextContains("Home Mac")
-            .assertTextContains("Deploy finished")
-            .assertTextContains(context.getString(R.string.action_ack), substring = true)
-            .assertTextContains(relativeTime(PENDING.createdAt.instant(), NOW), substring = true)
-        compose.onNodeWithTag(InboxTags.item(PENDING.key)).performClick()
+            .onNodeWithTag(InboxTags.LIST)
+            .performScrollToNode(hasTestTag(InboxTags.item(PENDING.key)))
+        compose.onNodeWithTag(InboxTags.item(PENDING.key)).assertExists()
+        compose
+            .onNodeWithText(
+                context.getString(
+                    R.string.request_card_ack_summary,
+                    "Home Mac",
+                    "Deploy finished",
+                )
+            )
+            .assertExists()
+        compose.onNodeWithText(context.getString(R.string.action_ack)).assertExists()
+        compose
+            .onNode(hasText(context.getString(R.string.acknowledge)) and hasClickAction())
+            .performClick()
+        // The prominent action opens the mandatory review; the list itself never answers.
         assertEquals(listOf(PENDING.key), opened)
     }
 
     @Test
     fun separatesAnswersWaitingToBeSentFromSettledOnes() {
         show(STATE)
+        val pendingTab = compose.onNodeWithText(context.getString(R.string.inbox_tab_pending, 2))
+        val answeredTab = compose.onNodeWithText(context.getString(R.string.inbox_tab_answered, 1))
+        pendingTab.assertIsSelected()
+        answeredTab.assertIsNotSelected()
         compose.onNodeWithTag(InboxTags.SECTION_TO_SEND).assertExists()
         val acknowledged = context.getString(R.string.answer_acknowledged)
         compose
             .onNodeWithTag(InboxTags.item(WAITING.key))
             .assertTextContains(context.getString(R.string.summary_waiting, acknowledged))
         // Below the fold: a lazy list composes it only once it's scrolled into view.
+        compose
+            .onNodeWithTag(InboxTags.LIST)
+            .performScrollToNode(hasTestTag(InboxTags.SECTION_TO_SEND))
+        answeredTab.performClick().assertIsSelected()
+        pendingTab.assertIsNotSelected()
         compose
             .onNodeWithTag(InboxTags.LIST)
             .performScrollToNode(hasTestTag(InboxTags.item(ANSWERED.key)))
@@ -133,6 +163,34 @@ class PendingRequestsScreenTest {
     fun disablesRefreshWhileOneRuns() {
         show(STATE.copy(refreshing = true))
         compose.onNodeWithTag(InboxTags.REFRESH).assertIsNotEnabled()
+    }
+
+    @Test
+    fun lastRequestScrollsAboveTheBottomEdgeWithAComfortableGap() {
+        val requests =
+            (1..8).map {
+                FakeConnectionGateway.request(HOME.id, "request-$it", "Request $it")
+            }
+        show(
+            InboxUiState(
+                connections = listOf(HOME),
+                inbox = Inbox(pending = mapOf(HOME.id to requests)),
+            )
+        )
+
+        val list = compose.onNodeWithTag(InboxTags.LIST)
+        val lastTag = InboxTags.item(requests.last().key)
+        list.performScrollToNode(hasTestTag(lastTag))
+        repeat(3) { list.performTouchInput { swipeUp() } }
+        compose.waitForIdle()
+        val gap =
+            list.fetchSemanticsNode().boundsInRoot.bottom -
+                compose.onNodeWithTag(lastTag).fetchSemanticsNode().boundsInRoot.bottom
+        val expected = 24 * context.resources.displayMetrics.density
+        assertTrue(
+            "the last card needs bottom breathing room; gap was $gap, expected $expected",
+            gap >= expected - 1f,
+        )
     }
 
     companion object {

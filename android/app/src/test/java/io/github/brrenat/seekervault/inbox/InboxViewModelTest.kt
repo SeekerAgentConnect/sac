@@ -161,6 +161,89 @@ class InboxViewModelTest {
     }
 
     @Test
+    fun notificationOpenFetchesCurrentStateWithoutAnsweringOrOpeningAWallet() {
+        val request = pendingRequest()
+        val viewModel = viewModel()
+
+        viewModel.openFromNotification(request)
+
+        assertEquals(
+            NotificationOpen(request, NotificationOpenStatus.Current),
+            viewModel.state.value.notificationOpen,
+        )
+        assertTrue(gateway.submits.isEmpty())
+        assertTrue(adapter.signings.isEmpty())
+        assertTrue(adapter.sendings.isEmpty())
+    }
+
+    @Test
+    fun staleNotificationStatesAreReportedOnlyAfterTheSidecarIsChecked() {
+        for (state in
+            listOf(
+                RequestState.REQUEST_STATE_CANCELLED,
+                RequestState.REQUEST_STATE_EXPIRED,
+                RequestState.REQUEST_STATE_COMPLETED,
+            )) {
+            val key = pendingRequest()
+            val pending = server.pending.getValue(key.connectionId)
+            val request = pending.single { it.ref.requestId == key.requestId }
+            pending.remove(request)
+            server.settled.getOrPut(key.connectionId) { mutableMapOf() }[key.requestId] =
+                request.toBuilder().setState(state).build()
+            val viewModel = viewModel()
+
+            viewModel.openFromNotification(key)
+
+            assertEquals(
+                state.name,
+                NotificationOpen(key, NotificationOpenStatus.Gone),
+                viewModel.state.value.notificationOpen,
+            )
+        }
+        assertTrue(gateway.submits.isEmpty())
+        assertTrue(adapter.signings.isEmpty())
+        assertTrue(adapter.sendings.isEmpty())
+    }
+
+    @Test
+    fun answeredHereStillOpensItsStoredOutcomeAndUnavailableRevokedOrRemovedConnectionsSaySo() {
+        val answered = pendingRequest()
+        runBlocking { repository.answer(answered, Answer.Acknowledge) }
+        val viewModel = viewModel()
+        viewModel.openFromNotification(answered)
+        assertEquals(
+            NotificationOpen(answered, NotificationOpenStatus.Current),
+            viewModel.state.value.notificationOpen,
+        )
+        assertNotNull(viewModel.state.value.inbox.result(answered))
+
+        val unreachable = pendingRequest(other, OTHER_URL)
+        other.failure = GatewayException.Kind.Unreachable
+        viewModel.openFromNotification(unreachable)
+        assertEquals(
+            NotificationOpen(unreachable, NotificationOpenStatus.Unavailable),
+            viewModel.state.value.notificationOpen,
+        )
+
+        server.failure = GatewayException.Kind.Unauthenticated
+        viewModel.openFromNotification(answered)
+        assertEquals(
+            NotificationOpen(answered, NotificationOpenStatus.Revoked),
+            viewModel.state.value.notificationOpen,
+        )
+        server.failure = null
+
+        runBlocking { repository.remove(answered.connectionId) }
+        viewModel.openFromNotification(answered)
+        assertEquals(
+            NotificationOpen(answered, NotificationOpenStatus.Removed),
+            viewModel.state.value.notificationOpen,
+        )
+        assertTrue(adapter.signings.isEmpty())
+        assertTrue(adapter.sendings.isEmpty())
+    }
+
+    @Test
     fun sendsAWaitingAnswerAgainOnRequest() {
         val request = pendingRequest()
         server.failure = GatewayException.Kind.Unreachable

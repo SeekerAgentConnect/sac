@@ -1,25 +1,40 @@
 /**
- * The sidecar: GET /healthz, the MCP endpoint at /mcp, and the phone's Connect API, on one
- * loopback HTTP server. The Stage 1 live diagnostic stays in memory; durable requests and pairing
- * live in the SQLite database at DATABASE_PATH.
+ * The sidecar: GET /healthz, the MCP endpoint at /mcp, and the phone's Connect API on one listener.
+ * A configured TLS listener also carries production gRPC/HTTP2 updates; loopback development may
+ * put those updates on a separate h2c port. Durable requests and pairing live in SQLite.
  */
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
   createServer,
   type IncomingMessage,
+  type Server as HttpServer,
   type ServerResponse,
 } from "node:http";
+import {
+  createSecureServer,
+  createServer as createHttp2Server,
+  type Http2Server,
+  type Http2ServerRequest,
+  type Http2ServerResponse,
+  type Http2SecureServer,
+  type ServerHttp2Session,
+} from "node:http2";
 import type { AddressInfo } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { create } from "@bufbuild/protobuf";
 import { connectNodeAdapter } from "@connectrpc/connect-node";
 
 import { DEFAULT_SOLANA_RPC_TIMEOUT_MS, type SidecarConfig } from "./config.ts";
 import { LiveCommandService } from "./gen/seekervault/live/v1/live_pb.js";
+import { UpdateCapabilitySchema } from "./gen/seekervault/request/v1/service_pb.js";
 import { LiveCommandBridge } from "./live/bridge.ts";
 import { createMcpEndpoint } from "./mcp-endpoint.ts";
 import { pairingRoutes } from "./pairing/service.ts";
 import { phoneRoutes } from "./phone-api.ts";
+import { createFcmSender, type FcmSender } from "./push/fcm.ts";
+import { FcmInvalidationDispatcher } from "./push/invalidation.ts";
 import { ConfirmationTracker } from "./requests/confirmation.ts";
 import { requestRoutes } from "./requests/phone-service.ts";
 import { TransactionPreparer } from "./requests/preparation.ts";
@@ -31,12 +46,22 @@ import {
 } from "./storage/database.ts";
 import { PairingStore } from "./storage/pairing-store.ts";
 import { RequestStore } from "./storage/request-store.ts";
+import { readTlsIdentity } from "./storage/tls.ts";
+import { UpdateStore } from "./storage/update-store.ts";
+import { observeCommittedRequestUpdates } from "./storage/update-store.ts";
+import {
+  UPDATE_PROTOCOL_VERSION,
+  UpdateCoordinator,
+  updateRoutes,
+} from "./updates/service.ts";
 
 export interface Sidecar {
   /** Base URL, for example http://127.0.0.1:8080. */
   readonly url: string;
   /** The sidecar's lasting ID, which pairing codes and PairResponse carry. */
   readonly serverId: string;
+  /** Configured gRPC/HTTP2 origin, absent when production updates are not served. */
+  readonly updateUrl?: string;
   /**
    * Cancels the in-flight live command, ends every stream, stops listening, and closes the
    * database. Durable requests stay as they are.
@@ -49,11 +74,16 @@ export interface SidecarOptions {
   readonly log?: (message: string) => void;
   /** The clock for requests and pairing codes, in epoch milliseconds. Tests replace it. */
   readonly now?: () => number;
+  /** Shorter idle housekeeping interval for tests; committed updates wake streams immediately. */
+  readonly updatePollMs?: number;
+  /** Replaces Firebase Admin construction in tests; never called when FCM_PROJECT_ID is absent. */
+  readonly fcmSenderFactory?: (projectId: string) => FcmSender;
 }
 
 // How long close() lets in-flight responses, such as a CANCELLED tool result, finish.
 const CLOSE_GRACE_MS = 1000;
-const PHONE_API_MAX_MESSAGE_BYTES = 64 * 1024;
+// Keep every phone request bounded without imposing the same cap on existing response contracts.
+const PHONE_API_MAX_REQUEST_BYTES = 64 * 1024;
 
 /** Starts listening on `config.host:config.port`; port 0 picks a free port. */
 export async function startSidecar(
@@ -66,9 +96,22 @@ export async function startSidecar(
       console.log(`[sidecar] ${message}`);
     });
   const db = openDatabase(config.databasePath);
+  let fcmSender: FcmSender | undefined;
   try {
-    return await serve(config, db, log, options.now);
+    fcmSender =
+      config.fcmProjectId === undefined
+        ? undefined
+        : (options.fcmSenderFactory ?? createFcmSender)(config.fcmProjectId);
+    return await serve(
+      config,
+      db,
+      log,
+      options.now,
+      options.updatePollMs,
+      fcmSender,
+    );
   } catch (error) {
+    await fcmSender?.close().catch(() => undefined);
     db.close();
     throw error;
   }
@@ -79,6 +122,8 @@ async function serve(
   db: DatabaseSync,
   log: (message: string) => void,
   now: (() => number) | undefined,
+  updatePollMs: number | undefined,
+  fcmSender: FcmSender | undefined,
 ): Promise<Sidecar> {
   // Nothing is executed at startup: stored requests wait for the phone and the agent.
   const requests = new RequestStore(db, {
@@ -87,7 +132,24 @@ async function serve(
     now,
   });
   const pairing = new PairingStore(db, { now });
+  const invalidations =
+    fcmSender === undefined
+      ? undefined
+      : new FcmInvalidationDispatcher(pairing, fcmSender, log);
+  const stopInvalidations =
+    invalidations === undefined
+      ? undefined
+      : observeCommittedRequestUpdates(db, (update) =>
+          invalidations.invalidate(update),
+        );
   const serverId = pairing.serverId();
+  const serverInstanceId = randomUUID();
+  const updates = new UpdateStore(db, { serverInstanceId, now });
+  const updateCoordinator = new UpdateCoordinator();
+  const updatesConfigured =
+    config.updatePort !== undefined ||
+    (config.tlsCertificatePath !== undefined &&
+      config.tlsPrivateKeyPath !== undefined);
   const phone = pairing.activeConnection();
   log(
     `requests are stored in ${config.databasePath} (schema version ${schemaVersion(db)}); server ${serverId}; ` +
@@ -99,6 +161,11 @@ async function serve(
     config.demoTools === true
       ? "the demo tool vault_request_ack is on (MCP_DEMO_TOOLS=true)"
       : "the demo tool vault_request_ack is off; MCP_DEMO_TOOLS=true serves it",
+  );
+  log(
+    fcmSender === undefined
+      ? "FCM sender is off; FCM_PROJECT_ID is not configured"
+      : "FCM sender is configured through Application Default Credentials",
   );
 
   // Without an endpoint there is no vault_transfer and no preparation: the sidecar offers what it
@@ -133,66 +200,140 @@ async function serve(
     preparer,
     tracker,
   });
-  const phoneApi = connectNodeAdapter({
-    routes: (router) => {
-      // The Stage 1 diagnostic keeps its development token; the durable API needs a paired phone.
-      phoneRoutes(bridge, config.phoneToken, log)(router);
-      requestRoutes(requests, pairing, log, preparer, tracker)(router);
-      pairingRoutes(pairing, log)(router);
-    },
-    readMaxBytes: PHONE_API_MAX_MESSAGE_BYTES,
-  });
+  let updateUrl: string | undefined;
+  const routes = (includeUpdates: boolean) =>
+    connectNodeAdapter({
+      routes: (router) => {
+        // The Stage 1 diagnostic keeps its development token; the durable API needs a paired phone.
+        phoneRoutes(bridge, config.phoneToken, log)(router);
+        requestRoutes(requests, pairing, log, preparer, tracker)(router);
+        pairingRoutes(pairing, log, () =>
+          updateUrl === undefined
+            ? undefined
+            : create(UpdateCapabilitySchema, {
+                protocolVersion: UPDATE_PROTOCOL_VERSION,
+                grpcUrl: updateUrl,
+              }),
+        )(router);
+        if (includeUpdates) {
+          updateRoutes(
+            pairing,
+            requests,
+            updates,
+            serverInstanceId,
+            updateCoordinator,
+            log,
+            { tracker, pollMs: updatePollMs },
+          )(router);
+        }
+      },
+      readMaxBytes: PHONE_API_MAX_REQUEST_BYTES,
+    });
+  const phoneApi = routes(updatesConfigured && config.updatePort === undefined);
 
-  const server = createServer((req, res) => {
+  const handler = (req: MainRequest, res: MainResponse) => {
+    // HTTP/2's compatibility response implements the HTTP/1 methods used by these shared routes.
+    const response = res as ServerResponse;
     let path: string;
     try {
       path = new URL(req.url ?? "/", "http://sidecar").pathname;
     } catch {
       // A request target that isn't a path, such as "//[", must not stop the sidecar.
-      res.writeHead(400).end();
+      response.writeHead(400).end();
       return;
     }
     if (path === "/healthz") {
       health(req, res);
     } else if (path === "/mcp") {
-      mcp.handle(req, res).catch((error: unknown) => {
-        log(
-          `MCP request failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        if (res.headersSent) res.destroy();
-        else res.writeHead(500).end();
-      });
+      mcp
+        .handle(req as IncomingMessage, res as ServerResponse)
+        .catch((error: unknown) => {
+          log(
+            `MCP request failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          if (response.headersSent) response.destroy();
+          else response.writeHead(500).end();
+        });
     } else {
       phoneApi(req, res);
     }
-  });
+  };
+  const secure =
+    config.tlsCertificatePath !== undefined &&
+    config.tlsPrivateKeyPath !== undefined;
+  const server: HttpServer | Http2SecureServer = secure
+    ? createSecureServer(
+        {
+          ...readTlsIdentity(
+            config.tlsCertificatePath ?? "",
+            config.tlsPrivateKeyPath ?? "",
+          ),
+          allowHTTP1: true,
+        },
+        handler,
+      )
+    : createServer(handler);
+  const updateSessions = new Set<ServerHttp2Session>();
+  if (secure) trackSessions(server as Http2SecureServer, updateSessions);
   server.listen(config.port, config.host);
   await once(server, "listening");
 
   const { port } = server.address() as AddressInfo;
-  const url = `http://${config.host.includes(":") ? `[${config.host}]` : config.host}:${port}`;
+  const url = `${secure ? "https" : "http"}://${config.host.includes(":") ? `[${config.host}]` : config.host}:${port}`;
+  let updateServer: Http2Server | undefined;
+  if (config.updatePort !== undefined) {
+    const updateApi = routes(true);
+    updateServer = createHttp2Server(updateApi);
+    trackSessions(updateServer, updateSessions);
+    updateServer.listen(config.updatePort, config.host);
+    try {
+      await once(updateServer, "listening");
+    } catch (error) {
+      server.close();
+      throw error;
+    }
+    const updateAddress = updateServer.address() as AddressInfo;
+    updateUrl = `http://${config.host.includes(":") ? `[${config.host}]` : config.host}:${updateAddress.port}`;
+  } else if (secure) {
+    updateUrl = new URL(config.publicUrl ?? url).origin;
+  }
   log(
     `listening on ${url}: MCP at ${url}/mcp, phone API at ${url}/${LiveCommandService.typeName}`,
+  );
+  log(
+    updateUrl === undefined
+      ? "production updates are not configured"
+      : `production updates are served as gRPC over HTTP/2 at ${updateUrl}`,
   );
 
   let closing: Promise<void> | undefined;
   return {
     url,
     serverId,
+    updateUrl,
     close() {
       closing ??= (async () => {
         bridge.shutdown();
-        const stopped = new Promise<void>((resolve) =>
-          server.close(() => resolve()),
-        );
-        server.closeIdleConnections();
+        updateCoordinator.shutdown();
+        stopInvalidations?.();
+        const stopped = stopServer(server);
+        const updatesStopped =
+          updateServer === undefined
+            ? Promise.resolve()
+            : stopServer(updateServer);
+        closeIdle(server);
+        if (updateServer !== undefined) closeIdle(updateServer);
         await Promise.race([
-          stopped,
+          Promise.all([stopped, updatesStopped]),
           delay(CLOSE_GRACE_MS, undefined, { ref: false }),
         ]);
         await mcp.close();
-        server.closeAllConnections();
-        await stopped;
+        closeAll(server);
+        if (updateServer !== undefined) closeAll(updateServer);
+        for (const session of updateSessions) session.destroy();
+        await Promise.all([stopped, updatesStopped]);
+        await invalidations?.close();
+        await fcmSender?.close().catch(() => undefined);
         db.close();
         log("stopped");
       })();
@@ -201,11 +342,39 @@ async function serve(
   };
 }
 
-function health(req: IncomingMessage, res: ServerResponse): void {
+type MainRequest = IncomingMessage | Http2ServerRequest;
+type MainResponse = ServerResponse | Http2ServerResponse;
+type ListenableServer = HttpServer | Http2Server | Http2SecureServer;
+
+function health(req: MainRequest, res: MainResponse): void {
+  const response = res as ServerResponse;
   if (req.method !== "GET" && req.method !== "HEAD") {
-    res.writeHead(405, { Allow: "GET, HEAD" }).end();
+    response.writeHead(405, { Allow: "GET, HEAD" }).end();
     return;
   }
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(req.method === "GET" ? JSON.stringify({ status: "ok" }) : undefined);
+  response.writeHead(200, { "Content-Type": "application/json" });
+  if (req.method === "GET") response.end(JSON.stringify({ status: "ok" }));
+  else response.end();
+}
+
+function stopServer(server: ListenableServer): Promise<void> {
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
+function closeIdle(server: ListenableServer): void {
+  if ("closeIdleConnections" in server) server.closeIdleConnections();
+}
+
+function closeAll(server: ListenableServer): void {
+  if ("closeAllConnections" in server) server.closeAllConnections();
+}
+
+function trackSessions(
+  server: Http2Server | Http2SecureServer,
+  sessions: Set<ServerHttp2Session>,
+): void {
+  server.on("session", (session) => {
+    sessions.add(session);
+    session.once("close", () => sessions.delete(session));
+  });
 }

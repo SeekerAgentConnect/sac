@@ -2,8 +2,10 @@
 
 This guide starts from a MacBook with nothing installed and ends with the Stage 1 hello world: the test agent on the Mac sends "Hello Seeker", the Seeker shows it, you tap **OK**, and the agent prints the acknowledgement. It assumes no Android development experience. The phone needs only USB debugging: no bootloader unlock, no root, and no wallet setup.
 
+For the durable Stage 5.2 gRPC/HTTP2 stream, its second USB port mapping, WorkManager behavior, and scheduling/connection inspection, complete the setup here and then follow [Live and background updates on a Seeker](live-background-updates.md). Passing this Stage 1 diagnostic does not count as a Stage 5.2 update pass.
+
 ```text
-Mac: pnpm agent ──MCP──▶ sidecar on 127.0.0.1:8080 ◀──USB, adb reverse── Seeker: the Seeker Vault app
+Mac: pnpm agent ──MCP──▶ sidecar on 127.0.0.1:8080 ◀──USB, adb reverse── Seeker: Seeker Agent Connect
 ```
 
 > **What has been tested.** Every Mac-side command below was run as written on 2026-09-11, and the outputs shown are the real ones. On the same day, the owner followed the Seeker steps on their Seeker (Android 16) and reported them working. The Android Studio steps haven't been recorded; their expected results come from the Android documentation. See the [verification record](#verification-record-saw-006).
@@ -127,7 +129,7 @@ If a step fails, look it up in [`troubleshooting.md`](troubleshooting.md).
 
     **Or from Android Studio:** choose the Seeker in the device menu on the toolbar and click **Run ▶**. Studio builds, installs, and launches the app.
 
-17. **Launch Seeker Vault** from the app drawer, or from the Mac:
+17. **Launch Seeker Agent Connect** from the app drawer, or from the Mac:
 
     ```bash
     adb shell am start -n io.github.brrenat.seekervault/.MainActivity

@@ -19,6 +19,7 @@ public  final class PairResponse extends
     phoneToken_ = "";
     serverId_ = "";
   }
+  private int bitField0_;
   public static final int CONNECTION_ID_FIELD_NUMBER = 1;
   private java.lang.String connectionId_;
   /**
@@ -228,6 +229,88 @@ public  final class PairResponse extends
     checkByteStringIsUtf8(value);
     serverId_ = value.toStringUtf8();
 
+  }
+
+  public static final int UPDATES_FIELD_NUMBER = 4;
+  private io.github.brrenat.seekervault.request.v1.UpdateCapability updates_;
+  /**
+   * <pre>
+   * The production update transport this sidecar serves. Absent on a new sidecar means that its
+   * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+   * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+   * field existed. Manual Refresh remains available either way.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+   */
+  @java.lang.Override
+  public boolean hasUpdates() {
+    return ((bitField0_ & 0x00000001) != 0);
+  }
+  /**
+   * <pre>
+   * The production update transport this sidecar serves. Absent on a new sidecar means that its
+   * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+   * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+   * field existed. Manual Refresh remains available either way.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+   */
+  @java.lang.Override
+  public io.github.brrenat.seekervault.request.v1.UpdateCapability getUpdates() {
+    return updates_ == null ? io.github.brrenat.seekervault.request.v1.UpdateCapability.getDefaultInstance() : updates_;
+  }
+  /**
+   * <pre>
+   * The production update transport this sidecar serves. Absent on a new sidecar means that its
+   * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+   * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+   * field existed. Manual Refresh remains available either way.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+   */
+  private void setUpdates(io.github.brrenat.seekervault.request.v1.UpdateCapability value) {
+    java.util.Objects.requireNonNull(value);
+    updates_ = value;
+    bitField0_ |= 0x00000001;
+  }
+  /**
+   * <pre>
+   * The production update transport this sidecar serves. Absent on a new sidecar means that its
+   * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+   * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+   * field existed. Manual Refresh remains available either way.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+   */
+  @java.lang.SuppressWarnings("ReferenceEquality")
+  private void mergeUpdates(io.github.brrenat.seekervault.request.v1.UpdateCapability value) {
+    java.util.Objects.requireNonNull(value);
+    if (updates_ != null &&
+        updates_ != io.github.brrenat.seekervault.request.v1.UpdateCapability.getDefaultInstance()) {
+      updates_ =
+        io.github.brrenat.seekervault.request.v1.UpdateCapability.newBuilder(updates_).mergeFrom(value).buildPartial();
+    } else {
+      updates_ = value;
+    }
+    bitField0_ |= 0x00000001;
+  }
+  /**
+   * <pre>
+   * The production update transport this sidecar serves. Absent on a new sidecar means that its
+   * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+   * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+   * field existed. Manual Refresh remains available either way.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+   */
+  private void clearUpdates() {
+    updates_ = null;
+    bitField0_ = (bitField0_ & ~0x00000001);
   }
 
   public static io.github.brrenat.seekervault.request.v1.PairResponse parseFrom(
@@ -544,6 +627,95 @@ public  final class PairResponse extends
       return this;
     }
 
+    /**
+     * <pre>
+     * The production update transport this sidecar serves. Absent on a new sidecar means that its
+     * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+     * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+     * field existed. Manual Refresh remains available either way.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+     */
+    @java.lang.Override
+    public boolean hasUpdates() {
+      return instance.hasUpdates();
+    }
+    /**
+     * <pre>
+     * The production update transport this sidecar serves. Absent on a new sidecar means that its
+     * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+     * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+     * field existed. Manual Refresh remains available either way.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+     */
+    @java.lang.Override
+    public io.github.brrenat.seekervault.request.v1.UpdateCapability getUpdates() {
+      return instance.getUpdates();
+    }
+    /**
+     * <pre>
+     * The production update transport this sidecar serves. Absent on a new sidecar means that its
+     * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+     * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+     * field existed. Manual Refresh remains available either way.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+     */
+    public Builder setUpdates(io.github.brrenat.seekervault.request.v1.UpdateCapability value) {
+      copyOnWrite();
+      instance.setUpdates(value);
+      return this;
+      }
+    /**
+     * <pre>
+     * The production update transport this sidecar serves. Absent on a new sidecar means that its
+     * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+     * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+     * field existed. Manual Refresh remains available either way.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+     */
+    public Builder setUpdates(
+        io.github.brrenat.seekervault.request.v1.UpdateCapability.Builder builderForValue) {
+      copyOnWrite();
+      instance.setUpdates(builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * The production update transport this sidecar serves. Absent on a new sidecar means that its
+     * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+     * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+     * field existed. Manual Refresh remains available either way.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+     */
+    public Builder mergeUpdates(io.github.brrenat.seekervault.request.v1.UpdateCapability value) {
+      copyOnWrite();
+      instance.mergeUpdates(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The production update transport this sidecar serves. Absent on a new sidecar means that its
+     * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+     * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+     * field existed. Manual Refresh remains available either way.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.UpdateCapability updates = 4 [json_name = "updates"];</code>
+     */
+    public Builder clearUpdates() {  copyOnWrite();
+      instance.clearUpdates();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.request.v1.PairResponse)
   }
   @java.lang.Override
@@ -560,13 +732,15 @@ public  final class PairResponse extends
       }
       case BUILD_MESSAGE_INFO: {
           java.lang.Object[] objects = new java.lang.Object[] {
+            "bitField0_",
             "connectionId_",
             "phoneToken_",
             "serverId_",
+            "updates_",
           };
           java.lang.String info =
-              "\u0000\u0003\u0000\u0000\u0001\u0003\u0003\u0000\u0000\u0000\u0001\u0208\u0002\u0208" +
-              "\u0003\u0208";
+              "\u0000\u0004\u0000\u0001\u0001\u0004\u0004\u0000\u0000\u0000\u0001\u0208\u0002\u0208" +
+              "\u0003\u0208\u0004\u1009\u0000";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

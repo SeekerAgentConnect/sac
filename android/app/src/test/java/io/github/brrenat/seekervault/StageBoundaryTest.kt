@@ -8,15 +8,25 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 /**
- * The stage boundary (AGENTS.md): no wallet keys, nothing that runs in the background, and storage
- * only in the storage packages: connection metadata and Keystore-encrypted credentials in
- * `connections/storage/` (SAW-012), the owner's wallet selection and its authorization in
- * `wallet/storage/` (SAW-015), the owner's own record of what this phone did in `activity/storage/`
- * (SAW-023), and the rules they set for one connection in `policy/storage/` (SAW-025). Nothing is
- * backed up. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on
- * purpose: the app drives the wallet the owner already has. It still holds no wallet key of its
- * own, and Seed Vault's own SDK stays out. These checks fail when a limit is crossed early; the
- * stage that lifts one changes them.
+ * The stage boundary (AGENTS.md): no wallet keys, and storage only in the storage packages:
+ * connection metadata and Keystore-encrypted credentials in `connections/storage/` (SAW-012), the
+ * owner's wallet selection and its authorization in `wallet/storage/` (SAW-015), the owner's own
+ * record of what this phone did in `activity/storage/` (SAW-023), and the rules they set for one
+ * connection in `policy/storage/` (SAW-025). Nothing is backed up. SAW-048 authorizes only the
+ * `sync/` package to use the production sidecar transport and its own storage subpackage; SAW-052
+ * adds WorkManager code there. SAW-054 puts the optional Firebase Messaging client on the
+ * classpath. SAW-055 adds one connection-scoped registration service under `push/`. SAW-056 lets
+ * that service accept exactly one content-free invalidation and enqueue a unique WorkManager Sync
+ * under `sync/`. SAW-057 keeps the callback to validation and this durable handoff; network fetches
+ * stay in the bounded worker and coalesce with foreground/periodic synchronization. SAW-058 adds
+ * one private request channel, an isolated runtime permission prompt, generic notifications after
+ * authoritative Sync, and a validated read-only tap route. SAW-059 closes the stage with joined
+ * acceptance while keeping Firebase optional and every Stage 5.2 path independent. Other
+ * app-defined services, jobs, alarms, receivers, and wallet automation remain excluded. SAW-015
+ * lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on purpose: the app
+ * drives the wallet the owner already has. It still holds no wallet key of its own, and Seed
+ * Vault's own SDK stays out. These checks fail when a limit is crossed early; the stage that lifts
+ * one changes them.
  */
 class StageBoundaryTest {
     private val main =
@@ -46,7 +56,7 @@ class StageBoundaryTest {
         }
 
     @Test
-    fun manifestDeclaresOnlyTheActivityTheNetworkAndAnOptionalCamera() {
+    fun manifestDeclaresOnlyTheActivityFcmRegistrationAndRequiredPermissions() {
         val manifest = xml("AndroidManifest.xml")
         val application = manifest.children("application").single()
         val components =
@@ -54,9 +64,45 @@ class StageBoundaryTest {
                 .map { application.childNodes.item(it) }
                 .filterIsInstance<Element>()
                 .map { "${it.tagName} ${it.getAttribute("android:name")}" }
-        assertEquals(listOf("activity .MainActivity"), components)
         assertEquals(
-            listOf("android.permission.INTERNET", "android.permission.CAMERA"),
+            listOf(
+                "meta-data firebase_messaging_auto_init_enabled",
+                "meta-data firebase_messaging_installation_id_enabled",
+                "service .push.SeekerVaultMessagingService",
+                "activity .MainActivity",
+            ),
+            components,
+        )
+        assertEquals(
+            "false",
+            application
+                .children("meta-data")
+                .single {
+                    it.getAttribute("android:name") == "firebase_messaging_auto_init_enabled"
+                }
+                .getAttribute("android:value"),
+        )
+        assertEquals(
+            "true",
+            application
+                .children("meta-data")
+                .single {
+                    it.getAttribute("android:name") == "firebase_messaging_installation_id_enabled"
+                }
+                .getAttribute("android:value"),
+        )
+        val messaging = application.children("service").single()
+        assertEquals("false", messaging.getAttribute("android:exported"))
+        assertEquals(
+            listOf("com.google.firebase.MESSAGING_EVENT"),
+            messaging.children("action").map { it.getAttribute("android:name") },
+        )
+        assertEquals(
+            listOf(
+                "android.permission.INTERNET",
+                "android.permission.CAMERA",
+                "android.permission.POST_NOTIFICATIONS",
+            ),
             manifest.children("uses-permission").map { it.getAttribute("android:name") },
         )
         assertEquals(
@@ -89,28 +135,35 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun storageAndKeysStayInTheStoragePackagesAndNothingRunsInTheBackground() {
+    fun storageKeysAndBackgroundWorkStayInsideTheirNarrowPackages() {
         // Substrings on purpose: getSharedPreferences, KeyStoreSpi, and the like must match too.
         val storage =
             Regex(
                 """SharedPreferences|DataStore|openFileOutput|FileOutputStream|SQLiteDatabase|""" +
                     """RoomDatabase|AtomicFile|KeyStore|KeyGenerator|KeyGenParameterSpec"""
             )
-        // No wallet key of the app's own, and nothing that runs in the background. SAW-015 drives
-        // the wallet the owner already has; a key never reaches this app.
-        val forbidden =
+        // No wallet key of the app's own. SAW-015 drives the wallet the owner already has; a key
+        // never reaches this app.
+        val keys = Regex("""KeyPairGenerator|PrivateKey|SecretKeySpec""")
+        // Stage 5.2's background work is WorkManager only, and only from sync/. A foreground
+        // service, Android service, JobScheduler, alarm, or receiver remains outside the stage.
+        val forbiddenBackground =
             Regex(
-                """(KeyPairGenerator|PrivateKey|SecretKeySpec|WorkManager|JobScheduler|""" +
-                    """AlarmManager|startForegroundService|startService|BroadcastReceiver)|""" +
-                    """:\s*Service\("""
+                """(JobScheduler|AlarmManager|startForegroundService|startService|""" +
+                    """BroadcastReceiver)|:\s*Service\("""
             )
-        val storagePackages =
+        val workManager =
+            Regex("""\bWorkManager\b|^import androidx\.work\.""", RegexOption.MULTILINE)
+        val requiredStoragePackages =
             listOf(
                 File(main, "java/io/github/brrenat/seekervault/connections/storage"),
                 File(main, "java/io/github/brrenat/seekervault/wallet/storage"),
                 File(main, "java/io/github/brrenat/seekervault/activity/storage"),
                 File(main, "java/io/github/brrenat/seekervault/policy/storage"),
             )
+        val syncPackage = File(main, "java/io/github/brrenat/seekervault/sync")
+        val storagePackages =
+            requiredStoragePackages + File(main, "java/io/github/brrenat/seekervault/sync/storage")
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         fun inStorage(file: File) = storagePackages.any { file.startsWith(it) }
         fun hits(pattern: Regex, files: List<File>) = files.flatMap { file ->
@@ -119,9 +172,15 @@ class StageBoundaryTest {
             }
         }
         assertEquals(emptyList<String>(), hits(storage, sources.filterNot(::inStorage)))
-        assertEquals(emptyList<String>(), hits(forbidden, sources))
-        // Both storage packages do use them, so the first check can't pass by finding nothing.
-        for (storagePackage in storagePackages) {
+        assertEquals(emptyList<String>(), hits(keys, sources))
+        assertEquals(emptyList<String>(), hits(forbiddenBackground, sources))
+        assertEquals(
+            emptyList<String>(),
+            hits(workManager, sources.filterNot { it.startsWith(syncPackage) }),
+        )
+        // The existing storage packages do use storage APIs, so the first check can't pass by
+        // finding nothing. sync/storage becomes the only additional location when SAW-050 lands.
+        for (storagePackage in requiredStoragePackages) {
             assertTrue(
                 storagePackage.name,
                 hits(storage, sources.filter { it.startsWith(storagePackage) }).isNotEmpty(),
@@ -143,8 +202,9 @@ class StageBoundaryTest {
         // connection ID rule, the protocol's requests and networks, what the phone read out of a
         // transaction's own bytes (SAW-020), the owner's own record of what this app did (SAW-023),
         // and the address rule. SAW-027 added the editor, so three more: the app's strings, its
-        // back button, and its date format. Nothing that opens a wallet, a connection, or a socket
-        // — the screen the owner writes the rules on can't act on them either.
+        // back button, its date format, and the checked-in v4 theme's semantic accent. Nothing that
+        // opens a wallet, a connection, or a socket — the screen the owner writes the rules on
+        // can't act on them either.
         val reaches =
             sources
                 .flatMap { it.readLines() }
@@ -157,10 +217,11 @@ class StageBoundaryTest {
         assertEquals(
             listOf(
                 "io.github.brrenat.seekervault.R",
+                "io.github.brrenat.seekervault.SeekerTheme",
                 "io.github.brrenat.seekervault.activity.ActivityKind",
                 "io.github.brrenat.seekervault.activity.ActivityOutcome",
                 "io.github.brrenat.seekervault.activity.ActivityRecord",
-                "io.github.brrenat.seekervault.connections.BackButton",
+                "io.github.brrenat.seekervault.connections.CloseButton",
                 "io.github.brrenat.seekervault.connections.formatInstant",
                 "io.github.brrenat.seekervault.connections.isConnectionId",
                 "io.github.brrenat.seekervault.request.v1.Action",
@@ -169,24 +230,30 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS",
                 "io.github.brrenat.seekervault.transactions.TransferInspection",
                 "io.github.brrenat.seekervault.transactions.formatBaseUnits",
+                "io.github.brrenat.seekervault.ui.SeekerCard",
+                "io.github.brrenat.seekervault.ui.SeekerSnackbarHost",
+                "io.github.brrenat.seekervault.ui.SolidDialog",
+                "io.github.brrenat.seekervault.ui.seekerListItemColors",
+                "io.github.brrenat.seekervault.ui.seekerTextFieldColors",
                 "io.github.brrenat.seekervault.wallet.isSolanaAddress",
             ),
             reaches,
         )
         // The rules never leave the phone, and neither does what they made of a request
-        // (SAW-028). The two files that speak to a sidecar have never heard of a policy, and the
-        // one file in `connections/` that has, has it to delete a removed connection's rules and
-        // for nothing else — an assessment is the owner's to read, and no agent's to learn of.
-        val speaking =
-            File(main, "java")
-                .walk()
-                .filter {
-                    it.name == "ConnectConnectionGateway.kt" ||
-                        it.name == "ConnectLiveCommandTransport.kt" ||
-                        it.name == "ConnectionRepository.kt"
-                }
-                .toList()
-        assertEquals(3, speaking.size)
+        // (SAW-028). Files that speak to a sidecar have never heard of a policy, and the one file
+        // in `connections/` that has, has it to delete a removed connection's rules and for
+        // nothing else — an assessment is the owner's to read, and no agent's to learn of.
+        val speakingNames =
+            setOf(
+                "ConnectConnectionGateway.kt",
+                "ConnectLiveCommandTransport.kt",
+                "ConnectUpdateTransport.kt",
+                "ConnectionRepository.kt",
+            )
+        val speaking = File(main, "java").walk().filter { it.name in speakingNames }.toList()
+        assertTrue(
+            speaking.map { it.name }.containsAll(speakingNames - "ConnectUpdateTransport.kt")
+        )
         assertEquals(
             listOf(
                 "ConnectionRepository.kt: io.github.brrenat.seekervault.policy.storage.PolicyStore"
@@ -291,18 +358,131 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun noWalletDatabaseOrBackgroundLibraryIsOnTheClasspath() {
+    fun workManagerIsOnTheClasspathFromSaw052() {
+        assertEquals(
+            emptyList<String>(),
+            listOf(
+                    "androidx.work.WorkManager",
+                    "androidx.work.CoroutineWorker",
+                )
+                .filterNot { name ->
+                    runCatching { Class.forName(name, false, javaClass.classLoader) }.isSuccess
+                },
+        )
+    }
+
+    @Test
+    fun firebaseMessagingIsOnTheClasspathFromSaw054() {
+        assertTrue(
+            runCatching {
+                Class.forName(
+                    "com.google.firebase.messaging.FirebaseMessaging",
+                    false,
+                    javaClass.classLoader,
+                )
+            }
+                .isSuccess
+        )
+    }
+
+    @Test
+    fun saw058KeepsFirebaseCallbackBoundedAndNotificationTapWithoutWalletAuthority() {
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        val firebaseImports = Regex("""^import com\.google\.firebase\.""", RegexOption.MULTILINE)
+        assertEquals(
+            setOf("FcmRegistrationManager.kt", "SeekerVaultMessagingService.kt"),
+            sources
+                .filter { firebaseImports.containsMatchIn(it.readText()) }
+                .map { it.name }
+                .toSet(),
+        )
+        val service =
+            withoutComments(
+                File(
+                    main,
+                    "java/io/github/brrenat/seekervault/push/SeekerVaultMessagingService.kt",
+                )
+            )
+        assertTrue("override fun onRegistered" in service)
+        assertTrue("override fun onUnregistered" in service)
+        assertTrue("override fun onMessageReceived" in service)
+        assertTrue("RemoteMessage" in service)
+        assertTrue("PushSyncScheduler" in service)
+        assertTrue("ConnectionRepository" !in service)
+        assertTrue("UpdateTransport" !in service)
+        assertTrue("synchronize" !in service)
+        assertTrue("CoroutineScope" !in service)
+        assertTrue("Notification" !in service)
+        assertTrue("PendingIntent" !in service)
+        assertTrue("wallet" !in service.lowercase())
+        assertTrue("approve" !in service.lowercase())
+        assertTrue("signAndSendTransactions" !in service)
+
+        val notification =
+            withoutComments(
+                File(
+                    main,
+                    "java/io/github/brrenat/seekervault/notifications/RequestNotifications.kt",
+                )
+            )
+        assertTrue("NotificationChannel" in notification)
+        assertTrue("POST_NOTIFICATIONS" in notification)
+        assertTrue("PendingIntent.FLAG_IMMUTABLE" in notification)
+        assertTrue("MainActivity" in notification)
+        assertTrue("RequestKey" in notification)
+        assertTrue("ActionRequest" !in notification)
+        assertTrue("wallet" !in notification.lowercase())
+        assertTrue("approve" !in notification.lowercase())
+        assertTrue("signAndSendTransactions" !in notification)
+        assertTrue("WorkManager" !in notification)
+        assertTrue("ForegroundUpdateManager" !in notification)
+        assertTrue("BackgroundSyncScheduler" !in notification)
+
+        val push =
+            withoutComments(
+                File(main, "java/io/github/brrenat/seekervault/sync/PushSynchronization.kt")
+            )
+        assertTrue(push.indexOf("synchronizeConnections(recovery)") >= 0)
+        assertTrue(
+            push.indexOf("synchronizeConnections(recovery)") <
+                push.indexOf("reconcileNotifications(before")
+        )
+        assertTrue("POST_NOTIFICATIONS" !in push)
+    }
+
+    @Test
+    fun saw059KeepsFirebaseOptionalAndOutOfStage52Recovery() {
+        val app = checkNotNull(main.parentFile?.parentFile)
+        val build = File(app, "build.gradle.kts").readText()
+        assertTrue("val firebaseConfigured" in build)
+        assertTrue("if (firebaseConfigured)" in build)
+        assertTrue("FIREBASE_CONFIGURED" in build)
+
+        val stage52 =
+            listOf(
+                    "sync/BackgroundSynchronization.kt",
+                    "sync/ForegroundUpdateManager.kt",
+                    "sync/SynchronizationRepository.kt",
+                )
+                .map { File(main, "java/io/github/brrenat/seekervault/$it") }
+                .onEach { assertTrue(it.path, it.isFile) }
+                .joinToString("\n") { withoutComments(it) }
+        assertTrue("Firebase" !in stage52)
+        assertTrue("POST_NOTIFICATIONS" !in stage52)
+        assertTrue("RequestNotification" !in stage52)
+    }
+
+    @Test
+    fun noSeedVaultSecurityOrLegacyPushLibraryIsOnTheClasspath() {
         val present =
             listOf(
                     // SAW-015 adds the MWA client on purpose; Seed Vault's own SDK is Stage 3's
                     // signing task, not this one.
                     "com.solanamobile.seedvault.Wallet",
-                    "androidx.room.RoomDatabase",
-                    "androidx.datastore.core.DataStore",
+                    // WorkManager brings Room and Firebase brings DataStore internally. The source
+                    // scan above still rejects either storage API in this app's own code.
                     "androidx.security.crypto.EncryptedSharedPreferences",
-                    "androidx.work.WorkManager",
-                    // No push: the phone fetches when the app opens or the owner refreshes.
-                    "com.google.firebase.messaging.FirebaseMessaging",
+                    // SAW-054 uses current FCM, never the legacy GCM service.
                     "com.google.android.gms.gcm.GcmListenerService",
                 )
                 .filter { name ->
@@ -335,13 +515,61 @@ class StageBoundaryTest {
         )
         // The sidecar transports and the one client they share, and nothing else. A new file here
         // is a new host this app talks to, and has to be read as one.
-        assertEquals(
-            listOf(
+        val allowed =
+            setOf(
                 "ConnectConnectionGateway.kt",
                 "ConnectLiveCommandTransport.kt",
+                "ConnectUpdateTransport.kt",
                 "SeekerVaultApplication.kt",
-            ),
-            sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.sorted(),
+            )
+        val clients = sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.toSet()
+        assertTrue(clients.all { it in allowed })
+        assertTrue(clients.containsAll(allowed - "ConnectUpdateTransport.kt"))
+    }
+
+    @Test
+    fun theV4PresentationUsesOnlySolidOpaqueLayers() {
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        val forbidden =
+            Regex(
+                """Color\.Transparent|copy\s*\(\s*alpha|\.alpha\s*\(|""" +
+                    """\bshadow\s*\(|\bblur\s*\(|graphicsLayer|drawBehind|""" +
+                    """\bBrush\.|\bfadeIn\s*\(|\bfadeOut\s*\("""
+            )
+        val effects = sources.flatMap { file ->
+            withoutComments(file).lines().mapIndexedNotNull { index, line ->
+                "${file.name}:${index + 1}: ${line.trim()}"
+                    .takeIf {
+                        forbidden.containsMatchIn(line)
+                    }
+            }
+        }
+        assertEquals(emptyList<String>(), effects)
+
+        val rgba = Regex("""Color\(0x([0-9A-Fa-f]{8})\)""")
+        val translucentTokens = sources.flatMap { file ->
+            rgba.findAll(withoutComments(file)).mapNotNull { match ->
+                "${file.name}: ${match.value}"
+                    .takeUnless {
+                        match.groupValues[1].startsWith("FF", ignoreCase = true)
+                    }
+            }
+        }
+        assertEquals(emptyList<String>(), translucentTokens)
+
+        val theme = File(main, "java/io/github/brrenat/seekervault/MainActivity.kt").readText()
+        assertTrue(
+            "Raw app bars must inherit the approved scheme's surface ink in both themes",
+            theme.contains("LocalContentColor provides colors.onSurface"),
+        )
+        assertTrue(
+            "The production theme must retain the approved lime dark roles",
+            theme.contains("primary = Color(0xFFE7FC6E)") &&
+                theme.contains("primaryContainer = Color(0xFFC2E60F)"),
+        )
+        assertTrue(
+            "Parameterless Material defaults would replace the approved v4 design",
+            !Regex("""(?:dark|light)ColorScheme\s*\(\s*\)""").containsMatchIn(theme),
         )
     }
 
@@ -402,6 +630,26 @@ class StageBoundaryTest {
                 .filter { name ->
                     runCatching { Class.forName(name, false, javaClass.classLoader) }.isSuccess
                 },
+        )
+
+        // SAW-050's automatic path can observe and retry an answer already on disk. Its package
+        // has no way to prepare, approve, sign, send, or even open Mobile Wallet Adapter, so adding
+        // synchronization cannot increase the wallet execution count.
+        val sync = File(main, "java/io/github/brrenat/seekervault/sync")
+        val automaticAction =
+            Regex(
+                """MwaWalletAdapter|WalletAdapter|prepareRequest|approveTransfer|""" +
+                    """signAndSendTransactions|signMessage"""
+            )
+        assertTrue(sync.isDirectory)
+        assertEquals(
+            emptyList<String>(),
+            sync
+                .walk()
+                .filter { it.extension == "kt" }
+                .filter { automaticAction.containsMatchIn(withoutComments(it)) }
+                .map { it.name }
+                .toList(),
         )
     }
 }

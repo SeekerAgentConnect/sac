@@ -63,6 +63,16 @@ export declare type PairResponse = Message<"seekervault.request.v1.PairResponse"
    * @generated from field: string server_id = 3;
    */
   serverId: string;
+
+  /**
+   * The production update transport this sidecar serves. Absent on a new sidecar means that its
+   * endpoint is not configured; an old sidecar also omits the unknown field. A newer phone calls
+   * GetConnectionCapabilities to distinguish those cases and for connections saved before this
+   * field existed. Manual Refresh remains available either way.
+   *
+   * @generated from field: seekervault.request.v1.UpdateCapability updates = 4;
+   */
+  updates?: UpdateCapability | undefined;
 };
 
 /**
@@ -70,6 +80,125 @@ export declare type PairResponse = Message<"seekervault.request.v1.PairResponse"
  * Use `create(PairResponseSchema)` to create a new message.
  */
 export declare const PairResponseSchema: GenMessage<PairResponse>;
+
+/**
+ * UpdateCapability lets a new phone discover the HTTP/2 endpoint without changing the pairing
+ * URI. The update credential is still this connection's phone token; no new bearer token exists.
+ *
+ * @generated from message seekervault.request.v1.UpdateCapability
+ */
+export declare type UpdateCapability = Message<"seekervault.request.v1.UpdateCapability"> & {
+  /**
+   * Version 1 is seekervault.update.v1.UpdateService. Zero is never advertised.
+   *
+   * @generated from field: uint32 protocol_version = 1;
+   */
+  protocolVersion: number;
+
+  /**
+   * Absolute origin for gRPC over HTTP/2, with no path, query, user info, or fragment. Production
+   * endpoints use https and a publicly trusted certificate. The host must equal the paired
+   * server_url's host; only loopback development may use http and a different port.
+   *
+   * @generated from field: string grpc_url = 2;
+   */
+  grpcUrl: string;
+};
+
+/**
+ * Describes the message seekervault.request.v1.UpdateCapability.
+ * Use `create(UpdateCapabilitySchema)` to create a new message.
+ */
+export declare const UpdateCapabilitySchema: GenMessage<UpdateCapability>;
+
+/**
+ * @generated from message seekervault.request.v1.GetConnectionCapabilitiesRequest
+ */
+export declare type GetConnectionCapabilitiesRequest = Message<"seekervault.request.v1.GetConnectionCapabilitiesRequest"> & {
+  /**
+   * @generated from field: string connection_id = 1;
+   */
+  connectionId: string;
+};
+
+/**
+ * Describes the message seekervault.request.v1.GetConnectionCapabilitiesRequest.
+ * Use `create(GetConnectionCapabilitiesRequestSchema)` to create a new message.
+ */
+export declare const GetConnectionCapabilitiesRequestSchema: GenMessage<GetConnectionCapabilitiesRequest>;
+
+/**
+ * @generated from message seekervault.request.v1.GetConnectionCapabilitiesResponse
+ */
+export declare type GetConnectionCapabilitiesResponse = Message<"seekervault.request.v1.GetConnectionCapabilitiesResponse"> & {
+  /**
+   * Absent only while a new sidecar is not configured to serve the update endpoint. An old
+   * sidecar returns UNIMPLEMENTED because it does not know this RPC at all; both cases retain
+   * manual Refresh, but the phone distinguishes unavailable configuration from upgrade needed.
+   *
+   * @generated from field: seekervault.request.v1.UpdateCapability updates = 1;
+   */
+  updates?: UpdateCapability | undefined;
+};
+
+/**
+ * Describes the message seekervault.request.v1.GetConnectionCapabilitiesResponse.
+ * Use `create(GetConnectionCapabilitiesResponseSchema)` to create a new message.
+ */
+export declare const GetConnectionCapabilitiesResponseSchema: GenMessage<GetConnectionCapabilitiesResponse>;
+
+/**
+ * @generated from message seekervault.request.v1.SetFcmTokenRequest
+ */
+export declare type SetFcmTokenRequest = Message<"seekervault.request.v1.SetFcmTokenRequest"> & {
+  /**
+   * Must be the connection authenticated by the bearer phone credential.
+   *
+   * @generated from field: string connection_id = 1;
+   */
+  connectionId: string;
+
+  /**
+   * @generated from oneof seekervault.request.v1.SetFcmTokenRequest.update
+   */
+  update: {
+    /**
+     * The current FCM direct-send target, as an opaque 1-4096 byte visible-ASCII value. Repeating
+     * the same value changes nothing; a different value atomically replaces it.
+     *
+     * @generated from field: string token = 2;
+     */
+    value: string;
+    case: "token";
+  } | {
+    /**
+     * Deletes the registration only when this is still the stored target. This compare-and-delete
+     * makes a delayed invalid-token/unregistration result harmless after a rotation.
+     *
+     * @generated from field: string clear_if_token = 3;
+     */
+    value: string;
+    case: "clearIfToken";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message seekervault.request.v1.SetFcmTokenRequest.
+ * Use `create(SetFcmTokenRequestSchema)` to create a new message.
+ */
+export declare const SetFcmTokenRequestSchema: GenMessage<SetFcmTokenRequest>;
+
+/**
+ * @generated from message seekervault.request.v1.SetFcmTokenResponse
+ */
+export declare type SetFcmTokenResponse = Message<"seekervault.request.v1.SetFcmTokenResponse"> & {
+};
+
+/**
+ * Describes the message seekervault.request.v1.SetFcmTokenResponse.
+ * Use `create(SetFcmTokenResponseSchema)` to create a new message.
+ */
+export declare const SetFcmTokenResponseSchema: GenMessage<SetFcmTokenResponse>;
 
 /**
  * @generated from message seekervault.request.v1.RevokeConnectionRequest
@@ -530,8 +659,33 @@ export declare const PairingService: GenService<{
     output: typeof PairResponseSchema;
   },
   /**
+   * GetConnectionCapabilities lets a phone paired before UpdateCapability was added discover the
+   * production update endpoint with its existing phone credential. Every field is scoped to the
+   * authenticated connection, and connection_id must name that connection.
+   *
+   * @generated from rpc seekervault.request.v1.PairingService.GetConnectionCapabilities
+   */
+  getConnectionCapabilities: {
+    methodKind: "unary";
+    input: typeof GetConnectionCapabilitiesRequestSchema;
+    output: typeof GetConnectionCapabilitiesResponseSchema;
+  },
+  /**
+   * SetFcmToken registers or rotates the caller's current FCM direct-send target. Clearing names
+   * the target being removed so a late invalid-token or unregistration result cannot erase a newer
+   * rotation. Neither the target nor the phone credential is returned or logged.
+   *
+   * @generated from rpc seekervault.request.v1.PairingService.SetFcmToken
+   */
+  setFcmToken: {
+    methodKind: "unary";
+    input: typeof SetFcmTokenRequestSchema;
+    output: typeof SetFcmTokenResponseSchema;
+  },
+  /**
    * RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The
-   * token stops working at once, and the connection's PENDING requests become CANCELLED.
+   * credential stops working at once, its FCM target is deleted, and the connection's PENDING
+   * requests become CANCELLED.
    * Requests already approved are still resolved, and agents can still read every request.
    *
    * @generated from rpc seekervault.request.v1.PairingService.RevokeConnection

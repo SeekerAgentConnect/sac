@@ -55,6 +55,7 @@ import {
   unpreparableReason,
   type ActionKind,
 } from "../requests/lifecycle.ts";
+import { recordRequestUpdate } from "./update-store.ts";
 
 /** The shortest and longest lifetime, in seconds, that an agent may ask for. */
 export const MIN_EXPIRES_IN_SECONDS = 60;
@@ -183,6 +184,33 @@ export class RequestStore {
     return row === undefined ? undefined : text(row.connection_id);
   }
 
+  /** Expires due requests durably so an otherwise quiet update stream can publish the change. */
+  expireOverdue(): void {
+    transaction(this.#db, () => this.#expireOverdue(this.#now()));
+  }
+
+  /**
+   * Current forms of Activity records supplied to Sync. Missing and cross-connection references
+   * are omitted here and represented by the frozen snapshot's RequestRemoved entries.
+   */
+  syncCandidates(
+    connectionId: string,
+    requestIds: readonly string[],
+  ): ActionRequest[] {
+    return transaction(this.#db, () => {
+      this.#expireOverdue(this.#now());
+      if (requestIds.length === 0) return [];
+      const marks = requestIds.map(() => "?").join(", ");
+      return this.#db
+        .prepare(
+          `SELECT * FROM requests WHERE connection_id = ? AND request_id IN (${marks})
+           ORDER BY created_at_ms, request_id`,
+        )
+        .all(connectionId, ...requestIds)
+        .map(toRequest);
+    });
+  }
+
   /**
    * The request an idempotency key already stands for, or undefined when the key is free. It
    * applies exactly the rules {@link create} does — a key reused with different parameters fails
@@ -296,8 +324,8 @@ export class RequestStore {
       this.#db
         .prepare(
           `INSERT INTO requests (request_id, connection_id, kind, action, agent_note, state,
-             created_at_ms, expires_at_ms, updated_at_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             created_at_ms, expires_at_ms, updated_at_ms, update_revision)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
         )
         .run(
           requestId,
@@ -315,6 +343,7 @@ export class RequestStore {
           "INSERT INTO idempotency_keys (idempotency_key, fingerprint, request_id, created_at_ms) VALUES (?, ?, ?, ?)",
         )
         .run(request.idempotencyKey, fingerprint, requestId, now);
+      recordRequestUpdate(this.#db, requestId, now);
       return { request: this.#find(requestId), created: true };
     });
   }
@@ -577,6 +606,7 @@ export class RequestStore {
             "UPDATE requests SET outcome = ? WHERE request_id = ? AND state = ?",
           )
           .run(toBinary(OutcomeSchema, outcome), requestId, record.from);
+        recordRequestUpdate(this.#db, requestId, now);
         return this.#find(requestId);
       }
       if (
@@ -703,6 +733,7 @@ export class RequestStore {
           "UPDATE requests SET state = ?, outcome = ?, updated_at_ms = ? WHERE request_id = ?",
         )
         .run(CANCELLED, WALLET_CHANGED_OUTCOME, now, requestId);
+      recordRequestUpdate(this.#db, requestId, now);
       cancelled.push(create(RequestRefSchema, { connectionId, requestId }));
     }
     return cancelled;
@@ -742,11 +773,25 @@ export class RequestStore {
 
   /** Moves every PENDING request whose deadline has passed to EXPIRED. Every operation runs it first. */
   #expireOverdue(now: number): void {
-    this.#db
+    const overdue = this.#db
       .prepare(
-        "UPDATE requests SET state = ?, outcome = ?, updated_at_ms = ? WHERE state = ? AND expires_at_ms <= ?",
+        "SELECT request_id FROM requests WHERE state = ? AND expires_at_ms <= ? ORDER BY request_id",
       )
-      .run(EXPIRED, EXPIRED_OUTCOME, now, PENDING, now);
+      .all(PENDING, now);
+    const expire = this.#db.prepare(
+      "UPDATE requests SET state = ?, outcome = ?, updated_at_ms = ? WHERE request_id = ? AND state = ?",
+    );
+    for (const row of overdue) {
+      const requestId = text(row.request_id);
+      const { changes } = expire.run(
+        EXPIRED,
+        EXPIRED_OUTCOME,
+        now,
+        requestId,
+        PENDING,
+      );
+      if (Number(changes) === 1) recordRequestUpdate(this.#db, requestId, now);
+    }
   }
 
   #move(
@@ -773,6 +818,7 @@ export class RequestStore {
         `request ${requestId} left ${RequestState[from]} inside its own transaction`,
       );
     }
+    recordRequestUpdate(this.#db, requestId, now);
   }
 
   /** The stored request, or NOT_FOUND. With `connectionId`, only that connection's requests count. */

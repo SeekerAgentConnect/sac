@@ -9,13 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -28,6 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.ui.SeekerButton
+import io.github.brrenat.seekervault.ui.SeekerButtonRole
+import io.github.brrenat.seekervault.ui.seekerTextFieldColors
 
 /** Test tags for the screen's controls. */
 object LiveCommandTags {
@@ -67,7 +67,11 @@ fun LiveCommandScreen(
     modifier: Modifier = Modifier,
 ) {
     val disconnected = state.connection is ConnectionState.Disconnected
-    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) { innerPadding ->
         Column(
             modifier =
                 Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
@@ -77,16 +81,17 @@ fun LiveCommandScreen(
                 stringResource(R.string.live_title),
                 style = MaterialTheme.typography.headlineSmall,
             )
-            OutlinedTextField(
+            TextField(
                 value = state.serverUrl,
                 onValueChange = onServerUrlChange,
                 label = { Text(stringResource(R.string.server_url_label)) },
                 enabled = disconnected,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                colors = seekerTextFieldColors(),
                 modifier = Modifier.fillMaxWidth().testTag(LiveCommandTags.SERVER_URL),
             )
-            OutlinedTextField(
+            TextField(
                 value = state.phoneToken,
                 onValueChange = onPhoneTokenChange,
                 label = { Text(stringResource(R.string.phone_token_label)) },
@@ -98,26 +103,25 @@ fun LiveCommandScreen(
                         keyboardType = KeyboardType.Password,
                         autoCorrectEnabled = false,
                     ),
+                colors = seekerTextFieldColors(),
                 modifier = Modifier.fillMaxWidth().testTag(LiveCommandTags.PHONE_TOKEN),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
+                SeekerButton(
+                    text = stringResource(R.string.connect),
                     onClick = onConnect,
                     enabled = disconnected,
                     modifier = Modifier.testTag(LiveCommandTags.CONNECT),
-                ) {
-                    Text(stringResource(R.string.connect))
-                }
-                OutlinedButton(
+                )
+                SeekerButton(
+                    text = stringResource(R.string.disconnect),
                     onClick = onDisconnect,
                     enabled = !disconnected,
+                    role = SeekerButtonRole.Neutral,
                     modifier = Modifier.testTag(LiveCommandTags.DISCONNECT),
-                ) {
-                    Text(stringResource(R.string.disconnect))
-                }
+                )
             }
             ConnectionStatus(state.connection)
-            HorizontalDivider()
             CommandSection(state.command, onOk)
         }
     }
@@ -182,13 +186,12 @@ private fun CommandSection(command: ReceivedCommand?, onOk: () -> Unit) {
         style = MaterialTheme.typography.bodyLarge,
         modifier = Modifier.testTag(LiveCommandTags.COMMAND_TEXT),
     )
-    Button(
+    SeekerButton(
+        text = stringResource(R.string.ok),
         onClick = onOk,
         enabled = command.status == CommandStatus.AwaitingOk,
         modifier = Modifier.testTag(LiveCommandTags.OK),
-    ) {
-        Text(stringResource(R.string.ok))
-    }
+    )
     Text(
         text = commandStatusText(command.status),
         modifier = Modifier.testTag(LiveCommandTags.COMMAND_STATUS),

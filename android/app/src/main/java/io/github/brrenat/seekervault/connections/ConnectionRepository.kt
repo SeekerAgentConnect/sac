@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.connections
 
 import io.github.brrenat.seekervault.activity.ActivityLog
+import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
@@ -17,6 +18,14 @@ import io.github.brrenat.seekervault.request.v1.messageSignature
 import io.github.brrenat.seekervault.request.v1.submitResultRequest
 import io.github.brrenat.seekervault.request.v1.transactionSubmission
 import io.github.brrenat.seekervault.request.v1.unknownOutcome
+import io.github.brrenat.seekervault.sync.ConnectionSyncState
+import io.github.brrenat.seekervault.sync.LocalRequestState
+import io.github.brrenat.seekervault.sync.SyncConnection
+import io.github.brrenat.seekervault.sync.SynchronizationHost
+import io.github.brrenat.seekervault.sync.SynchronizationRepository
+import io.github.brrenat.seekervault.sync.SynchronizeOutcome
+import io.github.brrenat.seekervault.sync.UpdateTransport
+import io.github.brrenat.seekervault.sync.storage.SyncStore
 import io.github.brrenat.seekervault.transactions.transfer
 import java.io.IOException
 import java.security.GeneralSecurityException
@@ -89,8 +98,15 @@ class ConnectionRepository(
     private val deviceName: String,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
-) {
+    syncStore: SyncStore? = null,
+    updateTransport: UpdateTransport? = null,
+    private val onConnectionUnavailable: (String) -> Unit = {},
+) : SynchronizationHost {
     private val lock = Mutex()
+    private val loading = Mutex()
+    private val _loaded = MutableStateFlow(false)
+    /** True only after connection metadata and credentials have been reconciled from disk. */
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
     private val _connections = MutableStateFlow<List<Connection>>(emptyList())
     val connections: StateFlow<List<Connection>> = _connections.asStateFlow()
     private val _inbox = MutableStateFlow(Inbox())
@@ -104,28 +120,72 @@ class ConnectionRepository(
     private val fetching = ConcurrentHashMap<String, Mutex>()
 
     /**
+     * Publishes one private FCM target update to exactly [id]'s URL with exactly [id]'s encrypted
+     * credential. Push registration is best-effort: an unavailable or older sidecar changes none of
+     * the Stage 5.2 update paths. A rejected credential follows the existing revocation path.
+     */
+    suspend fun setFcmToken(id: String, update: FcmTokenUpdate): Boolean {
+        val connection = find(id)?.takeIf { it.usable } ?: return false
+        val credential =
+            withContext(io) { vault.get(id) }
+                ?: run {
+                    forgetCredential(id)
+                    return false
+                }
+        return try {
+            gateway.setFcmToken(connection.serverUrl, credential, id, update)
+            true
+        } catch (e: GatewayException) {
+            if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(id)
+            false
+        }
+    }
+
+    /**
+     * The single application-scoped synchronization component. Tests and legacy-only callers may
+     * omit it; the production application always supplies both dependencies.
+     */
+    val synchronization: SynchronizationRepository? =
+        if (syncStore != null && updateTransport != null) {
+            SynchronizationRepository(syncStore, updateTransport, this, now, io)
+        } else {
+            require(syncStore == null && updateTransport == null) {
+                "sync storage and transport must be supplied together"
+            }
+            null
+        }
+
+    /**
      * Reads the stored connections and answers. It deletes credentials and answers that no
      * connection owns, and answers that settled more than a week ago.
      */
-    suspend fun load() = locked {
-        val ids = store.list().map { it.id }.toSet()
-        vault.ids().filter { it !in ids }.forEach(vault::delete)
-        results.connectionIds().filter { it !in ids }.forEach(results::deleteConnection)
-        val cutoff = now().minus(SETTLED_RETENTION)
-        results
-            .list()
-            .filter { it.delivery != Delivery.Waiting && (it.settledAt ?: it.answeredAt) < cutoff }
-            .forEach { results.delete(it.connectionId, it.requestId) }
-        publish()
-        // The app closed while an action was with the wallet: whatever the wallet did, this phone
-        // never learned it, so the approval is settled as unresolved rather than left open. An
-        // approved transfer the sidecar never accepted is a different thing: the wallet is opened
-        // only after it does, so that one was never asked anything, and it is dropped instead.
-        uncommittedApprovals().forEach { results.delete(it.connectionId, it.requestId) }
-        abandonedSignings(emptySet()).forEach {
-            save(it.copy(signing = SigningOutcome.Unresolved(it.lostDetail(appClosed = true))))
+    suspend fun load() = loading.withLock {
+        if (_loaded.value) return@withLock
+        locked {
+            val ids = store.list().map { it.id }.toSet()
+            vault.ids().filter { it !in ids }.forEach(vault::delete)
+            results.connectionIds().filter { it !in ids }.forEach(results::deleteConnection)
+            val cutoff = now().minus(SETTLED_RETENTION)
+            results
+                .list()
+                .filter {
+                    it.delivery != Delivery.Waiting && (it.settledAt ?: it.answeredAt) < cutoff
+                }
+                .forEach { results.delete(it.connectionId, it.requestId) }
+            publish()
+            // The app closed while an action was with the wallet: whatever the wallet did, this
+            // phone never learned it, so the approval is settled as unresolved rather than left
+            // open. An approved transfer the sidecar never accepted is a different thing: the
+            // wallet is opened only after it does, so that one was never asked anything, and it is
+            // dropped instead.
+            uncommittedApprovals().forEach { results.delete(it.connectionId, it.requestId) }
+            abandonedSignings(emptySet()).forEach {
+                save(it.copy(signing = SigningOutcome.Unresolved(it.lostDetail(appClosed = true))))
+            }
+            publish()
         }
-        publish()
+        synchronization?.load()
+        _loaded.value = true
     }
 
     /**
@@ -235,7 +295,29 @@ class ConnectionRepository(
      * fetch per connection runs at a time.
      */
     suspend fun refresh(id: String) =
-        fetching.computeIfAbsent(id) { Mutex() }.withLock { fetch(id) }
+        fetching
+            .computeIfAbsent(id) { Mutex() }
+            .withLock {
+                when (val outcome = synchronization?.synchronize(id)) {
+                    null,
+                    is SynchronizeOutcome.Legacy -> fetch(id)
+                    is SynchronizeOutcome.Updated,
+                    is SynchronizeOutcome.Failed,
+                    SynchronizeOutcome.Removed -> Unit
+                }
+            }
+
+    /** Headless entry point for the later background caller; no Activity or ViewModel is needed. */
+    suspend fun synchronizeAll(): Map<String, SynchronizeOutcome> {
+        load()
+        return synchronization?.synchronizeAll().orEmpty()
+    }
+
+    /** Recovery entry point that leaves connections with healthy foreground streams alone. */
+    suspend fun synchronizeConnections(ids: Set<String>): Map<String, SynchronizeOutcome> {
+        load()
+        return synchronization?.synchronizeConnections(ids).orEmpty()
+    }
 
     private suspend fun fetch(id: String) {
         val connection = find(id) ?: return
@@ -568,10 +650,16 @@ class ConnectionRepository(
             val current = stillStored(stored) ?: return@locked null
             // Only the phone's copy of the request changes. The owner's answer, the wallet's
             // outcome, and how it was delivered are what happened here, and they stand.
-            current.copy(request = checked).also {
-                save(it)
-                publish()
-            }
+            current
+                .copy(
+                    request =
+                        checked.takeIf { canAdvanceServerState(current.request, it) }
+                            ?: current.request
+                )
+                .also {
+                    save(it)
+                    publish()
+                }
         }
     }
 
@@ -740,25 +828,33 @@ class ConnectionRepository(
      * Removes the connection from this phone only: its credential first, then its answers, the
      * rules the owner wrote for it, and its metadata.
      */
-    suspend fun remove(id: String) = locked {
-        vault.delete(id)
-        results.deleteConnection(id)
-        rules?.delete(id)
-        store.delete(id)
-        _inbox.update { it.copy(pending = it.pending - id) }
-        publish()
+    suspend fun remove(id: String) {
+        synchronization?.remove(id)
+        locked {
+            vault.delete(id)
+            results.deleteConnection(id)
+            rules?.delete(id)
+            store.delete(id)
+            _inbox.update { it.copy(pending = it.pending - id) }
+            publish()
+        }
+        onConnectionUnavailable(id)
     }
 
     // The sidecar no longer accepts the credential: nothing waiting for it can be sent any more.
-    private suspend fun markRevoked(id: String) = locked {
-        vault.delete(id)
-        store.get(id)?.let { store.put(it.copy(revokedAt = now(), lastCheck = null)) }
-        results
-            .listFor(id)
-            .filter { it.delivery == Delivery.Waiting }
-            .forEach { save(it.copy(delivery = Delivery.Undeliverable, settledAt = now())) }
-        _inbox.update { it.copy(pending = it.pending - id) }
-        publish()
+    private suspend fun markRevoked(id: String, removeSync: Boolean = true) {
+        if (removeSync) synchronization?.remove(id)
+        locked {
+            vault.delete(id)
+            store.get(id)?.let { store.put(it.copy(revokedAt = now(), lastCheck = null)) }
+            results
+                .listFor(id)
+                .filter { it.delivery == Delivery.Waiting }
+                .forEach { save(it.copy(delivery = Delivery.Undeliverable, settledAt = now())) }
+            _inbox.update { it.copy(pending = it.pending - id) }
+            publish()
+        }
+        onConnectionUnavailable(id)
     }
 
     // A credential that can't be decrypted is useless; drop it so the screen says to pair again.
@@ -778,7 +874,11 @@ class ConnectionRepository(
         val settled =
             current.copy(
                 delivery = delivery,
-                request = request,
+                // A sync event may have advanced the same result while this response was in
+                // flight. Delivery is still settled, but stale server state cannot roll it back.
+                request =
+                    request.takeIf { canAdvanceServerState(current.request, it) }
+                        ?: current.request,
                 lastFailure = null,
                 settledAt = now(),
             )
@@ -846,6 +946,102 @@ class ConnectionRepository(
         _inbox.update { it.copy(results = results.list()) }
     }
 
+    // SynchronizationHost exposes only reads, retries of already-stored answers, and monotonic
+    // reconciliation. In particular, it has no preparation, policy, or wallet operation.
+    override suspend fun connectionIds(): Set<String> = locked {
+        store.list().map { it.id }.toSet()
+    }
+
+    override suspend fun access(connectionId: String): SyncConnection? {
+        val connection = find(connectionId)?.takeIf { it.usable } ?: return null
+        val credential = withContext(io) { vault.get(connectionId) } ?: return null
+        return SyncConnection(connection.serverUrl, credential)
+    }
+
+    override suspend fun retryRecordedResults(connectionId: String) {
+        val waiting = locked {
+            results.listFor(connectionId).filter { it.delivery == Delivery.Waiting }.map { it.key }
+        }
+        for (key in waiting) {
+            if (deliver(key, waitForTheOneInFlight = false)?.delivery == Delivery.Waiting) break
+        }
+    }
+
+    override suspend fun nonterminalActivity(connectionId: String): List<LocalRequestState> {
+        val local = locked { results.listFor(connectionId).associateBy { it.requestId } }
+        val log = history
+        if (log != null && !log.loaded.value) withContext(io) { log.load() }
+        val fromActivity =
+            log?.records
+                ?.value
+                .orEmpty()
+                .filter { it.connectionId == connectionId }
+                .mapNotNull { record ->
+                    val state =
+                        local[record.requestId]?.request?.state
+                            ?: when (record.outcome) {
+                                ActivityOutcome.Waiting -> RequestState.REQUEST_STATE_UNSPECIFIED
+                                ActivityOutcome.Sent -> RequestState.REQUEST_STATE_SUBMITTED
+                                ActivityOutcome.Unknown -> RequestState.REQUEST_STATE_UNKNOWN
+                                else -> null
+                            }
+                    state?.let { LocalRequestState(record.key, it) }
+                }
+        val fromResults =
+            local.values
+                .filter { it.request.state !in SETTLED_REQUEST_STATES }
+                .map { LocalRequestState(it.key, it.request.state) }
+        return (fromActivity + fromResults).distinctBy { it.key }
+    }
+
+    override suspend fun authoritativeRequests(connectionId: String): Map<String, ActionRequest> =
+        locked {
+            results.listFor(connectionId).associate { it.requestId to it.request }
+        }
+
+    override suspend fun applyCache(state: ConnectionSyncState) = locked {
+        // A result holds the owner's decision, wallet outcome, and reviewed bytes. Sync may advance
+        // only its copy of server state and then records that through the existing Activity path.
+        state.requests.values
+            .mapNotNull { it.request }
+            .forEach { observed ->
+                results.get(state.connectionId, observed.ref.requestId)?.let { result ->
+                    if (canAdvanceServerState(result.request, observed)) {
+                        save(result.copy(request = observed))
+                    }
+                }
+                history?.reconcile(observed)
+            }
+        val settled =
+            results
+                .listFor(state.connectionId)
+                .filter { it.delivery != Delivery.Waiting }
+                .map { it.requestId }
+                .toSet()
+        val visiblePending = state.pending.filterNot { request -> request.ref.requestId in settled }
+        _inbox.update {
+            it.copy(pending = it.pending + (state.connectionId to visiblePending))
+        }
+        state.lastSuccessfulSync?.let { at ->
+            store.get(state.connectionId)?.let { connection ->
+                store.put(
+                    connection.copy(
+                        lastCheck = Connection.Check(at, CheckOutcome.Ok, visiblePending.size)
+                    )
+                )
+            }
+        }
+        publish()
+    }
+
+    override suspend fun recordFailure(connectionId: String, failure: CheckOutcome) {
+        update(connectionId) { it.copy(lastCheck = Connection.Check(now(), failure)) }
+    }
+
+    override suspend fun revoke(connectionId: String) {
+        markRevoked(connectionId, removeSync = false)
+    }
+
     private companion object {
         /** At most this many pages of 100 PENDING requests are read per connection. */
         const val MAX_PAGES = 10
@@ -864,6 +1060,41 @@ class ConnectionRepository(
         const val WALLET_LOST_SENDING =
             "The wallet's answer never reached this phone, so it never learned whether the " +
                 "transaction was sent."
+
+        val SETTLED_REQUEST_STATES =
+            setOf(
+                RequestState.REQUEST_STATE_CONFIRMED,
+                RequestState.REQUEST_STATE_COMPLETED,
+                RequestState.REQUEST_STATE_REJECTED,
+                RequestState.REQUEST_STATE_CANCELLED,
+                RequestState.REQUEST_STATE_EXPIRED,
+                RequestState.REQUEST_STATE_FAILED,
+            )
+
+        fun canAdvanceServerState(before: ActionRequest, after: ActionRequest): Boolean {
+            if (
+                before.ref != after.ref ||
+                    before.action != after.action ||
+                    before.agentNote != after.agentNote ||
+                    before.createdAt != after.createdAt ||
+                    before.expiresAt != after.expiresAt
+            ) {
+                return false
+            }
+            if (before.state == after.state) return true
+            if (before.state in SETTLED_REQUEST_STATES) return false
+            return requestStateRank(after.state) >= requestStateRank(before.state)
+        }
+
+        fun requestStateRank(state: RequestState): Int =
+            when (state) {
+                RequestState.REQUEST_STATE_UNSPECIFIED -> -1
+                RequestState.REQUEST_STATE_PENDING -> 0
+                RequestState.REQUEST_STATE_PROCESSING -> 1
+                RequestState.REQUEST_STATE_SUBMITTED,
+                RequestState.REQUEST_STATE_UNKNOWN -> 2
+                else -> 3
+            }
 
         /**
          * Whether a failed approval is an answer about the approval itself. A refusal, and a call

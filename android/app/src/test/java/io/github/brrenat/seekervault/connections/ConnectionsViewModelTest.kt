@@ -4,9 +4,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.sync.ForegroundConnectionState
+import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -65,6 +68,20 @@ class ConnectionsViewModelTest {
         viewModel.onAppHidden()
         viewModel.onAppVisible()
         assertEquals(1, viewModel.state.value.connections.single().lastCheck?.pending)
+    }
+
+    @Test
+    fun publishesApplicationScopedLivenessWithoutScreenRefresh() {
+        val updates = MutableStateFlow(ForegroundUpdatesState())
+        val viewModel = ConnectionsViewModel(repository, updates) { it == "127.0.0.1" }
+
+        updates.value =
+            ForegroundUpdatesState(
+                foreground = true,
+                connections = mapOf("connection" to ForegroundConnectionState.Live),
+            )
+
+        assertEquals(updates.value, viewModel.state.value.updates)
     }
 
     @Test

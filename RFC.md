@@ -1,7 +1,10 @@
-# seeker-vault — MVP Implementation Plan
+# Seeker Agent Connect — MVP Implementation Plan
 
-**Working name:** `seeker-vault`  
-**Revision:** September 11, 2026. Stage 1 is now a wallet-free hello world, and the stages follow the implementation backlog.  
+**Product name:** Seeker Agent Connect
+
+**Compatibility identifiers:** existing `seeker-vault`/`seekervault` package, protocol, URI, and storage identifiers remain unchanged
+**Revision:** September 14, 2026. Stage 5.3 includes optional Firebase invalidation, notification permission, read-only current-request routing, joined acceptance, and a physical Seeker runbook; Stage 5.2 remains the complete Firebase-off path and no wallet action becomes automatic.
+
 **Purpose:** a master plan to be broken down into implementation tasks.
 
 > Agents propose actions. The user reviews them on Seeker and approves them through the wallet.
@@ -12,9 +15,9 @@ An Android app for Seeker that serves as a control center for requests from exte
 
 We provide the app and self-hosted server software. The user deploys the server alongside their agent or on a separate gateway. No cloud service or account with us is required; the user's own infrastructure, Solana RPC, and external APIs remain part of the system.
 
-**Included in the first version:** connections, a request queue, manual approval, transfers, Jupiter swaps, a policy builder, activity history, Docker packaging, and a test agent.
+**Included in the first version:** connections, a request queue, manual approval, transfers, Jupiter swaps, a policy builder, activity history, authenticated foreground updates, eventual WorkManager synchronization, optional FCM wake-up and request notifications, Docker packaging, and a test agent.
 
-**Outside the first version:** a separate agent key, automatic signing, a separate biometric authentication flow in our app, a mandatory foreground service, a persistent bidirectional stream, push notifications, and SKR staking.
+**Outside the first version:** a separate agent key, automatic signing, a separate biometric authentication flow in our app, a mandatory foreground service, an always-on/background stream, and SKR staking. Stage 5.2's bidirectional stream exists only while the app is foreground; background observation is a constrained periodic unary sync and has no exact-delivery promise. Stage 5.3 may add optional best-effort FCM invalidations and notifications, while the stream, unary Sync, and periodic worker remain authoritative when Firebase is absent, delayed, dropped, or unavailable.
 
 **First milestone:** before any wallet work, Stage 1 proves the transport end to end with display-only text. A real agent sends a message over MCP, and the Seeker displays it while the app is open. The user taps OK, and the agent receives the acknowledgement. Stage 1 uses no wallet, keys, queue, persistence, policies, QR pairing, OAuth, Docker deployment, or background service.
 
@@ -33,7 +36,7 @@ docs/          Architecture, protocol, policies, setup, and integrations
 
 **Sidecar:** TypeScript, Node.js, `@connectrpc/connect-node`, `@modelcontextprotocol/sdk`, a Solana SDK, Jupiter API, and a persistent local queue. The sidecar does not store wallet private keys or sign transactions.
 
-**Communication:** the agent uses MCP; the phone uses a separate Connect API. The MVP uses unary RPCs and fetches pending requests when the app opens or the user refreshes the screen. Stage 1 adds one diagnostic exception: a server stream that exists only while the live-test screen is in the foreground. It isn't a persistent session, and the durable request workflow from Stage 2 onward doesn't depend on it.
+**Communication:** the agent uses MCP; the phone uses a separate authenticated API. Stage 2 begins with unary Connect RPCs. Stage 5.2 adds a production bidirectional gRPC stream over HTTP/2 while the app process is foreground and a unary gRPC Sync shared by recovery, Refresh, and WorkManager. The phone retains one connected-network-constrained periodic job with Android's 15-minute minimum interval while it has usable connections; WorkManager may defer it and Force stop suppresses it until the owner reopens the app. Stage 5.3 adds optional FCM only as a wake-up/invalidation hint: the app still fetches authoritative state from its paired sidecar, and a notification tap never approves or signs. SAW-054 configures the optional client and sender, SAW-055 binds one rotating Firebase target to each authenticated paired connection, and SAW-056 sends a fixed two-field invalidation after committed request events. Android accepts only that payload and schedules the existing bounded authenticated Sync path with empty WorkManager input. Delivery is best-effort and collapsible; Firebase never becomes authority. All transports observe the same durable request store and stay scoped per phone connection. Stage 1's diagnostic server stream remains separate, screen-scoped, and unnecessary to the durable workflow.
 
 ## 3. Core Workflow
 
@@ -74,6 +77,7 @@ Pairing uses a QR code containing the server address and a one-time token, and r
 | `WatchCommands` / `AcknowledgeCommand` | Stage 1 diagnostic: stream display-only commands to the open live-test screen and return the user's OK (see `docs/protocol.md`) |
 | `LiveCommand` / `CommandAcknowledgement` | Stage 1 display-only text with an ID and a deadline, and the user's OK |
 | `Pair` / `RevokeConnection` | Pair the phone with the server; end that connection |
+| `GetConnectionCapabilities` / `UpdateCapability` | Discover the versioned HTTP/2 gRPC origin for new and already-saved pairings; old sidecars are explicitly upgrade-required |
 | `ListPending` / `GetRequest` | Retrieve the queue or an individual request |
 | `PrepareRequest` | Prepare a transaction for the current review |
 | `SubmitResult` | Submit the user's decision, a message signature, or the transaction submission result |
@@ -81,6 +85,8 @@ Pairing uses a QR code containing the server address and a one-time token, and r
 | `RequestState` | The execution state, from PENDING to CONFIRMED, COMPLETED, REJECTED, CANCELLED, EXPIRED, FAILED, or UNKNOWN |
 | `PreparedTransaction` | A specific version of an unsigned transaction and its validity parameters |
 | `PolicyEvaluation` | A local assessment and warning reasons; not an execution state |
+| `UpdateService.Subscribe` | One authenticated foreground bidirectional stream per usable connection: subscribe/resume, bounded heartbeats, request changes/removals, revocation, and full-sync signals |
+| `UpdateService.Sync` | A frozen paginated snapshot of pending and known nonterminal Activity requests, with bounded read-only confirmation |
 
 SAW-009 defined the Stage 2 contract: the fields, the lifecycle, idempotency, and the errors are in `docs/protocol.md`. Approval is bound to a specific transaction version, not just the request ID.
 
@@ -124,6 +130,8 @@ This table was revised on September 11, 2026:
 - Stage 1 is now a wallet-free hello world.
 - The earlier end-to-end stage is split into persistent requests (Stage 2) and wallet message signing (Stage 3).
 - Policies are now a stage of their own (Stage 5).
+- Stage 5.2 adds foreground updates and eventual WorkManager sync and is complete in automated cross-component verification. Its periodic worker does not provide immediate background wake-up, and physical Seeker timing remains explicitly device-verified rather than inferred from an emulator.
+- Stage 5.3 is [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73). SAW-054 opens optional Firebase project/credential plumbing, SAW-055 adds authenticated connection-scoped registration/rotation, SAW-056 adds minimal invalidations, SAW-057 bounds the service handoff and coalesces push/worker/stream synchronization, SAW-058 adds notification permission plus read-only current-request routing, and SAW-059 closes joined automated acceptance plus the revision-tagged physical Seeker runbook. Stage 5.2 remains the complete Firebase-off fallback; no simulated Firebase boundary or Android JVM test is reported as physical delivery.
 - Reliability work is built into every stage, with a final regression pass in Stage 8.
 
 | Stage | Scope | Outcome |
@@ -133,6 +141,8 @@ This table was revised on September 11, 2026:
 | **3. Wallet connection and message signing** | MWA integration bound to a wallet and network; async message signing; wallet lifecycle and reliable result delivery | The agent receives the result of an actual manual signature on Seeker |
 | **4. Transfers** | Fresh transaction preparation; independent on-phone parsing; MWA sign-and-send; on-chain confirmation and recovery of uncertain outcomes; activity history | A transfer completes the full workflow, and its outcome is confirmed on chain |
 | **5. Policies** | Policy model and evaluation semantics; global defaults and connection overrides; connection-wide and global daily counters; the Policy Builder; policy results in request review | A transfer shows an `ALLOWED` or `UNDER_RESTRICTIONS` assessment with its reasons and rule sources |
+| **5.2 Live and background updates** | Versioned update protocol; full-duplex gRPC/HTTP/2; cursor replay and frozen reconciliation; shared Android state; foreground lifecycle; unique network-constrained WorkManager sync; cross-component acceptance and Seeker runbook | Open screens update without Refresh, missed changes converge after disconnect/restart, and delayed background results survive process death without opening a wallet. Background work is eventual, not an immediate wake-up. |
+| **5.3 Optional FCM wake-up and notifications** | Optional Android Firebase configuration and sidecar Admin sender; authenticated per-connection token lifecycle; minimal invalidations; bounded message-to-Sync handling; notification permission/channels; current-request routing; cross-component and physical-device acceptance | A push can wake reconciliation and present an honest request notification without carrying request contents or causing a wallet action. Missing Firebase or a missing/delayed push loses no durable request and leaves every Stage 5.2 path working. |
 | **6. Jupiter** | `/build`; swap parameter checks; output amount and slippage display; refreshing expired transactions | Swaps use the same review and approval workflow |
 | **7. Packaging and integrations** | Docker Compose; a TLS gateway; an OAuth gateway for hosted MCP clients; the test-agent CLI; real Hermes integration; a self-hosting guide | The project can be deployed and connected by following the instructions |
 | **8. Release and submission** | Cross-component reliability and security regression checks; a signed release APK; verified guides; the demo and presentation | Retries don't cause duplicate execution; uncertain outcomes are clearly reported; the release can be installed and reproduced |
@@ -155,14 +165,16 @@ The test agent uses the same MCP interface and can request a wallet address, mes
 
 ## Technical References
 
-Official documentation checked on September 10, 2026:
+Official documentation checked through September 13, 2026:
 
 - [Solana Mobile: Android MWA][mwa]
 - [Solana: Transaction Confirmation & Expiration][confirmation]
 - [Jupiter: Build][jupiter]
 - [MCP: Authorization, specification 2025-11-25][mcp-auth]
+- [Connect Node server plugins and HTTP/2][connect-node]
 
 [mwa]: https://docs.solanamobile.com/android-native/using_mobile_wallet_adapter
 [confirmation]: https://solana.com/developers/cookbook/transactions/confirmation
 [jupiter]: https://developers.jup.ag/docs/swap/build
 [mcp-auth]: https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization
+[connect-node]: https://connectrpc.com/docs/node/server-plugins/

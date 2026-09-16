@@ -19,6 +19,7 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | Buf CLI (`@bufbuild/buf`) | 1.72.0 | `package.json` |
 | MCP TypeScript SDK (`@modelcontextprotocol/sdk`), used by the sidecar and the test agent | 1.30.0 | `catalog` in `pnpm-workspace.yaml` |
 | Connect for Node (`@connectrpc/connect`, `@connectrpc/connect-node`) | 2.2.0 | `sidecar/package.json` |
+| Firebase Admin SDK for the optional FCM sender | 14.4.0 | `sidecar/package.json` |
 | uqr, which draws the pairing QR code in the terminal (no dependencies) | 0.1.3 | `sidecar/package.json` |
 | zod, for the MCP tool schemas and the SDK's peer | 4.6.1 | `catalog` in `pnpm-workspace.yaml` |
 | protoc-gen-es (generator), @bufbuild/protobuf (runtime) | 2.14.1 | `catalog` in `pnpm-workspace.yaml`; generator and runtime move together |
@@ -27,7 +28,11 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 
 **The sidecar has no build step in development.** Node runs its `.ts` files directly through type stripping, so `sidecar/tsconfig.json` sets `erasableSyntaxOnly`: no enums, namespaces, or parameter properties.
 
-**`@bufbuild/buf` has its install script denied** (`allowBuilds` in `pnpm-workspace.yaml`). The script only locates the platform binary, which pnpm already installs as an optional dependency.
+**Unneeded dependency install scripts are denied** through `allowBuilds` in `pnpm-workspace.yaml`.
+`@bufbuild/buf` only locates the platform binary pnpm already installs. `protobufjs` only checks
+dependency version syntax. `@firebase/util`'s script can read `FIREBASE_WEBAPP_CONFIG`, contact a
+Firebase endpoint, and write web-app defaults; the sidecar uses runtime Admin SDK credentials
+instead, so installation remains deterministic and credential-independent.
 
 ### Android side
 
@@ -46,6 +51,9 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | Mobile Wallet Adapter client (`mobile-wallet-adapter-clientlib-ktx`), which the app drives the owner's wallet with (SAW-015). It brings `mobile-wallet-adapter-clientlib` and `mobile-wallet-adapter-common` at the same version. | 2.2.0 | `android/gradle/libs.versions.toml` |
 | OkHttp `mockwebserver3` and `okhttp-tls`, test-only, on the OkHttp version that Connect-Kotlin brings | 5.4.0 | `android/gradle/libs.versions.toml` |
 | AndroidX Lifecycle (`lifecycle-viewmodel-compose`, `lifecycle-runtime-compose`) | 2.11.0 | `android/gradle/libs.versions.toml` |
+| AndroidX WorkManager (`work-runtime-ktx`, plus `work-testing` for JVM tests) | 2.11.2 | `android/gradle/libs.versions.toml` |
+| Firebase Android BoM; Cloud Messaging comes from its main `firebase-messaging` module | 34.19.0 | `android/gradle/libs.versions.toml` |
+| Google Services Gradle plugin, applied only when `android/app/google-services.json` exists | 4.5.0 | `android/gradle/libs.versions.toml` |
 | JUnit | 4.13.2 | `android/gradle/libs.versions.toml` |
 | Robolectric, running the tests on SDK 36 | 4.16.1 | `android/gradle/libs.versions.toml`, `android/app/src/test/resources/robolectric.properties` |
 | AndroidX Test (`core`, `ext:junit`, `runner`) | 1.7.0, 1.3.0, 1.7.0 | `android/gradle/libs.versions.toml` |
@@ -58,7 +66,7 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | Android SDK Platform-Tools, Command-line Tools | 37.0.1, 23.0.0 | Not pinned; any recent version works |
 | Android Studio | Quail 4 (2026.1.4) or newer, which supports AGP up to 9.4 | Not pinned; not run during verification (see below) |
 
-**Application ID and namespace: `io.github.brrenat.seekervault`.** Treat it as fixed: changing it would make the next build a different app on the device.
+**Display name: Seeker Agent Connect. Application ID and namespace: `io.github.brrenat.seekervault`.** The identifier remains fixed across the branding change: changing it would make the next build a different app on the device and would not preserve the existing installation's data.
 
 **Backups are disabled.** The manifest turns off backups and `res/xml/data_extraction_rules.xml` excludes all app data from cloud backup and device transfer, because the app stores connection credentials (SAW-012); see [`docs/security.md`](../security.md#local-storage-and-recovery).
 
@@ -75,6 +83,10 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 - **The TypeScript output is JavaScript plus type declarations.** Node's type stripping can't run the TypeScript `enum`s that `target=ts` produces. `sidecar/tsconfig.build.json` sets `allowJs`, so `pnpm build` also copies that JavaScript to `dist/`.
 - **Generation needs network access.** `pnpm generate` and `pnpm check:generated` call the Kotlin plugins, which run remotely on the Buf Schema Registry.
 - **Android compiles the generated code in place.** `android/app/build.gradle.kts` adds the generated directories to the `main` source set and adds `proto/fixtures` to the unit-test resources.
+
+### Bidirectional gRPC support (SAW-048)
+
+The existing pins already support the production update protocol, so SAW-048 adds no dependency. Connect-Kotlin 0.9.0 generates a `BidirectionalStreamInterface` for `UpdateService.Subscribe`; its OkHttp transport 5.4.0 speaks explicit HTTP/2 prior knowledge on the loopback h2c development endpoint, and Connect Node 2.2.0 serves the generated descriptor through its Node HTTP/2 adapter. `GrpcBidiInteropTest` exercises that exact combination, rather than a fake stream or an in-memory handler. The production-listener tests separately exercise TLS/ALPN HTTP/2. See [`docs/testing/stage-5-2.md`](../testing/stage-5-2.md).
 
 ## MacBook setup
 

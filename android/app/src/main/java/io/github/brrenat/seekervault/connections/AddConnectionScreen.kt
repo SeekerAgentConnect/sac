@@ -11,25 +11,23 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +45,11 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.ui.SeekerButton
+import io.github.brrenat.seekervault.ui.SeekerButtonRole
+import io.github.brrenat.seekervault.ui.SeekerCard
+import io.github.brrenat.seekervault.ui.seekerListItemColors
+import io.github.brrenat.seekervault.ui.seekerTextFieldColors
 
 /** Where the camera stands on the Add connection screen. */
 enum class CameraAccess {
@@ -68,6 +71,7 @@ fun AddConnectionRoute(
     viewModel: ConnectionsViewModel,
     onBack: () -> Unit,
     onPaired: (Connection) -> Unit,
+    modifier: Modifier = Modifier,
     scanner: @Composable (onText: (String) -> Unit, onUnavailable: () -> Unit) -> Unit =
         { onText, onUnavailable ->
             QrScanner(onText, onUnavailable, Modifier.fillMaxWidth().aspectRatio(1f))
@@ -123,6 +127,7 @@ fun AddConnectionRoute(
         onCancel = viewModel::resetPairing,
         onBack = onBack,
         scanner = { scanner(viewModel::onCode) { camera = CameraAccess.Unavailable } },
+        modifier = modifier,
     )
 }
 
@@ -146,10 +151,17 @@ fun AddConnectionScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.add_title)) },
                 navigationIcon = { BackButton(onBack) },
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                    ),
             )
         },
     ) { innerPadding ->
@@ -201,12 +213,12 @@ private fun EnterCode(
         CameraAccess.Scanning -> {
             scanner()
             Text(stringResource(R.string.scan_hint))
-            OutlinedButton(
+            SeekerButton(
+                text = stringResource(R.string.stop_scanning),
                 onClick = onStopScanning,
+                role = SeekerButtonRole.Neutral,
                 modifier = Modifier.testTag(ConnectionsTags.STOP_SCAN),
-            ) {
-                Text(stringResource(R.string.stop_scanning))
-            }
+            )
         }
         CameraAccess.Denied -> {
             Text(
@@ -214,18 +226,18 @@ private fun EnterCode(
                 modifier = Modifier.testTag(ConnectionsTags.CAMERA_DENIED),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
+                SeekerButton(
+                    text = stringResource(R.string.scan_qr),
                     onClick = onScan,
+                    role = SeekerButtonRole.Neutral,
                     modifier = Modifier.testTag(ConnectionsTags.SCAN),
-                ) {
-                    Text(stringResource(R.string.scan_qr))
-                }
-                TextButton(
+                )
+                SeekerButton(
+                    text = stringResource(R.string.open_settings),
                     onClick = onOpenSettings,
+                    role = SeekerButtonRole.Neutral,
                     modifier = Modifier.testTag(ConnectionsTags.OPEN_SETTINGS),
-                ) {
-                    Text(stringResource(R.string.open_settings))
-                }
+                )
             }
         }
         CameraAccess.Unavailable ->
@@ -234,9 +246,11 @@ private fun EnterCode(
                 modifier = Modifier.testTag(ConnectionsTags.NO_CAMERA),
             )
         CameraAccess.Idle ->
-            Button(onClick = onScan, modifier = Modifier.testTag(ConnectionsTags.SCAN)) {
-                Text(stringResource(R.string.scan_qr))
-            }
+            SeekerButton(
+                text = stringResource(R.string.scan_qr),
+                onClick = onScan,
+                modifier = Modifier.testTag(ConnectionsTags.SCAN),
+            )
     }
     if (problem != null) {
         Text(
@@ -245,8 +259,8 @@ private fun EnterCode(
             modifier = Modifier.testTag(ConnectionsTags.CODE_PROBLEM),
         )
     }
-    HorizontalDivider()
-    OutlinedTextField(
+    Spacer(Modifier.height(12.dp))
+    TextField(
         value = codeDraft,
         onValueChange = onCodeDraftChange,
         label = { Text(stringResource(R.string.code_label)) },
@@ -255,15 +269,15 @@ private fun EnterCode(
         minLines = 2,
         keyboardOptions =
             KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
+        colors = seekerTextFieldColors(),
         modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.CODE_FIELD),
     )
-    Button(
+    SeekerButton(
+        text = stringResource(R.string.continue_pairing),
         onClick = { onCode(codeDraft) },
         enabled = codeDraft.isNotBlank(),
         modifier = Modifier.testTag(ConnectionsTags.CONTINUE),
-    ) {
-        Text(stringResource(R.string.continue_pairing))
-    }
+    )
 }
 
 @Composable
@@ -278,15 +292,17 @@ private fun ConfirmServer(
     Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.titleLarge)
     // What the phone will contact, so a code can't pair with another host unnoticed. The token
     // itself is never shown.
-    OutlinedCard(Modifier.fillMaxWidth()) {
+    SeekerCard(Modifier.fillMaxWidth()) {
         ListItem(
             overlineContent = { Text(stringResource(R.string.field_server)) },
             headlineContent = { Text(code.serverUrl) },
             modifier = Modifier.testTag(ConnectionsTags.CONFIRM_SERVER),
+            colors = seekerListItemColors(),
         )
         ListItem(
             overlineContent = { Text(stringResource(R.string.field_server_id)) },
             headlineContent = { Text(code.serverId) },
+            colors = seekerListItemColors(),
         )
     }
     if (code.serverUrl.startsWith("http://")) {
@@ -315,28 +331,26 @@ private fun ConfirmServer(
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         val retry = failure == PairingFailure.Unreachable || failure == PairingFailure.Other
         if (failure == null || retry) {
-            Button(
-                onClick = onConfirm,
-                enabled = !pairing,
-                modifier = Modifier.testTag(ConnectionsTags.PAIR),
-            ) {
-                Text(
+            SeekerButton(
+                text =
                     stringResource(
                         when {
                             pairing -> R.string.pairing_in_progress
                             retry -> R.string.try_again
                             else -> R.string.pair
                         }
-                    )
-                )
-            }
+                    ),
+                onClick = onConfirm,
+                enabled = !pairing,
+                modifier = Modifier.testTag(ConnectionsTags.PAIR),
+            )
         }
-        OutlinedButton(
+        SeekerButton(
+            text = stringResource(R.string.cancel),
             onClick = onCancel,
             enabled = !pairing,
+            role = SeekerButtonRole.Neutral,
             modifier = Modifier.testTag(ConnectionsTags.CANCEL_PAIRING),
-        ) {
-            Text(stringResource(R.string.cancel))
-        }
+        )
     }
 }

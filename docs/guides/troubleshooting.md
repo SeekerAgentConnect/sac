@@ -67,7 +67,7 @@ Platform-Tools aren't on your `PATH`. Add the `ANDROID_HOME` and `PATH` lines fr
 
 ### `INSTALL_FAILED_UPDATE_INCOMPATIBLE`
 
-A copy of Seeker Vault signed with a different debug key is already installed, for example one built on another Mac. Each Mac signs debug builds with its own key, in `~/.android/debug.keystore`. Remove the old copy, then install again:
+A copy of Seeker Agent Connect signed with a different debug key is already installed, for example one built on another Mac. Each Mac signs debug builds with its own key, in `~/.android/debug.keystore`. Remove the old copy, then install again:
 
 ```bash
 adb uninstall io.github.brrenat.seekervault
@@ -205,9 +205,74 @@ OFFLINE: no phone is watching; open the live-test screen and connect
 [ELIFECYCLE] Command failed with exit code 4.
 ```
 
-No phone is connected. Open Seeker Vault and tap **Connect**, and check that the status reads "Connected". Every exit code is listed in [`test-agent/README.md`](../../test-agent/README.md).
+No phone is connected. Open Seeker Agent Connect and tap **Connect**, and check that the status reads "Connected". Every exit code is listed in [`test-agent/README.md`](../../test-agent/README.md).
 
-## Messages in the app
+## Live and background updates
+
+Production updates need both advertised endpoints. In the loopback development setup, port 8080 carries pairing, MCP, health, and the old Connect calls, while port 8081 carries gRPC over cleartext HTTP/2. Check both reverse mappings after every cable or adb restart:
+
+```bash
+adb reverse --list
+adb reverse tcp:8080 tcp:8080
+adb reverse tcp:8081 tcp:8081
+```
+
+The sidecar startup log must advertise production updates on `http://127.0.0.1:8081`; otherwise set `SIDECAR_UPDATE_PORT=8081` and restart it. A remote deployment must instead advertise an HTTPS origin whose listener or proxy preserves gRPC HTTP/2 and whose certificate is publicly trusted for that host. An HTTP/1-only proxy is not a polling fallback: the app reports the update connection failure and keeps manual Refresh available.
+
+Use `adb shell dumpsys jobscheduler io.github.brrenat.seekervault` to inspect the persisted job, `adb shell dumpsys deviceidle` to inspect Doze, and `adb logcat` filtered to the package when diagnosing a missed run. The full commands, expected connection states, two-sidecar procedure, and TLS checks are in the [MacBook-to-Seeker runbook](live-background-updates.md).
+
+### Background updates are late or stopped
+
+The background interval is configured to Android's 15-minute minimum, but it is not a delivery deadline. WorkManager waits for a connected network, and Doze, battery optimization, app standby, or the phone vendor's battery policy may defer an eligible run. Open the app for an immediate foreground reconciliation, or tap **Refresh**.
+
+If you used Android Settings → Apps → Seeker Agent Connect → **Force stop**, scheduled work cannot resume by itself. Reopen Seeker Agent Connect once. The app restores the existing unique schedule when it loads a usable connection; it does not create a tight catch-up loop. Removing or revoking the last usable connection cancels the schedule.
+
+Background work opens no wallet. A pending request still waits for your manual review, and an already-submitted transfer may only have its existing status reconciled. Stage 5.2 has no immediate background-delivery guarantee. SAW-056 can send an optional content-free Firebase hint and SAW-057 gives it a bounded, deduplicated authoritative Sync handoff, but FCM acceptance is not device delivery: Doze, throttling, expiry, collapse, outages, or Force stop can delay or prevent it. A healthy foreground stream takes precedence; otherwise push and periodic workers share the same per-connection coordinator. SAW-058 may show a generic notification after a successful push Sync discovers a new pending request. The [Firebase guide](firebase.md#notifications-and-tap-to-open-saw-058) covers priority, TTL, collapse, handoff, notification permission, tap routing, and off/unavailable cases.
+
+### Request notifications are missing or a tap is stale
+
+Notifications require an APK built with `android/app/google-services.json`, at least one usable
+connection, Android notification permission, and an enabled **Requests waiting for review**
+channel. If permission or the channel was denied, enable it in Android Settings. Denial does not
+stop foreground streams, manual Refresh, unary Sync, periodic recovery, registration, or
+push-triggered Sync.
+
+Check the boundaries in this order:
+
+1. The sidecar startup line says `FCM sender is configured through Application Default
+   Credentials`. If it says FCM is off, set `FCM_PROJECT_ID` and restart that sidecar.
+2. The installed APK was built while the matching `android/app/google-services.json` existed. A
+   file copied in after assembly cannot configure an already-built APK.
+3. The connection is usable and has had a registration update. Do not print or query the target;
+   the protocol intentionally has no read API for it.
+4. Create a fresh request and wait for authoritative Sync. An Admin message ID proves only that FCM
+   accepted a send, not that Android delivered it. Open the app or tap **Refresh**: if the request
+   appears, the durable Stage 5.2 path is healthy and the problem is notification delivery or
+   presentation rather than request storage.
+5. Inspect Android Settings for both app notification permission and the **Requests waiting for
+   review** channel. A denied permission or disabled channel suppresses alerts without disabling
+   Sync.
+
+Project mismatch, invalid/rotated installation IDs, Doze, the five-minute TTL, collapse,
+throttling, network policy, uninstall, reboot, and Force stop can all explain a missed alert. The
+[physical Stage 5.3 checklist](../testing/stage-5-3.md#physical-seeker-runbook-saw-059) separates
+these cases and requires timestamps plus PASS/FAIL/NOT RUN results. Never add target or credential
+values to logs while diagnosing them.
+
+A notification is a reminder, not server state. A cancellation, expiry, or remote answer can race
+with a dropped or delayed status hint and leave an old alert in the shade. Tap it: the app fetches
+that paired sidecar before showing controls and reports no longer waiting, removed, revoked, or
+unavailable honestly. Retry an unavailable fetch or use **Refresh**. A tap never chooses an answer,
+approves, signs, or opens a wallet; like every Sync path, it may retry only an answer the owner
+already stored.
+
+### Live updates stay on Connecting or Reconnecting
+
+First confirm that the ordinary endpoint is healthy with `curl -s http://127.0.0.1:8080/healthz`, then confirm the sidecar advertised its update origin and both adb reverse mappings exist. If only manual Refresh works, the update capability may be absent, the h2c port may not be reversed, or a remote proxy may be downgrading gRPC to HTTP/1. Restarting the sidecar changes its stream instance; the app should perform a full Sync and return to Live without duplicating a request.
+
+An authentication or revocation message is not a retryable network outage: pair again if the sidecar no longer accepts this phone. A certificate/host failure requires correcting the HTTPS deployment, never disabling validation. An unsupported update version requires upgrading the sidecar; old/unconfigured sidecars continue to offer manual Refresh.
+
+## Stage 1 Live diagnostic messages
 
 ### "Could not reach the sidecar at http://127.0.0.1:8080. Is it running (pnpm dev:sidecar), and did you run adb reverse tcp:8080 tcp:8080?"
 
@@ -333,7 +398,8 @@ here builds a replacement transaction for you.
 
 Sending is not succeeding. Your wallet handed the transaction to the network and gave it back an
 ID; whether it landed is something only the network can say. Tap **Check status** and the server
-looks the ID up on the chain.
+looks the ID up on the chain. A configured production Sync also performs the same bounded,
+read-only lookup for submitted Activity records; it does not send anything.
 
 That check opens no wallet, signs nothing, and sends nothing a second time. You can tap it as often
 as you like. A transfer usually confirms within a few seconds, so if it stays like this for a
@@ -350,8 +416,9 @@ review the new request as you did the first.
 
 ### "The server has not looked this up on the network yet"
 
-The server hasn't been asked yet, or its last look settled nothing. It has no background worker on
-purpose: it checks when you tap **Check status**, or when the agent reads the request. If checking
+The server hasn't been asked yet, or its last look settled nothing. It does not poll the chain on
+its own: it checks when you tap **Check status**, when the agent reads the request, or when a
+foreground/background production Sync supplies this nonterminal Activity record. If checking
 keeps failing, the server can't reach its Solana RPC endpoint — check `SOLANA_RPC_URL` in its
 `.env`, and that the machine has a network. **Nothing about your transaction changes while the
 server can't see it.** A server that cannot look is not a transaction that failed.

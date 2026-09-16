@@ -50,6 +50,7 @@ object InboxTags {
     const val ACKNOWLEDGE = "acknowledge"
     const val APPROVE = "approve"
     const val REJECT = "reject"
+    const val QUICK_APPROVE = "requestQuickApprove"
     const val ENCODING = "requestEncoding"
     const val SIGNS_WITH = "requestSignsWith"
     const val HIDDEN = "requestHiddenCharacters"
@@ -58,6 +59,9 @@ object InboxTags {
     const val SEND_AGAIN = "sendAgain"
     const val SENDING = "sending"
     const val GONE = "requestGone"
+    const val NOTIFICATION_LOADING = "notificationRequestLoading"
+    const val NOTIFICATION_STATE = "notificationRequestState"
+    const val NOTIFICATION_RETRY = "notificationRequestRetry"
 
     /** The phone's own verdict on a transfer's transaction (SAW-020). */
     const val TRANSFER_VERDICT = "transferVerdict"
@@ -68,6 +72,11 @@ object InboxTags {
     const val TRANSFER_AGAIN = "transferAgain"
     /** Approving one through the wallet (SAW-021). */
     const val TRANSFER_APPROVE = "transferApprove"
+    const val TRANSACTION_ID = "transactionId"
+    const val TRANSACTION_COPY = "transactionCopy"
+    const val TECHNICAL_DETAILS = "technicalDetails"
+    const val TECHNICAL_DETAILS_CONTENT = "technicalDetailsContent"
+    const val RULES_BUTTON = "rulesButton"
 
     /** Why there is no Approve button: input validation, and never a rule (SAW-020). */
     const val TRANSFER_NOT_APPROVABLE = "transferNotApprovable"

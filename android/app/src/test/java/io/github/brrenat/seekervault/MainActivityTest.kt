@@ -5,6 +5,8 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -12,6 +14,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.live.FakeSidecar
 import io.github.brrenat.seekervault.live.LiveCommandTags
@@ -40,6 +43,7 @@ class MainActivityTest {
     fun launch() {
         app.liveCommandTransports = sidecar
         app.connectionGateway = { FakeConnectionGateway() }
+        app.updateTransport = { LegacyUpdateTransport() }
         app.credentialKey = softwareKey().let { key -> { key } }
         scenario = ActivityScenario.launch(MainActivity::class.java)
         // The app opens on Connections; the live test is one tap away.
@@ -64,11 +68,13 @@ class MainActivityTest {
     @Test
     fun rotationKeepsTheStreamTheCommandAndASingleOk() {
         connectAndReceive()
+        assertTrue(app.foregroundUpdates.state.value.foreground)
         scenario.recreate()
+        assertTrue(app.foregroundUpdates.state.value.foreground)
         compose.onNodeWithTag(LiveCommandTags.COMMAND_TEXT).assertTextEquals("Hello Seeker")
         assertEquals(1, sidecar.streams.size)
         assertTrue(sidecar.stream.open)
-        compose.onNodeWithTag(LiveCommandTags.OK).performClick()
+        compose.onNodeWithTag(LiveCommandTags.OK).performScrollTo().performClick()
         scenario.recreate()
         assertCommandStatus(R.string.command_acknowledged)
         compose.onNodeWithTag(LiveCommandTags.OK).assertIsNotEnabled()
@@ -81,8 +87,8 @@ class MainActivityTest {
         connectAndReceive()
         val answer = CompletableDeferred<Unit>()
         sidecar.onAcknowledge = { answer.await() }
-        compose.onNodeWithTag(LiveCommandTags.OK).performClick()
-        compose.onNodeWithTag(LiveCommandTags.OK).performClick()
+        compose.onNodeWithTag(LiveCommandTags.OK).performScrollTo().performClick()
+        compose.onNodeWithTag(LiveCommandTags.OK).performScrollTo().performClick()
         assertCommandStatus(R.string.command_sending)
         compose.runOnIdle { answer.complete(Unit) }
         assertCommandStatus(R.string.command_acknowledged)
@@ -94,9 +100,11 @@ class MainActivityTest {
         connectAndReceive()
         scenario.moveToState(Lifecycle.State.CREATED) // onStop without a configuration change
         compose.waitForIdle()
+        assertFalse(app.foregroundUpdates.state.value.foreground)
         assertFalse(sidecar.streams[0].open)
         scenario.moveToState(Lifecycle.State.RESUMED)
         compose.waitForIdle()
+        assertTrue(app.foregroundUpdates.state.value.foreground)
         assertEquals(2, sidecar.streams.size)
         compose.onNodeWithTag(LiveCommandTags.COMMAND_TEXT).assertDoesNotExist()
         compose.runOnIdle { sidecar.stream.ready() }
@@ -111,6 +119,7 @@ class MainActivityTest {
         scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
         assertFalse(sidecar.stream.open)
+        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(6)
         compose.onNodeWithTag(ConnectionsTags.ADD).assertExists()
         compose.onNodeWithTag(LiveCommandTags.COMMAND_TEXT).assertDoesNotExist()
     }

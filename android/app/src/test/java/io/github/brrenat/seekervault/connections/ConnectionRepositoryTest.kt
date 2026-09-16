@@ -43,7 +43,10 @@ class ConnectionRepositoryTest {
     private fun history() =
         ActivityLog(ActivityStore(File(folder.root, "files/activity"))) { clock }
 
-    private fun repository(log: ActivityLog = history()) =
+    private fun repository(
+        log: ActivityLog = history(),
+        onConnectionUnavailable: (String) -> Unit = {},
+    ) =
         ConnectionRepository(
             store = ConnectionStore(File(folder.root, "files/connections")),
             vault = CredentialVault(File(folder.root, "no_backup/credentials")) { key() },
@@ -53,6 +56,7 @@ class ConnectionRepositoryTest {
             deviceName = "Seeker",
             now = { clock },
             io = Dispatchers.Unconfined,
+            onConnectionUnavailable = onConnectionUnavailable,
         )
 
     // Lazy: the temporary folder exists only once the rule has run.
@@ -91,6 +95,37 @@ class ConnectionRepositoryTest {
             setOf(URL_B),
             gateway.sent.filter { it.second == credentialB }.map { it.first }.toSet(),
         )
+    }
+
+    @Test
+    fun registersAndRotatesFcmTargetsWithEachConnectionsOwnCredential() = runBlocking {
+        val a = repository.pair(serverA.issue(URL_A))
+        val b = repository.pair(serverB.issue(URL_B))
+        val credentialA = credentialOf(a.id)
+        val credentialB = credentialOf(b.id)
+        val old = "fcm-target-before-rotation"
+        val current = "fcm-target-after-rotation"
+
+        assertTrue(repository.setFcmToken(a.id, FcmTokenUpdate.Register(old)))
+        assertTrue(repository.setFcmToken(b.id, FcmTokenUpdate.Register(old)))
+        assertTrue(repository.setFcmToken(a.id, FcmTokenUpdate.Register(current)))
+        assertTrue(repository.setFcmToken(a.id, FcmTokenUpdate.ClearIfCurrent(old)))
+        assertEquals(current, serverA.fcmTokens[a.id])
+        assertEquals(old, serverB.fcmTokens[b.id])
+        assertEquals(
+            setOf(URL_A),
+            gateway.sent.filter { it.second == credentialA }.map { it.first }.toSet(),
+        )
+        assertEquals(
+            setOf(URL_B),
+            gateway.sent.filter { it.second == credentialB }.map { it.first }.toSet(),
+        )
+        assertFalse(FcmTokenUpdate.Register(current).toString().contains(current))
+
+        serverA.revoke(a.id)
+        assertFalse(repository.setFcmToken(a.id, FcmTokenUpdate.Register("must-not-stick")))
+        assertFalse(repository.get(a.id).usable)
+        assertNull(serverA.fcmTokens[a.id])
     }
 
     @Test
@@ -236,6 +271,20 @@ class ConnectionRepositoryTest {
         repository.remove(a.id)
         assertTrue(connections().isEmpty())
         assertEquals(emptySet<String>(), vault().ids())
+    }
+
+    @Test
+    fun removingOrRevokingAConnectionRequestsNotificationCleanup() = runBlocking {
+        val cleaned = mutableListOf<String>()
+        val repository = repository(onConnectionUnavailable = { cleaned += it })
+        val removed = repository.pair(serverA.issue(URL_A))
+        repository.remove(removed.id)
+
+        val revoked = repository.pair(serverB.issue(URL_B))
+        serverB.revoke(revoked.id)
+        repository.refresh(revoked.id)
+
+        assertEquals(listOf(removed.id, revoked.id), cleaned)
     }
 
     @Test
