@@ -22,6 +22,11 @@ export const TRANSFER_TOOL = "vault_transfer";
 export const REQUEST_ACK_TOOL = "vault_request_ack";
 export const GET_REQUEST_TOOL = "vault_get_request";
 export const CANCEL_REQUEST_TOOL = "vault_cancel_request";
+/**
+ * Stage 6's swap tool. No sidecar serves it yet, and nothing here implements one: the name exists
+ * so that `swap` can say what is missing rather than fail as an unknown command.
+ */
+export const SWAP_TOOL = "vault_swap";
 
 /** Process exit codes (test-agent/README.md). */
 export const ExitCode = {
@@ -254,6 +259,77 @@ export function outcomeExitCode(status: string): ExitCode {
   if (SUCCEEDED.has(status)) return ExitCode.OK;
   if (FAILED.has(status)) return ExitCode.BAD_OUTCOME;
   return ExitCode.UNSETTLED;
+}
+
+/** The same three answers in a word, for a script that would rather not know the state table. */
+export type Outcome = "succeeded" | "failed" | "unsettled";
+
+export function outcomeOf(status: string): Outcome {
+  if (SUCCEEDED.has(status)) return "succeeded";
+  if (FAILED.has(status)) return "failed";
+  return "unsettled";
+}
+
+/** How a bounded wait ended, and the request as it was when it ended. */
+export interface WaitResult {
+  readonly view: RequestView;
+  /** True when the deadline passed with the request still unsettled. */
+  readonly timedOut: boolean;
+  readonly waitedSeconds: number;
+  readonly polls: number;
+}
+
+/**
+ * Reads a request until it settles or the deadline passes, whichever comes first.
+ *
+ * Bounded on purpose, in both directions: it asks at most once every `intervalMs`, and it gives up
+ * at `timeoutMs` rather than waiting on an owner who has gone to bed. Giving up is not a failure
+ * and never becomes one — the request is still there, `timedOut` says what happened, and the
+ * caller reports it as unsettled. Nothing here retries a request or creates a second one.
+ */
+export async function waitForRequest(
+  client: Client,
+  requestId: string,
+  options: {
+    readonly timeoutMs: number;
+    readonly intervalMs: number;
+    readonly onPoll?: (view: RequestView, waitedMs: number) => void;
+    readonly now?: () => number;
+  },
+): Promise<WaitResult> {
+  const now = options.now ?? Date.now;
+  const started = now();
+  let polls = 0;
+  for (;;) {
+    const view = await requestTool(client, GET_REQUEST_TOOL, {
+      request_id: requestId,
+    });
+    polls += 1;
+    const waited = now() - started;
+    options.onPoll?.(view, waited);
+    if (view.terminal) {
+      return {
+        view,
+        timedOut: false,
+        waitedSeconds: Math.round(waited / 1000),
+        polls,
+      };
+    }
+    const remaining = options.timeoutMs - waited;
+    if (remaining <= 0) {
+      return {
+        view,
+        timedOut: true,
+        waitedSeconds: Math.round(waited / 1000),
+        polls,
+      };
+    }
+    await delay(Math.min(options.intervalMs, remaining));
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** The owner's wallet as vault_get_address returns it (docs/protocol.md#agent-api-mcp). */

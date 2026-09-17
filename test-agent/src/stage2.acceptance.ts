@@ -149,6 +149,7 @@ function agent(
     MCP_TOKEN,
     PHONE_TOKEN, // present in a developer's .env; the CLI must not print it either
     LIVE_COMMAND_TIMEOUT_SECONDS: "30",
+    MCP_DEMO_TOOLS: "true", // `hello` and `ack` are development diagnostics (SAW-037)
     ...env,
   });
 }

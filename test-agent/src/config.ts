@@ -9,6 +9,14 @@ export interface AgentConfig {
   readonly mcpToken: string;
   /** Default client timeout: the sidecar's deadline plus a margin, so the sidecar answers first. */
   readonly timeoutSeconds: number;
+  /**
+   * Development and demo mode (MCP_DEMO_TOOLS), the sidecar's own switch. It gates the two
+   * diagnostics — `hello` and `ack` — which put text in front of the owner and get an
+   * acknowledgement back. An acknowledgement is neither a signature nor a payment, and a client
+   * that runs in a deployment should not be able to reach for one by accident. `--demo` turns it
+   * on for a single command.
+   */
+  readonly demoTools: boolean;
 }
 
 export class AgentConfigError extends Error {
@@ -75,6 +83,11 @@ export function loadAgentConfig(env: Env): AgentConfig {
     }
   }
 
+  const rawDemo = env.MCP_DEMO_TOOLS?.trim().toLowerCase() ?? "";
+  if (rawDemo !== "" && rawDemo !== "true" && rawDemo !== "false") {
+    problems.push("MCP_DEMO_TOOLS must be true or false.");
+  }
+
   if (problems.length > 0 || mcpUrl === undefined || !mcpToken) {
     throw new AgentConfigError(problems);
   }
@@ -82,5 +95,6 @@ export function loadAgentConfig(env: Env): AgentConfig {
     mcpUrl,
     mcpToken,
     timeoutSeconds: deadlineSeconds + CLIENT_TIMEOUT_MARGIN_SECONDS,
+    demoTools: rawDemo === "true",
   };
 }

@@ -5,9 +5,9 @@ This page connects [Hermes Agent](https://hermes-agent.nousresearch.com) to the 
 - **The live diagnostic, `vault_display_command`.** Hermes sends text, the Seeker shows it, you tap **OK**, and Hermes gets the acknowledgement in the same call.
 - **Durable requests, from Stage 2 on.** Hermes creates a request and gets its ID at once. You answer on the phone whenever you next open the app, and Hermes reads the result later; see [queued requests](#4-queued-requests-create-now-read-the-result-later).
 
-It covers Hermes on the Mac and Hermes on a VPS.
+It covers Hermes on the Mac, Hermes on a VPS, and Hermes against the [packaged Stage 7 stack](#9-hermes-against-the-packaged-stack).
 
-> **What has been tested.** Hermes Agent v0.21.1 (2026.9.7) was run with this configuration against the sidecar, including through a forwarded port, and every output below is real. Hermes's own MCP client made the tool calls, without an LLM, and a test client stood in for the phone. On 2026-09-11, the owner also ran the live round trip and reported it passed. That run used their own Hermes on a VPS, reaching the Mac [over Tailscale](#over-a-vpn-you-already-use), and their physical Seeker; see [`docs/testing/stage-1.md`](../testing/stage-1.md). The durable tools were run the same way on 2026-09-11, without a model or the Seeker; see [`docs/testing/stage-2.md`](../testing/stage-2.md#acceptance-report-saw-014). The wallet tools of [section 5](#5-sign-a-message-with-your-wallet) and [section 6](#6-send-a-transfer-with-your-wallet) have **not** been run through Hermes: they have only been driven by `pnpm agent` and the automated tests, and those sections say so where their results are shown. **No transfer has ever been sent from a real wallet to any cluster** by this repository, through Hermes or otherwise.
+> **What has been tested.** Hermes Agent v0.21.1 (2026.9.7) was run with this configuration against the sidecar, including through a forwarded port, and every output below is real. Hermes's own MCP client made the tool calls, without an LLM, and a test client stood in for the phone. On 2026-09-11, the owner also ran the live round trip and reported it passed. That run used their own Hermes on a VPS, reaching the Mac [over Tailscale](#over-a-vpn-you-already-use), and their physical Seeker; see [`docs/testing/stage-1.md`](../testing/stage-1.md). The durable tools were run the same way on 2026-09-11, without a model or the Seeker; see [`docs/testing/stage-2.md`](../testing/stage-2.md#acceptance-report-saw-014). The wallet tools of [section 5](#5-sign-a-message-with-your-wallet) and [section 6](#6-send-a-transfer-with-your-wallet) have **not** been run through Hermes: they have only been driven by `pnpm agent` and the automated tests, and those sections say so where their results are shown. **No transfer has ever been sent from a real wallet to any cluster** by this repository, through Hermes or otherwise. [Section 9](#9-hermes-against-the-packaged-stack), the Docker stack, is **not run with Hermes** either: it was written from the stack's own verified configuration, and no Hermes has yet driven a request through it (`docs/testing/stage-7.md#saw-037`).
 
 ## Before you start
 
@@ -427,7 +427,7 @@ The sidecar accepts tunnelled requests because their `Host` is still a loopback 
 
 The tunnel lasts only as long as the SSH session. When it drops, calls fail with the errors below. Start it again, then run `/reload-mcp` if Hermes parked the server.
 
-In every case, the sidecar itself stays on the Mac's loopback address: never set `SIDECAR_HOST` to a public address, and never expose port 8080 to the internet. The sidecar speaks plain HTTP. A public gateway with TLS and OAuth comes in a later stage.
+In every case, the sidecar itself stays on the Mac's loopback address: never set `SIDECAR_HOST` to a public address, and never expose port 8080 to the internet. The sidecar speaks plain HTTP. The public gateway that terminates TLS in front of it is [section 9](#9-hermes-against-the-packaged-stack).
 
 ### Over a VPN you already use
 
@@ -466,6 +466,54 @@ These are real results from Hermes v0.21.1. "The model sees" is the tool result 
 | No phone is paired | Not run with Hermes. The sidecar answers `NOT_PAIRED: no phone is paired with this sidecar`, and Hermes passes it on as an error, the same way as `NOT_FOUND`. Pair the phone ([`pairing.md`](../guides/pairing.md)). |
 
 For problems on the phone or the Mac, see [`troubleshooting.md`](../guides/troubleshooting.md).
+
+## 9. Hermes against the packaged stack
+
+Sections 1 to 7 point Hermes at a sidecar started with `pnpm dev:sidecar`. The Stage 7 stack
+([`self-hosting.md`](../guides/self-hosting.md)) runs the same sidecar in a container behind a
+gateway, and Hermes reaches it the same way: the same tools, the same token header, the same
+answers. Only the URL and where the token comes from change.
+
+**Keep your own `~/.hermes/config.yaml`.** Everything in section 1 still holds: back it up, merge
+the one `seeker_vault` entry into `mcp_servers`, and remove nothing else.
+
+### On the machine that runs the stack
+
+The stack publishes the gateway on the host's loopback address, so the entry from
+[`examples/hermes.config.yaml`](../../examples/hermes.config.yaml) works unchanged — the default
+`GATEWAY_PORT` is 8080, the port that entry already names. Two differences from a development
+sidecar:
+
+- The token is the `MCP_TOKEN` in `gateway/.env`, not the repository root's `.env`.
+- `vault_request_ack` exists only if that deployment sets `MCP_DEMO_TOOLS=true`, which a deployment
+  normally does not. `hermes mcp test seeker_vault` lists what is actually served.
+
+### On another machine, over the public endpoint
+
+With the public overlay the stack answers on the operator's own domain over HTTPS. Use
+[`examples/hermes.config.hosted.yaml`](../../examples/hermes.config.hosted.yaml), which is the same
+entry with `url: "https://vault.example.com/mcp"` and a shorter tool list: the public gateway does
+not forward the Stage 1 `LiveCommandService`, so `vault_display_command` cannot work there, and a
+deployment leaves the demo tool off.
+
+Three things have to be true before it connects, and each has its own failure:
+
+| | What it means |
+| --- | --- |
+| The certificate is a real one | Hermes refuses an untrusted certificate, and that refusal is correct. Fix the name, the DNS record, or the port, and let the gateway issue one. Nothing here tells anyone to ignore a certificate warning. |
+| The domain is in `MCP_ALLOWED_HOSTS` | The public overlay sets it from `GATEWAY_DOMAIN`. Without it the sidecar answers 403 and logs `the Host header is not a loopback address or an MCP_ALLOWED_HOSTS entry` — the same DNS-rebinding check as [over a VPN](#over-a-vpn-you-already-use). |
+| The OAuth profile is off | Hermes sends a fixed bearer token. With [OAuth](claude.md) on, the public endpoint takes only access tokens from the configured authorization server, and a static token opens just the stack's own private endpoint, which nothing outside the stack can reach. A deployment serves one or the other. |
+
+Anyone who reaches that URL with the token can queue requests for you to answer, so treat it as
+[the password it is](#keeping-the-token-safe), and prefer a VPN or a tunnel to a public port when
+the only agent is your own.
+
+### The test agent alongside it
+
+The stack carries [`test-agent`](../../test-agent/README.md) in the `agent` profile, which is the
+quickest way to tell a Hermes problem from a stack problem: `docker compose run --rm test-agent
+capabilities` uses the same MCP interface from inside the stack. If that works and Hermes does not,
+the entry or the token is what to look at.
 
 ## Keeping the token safe
 

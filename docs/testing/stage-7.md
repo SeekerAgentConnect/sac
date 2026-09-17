@@ -1,6 +1,6 @@
 # Stage 7 tests
 
-Stage 7 packages what the earlier stages built for the owner's own infrastructure. SAW-034 containerizes the sidecar and the test agent and gives them a Compose stack that builds from a checkout, SAW-035 puts a TLS gateway in front of it and separates the public endpoints from the private ones ([`../guides/self-hosting.md`](../guides/self-hosting.md)), and SAW-036 adds the optional OAuth profile a hosted MCP client needs ([`../integrations/claude.md`](../integrations/claude.md)).
+Stage 7 packages what the earlier stages built for the owner's own infrastructure. SAW-034 containerizes the sidecar and the test agent and gives them a Compose stack that builds from a checkout, SAW-035 puts a TLS gateway in front of it and separates the public endpoints from the private ones ([`../guides/self-hosting.md`](../guides/self-hosting.md)), SAW-036 adds the optional OAuth profile a hosted MCP client needs ([`../integrations/claude.md`](../integrations/claude.md)), and SAW-037 finishes the test agent and the Hermes integration against that stack ([`../../test-agent/README.md`](../../test-agent/README.md), [`../integrations/hermes.md`](../integrations/hermes.md)).
 
 Nothing in this stage changes what the software does. An authorized client is a client that may ask; every request still waits for the owner's hand on their own wallet. The sidecar still holds no key and signs nothing, still binds loopback, and still serves no transfer tool without `SOLANA_RPC_URL`. Starting the stack creates no request, spends nothing, and launches no LLM.
 
@@ -238,3 +238,72 @@ deleting the check and watching it fail.
 | --- | --- | --- | --- |
 | 2026-09-17 | Implementation environment, no Docker daemon | The automated suite, and both layers of checks above | PASS |
 | — | A host with a public domain and a real authorization server | A hosted Claude client's round trip | NOT RUN |
+
+## SAW-037 — the test-agent CLI and the Hermes integration
+
+### What changed, and what it is checked against
+
+The CLI already drove every tool the sidecar serves. SAW-037 adds the parts a script needs — a
+bounded wait, an `outcome` word to branch on, and a `swap` command that says swaps are not served —
+and puts the two diagnostics behind development mode, so a client in a deployment cannot mistake an
+acknowledgement for a signature or a payment.
+
+All of it is checked by tests that run in `pnpm check` and CI, against a real sidecar process with
+a Connect client standing in for the phone. Nothing here needs the Seeker, and nothing here counts
+as the Seeker.
+
+### The automated checks
+
+| Command | What it covers | Result |
+| --- | --- | --- |
+| `pnpm check` | Format, lint, types, 454 sidecar tests and 36 test-agent tests | PASS |
+| `pnpm test:hello` | The Stage 1 acceptance suite, 9 cases | PASS |
+| `pnpm test:queue` | The Stage 2 acceptance suite, 7 cases | PASS |
+| `pnpm test:transfer` | The Stage 4 acceptance suite, 7 cases | PASS |
+
+| The CLI's own cases (`test-agent/src/cli.test.ts`) | Result |
+| --- | --- |
+| `wait` returns when the owner answers, and prints one JSON document | PASS |
+| `wait` gives up at its deadline: exit 10, `timed_out: true`, and the request untouched afterwards | PASS |
+| `wait` on a request that already ended: one read, exit 11, `outcome: "failed"` | PASS |
+| `--wait` prints the `request_id` on stderr before it starts waiting | PASS |
+| `--for` and `--every` outside their bounds, and `--wait` where it means nothing: exit 2, nothing on stdout | PASS |
+| `hello` and `ack` without development mode: exit 2, and the message says an acknowledgement is neither a signature nor a payment | PASS |
+| `--demo` runs one anyway; `MCP_DEMO_TOOLS=yes` is a configuration error | PASS |
+| `swap`: exit 3, naming `vault_swap`, and nothing queued | PASS |
+| `swap` without `--wallet` and `--network`: exit 2, before a session is opened | PASS |
+
+### From the checkout, through the packaged gateway
+
+The stack's own `gateway/Caddyfile` was served by `caddy 2.10.2` — the release behind the pinned
+image — in front of a real sidecar, and the CLI was run from the checkout against that gateway, the
+way the container does from inside the stack.
+
+| Check | Result |
+| --- | --- |
+| `capabilities` through the gateway | The sidecar's real capabilities document |
+| `swap …` | Exit 3: "the MCP server does not offer vault_swap; swaps are a later stage" |
+| `hello` with no development mode | Exit 2, with the diagnostic's explanation |
+| `ack` with `MCP_DEMO_TOOLS=true`, no phone paired | Exit 9, `NOT_PAIRED` — the sidecar's own refusal, unchanged |
+| `wait <unknown id>` | Exit 9, `NOT_FOUND` |
+
+### What is NOT RUN
+
+| Check | What it needs | Status |
+| --- | --- | --- |
+| The CLI from its container, matching the checkout | A Docker daemon. The image builds from this checkout and runs the same code; that is an expectation, not a result | NOT RUN |
+| A durable request created by **real Hermes** through the packaged stack, and answered on the Seeker | Hermes, the stack in containers, and the phone. **This is the ticket's acceptance** | NOT RUN |
+| Hermes against the public HTTPS endpoint (`examples/hermes.config.hosted.yaml`) | A public domain and a real certificate | NOT RUN |
+| `--wait` and `wait` with a physical Seeker answering | The phone | NOT RUN |
+| A swap through any client | Stage 6. No sidecar serves `vault_swap`, which is what the command reports | NOT RUN |
+
+Hermes's earlier results stand and are unchanged: the live diagnostic and the durable tools were
+run with Hermes v0.21.1 in Stage 1 and Stage 2 ([`../integrations/hermes.md`](../integrations/hermes.md)).
+What has never been run with Hermes is the packaged stack.
+
+### Record
+
+| Date | Machine | What was run | Result |
+| --- | --- | --- | --- |
+| 2026-09-17 | Implementation environment, no Docker daemon | The automated suites, and the CLI through the packaged gateway | PASS |
+| — | A host running the stack, with Hermes and the Seeker | One durable request from Hermes, answered on the phone | NOT RUN |

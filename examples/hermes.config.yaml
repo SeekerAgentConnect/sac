@@ -7,10 +7,16 @@
 #   MCP_SEEKER_VAULT_API_KEY=<the MCP_TOKEN value from the sidecar's .env>
 #
 # Setup, checks, and the VPS variant: docs/integrations/hermes.md
+#
+# This is the local entry. For a deployment reached over its own domain, use
+# examples/hermes.config.hosted.yaml instead: same entry, HTTPS URL, and a
+# shorter tool list, because a public gateway does not carry the Stage 1
+# diagnostic (docs/integrations/hermes.md#9-hermes-against-the-packaged-stack).
 mcp_servers:
   seeker_vault:
     # The sidecar's MCP endpoint. For Hermes on a VPS, use the VPS end of the SSH tunnel
-    # instead, for example http://127.0.0.1:18080/mcp.
+    # instead, for example http://127.0.0.1:18080/mcp. The Stage 7 stack publishes its
+    # gateway on this same address and port by default, so this line fits it unchanged.
     url: "http://127.0.0.1:8080/mcp"
     headers:
       # Hermes fills in ${...} from ~/.hermes/.env or the environment. An unset variable is

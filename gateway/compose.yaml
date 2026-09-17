@@ -148,6 +148,11 @@ services:
       MCP_URL: ${AGENT_MCP_URL:-http://127.0.0.1:8081/mcp}
       MCP_TOKEN: ${MCP_TOKEN:?set MCP_TOKEN in gateway/.env - see .env.example}
       LIVE_COMMAND_TIMEOUT_SECONDS: ${LIVE_COMMAND_TIMEOUT_SECONDS:-60}
+      # The stack's own development switch, which also gates the CLI's two
+      # diagnostics: `hello` and `ack` return an acknowledgement, and an
+      # acknowledgement is neither a signature nor a payment. Off by default,
+      # and `--demo` runs one anyway.
+      MCP_DEMO_TOOLS: ${MCP_DEMO_TOOLS:-false}
     cap_drop:
       - ALL
     security_opt:

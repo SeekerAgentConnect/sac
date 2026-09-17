@@ -85,7 +85,7 @@ The test agent stands in for an agent here. The same flow from Hermes is in [the
 
 Before you start:
 
-- The sidecar runs: `pnpm dev:sidecar`. Its `.env` has `MCP_DEMO_TOOLS=true`, as `.env.example` does; without it, `pnpm agent ack` exits 3.
+- The sidecar runs: `pnpm dev:sidecar`. Its `.env` has `MCP_DEMO_TOOLS=true`, as `.env.example` does. Without it the CLI refuses `ack` itself with exit 2, because SAW-037 keeps the two diagnostics in development mode (`--demo` runs one anyway); a sidecar that does not serve the tool is exit 3.
 - A debug build of the app is on the phone, and `adb reverse tcp:8080 tcp:8080` is set up ([`macbook-seeker-quickstart.md`](../guides/macbook-seeker-quickstart.md)).
 - The phone is paired: run `pnpm pair`, then **Add connection** in the app ([`pairing.md`](../guides/pairing.md)).
 
