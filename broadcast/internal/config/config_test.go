@@ -149,3 +149,83 @@ func TestAnOriginIsValidatedBeforeItIsUsed(t *testing.T) {
 		t.Fatalf("the problem did not name the variable: %v", problems)
 	}
 }
+
+// The relay is all of it or none of it (SEE-92). A credential with nowhere to send to, or an
+// endpoint with no credential, is a deployment that looks like it hints and never does — and the
+// only sign of it would be phones that never wake.
+func TestThePushRelayIsAllOfItOrNoneOfIt(t *testing.T) {
+	// None of it: a working deployment that says so to anyone who asks where hints arrive.
+	settings, problems := Load(environment(complete()))
+	if problems != nil {
+		t.Fatalf("a gateway with no relay was refused: %v", problems)
+	}
+	if settings.Relay.CredentialsPath != "" {
+		t.Fatalf("a relay was configured from nothing: %+v", settings.Relay)
+	}
+
+	// All of it.
+	values := complete()
+	values["BROADCAST_PUSH_CREDENTIALS"] = "/run/secrets/service-account.json"
+	values["BROADCAST_PUSH_ENDPOINT"] = "https://fcm.example.com"
+	values["BROADCAST_PUSH_ENVIRONMENT"] = "Production"
+	settings, problems = Load(environment(values))
+	if problems != nil {
+		t.Fatalf("a complete relay was refused: %v", problems)
+	}
+	if settings.Relay.Endpoint != "https://fcm.example.com" {
+		t.Fatalf("the endpoint is %q", settings.Relay.Endpoint)
+	}
+	// Lowercased, because an environment is a name in a topic and a topic is matched exactly.
+	if settings.Relay.Environment != "production" {
+		t.Fatalf("the environment is %q", settings.Relay.Environment)
+	}
+	if settings.Relay.Rate != DefaultPushRate || settings.Relay.Burst != DefaultPushBurst {
+		t.Fatalf("the default quota is %v and %d", settings.Relay.Rate, settings.Relay.Burst)
+	}
+
+	// And every half of it, each naming the variable that would fix it.
+	for name, half := range map[string]map[string]string{
+		"BROADCAST_PUSH_ENDPOINT": {
+			"BROADCAST_PUSH_CREDENTIALS": "/run/secrets/service-account.json",
+			"BROADCAST_PUSH_ENVIRONMENT": "production",
+		},
+		"BROADCAST_PUSH_ENVIRONMENT": {
+			"BROADCAST_PUSH_CREDENTIALS": "/run/secrets/service-account.json",
+			"BROADCAST_PUSH_ENDPOINT":    "https://fcm.example.com",
+		},
+		"BROADCAST_PUSH_CREDENTIALS": {
+			"BROADCAST_PUSH_ENDPOINT":    "https://fcm.example.com",
+			"BROADCAST_PUSH_ENVIRONMENT": "production",
+		},
+	} {
+		values := complete()
+		for key, value := range half {
+			values[key] = value
+		}
+		settings, problems := Load(environment(values))
+		if settings != nil {
+			t.Fatalf("a relay with no %s started", name)
+		}
+		if len(problems) != 1 || !strings.Contains(problems[0], name) {
+			t.Fatalf("the problem for a missing %s is %v", name, problems)
+		}
+	}
+
+	// An environment nobody named is refused rather than treated as the nearest one: the topic it
+	// would produce is a topic no phone subscribes to.
+	values["BROADCAST_PUSH_ENVIRONMENT"] = "staging"
+	if settings, problems := Load(environment(values)); settings != nil {
+		t.Fatalf("an environment nobody named was accepted: %v", problems)
+	}
+	// And the endpoint is held to the same shape as the broker's URL: an origin the gateway
+	// appends its own path to, and not half a request.
+	values["BROADCAST_PUSH_ENVIRONMENT"] = "sandbox"
+	for _, raw := range []string{
+		"fcm.example.com", "https://", "https://fcm.example.com/v1", "ftp://fcm.example.com",
+	} {
+		values["BROADCAST_PUSH_ENDPOINT"] = raw
+		if settings, _ := Load(environment(values)); settings != nil {
+			t.Fatalf("%q was accepted as a push endpoint", raw)
+		}
+	}
+}

@@ -65,6 +65,7 @@ import io.github.brrenat.seekervault.wallet.WalletScreen
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 import java.time.Instant
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -84,6 +85,7 @@ fun SeekerVaultApp(
     globalPolicy: PolicyEditorViewModel,
     live: LiveCommandViewModel,
     notificationTaps: StateFlow<MainActivity.NotificationTap?>,
+    feedTaps: StateFlow<MainActivity.FeedTap?> = MutableStateFlow(null),
 ) {
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.CONNECTIONS)) }
     var closingSheet by remember { mutableStateOf(false) }
@@ -116,6 +118,7 @@ fun SeekerVaultApp(
     val policyState by policy.state.collectAsStateWithLifecycle()
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
     val notificationTap by notificationTaps.collectAsStateWithLifecycle()
+    val feedTap by feedTaps.collectAsStateWithLifecycle()
     val root = stack.first()
     val route = stack.last()
     RequestNotificationPermission(
@@ -130,6 +133,19 @@ fun SeekerVaultApp(
         requestedPolicyClose = null
         stack = listOf(Routes.CONNECTIONS, requestRoute(key))
         inbox.openFromNotification(key)
+    }
+    // A proposal alert opens the feed it is on (SEE-92). That is the deepest current review state
+    // this build has: the plugins that read a proposal's terms are SEE-93 and SEE-94, and there is
+    // no screen that lists one yet. The proposal's own ID travels with the route and is validated
+    // before it gets here, so the screen that lists one can open it directly without the
+    // notification changing. Nothing is prepared, signed or sent by arriving here.
+    LaunchedEffect(feedTap?.sequence) {
+        val ref = feedTap?.ref ?: return@LaunchedEffect
+        closingSheet = false
+        promotedRoute = null
+        backplateTargetSize = null
+        requestedPolicyClose = null
+        stack = listOf(Routes.CONNECTIONS, Routes.DETAILS + ref.connectionId)
     }
     BackHandler(enabled = stack.size > 1 || root != Routes.CONNECTIONS) {
         if (stack.size > 1) pop() else stack = listOf(Routes.CONNECTIONS)

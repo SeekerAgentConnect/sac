@@ -52,6 +52,7 @@ func Build(
 	from *store.Store,
 	to dispatch.Dispatcher,
 	grants Grants,
+	topics Topics,
 	log *slog.Logger,
 	now func() time.Time,
 ) *Gateway {
@@ -62,7 +63,7 @@ func Build(
 	reads := NewLimiter(settings.ReadRate, settings.ReadBurst, now)
 	readMux := http.NewServeMux()
 	readMux.Handle(gatewayv1connect.NewFeedServiceHandler(
-		NewFeed(from, now, grants),
+		NewFeed(from, now, grants, topics),
 		connect.WithReadMaxBytes(MostBytes),
 		connect.WithCodec(strictJSON{}),
 		connect.WithInterceptors(

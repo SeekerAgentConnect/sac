@@ -22,11 +22,14 @@ import org.w3c.dom.Element
  * one private request channel, an isolated runtime permission prompt, generic notifications after
  * authoritative Sync, and a validated read-only tap route. SAW-059 closes the stage with joined
  * acceptance while keeping Firebase optional and every Stage 5.2 path independent. Other
- * app-defined services, jobs, alarms, receivers, and wallet automation remain excluded. SAW-015
- * lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on purpose: the app
- * drives the wallet the owner already has. It still holds no wallet key of its own, and Seed
- * Vault's own SDK stays out. These checks fail when a limit is crossed early; the stage that lifts
- * one changes them.
+ * app-defined services, jobs, alarms, receivers, and wallet automation remain excluded. SEE-92
+ * extends that same push pipeline to a publisher's public feed and lifts nothing: one more
+ * content-free invalidation on the existing service, one topic client beside the registration
+ * client, one WorkManager job under `sync/`, and one notification channel with a read-only tap
+ * route. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on
+ * purpose: the app drives the wallet the owner already has. It still holds no wallet key of its
+ * own, and Seed Vault's own SDK stays out. These checks fail when a limit is crossed early; the
+ * stage that lifts one changes them.
  */
 class StageBoundaryTest {
     private val repoRoot =
@@ -709,7 +712,14 @@ class StageBoundaryTest {
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         val firebaseImports = Regex("""^import com\.google\.firebase\.""", RegexOption.MULTILINE)
         assertEquals(
-            setOf("FcmRegistrationManager.kt", "SeekerVaultMessagingService.kt"),
+            // SEE-92 adds the third and last one: joining a feed's public topic, behind one
+            // interface, so everything above it is testable without Firebase and an installation
+            // built without a project stays an ordinary app.
+            setOf(
+                "FcmRegistrationManager.kt",
+                "SeekerVaultMessagingService.kt",
+                "FeedTopicClient.kt",
+            ),
             sources
                 .filter { firebaseImports.containsMatchIn(it.readText()) }
                 .map { it.name }
@@ -727,6 +737,10 @@ class StageBoundaryTest {
         assertTrue("override fun onMessageReceived" in service)
         assertTrue("RemoteMessage" in service)
         assertTrue("PushSyncScheduler" in service)
+        // SEE-92's second kind, and the whole of what it may do: match the payload, hand on the
+        // topic it arrived on, and enqueue one read. No document, no connection, no repository.
+        assertTrue("FeedSyncScheduler" in service)
+        assertTrue("isFeedInvalidation" in service)
         assertTrue("ConnectionRepository" !in service)
         assertTrue("UpdateTransport" !in service)
         assertTrue("synchronize" !in service)
@@ -767,6 +781,36 @@ class StageBoundaryTest {
                 push.indexOf("reconcileNotifications(before")
         )
         assertTrue("POST_NOTIFICATIONS" !in push)
+
+        // SEE-92 repeats both rules for the feeds' own path: the alert comes after the read, and
+        // the presentation is in notifications/ rather than in the worker.
+        val feeds =
+            withoutComments(
+                File(main, "java/io/github/brrenat/seekervault/sync/FeedSynchronization.kt")
+            )
+        assertTrue(feeds.indexOf("read(feed.id") < feeds.indexOf("reconcileNotifications(before"))
+        assertTrue("POST_NOTIFICATIONS" !in feeds)
+        assertTrue("Notification" !in feeds.replace("reconcileNotifications", ""))
+        assertTrue("wallet" !in feeds.lowercase())
+        assertTrue("approve" !in feeds.lowercase())
+
+        val proposals =
+            withoutComments(
+                File(main, "java/io/github/brrenat/seekervault/notifications/FeedNotifications.kt")
+            )
+        assertTrue("NotificationChannel" in proposals)
+        assertTrue("PendingIntent.FLAG_IMMUTABLE" in proposals)
+        assertTrue("MainActivity" in proposals)
+        assertTrue("isConnectionId" in proposals)
+        // The same limits the request alert is held to: it shows what it was told, routes to a
+        // screen, and has no means of acting on anything.
+        assertTrue("ProposalRecord" !in proposals)
+        assertTrue("ProposalRepository" !in proposals)
+        assertTrue("wallet" !in proposals.lowercase())
+        assertTrue("approve" !in proposals.lowercase())
+        assertTrue("signAndSendTransactions" !in proposals)
+        assertTrue("WorkManager" !in proposals)
+        assertTrue("ForegroundFeedManager" !in proposals)
     }
 
     @Test

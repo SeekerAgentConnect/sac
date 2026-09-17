@@ -9,6 +9,10 @@
 #
 #   docker compose -f compose.yaml -f compose.public.yaml up -d --build
 #
+# The push relay is a third file, for the deployments that want it:
+#
+#   docker compose -f compose.yaml -f compose.push.yaml up -d --build
+#
 # It is the same shape as `gateway/compose.yaml`, and it is a different thing.
 # That stack is one owner's private sidecar behind a reverse proxy, run by the
 # owner. This one is the shared service developers publish to and phones read
@@ -72,10 +76,22 @@ services:
       # How long a listener's ticket lasts, and how many channels one grants.
       BROADCAST_TICKET_MINUTES: ${BROADCAST_TICKET_MINUTES:-}
       BROADCAST_MAX_CHANNELS: ${BROADCAST_MAX_CHANNELS:-}
+      # The push relay (SEE-92), which is off unless a credential is named. It
+      # is turned on by the compose.push.yaml overlay, because turning it on
+      # means mounting a credential into this container and that is a
+      # deliberate act with its own command. The quota is here either way: it
+      # bounds how often one feed's subscribers are woken, which is a cost paid
+      # on other people's phones.
+      BROADCAST_PUSH_CREDENTIALS: ${BROADCAST_PUSH_CREDENTIALS:-}
+      BROADCAST_PUSH_ENDPOINT: ${BROADCAST_PUSH_ENDPOINT:-}
+      BROADCAST_PUSH_ENVIRONMENT: ${BROADCAST_PUSH_ENVIRONMENT:-}
+      BROADCAST_PUSH_RATE: ${BROADCAST_PUSH_RATE:-}
+      BROADCAST_PUSH_BURST: ${BROADCAST_PUSH_BURST:-}
 
     networks:
       # `inside` reaches the broker and Redis; `outside` is what the proxy needs
-      # for certificates, since it shares this namespace.
+      # for certificates, since it shares this namespace — and, when the push
+      # relay is configured, what the gateway's own hints go out over (SEE-92).
       - inside
       - outside
 

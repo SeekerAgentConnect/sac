@@ -9,7 +9,9 @@
 //
 // No credential is configured here. A publisher's credential is created by broadcastctl and stored
 // as a hash (internal/store), so there is no token in the environment to leak into a process list,
-// a log line, or a compose file.
+// a log line, or a compose file. SEE-92's push credential is the one thing that has to be usable
+// rather than compared, and it is still not configured here: what is configured is the path of the
+// file it is in, and the file is read by the package that sends hints (internal/relay).
 package config
 
 import (
@@ -45,6 +47,8 @@ type Config struct {
 	PublishBurst int
 	// The broker that fans publications out, when one is configured (SEE-91).
 	Stream Stream
+	// The push relay that hints to phones nobody is looking at, when one is configured (SEE-92).
+	Relay Relay
 }
 
 // Stream is the fan-out, and an empty URL is a complete answer: the gateway holds the documents,
@@ -65,6 +69,32 @@ type Stream struct {
 	// How long a listener's ticket is good for, and how many channels one may grant.
 	TicketLifetime time.Duration
 	MostChannels   int
+}
+
+// Relay is the push hint, and an empty credential path is a complete answer in the same way an
+// empty broker URL is: the gateway holds the documents, answers reads, streams to whoever is
+// looking, and tells a phone that asks where hints arrive that none are sent here.
+//
+// The credential itself is not configured, only where to read it. It is the one credential in this
+// service that cannot be a hash — a push has to be sent — so it stays a file the deployment mounts
+// into this container and nothing else, and no part of it is ever in the environment, a log line or
+// an answer (internal/relay).
+type Relay struct {
+	// The service account file. Setting it is what turns the relay on.
+	CredentialsPath string
+	// Where the push API is. It has no default on purpose: the one package in this service that
+	// opens a connection takes its address from its operator, which is what keeps a hostname out of
+	// the source and lets a deployment point this at something of its own.
+	Endpoint string
+	// Which topics this deployment publishes hints on: "production" or "sandbox". A Firebase
+	// project can serve both kinds of deployment, and a sandbox publication must not wake a
+	// production subscriber, so the scope is part of every topic name.
+	Environment string
+	// Hints per topic per second, and the burst above it. This is a bound on how often a feed's
+	// subscribers are woken, which is not the same thing as the publish limit above: that one
+	// bounds what a publisher can cost this gateway.
+	Rate  float64
+	Burst int
 }
 
 // Defaults every setting that has one. They are deliberately modest: a gateway is a shared service,
@@ -88,6 +118,13 @@ const (
 	// bound on how much one ticket can cost the broker to honour, which is why it is a number and
 	// not a hope.
 	DefaultMostChannels = 32
+	// One hint per topic per ten seconds, with five in hand. A publisher that republishes three
+	// proposals at once wakes its subscribers once each, which is ordinary; one that publishes every
+	// second wakes them six times a minute instead of sixty, and the documents it published are all
+	// still there to be read. It is deliberately the kind of number an operator raises after a
+	// conversation rather than one set high enough never to come up.
+	DefaultPushRate  = 0.1
+	DefaultPushBurst = 5
 )
 
 // Lookup is os.LookupEnv, injected so the tests configure a gateway without touching the process.
@@ -199,6 +236,40 @@ func Load(lookup Lookup) (*Config, []string) {
 		DefaultTicketLifetime.Minutes(), 1, 24*60)) * time.Minute
 	stream.MostChannels = int(number("BROADCAST_MAX_CHANNELS", DefaultMostChannels, 1, 128))
 	config.Stream = stream
+
+	// The relay, on the same all-or-nothing terms and for the same reason (SEE-92). A credential
+	// with nowhere to send to, or an endpoint with no credential, is a deployment that would look
+	// like it hints and never does — and the only sign of it would be phones that never wake.
+	relay := Relay{
+		CredentialsPath: text("BROADCAST_PUSH_CREDENTIALS", ""),
+		Endpoint:        text("BROADCAST_PUSH_ENDPOINT", ""),
+		Environment:     strings.ToLower(text("BROADCAST_PUSH_ENVIRONMENT", "")),
+		Rate:            DefaultPushRate,
+		Burst:           DefaultPushBurst,
+	}
+	switch {
+	case relay.CredentialsPath != "":
+		if relay.Endpoint == "" {
+			note("BROADCAST_PUSH_ENDPOINT must be set when BROADCAST_PUSH_CREDENTIALS is, " +
+				"to the push API this deployment sends through, " +
+				"for example https://fcm.googleapis.com")
+		} else if canonical, err := reachable(relay.Endpoint); err != nil {
+			note("BROADCAST_PUSH_ENDPOINT %v", err)
+		} else {
+			relay.Endpoint = canonical
+		}
+		if relay.Environment != "production" && relay.Environment != "sandbox" {
+			note("BROADCAST_PUSH_ENVIRONMENT must be set when BROADCAST_PUSH_CREDENTIALS is, " +
+				"to production or sandbox: it scopes every topic this deployment sends on, " +
+				"so one Firebase project can serve both kinds of deployment")
+		}
+	case relay.Endpoint != "" || relay.Environment != "":
+		note("BROADCAST_PUSH_CREDENTIALS must be set when BROADCAST_PUSH_ENDPOINT or " +
+			"BROADCAST_PUSH_ENVIRONMENT is: without it no hint can be sent")
+	}
+	relay.Rate = number("BROADCAST_PUSH_RATE", DefaultPushRate, 0.001, 100)
+	relay.Burst = int(number("BROADCAST_PUSH_BURST", DefaultPushBurst, 1, 1000))
+	config.Relay = relay
 
 	if len(problems) > 0 {
 		return nil, problems

@@ -852,6 +852,8 @@ document got wrong.
 | `GetServerManifest` | The manifest the publisher registered, by server ID | `known_settings_revision` answers `unchanged` with no document |
 | `ListProposals` | A page of the channel's current proposals, at most 200, ordered by proposal ID | `known_snapshot_sequence` answers `unchanged` with no proposals, on a first page |
 | `GetProposal` | One proposal, by channel and ID | — |
+| `GetStreamTicket` | Permission to listen to channels this gateway hosts (SEE-91) | — |
+| `GetFeedTopics` | Where hints about those channels arrive (SEE-92) | — |
 
 **The snapshot boundary is documented and not a transaction.** Every page of one walk reports the
 `snapshot_sequence` the walk began at — the channel's count of accepted publications, which never
@@ -906,6 +908,30 @@ protocol neither of them speaks, and the app's one adapter file is the only plac
 **The cross-runtime fixtures cover the stream.** `FeedEvent/settings`, `FeedEvent/proposal` and
 `FeedEvent/withdrawn` are taken from the gateway's own outbox by its fixtures test and read back
 through the phone's validators by `GatewayProtocolFixturesTest`.
+
+### The hint (SEE-92)
+
+A phone nobody is looking at is reached through Firebase instead, and what reaches it is not part of
+this protocol: it carries no document, so there is nothing to generate and nothing to compare bytes
+with.
+
+**`feed.proto` gained `GetFeedTopics`.** The request is the channels a phone holds feed references
+for; the answer is, per channel, the topic this deployment's relay sends that channel's hints on.
+The same softness as a grant's — a channel this gateway does not host or does not relay is absent
+rather than fatal — and the same silence about the caller: two phones asking about one feed are told
+the same thing, and the gateway is never told whether either of them subscribed. A deployment that
+relays nothing answers `GATEWAY_PROBLEM_NO_PUSH`, which maps to `unimplemented` exactly as
+`NO_STREAM` does.
+
+The phone asks instead of deriving the name, because a name worked out on both sides would drift
+into silence rather than into an error (`docs/wiki/broadcast-gateway.md#the-topic-and-why-the-gateway-names-it`).
+
+**The payload is two constant fields**, `kind=feed_invalidation` and `version=1`, and the phone
+matches the map whole. It is the shape SAW-056 established for the private path, with its own kind;
+which feed changed is the topic the message arrived on, which is a routing field rather than
+payload. There is no fixture for it and no generated type: instead, an Android test reads the
+relay's own Go source and fails if the two literals drift apart
+(`push/FeedHintContractTest.kt`).
 
 ## Generated code
 

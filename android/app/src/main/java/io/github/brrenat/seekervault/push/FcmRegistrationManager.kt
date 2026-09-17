@@ -207,7 +207,12 @@ internal fun validFcmTarget(target: String): Boolean =
         target.toByteArray(Charsets.UTF_8).size <= 4_096 &&
         target.all { it.code in 0x21..0x7e }
 
-private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { continuation ->
+/**
+ * One Firebase callback as a suspending call. It is `internal` rather than private to this file
+ * because SEE-92's topic client needs the same two lines, and two copies of "wait for a Task" would
+ * be two places to get cancellation wrong.
+ */
+internal suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { continuation ->
     addOnCompleteListener { completed ->
         if (!continuation.isActive) return@addOnCompleteListener
         val failure = completed.exception

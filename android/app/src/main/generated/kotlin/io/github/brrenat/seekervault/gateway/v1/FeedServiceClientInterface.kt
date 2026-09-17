@@ -52,4 +52,20 @@ public interface FeedServiceClientInterface {
    *  listener to is a broadcast that every other subscriber to the same channel is receiving too.
    */
   public suspend fun getStreamTicket(request: GetStreamTicketRequest, headers: Headers = emptyMap()): ResponseMessage<GetStreamTicketResponse>
+
+  /**
+   *  Where this gateway's relay sends a hint that a channel changed (SEE-92).
+   *
+   *  It exists because the name has to be the same on both sides, and neither side may guess it: the
+   *  relay derives a topic from the channel in a committed publication, and the phone has to
+   *  subscribe to exactly that. A name derived twice, in two languages, is a mismatch that shows up
+   *  as silence rather than as an error — so it is derived once, here, and stated.
+   *
+   *  It is separate from GetStreamTicket on purpose. A deployment may relay without streaming, or
+   *  stream without relaying, and a phone asking about one must not be answered about the other.
+   *  Like a ticket, the answer is about channels and never about the caller: a topic is public,
+   *  holding its name grants nothing, and subscribing to it says nothing to this gateway — Firebase
+   *  owns topic membership, and the gateway is not told who joined (docs/security.md).
+   */
+  public suspend fun getFeedTopics(request: GetFeedTopicsRequest, headers: Headers = emptyMap()): ResponseMessage<GetFeedTopicsResponse>
 }

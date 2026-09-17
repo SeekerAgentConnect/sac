@@ -1,7 +1,7 @@
-# Stage 7.1 — the broadcast gateway and its stream
+# Stage 7.1 — the broadcast gateway, its stream, and its hints
 
-What was verified for SEE-90 and SEE-91, what was verified by hand, and what is left for the owner
-to run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast` and
+What was verified for SEE-90, SEE-91 and SEE-92, what was verified by hand, and what is left for the
+owner to run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast` and
 `pnpm check:android`; this page is about the rest.
 
 ## What no machine here could run
@@ -12,6 +12,11 @@ to run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcas
   `broadcast/centrifugo.yaml` — and then every binary was **run natively** instead: the gateway, two
   broker nodes and Redis.
 - **A physical Seeker.** The device run below is the owner's.
+- **Firebase (SEE-92).** No project or service-account credential was available, so the real send
+  leg is an **opt-in** test that skipped: `internal/relay/firebase_test.go` sends one hint to a real
+  project when `SEEKERVAULT_FCM_CREDENTIALS` and `SEEKERVAULT_FCM_SERVER` are set. Everything up to
+  the moment Google is called was run instead, against a stand-in endpoint that checks the bearer
+  token — including a native end-to-end run of the real gateway binary.
 
 ## Verified by hand, against the pinned broker
 
@@ -41,6 +46,20 @@ decisions that came out of it are in
 A native end-to-end run of the whole thing, with the real gateway binary, two broker nodes and
 Redis: register a publisher, publish a manifest and a proposal, watch both arrive on two listeners,
 stop a node, see the surviving one keep serving, and withdraw the proposal.
+
+## Verified by hand, for the hints (SEE-92)
+
+The relay's own tests pin the message; these are the things that needed the real binaries.
+
+| What was asked | What happened |
+| --- | --- |
+| The real gateway binary with a relay configured, and a publication | One POST to `/v1/projects/<project>/messages:send` with `Bearer <token>`, and a body of exactly `{"message":{"topic":"feed.sandbox.<uuid>","data":{"kind":"feed_invalidation","version":"1"},"android":{"collapse_key":"seeker-vault-feed-invalidation-v1","priority":"HIGH","ttl":"300s"}}}` |
+| The token the gateway presented | A real RS256 assertion, exchanged at the endpoint named in the credential file, verified against the key's public half by the stand-in |
+| The same publication with the broker also configured | Both went out: the event on the broker at its next offset, the hint to the topic. Neither waited for the other |
+| The stand-in answering `500`, then `401`, then nothing at all | The notice was cleared each time and the document stayed published — a hint never defers the outbox. The `401` was retried once with a freshly minted token |
+| Two publications a second apart, with the shipped quota | One hint. The second was logged as coalesced, and the document was still stored, still streamed and still readable |
+| A gateway started with `BROADCAST_PUSH_CREDENTIALS` pointing at a file that is not a credential | The process refused to start, naming the field and quoting nothing |
+| `GetFeedTopics` against a gateway with no relay | `501 unimplemented` with `no_push`, while the same gateway still granted a stream ticket and answered every read |
 
 ## The device run (for the owner)
 
@@ -74,8 +93,33 @@ over a real certificate, a real network and the app's own lifecycle.
    phone does not trust: the feed must refuse to resolve, and the refusal must say so rather than
    look like an outage.
 
-Record the date, the app build, the gateway and broker versions, and what each step did — as
-`docs/testing/stage-5-3.md` does for the direct path.
+5. **Check the hints (SEE-92).** This needs the APK built with the same Firebase project's
+   `google-services.json` that the relay's credential belongs to, and the push overlay running
+   (`docs/guides/firebase.md#configure-the-relay`):
+
+   ```sh
+   docker compose -f compose.yaml -f compose.public.yaml -f compose.push.yaml up -d --build
+   ```
+
+   With the feed added and the app **closed** (not force-stopped), publish a proposal from the
+   server and check:
+   - a notification appears on the **Proposals waiting for review** channel, naming the feed and
+     nothing about the proposal;
+   - tapping it opens that feed, and nothing is prepared, signed or sent by opening it;
+   - withdrawing the proposal from the server, or dismissing it on the phone, removes the alert on
+     the next read;
+   - publishing twice within ten seconds produces one wake-up, not two — the quota is doing its job,
+     and both documents are there when the feed is read;
+   - **two devices** on the same feed both get it, and neither ever sent anything to the publisher:
+     the only calls the phone makes are to the gateway, which is what `adb logcat` and the gateway's
+     own access log show;
+   - removing the feed stops the alerts, and a hint that arrives afterwards changes nothing and
+     unsubscribes the stale topic;
+   - **force-stop** the app from Android Settings and publish again: nothing arrives, which is the
+     documented limitation rather than a failure. Opening the app reads the feed and catches up.
+
+Record the date, the app build, the gateway, broker and Firebase project, and what each step did —
+as `docs/testing/stage-5-3.md` does for the direct path.
 
 ## Not covered here
 

@@ -15,6 +15,7 @@ import io.github.brrenat.seekervault.connections.FeedSnapshot
 import io.github.brrenat.seekervault.connections.GatewayException
 import io.github.brrenat.seekervault.connections.ProposalFeed
 import io.github.brrenat.seekervault.gateway.v1.FeedServiceClient
+import io.github.brrenat.seekervault.gateway.v1.getFeedTopicsRequest
 import io.github.brrenat.seekervault.gateway.v1.getProposalRequest
 import io.github.brrenat.seekervault.gateway.v1.getServerManifestRequest
 import io.github.brrenat.seekervault.gateway.v1.getStreamTicketRequest
@@ -33,20 +34,21 @@ import kotlin.time.Duration.Companion.seconds
 import okhttp3.OkHttpClient
 
 /**
- * What a phone reads from a broadcast gateway, and the permission it asks for to listen (SEE-91).
+ * What a phone reads from a broadcast gateway, the permission it asks for to listen (SEE-91), and
+ * where it is told hints arrive (SEE-92).
  *
- * Three reads and one grant, all unauthenticated: a feed is a broadcast, its reference can be
- * printed in a README, and holding one grants nothing. Nothing about this phone goes the other way
- * — no credential, no identifier, no report of what it did with anything it read. What the gateway
- * learns from a call is which channel someone is interested in, which is the least a subscription
- * can be made of (docs/security.md).
+ * Three reads, one grant and one name, all unauthenticated: a feed is a broadcast, its reference
+ * can be printed in a README, and holding one grants nothing. Nothing about this phone goes the
+ * other way — no credential, no identifier, no report of what it did with anything it read. What
+ * the gateway learns from a call is which channel someone is interested in, which is the least a
+ * subscription can be made of (docs/security.md).
  *
  * It implements both seams the earlier stages left open ([FeedGateway] for settings, [ProposalFeed]
- * for the current proposals) plus [FeedTickets], because they are one endpoint and one client. The
- * stream is next door and speaks a different protocol; this file never touches it.
+ * for the current proposals) plus [FeedTickets] and [FeedTopics], because they are one endpoint and
+ * one client. The stream is next door and speaks a different protocol; this file never touches it.
  */
 class ConnectFeedGateway(private val httpClient: OkHttpClient) :
-    FeedGateway, ProposalFeed, FeedTickets {
+    FeedGateway, ProposalFeed, FeedTickets, FeedTopics {
 
     override suspend fun resolve(reference: FeedReference, knownRevision: Long): FeedManifest {
         val answer =
@@ -162,6 +164,33 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
                 GrantedChannel(it.channel, it.streamChannel)
             }
         return FeedGrant(answer.ticket, granted, answer.lifetimeSeconds.seconds)
+    }
+
+    /**
+     * Where hints about these feeds arrive (SEE-92).
+     *
+     * The same asymmetry as a ticket's, for the same reason: a channel the gateway does not name is
+     * left out of the answer rather than fatal, and an answer naming a channel nobody asked about
+     * is refused whole. Subscribing to a topic for a publisher the owner never added would be this
+     * phone being told to listen for somebody else's feed, and at that point nothing about the
+     * answer can be relied on.
+     */
+    override suspend fun topics(
+        gatewayUrl: String,
+        channels: List<String>,
+    ): List<FeedChannelTopic> {
+        val asked = channels.distinct()
+        val answer =
+            call(gatewayUrl) { it.getFeedTopics(getFeedTopicsRequest { this.channels += asked }) }
+        return answer.topicsList.map {
+            if (it.channel !in asked || it.topic.isEmpty()) {
+                throw GatewayException(
+                    GatewayException.Kind.BadResponse,
+                    "a topic for a channel that was not asked about",
+                )
+            }
+            FeedChannelTopic(it.channel, it.topic)
+        }
     }
 
     private fun client(gatewayUrl: String) =

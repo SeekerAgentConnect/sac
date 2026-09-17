@@ -7,9 +7,11 @@ SAW-056 sends a content-free invalidation after committed request changes. SAW-0
 inside the Firebase callback budget, deduplicates the handoff, and schedules only the connections
 that need the existing authoritative Sync path. SAW-058 adds one private request channel, an
 isolated runtime notification-permission request, and a read-only tap route which fetches current
-state before showing review controls. Adding or removing Firebase, or denying notification
-permission, does not change the Stage 5.2 foreground stream, manual **Refresh**, unary Sync, or
-periodic WorkManager recovery.
+state before showing review controls. SEE-92 extends the same pipeline to a
+publisher's public feed, with a relay in the shared broadcast gateway and per-feed topics
+([below](#the-broadcast-relay-and-feed-topics-see-92)). Adding or removing Firebase, or denying
+notification permission, does not change the Stage 5.2 foreground stream, manual **Refresh**, unary
+Sync, periodic WorkManager recovery, or Stage 7.1's own feed stream.
 
 ## What belongs to one deployment
 
@@ -312,6 +314,101 @@ appropriate. A phone on an unconfigured build continues using foreground streams
 and the periodic worker. WorkManager remains eventual, and neither it nor FCM delivery can
 bypass Android Settings **Force stop**; reopen the app after a force-stop.
 
+## The broadcast relay and feed topics (SEE-92)
+
+Stage 7.1 adds a second kind of server — a developer's publisher, broadcasting to everyone
+subscribed through the shared gateway — and a second kind of message about it. Everything above
+stays exactly as it is: the direct path's registration, its `fid`-addressed invalidation, its Sync
+and its request alerts are untouched, and a deployment can run either half, both, or neither.
+
+**Who sends.** The broadcast gateway, not the publisher. The publisher publishes a document to the
+gateway as it already did; the gateway commits it and then sends one message to that feed's topic.
+A publisher is given no Firebase credential, cannot name a topic, and never learns that any phone
+received anything.
+
+**What is sent.** The whole payload:
+
+```text
+kind=feed_invalidation
+version=1
+```
+
+It is beside SAW-056's `request_invalidation`, deliberately a different kind: the two are about
+different servers and reach different state, and each is matched whole so a message with an extra
+field is ignored rather than partly trusted. Which feed changed is the **topic**, which is a
+routing field — the same distinction this guide already makes for a target.
+
+**Where it is sent.** `feed.<environment>.<server_id>`, and the phone is *told* the name rather
+than working it out: `FeedService.GetFeedTopics` answers it for the channels a phone holds feed
+references for. A name derived on both sides would drift into silence rather than into an error. The
+environment (`production` or `sandbox`) scopes every topic so one Firebase project can serve both
+kinds of deployment.
+
+A topic name is public and proves nothing. Do not treat one as evidence of access: what arrives on
+it is the news that a public broadcast changed, with no document in it at all.
+
+### Configure the relay
+
+One Firebase project for the whole deployment — the same project whose `google-services.json` the
+APK was built with, or the messages will be sent to topics no phone is subscribed to. Then, in
+`broadcast/.env`:
+
+```bash
+BROADCAST_PUSH_CREDENTIALS_FILE=/run/secrets/seeker-broadcast-fcm.json
+BROADCAST_PUSH_ENVIRONMENT=production
+docker compose -f compose.yaml -f compose.push.yaml up -d --build
+```
+
+The credential is a service-account JSON for that project, with permission to send (Firebase's
+**Firebase Cloud Messaging API Admin** role, as above). Unlike the sidecar's, it is **not**
+discovered through Application Default Credentials: the path is named, the file is mounted
+read-only into the gateway's container alone, and the gateway reads it once at startup. A missing or
+malformed credential stops the process with a message that names the field and no part of its
+contents.
+
+The gateway's own image carries a CA bundle from SEE-92 onwards, because this is its first outbound
+TLS connection (`broadcast/Dockerfile` says so in a comment beside the line that copies it).
+
+### What the phone does with a hint
+
+1. The messaging service matches the payload whole and hands the topic to the one component that
+   has a use for it.
+2. It enqueues one unique WorkManager job with an **empty input** — no topic, no channel, no
+   proposal ID is written into WorkManager's database.
+3. The job reads every feed this phone holds that is not already live on a foreground stream,
+   through the gateway's unary API, with the boundary each feed was last read at (so an unchanged
+   feed costs one small answer).
+4. Proposals that are newly waiting for the owner get one generic alert on their own channel,
+   **Proposals waiting for review**, and the tap opens the feed they are on. Nothing is prepared,
+   signed or sent by a notification or by a hint.
+
+Because the read covers every feed, two hints are one read and a hint that Firebase replaced under
+its collapse key loses nothing.
+
+### Topic membership
+
+The app subscribes when the owner adds a feed and unsubscribes when they remove one, and it keeps no
+list: the connection list is the truth and the subscriptions are derived from it. A registration
+refresh re-subscribes, because topic membership belongs to the installation.
+
+One case cannot be derived: a feed removed while the app was not running leaves a subscription
+behind. A hint that arrives on a topic no feed wants is unsubscribed from, so it removes itself the
+first time it costs anything. A removed feed can never be re-added, re-enabled or acted on by a
+message: nothing in a hint names a feed, and the read only ever reads connections the owner still
+has.
+
+### Off, unavailable, or misconfigured
+
+| Condition | Behaviour |
+| --- | --- |
+| No `BROADCAST_PUSH_CREDENTIALS` | The gateway relays nothing and says so at startup. `GetFeedTopics` answers `NO_PUSH`, the phone subscribes to nothing, and the foreground stream and the owner's own reads are unaffected. |
+| No Android `google-services.json` | No default Firebase app, so `subscribeToTopic` is a no-op and no channel, prompt or alert exists. Every other path is unchanged. |
+| A credential that cannot send, or an FCM outage | The hint is logged as not delivered, by classification only, and the notice is **not** deferred: the document is stored and the stream already carried it. |
+| A publisher publishing faster than the quota | Hints are dropped, not queued. Every document is still stored, still streamed and still read on the next hint or glance. |
+| Notification permission denied | Hints still cause a read; nothing is displayed. |
+| The owner force-stops the app | Nothing is delivered and no job runs until they open it again — the same limitation SAW-059 records for the private path, and it applies to a topic message too. |
+| Two deployments, one Firebase project | Give them different `BROADCAST_PUSH_ENVIRONMENT` values. Without that, the same publisher ID in both would be the same topic. |
+
 ## Pricing and quotas checked for SAW-054
 
 Checked on **2026-09-14** against Firebase's official pages:
@@ -342,3 +439,7 @@ operate near any published maximum.
 - [Firebase Admin FID message](https://firebase.google.com/docs/reference/admin/node/firebase-admin.messaging.fidmessage)
 - [Firebase Messaging Android API](https://firebase.google.com/docs/reference/android/com/google/firebase/messaging/FirebaseMessaging)
 - [Firebase Messaging service callbacks](https://firebase.google.com/docs/reference/android/com/google/firebase/messaging/FirebaseMessagingService)
+- [Topic messaging on Android](https://firebase.google.com/docs/cloud-messaging/android/topic-messaging)
+- [Send messages to topics (server)](https://firebase.google.com/docs/cloud-messaging/send-message#send-messages-to-topics)
+- [The FCM HTTP v1 send API](https://firebase.google.com/docs/reference/fcm/rest/v1/projects.messages/send)
+- [OAuth 2.0 for service accounts](https://developers.google.com/identity/protocols/oauth2/service-account)

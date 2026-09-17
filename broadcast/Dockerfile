@@ -28,15 +28,23 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/broadcast ./cmd/broadcast \
  && go build -trimpath -ldflags="-s -w" -o /out/broadcastctl ./cmd/broadcastctl
 
 # --- runtime ----------------------------------------------------------------
-# Nothing but the two binaries. No shell, no package manager, and — deliberately —
-# still no CA certificates.
+# The two binaries, a CA bundle, and nothing else. No shell and no package
+# manager.
 #
-# SEE-91 gave the gateway one outbound connection: the broker it publishes events
-# to. That link is plain HTTP on an internal compose network with no route out of
-# the deployment, so there is nothing for a trust store to verify. A deployment
-# that puts its broker behind TLS instead needs a bundle here, and adding one is
-# a visible line in this file rather than something that was always there.
+# The bundle is here because SEE-92 gave the gateway its second outbound
+# connection, and this one is over TLS to somebody else's service: the push
+# endpoint a hint is sent through, and the endpoint the grant for it is exchanged
+# at (internal/relay). SEE-91's first one needs no trust store — the broker is
+# plain HTTP on an internal network with no route out of the deployment — and the
+# image shipped none until now, deliberately, which is why this is a visible line
+# with a reason beside it rather than something that was always there.
+#
+# It is copied from the build image's own Debian bundle, so it is the same set of
+# roots the toolchain was built against and it is pinned by GO_VERSION with
+# everything else. A deployment that relays nothing still carries it: an image is
+# not conditional, and one bundle is a smaller thing to explain than two images.
 FROM scratch AS runtime
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 # The publications and the publisher configuration. It is the only writable path.
 ENV BROADCAST_DATABASE_PATH=/data/broadcast.db
 # Both listeners bind every interface *inside this container*, which is the only

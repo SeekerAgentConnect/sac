@@ -29,6 +29,8 @@ import io.github.brrenat.seekervault.activity.ActivityViewModel
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
+import io.github.brrenat.seekervault.notifications.ProposalNotificationIntent
+import io.github.brrenat.seekervault.notifications.ProposalRef
 import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
 import io.github.brrenat.seekervault.policy.GlobalPolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
@@ -42,9 +44,14 @@ class MainActivity : ComponentActivity() {
         val key: io.github.brrenat.seekervault.connections.RequestKey,
     )
 
+    /** The same for a proposal alert (SEE-92): the feed it is on, and the document on it. */
+    data class FeedTap(val sequence: Long, val ref: ProposalRef)
+
     private var nextNotificationTap = 0L
     private val _notificationTaps = MutableStateFlow<NotificationTap?>(null)
     private val notificationTaps = _notificationTaps.asStateFlow()
+    private val _feedTaps = MutableStateFlow<FeedTap?>(null)
+    private val feedTaps = _feedTaps.asStateFlow()
 
     private val viewModel: LiveCommandViewModel by viewModels {
         viewModelFactory {
@@ -140,6 +147,7 @@ class MainActivity : ComponentActivity() {
                     globalPolicy,
                     viewModel,
                     notificationTaps,
+                    feedTaps,
                 )
             }
         }
@@ -152,8 +160,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun acceptNotificationTap(intent: Intent?) {
-        val key = RequestNotificationIntent.destination(intent) ?: return
-        _notificationTaps.value = NotificationTap(++nextNotificationTap, key)
+        // Two routes, and one intent carries one action: each is validated by the object that
+        // built it, and an intent that is neither — a launch, say — is left exactly as it is.
+        val request = RequestNotificationIntent.destination(intent)
+        val proposal = ProposalNotificationIntent.destination(intent)
+        if (request == null && proposal == null) return
+        request?.let { _notificationTaps.value = NotificationTap(++nextNotificationTap, it) }
+        proposal?.let { _feedTaps.value = FeedTap(++nextNotificationTap, it) }
         // The saved Compose route survives rotation. Do not interpret the same Activity intent as
         // another owner tap when Android recreates only the screen.
         intent?.action = null
