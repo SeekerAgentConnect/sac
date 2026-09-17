@@ -89,6 +89,33 @@ const ALGORITHMS = [
   "EdDSA",
 ];
 
+/**
+ * Hosts an http:// endpoint may use: a developer's own authorization server, and the tests. Any
+ * other host must be https, because a key fetched over plaintext is a key an attacker can replace.
+ */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+
+/** An authorization server advertising a key set this sidecar will not read. */
+class InsecureKeySet extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InsecureKeySet";
+  }
+}
+
+/**
+ * Whether an OAuth endpoint may be trusted: https, or http on a loopback host. Every URL this
+ * sidecar fetches keys from passes through here — the one an operator configures (config.ts) and
+ * the one an authorization server advertises in its own metadata, which is just as much an input.
+ */
+export function isSecureEndpoint(url: URL): boolean {
+  if (url.protocol === "https:") return true;
+  return (
+    url.protocol === "http:" &&
+    LOOPBACK_HOSTS.has(url.hostname.replace(/^\[|\]$/g, ""))
+  );
+}
+
 /** Tolerated clock difference between this host and the authorization server. */
 const CLOCK_TOLERANCE_SECONDS = 30;
 
@@ -262,6 +289,9 @@ function reasonFor(error: unknown): string {
     return "the access token's signature is not from the authorization server's published keys";
   }
   if (error instanceof errors.JOSEError) return "the access token is not valid";
+  // Our own refusal, and worth repeating rather than flattening: it is a configuration the
+  // operator has to fix at the authorization server, not a token the client can do anything about.
+  if (error instanceof InsecureKeySet) return error.message;
   return "the authorization server's keys could not be read";
 }
 
@@ -281,7 +311,17 @@ async function discoverJwksUrl(issuer: string): Promise<string> {
   for (const candidate of candidates) {
     const metadata = await readJson(candidate);
     const jwksUri = metadata?.jwks_uri;
-    if (typeof jwksUri === "string" && jwksUri !== "") return jwksUri;
+    if (typeof jwksUri !== "string" || jwksUri === "") continue;
+    // A discovered URL is an input like any other, and it decides which keys sign the tokens this
+    // endpoint accepts. Fetching it over plaintext would let anyone on the path substitute a key
+    // and mint a token for this deployment, so it is held to the rule MCP_OAUTH_JWKS_URL is.
+    const url = URL.parse(jwksUri);
+    if (url === null || !isSecureEndpoint(url)) {
+      throw new InsecureKeySet(
+        "the authorization server advertises its keys over plaintext; this server will not read signing keys that a network could replace",
+      );
+    }
+    return url.toString();
   }
   throw new Error(
     "the authorization server published no jwks_uri; set MCP_OAUTH_JWKS_URL",

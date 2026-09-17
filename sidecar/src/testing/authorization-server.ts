@@ -46,6 +46,11 @@ export interface AuthorizationServerOptions {
   readonly discovery?: "oauth" | "openid" | "none";
   /** A path component on the issuer, the way a Keycloak realm or an Auth0 tenant has one. */
   readonly path?: string;
+  /**
+   * The `jwks_uri` the metadata advertises, when it should not be the real one — a compromised or
+   * misconfigured server pointing a resource server at plaintext keys.
+   */
+  readonly jwksUri?: string;
 }
 
 /** Starts one on a loopback port. Close it when the test is done. */
@@ -84,7 +89,7 @@ export async function startAuthorizationServer(
       reads.metadata += 1;
       send({
         issuer: issuerOf(),
-        jwks_uri: `${issuerOf()}/jwks`,
+        jwks_uri: options.jwksUri ?? `${issuerOf()}/jwks`,
         authorization_endpoint: `${issuerOf()}/authorize`,
         token_endpoint: `${issuerOf()}/token`,
         response_types_supported: ["code"],

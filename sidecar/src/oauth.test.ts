@@ -15,6 +15,7 @@ import { after, before, describe, it } from "node:test";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 
+import { isSecureEndpoint } from "./oauth.ts";
 import { startSidecar, type Sidecar } from "./server.ts";
 import {
   startAuthorizationServer,
@@ -357,6 +358,48 @@ describe("the authorization server's keys", () => {
     assert.equal(authorizationServer.reads.jwks, before.jwks);
   });
 
+  it("are never read over plaintext, however the authorization server advertises them", async () => {
+    // A discovered jwks_uri decides which keys sign the tokens this endpoint accepts. Over http to
+    // anywhere but loopback, anyone on the path could substitute a key and mint a token for this
+    // deployment, so it is held to the rule MCP_OAUTH_JWKS_URL is held to.
+    const insecure = await startAuthorizationServer({
+      jwksUri: "http://keys.example.com/jwks",
+    });
+    const deployment = await startSidecar({
+      host: "127.0.0.1",
+      port: 0,
+      mcpToken: MCP_TOKEN,
+      phoneToken: PHONE_TOKEN,
+      liveCommandTimeoutSeconds: 1,
+      databasePath: ":memory:",
+      requestTtlSeconds: 86_400,
+      pendingLimit: 100,
+      oauth: { issuer: insecure.issuer, resource: RESOURCE, scopes: [] },
+    });
+    try {
+      const token = await insecure.issue({ audience: RESOURCE });
+      const refused = await send("/mcp", {
+        method: "POST",
+        target: deployment,
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+          Authorization: `Bearer ${token}`,
+        },
+        body: INITIALIZE,
+      });
+      // The token itself is perfectly well formed; the keys behind it are the problem, and the
+      // refusal says so — an unreachable key set would read "could not be read" instead.
+      assert.equal(refused.status, 401);
+      const challenge = String(refused.headers["www-authenticate"] ?? "");
+      assert.match(challenge, /error="invalid_token"/);
+      assert.match(challenge, /advertises its keys over plaintext/);
+    } finally {
+      await deployment.close();
+      await insecure.close();
+    }
+  });
+
   it("are found through OpenID Connect discovery, and under an issuer with a path", async () => {
     const openid = await startAuthorizationServer({
       discovery: "openid",
@@ -390,6 +433,27 @@ describe("the authorization server's keys", () => {
     } finally {
       await deployment.close();
       await openid.close();
+    }
+  });
+});
+
+describe("what counts as a usable OAuth endpoint", () => {
+  it("is https anywhere, and http only on loopback", () => {
+    for (const url of [
+      "https://auth.example.com/jwks",
+      "http://127.0.0.1:9000/jwks",
+      "http://localhost:9000/jwks",
+      "http://[::1]:9000/jwks",
+    ]) {
+      assert.equal(isSecureEndpoint(new URL(url)), true, url);
+    }
+    for (const url of [
+      "http://auth.example.com/jwks",
+      "http://192.168.1.10/jwks",
+      "http://127.0.0.1.example.com/jwks",
+      "ftp://auth.example.com/jwks",
+    ]) {
+      assert.equal(isSecureEndpoint(new URL(url)), false, url);
     }
   });
 });

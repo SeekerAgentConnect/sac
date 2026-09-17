@@ -8,7 +8,7 @@
  */
 import { fileURLToPath } from "node:url";
 
-import type { OAuthConfig } from "./oauth.ts";
+import { isSecureEndpoint, type OAuthConfig } from "./oauth.ts";
 import { invalidServerUrlReason, normalizeServerUrl } from "./pairing/uri.ts";
 import { CHAIN_BUDGET_MS } from "./solana/rpc.ts";
 import {
@@ -337,10 +337,9 @@ function publicEndpoint(
     problems.push(`${name} must be an absolute https:// URL.`);
     return undefined;
   }
-  const loopback =
-    url.protocol === "http:" &&
-    LOOPBACK_HOSTS.has(url.hostname.replace(/^\[|\]$/g, ""));
-  if (url.protocol !== "https:" && !loopback) {
+  // The same rule the sidecar applies to a key URL an authorization server advertises, so there is
+  // one definition of what an OAuth endpoint may look like (oauth.ts).
+  if (!isSecureEndpoint(url)) {
     problems.push(
       `${name} must be an https:// URL, or http:// on a loopback host for development.`,
     );

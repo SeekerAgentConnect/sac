@@ -351,6 +351,7 @@ those checks, which is how they were confirmed to bite.
 | Check | What it needs | Status |
 | --- | --- | --- |
 | Following the guide end to end on a fresh checkout, using only its prerequisites | A Docker daemon. Every command's spelling is checked above; none of them has been executed | NOT RUN |
+| The restore's file ownership — that a database copied back in is writable by the sidecar's account (uid 10001) | A Docker daemon. The recipe sets the owner explicitly and says how to check it; `backup.test.ts` covers the SQLite side, not the container's file ownership | NOT RUN |
 | The same on a Linux VPS, with a real domain and certificate | A VPS and a domain | NOT RUN |
 | Pairing a physical Seeker by scanning the printed code | The phone | NOT RUN |
 | Screenshots | There are none in the guide; it is text and commands throughout | — |

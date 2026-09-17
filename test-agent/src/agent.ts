@@ -199,6 +199,12 @@ export async function displayCommand(
   return { id: content.id, result: "OK" };
 }
 
+/**
+ * How long a tool that answers at once may take. A durable tool returns the stored request, but a
+ * read of a SUBMITTED transfer also checks the chain, so it is not instant.
+ */
+const DEFAULT_CALL_TIMEOUT_MS = 30_000;
+
 /** A durable request as the sidecar's tools return it (docs/protocol.md#agent-api-mcp). */
 export interface RequestView {
   readonly request_id: string;
@@ -300,10 +306,33 @@ export async function waitForRequest(
   const now = options.now ?? Date.now;
   const started = now();
   let polls = 0;
+  let last: RequestView | undefined;
   for (;;) {
-    const view = await requestTool(client, GET_REQUEST_TOOL, {
-      request_id: requestId,
-    });
+    // Each read is given what is left of the deadline, and no more. A read of a SUBMITTED transfer
+    // checks the chain and can take seconds; without this, `--for 1` could block for the call's own
+    // timeout instead, and the bound this function advertises would not be one.
+    const budget = options.timeoutMs - (now() - started);
+    let view: RequestView;
+    try {
+      view = await requestTool(
+        client,
+        GET_REQUEST_TOOL,
+        { request_id: requestId },
+        Math.max(1, Math.min(budget, DEFAULT_CALL_TIMEOUT_MS)),
+      );
+    } catch (error) {
+      // The deadline passed while a read was in flight. That is the wait giving up, which is not a
+      // failure: report the request as it was last seen. With nothing seen yet, there is nothing to
+      // report and the caller hears about the read instead.
+      if (last === undefined || !timedOut(error)) throw error;
+      return {
+        view: last,
+        timedOut: true,
+        waitedSeconds: Math.round((now() - started) / 1000),
+        polls,
+      };
+    }
+    last = view;
     polls += 1;
     const waited = now() - started;
     options.onPoll?.(view, waited);
@@ -326,6 +355,13 @@ export async function waitForRequest(
     }
     await delay(Math.min(options.intervalMs, remaining));
   }
+}
+
+/** Whether a failed call is the client's own deadline rather than the sidecar refusing. */
+function timedOut(error: unknown): boolean {
+  return (
+    error instanceof McpError && error.code === Number(ErrorCode.RequestTimeout)
+  );
 }
 
 function delay(ms: number): Promise<void> {
@@ -390,8 +426,9 @@ export async function requestTool(
   client: Client,
   name: string,
   args: Record<string, unknown>,
+  timeoutMs = DEFAULT_CALL_TIMEOUT_MS,
 ): Promise<RequestView> {
-  const view = await callView(client, name, args);
+  const view = await callView(client, name, args, timeoutMs);
   if (typeof view.request_id !== "string" || typeof view.status !== "string") {
     throw new AgentFailure(ExitCode.FAILURE, `${name} returned no request`);
   }
@@ -403,9 +440,10 @@ async function callView(
   client: Client,
   name: string,
   args: Record<string, unknown>,
+  timeoutMs = DEFAULT_CALL_TIMEOUT_MS,
 ): Promise<Record<string, unknown>> {
   const result = (await client.callTool({ name, arguments: args }, undefined, {
-    timeout: 30_000,
+    timeout: timeoutMs,
   })) as CallToolResult;
   if (result.isError === true) {
     const first = result.content[0];

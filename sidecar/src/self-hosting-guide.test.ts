@@ -96,8 +96,29 @@ describe("the self-hosting guide", () => {
         index += option.includes("=") ? 1 : 2;
       }
       const subcommand = tokens[index] ?? "";
-      const argument =
-        tokens.slice(index + 1).find((token) => !token.startsWith("-")) ?? "";
+      // The subcommand's own options, and the ones that take a value: `run --user root` names a
+      // user, not a service. Skipping those values is what leaves the service itself.
+      const takesValue = new Set([
+        "--user",
+        "-u",
+        "--entrypoint",
+        "--workdir",
+        "-w",
+        "--env",
+        "-e",
+        "--volume",
+        "-v",
+        "--publish",
+        "-p",
+        "--label",
+        "-l",
+        "--name",
+      ]);
+      let cursor = index + 1;
+      while (tokens[cursor]?.startsWith("-") === true) {
+        cursor += takesValue.has(tokens[cursor] ?? "") ? 2 : 1;
+      }
+      const argument = tokens[cursor] ?? "";
 
       if (
         ["exec", "run", "logs", "stop", "start", "restart"].includes(subcommand)
