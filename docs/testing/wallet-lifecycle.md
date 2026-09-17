@@ -66,17 +66,61 @@ This page is what is checked automatically, what only the Seeker can show, and t
   chain under that signature is byte for byte the one the approval named, and an endpoint that
   didn't answer, a status that isn't there yet, and a signature naming something else all leave the
   request exactly as it was. Nothing anywhere builds a replacement transaction.
-- **The authorization the wallet hands back is the one kept.** A wallet reauthorizes this app at
-  the start of every session and may replace this phone's token; the replacement is read from
-  inside that same session, so a signing the owner declines still leaves the phone holding a
-  working authorization, and the wallet is never opened again just to ask for one. The selected
-  wallet, its address, and its network don't change with it, and a token the wallet refuses is
-  forgotten as before.
+- **The authorization the wallet hands back is the one kept, for a transfer as for a message
+  (SEE-84).** A wallet reauthorizes this app at the start of every session — before it signs, and
+  before it sends — and may replace this phone's token. The replacement is read from inside that
+  same session, so a signing or a transfer the owner declines still leaves the phone holding a
+  working authorization, and the wallet is never opened again just to ask for one. It is kept for
+  every outcome, including one nobody knows: a transaction whose fate is unknown says nothing about
+  the token that came with it. The selected wallet, its address, and its network don't change with
+  it, and a token the wallet refuses is forgotten as before.
+- **A storage failure never changes what the wallet did (SEE-84).** Writing the replacement token is
+  the last thing that happens, after the outcome is known. If this phone can't write it — a locked
+  Keystore, a full disk — the wallet's answer still stands exactly as it was, nothing is asked of
+  the wallet a second time, and the phone carries on with the token it had, which is refused next
+  time and sends the owner to **Connect wallet**. That is what an expired authorization does anyway.
+- **The account the wallet authorizes is the account the owner reviewed (SEE-84).** A wallet
+  reauthorizes at the start of every session, and what it authorizes then is what it would sign
+  with. Before anything is put to it, the session's own reauthorization is checked against the
+  reviewed address: if that account isn't among the ones the wallet now lists, or the wallet lists
+  chains for it that don't include the reviewed network, nothing is signed and nothing is sent. The
+  outcome is the same "this changed, look again" the phone reports when its own selection moved, the
+  session is forgotten, and the owner connects the wallet and reviews the request afresh. A wallet
+  that lists no chains for the account has said nothing, which is neither a contradiction nor a
+  confirmation — it is exactly how connecting reads it.
+- **A failure before the transaction reached the wallet is a failure; anything after it is unknown
+  (SEE-84).** The phone knows which side of the request its own session broke on, because it knows
+  whether it ever got as far as asking. A session that ended before the transaction was put to the
+  wallet sent nothing, and saying so settles the request instead of leaving an outcome open that
+  nobody will ever close. From the instant the request is made, and for every answer the wallet
+  gives for itself, the old rule stands: an outcome nobody knows is UNKNOWN, and never a rejection.
 - **A reply belongs to its connection.** An answer is keyed by connection ID and request ID, it is
   sent to that connection's own URL with that connection's own credential, and the sidecar refuses
   a reference that names a request another connection owns.
 - **A repeat settles nothing twice.** The sidecar recognizes a result identical to one it already
   accepted and returns the same terminal request, before and after a restart.
+
+### Wallet targeting
+
+Mobile Wallet Adapter's client learns where the wallet answered from while it authorizes, and keeps
+it in that client object. Until SEE-84 the app made a new client for every operation, so each one
+threw that away and started association afresh.
+
+- **One wallet session is one client.** Connecting, signing, sending and disconnecting share it, so
+  what it learned about the wallet holds for the session's lifetime. Nothing is held open between
+  calls: each one associates, does its work, and closes.
+- **It is dropped, not reused, when it stops meaning the same wallet.** Disconnecting ends it, an
+  authorization the wallet refused ends it, and another network is another session — a client is
+  bound to the chain it authorized on.
+- **A restart starts again.** The client's learned endpoint is private state in the pinned Mobile
+  Wallet Adapter (`mwa = 2.2.0`): there is no supported way to set it, and this app does not reach
+  into one by reflection or keep a copy of it. So a phone that reopens the app associates the way it
+  did the first time, and Android chooses the wallet as it does for any association. Restoring it
+  across a restart needs an upstream API that can take it; that is a follow-up, not something this
+  change works around.
+- **No server chooses a wallet.** Endpoint metadata comes from the wallet's own authorization flow
+  and nowhere else. Nothing a sidecar sends reaches the wallet client, and nothing about routing is
+  read back out of storage.
 
 ## Automated checks
 
@@ -96,6 +140,21 @@ This page is what is checked automatically, what only the Seeker can show, and t
 | Wallet cancellation stays a rejection; a wallet that couldn't sign stays a failure | `InboxViewModelTest.recordsAWalletThatDeclined`, `…CouldNotSign` |
 | A wallet message too long for the protocol is cut before it is stored, so the answer can always be delivered | `InboxViewModelTest.cutsAWalletMessageTheSidecarWouldRefuse` |
 | An authorization the wallet replaces while signing is kept, used by the next signing and after a reload, and kept when the owner declines; one it refuses is still forgotten | `WalletRepositoryTest.keepsAnAuthorizationTheWalletReplacesWhileSigning`, `…keepsTheReplacedAuthorizationWhenTheOwnerDeclinesTheSigning`, `…forgetsAnAuthorizationTheWalletRefusesWhileSigning` |
+| **Authorization, sessions and storage (SEE-84)** | |
+| An authorization the wallet replaces while it **sends** is kept, offered by the next operation and after a reload | `WalletRepositoryTest.keepsAnAuthorizationTheWalletReplacesWhileSending` |
+| It is kept when the transfer is declined and when nobody knows whether it was sent | `WalletRepositoryTest.keepsTheReplacedAuthorizationWhateverBecameOfTheTransaction` |
+| The same, at the adapter: the wallet's own reauthorization is read inside the one session | `MwaWalletAdapterSessionTest.keepsTheAuthorizationTheWalletHandsBackWhileItSends`, `…keepsItWhenTheOwnerDeclinesTheTransferInTheWallet`, `…keepsItWhenNobodyKnowsWhetherTheTransactionWasSent` |
+| A phone that can't write the replacement down still reports what the wallet did, and asks it nothing again | `WalletRepositoryTest.aStorageFailureNeverChangesWhatTheWalletDid` |
+| A reauthorization that doesn't name the reviewed account signs and sends nothing | `MwaWalletAdapterSessionTest.asksTheWalletNothingWhenItNoLongerAuthorizesTheReviewedAccount`, `MwaWalletAdapterTest.readsTheAccountsAWalletAuthorizedAgainstTheOneTheOwnerReviewed` |
+| A chain the wallet contradicts stops it; a chain list it didn't give is not a match | `MwaWalletAdapterSessionTest.refusesAnAccountTheWalletSaysIsNotOnTheReviewedNetwork`, `…takesAWalletThatListsNoChainsAsSayingNothing` |
+| The wallet is forgotten when it no longer authorizes the reviewed account, so the owner connects again | `WalletRepositoryTest.forgetsTheWalletWhenItNoLongerAuthorizesTheReviewedAccount` |
+| A failure before the transaction reached the wallet is a failure; the same failure after it is UNKNOWN | `MwaWalletAdapterSessionTest.aFailureBeforeTheTransactionReachedTheWalletIsAFailureAndNotAnUnknown`, `MwaWalletAdapterTest.tellsAFailureBeforeTheWalletApartFromOneNobodyCanResolve` |
+| A screen that closed before the wallet opened sent nothing | `MwaWalletAdapterSessionTest.aScreenThatClosedBeforeTheWalletOpenedSentNothing` |
+| One session across connecting, signing and sending; another network is another session | `MwaWalletAdapterSessionTest.keepsOneSessionAcrossConnectingSigningAndSending`, `…startsAnotherSessionForAnotherNetwork` |
+| The session is dropped when the wallet refuses the authorization, and when the owner disconnects | `MwaWalletAdapterSessionTest.forgetsTheSessionWhenTheWalletRefusesThisPhonesAuthorization`, `…forgetsTheSessionWhenTheOwnerDisconnects` |
+| The selection and its token are one sealed record, and an interrupted replacement leaves the one that was there | `WalletStoreTest.anInterruptedReplacementLeavesTheRecordThatWasThere`, `…aHalfWrittenReplacementIsNeverTheRecord` |
+| The two files an older build wrote are migrated into one; half of that pair is refused | `WalletStoreTest.readsWhatTheOlderBuildWroteAsTwoFilesAndStoresItAsOne`, `…refusesHalfOfWhatTheOlderBuildWrote` |
+| A stored record that isn't the selection in hand opens no wallet | `WalletRepositoryTest.asksTheWalletNothingWhenTheStoredRecordIsNotTheSelectionInHand` |
 | Every outcome across a restart of the app's storage, including the unresolved one | `ResultStoreTest` |
 | Repeated `SubmitResult`, for an approval and for a signature, before and after a sidecar restart | `sidecar/src/storage/request-store.test.ts` |
 | A result naming another connection's request is refused | `sidecar/src/storage/request-store.test.ts`, "keeps the phone to its own connection's requests" |
@@ -195,6 +254,25 @@ Also **devnet only**, continuing from the transfers above.
 | 29 | Restart the sidecar with a SUBMITTED transfer outstanding, then read it with `pnpm agent get <id>` | The signature and the previous check are still there, and reading it now settles it. Nothing ran during the restart. |
 | 30 | Poll `pnpm agent get <id>` in a tight loop on a SUBMITTED transfer | It answers every time; the sidecar's log shows it reaching the endpoint at most once every couple of seconds. |
 
+### Authorization, sessions and interrupted sends (SEE-84)
+
+Also **devnet only**, and never with mainnet funds. These are the checks the automated ones can't
+make: a real wallet's own reauthorization, a real Android process death, and a real second wallet.
+
+| # | Step | Expected |
+| --- | --- | --- |
+| 31 | Ask for two devnet transfers and approve and send both, one after the other | Both go through. Neither asks you to connect the wallet again, and neither opens a second prompt of its own. |
+| 32 | Ask for another, decline it in the wallet, then ask for another and approve it | The declined one is REJECTED. The one after it goes through without reconnecting: declining didn't cost this phone its authorization. |
+| 33 | Revoke this app in the wallet's own settings, then ask for a transfer and approve it | The app says the wallet no longer accepts its authorization, nothing is sent, and the **Wallet** screen offers **Connect wallet**. The agent reads FAILED, not UNKNOWN. |
+| 34 | Connect the wallet again and send a transfer | It goes through with the authorization the wallet issued just now. |
+| 35 | Switch the wallet app to a different account, then ask for a transfer and approve it | Nothing is signed with the new account. The app says the wallet changed and the request needs another look, and the **Wallet** screen asks you to connect again. The agent reads FAILED, and nothing is on chain. |
+| 36 | With two Mobile Wallet Adapter wallets installed, connect one and send two transfers in a row | Both go to the wallet you connected. Android's own chooser, if it appears, appears no more often than it did for the first one. |
+| 37 | Ask for a transfer, tap **Approve and send**, and rotate the phone while the wallet is in front | The wallet stays in front. The outcome is reported once, for the wallet that was reviewed. |
+| 38 | Ask for another, tap **Approve and send**, and force-stop the app while the wallet is in front | Reopen: the request says this phone never learned what the wallet did, the agent reads UNKNOWN, and nothing is sent again. **Check status** says there is no signature to look up. |
+| 39 | Look the fee payer up on a devnet explorer for step 38, then reopen the app and refresh twice | Whatever is on chain, the app and the agent still say UNKNOWN, and no second transaction was sent. |
+| 40 | Turn airplane mode on mid-send, or kill the wallet app while it has the transaction, then read the request | Either it says nothing was sent — and nothing is on chain — or it says this phone can't tell. It never says "declined" for a transaction that may be on chain, and it never sends one again by itself. |
+| 41 | Update over an install made before SEE-84 that had a wallet connected | The wallet is still connected, with the same address and network, and a transfer works without connecting again. `adb shell run-as` shows one `no_backup/wallet/wallet-session` and no `files/wallet/wallet.json`. |
+
 ## Verification record: SAW-021
 
 Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
@@ -248,3 +326,36 @@ Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
 | Repeated `SubmitResult` returns the same terminal result | PASS, for an approval and a signature, and after reopening the database |
 | Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>Settling no abandoned signing failed `settlesAnApprovalTheWalletNeverAnsweredWhenTheAppComesBackToTheForeground` and `settlesAnApprovalWhoseAnswerNeverArrivedWhenTheAppComesBack`.</li><li>Dropping the wallet timeout failed `givesUpOnAWalletThatNeverAnswersAtAll`.</li><li>Ignoring the sidecar's stored results failed the four repeat tests, including the restart one.</li></ul> |
 | The owner's checks on the Seeker, steps 1 to 14 | **PASS**, 2026-09-12 |
+
+## Verification record: SEE-84
+
+Run on 2026-09-17 on macOS 26.5.2 (Apple silicon), with the versions in
+[`toolchain.md`](../development/toolchain.md).
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, `tsc`, 464/464 sidecar tests, and 36/36 test agent tests. SEE-84 changed no TypeScript. |
+| `pnpm check:generated` | PASS: SEE-84 changed no `.proto` file, and the committed generated code and fixtures match a fresh generation |
+| `pnpm test:hello` | PASS: 9/9 Stage 1 acceptance cases |
+| `pnpm test:queue` | PASS: 7/7 Stage 2 acceptance cases |
+| `pnpm test:updates` | PASS: 10/10 sidecar update cases, and the Android `sync` and gRPC interop suites |
+| `pnpm test:push` | PASS: 35/35 sidecar push and role cases, and the Android Stage 5.3, notification, tap and stage-boundary suites |
+| `pnpm check:android` | PASS: Spotless, 882/882 unit tests (28 more than before), Android lint with no issues, and the debug and instrumentation APKs. **The unit tests were run with `--max-workers=1`.** Run in parallel on this machine, 25 of them fail — every one a test that binds a loopback socket or starts a real sidecar, and the identical 25 fail the same way on the unmodified commit this branch started from. None is a wallet test, and none of them fails serially. |
+| A transfer keeps the authorization the wallet replaced | PASS: at the repository, for a sent, a declined, and an unknown transfer, used by the next operation and after a reload; and at the adapter, read inside the one session |
+| A storage failure changes no outcome | PASS: the Keystore is taken away while the transaction is with the wallet; the wallet's `Sent` still stands, the wallet is asked exactly once, and the phone keeps the token it had |
+| Nothing is signed for an account the wallet no longer authorizes | PASS: the fake wallet reauthorizes another account, and neither the message nor the transaction is put to it; an explicit chain contradiction stops it too, and a wallet that lists no chains does not |
+| A failure before the send is a failure, and after it is unknown | PASS: the same error on either side of the request, plus the screen-closed case, which sent nothing |
+| One session per wallet | PASS: connecting, signing and sending share one client; another network is another session; a refused authorization and a disconnect end one |
+| The stored session is one record | PASS: an interrupted replacement leaves the previous record whole, a leftover temporary file is never the record, the older two-file pair migrates once and is deleted, and half of that pair is refused |
+| Deliberate breaks | Ten were made, each failed the tests named, and each file was restored byte for byte afterwards:<ul><li>Dropping the refreshed token on the sending path failed `keepsTheAuthorizationTheWalletHandsBackWhileItSends`, `keepsItWhenTheOwnerDeclinesTheTransferInTheWallet`, and `keepsItWhenNobodyKnowsWhetherTheTransactionWasSent`.</li><li>Never checking the reauthorized account failed `asksTheWalletNothingWhenItNoLongerAuthorizesTheReviewedAccount`, `refusesAnAccountTheWalletSaysIsNotOnTheReviewedNetwork`, and `readsTheAccountsAWalletAuthorizedAgainstTheOneTheOwnerReviewed`.</li><li>Treating a missing chain list as a contradiction failed `takesAWalletThatListsNoChainsAsSayingNothing` and the same reading test.</li><li>Classifying every codeless failure as `Unknown` failed `aFailureBeforeTheTransactionReachedTheWalletIsAFailureAndNotAnUnknown`; classifying every one as `Failed` failed `keepsItWhenNobodyKnowsWhetherTheTransactionWasSent`. Both failed `tellsAFailureBeforeTheWalletApartFromOneNobodyCanResolve`.</li><li>Making a new session per operation failed `keepsOneSessionAcrossConnectingSigningAndSending`, `forgetsTheSessionWhenTheOwnerDisconnects`, and the account check's own test; keeping one session across networks failed `startsAnotherSessionForAnotherNetwork`.</li><li>Letting a storage failure escape the sending path failed `aStorageFailureNeverChangesWhatTheWalletDid`.</li><li>Restoring half of the older two-file pair anyway failed `refusesHalfOfWhatTheOlderBuildWrote`.</li><li>Naming `signAndSendTransactions` outside `MwaWalletAdapter` failed `StageBoundaryTest.nothingSpendsSwapsOrAsksForABiometricOfItsOwn`.</li></ul> |
+| The owner's checks on the Seeker, steps 31 to 41 | **NOT RUN.** No physical device was available in this environment. Steps 1 to 30 stand as recorded above, on the code as it was then. |
+
+### What this record does not claim
+
+- The review that opened SEE-84 read the source; it reproduced nothing on a device. Every change
+  here is written against the behaviour the code had, and no defect below was ever seen on a Seeker.
+- No automated test has started a real wallet app. `FakeWalletClient` stands in for a Mobile Wallet
+  Adapter session, which means the mapping from that library's own answers to this app's outcomes is
+  exercised only as far as `MwaSession` — a thin layer — and the library's behaviour itself is not.
+- Wallet targeting across a process restart is **not** solved. A restart starts association afresh,
+  and it needs an upstream API to do otherwise; see [wallet targeting](#wallet-targeting).

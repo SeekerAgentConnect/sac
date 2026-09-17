@@ -193,11 +193,12 @@ The code is in `wallet/`:
 | File | Role |
 | --- | --- |
 | `Wallet.kt` | `WalletNetwork` (its MWA chain and its protocol `Network`) and `SelectedWallet`: the address, network, label, when it was chosen, and whether the wallet confirmed the network |
-| `WalletAdapter.kt` | The boundary: `connect(network, authToken)`, `disconnect(authToken)`, `signMessage(message, wallet, authToken)` (SAW-016), and the outcomes (connected or signed, no wallet, declined, authorization expired, network unsupported, failed). Signing answers with a `SigningAnswer`: the outcome, and the authorization the wallet reported while answering, which redacts itself in `toString`. |
-| `MwaWalletAdapter.kt` | The only file that imports the Mobile Wallet Adapter client. It connects through the activity's `ActivityResultSender`, waiting briefly for the next screen's while a rotation replaces one (SAW-017), reads the account and authorization from `AuthorizationResult`, and signs with `signMessagesDetached` on the chain the owner connected on, checking that the wallet signed with the account that was asked and returning what it says it signed. It reads the authorization from inside the session, before asking for the signature, so a signing the wallet declines still carries an authorization it replaced and no second session is ever opened for one. It maps the wallet's errors: `AUTHORIZATION_FAILED` is a refusal when the phone offered no authorization and an expiry when it did, `NOT_SIGNED` is a refusal to sign, and `CLUSTER_NOT_SUPPORTED` is the network. |
+| `WalletAdapter.kt` | The boundary: `connect(network, authToken)`, `disconnect(wallet, authToken)`, `signMessage(message, wallet, authToken)` (SAW-016), `signAndSendTransaction(transaction, wallet, authToken)` (SAW-021), and the outcomes (connected or signed or sent, no wallet, declined, authorization expired, network unsupported, failed, unknown). Both wallet requests answer with the outcome **and** the authorization the wallet reported while answering — a `SigningAnswer` and a `SendingAnswer`, each redacting the token in `toString` (SEE-84). |
+| `WalletClient.kt` | The narrow, injectable session boundary (SEE-84), in this app's own types: `WalletSessionClient` (a session on one network, with the authorization it offers, `connect`, `transact`, `close`), `WalletRequests` (`signMessages`, `signAndSend`), `WalletAuthorization` (the token and the accounts the wallet reported, redacting the token), `WalletError`, and `WalletOutcome` (answered, no wallet, no activity, failed). Nothing here names Mobile Wallet Adapter, so a test drives the adapter with `FakeWalletClient`. |
+| `MwaWalletAdapter.kt` | The only file that imports the Mobile Wallet Adapter client. It holds one `WalletSessionClient` per wallet session — `MwaSession`, in this file — and reuses it across connecting, signing and sending, so the client's learned wallet endpoint survives the session; it drops it on disconnect, on an authorization the wallet refused, and on a network change. The session connects through the activity's `ActivityResultSender`, waiting briefly for the next screen's while a rotation replaces one (SAW-017). Inside the session the adapter reads the wallet's own reauthorization first, checks it names the account the owner reviewed and doesn't contradict its network, and only then signs with `signMessagesDetached` or sends with `signAndSendTransactions` (SEE-84). It keeps the replaced authorization for every outcome, and maps the wallet's errors: `AUTHORIZATION_FAILED` is a refusal when the phone offered no authorization and an expiry when it did, `NOT_SIGNED` is a refusal, `CLUSTER_NOT_SUPPORTED` is the network, and an error with no code of the wallet's own is a failure before the transaction reached the wallet and an unknown outcome after it. |
 | `Base58.kt` | Writes an address the way the sidecar's `requests/action.ts` does, and reads one back for the wallet, which takes an account as its raw key bytes |
-| `storage/WalletStore.kt` | The selection as JSON in `filesDir/wallet/`, and the wallet's authorization, AES-256-GCM under the Keystore key with its own associated data, in `noBackupFilesDir/wallet/` |
-| `WalletRepository.kt` | Connects, keeps, and disconnects the wallet, and publishes the binding to each usable connection. It reuses the stored authorization, drops one the wallet refused, stores one the wallet replaced without touching the selection, and tracks which connections have already been told, so a connection paired later is told on the next publication. `sign` asks the wallet for a signature, and only for the selection the owner reviewed. |
+| `storage/WalletStore.kt` | One `StoredSession` — the selection and the wallet's authorization for that account — as a versioned JSON record, AES-256-GCM under the Keystore key with its own associated data, in `noBackupFilesDir/wallet/wallet-session` (SEE-84). It migrates the `filesDir/wallet/wallet.json` + `noBackupFilesDir/wallet/wallet-authorization` pair an older build wrote, and refuses half of one. |
+| `WalletRepository.kt` | Connects, keeps, and disconnects the wallet, and publishes the binding to each usable connection. It reads the stored record whole and refuses one whose account and network aren't the selection in hand, drops one the wallet refused, stores one the wallet replaced without touching the selection — for a transfer as for a message — and tracks which connections have already been told, so a connection paired later is told on the next publication. `sign` and `signAndSend` ask the wallet only for the selection the owner reviewed, and forget the wallet when it reports that its own authorization no longer names that account. |
 | `WalletViewModel.kt`, `WalletScreen.kt`, `WalletText.kt` | The screen's state, the stateless screen, and its texts |
 
 The approval and the message itself live with the inbox: `connections/SignMessage.kt` holds the exact message bytes and the approval's SHA-256, and `inbox/InboxText.kt` the preview that makes invisible characters visible.
@@ -206,6 +207,43 @@ The approval and the message itself live with the inbox: `connections/SignMessag
 - **The authorization never leaves the phone.** It goes to the wallet and to `WalletStore`, and nowhere else. `WalletRepositoryTest` and `WalletActivityTest` assert that it reaches no server.
 - **Publishing is idempotent and retried.** `ConnectionRepository.publishWallet` sends the binding to one connection, marks the connection revoked on `UNAUTHENTICATED`, and takes the requests the sidecar cancelled off the inbox. Opening the app again re-sends what a connection hasn't been told yet.
 - **The network is the owner's explicit choice,** and it's fixed while a wallet is connected. If the wallet lists chains for the account and the chosen one isn't among them, the screen says the wallet didn't confirm it rather than pretending it did.
+
+### Wallet capabilities, and where an SDK boundary would fall (SEE-84)
+
+Mobile Wallet Adapter can say what a wallet supports — `getCapabilities` reports the transaction
+versions it takes, how many payloads one request may carry, and whether it signs and sends at all.
+This app asks for none of it, and that is on purpose:
+
+- **A capability is not a permission to use it.** The transactions this app puts in front of a
+  wallet are the ones a sidecar built and this phone read byte for byte (`transactions/`, SAW-020).
+  Enabling a format because a wallet accepts it would put bytes in front of the owner that the
+  inspection can't account for, which is the one thing the review exists to prevent. Anything new is
+  the intersection of what a wallet supports **and** what this app can inspect and show, and the
+  second half is code, not a flag.
+- **If it is exposed, it is exposed in this app's own types.** A `WalletCapabilities` of our own
+  next to `WalletAuthorization` — supported transaction versions, the request limits, whether
+  sign-and-send exists — read once per session through `WalletRequests` and never handed on raw. No
+  screen, policy, or sidecar ever reads a Mobile Wallet Adapter type.
+- **One transaction per request stays.** Every limit this app could hit is one it already respects:
+  it asks for one message or one transaction, and treats anything but one answer as an outcome it
+  can't match to what it asked.
+
+The reusable wallet layer a later stage would extract is `Wallet.kt`, `WalletAdapter.kt`,
+`WalletClient.kt`, `MwaWalletAdapter.kt`, `Base58.kt`, `Ed25519.kt`, and `storage/WalletStore.kt`.
+The split a follow-up would make, in this order:
+
+1. **The wallet API** — the types and the adapter boundary, with no Android Mobile Wallet Adapter in
+   it. `WalletClient.kt` is already that shape.
+2. **The Android MWA integration** — `MwaWalletAdapter.kt` and its session, the one place that knows
+   the library and the activity.
+3. **The server request and approval workflow** — `connections/`, `inbox/`, `policy/`: what a
+   request is, who approved it, and what the sidecar is owed.
+4. **The app's UI** — the screens over all three.
+
+`WalletRepository.kt` sits across 1 and 3 today: it publishes the binding to sidecars, so it holds
+`ConnectionRepository` and the generated protocol types. Extraction means splitting it, not moving
+it, and the reusable half must need neither. Packaging and publishing an SDK is out of scope here
+(SEE-102); this is the boundary a later stage would cut along.
 
 ## Activity
 

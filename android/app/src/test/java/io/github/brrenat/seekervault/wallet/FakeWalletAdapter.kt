@@ -22,8 +22,8 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
     private var nextSend: (ByteString) -> SendResult = { SendResult.NoWallet }
 
     /**
-     * The authorization the wallet reports while it signs, as a real one does when it replaces the
-     * app's. Null means it reported none, and the phone keeps what it had.
+     * The authorization the wallet reports while it signs or sends, as a real one does when it
+     * replaces the app's. Null means it reported none, and the phone keeps what it had.
      */
     var refreshedAuthorization: String? = null
 
@@ -53,7 +53,7 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
         return next()
     }
 
-    override suspend fun disconnect(authToken: String) {
+    override suspend fun disconnect(wallet: SelectedWallet, authToken: String) {
         disconnects += authToken
     }
 
@@ -93,9 +93,9 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
         transaction: ByteString,
         wallet: SelectedWallet,
         authToken: String,
-    ): SendResult {
+    ): SendingAnswer {
         sendings += Triple(transaction, wallet, authToken)
         beforeSending()
-        return nextSend(transaction)
+        return SendingAnswer(nextSend(transaction), refreshedAuthorization)
     }
 }

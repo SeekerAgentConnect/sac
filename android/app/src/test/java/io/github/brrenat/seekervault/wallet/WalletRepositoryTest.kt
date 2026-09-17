@@ -13,6 +13,7 @@ import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
+import java.security.GeneralSecurityException
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -54,8 +55,13 @@ class WalletRepositoryTest {
         )
     }
 
+    /** Set while a test needs this phone's storage to be unavailable, as a locked Keystore is. */
+    private var storageFails = false
+
     private val store by lazy {
-        WalletStore(File(folder.root, "wallet"), File(folder.root, "no_backup/wallet")) { key }
+        WalletStore(File(folder.root, "wallet"), File(folder.root, "no_backup/wallet")) {
+            if (storageFails) throw GeneralSecurityException("the keystore went away") else key
+        }
     }
 
     private val repository by lazy {
@@ -196,7 +202,7 @@ class WalletRepositoryTest {
         pair()
         adapter.answerConnected(WALLET)
         repository.connect(WalletNetwork.Devnet)
-        File(folder.root, "no_backup/wallet/wallet-authorization").delete()
+        File(folder.root, "no_backup/wallet/wallet-session").delete()
 
         val next = WalletRepository(store, adapter, connections, io = Dispatchers.Unconfined)
         next.load()
@@ -453,6 +459,140 @@ class WalletRepositoryTest {
         assertNull(repository.wallet.value)
         assertNull(store.authorization())
         assertNull(server.wallet)
+    }
+
+    @Test
+    fun keepsAnAuthorizationTheWalletReplacesWhileSending() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET, authToken = SECRET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        val publications = server.publications
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 4 }))
+        // The wallet reauthorizes this app as it sends, and hands back another authorization.
+        adapter.refreshedAuthorization = REFRESHED
+
+        val transaction = ByteString.copyFromUtf8("t")
+        assertTrue(repository.signAndSend(transaction, selected) is SendResult.Sent)
+
+        // The one it replaced went to the wallet; the replacement is what this phone now keeps.
+        assertEquals(SECRET, adapter.sendings.single().third)
+        assertEquals(REFRESHED, store.authorization())
+        // The owner's selection is untouched, and no sidecar was told anything new about it.
+        assertEquals(selected, repository.wallet.value)
+        assertEquals(selected, store.selected())
+        assertEquals(publications, server.publications)
+
+        // The next operation offers the replacement, whichever one it is, and so does a repository
+        // that starts from the record this phone stored, the way the app does when it is opened
+        // again. Without this, a transfer would leave the next one offering a token the wallet has
+        // already replaced.
+        repository.signAndSend(transaction, selected)
+        assertEquals(REFRESHED, adapter.sendings[1].third)
+        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        repository.sign(ByteString.copyFromUtf8("m"), selected)
+        assertEquals(REFRESHED, adapter.signings.single().third)
+        val next = WalletRepository(store, adapter, connections, io = Dispatchers.Unconfined)
+        next.load()
+        assertEquals(selected, next.wallet.value)
+        next.signAndSend(transaction, checkNotNull(next.wallet.value))
+        assertEquals(REFRESHED, adapter.sendings[2].third)
+    }
+
+    @Test
+    fun keepsTheReplacedAuthorizationWhateverBecameOfTheTransaction() = runBlocking {
+        // Declining says something about the transaction, and an outcome nobody knows says nothing
+        // at all: neither says this phone's authorization is no good.
+        pair()
+        for (outcome in listOf(SendResult.Declined, SendResult.Unknown("no answer"))) {
+            adapter.answerConnected(WALLET, authToken = SECRET)
+            repository.connect(WalletNetwork.Devnet)
+            val selected = checkNotNull(repository.wallet.value)
+            adapter.answerSending(outcome)
+            adapter.refreshedAuthorization = REFRESHED
+
+            assertEquals(outcome, repository.signAndSend(ByteString.copyFromUtf8("t"), selected))
+
+            assertEquals(REFRESHED, store.authorization())
+            assertEquals(selected, repository.wallet.value)
+            repository.disconnect()
+            adapter.refreshedAuthorization = null
+        }
+    }
+
+    @Test
+    fun aStorageFailureNeverChangesWhatTheWalletDid() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET, authToken = SECRET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        val signature = ByteString.copyFrom(ByteArray(64) { 4 })
+        adapter.sendWith(signature)
+        adapter.refreshedAuthorization = REFRESHED
+        // This phone's storage goes away while the transaction is with the wallet.
+        adapter.beforeSending = { storageFails = true }
+
+        val result = repository.signAndSend(ByteString.copyFromUtf8("t"), selected)
+
+        // The wallet sent it, and that is what is reported: a phone that couldn't write the
+        // replacement token down does not turn a sent transaction into a failure, and it does not
+        // ask the wallet for anything a second time.
+        assertEquals(SendResult.Sent(signature), result)
+        assertEquals(1, adapter.sendings.size)
+        storageFails = false
+        // The authorization is the one that was there, which is what an expired one leads to
+        // anyway: the owner connects the wallet again.
+        assertEquals(SECRET, store.authorization())
+        assertEquals(selected, repository.wallet.value)
+    }
+
+    @Test
+    fun asksTheWalletNothingWhenTheStoredRecordIsNotTheSelectionInHand() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET, authToken = SECRET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        // A record naming another account can only come from a phone that was interrupted between
+        // two writes, which is what the single record makes impossible. If one ever appeared, its
+        // token is not this selection's, and nothing is signed or sent with it.
+        store.put(selected.copy(address = OTHER_WALLET), "authorization-for-another-account")
+
+        assertEquals(
+            SendResult.NotConnected,
+            repository.signAndSend(ByteString.copyFromUtf8("t"), selected),
+        )
+        assertEquals(
+            SignResult.NotConnected,
+            repository.sign(ByteString.copyFromUtf8("m"), selected),
+        )
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(emptyList<Any>(), adapter.signings)
+    }
+
+    @Test
+    fun forgetsTheWalletWhenItNoLongerAuthorizesTheReviewedAccount() = runBlocking {
+        pair()
+        adapter.answerConnected(WALLET, authToken = SECRET)
+        repository.connect(WalletNetwork.Devnet)
+        val selected = checkNotNull(repository.wallet.value)
+        // The adapter reports this when the wallet's own reauthorization named another account.
+        adapter.answerSending(SendResult.Changed)
+        adapter.answerSigning(SignResult.Changed)
+
+        assertEquals(
+            SendResult.Changed,
+            repository.signAndSend(ByteString.copyFromUtf8("t"), selected),
+        )
+
+        // Nothing is left to sign with: the owner connects the wallet again and reviews afresh,
+        // and every sidecar is told there is no wallet rather than one this phone can't use.
+        assertNull(repository.wallet.value)
+        assertNull(store.session())
+        assertNull(server.wallet)
+        assertEquals(
+            SignResult.NotConnected,
+            repository.sign(ByteString.copyFromUtf8("m"), selected),
+        )
     }
 
     private companion object {

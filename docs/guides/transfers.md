@@ -92,6 +92,7 @@ When you open a pending transfer, the phone asks for a fresh transaction and **r
 - **Policy says "Not evaluated."** Per-connection rules are Stage 5. Until they exist the screen says so rather than calling anything allowed, and every transfer needs your approval either way.
 - **Approve and send appears only for a transaction this phone read whole** and found to match the request. If anything is unread or doesn't match, there is no button at all — not a button that refuses — and you can reject it.
 - **Read it again** asks the server for a new version and reviews that one instead. Each version is reviewed on its own.
+- **The account that signs is the account you reviewed.** Your wallet authorizes this app again each time it opens, and if what it authorizes then isn't the account on the review screen — you switched accounts in the wallet, or revoked this app for that one — nothing is signed and nothing is sent. The app says the wallet changed and asks you to connect it again, and the request waits for a fresh review.
 
 Tapping **Approve and send** does three things in this order, and stops at the first that fails:
 
