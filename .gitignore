@@ -22,9 +22,11 @@ google-services.json
 *.pem
 *.key
 
-# Go binaries built in place by `go build` in broadcast/
+# Go binaries built in place by `go build` in broadcast/ and publisher/
 /broadcast/broadcast
 /broadcast/broadcastctl
+/publisher/copytrading
+/publisher/publishctl
 
 # Local databases
 *.db

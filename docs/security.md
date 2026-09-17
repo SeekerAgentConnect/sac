@@ -191,6 +191,50 @@ more than what it does.
   test reads the database after several reads and requires every row count to be unchanged. What the
   gateway learns from a read is which channel someone asked about.
 
+### A publisher template holds no subscriber either (SEE-95)
+
+The template in [`publisher/`](../publisher) is the other new server in this stage, and it is the
+one a stranger runs: a developer's or a trader's own process, publishing signals everybody
+subscribed will read ([`wiki/copytrading-template.md`](wiki/copytrading-template.md)). What matters
+about it is the same thing that matters about the gateway — not what it does, but what it has no way
+to do.
+
+- **It has nowhere to put anything about a subscriber.** Four tables: the deployment's own stamp,
+  its manifest's revision, its signals, and the idempotency keys callers created them with. No
+  address, no chosen amount, no decision, no signature, no outcome — and a test reads the **live**
+  schema rather than the source and fails if a column for any of it appears.
+- **Nothing about one can be sent to it.** Its API has no such field, and the decoder refuses a
+  field the contract does not have rather than dropping it, so a caller that believes otherwise is
+  told that there is no field for it. A term is refused the same way: a kind rejects a term it does
+  not know, so `wallet` or `amount` cannot arrive disguised as one. Both halves are tested with
+  every word.
+- **It never learns that a phone exists.** It reads no feed — and the way that is true is that no
+  feed client is compiled for the module at all ([`buf.gen.publisher.yaml`](../buf.gen.publisher.yaml)
+  generates the publisher API and the two documents, and nothing else), so there is no code in it
+  that could ask who is subscribed even if somebody wanted to.
+- **It delivers nothing.** No Firebase credential, no broker, no per-phone rows, no streams:
+  delivery is the gateway's, and a boundary test reads this module's source and fails if any of
+  those names appears in code.
+- **It publishes to one address, and its operator chose it.** No endpoint is compiled in; a
+  boundary test allows a loopback default and an example in a message, and nothing else. A
+  publication is never redirected either, because a redirect is an instruction from the network
+  about where this publisher's documents — and its credential — go.
+- **Its two credentials are told apart and neither is ever logged.** The gateway's credential says
+  which server it publishes as; its own API token says who may publish through it. Both must be
+  usable rather than compared, so both are configuration and both may be a mounted file instead;
+  neither reaches a log line, and a boundary test drives a series of calls, refusals included, and
+  fails if either appears in one.
+- **Its own API token is the whole grant, and that is stated rather than implied.** One token,
+  checked in constant time, on every route but the health probe — which says `{"status":"ok"}` and
+  nothing else, so a publisher's settings, its pending count and its environment all stay behind
+  the token. The API binds loopback by default, and the internet-facing overlay carries a warning:
+  TLS keeps a token off the wire, and nothing makes holding one safer.
+- **Sandbox and production cannot be mixed by accident.** The environment has no default, it is the
+  single value in the published manifest, and it is stamped into the database: opening a production
+  file with a sandbox configuration is refused at startup, as is opening another publisher's file.
+  The way this gets confused is a copied compose file pointed at a volume that already exists, which
+  is why the check is in the file rather than in the argument.
+
 ## One active phone per sidecar
 
 A sidecar has one paired phone at a time. A phone can pair with several sidecars (SAW-012).

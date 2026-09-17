@@ -811,7 +811,9 @@ their approval and their execution record stay on the device that made them.
 `values` is bounded, named text and the protocol says nothing about what the names mean: which keys
 an operation uses belongs to the plugin that serves it, and core carries them uninterpreted. The
 first plugin to define a set is `jupiter.swap`, and it is written down as a contract because the
-publisher templates (SEE-95) write it:
+CopyTrading publisher template writes it (SEE-95,
+[`wiki/copytrading-template.md`](wiki/copytrading-template.md)) and applies every one of these
+rules before anything is broadcast:
 
 | Key | Meaning | Rules |
 | --- | --- | --- |
@@ -868,6 +870,9 @@ no publisher client is compiled for it.
 
 Authenticated with `Authorization: Bearer <credential>`, which says which server the caller
 publishes as. Every document is checked against that rather than against what the document claims.
+The first thing to call it is the CopyTrading template (SEE-95,
+[`development/publisher.md`](development/publisher.md)); nothing about the contract is specific to
+it, and an opt-in test in that module runs the real gateway to keep the two honest about it.
 
 | Method | What it does | Rules |
 | --- | --- | --- |

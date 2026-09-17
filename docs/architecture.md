@@ -11,6 +11,9 @@ flowchart LR
     Phone -- "Mobile Wallet Adapter" --> Wallet["Seed Vault Wallet"]
     Wallet -- "signs and sends" --> Solana[("Solana")]
     Sidecar -- "reads: blockhash,<br>confirmation, Jupiter" --> Solana
+    Publisher["Publisher template<br>(publisher/)"] -- "PublisherService<br>(gateway credential)" --> Broadcast
+    Broadcast["Broadcast gateway<br>(broadcast/)"] -- "FeedService<br>(no credential)" --> Phone
+    Strategy["A trader, a script,<br>or a strategy engine"] -- "JSON over HTTP<br>(API token)" --> Publisher
 ```
 
 | Component | Owns | Never does |
@@ -19,6 +22,7 @@ flowchart LR
 | **Sidecar** (`sidecar/`) | The MCP and phone endpoints. From SAW-010 and SAW-011 on, it also holds requests and their states, prepared transactions, results, idempotency records, and pairing; Stage 5.2 adds durable update revisions/cursors and bounded snapshots. | Hold keys, sign, decide for the user, or execute anything on its own after a restart |
 | **Android app** (`android/`) | Connections and their credentials, policies and their assessments, the user's decision, invoking the wallet, results the sidecar hasn't acknowledged yet, and Stage 5.2's minimal server-state cache/sync metadata | Sign without the user's approval, or trust the agent's description over the transaction's contents |
 | **Broadcast gateway** (`broadcast/`) | From SEE-90: the shared publication and read API for gateway-feed servers — publisher registration and credentials, the manifests and proposals they publish, the per-channel sequence a reader pages against, and the outbox that fans a publication out | Hold anything about a subscriber — an address, a chosen amount, a decision, a result — contact a publisher or a phone, or serve any financial endpoint |
+| **Publisher template** (`publisher/`) | From SEE-95: a developer's or a trader's own server — its signals, the revision each is at, what the gateway has confirmed about each, the idempotency keys callers used, and its own manifest's revision | Hold anything about a subscriber, read the feed it publishes to (no client for one is compiled for it), deliver anything to a phone, hold a key or sign anything |
 | **Seed Vault Wallet** | Keys, signing, and sending | Know anything about Seeker Agent Connect |
 
 ### The wallet adapter boundary
@@ -347,6 +351,44 @@ flowchart TB
   writes nothing down, and there is no column anywhere for an address, an amount, a decision or a
   result.
 
+### The publisher templates
+
+From SEE-95 the other end of that relationship exists too: the Go module in
+[`publisher/`](../publisher), run by a developer or a trader, which writes the documents the gateway
+carries. [`wiki/copytrading-template.md`](wiki/copytrading-template.md) is the full account.
+
+```mermaid
+flowchart TB
+    Strategy["a trader, a script,<br>a strategy engine"] -- "JSON + API token<br>Idempotency-Key" --> API
+    API["internal/api<br>strict decoding · one token"] --> Kind
+    Kind["internal/signals<br>the Kind's own term rules<br>(the phone's rules, on this side)"] --> Store
+    Store[("SQLite<br>signals · two revisions each")] --> Drain
+    Drain["internal/publish<br>one path out · retry or refuse"] -- "PublisherService" --> Gateway
+    Gateway["the broadcast gateway"] --> Phones["every subscribed phone"]
+    Phones -- "nothing" --x Store
+```
+
+- **The API is the one path in.** The CLI is a client of it with no privileged access, so
+  validation, the identity, the revision and the publication happen in one place — and a strategy
+  engine reaches the template exactly as the CLI does.
+- **The document is its own outbox.** Each row carries the revision it is at and the revision the
+  gateway has confirmed; anything where the first is above the second is work to do. There is no
+  second table to keep in step, so a crash between storing and publishing leaves work to redo and
+  never a signal nobody hears about — and a retry sends the identical document, which the gateway
+  answers `UNCHANGED`.
+- **A revision moves only when the content does.** An update that changes nothing publishes
+  nothing, and a restart republishes the same manifest revision, so neither wakes a single phone.
+- **A refusal is classified rather than retried blindly.** Unreachable, restarting or rate-limited
+  means later; malformed, another server's channel, or a credential that is not one means an
+  operator has to change something, and nothing retries until somebody asks.
+- **It is a template, and the seam is one interface.** `signals.Kind` says which operation is
+  published, which bundled plugin serves it, and what its terms must say; `cmd/copytrading`
+  registers the swap kind, and SEE-96's prediction template is a second kind over the same core.
+  Neither can be turned into the other by configuration.
+- **It knows nothing about a subscriber, and cannot.** Four tables with no column for one, an API
+  that refuses a field it does not have, and no feed client compiled for the module at all
+  ([`security.md`](security.md#a-publisher-template-holds-no-subscriber-either-see-95)).
+
 ## Trust boundaries
 
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
@@ -446,5 +488,5 @@ These hold across the components, and every stage keeps them:
 | 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
-| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` plugin and the path from a signal to a signature (SEE-93), the `jupiter.prediction` plugin with a read-only chain endpoint for lookup tables and a truthful handoff (SEE-94), and the two server templates |
+| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` plugin and the path from a signal to a signature (SEE-93), the `jupiter.prediction` plugin with a read-only chain endpoint for lookup tables and a truthful handoff (SEE-94), the Go CopyTrading publisher template with a CLI and an authenticated API (SEE-95), and the prediction template |
 | 8 | Release checks |
