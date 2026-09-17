@@ -38,11 +38,15 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.activity.ReviewedDailyCheck
+import io.github.brrenat.seekervault.activity.ReviewedPolicy
+import io.github.brrenat.seekervault.activity.ReviewedRuleSource
 import io.github.brrenat.seekervault.policy.DailyCheckScope
 import io.github.brrenat.seekervault.policy.DailyPolicyCheck
 import io.github.brrenat.seekervault.policy.PolicyCheck
 import io.github.brrenat.seekervault.policy.PolicyCheckResult
 import io.github.brrenat.seekervault.policy.PolicyCheckStatus
+import io.github.brrenat.seekervault.policy.PolicyDecision
 import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.policy.RuleSource
 import io.github.brrenat.seekervault.policy.assessmentText
@@ -50,6 +54,7 @@ import io.github.brrenat.seekervault.policy.checkText
 import io.github.brrenat.seekervault.policy.reasonText
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.ui.SeekerCard
+import java.time.Instant
 
 /**
  * What the owner's own rules made of the request, on the screen where they answer it (SAW-028,
@@ -66,6 +71,44 @@ import io.github.brrenat.seekervault.ui.SeekerCard
  * colour alone: a reader who sees no colour at all, or hears the screen rather than seeing it, is
  * told exactly the same things.
  */
+/**
+ * The assessment the owner was shown, as the record keeps it: codes and nothing else (SAW-028).
+ *
+ * It is here rather than inside one screen's view model because two things in this app now put a
+ * verdict in front of somebody and then write down what they read — a private request's review, and
+ * a broadcast proposal's (SEE-93). One mapping, so the record of either says the same kind of
+ * thing, and the rules themselves stay in the one place they are stored: not a threshold, not an
+ * address, not a list.
+ */
+internal fun reviewedPolicy(
+    decision: PolicyDecision,
+    at: Instant,
+    wentAhead: Boolean,
+): ReviewedPolicy =
+    ReviewedPolicy(
+        assessment = decision.assessment.code,
+        reasons = decision.reasonCodes,
+        notChecked = decision.notChecked.map { it.code },
+        assessedAt = at,
+        approvedAnyway = wentAhead && decision.warns,
+        ruleSources =
+            decision.checks
+                .filterNot {
+                    decision.dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit
+                }
+                .map { ReviewedRuleSource(it.check.code, it.source.code) },
+        dailyChecks =
+            decision.dailyChecks.map {
+                ReviewedDailyCheck(
+                    scope = it.scope.code,
+                    source = it.result.source.code,
+                    status = it.result.status.code,
+                    reason = it.result.reason?.code,
+                )
+            },
+        unreadableSources = decision.unreadableSources.map { it.code },
+    )
+
 @Composable
 fun PolicyReview(
     assessment: RequestAssessment?,

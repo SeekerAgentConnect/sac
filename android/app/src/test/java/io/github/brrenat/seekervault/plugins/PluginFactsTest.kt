@@ -72,7 +72,7 @@ class PluginFactsTest {
                 CONNECTION,
                 swap(),
                 mainnet,
-                PluginRegistry.bundled().resolve(SWAP_OPERATION, production),
+                PluginRegistry.of().resolve(SWAP_OPERATION, production),
             )
 
         assertEquals(PolicyAction.Swap, facts.action)
@@ -215,7 +215,7 @@ class PluginFactsTest {
                 CONNECTION,
                 swap(),
                 mainnet,
-                PluginRegistry.bundled().resolve(SWAP_OPERATION, production),
+                PluginRegistry.of().resolve(SWAP_OPERATION, production),
             )
 
         val decision = evaluate(policy, unserved)

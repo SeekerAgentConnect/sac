@@ -110,6 +110,7 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 | `scripts/` | `generate.mjs`, which backs `pnpm generate` and `pnpm check:generated` |
 | `test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`test-agent/README.md`](test-agent/README.md). |
 | `gateway/` | Docker Compose, the TLS gateway, and the optional OAuth overlay for one owner's own deployment (Stage 7) |
+| `android/app/src/main/java/.../jupiter/` | `jupiter.swap`, the first bundled client plugin (Stage 7.1, SEE-93): a publisher's spot-swap signal, the owner's own amount, a route from the provider, and the phone's own reading of the bytes before any wallet opens. See [`docs/wiki/jupiter-swap.md`](docs/wiki/jupiter-swap.md) and [`docs/integrations/jupiter.md`](docs/integrations/jupiter.md) |
 | `broadcast/` | The shared broadcast gateway in Go (Stage 7.1, SEE-90): a developer's publisher publishes once, and every subscribed phone reads from here. A different service from `gateway/`, with a different operator; see [`docs/wiki/broadcast-gateway.md`](docs/wiki/broadcast-gateway.md) and [`docs/development/broadcast.md`](docs/development/broadcast.md) |
 | `examples/` | Configuration to merge into other tools: `hermes.config.yaml`; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md) |
 | `docs/` | The architecture and the protocol, plus development docs, guides, testing notes, and the changelog |
@@ -173,6 +174,7 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm test:queue` | Runs the Stage 2 acceptance scenario: the real CLI, two sidecars as separate processes that restart, and a test client as the phone. See [`docs/testing/stage-2.md`](docs/testing/stage-2.md#the-acceptance-scenario-saw-014). | Works |
 | `pnpm test:updates` | Runs Stage 5.2's production TLS/h2 and loopback h2c sidecar tests, bidirectional interoperability proof, and cross-component Android sync/lifecycle acceptance. It is separate from the Stage 1 Live diagnostic. | Works |
 | `pnpm test:push` | Runs Stage 5.3's sidecar ownership/invalidation acceptance and Android two-sidecar recovery, registration, callback, notification, permission, tap, and boundary suites. It uses no real Firebase credential or delivery and does not replace the physical Seeker checklist. | Works |
+| `pnpm test:swap` | Runs Stage 7.1's `jupiter.swap` suites (SEE-93): the signal payload, the instruction readers against four real captured transactions, every tampering the review refuses, the plugin over a stood-in provider, the wire over a real HTTP endpoint, the whole path from a signal to a signature, the captured gateway and provider traffic, the two screens, and the stage boundary. It spends nothing and signs nothing; the live-provider test skips unless asked for. See [`docs/wiki/jupiter-swap.md`](docs/wiki/jupiter-swap.md). | Works |
 | `pnpm format`, `pnpm format:android` | Apply Prettier and `buf format`, and ktfmt for Kotlin | Works |
 
 ## Development configuration

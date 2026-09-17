@@ -23,6 +23,22 @@ data class ActionInspection(
     val facts: InspectedAction?,
     /** The preparation this inspection was made from; an approval names the same one. */
     val version: Int,
+    /**
+     * What else the bytes said that is worth the owner's while to read, as labelled values
+     * (SEE-93).
+     *
+     * [InspectedAction] is the shape the owner's *rules* are written against, and it is
+     * deliberately the same shape for every operation — an amount, an asset, a recipient, the
+     * programs called. An operation also establishes things no rule has a field for: the least a
+     * swap will pay out, the outcome a market order is for, what the transaction will cost to get
+     * picked up. A plugin puts those here, each with its own string resource, and core shows them
+     * in order without knowing what any of them mean.
+     *
+     * They are for reading and never for evaluating. Nothing in here reaches
+     * [io.github.brrenat.seekervault.policy.RequestFacts], so no plugin can make a rule pass by
+     * saying something reassuring.
+     */
+    val details: List<PluginFact> = emptyList(),
 ) {
     /**
      * Whether this preparation may be put in front of the owner to approve. Only bytes the plugin
@@ -61,6 +77,16 @@ data class PluginFinding(
     @StringRes val message: Int,
     val invalidates: Boolean = true,
 )
+
+/**
+ * One labelled thing a plugin read, for the owner to see ([ActionInspection.details]).
+ *
+ * [label] is the plugin's own string resource and [value] is already formatted for display: an
+ * amount written out with its decimals, a percentage, a name. Core shows the pair and interprets
+ * neither, which is why this is two strings and not a number with a unit — the plugin knows what it
+ * read, and the app knows how to lay out a row.
+ */
+data class PluginFact(@StringRes val label: Int, val value: String)
 
 /**
  * The facts a plugin read out of its own prepared bytes, in the shape the owner's rules are written

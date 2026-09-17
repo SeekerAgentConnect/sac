@@ -60,6 +60,26 @@
 - **Anything a remote side validates, bound before storing it.** A wallet's own error message went into a result detail with no limit, and a detail over the protocol's 1024 bytes would have been refused for ever, since a stored signing outcome is never replaced. Clamp text you didn't write to the contract's limit at the point it enters your own state.
 - **Publish on the event, not on the next lifecycle callback.** The Wallet screen told a newly paired sidecar about the wallet only after the app was hidden and shown again, although pairing happens in the foreground. When state has "who has been told" bookkeeping, drive it from the change itself.
 
+- **A Kotlin property and a method with the same name make an accidental recursion that looks like a
+  hang** (SEE-93). A fake provider had `var quote: (…) -> JupiterQuote` beside
+  `override suspend fun quote(…)`, and `return quote(terms, amount, slippage)` inside the override
+  resolved to the *member*, not the property: the test spun, the state never advanced, and the
+  symptom was "nothing was prepared" rather than a stack trace. Name a stand-in's answer field
+  something the method is not — `answersQuote`, `answersBuild` — rather than relying on resolution
+  order.
+- **A view model's own scope has to be driven in a test, and how depends on what it waits for**
+  (SEE-93). `Dispatchers.setMain(UnconfinedTestDispatcher(scheduler))` is enough when everything in
+  the launched coroutine is synchronous or on `Dispatchers.Unconfined`. It is *not* enough when the
+  coroutine makes a real call — a socket, a real HTTP request — because the suspension is not the
+  scheduler's to advance: poll the state the app publishes, with a timeout, instead of assuming the
+  step finished. A test that carried on regardless asserted about traffic that had not happened yet.
+- **A finding that was unreachable is worth fixing when a later stage makes it the important one**
+  (SEE-93). The decoder read a lookup table's *count* and then required the bytes to be exhausted,
+  so a real versioned message with a table came back `Malformed` and only a truncated one produced
+  `AddressTableLookup`. The outcome was right either way, which is why it had gone unnoticed — and
+  then SEE-93 made a lookup table the one limit the owner most needs named accurately. Reading each
+  entry was ten lines.
+
 ## Scope
 
 - **A status update is not a task.** "I'm deploying to my hermes instance with Tailscale Funnel" meant the owner had already done it. Treating it as a request led to SSHing into the production droplet and probing it uninvited (2026-09-18). When the owner names their own server, ask what they want, or answer with information; never connect to, inspect, or change a remote host unless they ask for exactly that.

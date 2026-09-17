@@ -85,7 +85,7 @@ class InboxRealSidecarTest {
             ServerSupport.Supported,
             serverSupport(
                 checkNotNull(app.connection(connection.id)).server,
-                PluginRegistry.bundled(),
+                PluginRegistry.of(),
                 PluginEnvironment.Production,
             ),
         )

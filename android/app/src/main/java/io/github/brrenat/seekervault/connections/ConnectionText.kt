@@ -44,6 +44,8 @@ object ConnectionsTags {
     const val STATUS = "connectionStatus"
     const val REFRESH = "refresh"
     const val RENAME = "rename"
+    /** Where a feed's proposals are reviewed, in the place a direct connection shows requests. */
+    const val SIGNALS = "connectionSignals"
     const val DISCONNECT = "disconnectConnection"
     const val REMOVE = "removeConnection"
     const val LABEL_FIELD = "labelField"

@@ -144,6 +144,17 @@ fun decodeTransaction(bytes: ByteArray): DecodeResult {
     var lookups = 0
     if (version == 0) {
         lookups = reader.compactU16() ?: return failed(DecodeFailure.Malformed)
+        // Each entry is the table's address and the indexes it supplies, writable then readonly.
+        // They are read rather than skipped so that a message which really uses a table is
+        // reported as using one — which is what the owner is shown, and the difference between
+        // "this loads accounts I cannot see" and "these bytes are not a transaction" (SEE-93).
+        repeat(lookups) {
+            reader.bytes(PUBLIC_KEY_BYTES) ?: return failed(DecodeFailure.Malformed)
+            val writable = reader.compactU16() ?: return failed(DecodeFailure.Malformed)
+            reader.bytes(writable) ?: return failed(DecodeFailure.Malformed)
+            val readonly = reader.compactU16() ?: return failed(DecodeFailure.Malformed)
+            reader.bytes(readonly) ?: return failed(DecodeFailure.Malformed)
+        }
     }
     // Every byte must be accounted for. Anything left over is content nobody read, and content
     // nobody read is exactly what must not be approved.

@@ -4,9 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityLog
-import io.github.brrenat.seekervault.activity.ReviewedDailyCheck
-import io.github.brrenat.seekervault.activity.ReviewedPolicy
-import io.github.brrenat.seekervault.activity.ReviewedRuleSource
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.ApprovalOutcome
 import io.github.brrenat.seekervault.connections.ApprovedTransaction
@@ -28,7 +25,6 @@ import io.github.brrenat.seekervault.plugins.PluginRegistry
 import io.github.brrenat.seekervault.plugins.actionOwner
 import io.github.brrenat.seekervault.plugins.pluginFacts
 import io.github.brrenat.seekervault.policy.EffectivePolicy
-import io.github.brrenat.seekervault.policy.PolicyCheck
 import io.github.brrenat.seekervault.policy.PolicyDecision
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.RequestFacts
@@ -254,7 +250,7 @@ class InboxViewModel(
      * doesn't carry out itself, and about nothing else: an acknowledgement, a message and a
      * transfer never reach it. Resolving is a lookup — it opens no wallet and sends nothing.
      */
-    private val plugins: PluginRegistry = PluginRegistry.bundled(),
+    private val plugins: PluginRegistry = PluginRegistry.of(),
     /**
      * Which promise an approval would keep. SEE-97 makes it the owner's own choice; until then the
      * app asks for the one it has always kept.
@@ -582,32 +578,7 @@ class InboxViewModel(
      */
     private fun note(key: RequestKey, assessment: RequestAssessment?, wentAhead: Boolean) {
         val decision = assessment?.decision ?: return
-        history.reviewed(
-            key,
-            ReviewedPolicy(
-                assessment = decision.assessment.code,
-                reasons = decision.reasonCodes,
-                notChecked = decision.notChecked.map { it.code },
-                assessedAt = assessment.at,
-                approvedAnyway = wentAhead && decision.warns,
-                ruleSources =
-                    decision.checks
-                        .filterNot {
-                            decision.dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit
-                        }
-                        .map { ReviewedRuleSource(it.check.code, it.source.code) },
-                dailyChecks =
-                    decision.dailyChecks.map {
-                        ReviewedDailyCheck(
-                            scope = it.scope.code,
-                            source = it.result.source.code,
-                            status = it.result.status.code,
-                            reason = it.result.reason?.code,
-                        )
-                    },
-                unreadableSources = decision.unreadableSources.map { it.code },
-            ),
-        )
+        history.reviewed(key, reviewedPolicy(decision, assessment.at, wentAhead))
     }
 
     /**

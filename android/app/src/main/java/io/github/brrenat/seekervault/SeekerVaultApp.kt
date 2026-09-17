@@ -53,8 +53,13 @@ import io.github.brrenat.seekervault.inbox.key
 import io.github.brrenat.seekervault.live.LiveCommandRoute
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
 import io.github.brrenat.seekervault.notifications.RequestNotificationPermission
+import io.github.brrenat.seekervault.operations.OperationViewModel
+import io.github.brrenat.seekervault.operations.OperationsUiState
+import io.github.brrenat.seekervault.operations.ProposalReviewScreen
+import io.github.brrenat.seekervault.operations.ProposalsScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
+import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.ui.BottomDestination
 import io.github.brrenat.seekervault.ui.SeekerBottomBar
@@ -86,6 +91,8 @@ fun SeekerVaultApp(
     live: LiveCommandViewModel,
     notificationTaps: StateFlow<MainActivity.NotificationTap?>,
     feedTaps: StateFlow<MainActivity.FeedTap?> = MutableStateFlow(null),
+    /** A publisher's proposals, and the one path from one of them to the wallet (SEE-93). */
+    operations: OperationViewModel? = null,
 ) {
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.CONNECTIONS)) }
     var closingSheet by remember { mutableStateOf(false) }
@@ -119,6 +126,10 @@ fun SeekerVaultApp(
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
     val notificationTap by notificationTaps.collectAsStateWithLifecycle()
     val feedTap by feedTaps.collectAsStateWithLifecycle()
+    val operationsState by
+        (operations?.state ?: MutableStateFlow(OperationsUiState())).collectAsStateWithLifecycle()
+    val openOperation by
+        (operations?.review ?: MutableStateFlow(null)).collectAsStateWithLifecycle()
     val root = stack.first()
     val route = stack.last()
     RequestNotificationPermission(
@@ -134,18 +145,23 @@ fun SeekerVaultApp(
         stack = listOf(Routes.CONNECTIONS, requestRoute(key))
         inbox.openFromNotification(key)
     }
-    // A proposal alert opens the feed it is on (SEE-92). That is the deepest current review state
-    // this build has: the plugins that read a proposal's terms are SEE-93 and SEE-94, and there is
-    // no screen that lists one yet. The proposal's own ID travels with the route and is validated
-    // before it gets here, so the screen that lists one can open it directly without the
-    // notification changing. Nothing is prepared, signed or sent by arriving here.
+    // A proposal alert opens the proposal it is about (SEE-92 routed it, SEE-93 gave it somewhere
+    // to land). Both IDs travelled with the notification and were validated before they got here,
+    // and the screen underneath is the feed's own list, so Back goes where it would have anyway.
+    // Arriving prepares nothing, signs nothing and sends nothing: it opens a review.
     LaunchedEffect(feedTap?.sequence) {
         val ref = feedTap?.ref ?: return@LaunchedEffect
         closingSheet = false
         promotedRoute = null
         backplateTargetSize = null
         requestedPolicyClose = null
-        stack = listOf(Routes.CONNECTIONS, Routes.DETAILS + ref.connectionId)
+        stack =
+            listOf(
+                Routes.CONNECTIONS,
+                Routes.DETAILS + ref.connectionId,
+                Routes.OPERATIONS + ref.connectionId,
+                operationRoute(ref.connectionId, ref.proposalId),
+            )
     }
     BackHandler(enabled = stack.size > 1 || root != Routes.CONNECTIONS) {
         if (stack.size > 1) pop() else stack = listOf(Routes.CONNECTIONS)
@@ -313,7 +329,69 @@ fun SeekerVaultApp(
                             onBack = pop,
                             onPendingRequests = { push(Routes.INBOX_FOR + id) },
                             onRules = { push(Routes.POLICY + id) },
+                            // A feed proposes rather than requests, so its signals are where its
+                            // pending requests would be (SEE-93).
+                            onSignals =
+                                if (operations == null) null
+                                else ({ push(Routes.OPERATIONS + id) }),
+                            signals = operationsState.records.count { it.connectionId == id },
                         )
+                    }
+                    route.startsWith(Routes.OPERATIONS) && operations != null -> {
+                        val id = route.removePrefix(Routes.OPERATIONS)
+                        ProposalsScreen(
+                            label = state.connections.firstOrNull { it.id == id }?.label.orEmpty(),
+                            records = operationsState.records.filter { it.connectionId == id },
+                            standings = operations::standing,
+                            refreshing = id in operationsState.refreshing,
+                            now = Instant.now(),
+                            onOpen = { push(operationRoute(id, it.key.proposalId)) },
+                            onRefresh = { operations.refresh(id) },
+                            onBack = pop,
+                        )
+                        // The feed is read when the owner opens it, exactly as a connection's
+                        // requests are (docs/protocol.md). It publishes nothing.
+                        LaunchedEffect(id) { operations.refresh(id) }
+                    }
+                    route.startsWith(Routes.OPERATION) && operations != null -> {
+                        val (id, proposalId) =
+                            route.removePrefix(Routes.OPERATION).split('/', limit = 2).let {
+                                (it.firstOrNull() ?: "") to (it.getOrNull(1) ?: "")
+                            }
+                        val open = openOperation?.takeIf { it.proposalId == proposalId }
+                        if (open == null) {
+                            // Removed, expired out of the feed, or opened before the store was
+                            // read: back to the list rather than an empty review.
+                            LaunchedEffect(proposalId, operationsState.loaded) {
+                                operations.open(id, proposalId)
+                                if (
+                                    operationsState.loaded &&
+                                        operationsState.records.none {
+                                            it.connectionId == id && it.key.proposalId == proposalId
+                                        }
+                                ) {
+                                    pop()
+                                }
+                            }
+                        } else {
+                            ProposalReviewScreen(
+                                review = open,
+                                label =
+                                    state.connections.firstOrNull { it.id == id }?.label.orEmpty(),
+                                wallet = walletState.wallet,
+                                now = Instant.now(),
+                                onChoose = operations::choose,
+                                onPrepare = operations::prepare,
+                                onApprove = { operations.approve(walletState.wallet) },
+                                onDismiss = { operations.dismiss(id, proposalId) },
+                                onAcknowledge = operations::acknowledge,
+                                onBack = {
+                                    operations.close()
+                                    pop()
+                                },
+                                onRules = { push(Routes.POLICY + id) },
+                            )
+                        }
                     }
                     route.startsWith(Routes.POLICY) -> {
                         val id = route.removePrefix(Routes.POLICY)
@@ -544,7 +622,12 @@ private object Routes {
     const val INBOX = "inbox"
     const val INBOX_FOR = "inbox/"
     const val REQUEST = "request/"
+    const val OPERATIONS = "operations/"
+    const val OPERATION = "operation/"
 }
+
+private fun operationRoute(connectionId: String, proposalId: String) =
+    "${Routes.OPERATION}$connectionId/$proposalId"
 
 private fun requestRoute(key: RequestKey) = "${Routes.REQUEST}${key.connectionId}/${key.requestId}"
 
@@ -556,6 +639,8 @@ private fun ConnectionDetailsRoute(
     onBack: () -> Unit,
     onPendingRequests: () -> Unit,
     onRules: () -> Unit,
+    onSignals: (() -> Unit)? = null,
+    signals: Int = 0,
 ) {
     val connection = state.connections.firstOrNull { it.id == id }
     if (connection == null) {
@@ -580,6 +665,10 @@ private fun ConnectionDetailsRoute(
         onMessageShown = viewModel::messageShown,
         onPendingRequests = onPendingRequests,
         onRules = onRules,
+        // A feed has no requests addressed to it and no pending queue; what it has is signals,
+        // which is the entry the same place would otherwise hold (SEE-93).
+        onSignals = onSignals?.takeIf { connection.mode == ConnectionMode.GatewayFeed },
+        signals = signals,
         live = state.updates.connections[id],
         support = state.support[id],
     )

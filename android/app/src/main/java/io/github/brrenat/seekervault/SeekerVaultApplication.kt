@@ -25,6 +25,8 @@ import io.github.brrenat.seekervault.feeds.FeedStream
 import io.github.brrenat.seekervault.feeds.ForegroundFeedManager
 import io.github.brrenat.seekervault.feeds.RepositoryFeedHost
 import io.github.brrenat.seekervault.feeds.storage.FeedCursorStore
+import io.github.brrenat.seekervault.jupiter.HttpJupiterProvider
+import io.github.brrenat.seekervault.jupiter.JupiterSwapPlugin
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import io.github.brrenat.seekervault.notifications.ProposalNotificationManager
@@ -154,12 +156,18 @@ class SeekerVaultApplication : Application() {
     }
 
     /**
-     * The bundled client plugins this build carries (SEE-86, docs/wiki/client-plugins.md). The list
-     * is chosen when the app is built and nothing adds to it at runtime; a plugin a server requires
-     * and this build doesn't have is reported as missing rather than fetched. Tests replace it
-     * before the first activity starts, to exercise the boundary without a provider.
+     * The bundled client plugins this build carries (SEE-86, docs/wiki/client-plugins.md).
+     *
+     * This is the build's own list, and it is here rather than in `plugins/` because a real plugin
+     * needs something built: `jupiter.swap` reaches a provider of its own, over the same HTTP
+     * client everything else in this process uses (SEE-93). Nothing adds to the list at runtime and
+     * nothing is downloaded; a plugin a server requires and this build doesn't have is reported as
+     * missing rather than fetched. Tests replace it before the first activity starts, to exercise
+     * the boundary without reaching a provider.
      */
-    var plugins: () -> PluginRegistry = PluginRegistry::bundled
+    var plugins: () -> PluginRegistry = {
+        PluginRegistry.of(JupiterSwapPlugin(HttpJupiterProvider(httpClient)))
+    }
 
     /** One registry for the process, so every screen resolves an operation the same way. */
     val pluginRegistry: PluginRegistry by lazy { plugins() }

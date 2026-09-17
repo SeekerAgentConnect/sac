@@ -107,7 +107,7 @@ class ConnectionsViewModel(
     private val repository: ConnectionRepository,
     private val foregroundUpdates: StateFlow<ForegroundUpdatesState>? = null,
     /** The bundled client plugins this build carries, which is what a manifest is matched to. */
-    private val plugins: PluginRegistry = PluginRegistry.bundled(),
+    private val plugins: PluginRegistry = PluginRegistry.of(),
     /** The environment the app asks for; SEE-97 makes it the owner's choice. */
     private val environment: PluginEnvironment = PluginEnvironment.Production,
     private val cleartextPermitted: (host: String) -> Boolean,

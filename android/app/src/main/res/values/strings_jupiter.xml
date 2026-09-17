@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- jupiter.swap (SEE-93). The plugin's own words; core holds none of them. -->
+    <string name="jupiter_amount_label">Amount to swap</string>
+    <string name="jupiter_slippage_label">Most the price may move (basis points)</string>
+
+    <!-- What the phone read out of the built transaction, for the owner to see. -->
+    <string name="jupiter_fact_minimum_out">You receive at least</string>
+    <string name="jupiter_fact_quoted_out">Quoted now</string>
+    <string name="jupiter_fact_slippage">Price movement allowed</string>
+    <string name="jupiter_fact_priority_fee">Priority fee (SOL)</string>
+    <string name="jupiter_fact_new_account">A new token account will be created for</string>
+
+    <!-- Why the publisher's terms could not be read as a swap. -->
+    <string name="jupiter_terms_missing">This signal does not say which assets to swap.</string>
+    <string name="jupiter_terms_not_a_mint">This signal names an asset by something other than its mint address, so which asset it means cannot be established.</string>
+    <string name="jupiter_terms_one_asset">This signal proposes swapping an asset for itself.</string>
+    <string name="jupiter_terms_bad_decimals">This signal states units for an asset that no mint can have.</string>
+    <string name="jupiter_terms_bad_slippage">This signal does not state how far the price may move.</string>
+    <string name="jupiter_terms_bad_amount">This signal states an amount bound that is not a whole number of base units.</string>
+    <string name="jupiter_terms_impossible_amounts">This signal states a smallest amount above its own largest.</string>
+    <string name="jupiter_terms_bad_symbol">This signal carries a label too long to show.</string>
+
+    <!-- Why what was chosen here cannot be acted on. -->
+    <string name="jupiter_choice_no_amount">Enter how much to swap.</string>
+    <string name="jupiter_choice_too_little">That is below the smallest amount this signal is for.</string>
+    <string name="jupiter_choice_too_much">That is above the largest amount this signal is for.</string>
+    <string name="jupiter_choice_bad_slippage">Choose how far the price may move, within what this signal allows.</string>
+
+    <!-- Why nothing could be prepared. -->
+    <string name="jupiter_failure_sandbox">This server is in sandbox mode, so nothing is prepared and nothing can be signed. Its signals can be read here, and no swap is made.</string>
+    <string name="jupiter_failure_terms">This signal cannot be read as a swap, so there is nothing to prepare.</string>
+    <string name="jupiter_failure_no_wallet">Connect a wallet before preparing a swap.</string>
+    <string name="jupiter_failure_other_network">Your wallet is selected for a network this provider does not serve. Swaps happen on Solana mainnet.</string>
+    <string name="jupiter_failure_unreachable">The swap provider could not be reached, so there is no quote and nothing was prepared.</string>
+    <string name="jupiter_failure_rate_limited">The swap provider is asking for fewer requests. Wait a moment and prepare again.</string>
+    <string name="jupiter_failure_no_route">There is no direct route for this pair at this size right now.</string>
+    <string name="jupiter_failure_refused">The swap provider refused the request, so nothing was prepared.</string>
+    <string name="jupiter_failure_unusable">The swap provider answered with something this phone cannot use, so nothing was prepared.</string>
+    <string name="jupiter_failure_would_fail">The swap provider tried this transaction and it failed, most often for want of funds. Nothing was prepared.</string>
+
+    <!-- What the phone found wrong with, or could not account for in, the built transaction. -->
+    <string name="jupiter_finding_malformed">These bytes are not a transaction this phone can read.</string>
+    <string name="jupiter_finding_unsupported_version">This transaction uses a message version this phone does not read.</string>
+    <string name="jupiter_finding_lookup_table">This transaction loads accounts from a lookup table, so what it touches cannot be checked without reading the chain.</string>
+    <string name="jupiter_finding_already_signed">This transaction already carries a signature. The wallet must be handed something unsigned.</string>
+    <string name="jupiter_finding_no_wallet">No wallet is connected, so there is nothing to check this transaction against.</string>
+    <string name="jupiter_finding_other_network">Your wallet is selected for another network than this swap happens on.</string>
+    <string name="jupiter_finding_fee_payer">Something other than your wallet would pay for this transaction.</string>
+    <string name="jupiter_finding_extra_signer">Something other than your wallet would also have to sign.</string>
+    <string name="jupiter_finding_no_route">This transaction does not swap anything.</string>
+    <string name="jupiter_finding_extra_route">This transaction swaps more than once.</string>
+    <string name="jupiter_finding_not_the_owners">Your wallet does not authorize the funds leaving.</string>
+    <string name="jupiter_finding_source">The funds would come from an account that is not yours for this asset.</string>
+    <string name="jupiter_finding_destination">What you receive would go to an account that is not yours for this asset.</string>
+    <string name="jupiter_finding_mint">This transaction swaps a different asset than the signal names.</string>
+    <string name="jupiter_finding_amount">The amount in this transaction is not the amount you entered.</string>
+    <string name="jupiter_finding_slippage">The price movement allowed in this transaction is not the one you chose.</string>
+    <string name="jupiter_finding_quote">The least this transaction will pay out is not what you were quoted.</string>
+    <string name="jupiter_finding_platform_fee">Someone would take a share of what you receive.</string>
+    <string name="jupiter_finding_legs">This route takes more steps than this phone reads.</string>
+    <string name="jupiter_finding_extra_transfer">This transaction also moves funds somewhere a swap has no reason to.</string>
+    <string name="jupiter_finding_account_creation">A token account would be created for someone other than you.</string>
+    <string name="jupiter_finding_wrapping">Wrapped SOL would be handled for an account that is not yours, or sent somewhere else.</string>
+    <string name="jupiter_finding_wraps_more">More SOL would be wrapped than you are spending.</string>
+    <string name="jupiter_finding_unexpected_wrapping">SOL would be wrapped or unwrapped, and neither side of this swap is SOL.</string>
+    <string name="jupiter_finding_unreadable_value">A program that can move funds is asked to do something this phone does not read.</string>
+    <string name="jupiter_finding_unrecognized">This transaction contains an instruction this phone does not read.</string>
+    <string name="jupiter_finding_no_offer">This phone no longer holds the quote these bytes were built for, so there is nothing to check them against. Prepare again.</string>
+</resources>

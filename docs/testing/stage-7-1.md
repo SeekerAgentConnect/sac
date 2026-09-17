@@ -1,7 +1,7 @@
-# Stage 7.1 — the broadcast gateway, its stream, and its hints
+# Stage 7.1 — the broadcast gateway, its stream, its hints, and the first swap
 
-What was verified for SEE-90, SEE-91 and SEE-92, what was verified by hand, and what is left for the
-owner to run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast` and
+What was verified for SEE-90, SEE-91, SEE-92 and SEE-93, what was verified by hand, and what is left
+for the owner to run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast` and
 `pnpm check:android`; this page is about the rest.
 
 ## What no machine here could run
@@ -17,6 +17,11 @@ owner to run on the phone. The automated checks are `pnpm check`, `pnpm check:br
   project when `SEEKERVAULT_FCM_CREDENTIALS` and `SEEKERVAULT_FCM_SERVER` are set. Everything up to
   the moment Google is called was run instead, against a stand-in endpoint that checks the bearer
   token — including a native end-to-end run of the real gateway binary.
+
+- **A real swap (SEE-93).** No mainnet funds and no wallet on this machine, so **nothing was ever
+  signed or sent**. What was run against the live provider instead is the whole path up to the
+  signature: real quotes, real builds, and the phone's own review of the real bytes — see the table
+  below. The one thing left is the transaction itself, in step 6 of the device run.
 
 ## Verified by hand, against the pinned broker
 
@@ -60,6 +65,22 @@ The relay's own tests pin the message; these are the things that needed the real
 | Two publications a second apart, with the shipped quota | One hint. The second was logged as coalesced, and the document was still stored, still streamed and still readable |
 | A gateway started with `BROADCAST_PUSH_CREDENTIALS` pointing at a file that is not a credential | The process refused to start, naming the field and quoting nothing |
 | `GetFeedTopics` against a gateway with no relay | `501 unimplemented` with `no_push`, while the same gateway still granted a stream ticket and answered every read |
+
+## Verified by hand, against the live provider (SEE-93)
+
+Nothing here spends anything: a quote is a public read, a build returns unsigned bytes, and no key
+was anywhere near it. Recorded on **2026-09-17** against `https://lite-api.jup.ag`.
+
+| What was asked | What happened |
+| --- | --- |
+| `GET /swap/v1/quote` keyless, with `onlyDirectRoutes` and `asLegacyTransaction` | `200`, a one-hop route, `swapMode: ExactIn`, `platformFee: null` |
+| `POST /swap/v1/swap` for the same quote, four shapes: SOL in, SOL out, an output account that does not exist yet, and `useSharedAccounts=false` | `200` each time, a **legacy** transaction each time, `addressesByLookupTableAddress: null` each time. Committed as `fixtures/jupiter/swaps.json` |
+| The phone's own reader over those four | Every instruction accounted for, nothing left over, and `Verdict.Verified` for all four. The route's source and destination are the owner's own derived token accounts; the floor the instruction enforces equals the provider's stated threshold to the base unit in all four |
+| The capture script's independent reader over the same bytes | The same instruction for the same instruction, in another language: `budget, budget, wrap, sync, shared_route, unwrap` and the three other shapes |
+| `JupiterLiveTest` with `-Dseekervault.jupiter=https://lite-api.jup.ag` | **PASS** — one real quote, one real build, and the review verified the result |
+| A build for a wallet holding nothing, with `dynamicComputeUnitLimit` | The provider's own simulation failed and said why ("Attempt to debit an account but found no record of a prior credit"), so nothing was prepared. This is how "insufficient balance" is detected by a phone that reaches no chain |
+| `api.jup.ag/swap/v2/order` keyless | `200`, so v2 exists — and it is a combined quote-and-build tied to Jupiter's own `/execute`. v1 is what this app pins, and why is in `docs/integrations/jupiter.md` |
+| A signed transaction, on chain | **NOT RUN.** No funds and no wallet here; step 6 below |
 
 ## The device run (for the owner)
 
@@ -118,11 +139,40 @@ over a real certificate, a real network and the app's own lifecycle.
    - **force-stop** the app from Android Settings and publish again: nothing arrives, which is the
      documented limitation rather than a failure. Opening the app reads the feed and catches up.
 
-Record the date, the app build, the gateway, broker and Firebase project, and what each step did —
-as `docs/testing/stage-5-3.md` does for the direct path.
+6. **Make one real swap (SEE-93).** This is the only step that spends anything, and it is the only
+   thing the automated checks cannot reach: everything up to the signature is covered against the
+   live provider, and the signature itself needs a wallet with funds on mainnet.
+
+   Publish a swap signal whose terms name two mints the owner actually holds — a small amount of a
+   liquid pair, USDC to SOL or back — then on the phone:
+   - open the feed's **Signals**, open the signal, and read what the publisher said;
+   - enter a **small** amount, and check that the review shows the least you would receive, the
+     quote, the price movement allowed and the priority fee, all read out of the transaction;
+   - check the **facts** name your own wallet as both payer and receiver;
+   - wait more than a minute and tap **Approve and swap**: it must refuse with "the quote and the
+     transaction have expired" and nothing may reach the wallet;
+   - prepare again and approve within the minute: the wallet opens with that transaction, and
+     approving it there sends it. Record the signature;
+   - check Activity: one **operation** record, `Sent`, with the plugin, the revision, the wallet and
+     the amount you chose — and no explorer claim that it succeeded, because this app does not
+     follow a swap to the chain;
+   - open the signal again: it says you acted on it, and there is **no second Approve**;
+   - on a **second device** with a different wallet, act on the same signal with a *different*
+     amount, and check that neither phone shows anything about the other;
+   - check the publisher's own logs and the gateway's access log: neither has your address, your
+     amount or your signature anywhere in it.
+
+   Also try the refusals, which cost nothing: an amount larger than the wallet holds (the provider's
+   simulation should refuse it before the wallet opens), a wallet selected for devnet (refused
+   before anything is asked), and a signal whose `input_mint` is a ticker rather than a mint (read
+   in full, with no Prepare offered).
+
+Record the date, the app build, the gateway, broker and Firebase project, the pair and amount
+swapped, and the transaction's signature — as `docs/testing/stage-5-3.md` does for the direct path.
 
 ## Not covered here
 
+- The prediction plugin and its market handoff: SEE-94.
 - Load, isolation and failover at size: SEE-99.
 - The direct-mode and gateway-mode comparison, and MCP compatibility: SEE-98.
 - The server development guide the steps above will eventually live in: SEE-100.

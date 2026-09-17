@@ -114,10 +114,12 @@ tasks.withType<Test>().configureEach {
     systemProperty("seekervault.repoRoot", repoRoot.asFile.absolutePath)
     // Opt-in integration switches, forwarded from the Gradle invocation to the test JVM: a broker
     // and a Redis are services, so the tests that need them skip unless someone says where they
-    // are (CentrifugoStreamIntegrationTest, docs/development/broadcast.md). A property Gradle was
-    // given does not reach a test on its own, and a test that silently skipped because of that
-    // would be worse than one that fails.
-    for (name in listOf("seekervault.centrifugo", "seekervault.redis")) {
+    // are (CentrifugoStreamIntegrationTest, docs/development/broadcast.md). `seekervault.jupiter`
+    // is the same idea for a provider on the public internet (JupiterLiveTest, SEE-93): a default
+    // run reaches nothing and spends nothing. A property Gradle was given does not reach a test on
+    // its own, and a test that silently skipped because of that would be worse than one that
+    // fails.
+    for (name in listOf("seekervault.centrifugo", "seekervault.redis", "seekervault.jupiter")) {
         providers.systemProperty(name).orNull?.let { systemProperty(name, it) }
     }
     inputs

@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.plugins
 
+import io.github.brrenat.seekervault.policy.PolicyAction
 import io.github.brrenat.seekervault.policy.PolicyAsset
 import io.github.brrenat.seekervault.policy.RequestFacts
 import io.github.brrenat.seekervault.policy.policyAction
@@ -66,9 +67,55 @@ fun pluginFacts(
     network: Network,
     resolution: PluginResolution,
     inspection: ActionInspection? = null,
+): RequestFacts =
+    pluginFacts(
+        connectionId = connectionId,
+        action = policyAction(request),
+        requestId = request.ref.requestId,
+        network = network,
+        resolution = resolution,
+        inspection = inspection,
+    )
+
+/**
+ * The same, for an operation that came from a publisher's broadcast rather than from a request
+ * addressed to this phone (SEE-93).
+ *
+ * There is no `ActionRequest` to read the kind of action out of, so the operation's own name is
+ * used — and the two vocabularies are deliberately the same one. Core names an operation at the
+ * protocol's level (`swap`) and a rule names an action at the protocol's level (`swap`), so a rule
+ * the owner wrote about swaps applies to a swap whether an agent asked for it privately or a
+ * publisher broadcast it. An operation with no rule vocabulary for it establishes no action, and an
+ * action nothing was written about passes nothing.
+ *
+ * [proposalId] takes the place of a request ID for the one thing that identity is used for:
+ * counting a day's spending once rather than twice.
+ */
+fun pluginFacts(
+    connectionId: String,
+    proposalId: String,
+    operation: OperationId,
+    network: Network,
+    resolution: PluginResolution,
+    inspection: ActionInspection? = null,
+): RequestFacts =
+    pluginFacts(
+        connectionId = connectionId,
+        action = PolicyAction.byCode(operation.value),
+        requestId = proposalId,
+        network = network,
+        resolution = resolution,
+        inspection = inspection,
+    )
+
+private fun pluginFacts(
+    connectionId: String,
+    action: PolicyAction?,
+    requestId: String,
+    network: Network,
+    resolution: PluginResolution,
+    inspection: ActionInspection?,
 ): RequestFacts {
-    val action = policyAction(request)
-    val requestId = request.ref.requestId
     if (resolution !is PluginResolution.Supported) {
         return RequestFacts.unread(connectionId, action, requestId)
     }

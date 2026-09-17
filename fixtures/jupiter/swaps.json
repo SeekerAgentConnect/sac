@@ -1,0 +1,126 @@
+{
+  "note": "Real answers from Jupiter's keyless swap API, captured by scripts/capture-jupiter.mjs and read by the phone's JupiterFixturesTest. Nothing here is signed, and the blockhashes are long expired, which is why these stay valid as fixtures: the review reads what a transaction does, and that does not depend on when it was built.",
+  "endpoint": "https://lite-api.jup.ag",
+  "capturedAt": "2026-09-17T16:40:51.200Z",
+  "cases": [
+    {
+      "name": "sol_to_usdc",
+      "description": "Native SOL in: the wrap, the token program crediting it, the route, and the close that returns what is left. The shared-accounts routing variant.",
+      "owner": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      "inputMint": "So11111111111111111111111111111111111111112",
+      "inputDecimals": 9,
+      "inputSymbol": "SOL",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "outputDecimals": 6,
+      "outputSymbol": "USDC",
+      "amount": "100000000",
+      "slippageBps": 50,
+      "quote": {
+        "inAmount": "100000000",
+        "outAmount": "10098691",
+        "otherAmountThreshold": "10048198",
+        "swapMode": "ExactIn",
+        "legs": 1
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAwUfowIh2C/3h3dzzLBfyCbgkLuUqrxMfrNiNDqLG0LBvIEeDEmBy9Cqc1mrdGNG4e7MQv1gwvM9V9qLfF8ARzUDFKWzzWzN4b6tbPRtq86ZArIRfmnEQf/+tUJ7vqO9DjQbQ/ffN89KMzS1moKr3xD+eaLjFLD93Uu7/6fCChoRW9uLTf/07G/5lUj4H0WP0w2uMwkcfDnCRzyLQ2wN8xcgXx4xDSItxRlxj+hImheFRfe6eTiQOe6+JaV6ntDnegc0+qM9aysqM0FIHUSF1xDzvVKXdme3iCha1UlNzjzl9zt8bb6Ife3mBYa2q+/aRIB668TE/bopd4zp4RSn/mvPgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwZGb+UhFzL/7K26csOb57yM5bvF9xJrLEObOkAAAAAEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTjwYfzk54dtRw9sYjqJPKvdAVsCKJg+Bac8880oyFYZ9FBpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAEGp9UXGHvRZjXa1ARV/cLAwSTGjyFWdaXbustfCAAAAAan1RcYx3TJKFZjmGkdXraLXrijm0ttXHNVWyEAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkUDAnDiGwcaoRPMpMbzwSqwxeFGbHA/lPU/ypxDrTePCJN6ywHs1cEyUcdgb6fXSqluVwAS5YEcCXenLNzPJSotD/6J/XX9kp0wJsfKVh53ksJqzbfyd1RSzIap7OM5ejG+nrzvtutOj1l82qryXQxsbvkwtL24OR8pgIDRS9dYaFZh3UANW4K5zngEUcaLFTG8XvvcUETafuSarm0hpBgBgkABQLyhwAACQAJA4CEHgAAAAAACAIAAwwCAAAAAOH1BQAAAAAPAQMBEQoYDxAAAwcBBgwTCgoSCgsQBwEEAgURDw4NJcEgmzNB1pyBAQEAAAB9AGQAAQDh9QUAAAAAAxiaAAAAAAAyAAAPAwMAAAEJ",
+      "shape": {
+        "version": null,
+        "unsigned": true,
+        "signers": ["9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"],
+        "lookups": 0,
+        "instructions": [
+          "budget",
+          "budget",
+          "wrap",
+          "sync",
+          "shared_route",
+          "unwrap"
+        ]
+      }
+    },
+    {
+      "name": "usdc_to_sol",
+      "description": "Native SOL out: the route, then the close that unwraps it back to the owner.",
+      "owner": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "inputDecimals": 6,
+      "inputSymbol": "USDC",
+      "outputMint": "So11111111111111111111111111111111111111112",
+      "outputDecimals": 9,
+      "outputSymbol": "SOL",
+      "amount": "10000000",
+      "slippageBps": 50,
+      "quote": {
+        "inAmount": "10000000",
+        "outAmount": "99033602",
+        "otherAmountThreshold": "98538434",
+        "swapMode": "ExactIn",
+        "legs": 1
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAkWfowIh2C/3h3dzzLBfyCbgkLuUqrxMfrNiNDqLG0LBvIKBSRBoVhOV4xwBfanvh4FdBl3V3APJBkA8l9K/YoZzhXfvsh8YIN3NqCdSj/aTE0sQQEuMZdZ0Az4hZy4F1R9bQ/ffN89KMzS1moKr3xD+eaLjFLD93Uu7/6fCChoRW97HrT2z70+Fyk475TQnK9C5QJMD8UtMRoIm06B1jPg65PNRyGJtBI5xyVYGpAf5/VZjNjuDs58i38l5M8p1JaLuYWuPLoIHj1rtPdLNX3+MqAowL1C3mfnKmBZ/gHZOU3Aouyx9osK9wLWjKbYcYtwGogDOw3SwmlEl+gyoeP5/ss05TgQpLJrtU15CgjsTceVQf7mMWPb6jwYOmR4Qavv0+qM9aysqM0FIHUSF1xDzvVKXdme3iCha1UlNzjzl9zvdAzm3U+U81sNMxib4appdIf/Hv9uXru6Jao2fQRZQfSg232smfagXL/5btgB4HJ1uC1sDkzWZ+0fi9iWbMHY9pSeCVaJ26enuc+vxTLFsISlfVvY4LnZwrKOo0OMZSEDBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAAR51VvyMcBu7nTFbs5oFQf9sbLeo/SOUQKxzaJWvBOPBOnhL7yE6CbJMszp4mQMzhVZDBxic7CSVwi6O4UgsLwGm4hX/quBhPtof2NGGMA12sQ53BrrO1WYoPAAAAAAAQbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpsnDWf6mMUc8CEwUTWJYrrzV0K+1ZydlEXpwNDIXHzZG0P/on9df2SnTAmx8pWHneSwmrNt/J3VFLMhqns4zl6Mb6evO+2606PWXzaqvJdDGxu+TC0vbg5HymAgNFL11h4vh36D2uxoiPQ6u1rnsxG7eMNJYIl/zlp7gsFuIP8ZfEkZDZsjgwwpiLhS2HLEdI6ze/YMtxVct6whyJ+S0CngQNAAUCJO8AAA0ACQOt7BgAAAAAAA4hERUACQYBAxQQDg4TDg8LBAoMBgEQFAgPFREREg8CBwUOJMEgmzNB1pyBAAEAAAAmZAABgJaYAAAAAAACIucFAAAAADIAABEDAwAAAQk=",
+      "shape": {
+        "version": null,
+        "unsigned": true,
+        "signers": ["9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"],
+        "lookups": 0,
+        "instructions": ["budget", "budget", "shared_route", "unwrap"]
+      }
+    },
+    {
+      "name": "usdc_to_jup_new_account",
+      "description": "Token to token for a wallet that has no account for the output mint yet: the idempotent associated-account creation is in the transaction, and it is for the owner.",
+      "owner": "HJdVwh6EY9XSkh3EyKofGqUF7x5tiujt6iKxcJjwEnft",
+      "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "inputDecimals": 6,
+      "inputSymbol": "USDC",
+      "outputMint": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+      "outputDecimals": 6,
+      "outputSymbol": "JUP",
+      "amount": "5000000",
+      "slippageBps": 50,
+      "quote": {
+        "inAmount": "5000000",
+        "outAmount": "21938430",
+        "otherAmountThreshold": "21828738",
+        "swapMode": "ExactIn",
+        "legs": 1
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAA8Z8j8iV1la0NUJhedzz0gYyi5Ks5eT1ZFw5iS76cBFWosR5/vft1OrExLuQLYSD40KTP5bnkkM81f+r9X6u5UHJR6d0/aqbp1Lp2AqJNQ1evUx0CH0gRMmp8rmFU8XlxKiSJj6cJ0d3guLJDsGEp0JjoOv1c3v3K7vf2IbKyIuuMpfWRZXwF41S1CQFSOpPrDCTYHYXTEW2SIAOcDnlLLQdHbfahHi4P7ICId7J+DykbmWb3z8OXc04Rh8r9ldwyKngmR/ahJZE030djG2gEQ1b2lW/h8Z6ONMPhZaUYVtUUC9xoIBBUbTZYPkcA7ndg9hxrr0/7HUzf/KIWvk/JjnT+nUSIsH/jmbGpFV5YIbaX1DAWwKPE87vKKvtB0BYzBX8mpBR8PwMVDFwTncjsfDbNcOxMIqG1nz6ocN6QTNJSIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAABHnVW/IxwG7udMVuzmgVB/2xst6j9I5RArHNola8E48EednHzBA13nIR+Z60jAnXCyvfW9+eLla4ofu1ouozJwVKU1qZKSEGTSTocWDaOHx8NbXdvJK7geQfqEBBBUSNBnTc7b+HpJOhQHz9nJO9CUpfi7T8DJ481jS+tQWDw10Gp9UXGHvRZjXa1ARV/cLAwSTGjyFWdaXbustfCAAAAAbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpC/j8ktTesxRaCO4La7o3l5FG3VJmgyApryFbnxUFzJqMlyWPTiSJ8bs9ECkUjg2DC1oTmdr/EIQEjnvY2+n4Wawa49CH8pI3BiVI9wxMBK7CqZVpSYbny7RnUgYh04YwtD/6J/XX9kp0wJsfKVh53ksJqzbfyd1RSzIap7OM5ejFaYhBcXXSgbvR8yUjyfVLfi2LRQVZs/VWqIwSEhIkZMb6evO+2606PWXzaqvJdDGxu+TC0vbg5HymAgNFL11h8sh3iLxB5Z1IPH7gKl0o1E+FE5o9OFhYyoAm3UGD5AJqkA1u2RGRCuC4CzufNhqfj/EfTaLQ6PkfNAjISOtx+AQLAAUCwFwVAAsACQMEFwEAAAAAABMGAAQADQoRAQEMHxEUAAUIAQQXDQwMFQwPFhQIAQIDFw0REQ4SGAkHBhA0wSCbM0HWnIEFAQAAAHrAuYqxtkCHEDUAAAAMAAD1ZAABQEtMAAAAAAD+wE4BAAAAADIAAA==",
+      "shape": {
+        "version": null,
+        "unsigned": true,
+        "signers": ["HJdVwh6EY9XSkh3EyKofGqUF7x5tiujt6iKxcJjwEnft"],
+        "lookups": 0,
+        "instructions": ["budget", "budget", "account", "shared_route"]
+      }
+    },
+    {
+      "name": "usdc_to_sol_own_accounts",
+      "description": "The other routing variant, which uses the owner's own accounts rather than the program's shared ones and lays them out differently.",
+      "owner": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "inputDecimals": 6,
+      "inputSymbol": "USDC",
+      "outputMint": "So11111111111111111111111111111111111111112",
+      "outputDecimals": 9,
+      "outputSymbol": "SOL",
+      "amount": "10000000",
+      "slippageBps": 50,
+      "quote": {
+        "inAmount": "10000000",
+        "outAmount": "99056719",
+        "otherAmountThreshold": "98561436",
+        "swapMode": "ExactIn",
+        "legs": 1
+      },
+      "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAA4VfowIh2C/3h3dzzLBfyCbgkLuUqrxMfrNiNDqLG0LBvICA/Wm+d0uYDGc8AqX2dnPQV4ywAernl9i20gYlIowdAJQtMX5U7FafONgIuEEX+bzkPiZIEALb7ByhDYoMdpQbQ/ffN89KMzS1moKr3xD+eaLjFLD93Uu7/6fCChoRW/T6oz1rKyozQUgdRIXXEPO9Upd2Z7eIKFrVSU3OPOX3NqTNxK/kBcXFtCSYydHTToFeP30Jns66XEXqZXgR6137gWj3s4ZSTziNnlDb5z5fCXmXgEbE5PQmhGDf5e3WZgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAABHnVW/IxwG7udMVuzmgVB/2xst6j9I5RArHNola8E48Gm4hX/quBhPtof2NGGMA12sQ53BrrO1WYoPAAAAAAAQan1RcYe9FmNdrUBFX9wsDBJMaPIVZ1pdu6y18IAAAABqfVFxjHdMkoVmOYaR1etoteuKObS21cc1VbIQAAAAAG3fbh12Whk9nL4UbO63msHLSF7V9bN5E6jPWFfv8AqVTg3Bpfqg6gsHmrITOs7l5m79oiCx/MaN8wrVzoQjAIXzKzKsKQoDw7CN3OrmcaCgJ29E7vtWkK/ncGy61YEG56/XQrJ/dZ6cZwcDzTnYF6oJMKzjtS0m1UoFTdI4e707Q/+if11/ZKdMCbHylYed5LCas238ndUUsyGqezjOXoxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWHbtcRxSteW+KuWETs41c/W0zcC3/eR3Rm9ThTWrtoKT/zRPaBBVZATz0rroahO1wI61P8hqEdH/zsFqzD6ggfDsYJyHBP0MQiit5sFEeZI9Hud+BwEybY/YRkqOWRB/pQECAAFAn2CAQAIAAkDD2wPAAAAAAAJHQ0ABAMJCgkRCRAAAQYCAwQMDQ0LChITBQcUDw4AZOUXy5d6460qAQAAALoBAAAAAAAAAID+PbCgAQAA5N3WhtY5n/Mun1LFHWnkTfJaFuWGJ3ylxQyjE0nlPh+qOpKa8DfgVVGJ21Au3DZlAGQAAYCWmAAAAAAAT3znBQAAAAAyAAANAwMAAAEJ",
+      "shape": {
+        "version": null,
+        "unsigned": true,
+        "signers": ["9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"],
+        "lookups": 0,
+        "instructions": ["budget", "budget", "route", "unwrap"]
+      }
+    }
+  ]
+}

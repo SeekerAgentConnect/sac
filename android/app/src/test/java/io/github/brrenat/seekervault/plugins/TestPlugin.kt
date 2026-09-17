@@ -47,6 +47,7 @@ class TestPlugin(
 
     override fun inspect(
         subject: ActionSubject,
+        choice: ParameterChoice,
         prepared: PluginPreparation,
     ): ActionInspection {
         calls += "inspect"
