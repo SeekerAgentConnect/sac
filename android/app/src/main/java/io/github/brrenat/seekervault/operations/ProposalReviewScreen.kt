@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.activity.explorerUrl
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.inbox.PolicyReview
@@ -36,6 +37,7 @@ import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.policy.AmountEntry
 import io.github.brrenat.seekervault.policy.readAmount
+import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.executable
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.ui.Identifier
@@ -44,6 +46,7 @@ import io.github.brrenat.seekervault.ui.SeekerButtonRole
 import io.github.brrenat.seekervault.ui.SeekerCard
 import io.github.brrenat.seekervault.ui.seekerTextFieldColors
 import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.encodeBase58
 import io.github.brrenat.seekervault.wallet.networkText
 import java.time.Instant
 
@@ -74,6 +77,8 @@ fun ProposalReviewScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onRules: (() -> Unit)? = null,
+    /** Hands a link to whatever app opens them. The app fetches nothing from any of them. */
+    onOpenLink: (String) -> Unit = {},
 ) {
     val proposal = review.record.proposal
     val executed = review.record.execution
@@ -105,6 +110,44 @@ fun ProposalReviewScreen(
                 Banner(stringResource(standingText(review.standing)), OperationTags.STANDING)
                 if (executed != null) {
                     Banner(stringResource(outcomeText(executed.outcome)), OperationTags.OUTCOME)
+                    // What the owner has afterwards, and the app's own limit stated beside it: it
+                    // submitted an operation and does not follow it (SEE-94). The transaction can
+                    // be read on the explorer; the operation itself continues at the provider's,
+                    // if the provider has anywhere truthful to send them.
+                    Section(R.string.operation_afterwards) {
+                        Column(
+                            Modifier.fillMaxWidth().testTag(OperationTags.AFTERWARDS),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            val signature =
+                                (executed.outcome as? ProposalOutcome.Submitted)?.signature
+                            signature?.let {
+                                Address(
+                                    stringResource(R.string.operation_signature),
+                                    encodeBase58(it.toByteArray()),
+                                )
+                            }
+                            val link = signature?.let {
+                                explorerUrl(
+                                    encodeBase58(it.toByteArray()),
+                                    executed.binding.network,
+                                )
+                            }
+                            link?.let {
+                                Link(stringResource(R.string.operation_explorer), it, onOpenLink)
+                            }
+                            review.destinations.forEach {
+                                Link(stringResource(it.label), it.url, onOpenLink)
+                            }
+                            // Every one of these is a place to look, and none of them is this app
+                            // claiming to know what happened.
+                            Text(
+                                stringResource(R.string.operation_afterwards_note),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 if (!review.served) {
                     // A server this build has no plugin for is read in full and executed never:
@@ -203,6 +246,21 @@ fun ProposalReviewScreen(
                         }
                     }
                 }
+                review.inspection
+                    ?.references
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { references ->
+                        Section(R.string.operation_identifiers) {
+                            Column(
+                                Modifier.fillMaxWidth().testTag(OperationTags.REFERENCES),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                // The provider's own names for what is being submitted, read out of
+                                // the bytes. They are what the owner's record keeps.
+                                references.forEach { Address(it.key, it.value) }
+                            }
+                        }
+                    }
                 review.inspection?.let { inspection ->
                     Section(R.string.operation_what_this_phone_read) {
                         Column(
@@ -440,6 +498,17 @@ private fun Banner(text: String, tag: String) {
             modifier = Modifier.fillMaxWidth().padding(14.dp).testTag(tag),
         )
     }
+}
+
+/** One place to look, outside this app. Tapping hands it to whatever opens links. */
+@Composable
+private fun Link(name: String, url: String, onOpenLink: (String) -> Unit) {
+    SeekerButton(
+        text = name,
+        onClick = { onOpenLink(url) },
+        role = SeekerButtonRole.Neutral,
+        modifier = Modifier.fillMaxWidth().testTag(OperationTags.link(name)),
+    )
 }
 
 /** A labelled address or identifier, in the monospaced style the rest of the app uses for one. */

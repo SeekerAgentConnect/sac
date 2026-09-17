@@ -25,7 +25,9 @@ import io.github.brrenat.seekervault.feeds.FeedStream
 import io.github.brrenat.seekervault.feeds.ForegroundFeedManager
 import io.github.brrenat.seekervault.feeds.RepositoryFeedHost
 import io.github.brrenat.seekervault.feeds.storage.FeedCursorStore
+import io.github.brrenat.seekervault.jupiter.HttpJupiterPrediction
 import io.github.brrenat.seekervault.jupiter.HttpJupiterProvider
+import io.github.brrenat.seekervault.jupiter.JupiterPredictionPlugin
 import io.github.brrenat.seekervault.jupiter.JupiterSwapPlugin
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
@@ -42,6 +44,8 @@ import io.github.brrenat.seekervault.push.FeedTopicClient
 import io.github.brrenat.seekervault.push.FeedTopicManager
 import io.github.brrenat.seekervault.push.FirebaseFcmRegistrationClient
 import io.github.brrenat.seekervault.push.FirebaseFeedTopicClient
+import io.github.brrenat.seekervault.solana.HttpSolanaAccounts
+import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.sync.BackgroundSyncScheduler
 import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
 import io.github.brrenat.seekervault.sync.FeedSyncRunner
@@ -166,7 +170,23 @@ class SeekerVaultApplication : Application() {
      * the boundary without reaching a provider.
      */
     var plugins: () -> PluginRegistry = {
-        PluginRegistry.of(JupiterSwapPlugin(HttpJupiterProvider(httpClient)))
+        PluginRegistry.of(
+            JupiterSwapPlugin(HttpJupiterProvider(httpClient)),
+            JupiterPredictionPlugin(HttpJupiterPrediction(httpClient), solanaAccounts()),
+        )
+    }
+
+    /**
+     * Where the app reads accounts from the chain (SEE-94).
+     *
+     * It exists for one purpose — resolving the address lookup tables a prediction order's
+     * transaction names, without which the phone cannot see what it would be signing — and it is
+     * **the application's endpoint, never a publisher's**: nothing in a manifest, a proposal or a
+     * provider's answer can set it. A build with none configured prepares no order and says so
+     * (`BuildConfig.SOLANA_RPC`, docs/wiki/jupiter-prediction.md#why-the-phone-reads-the-chain).
+     */
+    var solanaAccounts: () -> SolanaAccounts = {
+        HttpSolanaAccounts(httpClient, BuildConfig.SOLANA_RPC)
     }
 
     /** One registry for the process, so every screen resolves an operation the same way. */

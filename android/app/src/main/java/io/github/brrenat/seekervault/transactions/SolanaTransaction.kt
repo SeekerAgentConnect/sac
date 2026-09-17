@@ -42,8 +42,16 @@ data class DecodedTransaction(
     val version: Int?,
     /** How many signature slots the transaction carries, one per required signer. */
     val signatureCount: Int,
-    /** True when every signature slot is still empty, which is what the sidecar must hand over. */
-    val unsigned: Boolean,
+    /**
+     * Which signature slots are still empty, by index, so a caller can say *whose* signature is
+     * missing rather than only whether any are (SEE-94).
+     *
+     * A transfer or a swap is handed over with every slot empty. A provider that co-signs an order
+     * hands over one already filled, and the difference between "one signature is missing and it is
+     * the owner's" and "something else will sign alongside them" is exactly what this makes
+     * checkable.
+     */
+    val emptySignatures: List<Int>,
     val requiredSignatures: Int,
     val readonlySignedAccounts: Int,
     val readonlyUnsignedAccounts: Int,
@@ -51,12 +59,25 @@ data class DecodedTransaction(
     val recentBlockhash: String,
     val instructions: List<DecodedInstruction>,
     /**
-     * How many address table lookups the message carries. The sidecar never emits one, and the
-     * phone can't resolve one offline, so anything above zero makes the transaction unreadable
-     * rather than merely unusual.
+     * The address lookup tables the message loads its remaining accounts from, in the order it
+     * names them, with the indexes it takes from each (SEE-94).
+     *
+     * A message with any of these is **not self-contained**: [accounts] holds only the addresses
+     * written into it, and every index at or beyond that list resolves through these tables. What
+     * the transaction touches therefore cannot be established from the bytes alone, which is why
+     * [decodeTransaction] refuses such a message unless the caller says it can resolve them —
+     * reading a table means reading the chain (`solana/AddressLookupTables.kt`).
      */
-    val addressTableLookups: Int,
+    val lookups: List<TableLookup> = emptyList(),
 ) {
+    /** How many tables the message names. Zero for a message that is self-contained. */
+    val addressTableLookups: Int
+        get() = lookups.size
+
+    /** True when every signature slot is still empty, which is what a sidecar must hand over. */
+    val unsigned: Boolean
+        get() = emptySignatures.size == signatureCount
+
     /** The accounts that have to sign, in order; the first is the fee payer. */
     val signers: List<String>
         get() = accounts.take(requiredSignatures)
@@ -73,6 +94,21 @@ data class DecodedTransaction(
     fun accountsOf(instruction: DecodedInstruction): List<String>? =
         instruction.accountIndexes.map { accounts.getOrNull(it) ?: return null }
 }
+
+/**
+ * One address lookup table a message loads accounts from: the table's own account, and the indexes
+ * into it that the message uses (SEE-94).
+ *
+ * The order matters and is the runtime's: every table's writable indexes come first, in the order
+ * the message names the tables, and then every table's readonly indexes. An account list rebuilt in
+ * any other order would resolve each instruction's indexes to the wrong addresses, which is why the
+ * rebuilding is one function with its own tests rather than a step in a reviewer.
+ */
+data class TableLookup(
+    val table: String,
+    val writable: List<Int>,
+    val readonly: List<Int>,
+)
 
 /** Why a transaction could not be read. Each one is a refusal, never a warning. */
 enum class DecodeFailure {
@@ -93,14 +129,20 @@ sealed interface DecodeResult {
 /**
  * Reads a serialized transaction: the signature array, then the message. Returns [DecodeResult] so
  * a failure carries its reason; the caller never sees a half-read transaction.
+ *
+ * [resolvable] is how a caller says it can read the chain, and it defaults to false so that every
+ * reviewer which reads bytes and nothing else keeps refusing a message it could not account for
+ * (SAW-020's transfers, SEE-93's swaps). With it set, a message that names address lookup tables
+ * comes back with them listed in [DecodedTransaction.lookups] for the caller to resolve — and such
+ * a transaction is **not** readable until they are (SEE-94).
  */
-fun decodeTransaction(bytes: ByteArray): DecodeResult {
+fun decodeTransaction(bytes: ByteArray, resolvable: Boolean = false): DecodeResult {
     val reader = Reader(bytes)
     val signatureCount = reader.compactU16() ?: return failed(DecodeFailure.Malformed)
-    var unsigned = true
-    repeat(signatureCount) {
+    val empty = mutableListOf<Int>()
+    repeat(signatureCount) { slot ->
         val signature = reader.bytes(SIGNATURE_BYTES) ?: return failed(DecodeFailure.Malformed)
-        if (signature.any { it.toInt() != 0 }) unsigned = false
+        if (signature.all { it.toInt() == 0 }) empty += slot
     }
 
     // A versioned message starts with the high bit set; a legacy one starts with its header, whose
@@ -141,25 +183,32 @@ fun decodeTransaction(bytes: ByteArray): DecodeResult {
             DecodedInstruction(programIdIndex, indexes, data)
         }
 
-    var lookups = 0
+    val lookups = mutableListOf<TableLookup>()
     if (version == 0) {
-        lookups = reader.compactU16() ?: return failed(DecodeFailure.Malformed)
+        val tables = reader.compactU16() ?: return failed(DecodeFailure.Malformed)
         // Each entry is the table's address and the indexes it supplies, writable then readonly.
         // They are read rather than skipped so that a message which really uses a table is
         // reported as using one — which is what the owner is shown, and the difference between
-        // "this loads accounts I cannot see" and "these bytes are not a transaction" (SEE-93).
-        repeat(lookups) {
-            reader.bytes(PUBLIC_KEY_BYTES) ?: return failed(DecodeFailure.Malformed)
+        // "this loads accounts I cannot see" and "these bytes are not a transaction" (SEE-93) —
+        // and so that a caller which can read the chain has what it needs to resolve them (SEE-94).
+        repeat(tables) {
+            val table = reader.bytes(PUBLIC_KEY_BYTES) ?: return failed(DecodeFailure.Malformed)
             val writable = reader.compactU16() ?: return failed(DecodeFailure.Malformed)
-            reader.bytes(writable) ?: return failed(DecodeFailure.Malformed)
+            val writableIndexes = reader.bytes(writable) ?: return failed(DecodeFailure.Malformed)
             val readonly = reader.compactU16() ?: return failed(DecodeFailure.Malformed)
-            reader.bytes(readonly) ?: return failed(DecodeFailure.Malformed)
+            val readonlyIndexes = reader.bytes(readonly) ?: return failed(DecodeFailure.Malformed)
+            lookups +=
+                TableLookup(
+                    table = encodeBase58(table),
+                    writable = writableIndexes.map { it.toInt() and 0xff },
+                    readonly = readonlyIndexes.map { it.toInt() and 0xff },
+                )
         }
     }
     // Every byte must be accounted for. Anything left over is content nobody read, and content
     // nobody read is exactly what must not be approved.
     if (!reader.exhausted) return failed(DecodeFailure.Malformed)
-    if (lookups > 0) return failed(DecodeFailure.AddressTableLookup)
+    if (lookups.isNotEmpty() && !resolvable) return failed(DecodeFailure.AddressTableLookup)
     if (requiredSignatures == 0 || accounts.size < requiredSignatures) {
         return failed(DecodeFailure.Malformed)
     }
@@ -170,14 +219,14 @@ fun decodeTransaction(bytes: ByteArray): DecodeResult {
         DecodedTransaction(
             version = version,
             signatureCount = signatureCount,
-            unsigned = unsigned,
+            emptySignatures = empty,
             requiredSignatures = requiredSignatures,
             readonlySignedAccounts = readonlySigned,
             readonlyUnsignedAccounts = readonlyUnsigned,
             accounts = accounts,
             recentBlockhash = encodeBase58(blockhash),
             instructions = instructions,
-            addressTableLookups = lookups,
+            lookups = lookups,
         )
     )
 }

@@ -142,9 +142,12 @@ fun policyFacts(
         PolicyAction.Acknowledgement,
         PolicyAction.MessageSignature ->
             RequestFacts.movesNothing(connectionId, action, request.ref.requestId)
-        // A swap moves value through a route this stage doesn't read. Stage 6 reads it; until then
-        // there is nothing established to check, and an unchecked swap is not an allowed one.
-        PolicyAction.Swap -> RequestFacts.unread(connectionId, action, request.ref.requestId)
+        // A swap and a prediction order both move value, and core prepares neither: an
+        // `ActionRequest` for one establishes nothing here, whatever a bundled plugin can do with
+        // the same operation when a publisher broadcasts it (SEE-93, SEE-94). An unchecked
+        // operation is not an allowed one, and this is where that stays true for the private path.
+        PolicyAction.Swap,
+        PolicyAction.Prediction -> RequestFacts.unread(connectionId, action, request.ref.requestId)
         PolicyAction.Transfer ->
             transferFacts(connectionId, request.ref.requestId, action, network, inspection)
         // An action this build has no name for moves value as far as it knows.

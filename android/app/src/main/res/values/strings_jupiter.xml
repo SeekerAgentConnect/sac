@@ -67,4 +67,65 @@
     <string name="jupiter_finding_unreadable_value">A program that can move funds is asked to do something this phone does not read.</string>
     <string name="jupiter_finding_unrecognized">This transaction contains an instruction this phone does not read.</string>
     <string name="jupiter_finding_no_offer">This phone no longer holds the quote these bytes were built for, so there is nothing to check them against. Prepare again.</string>
+    <!-- jupiter.prediction (SEE-94). -->
+    <string name="jupiter_outcome_label">Which side</string>
+    <string name="jupiter_outcome_yes">Yes</string>
+    <string name="jupiter_outcome_no">No</string>
+    <string name="jupiter_deposit_label">Amount to stake</string>
+    <string name="jupiter_destination_market">This market on Jupiter</string>
+
+    <!-- What the phone read out of the order, for the owner to see. -->
+    <string name="jupiter_fact_side_yes">Contracts bought on Yes</string>
+    <string name="jupiter_fact_side_no">Contracts bought on No</string>
+    <string name="jupiter_fact_stake">This order costs</string>
+    <string name="jupiter_fact_payout">Paid out if this side wins</string>
+    <string name="jupiter_fact_max_price">Most one contract may cost</string>
+    <string name="jupiter_fact_provider_fee">Provider fee</string>
+    <string name="jupiter_fact_instructions">Instructions in the transaction</string>
+    <string name="jupiter_fact_resolved_accounts">Accounts read from lookup tables</string>
+
+    <!-- Why the publisher's market terms could not be read. -->
+    <string name="jupiter_prediction_missing">This signal does not say which market it is about.</string>
+    <string name="jupiter_prediction_not_an_identifier">This signal names a market by something that is not a market identifier.</string>
+    <string name="jupiter_prediction_unsupported_mint">This signal asks for a stake in a token this provider does not take.</string>
+
+    <!-- Why what was chosen here cannot be acted on. -->
+    <string name="jupiter_choice_no_outcome">Choose which side of this market to buy.</string>
+    <string name="jupiter_choice_bad_outcome">That is not one of this market\'s two sides.</string>
+    <string name="jupiter_choice_stake_too_little">That is below the smallest order this provider accepts, or below the smallest this signal is for.</string>
+
+    <!-- Why nothing could be prepared. -->
+    <string name="jupiter_failure_sandbox_prediction">This server is in sandbox mode, so no order is prepared and nothing can be signed. Its markets can be read here, and no order is placed.</string>
+    <string name="jupiter_failure_prediction_terms">This signal cannot be read as a market, so there is nothing to prepare.</string>
+    <string name="jupiter_failure_prediction_unusable">The provider answered with something this phone cannot use, so nothing was prepared.</string>
+    <string name="jupiter_failure_no_such_market">The provider has no such market. The signal may name one that never existed, or one that has been removed.</string>
+    <string name="jupiter_failure_market_closed">This market is no longer open, so no order can be placed on it.</string>
+    <string name="jupiter_failure_insufficient_funds">Your wallet does not hold enough of the stake token for this order. The provider checked and said so; nothing was prepared.</string>
+    <string name="jupiter_failure_other_event">The provider says this market belongs to a different event than the signal describes, so nothing was prepared.</string>
+    <string name="jupiter_failure_other_provider">The provider says this market comes from a different source than the signal describes, so nothing was prepared.</string>
+    <string name="jupiter_failure_other_signer">The provider wants a signature from an account other than your wallet. Nothing was prepared.</string>
+    <string name="jupiter_failure_no_rpc">This build has no Solana endpoint configured, so the transaction\'s accounts cannot be read and nothing can be prepared.</string>
+    <string name="jupiter_failure_rpc_unreachable">The Solana endpoint could not be reached, so the transaction\'s accounts could not be read. Nothing was prepared.</string>
+    <string name="jupiter_failure_rpc_rate_limited">The Solana endpoint is asking for fewer requests. Wait a moment and prepare again.</string>
+    <string name="jupiter_failure_rpc_refused">The Solana endpoint refused the request, so the transaction\'s accounts could not be read.</string>
+    <string name="jupiter_failure_rpc_unusable">The Solana endpoint answered with something this phone cannot use, so the transaction\'s accounts could not be read.</string>
+
+    <!-- What the phone found wrong with, or could not account for in, the built order. -->
+    <string name="jupiter_finding_tables_unread">The accounts this transaction loads from lookup tables could not be read, so what it touches cannot be established.</string>
+    <string name="jupiter_finding_tables_unusable">A lookup table this transaction names is missing, is not a lookup table, or is no longer live.</string>
+    <string name="jupiter_finding_tables_deactivated">A lookup table this transaction needs has been deactivated, so the transaction would fail. Nothing was prepared.</string>
+    <string name="jupiter_finding_tables_inconsistent">This transaction refers to an account its lookup tables do not have.</string>
+    <string name="jupiter_finding_not_the_owners_to_sign">The signature still missing from this transaction is not your wallet\'s.</string>
+    <string name="jupiter_finding_no_order">This transaction does not place an order.</string>
+    <string name="jupiter_finding_extra_order">This transaction places more than one order.</string>
+    <string name="jupiter_finding_not_the_owners_order">This order is not yours.</string>
+    <string name="jupiter_finding_not_buying">This transaction sells a position rather than opening one.</string>
+    <string name="jupiter_finding_outcome">This order buys the other side from the one you chose.</string>
+    <string name="jupiter_finding_market">This order is for a different market than the provider said it built for.</string>
+    <string name="jupiter_finding_order">This transaction\'s order is not the one the provider described.</string>
+    <string name="jupiter_finding_deposit">This order stakes more than you entered.</string>
+    <string name="jupiter_finding_prediction_quote">The contracts, the cost or the price ceiling in this transaction are not the ones you were quoted.</string>
+    <string name="jupiter_finding_funding_not_owners">The stake would come from an account that is not yours.</string>
+    <string name="jupiter_finding_funding">What funds this order is not what the order spends.</string>
+    <string name="jupiter_finding_no_order_held">This phone no longer holds the order these bytes were built for, so there is nothing to check them against. Prepare again.</string>
 </resources>

@@ -63,6 +63,13 @@
     <string name="operation_publisher">Publisher</string>
     <string name="operation_revision">Revision %1$d</string>
 
+    <!-- What the owner has once an operation has been submitted (SEE-94). -->
+    <string name="operation_identifiers">What is being submitted</string>
+    <string name="operation_afterwards">Where to look now</string>
+    <string name="operation_signature">Transaction</string>
+    <string name="operation_explorer">This transaction on the explorer</string>
+    <string name="operation_afterwards_note">This app submitted the transaction and stops there. It does not follow whether an order filled, what a position is worth, how a market settles, or whether anything is paid out — open the links above to see any of that.</string>
+
     <!-- Why an approval stopped. -->
     <string name="operation_problem_rules_changed">Your rules changed while this was open, so the review was made again. Read it and approve again if you still mean to.</string>
     <string name="operation_problem_not_acknowledged">Tick the box above to go ahead past the warnings.</string>

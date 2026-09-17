@@ -40,6 +40,9 @@ class ActivityLog(
     // a note about a screen, not a verdict to act on: nothing reads it back out to decide anything.
     private val shown = ConcurrentHashMap<RequestKey, ReviewedPolicy>()
 
+    // And what an operation's provider named for it, until the record is written (SEE-94).
+    private val named = ConcurrentHashMap<RequestKey, List<ReviewedValue>>()
+
     private val _loaded = MutableStateFlow(false)
 
     private val _unreadableRecords = MutableStateFlow(0)
@@ -106,9 +109,20 @@ class ActivityLog(
      */
     fun record(record: ActivityRecord): ActivityRecord {
         val key = RequestKey(record.connectionId, record.requestId)
-        val policy =
-            record.policy ?: shown[key] ?: store.get(record.connectionId, record.requestId)?.policy
-        return publish(store.put(record.copy(policy = policy)))
+        val stored = store.get(record.connectionId, record.requestId)
+        val policy = record.policy ?: shown[key] ?: stored?.policy
+        val references =
+            record.operation?.references?.takeIf { it.isNotEmpty() }
+                ?: named[key]
+                ?: stored?.operation?.references
+        return publish(
+            store.put(
+                record.copy(
+                    policy = policy,
+                    operation = record.operation?.copy(references = references.orEmpty()),
+                )
+            )
+        )
     }
 
     /**
@@ -168,10 +182,23 @@ class ActivityLog(
         shown[key] = policy
     }
 
+    /**
+     * Keeps the identifiers an operation's provider named, for the record about to be written
+     * (SEE-94).
+     *
+     * The same channel [reviewed] is, and for the same reason: the code that binds an operation and
+     * the code that read its bytes are not the same code, and the record is about both. Public
+     * identifiers only, and never a URL.
+     */
+    fun referenced(key: RequestKey, references: List<ReviewedValue>) {
+        named[key] = references
+    }
+
     /** Removes every record. The owner asked for it; nothing else calls it. */
     fun clear() {
         store.clear()
         shown.clear()
+        named.clear()
         _records.value = emptyList()
         _unreadableRecords.value = 0
         // Cleared is read: the owner emptied it themselves, and an empty history is a known one.

@@ -22,8 +22,6 @@ import java.time.Instant
  */
 const val SOL_MINT: String = WRAPPED_SOL
 
-const val USDC_MINT: String = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-
 const val JUP_MINT: String = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
 
 const val OWNER: String = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"

@@ -63,7 +63,23 @@ sealed interface ReadInstruction {
 fun DecodedTransaction.read(instruction: DecodedInstruction): ReadInstruction? {
     val program = programOf(instruction) ?: return null
     val accounts = accountsOf(instruction) ?: return null
-    val data = instruction.data
+    return readInstruction(program, accounts, instruction.data)
+}
+
+/**
+ * The same reading, over the program and accounts an instruction resolved to.
+ *
+ * It is separate from the extension above because an account index does not always mean a place in
+ * the message: a versioned message loads most of its accounts from lookup tables, and a caller that
+ * has resolved them has a different list to index into (SEE-94, `solana/AddressLookupTables.kt`).
+ * What an instruction *means* does not depend on where its accounts came from, so it is read here,
+ * once, for both.
+ */
+fun readInstruction(
+    program: String,
+    accounts: List<String>,
+    data: ByteArray,
+): ReadInstruction {
     val reader = Reader(data)
     return when (program) {
         SYSTEM_PROGRAM -> {

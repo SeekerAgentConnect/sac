@@ -32,6 +32,10 @@ object OperationTags {
     const val OUTCOME = "operations.outcome"
     const val ACKNOWLEDGE = "operations.acknowledge"
     const val UNSUPPORTED = "operations.unsupported"
+    const val AFTERWARDS = "operations.afterwards"
+    const val REFERENCES = "operations.references"
+
+    fun link(name: String) = "operations.link.$name"
 
     fun row(proposalId: String) = "operations.row.$proposalId"
 }

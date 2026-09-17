@@ -39,6 +39,18 @@ data class ActionInspection(
      * saying something reassuring.
      */
     val details: List<PluginFact> = emptyList(),
+    /**
+     * What the operation's provider named for it, as stable keys and public values (SEE-94).
+     *
+     * [details] is for the owner to read now; this is for their record to keep. An order's own
+     * account and a position's are the two that matter, because this app submits an operation and
+     * then stops: what it can honestly tell the owner afterwards is *which* operation it submitted.
+     *
+     * Public identifiers and nothing else — the same kind of thing a transaction's signature is.
+     * Core carries them into the record without reading any of them
+     * ([io.github.brrenat.seekervault.activity.ReviewedOperation.references]).
+     */
+    val references: List<PluginReference> = emptyList(),
 ) {
     /**
      * Whether this preparation may be put in front of the owner to approve. Only bytes the plugin
@@ -87,6 +99,15 @@ data class PluginFinding(
  * read, and the app knows how to lay out a row.
  */
 data class PluginFact(@StringRes val label: Int, val value: String)
+
+/**
+ * One identifier an operation's provider named, for the owner's own record ([ActionInspection]).
+ *
+ * [key] is stable and is what the record stores; [value] is a public identifier — an account
+ * address, an order number — and never a URL, because a link kept on disk is a link something else
+ * could have written.
+ */
+data class PluginReference(val key: String, val value: String)
 
 /**
  * The facts a plugin read out of its own prepared bytes, in the shape the owner's rules are written

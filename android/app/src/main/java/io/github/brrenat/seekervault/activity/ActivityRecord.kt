@@ -106,6 +106,19 @@ data class ReviewedOperation(
     val preparedVersion: Int,
     /** What the owner chose, by the plugin's own field names. Base units, as they were chosen. */
     val values: List<ReviewedValue> = emptyList(),
+    /**
+     * What the operation's provider named for it: an order's own account, a position's (SEE-94).
+     *
+     * Public identifiers and nothing else — the same kind of thing a signature is. They are kept
+     * because an owner who placed an order is owed a durable record of *which* order, and because
+     * this app deliberately stops there: it does not follow the order, so what it can honestly
+     * offer afterwards is the identity of the thing it submitted.
+     *
+     * **No URL is ever stored here.** A link read back off disk is a link something else could have
+     * written; every destination this app hands to a browser is built at the moment it is shown,
+     * from code that is compiled in (`Explorer.kt`, `PluginDestination`).
+     */
+    val references: List<ReviewedValue> = emptyList(),
 )
 
 /** One parameter the owner chose, as a name and the text of what they chose. */

@@ -181,7 +181,14 @@ enum class PolicyAction(val code: String) {
     /** A message the wallet signs. It reaches no network and moves nothing. */
     MessageSignature("sign_message"),
     Transfer("transfer"),
-    Swap("swap");
+    Swap("swap"),
+
+    /**
+     * Buying one side of a prediction market (SEE-94). It is its own action rather than a swap:
+     * what leaves is a stake, what comes back is a claim on an outcome, and an owner who is willing
+     * to exchange one token for another has not thereby said they are willing to bet.
+     */
+    Prediction("prediction");
 
     companion object {
         fun byCode(code: String): PolicyAction? = entries.firstOrNull { it.code == code }

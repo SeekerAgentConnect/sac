@@ -12,23 +12,31 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.jupiter.EVENT_ID
+import io.github.brrenat.seekervault.jupiter.FakePrediction
+import io.github.brrenat.seekervault.jupiter.JUPITER_PREDICTION
 import io.github.brrenat.seekervault.jupiter.JUPITER_SWAP
+import io.github.brrenat.seekervault.jupiter.JupiterPredictionPlugin
 import io.github.brrenat.seekervault.jupiter.JupiterProvider
 import io.github.brrenat.seekervault.jupiter.JupiterQuote
 import io.github.brrenat.seekervault.jupiter.JupiterSwap
 import io.github.brrenat.seekervault.jupiter.JupiterSwapPlugin
+import io.github.brrenat.seekervault.jupiter.MARKET_ID
+import io.github.brrenat.seekervault.jupiter.PredictionTermNames
 import io.github.brrenat.seekervault.jupiter.SOL_MINT
 import io.github.brrenat.seekervault.jupiter.SwapTermNames
 import io.github.brrenat.seekervault.jupiter.SwapTerms
 import io.github.brrenat.seekervault.jupiter.USDC_MINT
 import io.github.brrenat.seekervault.jupiter.quoteFor
 import io.github.brrenat.seekervault.jupiter.swapTransaction
+import io.github.brrenat.seekervault.jupiter.tableFor
 import io.github.brrenat.seekervault.jupiter.usdcTerms
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginRegistry
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
+import io.github.brrenat.seekervault.proposals.PREDICTION
 import io.github.brrenat.seekervault.proposals.SWAP
 import io.github.brrenat.seekervault.proposals.wireProposal
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -69,7 +77,12 @@ class Phone(root: File, private val clock: () -> Instant) {
     val policies = PolicyStore(File(root, "policies"))
     val evaluator = PolicyEvaluator(policies, records = { history.records.value })
     val plugin = JupiterSwapPlugin(provider, clock)
-    val plugins: PluginRegistry = PluginRegistry.of(plugin)
+
+    /** The prediction provider, and the chain its orders are resolved through (SEE-94). */
+    val markets = FakePrediction()
+    val chain = OrderChain()
+    val prediction = JupiterPredictionPlugin(markets, chain, clock)
+    val plugins: PluginRegistry = PluginRegistry.of(plugin, prediction)
 
     var connection =
         Connection(
@@ -81,7 +94,7 @@ class Phone(root: File, private val clock: () -> Instant) {
             pairedAt = Instant.EPOCH,
             hasCredential = false,
             mode = ConnectionMode.GatewayFeed,
-            // The publisher's manifest requires this build's plugin at the contract it declares,
+            // The publisher's manifest requires this build's plugins at the contract they declare,
             // which is what makes the server supported and its proposals executable (SEE-88).
             server =
                 ServerRecord.Known(
@@ -91,7 +104,11 @@ class Phone(root: File, private val clock: () -> Instant) {
                         settingsRevision = 1,
                         mode = ConnectionMode.GatewayFeed,
                         reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_B)),
-                        required = listOf(PluginRequirement(JUPITER_SWAP, 1..1)),
+                        required =
+                            listOf(
+                                PluginRequirement(JUPITER_SWAP, 1..1),
+                                PluginRequirement(JUPITER_PREDICTION, 1..1),
+                            ),
                         environments = setOf(PluginEnvironment.Production),
                     )
                 ),
@@ -226,6 +243,60 @@ class FakeProvider : JupiterProvider {
     }
 }
 
+/** A market proposal, as a prediction publisher broadcasts one (SEE-94). */
+fun predictionProposal(
+    proposalId: String = PREDICTION_PROPOSAL,
+    revision: Long = 1,
+    at: Instant = Instant.parse("2026-09-17T09:00:00Z"),
+    expiresAt: Instant = Instant.parse("2026-09-18T09:00:00Z"),
+    note: String = "The market closes at the end of the season.",
+    marketId: String = MARKET_ID,
+    extra: Map<String, String> = emptyMap(),
+): WireProposal =
+    wireProposal(
+        serverId = SERVER_B,
+        proposalId = proposalId,
+        revision = revision,
+        operation = PREDICTION,
+        plugin = JUPITER_PREDICTION.value,
+        createdAt = at,
+        updatedAt = at,
+        expiresAt = expiresAt,
+        note = note,
+        values =
+            listOf(
+                PredictionTermNames.MARKET_ID to marketId,
+                PredictionTermNames.EVENT_ID to EVENT_ID,
+                PredictionTermNames.PROVIDER to "polymarket",
+                PredictionTermNames.DEPOSIT_MINT to USDC_MINT,
+                PredictionTermNames.DEPOSIT_DECIMALS to "6",
+                PredictionTermNames.DEPOSIT_SYMBOL to "USDC",
+            ) + extra.toList(),
+    )
+
+/**
+ * A chain that resolves whatever the last order named, as a real one would.
+ *
+ * The tables come from the order the provider just built, which is what makes this a stand-in for
+ * the chain rather than for the resolution: the addresses are the ones the message actually refers
+ * to, and the resolver does the real work on them.
+ */
+class OrderChain : io.github.brrenat.seekervault.solana.SolanaAccounts {
+    var tables: Map<String, List<String>> = emptyMap()
+    var fails: io.github.brrenat.seekervault.solana.SolanaProblem? = null
+    val asked = mutableListOf<List<String>>()
+
+    override suspend fun accounts(
+        addresses: List<String>
+    ): List<io.github.brrenat.seekervault.solana.AccountSnapshot?> {
+        asked += addresses
+        fails?.let { throw io.github.brrenat.seekervault.solana.SolanaException(it) }
+        return addresses.map { tables[it]?.let { held -> tableFor(held) } }
+    }
+}
+
 const val CONNECTION = "b3f4b0f2-2a4e-4f45-9f3e-6b1c9a2d4e70"
+
+const val PREDICTION_PROPOSAL = "2c4d6e80-9a1b-4c3d-8e5f-70819203a4b5"
 
 const val PROPOSAL = "7a2c8b16-3f40-4b1e-9c2d-5e6f708192a3"

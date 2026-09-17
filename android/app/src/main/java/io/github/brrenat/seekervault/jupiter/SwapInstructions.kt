@@ -7,7 +7,7 @@ import io.github.brrenat.seekervault.transactions.DecodedTransaction
 import io.github.brrenat.seekervault.transactions.ReadInstruction
 import io.github.brrenat.seekervault.transactions.SYSTEM_PROGRAM
 import io.github.brrenat.seekervault.transactions.TOKEN_PROGRAM
-import io.github.brrenat.seekervault.transactions.read
+import io.github.brrenat.seekervault.transactions.readInstruction
 
 /**
  * Reading the instructions a Jupiter swap is made of (SEE-93).
@@ -155,9 +155,21 @@ sealed interface SwapStep {
 fun DecodedTransaction.readSwapStep(instruction: DecodedInstruction): SwapStep? {
     val program = programOf(instruction) ?: return null
     val accounts = accountsOf(instruction) ?: return null
-    if (program == JUPITER_PROGRAM) return route(instruction.data, accounts)
-    if (program == TOKEN_PROGRAM && instruction.data.size == 1) {
-        when (instruction.data[0].toInt() and 0xff) {
+    return swapStep(program, accounts, instruction.data)
+}
+
+/**
+ * The same, over the program and accounts an instruction resolved to.
+ *
+ * A versioned message keeps most of its accounts in lookup tables, so a caller that has resolved
+ * them indexes into a different list (SEE-94). What an instruction means does not depend on where
+ * its accounts came from, so the reading is here, once, for both — which is also what lets a
+ * prediction order's funding swap be read by exactly the code that reads a swap.
+ */
+fun swapStep(program: String, accounts: List<String>, data: ByteArray): SwapStep {
+    if (program == JUPITER_PROGRAM) return route(data, accounts)
+    if (program == TOKEN_PROGRAM && data.size == 1) {
+        when (data[0].toInt() and 0xff) {
             SYNC_NATIVE ->
                 return if (accounts.size == 1) SwapStep.Sync(accounts[0])
                 else SwapStep.Unread(program, SYNC_NATIVE)
@@ -169,8 +181,7 @@ fun DecodedTransaction.readSwapStep(instruction: DecodedInstruction): SwapStep? 
     }
     // Everything else a swap contains is something the transfer path already reads, so it is read
     // by the same code: one reader for one wire format.
-    return when (val step = read(instruction)) {
-        null -> null
+    return when (val step = readInstruction(program, accounts, data)) {
         is ReadInstruction.SolTransfer -> SwapStep.Wrap(step.from, step.to, step.lamports)
         is ReadInstruction.CreateTokenAccount ->
             SwapStep.Account(step.payer, step.account, step.owner, step.mint, step.idempotent)

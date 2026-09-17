@@ -12,6 +12,16 @@ if (firebaseConfigured) {
     apply(plugin = "com.google.gms.google-services")
 }
 
+// The Solana endpoint the app reads accounts from, which one plugin needs and nothing else does
+// (SEE-94, docs/wiki/jupiter-prediction.md#why-the-phone-reads-the-chain). It is **empty by
+// default**, on purpose and in two senses: a checkout reaches no cluster, so no check here ever
+// quietly depends on somebody else's public endpoint; and it is the application's own setting,
+// never a publisher's, so nothing a server sends can point the phone at an endpoint of the server's
+// choosing. Set it for a build that wants prediction orders:
+//
+//   android/gradlew -p android :app:assembleDebug -Pseekervault.solanaRpc=https://…
+val solanaRpc = (providers.gradleProperty("seekervault.solanaRpc").orNull ?: "").trim()
+
 android {
     namespace = "io.github.brrenat.seekervault"
     compileSdk = 37
@@ -25,6 +35,9 @@ android {
         // Lets the UI omit an irrelevant permission prompt from Firebase-off deployments.
         // It contains configuration presence only, never a Firebase identifier or credential.
         buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
+        // A read-only endpoint, or the empty string. It is not a credential and it is not a
+        // secret: it is an address the owner's phone reads public account data from.
+        buildConfigField("String", "SOLANA_RPC", "\"$solanaRpc\"")
         // src/androidTest: the device round trip, run by `pnpm test:hello --device`.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

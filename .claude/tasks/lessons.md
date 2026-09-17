@@ -80,6 +80,34 @@
   then SEE-93 made a lookup table the one limit the owner most needs named accurately. Reading each
   entry was ten lines.
 
+- **A comment stripper that treats `//` as a comment start eats every URL, and can make a check
+  vacuous** (SEE-94). `StageBoundaryTest.withoutComments` truncated `"https://explorer.solana.com"`
+  to `"https:"`, so the new "no URL is ever persisted" assertion had nothing left to match and could
+  not fail. It was found by the deliberate break, not by review. Two rules from it: when a text
+  check strips anything, write the break that proves it still sees what it claims to see; and a
+  lexer written as one regex has to exclude the sequences that are not what they look like —
+  `(?<![:/])//` rather than `//`.
+- **A step a caller must not skip does not belong in a second public method** (SEE-94). Resolving a
+  versioned transaction's accounts first appeared as `resolve(subject, choice)` beside `prepare` and
+  `inspect`: the shared caller would have had to learn a step that exists for one plugin, and
+  forgetting it yielded an inspection of unresolved bytes with no sign anything was missing. Fold a
+  mandatory step into the call that already owns the phase it belongs to — the network read into
+  `prepare` — and key what it produces to the exact bytes, so the later pure step cannot be run
+  against something else.
+- **Failing to verify is a refusal, not a finding** (SEE-94). Turning an unreadable chain or an
+  invalid lookup table into findings let `prepare` *succeed* and hand back a review whose verdict
+  said "unverified" — which reads, on screen, like a transaction that was read and found wanting.
+  When the difference is "I read this and it is wrong" versus "I could not read this", the second
+  has to stop the operation with its reason, not appear as an item in a list of observations.
+- **`JSONObject.optString` on an explicit JSON null returns the string `"null"`** (SEE-94). A market
+  with `"result": null` read as settled, so a live market looked closed. Use `isNull(name)` first,
+  or a helper that does — and make the test's own body write `JSONObject.NULL` rather than omitting
+  the field, because an absent field and a null field are different inputs and only one of them was
+  what the provider actually sent.
+- **A private top-level declaration still collides inside its package** (SEE-94). A second
+  `private class Layout` in the same Kotlin package as SEE-93's failed to compile. Name file-private
+  helpers after what they parse — `OrderLayout` — rather than after their role.
+
 ## Scope
 
 - **A status update is not a task.** "I'm deploying to my hermes instance with Tailscale Funnel" meant the owner had already done it. Treating it as a request led to SSHing into the production droplet and probing it uninvited (2026-09-18). When the owner names their own server, ask what they want, or answer with information; never connect to, inspect, or change a remote host unless they ask for exactly that.

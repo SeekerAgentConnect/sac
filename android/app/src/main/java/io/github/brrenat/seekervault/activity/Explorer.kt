@@ -31,13 +31,24 @@ private const val EXPLORER = "https://explorer.solana.com/tx/"
 fun explorerUrl(record: ActivityRecord): String? {
     if (!record.signatureIsTransaction) return null
     val signature = record.signature ?: return null
-    return when (record.transfer?.network ?: record.operation?.network) {
+    return explorerUrl(signature, record.transfer?.network ?: record.operation?.network)
+}
+
+/**
+ * Where a transaction with this signature, on this cluster, can be read.
+ *
+ * The same rule and the same one address, for a caller that has a signature and a cluster rather
+ * than a stored record: the review screen an operation was submitted from shows the link straight
+ * away (SEE-94), and it must be the same link the owner's history will show later. A cluster that
+ * is absent or unspecified gets no link, because a guess here is a wrong link.
+ */
+fun explorerUrl(signature: String, network: Network?): String? =
+    when (network) {
         Network.NETWORK_MAINNET -> "$EXPLORER$signature"
         Network.NETWORK_DEVNET -> "$EXPLORER$signature?cluster=devnet"
         Network.NETWORK_TESTNET -> "$EXPLORER$signature?cluster=testnet"
         else -> null
     }
-}
 
 /**
  * Opens [url] with whatever app handles links, and returns false when nothing does. A phone with no

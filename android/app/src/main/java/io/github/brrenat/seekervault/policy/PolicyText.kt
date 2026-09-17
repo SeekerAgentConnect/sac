@@ -102,6 +102,7 @@ fun actionText(action: PolicyAction): String =
             PolicyAction.MessageSignature -> R.string.policy_action_sign_message
             PolicyAction.Transfer -> R.string.policy_action_transfer
             PolicyAction.Swap -> R.string.policy_action_swap
+            PolicyAction.Prediction -> R.string.policy_action_prediction
         }
     )
 
@@ -114,6 +115,7 @@ fun actionsText(action: PolicyAction): String =
             PolicyAction.MessageSignature -> R.string.policy_action_sign_message_short
             PolicyAction.Transfer -> R.string.policy_action_transfer_short
             PolicyAction.Swap -> R.string.policy_action_swap_short
+            PolicyAction.Prediction -> R.string.policy_action_prediction_short
         }
     )
 

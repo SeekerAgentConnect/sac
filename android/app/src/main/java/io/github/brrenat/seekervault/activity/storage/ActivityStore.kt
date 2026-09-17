@@ -217,6 +217,16 @@ class ActivityStore(private val dir: File) {
                         }
                     },
                 )
+                // SEE-94 added the provider's own identifiers for an order. A record written
+                // before them simply has none, which is what `optJSONArray` reads back.
+                .put(
+                    "references",
+                    JSONArray().apply {
+                        operation.references.forEach {
+                            put(JSONObject().put("key", it.key).put("text", it.text))
+                        }
+                    },
+                )
 
         fun decodeOperation(json: JSONObject?): ReviewedOperation? = json?.let {
             ReviewedOperation(
@@ -227,15 +237,16 @@ class ActivityStore(private val dir: File) {
                 wallet = it.getString("wallet"),
                 network = Network.valueOf(it.getString("network")),
                 preparedVersion = it.getInt("preparedVersion"),
-                values =
-                    it.optJSONArray("values").let { array ->
-                        (0 until (array?.length() ?: 0)).map { index ->
-                            val value = checkNotNull(array).getJSONObject(index)
-                            ReviewedValue(value.getString("key"), value.getString("text"))
-                        }
-                    },
+                values = decodeValues(it.optJSONArray("values")),
+                references = decodeValues(it.optJSONArray("references")),
             )
         }
+
+        fun decodeValues(array: JSONArray?): List<ReviewedValue> =
+            (0 until (array?.length() ?: 0)).map { index ->
+                val value = checkNotNull(array).getJSONObject(index)
+                ReviewedValue(value.getString("key"), value.getString("text"))
+            }
 
         fun encodePolicy(policy: ReviewedPolicy): JSONObject =
             JSONObject()

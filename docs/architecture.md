@@ -240,7 +240,7 @@ flowchart TB
     ApplyB --> LocalB["phone B's own half"]
     LocalA --> PlugA["jupiter.swap (SEE-93)<br>A's own amount"]
     LocalB --> PlugB["jupiter.swap<br>B's own amount"]
-    PlugA --> Provider["the provider<br>quote · build"]
+    PlugA --> Provider["the provider<br>quote · build · market · order"]
     PlugB --> Provider
     PlugA --> WalletA["A's wallet<br>signs once, by hand"]
     PlugB --> WalletB["B's wallet"]
@@ -319,6 +319,17 @@ flowchart TB
   that phone holds, so a hint that was coalesced, dropped or delayed costs nothing. The credential
   is the deployment's and is mounted into the gateway alone — a publisher is given none and cannot
   name a topic — and Firebase owns topic membership, so nothing here keeps a list of who subscribed.
+- **A market proposal is the same shape, and needs one thing more (SEE-94).** `jupiter.prediction`
+  reads which market a publisher named, asks the provider what that market currently *is* — open or
+  closed, what the two sides cost, when it settles — and asks the owner which side and how much.
+  The order it gets back is a versioned transaction whose accounts come from address lookup tables,
+  and there is no legacy alternative, so the phone now **reads the chain** for one purpose: to
+  resolve those tables and see what it would be signing. That is the app's first chain endpoint, it
+  is the application's rather than any publisher's, it has one read method, and a table it cannot
+  fetch or validate blocks signing rather than degrading the review
+  ([`security.md`](security.md#resolving-a-lookup-table)). The app then **stops at submission**: no
+  fill, no position, no settlement, no payout, no profit or loss — what it offers afterwards is the
+  transaction on an explorer and the market on the provider's own platform.
 - **What an owner does with a signal is theirs, and one plugin does it (SEE-93).** `jupiter.swap`
   reads a swap signal's terms, asks the owner how much of their own money to spend, gets a route and
   a transaction from the provider itself, and reads those bytes back independently before anything
@@ -393,6 +404,8 @@ flowchart TB
 | A feed hint's payload and the topic it arrived on | Nowhere; the payload is two fixed strings and the topic is compared in memory before empty-input read work is enqueued | SEE-92 |
 | The amount and slippage an owner chose for a proposal | The phone, in that proposal's own file, as the review and then the binding. Never published, and never sent to the provider's own answer either — only the amount reaches the provider, and only to build the transaction | SEE-93 |
 | A swap's quote, and the bytes it was built for | Nowhere durable: the plugin holds the offer against the exact bytes it prepared, for four preparations at a time. A restart loses it, and the answer is to prepare again rather than to review an offer nobody can vouch for | SEE-93 |
+| A prediction order's own accounts — the order, the position — and the market it was for | The phone, with the operation's Activity record, as public identifiers. **No URL is ever stored**: every link is built at the moment it is shown, from compiled code, because a link read back off disk is a link something else could have written | SEE-94 |
+| An address lookup table's contents | Nowhere: read from the configured endpoint while an order is prepared, used to rebuild that one message's account list, and discarded. Nothing is cached, so nothing can go stale between a review and a signature | SEE-94 |
 | Minimal request/status cache and sync metadata | The phone in `filesDir`, through `sync/storage/`; never backed up | SAW-048 contract; SAW-050 implementation |
 | Keys | Seed Vault Wallet | Stage 3 |
 
@@ -433,5 +446,5 @@ These hold across the components, and every stage keeps them:
 | 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
-| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` plugin and the path from a signal to a signature (SEE-93), and the prediction plugin with the two server templates |
+| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` plugin and the path from a signal to a signature (SEE-93), the `jupiter.prediction` plugin with a read-only chain endpoint for lookup tables and a truthful handoff (SEE-94), and the two server templates |
 | 8 | Release checks |
