@@ -133,6 +133,48 @@ fun result(
         approvedTransaction = approvedTransaction,
     )
 
+/**
+ * An operation the owner executed from a publisher's shared proposal (SEE-89): the binding, written
+ * down. Its signature is a transaction's ID, like a transfer's and unlike a message's.
+ */
+fun operationRecord(
+    requestId: String = REQUEST,
+    outcome: ActivityOutcome = ActivityOutcome.Sent,
+    network: Network = Network.NETWORK_MAINNET,
+    wallet: String = WALLET,
+    signature: String? = "5Yb4Dn9mFakeSignatureForTestsOnly1111111111111111111111111111",
+    detail: String? = null,
+): ActivityRecord =
+    ActivityRecord(
+        connectionId = CONNECTION,
+        requestId = requestId,
+        source = "Copy trading",
+        // A feed's host is the shared gateway's: the publisher's own address is not something the
+        // phone has, because it never contacted it.
+        serverHost = "gateway.example.com",
+        kind = ActivityKind.Operation,
+        answeredAt = ANSWERED_AT,
+        recordedAt = ANSWERED_AT.plusSeconds(5),
+        outcome = outcome,
+        operation =
+            ReviewedOperation(
+                operation = "swap",
+                plugin = "jupiter.swap",
+                contract = 1,
+                revision = 6,
+                wallet = wallet,
+                network = network,
+                preparedVersion = 1,
+                values =
+                    listOf(
+                        ReviewedValue("input_amount", "1500000"),
+                        ReviewedValue("slippage_bps", "50"),
+                    ),
+            ),
+        signature = signature,
+        detail = detail,
+    )
+
 fun record(
     requestId: String = REQUEST,
     kind: ActivityKind = ActivityKind.Transfer,

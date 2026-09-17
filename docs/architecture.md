@@ -222,6 +222,48 @@ flowchart TB
   once; one server's manifest says nothing about another's connection, and a private request is
   never converted into a broadcast one.
 
+### Shared proposals and device-local decisions
+
+From SEE-89 a publisher's feed carries **proposals**: one document, published once, received
+identically by everyone subscribed. [`wiki/shared-proposals.md`](wiki/shared-proposals.md) is the
+full account.
+
+```mermaid
+flowchart TB
+    Publish["a publisher<br>publishes one proposal"] --> Gateway["the shared gateway (SEE-90/91)"]
+    Gateway --> A["phone A"]
+    Gateway --> B["phone B"]
+    A --> ApplyA["apply · idempotent<br>identity · channel · revision · bounds"]
+    B --> ApplyB["apply · idempotent"]
+    ApplyA --> LocalA["phone A's own half<br>dismissal · review · binding · outcome"]
+    ApplyB --> LocalB["phone B's own half"]
+    LocalA -. "nothing goes back" .-> Gateway
+    LocalB -. "nothing goes back" .-> Gateway
+```
+
+- **The proposal is shared; every decision about it is not.** A publisher never learns that a given
+  phone received a proposal, let alone what was chosen or whether anything was executed. There is no
+  per-subscriber state on the publishing server for one owner's action to change, so one owner
+  dismissing or executing changes nothing for anyone else — by construction, not by a rule.
+- **A personal request was not made shared to get there.** `seekervault.proposal.v1` is its own
+  contract, and the private `ActionRequest` workflow is untouched: a request is still addressed to
+  one phone and still returns its result to the server that asked.
+- **Delivery is not trustworthy about repetition.** One idempotent apply path takes every snapshot
+  read, stream event and duplicate push: the same revision with the same terms writes nothing, an
+  older one is refused, a higher one replaces the publisher's half and leaves this device's
+  decisions where they were, and the same revision with different terms is a contradiction the phone
+  stops acting on.
+- **What is executed is never "the proposal".** It is the terms as they stood, this owner's
+  parameters, their selected wallet, the plugin this build carries, and one set of bytes — pinned
+  together before the wallet opens, and checked by one function so the gate and what the owner sees
+  cannot drift apart.
+- **One execution per proposal, ever.** The record is written before the wallet is opened, so a
+  second tap finds it; it is not relaxed for a failure, a decline, or a new revision. An operation
+  the app closed on is unresolved, never a failure, and nothing retries signing or submission.
+- **Nothing on this side is delivered anywhere.** For a feed there is no `PublishWallet`,
+  `PrepareRequest`, `SubmitResult` or sync upload — all of them already require
+  `Connection.usable`, which requires the direct mode (SEE-88).
+
 ## Trust boundaries
 
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
@@ -235,6 +277,12 @@ flowchart TB
   connection already has. What the phone will do with a server is settled by the build it is
   running and by the owner, and a server it doesn't support is viewable and never executable
   ([`wiki/server-manifests.md`](wiki/server-manifests.md)).
+- **A broadcast carries intent, and never a person (SEE-89).** A proposal has no field for a
+  subscriber's address, the quantity one of them chose, or anything prepared for one of them to
+  sign, and a stage-boundary check fails if one is added. What each owner chose, whether they went
+  ahead, and what came of it are written to their own phone and read by it alone; a publisher and
+  the gateway learn only that someone subscribed to a channel
+  ([`wiki/shared-proposals.md`](wiki/shared-proposals.md)).
 - **Policies stay on the phone.** The sidecar never receives the policy or its assessment, so an agent can't learn or change the rules through it. One global document supplies defaults and one optional override document records where each connection differs; a connection never reads another connection's overrides ([`policy.md`](policy.md)).
 - **A policy advises; it never decides.** Input validation settles what is executable, and it is judged before any policy is consulted. A policy can only add reasons for the owner to read: there is no `BLOCKED`, and no rule can make a preparation the phone couldn't read whole approvable (SAW-025). The editor offers no setting that would change that, because there is none to offer (SAW-027), and the review screen shows the two apart, in their own words, with no tick that crosses between them (SAW-028).
 - **A verdict is read, never acted on.** Nothing stores one. The rules and the records are read again at the moment the owner answers, and an answer whose assessment changed while it was on screen stops instead of going ahead on what they read (SAW-028).
@@ -258,6 +306,8 @@ flowchart TB
 | Daily counters | The phone, derived from the Activity records in `filesDir` | SAW-026 |
 | A connection's mode, and the server manifest it caches | The phone, in the connection's own JSON file in `filesDir` (version 2). Whether this build *supports* that server is never stored: it is derived from the compiled plugin registry on every read | SEE-88 |
 | The manifest's settings revision, and a fingerprint of the content it was computed for | The sidecar's SQLite database, on the `server` singleton | SEE-88 |
+| A publisher's proposals, and this device's decisions about each one — the dismissal, the review and its exact revision, the binding, and what the wallet did | The phone, one file per proposal under its feed in `filesDir`. Nothing of it is published, and the proposals go when the feed does | SEE-89 |
+| Whether a proposal still stands, and where it stands for this owner | Nowhere — derived on every read from the publisher's status, its absolute expiry, what this device did, and the plugins this build carries | SEE-89 |
 | Update revisions, cursors, retained replay, and frozen snapshots | The sidecar's SQLite database, through `src/storage/` | SAW-048 contract; SAW-049 implementation |
 | One private current FCM target per active connection | The sidecar's SQLite database, through `src/storage/`; no phone copy and no read API | SAW-055 |
 | FCM invalidation payload | Nowhere; two fixed strings are validated and discarded before empty-input Sync work is enqueued | SAW-056 |
@@ -301,5 +351,5 @@ These hold across the components, and every stage keeps them:
 | 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
-| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local decisions, the Go broadcast gateway, and the two Jupiter plugins with their server templates |
+| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway, and the two Jupiter plugins with their server templates |
 | 8 | Release checks |

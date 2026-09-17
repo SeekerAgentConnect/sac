@@ -116,6 +116,20 @@ fun ActivityDetailsScreen(
                     transfer.mint ?: stringResource(R.string.activity_field_asset_sol),
                 )
             }
+            // An operation from a shared proposal (SEE-89): the wallet that paid, and what this
+            // owner chose, by the plugin's own field names. The proposal was common to everyone
+            // who received it; these parameters were this owner's, and they never left the phone.
+            record.operation?.let { operation ->
+                Field(R.string.activity_field_wallet, operation.wallet)
+                if (operation.values.isNotEmpty()) {
+                    Field(
+                        R.string.activity_field_parameters,
+                        operation.values.joinToString(separator = "  ·  ") {
+                            "${it.key} ${it.text}"
+                        },
+                    )
+                }
+            }
             Field(R.string.activity_field_answered, formatInstant(record.answeredAt))
             // What the rules made of it when they answered, kept as it was read. It approved
             // nothing then and it approves nothing now (SAW-028).

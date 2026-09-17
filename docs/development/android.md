@@ -298,6 +298,43 @@ What the owner sees, in the approved design's own components and with no new scr
 | Connections, and Connection details | A feed says it is a shared feed read through the gateway, rather than a connection whose credential has gone missing. A server this build can't act for says which part is missing: a plugin, a plugin's version, the protocol, the environment, or a manifest that was refused. |
 | Request details | A request from a server this build doesn't support is shown in full and can be rejected. The affirmative answer is not offered, nothing is prepared, and no wallet is opened — with one line saying why, and no tick to overrule it. |
 
+## Shared proposals (SEE-89)
+
+The architecture page is [`docs/wiki/shared-proposals.md`](../wiki/shared-proposals.md); this is the
+Android-side summary.
+
+`proposals/` is data and pure functions, like `plugins/` and `servers/`: the validated `Proposal`
+model keyed by `ProposalKey` (publisher, channel, proposal), `proposalFrom` with one
+`ProposalProblem` per rule, `ProposalRecord` with the publisher's half and this device's half kept
+apart, the derived `proposalAvailability` and `proposalStanding`, and `bindingProblem` — the one gate
+between a review and the wallet. It holds no state, opens nothing, and does not suspend.
+
+- **`ProposalStore` keeps one JSON file per proposal** at `filesDir/proposals/<connection
+  ID>/<proposal ID>.json`: the publisher's document and this device's decisions, written together.
+  One directory per feed, so removing the feed removes its proposals — and every rule the model
+  holds itself to is applied again to what comes off the disk.
+- **`ProposalRepository.apply` is the one path in,** and it is idempotent: the same revision with the
+  same terms writes nothing, an older one is refused, a higher one replaces the publisher's half and
+  leaves the device's decisions where they were, and the same revision with different terms is
+  recorded as a contradiction that stops further execution until a higher revision arrives.
+- **`beginExecution` writes the binding before the wallet opens,** under the lock that reads it, so a
+  second tap answers `AlreadyExecuted`. There is one execution per proposal identity, ever, and
+  `load()` settles one the app closed on as *unresolved* rather than as a failure.
+- **`refresh` goes through `ProposalFeed` and nothing else.** This build has no implementation — the
+  gateway is SEE-90 and the stream SEE-91 — so it answers `NoFeed` rather than pretending, and there
+  is no proposals screen because there is nothing for it to list.
+- **A dismissal is final for the proposal's identity,** so a republished revision cannot put a
+  dismissed proposal back in front of the owner.
+- **Nothing on this side goes out.** A feed is excluded from `PublishWallet`, `PrepareRequest`,
+  `SubmitResult` and generic sync by `Connection.usable` (SEE-88), so there is no code path that
+  could upload a choice, an approval or an outcome.
+
+Activity gained one kind for it: `ActivityKind.Operation` with a `ReviewedOperation` — the
+operation and plugin as codes, the proposal revision, the wallet and cluster, the preparation
+version, and the parameters the owner chose. The outcomes are the transfer path's own (`Sent` is not
+paid, and an answer nobody received is `Unknown`), its signature is a transaction's ID, and its
+record outlives the feed being removed.
+
 ## Activity
 
 The owner's guide is [`docs/guides/transfers.md`](../guides/transfers.md#the-activity-record). The history is the owner's own record of what this phone did (SAW-023), and it is deliberately not the same thing as a `LocalResult`: an answer is what the sidecar is owed, and it is dropped a week after it settles and when its connection is removed. A record of a payment outlives both.

@@ -82,12 +82,23 @@ class ActivityLog(
         // The assessment the owner read when they answered, or the one already stored: a status
         // checked ten times later must not quietly drop what the review said at the time.
         val policy = shown[result.key] ?: store.get(result.connectionId, result.requestId)?.policy
-        val stored = store.put(recordOf(result, source, now(), policy))
-        _records.value =
-            (_records.value.filterNot { it.key == stored.key } + stored).sortedWith(
-                compareByDescending<ActivityRecord> { it.answeredAt }.thenBy { it.requestId }
-            )
+        publish(store.put(recordOf(result, source, now(), policy)))
     }
+
+    /**
+     * Records one operation the owner executed from a publisher's shared proposal (SEE-89).
+     *
+     * The record is derived by the caller, which it has to be: an operation's terms come from a
+     * proposal and from the plugin that prepared its bytes, and this package has never heard of
+     * either — it keeps codes, and reads none of them back to decide anything
+     * ([ReviewedOperation]). Everything else is as it is for an answer: the record replaces the one
+     * under its own key, and one that is about something else under that key is refused rather than
+     * merged (`ActivityStore.put`).
+     *
+     * Nothing about it is delivered anywhere. A proposal owes no server an answer, so there is no
+     * outbox here and nothing to retry: this is the owner's own record and its only reader.
+     */
+    fun record(record: ActivityRecord): ActivityRecord = publish(store.put(record))
 
     /**
      * Advances an existing Activity record from server state observed by Sync. It never creates an
@@ -122,7 +133,11 @@ class ActivityLog(
                 checkedWith =
                     confirmation?.endpoint?.takeIf(String::isNotEmpty) ?: existing.checkedWith,
             )
-        val stored = store.put(updated)
+        return publish(store.put(updated))
+    }
+
+    // Newest first, and one row per request: a record written again replaces the one it is about.
+    private fun publish(stored: ActivityRecord): ActivityRecord {
         _records.value =
             (_records.value.filterNot { it.key == stored.key } + stored).sortedWith(
                 compareByDescending<ActivityRecord> { it.answeredAt }.thenBy { it.requestId }

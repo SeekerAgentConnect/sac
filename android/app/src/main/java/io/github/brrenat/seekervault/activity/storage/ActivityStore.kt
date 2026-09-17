@@ -5,9 +5,11 @@ import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.activity.ActivityRecord
 import io.github.brrenat.seekervault.activity.ReviewedDailyCheck
+import io.github.brrenat.seekervault.activity.ReviewedOperation
 import io.github.brrenat.seekervault.activity.ReviewedPolicy
 import io.github.brrenat.seekervault.activity.ReviewedRuleSource
 import io.github.brrenat.seekervault.activity.ReviewedTransfer
+import io.github.brrenat.seekervault.activity.ReviewedValue
 import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
@@ -166,6 +168,10 @@ class ActivityStore(private val dir: File) {
                 .put("recordedAt", record.recordedAt.toString())
                 .put("outcome", record.outcome.name)
                 .putOpt("transfer", record.transfer?.let(::encodeTransfer))
+                // SEE-89 added the operation the owner executed from a shared proposal, and left
+                // the version alone for the same reason SAW-028 did: the field is optional and
+                // additive, and a bump would make an older build drop the whole record.
+                .putOpt("operation", record.operation?.let(::encodeOperation))
                 // Codes, never rules: what the owner read, not what they wrote.
                 .putOpt("policy", record.policy?.let(::encodePolicy))
                 // The signature is public the moment the wallet makes it, like the address.
@@ -191,6 +197,43 @@ class ActivityStore(private val dir: File) {
                 amount = it.getString("amount"),
                 mint = it.optString("mint").takeIf(String::isNotEmpty),
                 preparedVersion = it.optInt("preparedVersion"),
+            )
+        }
+
+        fun encodeOperation(operation: ReviewedOperation): JSONObject =
+            JSONObject()
+                .put("operation", operation.operation)
+                .put("plugin", operation.plugin)
+                .put("contract", operation.contract)
+                .put("revision", operation.revision)
+                .put("wallet", operation.wallet)
+                .put("network", operation.network.name)
+                .put("preparedVersion", operation.preparedVersion)
+                .put(
+                    "values",
+                    JSONArray().apply {
+                        operation.values.forEach {
+                            put(JSONObject().put("key", it.key).put("text", it.text))
+                        }
+                    },
+                )
+
+        fun decodeOperation(json: JSONObject?): ReviewedOperation? = json?.let {
+            ReviewedOperation(
+                operation = it.getString("operation"),
+                plugin = it.getString("plugin"),
+                contract = it.getInt("contract"),
+                revision = it.getLong("revision"),
+                wallet = it.getString("wallet"),
+                network = Network.valueOf(it.getString("network")),
+                preparedVersion = it.getInt("preparedVersion"),
+                values =
+                    it.optJSONArray("values").let { array ->
+                        (0 until (array?.length() ?: 0)).map { index ->
+                            val value = checkNotNull(array).getJSONObject(index)
+                            ReviewedValue(value.getString("key"), value.getString("text"))
+                        }
+                    },
             )
         }
 
@@ -284,6 +327,7 @@ class ActivityStore(private val dir: File) {
                 recordedAt = Instant.parse(json.getString("recordedAt")),
                 outcome = ActivityOutcome.valueOf(json.getString("outcome")),
                 transfer = decodeTransfer(json.optJSONObject("transfer")),
+                operation = decodeOperation(json.optJSONObject("operation")),
                 policy = decodePolicy(json.optJSONObject("policy")),
                 signature = json.optString("signature").takeIf(String::isNotEmpty),
                 detail = json.optString("detail").takeIf(String::isNotEmpty),

@@ -21,6 +21,8 @@
     <string name="activity_kind_ack">Acknowledgement</string>
     <string name="activity_kind_message">Message signature</string>
     <string name="activity_kind_transfer">Transfer</string>
+    <!-- SEE-89: an operation carried out from a publisher's shared proposal. -->
+    <string name="activity_kind_operation">Operation</string>
     <string name="activity_kind_other">Request</string>
 
     <string name="activity_outcome_waiting">Answered, waiting to be sent</string>
@@ -43,6 +45,8 @@
 
     <string name="activity_amount_sol">%1$s SOL (%2$s lamports) to %3$s</string>
     <string name="activity_amount_units">%1$s base units to %2$s</string>
+    <!-- The operation, and the plugin that prepared it: "swap through jupiter.swap". -->
+    <string name="activity_operation_plugin">%1$s through %2$s</string>
     <string name="activity_amount_token">%1$s base units of the token %2$s to %3$s</string>
 
     <string name="activity_field_source">Asked by</string>
@@ -52,6 +56,7 @@
     <string name="activity_field_recipient">To</string>
     <string name="activity_field_amount">Amount</string>
     <string name="activity_field_asset">Asset</string>
+    <string name="activity_field_parameters">Parameters</string>
     <string name="activity_field_asset_sol">SOL</string>
     <string name="activity_field_answered">Answered</string>
     <string name="activity_field_signature">Transaction ID</string>

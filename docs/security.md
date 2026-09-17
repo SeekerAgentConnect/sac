@@ -86,6 +86,34 @@ what the phone already has, and can never change it
   endpoint, or anything loadable, and a stage-boundary check reads the protocol file and fails if
   the field set changes.
 
+### A proposal is common, and a decision about it is not (SEE-89)
+
+A publisher's feed carries proposals: one document, received identically by everyone subscribed.
+What each owner does about one is theirs, and it stays on their phone
+([`wiki/shared-proposals.md`](wiki/shared-proposals.md)).
+
+- **Nothing about the owner goes out.** For a `gateway_feed` connection the phone calls no
+  `PublishWallet`, no `PrepareRequest` and no `SubmitResult`, and uploads no outcome through generic
+  sync. All of those already require `Connection.usable`, which requires the direct mode, so a feed
+  is excluded from every one of them at once rather than in each of them separately.
+- **A subscription is all the gateway learns.** It is told which channel this phone is interested
+  in. It is not told the owner's address, the quantity they chose, whether they went ahead, or what
+  came of it — and the publisher is never contacted at all.
+- **A proposal cannot describe a subscriber.** There is no field in it for an address, a chosen
+  quantity, or anything prepared for someone to sign, and a stage-boundary check reads the protocol
+  file and fails if the field set changes.
+- **One owner's action is invisible to the others.** There is no per-subscriber state on the
+  publishing server, so dismissing or executing here changes nothing about the same proposal
+  anywhere else, and nothing marks a publication "completed" on anyone's behalf.
+- **A publisher cannot make the phone act twice.** One execution per proposal identity is written
+  before the wallet is opened and is never replaced — not after a failure, and not because the
+  publisher republished at a new revision. Terms that changed under an unchanged revision are a
+  contradiction, and the phone stops executing from that proposal until a higher revision says
+  something new.
+- **The owner's own record stays.** What this phone executed is kept in Activity, with the proposal
+  revision, the plugin, the cluster and the parameters they chose — on the phone, and nowhere else.
+  It outlives the feed being removed.
+
 ## One active phone per sidecar
 
 A sidecar has one paired phone at a time. A phone can pair with several sidecars (SAW-012).

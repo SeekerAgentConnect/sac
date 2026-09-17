@@ -13,9 +13,11 @@ import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.ConnectConnectionGateway
 import io.github.brrenat.seekervault.connections.ConnectionGateway
 import io.github.brrenat.seekervault.connections.ConnectionRepository
+import io.github.brrenat.seekervault.connections.ProposalRepository
 import io.github.brrenat.seekervault.connections.storage.AndroidKeystoreKey
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
+import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
@@ -132,6 +134,15 @@ class SeekerVaultApplication : Application() {
     val pluginRegistry: PluginRegistry by lazy { plugins() }
 
     /**
+     * The proposals the phone read from publishers' feeds (SEE-89,
+     * docs/wiki/shared-proposals.md#where-it-is-kept), in `filesDir`: the publisher's own documents
+     * and this device's decisions about them. Nothing here is encrypted, because a proposal is a
+     * broadcast anyone subscribed can read and this device's half is its own record of public
+     * facts.
+     */
+    val proposalStore: ProposalStore by lazy { ProposalStore(File(filesDir, "proposals")) }
+
+    /**
      * The phone's connections and their requests (docs/security.md#local-storage-and-recovery):
      * metadata and answers in `filesDir`, and credentials, encrypted, in `noBackupFilesDir`.
      */
@@ -145,6 +156,8 @@ class SeekerVaultApplication : Application() {
                 history = activityLog,
                 // A connection's overrides go when it does. Global rules are a separate document.
                 rules = policyStore,
+                // And so do the proposals a feed read (SEE-89). The owner's Activity outlives both.
+                proposals = proposalStore,
                 // No gateway: a publisher's feed is resolved through the shared gateway, and this
                 // build has none to resolve it through (SEE-88; the gateway is SEE-90).
                 feeds = null,
@@ -173,6 +186,28 @@ class SeekerVaultApplication : Application() {
                 )
                 .also(FcmRegistrationManager::start)
         repository
+    }
+
+    /**
+     * What this phone holds about publishers' proposals, and everything the owner does about one
+     * (SEE-89, docs/wiki/shared-proposals.md).
+     *
+     * It reads nothing in this build, and that is deliberate rather than unfinished: a proposal
+     * arrives through the shared gateway, which is SEE-90, and the plugins that read a proposal's
+     * terms and prepare its bytes are SEE-93 and SEE-94. Composed with no feed, `refresh` says so
+     * instead of pretending one was read, and no screen lists proposals because there is nothing
+     * for it to list.
+     */
+    val proposalRepository: ProposalRepository by lazy {
+        ProposalRepository(
+            store = proposalStore,
+            connections = { connectionRepository.connections.value },
+            plugins = pluginRegistry,
+            // No gateway, and so nothing to subscribe to (SEE-90 supplies it, SEE-91 the stream).
+            feed = null,
+            history = activityLog,
+            io = connectionIo,
+        )
     }
 
     /** Registration callbacks can start the process, so this getter also initializes the owner. */
