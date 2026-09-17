@@ -10,4 +10,8 @@
     <string name="notification_open_revoked">This phone can no longer authenticate to that connection. Pair it again before trusting any old notification. Nothing was approved or signed.</string>
     <string name="notification_open_unavailable">The current request could not be fetched from the paired sidecar. The notification may be stale. Nothing was approved or signed.</string>
     <string name="notification_open_retry">Try again</string>
+    <string name="notification_channel_feeds">Proposals waiting for review</string>
+    <string name="notification_channel_feeds_description">Alerts when a feed you subscribe to has a proposal for you to review</string>
+    <string name="notification_proposal_title">Proposal waiting for review</string>
+    <string name="notification_proposal_text">Open the current proposals from %1$s.</string>
 </resources>

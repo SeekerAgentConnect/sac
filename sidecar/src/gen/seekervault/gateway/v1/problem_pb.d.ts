@@ -321,6 +321,16 @@ export enum GatewayProblem {
    * @generated from enum value: GATEWAY_PROBLEM_TOO_MANY_CHANNELS = 32;
    */
   TOO_MANY_CHANNELS = 32,
+
+  /**
+   * --- Hints (SEE-92) -------------------------------------------------------
+   * This gateway relays nothing: it holds the documents, answers reads, and has no push credential
+   * of its own. A client gets this once and keeps to the foreground stream and its own recovery,
+   * which is again the whole feature working at a smaller size rather than a failure.
+   *
+   * @generated from enum value: GATEWAY_PROBLEM_NO_PUSH = 33;
+   */
+  NO_PUSH = 33,
 }
 
 /**

@@ -307,6 +307,17 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_TOO_MANY_CHANNELS = 32;</code>
    */
   GATEWAY_PROBLEM_TOO_MANY_CHANNELS(32),
+  /**
+   * <pre>
+   * --- Hints (SEE-92) -------------------------------------------------------
+   * This gateway relays nothing: it holds the documents, answers reads, and has no push credential
+   * of its own. A client gets this once and keeps to the foreground stream and its own recovery,
+   * which is again the whole feature working at a smaller size rather than a failure.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_NO_PUSH = 33;</code>
+   */
+  GATEWAY_PROBLEM_NO_PUSH(33),
   UNRECOGNIZED(-1),
   ;
 
@@ -601,6 +612,17 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_TOO_MANY_CHANNELS = 32;</code>
    */
   public static final int GATEWAY_PROBLEM_TOO_MANY_CHANNELS_VALUE = 32;
+  /**
+   * <pre>
+   * --- Hints (SEE-92) -------------------------------------------------------
+   * This gateway relays nothing: it holds the documents, answers reads, and has no push credential
+   * of its own. A client gets this once and keeps to the foreground stream and its own recovery,
+   * which is again the whole feature working at a smaller size rather than a failure.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_NO_PUSH = 33;</code>
+   */
+  public static final int GATEWAY_PROBLEM_NO_PUSH_VALUE = 33;
 
 
   @java.lang.Override
@@ -656,6 +678,7 @@ public enum GatewayProblem
       case 30: return GATEWAY_PROBLEM_TOO_MANY_REQUESTS;
       case 31: return GATEWAY_PROBLEM_NO_STREAM;
       case 32: return GATEWAY_PROBLEM_TOO_MANY_CHANNELS;
+      case 33: return GATEWAY_PROBLEM_NO_PUSH;
       default: return null;
     }
   }

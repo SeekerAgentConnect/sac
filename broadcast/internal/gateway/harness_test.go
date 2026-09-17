@@ -130,12 +130,34 @@ func (g *grantor) all() [][]string {
 	return append([][]string(nil), g.granted...)
 }
 
+// namer is the relay's half in these tests (SEE-92): it derives a topic the way internal/relay
+// does and sends nothing, so what is asserted is the gateway's own behaviour — which channels it
+// names, which it leaves out, and what it refuses.
+type namer struct {
+	environment string
+	most        int
+	// A channel this relay has no topic for, to prove the handler leaves one out rather than
+	// answering with an empty name.
+	silent string
+}
+
+func (n *namer) Topic(channel string) string {
+	serverID := rules.ServerOf(channel)
+	if serverID == "" || channel == n.silent {
+		return ""
+	}
+	return "feed." + n.environment + "." + serverID
+}
+
+func (n *namer) MostTopics() int { return n.most }
+
 type harness struct {
 	t          *testing.T
 	documents  *store.Store
 	settings   *config.Config
 	dispatcher *recorder
 	grants     *grantor
+	topics     *namer
 	logs       *captured
 	read       *httptest.Server
 	publish    *httptest.Server
@@ -155,17 +177,30 @@ func newGateway(t *testing.T, change ...func(*config.Config)) *harness {
 
 func gatewayOn(t *testing.T, path string, change ...func(*config.Config)) *harness {
 	t.Helper()
-	return built(t, path, true, change...)
+	return built(t, path, true, true, change...)
 }
 
 // newGatewayWithoutStream is the deployment that configures no broker: it holds documents, answers
 // reads, drains its outbox to a log line, and has nothing to admit a listener to.
 func newGatewayWithoutStream(t *testing.T) *harness {
 	t.Helper()
-	return built(t, filepath.Join(t.TempDir(), "broadcast.db"), false)
+	return built(t, filepath.Join(t.TempDir(), "broadcast.db"), false, true)
 }
 
-func built(t *testing.T, path string, streaming bool, change ...func(*config.Config)) *harness {
+// newGatewayWithoutPush is the deployment that configures no relay: everything above works, and a
+// phone asking where hints arrive is told none are sent here (SEE-92).
+func newGatewayWithoutPush(t *testing.T) *harness {
+	t.Helper()
+	return built(t, filepath.Join(t.TempDir(), "broadcast.db"), true, false)
+}
+
+func built(
+	t *testing.T,
+	path string,
+	streaming bool,
+	relaying bool,
+	change ...func(*config.Config),
+) *harness {
 	t.Helper()
 	documents, err := store.Open(path)
 	if err != nil {
@@ -192,16 +227,23 @@ func built(t *testing.T, path string, streaming bool, change ...func(*config.Con
 		settings:   settings,
 		dispatcher: &recorder{},
 		grants:     &grantor{lifetime: time.Hour, most: 4},
+		topics:     &namer{environment: "production", most: 4},
 		logs:       &captured{},
 		clock:      published,
 		path:       path,
 	}
 	log := slog.New(slog.NewJSONHandler(one.logs, nil))
-	var grants gateway.Grants
+	var (
+		grants gateway.Grants
+		topics gateway.Topics
+	)
 	if streaming {
 		grants = one.grants
 	}
-	service := gateway.Build(settings, documents, one.dispatcher, grants, log, one.now)
+	if relaying {
+		topics = one.topics
+	}
+	service := gateway.Build(settings, documents, one.dispatcher, grants, topics, log, one.now)
 	one.drainer = service.Drainer
 	one.read = httptest.NewServer(service.Read)
 	one.publish = httptest.NewServer(service.Publish)
@@ -382,6 +424,18 @@ func (h *harness) ticket(channels ...string) *gatewayv1.GetStreamTicketResponse 
 		connect.NewRequest(&gatewayv1.GetStreamTicketRequest{Channels: channels}))
 	if err != nil {
 		h.t.Fatalf("asking for a ticket failed: %v", err)
+	}
+	return response.Msg
+}
+
+// topics asks where hints about these channels arrive, the way the phone's topic manager does
+// before it subscribes (SEE-92).
+func (h *harness) namedTopics(channels ...string) *gatewayv1.GetFeedTopicsResponse {
+	h.t.Helper()
+	response, err := h.feed.GetFeedTopics(context.Background(),
+		connect.NewRequest(&gatewayv1.GetFeedTopicsRequest{Channels: channels}))
+	if err != nil {
+		h.t.Fatalf("asking where hints arrive failed: %v", err)
 	}
 	return response.Msg
 }

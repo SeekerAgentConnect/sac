@@ -278,10 +278,13 @@ flowchart TB
     Commit["one transaction<br>document + outbox notice"] --> Store[("SQLite<br>publications + publisher configuration")]
     Commit --> Drain["internal/dispatch<br>at-least-once, replayable"]
     Drain --> Broker["Centrifugo · Redis<br>bounded recovery cache"]
+    Drain --> Relay["internal/relay<br>one content-free hint"]
     Broker --> Listen["a listener<br>one ticket, N channels"]
-    Store --> Read["FeedService<br>manifest · page · detail · ticket"]
+    Relay --> Topic["a public topic<br>feed.env.server_id"]
+    Store --> Read["FeedService<br>manifest · page · detail · ticket · topic"]
     Read --> Phone["a phone<br>no credential"]
     Listen --> Phone
+    Topic -. "wake up and read" .-> Phone
     Phone -- "nothing" --x Store
 ```
 
@@ -304,6 +307,12 @@ flowchart TB
   everything a listener missed, the phone reads the authoritative snapshot from the gateway. A
   listener's ticket is minted by the gateway, says which channels and nothing about who, and names
   no host — the stream is one path on the gateway's own origin.
+- **A hint is a wake-up, not a message (SEE-92).** For a phone nobody is looking at, one
+  content-free message goes to the feed's public Firebase topic: a kind and a version, with no
+  document, no publisher and nothing about a subscriber. It schedules a bounded read of the feeds
+  that phone holds, so a hint that was coalesced, dropped or delayed costs nothing. The credential
+  is the deployment's and is mounted into the gateway alone — a publisher is given none and cannot
+  name a topic — and Firebase owns topic membership, so nothing here keeps a list of who subscribed.
 - **Persist first, fan out second.** The notice commits in the same transaction as the document, so
   a crash between them leaves work to redo rather than a document nobody hears about. Delivery is
   at-least-once and says so — which is exactly what the phone's idempotent apply path is for.
@@ -366,6 +375,8 @@ flowchart TB
 | Update revisions, cursors, retained replay, and frozen snapshots | The sidecar's SQLite database, through `src/storage/` | SAW-048 contract; SAW-049 implementation |
 | One private current FCM target per active connection | The sidecar's SQLite database, through `src/storage/`; no phone copy and no read API | SAW-055 |
 | FCM invalidation payload | Nowhere; two fixed strings are validated and discarded before empty-input Sync work is enqueued | SAW-056 |
+| Which feeds' hints a phone asked Firebase for | Nowhere durable: Firebase owns topic membership, the gateway is never told, and the phone derives its subscriptions from the connections the owner has | SEE-92 |
+| A feed hint's payload and the topic it arrived on | Nowhere; the payload is two fixed strings and the topic is compared in memory before empty-input read work is enqueued | SEE-92 |
 | Minimal request/status cache and sync metadata | The phone in `filesDir`, through `sync/storage/`; never backed up | SAW-048 contract; SAW-050 implementation |
 | Keys | Seed Vault Wallet | Stage 3 |
 
@@ -406,5 +417,5 @@ These hold across the components, and every stage keeps them:
 | 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
-| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway, and the two Jupiter plugins with their server templates |
+| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), and the two Jupiter plugins with their server templates |
 | 8 | Release checks |

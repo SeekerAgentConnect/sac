@@ -115,6 +115,12 @@ enum GatewayProblem {
   // More channels in one ticket than the gateway grants at once. The message carries the bound, so
   // a client can ask again for fewer rather than guess.
   GATEWAY_PROBLEM_TOO_MANY_CHANNELS = 32;
+
+  // --- Hints (SEE-92) -------------------------------------------------------
+  // This gateway relays nothing: it holds the documents, answers reads, and has no push credential
+  // of its own. A client gets this once and keeps to the foreground stream and its own recovery,
+  // which is again the whole feature working at a smaller size rather than a failure.
+  GATEWAY_PROBLEM_NO_PUSH = 33;
 }
 
 // GatewayErrorDetail is the Connect error detail on every FeedService and PublisherService error.

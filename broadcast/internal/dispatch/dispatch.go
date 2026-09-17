@@ -18,9 +18,12 @@
 //
 // # What it fans out to
 //
-// Whatever implements [Dispatcher]. Centrifugo does, since SEE-91 (internal/stream); a deployment
-// that configures no broker gets [Logger], which records what would have been sent so that the
-// machinery making a crash harmless is exercised and nothing pretends a subscriber heard anything.
+// Whatever implements [Dispatcher]. Centrifugo does, since SEE-91 (internal/stream); the push relay
+// does, since SEE-92 (internal/relay); a deployment that configures neither gets [Logger], which
+// records what would have been sent so that the machinery making a crash harmless is exercised and
+// nothing pretends a subscriber heard anything. A deployment that configures both gets [Fan], and
+// the difference between the two is worth stating: the broker carries the document and may defer a
+// notice, while the relay carries a hint and never does (internal/relay).
 //
 // # What a delivery carries
 //
@@ -89,6 +92,25 @@ func (l Logger) Dispatch(_ context.Context, delivery Delivery) error {
 		"sequence", delivery.Sequence,
 		"bytes", len(delivery.Event))
 	return nil
+}
+
+// Fan is more than one dispatcher, in order, for a deployment that both streams and relays.
+//
+// Every one of them is called for every delivery, even after one fails, because they are different
+// audiences rather than steps in a pipeline: a broker that is down must not cost a hint, and a hint
+// that could not be sent must not cost the stream. The errors are joined, so a notice is deferred
+// if any dispatcher that reports failures had one — which today is the broker alone, since the
+// relay reports none by design.
+type Fan []Dispatcher
+
+func (f Fan) Dispatch(ctx context.Context, delivery Delivery) error {
+	var failures []error
+	for _, to := range f {
+		if err := to.Dispatch(ctx, delivery); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
 }
 
 // Drainer sends the notices the store holds. One runs in the gateway process; the tests drive

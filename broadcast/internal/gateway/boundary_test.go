@@ -18,6 +18,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/config"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/dispatch"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1/gatewayv1connect"
+	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/relay"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/store"
 )
 
@@ -85,16 +86,26 @@ func withoutComments(source string) string {
 // point of the mode rather than a detail of it, because a publisher that could be reached could be
 // told which phones are interested in it — and no chain, provider or phone either.
 //
-// One package calls out, and only one: internal/stream, to the broker that fans publications out
-// (SEE-91). That is the seam dispatch.Dispatcher exists to keep in one place, and this check is
-// what keeps it there. And a file that can dial may not carry an address: the one thing in this
-// service that opens a connection takes where to open it from its operator, so there is no
-// hostname compiled into the gateway anywhere.
-func TestOnlyTheBrokerClientCallsOut(t *testing.T) {
+// Two packages call out, and only two: internal/stream, to the broker that fans publications out
+// (SEE-91), and internal/relay, to the push endpoint that hints to the phones which are not
+// listening (SEE-92). Both are behind dispatch.Dispatcher, which is the seam that exists to keep
+// them in one place each, and this check is what keeps them there.
+//
+// And a file that can dial may not carry an address: the one thing each of them opens a connection
+// to comes from its operator — the broker's URL and the push endpoint from the environment, and the
+// token endpoint from the credential document itself — so there is no hostname compiled into this
+// service anywhere. One string is allowed by its exact spelling, because it looks like an address
+// and is not one: the OAuth scope, which is a name in Google's own vocabulary and travels as a form
+// value. Allowing it by spelling rather than by package means a second address cannot hide behind
+// the same exception.
+func TestOnlyTheBrokerAndRelayCallOut(t *testing.T) {
 	forbidden := regexp.MustCompile(
 		`\b(http\.Get|http\.Post|http\.Head|http\.PostForm|http\.DefaultClient|` +
 			`http\.NewRequest|http\.Client\{|net\.Dial|url\.Parse\(.*publisher)`)
-	broker := filepath.Join("internal", "stream")
+	callers := []string{
+		filepath.Join("internal", "stream"),
+		filepath.Join("internal", "relay"),
+	}
 	address := regexp.MustCompile(`https?://[a-z0-9\[]`)
 	var offenders, addresses []string
 	for name, source := range shipped(t) {
@@ -102,11 +113,13 @@ func TestOnlyTheBrokerClientCallsOut(t *testing.T) {
 		if !forbidden.MatchString(code) {
 			continue
 		}
-		if !strings.HasPrefix(name, broker) {
+		if !slices.ContainsFunc(callers, func(one string) bool {
+			return strings.HasPrefix(name, one)
+		}) {
 			offenders = append(offenders, name)
 			continue
 		}
-		if address.MatchString(code) {
+		if address.MatchString(strings.ReplaceAll(code, relay.Scope, "")) {
 			addresses = append(addresses, name)
 		}
 	}
@@ -277,6 +290,12 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			"channels",
 			"ticket", "channels", "lifetime_seconds",
 			"channel", "stream_channel",
+			// Where hints about a channel arrive (SEE-92): the channels asked about, the topics
+			// named, and the name of one. A topic is public and says nothing about who subscribes
+			// to it — Firebase owns the membership, and this gateway is never told who joined.
+			"channels",
+			"topics",
+			"channel", "topic",
 		},
 		// What a subscriber receives (SEE-91): a sequence the gateway counted and a document a
 		// publisher published. A field here would be a field every listener on the channel sees.
@@ -336,6 +355,7 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 		documents,
 		dispatch.Logger{Log: slog.New(slog.NewTextHandler(io.Discard, nil))},
 		nil,
+		nil,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		time.Now,
 	)
@@ -358,6 +378,7 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 			gatewayv1connect.FeedServiceGetServerManifestProcedure,
 			gatewayv1connect.FeedServiceListProposalsProcedure,
 			gatewayv1connect.FeedServiceGetProposalProcedure,
+			gatewayv1connect.FeedServiceGetFeedTopicsProcedure,
 		}},
 	} {
 		for _, procedure := range one.procedures {

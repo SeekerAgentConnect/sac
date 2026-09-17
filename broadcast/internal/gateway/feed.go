@@ -33,10 +33,14 @@ type Feed struct {
 	// deployment configures no broker, which is a working deployment that answers reads and says so
 	// once to anyone who asks to listen.
 	grants Grants
+	// Whoever is relaying hints, for the one method that names a topic (topics.go). Nil for the
+	// same kind of reason: a deployment without a push credential relays nothing and says so once.
+	// The two are independent — either, both or neither may be configured.
+	topics Topics
 }
 
-func NewFeed(from *store.Store, now func() time.Time, grants Grants) *Feed {
-	return &Feed{store: from, now: now, grants: grants}
+func NewFeed(from *store.Store, now func() time.Time, grants Grants, topics Topics) *Feed {
+	return &Feed{store: from, now: now, grants: grants, topics: topics}
 }
 
 // GetServerManifest answers with what the publisher registered, or says it has nothing.

@@ -1,4 +1,4 @@
-# The broadcast gateway (SEE-90, SEE-91)
+# The broadcast gateway (SEE-90, SEE-91, SEE-92)
 
 SEE-88 made the kind of server part of a connection's record, and left `FeedGateway` as the seam a
 publisher's manifest arrives through. SEE-89 added the document a publisher broadcasts, and left
@@ -148,8 +148,11 @@ if the revision it was sent at is still the current one, so a publication that l
 sent afterwards rather than silently swallowed.
 
 **What it fans out to** is whatever implements `dispatch.Dispatcher`. Since SEE-91 that is
-Centrifugo ([the stream](#the-stream)); a deployment that configures no broker keeps the dispatcher
-that writes a log line, and every guarantee above holds either way.
+Centrifugo ([the stream](#the-stream)), and since SEE-92 the push relay beside it
+([the push relay](#the-push-relay)) — a deployment may configure either, both or neither, and one
+that configures neither keeps the dispatcher that writes a log line. Every guarantee above holds in
+all four cases. The two are not equals in one respect: the broker carries the document and may
+defer a notice, while the relay carries a hint and never does.
 
 ## The stream
 
@@ -297,6 +300,102 @@ Two secrets live in `.env`, shared by the gateway and the broker: the API key th
 with, and the HMAC key a ticket is signed with. Rotating them restarts two services and ends every
 listener's stream; each one reconnects, asks for a new ticket, and carries on.
 
+## The push relay
+
+The stream reaches a phone that is being looked at. A phone in a pocket, with the app not running,
+is reached by one message through Firebase — and by as little of one as a message can be.
+
+**What is sent, in full:**
+
+```json
+{ "kind": "feed_invalidation", "version": "1" }
+```
+
+That is the whole payload. No proposal, no revision, no sequence, no publisher, and nothing that
+identifies a subscriber — a topic message is the same for everyone who receives it, so there is
+nothing in it that could be about one of them. **Which feed changed is the topic it arrived on**,
+which is a routing field rather than payload: the same line SAW-056 drew for the private path's own
+invalidations, where the target is how a message finds a device and never something the device
+reads.
+
+The phone matches that map whole. A message with a third field in it, or a version it does not
+know, is ignored rather than partly trusted — and then nothing acts on it directly anyway: a hint
+schedules one bounded read of the feeds this phone holds, over the gateway's unary API, through the
+same validators a snapshot goes through (`sync/FeedSynchronization.kt`). A forged, replayed or
+delayed hint can therefore cause a read and nothing else.
+
+### The topic, and why the gateway names it
+
+`feed.<environment>.<server_id>`, derived from the channel in a committed publication.
+
+The phone does **not** derive it. It asks (`FeedService.GetFeedTopics`), because a name that both
+sides worked out for themselves would be a mismatch that shows up as silence rather than as an
+error — the relay sends, Firebase delivers, and the phone is subscribed to something else. It is a
+separate method from the stream ticket on purpose: a deployment may relay without streaming or
+stream without relaying, and a phone asking about one must not be answered about the other. A
+gateway that relays nothing answers `NO_PUSH`, which the phone reads the way it reads `NO_STREAM`.
+
+The environment is the deployment's own setting, and it is in the name so that one Firebase project
+can serve a sandbox deployment and a production one without a sandbox publication waking a
+production subscriber. It is not SEE-97's environment model: nothing here decides what a server
+promises when the owner approves.
+
+**A topic is public and grants nothing.** What it admits someone to is the news that a broadcast
+changed, and the broadcast is readable by anyone who holds its reference. It is not proof of access
+to anything, and nothing in this build treats it as one.
+
+### What a publisher is never given
+
+The credential, and any way to choose a topic.
+
+The Firebase service account belongs to the deployment. It is a file mounted read-only into the
+gateway's container and nothing else (`broadcast/compose.push.yaml`), read once at startup, and no
+part of it appears in an answer, an error or a log line. A publisher publishes to the gateway, as it
+always did, and the gateway is what holds this — which is the whole reason the relay is here rather
+than in each publisher's own deployment.
+
+A topic is derived from the channel in a notice, and a notice is written by the gateway inside the
+transaction that stored the document, from the server ID the credential resolved to. There is no
+field anywhere a publisher could put a topic in, and a publication claiming another publisher's
+channel is refused at the door (`GATEWAY_PROBLEM_FOREIGN_CHANNEL`). Revoking a publisher's
+credential therefore stops its hints, because it stops its publications.
+
+### Bounds, and what a hint is not
+
+| Bound | Value | What it protects |
+| --- | --- | --- |
+| Hints per topic | 0.1/s, burst 5 (`BROADCAST_PUSH_RATE`, `BROADCAST_PUSH_BURST`) | Every subscriber's battery. Above it a hint is **dropped**, not queued |
+| Collapse key | one, for every feed | A phone that was offline wakes once and reads every feed it holds |
+| Time to live | 5 minutes | A hint older than that has been overtaken by the read the owner's next glance runs |
+| Priority | high for a proposal, normal for settings | A proposal can expire while nobody is looking; a settings change cannot |
+
+Two honest notes:
+
+- **It is not a delivery guarantee, and not a schedule.** Firebase decides when a topic message
+  arrives, Android decides when a background job runs, and a force-stopped app receives nothing at
+  all until the owner opens it again (`docs/guides/firebase.md`). What the app relies on instead is
+  the foreground stream and the read it runs when it comes back.
+- **A dropped hint loses no document.** The publication is stored, the stream carried it, and the
+  next hint — or the owner's next glance — reads the whole feed. What is lost is a wake-up, and the
+  quota's whole purpose is to lose some of them.
+
+The relay never fails a notice. A hint that could defer the outbox would mean the broker
+re-publishing documents it had already delivered for as long as somebody else's service was down,
+so every failure here is logged and swallowed: the outbox's meaning stays "the document was fanned
+out".
+
+### Membership
+
+Firebase owns it. The phone subscribes when the owner adds a feed and unsubscribes when they remove
+one, and **nothing anywhere keeps a list**: not in the gateway (it is never told whether anybody
+joined), and not on the phone's disk (the connection list is the truth, and the subscriptions are
+derived from it every time).
+
+That leaves one gap and it is the honest one to leave: a feed removed while the app was not running
+leaves a subscription behind. The cure is the hint itself — one that arrives on a topic no feed
+wants is unsubscribed from, so a stale subscription removes itself the first time it costs anything
+(`push/FeedTopicManager.kt`).
+
 ## Reading a feed
 
 Three unary reads, and all of them derive their answer from the store at the moment they are asked.
@@ -418,8 +517,14 @@ appears. The gateway cannot lose a user's financial history because it never has
   and `FeedEvent/withdrawn` are taken from the gateway's own outbox by
   [`fixtures_test.go`](../../broadcast/internal/gateway/fixtures_test.go) and read back through the
   phone's validators by `GatewayProtocolFixturesTest`.
-- **No screen lists a feed yet.** The listener applies what arrives through the repositories, and
-  the plugins that read a proposal's terms are SEE-93 and SEE-94.
+- **It relays hints through Firebase**, and the phone subscribes to them: what is sent is pinned by
+  the relay's own tests, that Firebase accepts it is an opt-in test against a real project
+  (`internal/relay/firebase_test.go`), and that a phone actually receives one is the device run in
+  [`docs/testing/stage-7-1.md`](../testing/stage-7-1.md). A deployment with no relay is a supported
+  deployment: it says once that no hints are sent here.
+- **No screen lists a feed yet.** The listener applies what arrives through the repositories, the
+  proposal alert opens the feed it is on, and the plugins that read a proposal's terms are SEE-93
+  and SEE-94.
 - **Nothing was run in Docker.** No daemon is reachable on the machine these checks ran on, so the
   compose and Caddy configurations were validated statically and every binary — the gateway, the
   broker, Redis — was run natively instead (`docs/changelog/2026-09-17.md`).

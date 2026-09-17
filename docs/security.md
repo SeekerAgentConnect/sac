@@ -114,7 +114,7 @@ What each owner does about one is theirs, and it stays on their phone
   revision, the plugin, the cluster and the parameters they chose — on the phone, and nowhere else.
   It outlives the feed being removed.
 
-### The broadcast gateway holds no person (SEE-90, SEE-91)
+### The broadcast gateway holds no person (SEE-90, SEE-91, SEE-92)
 
 The shared gateway in [`broadcast/`](../broadcast) is what a publisher publishes to and every
 subscribed phone reads from ([`wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md)). It is a
@@ -163,10 +163,30 @@ more than what it does.
   steps so it needs no outage; and a refusal says nothing about whether what was presented used to
   work. Caddy redacts `Authorization` in front, and a test publishes with a credential and requires
   it to appear in no log line.
-- **It calls nobody.** No publisher is ever contacted — which is the point of the mode rather than a
-  detail of it, because a publisher that could be reached could be told which phones are interested
-  in it — and no phone, chain or provider either. A boundary test fails if shipped code acquires an
-  HTTP client, and the image ships no CA bundle.
+- **A hint says that a feed changed and nothing else (SEE-92).** What goes to a feed's public topic
+  is two constant fields — a kind and a version — with no proposal, no revision, no sequence and no
+  publisher in it, and nothing that could be about one subscriber, because a topic message is the
+  same for everyone who receives it. Which feed changed is the topic it arrived on, which is a
+  routing field rather than payload, exactly as a device target is on the private path (SAW-056). A
+  Go test reads the message the relay builds and fails on anything else in it.
+- **Nobody keeps a list of who subscribed.** Topic membership is Firebase's. The gateway names a
+  topic when it is asked and is never told whether anyone joined it — asking leaves no row and no
+  log line, and a test reads the database afterwards to prove it — and the phone keeps no list on
+  disk either: its subscriptions are derived from the connections the owner has, every time. A topic
+  name is public and proves nothing; what it admits someone to is the news that a broadcast changed.
+- **The push credential is the deployment's, never a publisher's.** It is a file mounted read-only
+  into the gateway's container alone, read once at startup, and no part of it reaches an answer, an
+  error or a log line — a test fails if a message from the push endpoint, the access token or the
+  key appears in one. A publisher cannot name a topic either: a topic is derived from the channel in
+  a notice the gateway wrote itself, from the server ID the credential resolved to, so revoking a
+  publisher's credential stops its hints because it stops its publications.
+- **It calls nobody it serves.** No publisher is ever contacted — which is the point of the mode
+  rather than a detail of it, because a publisher that could be reached could be told which phones
+  are interested in it — and no phone, chain or provider either. Two packages may call out at all
+  and a boundary test fails if a third acquires an HTTP client: the broker beside it (SEE-91) and,
+  when one is configured, the push endpoint (SEE-92). Neither carries an address of its own — both
+  take one from the operator — and the image's CA bundle exists for the second of them, added in
+  SEE-92 with the reason written beside the line that copies it.
 - **Reading writes nothing down.** No session, no subscription record, no count of who read what: a
   test reads the database after several reads and requires every row count to be unchanged. What the
   gateway learns from a read is which channel someone asked about.

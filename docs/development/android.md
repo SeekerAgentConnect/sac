@@ -128,6 +128,39 @@ throttled, or unavailable. Setup and exact delivery/off behavior are in the [opt
 guide](../guides/firebase.md); automated evidence is in [Stage 5.3
 verification](../testing/stage-5-3.md).
 
+## Feed hints, on the same pipeline (SEE-92)
+
+Stage 7.1's second kind of server gets the same treatment and nothing new is declared. The one
+`SeekerVaultMessagingService` now matches a second exact, content-free payload —
+`kind=feed_invalidation`, `version=1` — and does with it what it does with the first: enqueue one
+unique WorkManager job with an **empty input**. Nothing in a payload is read for anything else, and
+a message with an extra field is ignored rather than partly trusted.
+
+`FeedSyncRunner` is `PushSyncRunner` for feeds. It loads what the phone holds from disk (a process
+woken by a hint holds nothing in memory), reads every feed whose gateway is not already streaming to
+a foreground listener, and passes each read the boundary that feed was last read at so an unchanged
+feed costs one small answer. A feed it could not read leaves nothing remembered and makes the job
+retry. Because the read covers every feed, two hints are one read and a hint that Firebase replaced
+under its collapse key loses nothing.
+
+`FeedTopicManager` owns which topics this phone asked for, on the same serialized channel
+`FcmRegistrationManager` uses. It derives its intent from the connection list rather than storing a
+registry — so a feed added is subscribed and a feed removed is unsubscribed, and a registration
+refresh says everything again, because topic membership belongs to the installation. It asks the
+gateway for each topic's name (`FeedService.GetFeedTopics`) instead of deriving one, and a gateway
+that relays nothing answers `Unimplemented`, which is recorded and not retried. The one case a
+derived intent cannot cover is a feed removed while the app was not running; the hint that arrives
+on that topic is what unsubscribes it.
+
+`ProposalNotificationManager` is `RequestNotificationManager` for a proposal: its own channel (at
+default importance, because a proposal is an offer to everyone subscribed rather than one server
+waiting for this owner), its own tags so neither can cancel the other's alerts, and the same
+before/after comparison — of the proposals that are *reviewable*, which is what makes a withdrawal,
+an expiry, a dismissal here and an operation already begun all remove an alert without any of that
+being restated. The tap route opens the feed the proposal is on, which is the deepest current review
+state this build has, and carries the proposal's own validated ID for the screen SEE-93 and SEE-94
+will bring. It chooses nothing, prepares nothing and calls no wallet method.
+
 ## Connections
 
 The owner's walkthrough is [`docs/guides/pairing.md`](../guides/pairing.md), and the security model, including what the phone stores, is [`docs/security.md`](../security.md#local-storage-and-recovery).

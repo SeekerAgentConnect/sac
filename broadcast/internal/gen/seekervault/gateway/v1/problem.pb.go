@@ -131,6 +131,11 @@ const (
 	// More channels in one ticket than the gateway grants at once. The message carries the bound, so
 	// a client can ask again for fewer rather than guess.
 	GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_CHANNELS GatewayProblem = 32
+	// --- Hints (SEE-92) -------------------------------------------------------
+	// This gateway relays nothing: it holds the documents, answers reads, and has no push credential
+	// of its own. A client gets this once and keeps to the foreground stream and its own recovery,
+	// which is again the whole feature working at a smaller size rather than a failure.
+	GatewayProblem_GATEWAY_PROBLEM_NO_PUSH GatewayProblem = 33
 )
 
 // Enum value maps for GatewayProblem.
@@ -169,6 +174,7 @@ var (
 		30: "GATEWAY_PROBLEM_TOO_MANY_REQUESTS",
 		31: "GATEWAY_PROBLEM_NO_STREAM",
 		32: "GATEWAY_PROBLEM_TOO_MANY_CHANNELS",
+		33: "GATEWAY_PROBLEM_NO_PUSH",
 	}
 	GatewayProblem_value = map[string]int32{
 		"GATEWAY_PROBLEM_UNSPECIFIED":        0,
@@ -204,6 +210,7 @@ var (
 		"GATEWAY_PROBLEM_TOO_MANY_REQUESTS":  30,
 		"GATEWAY_PROBLEM_NO_STREAM":          31,
 		"GATEWAY_PROBLEM_TOO_MANY_CHANNELS":  32,
+		"GATEWAY_PROBLEM_NO_PUSH":            33,
 	}
 )
 
@@ -308,7 +315,7 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x12GatewayErrorDetail\x12@\n" +
 	"\aproblem\x18\x01 \x01(\x0e2&.seekervault.gateway.v1.GatewayProblemR\aproblem\x12\x14\n" +
 	"\x05field\x18\x02 \x01(\tR\x05field\x12#\n" +
-	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\x8c\t\n" +
+	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\xa9\t\n" +
 	"\x0eGatewayProblem\x12\x1f\n" +
 	"\x1bGATEWAY_PROBLEM_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fGATEWAY_PROBLEM_UNAUTHENTICATED\x10\x01\x12 \n" +
@@ -343,7 +350,8 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x1dGATEWAY_PROBLEM_BAD_PAGE_SIZE\x10\x1d\x12%\n" +
 	"!GATEWAY_PROBLEM_TOO_MANY_REQUESTS\x10\x1e\x12\x1d\n" +
 	"\x19GATEWAY_PROBLEM_NO_STREAM\x10\x1f\x12%\n" +
-	"!GATEWAY_PROBLEM_TOO_MANY_CHANNELS\x10 B\x82\x02\n" +
+	"!GATEWAY_PROBLEM_TOO_MANY_CHANNELS\x10 \x12\x1b\n" +
+	"\x17GATEWAY_PROBLEM_NO_PUSH\x10!B\x82\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\fProblemProtoP\x01Z\\github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (

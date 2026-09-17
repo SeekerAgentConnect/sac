@@ -19,9 +19,11 @@ means this one when it is next to "broadcast", "shared" or "feed", and that one 
 | [`internal/gateway`](internal/gateway) | The two APIs, their interceptors, and the boundary tests |
 | [`internal/dispatch`](internal/dispatch) | Persist first, fan out second: the outbox drainer, and the event envelope every subscriber reads |
 | [`internal/stream`](internal/stream) | The broker: publishing an event to it, and minting the ticket a listener connects with (SEE-91) |
+| [`internal/relay`](internal/relay) | The push relay: one content-free hint per changed feed, and the grant it is sent with (SEE-92) |
 | [`centrifugo.yaml`](centrifugo.yaml) | The broker's configuration — one transport, one namespace, and nothing a listener may do but listen |
 | [`compose.yaml`](compose.yaml) | The stack: the gateway, the broker, its Redis and the proxy. `ctl` sits behind a profile and does not start |
 | [`compose.public.yaml`](compose.public.yaml) | The internet-facing overlay: HTTPS on your own domain, ports 80 and 443 |
+| [`compose.push.yaml`](compose.push.yaml) | The push overlay: the Firebase credential, mounted into the gateway and nothing else (SEE-92) |
 | [`Caddyfile`](Caddyfile) / [`Caddyfile.public`](Caddyfile.public) | The proxy's local and public configurations |
 | [`.env.example`](.env.example) | The deployment's settings. Copy to `.env` here, which git ignores |
 
@@ -45,6 +47,28 @@ docker compose -f compose.yaml -f compose.public.yaml up -d --build
 and the key a listener's ticket is signed with (`openssl rand -base64 32` for each). **Leave
 `BROADCAST_STREAM_URL` empty to run without a stream**: the gateway then holds the documents and
 answers every read, and a phone that asks to listen is told there is none.
+
+### With push hints
+
+The stream reaches a phone that is being looked at. A phone in a pocket is reached by one
+content-free message to the feed's public Firebase topic, and the overlay that does it is separate
+because turning it on means mounting a credential:
+
+```sh
+# in .env: BROADCAST_PUSH_CREDENTIALS_FILE=/etc/seeker/service-account.json
+#          BROADCAST_PUSH_ENVIRONMENT=production
+docker compose -f compose.yaml -f compose.push.yaml up -d --build
+```
+
+The credential is a Firebase service account for the project whose app the phones are running
+([`docs/guides/firebase.md`](../docs/guides/firebase.md)). It is mounted read-only into the gateway
+and into nothing else: the broker never sees it, `ctl` never sees it, and **a publisher never sees
+it** — which is the whole point of relaying here rather than letting each publisher send its own.
+
+A hint carries two constant fields and no document. Which feed changed is the topic it arrived on,
+and the phone reads the feed from this gateway before it shows anything. Leave the overlay out and
+the gateway relays nothing, answers every read, streams to whoever is listening, and tells a phone
+that asks where hints arrive that none are sent here.
 
 ### More than one broker node
 

@@ -6,13 +6,14 @@
 //
 // This is the whole of the client API, and nothing on it changes a document. A phone asks what a
 // publisher says about itself, what it is currently proposing, what one of those proposals says,
-// and — since SEE-91 — for permission to listen to a channel it already knows about. There is
-// nothing here to write, because a subscriber has nothing to tell the gateway. The publisher's own
+// for permission to listen to a channel it already knows about (SEE-91), and where hints about one
+// arrive (SEE-92). There is nothing here to write, because a subscriber has nothing to tell the
+// gateway. The publisher's own
 // server is never contacted by a phone, and never learns that a phone read anything
 // (docs/security.md).
 //
 // The publisher API is a separate service on a separate listener (publish.proto). That separation
-// is deployed, not just declared: a read port serves these four methods and no handler that could
+// is deployed, not just declared: a read port serves these five methods and no handler that could
 // change anything, so no routing mistake can turn a read endpoint into a write one.
 //
 // **Nothing about a subscriber may ever appear in this file.** There is no field for a wallet, a
@@ -312,6 +313,75 @@ export declare type StreamChannel = Message<"seekervault.gateway.v1.StreamChanne
 export declare const StreamChannelSchema: GenMessage<StreamChannel>;
 
 /**
+ * @generated from message seekervault.gateway.v1.GetFeedTopicsRequest
+ */
+export declare type GetFeedTopicsRequest = Message<"seekervault.gateway.v1.GetFeedTopicsRequest"> & {
+  /**
+   * The channels to ask about, each "server/<server_id>" and each one the caller holds a feed
+   * reference for. The same bounds as a ticket's: none is refused, and more than the gateway
+   * answers at once is refused with the bound.
+   *
+   * @generated from field: repeated string channels = 1;
+   */
+  channels: string[];
+};
+
+/**
+ * Describes the message seekervault.gateway.v1.GetFeedTopicsRequest.
+ * Use `create(GetFeedTopicsRequestSchema)` to create a new message.
+ */
+export declare const GetFeedTopicsRequestSchema: GenMessage<GetFeedTopicsRequest>;
+
+/**
+ * @generated from message seekervault.gateway.v1.GetFeedTopicsResponse
+ */
+export declare type GetFeedTopicsResponse = Message<"seekervault.gateway.v1.GetFeedTopicsResponse"> & {
+  /**
+   * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
+   * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   *
+   * @generated from field: repeated seekervault.gateway.v1.FeedTopic topics = 1;
+   */
+  topics: FeedTopic[];
+};
+
+/**
+ * Describes the message seekervault.gateway.v1.GetFeedTopicsResponse.
+ * Use `create(GetFeedTopicsResponseSchema)` to create a new message.
+ */
+export declare const GetFeedTopicsResponseSchema: GenMessage<GetFeedTopicsResponse>;
+
+/**
+ * FeedTopic maps a channel a caller knows to the topic this deployment's relay sends that channel's
+ * hints on.
+ *
+ * `topic` is opaque and public. It is not a credential, not proof of access and not a secret: what
+ * arrives on it is a hint that something on the channel changed, with no document in it at all, and
+ * the documents are read over the methods above. A client that subscribes to a topic for a feed it
+ * does not hold learns nothing it could not learn by reading the feed (docs/security.md).
+ *
+ * @generated from message seekervault.gateway.v1.FeedTopic
+ */
+export declare type FeedTopic = Message<"seekervault.gateway.v1.FeedTopic"> & {
+  /**
+   * @generated from field: string channel = 1;
+   */
+  channel: string;
+
+  /**
+   * @generated from field: string topic = 2;
+   */
+  topic: string;
+};
+
+/**
+ * Describes the message seekervault.gateway.v1.FeedTopic.
+ * Use `create(FeedTopicSchema)` to create a new message.
+ */
+export declare const FeedTopicSchema: GenMessage<FeedTopic>;
+
+/**
  * FeedService is the read-only client API. It is unauthenticated on purpose: a feed is a
  * broadcast, its reference can be printed in a README, and holding one grants nothing. What the
  * gateway learns from a read is which channel someone is interested in, which is the minimum a
@@ -378,6 +448,27 @@ export declare const FeedService: GenService<{
     methodKind: "unary";
     input: typeof GetStreamTicketRequestSchema;
     output: typeof GetStreamTicketResponseSchema;
+  },
+  /**
+   * Where this gateway's relay sends a hint that a channel changed (SEE-92).
+   *
+   * It exists because the name has to be the same on both sides, and neither side may guess it: the
+   * relay derives a topic from the channel in a committed publication, and the phone has to
+   * subscribe to exactly that. A name derived twice, in two languages, is a mismatch that shows up
+   * as silence rather than as an error — so it is derived once, here, and stated.
+   *
+   * It is separate from GetStreamTicket on purpose. A deployment may relay without streaming, or
+   * stream without relaying, and a phone asking about one must not be answered about the other.
+   * Like a ticket, the answer is about channels and never about the caller: a topic is public,
+   * holding its name grants nothing, and subscribing to it says nothing to this gateway — Firebase
+   * owns topic membership, and the gateway is not told who joined (docs/security.md).
+   *
+   * @generated from rpc seekervault.gateway.v1.FeedService.GetFeedTopics
+   */
+  getFeedTopics: {
+    methodKind: "unary";
+    input: typeof GetFeedTopicsRequestSchema;
+    output: typeof GetFeedTopicsResponseSchema;
   },
 }>;
 

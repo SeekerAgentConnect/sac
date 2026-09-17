@@ -27,15 +27,22 @@ import io.github.brrenat.seekervault.feeds.RepositoryFeedHost
 import io.github.brrenat.seekervault.feeds.storage.FeedCursorStore
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
+import io.github.brrenat.seekervault.notifications.ProposalNotificationManager
+import io.github.brrenat.seekervault.notifications.ProposalRef
 import io.github.brrenat.seekervault.notifications.RequestNotificationManager
 import io.github.brrenat.seekervault.plugins.PluginRegistry
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
+import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.push.FcmRegistrationClient
 import io.github.brrenat.seekervault.push.FcmRegistrationManager
+import io.github.brrenat.seekervault.push.FeedTopicClient
+import io.github.brrenat.seekervault.push.FeedTopicManager
 import io.github.brrenat.seekervault.push.FirebaseFcmRegistrationClient
+import io.github.brrenat.seekervault.push.FirebaseFeedTopicClient
 import io.github.brrenat.seekervault.sync.BackgroundSyncScheduler
 import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
+import io.github.brrenat.seekervault.sync.FeedSyncRunner
 import io.github.brrenat.seekervault.sync.ForegroundUpdateManager
 import io.github.brrenat.seekervault.sync.UpdateTransport
 import io.github.brrenat.seekervault.sync.storage.SyncStore
@@ -61,6 +68,9 @@ class SeekerVaultApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         requestNotifications.createChannels()
+        // The feeds' own channel, so the owner can silence one kind of alert and keep the other
+        // (SEE-92).
+        proposalNotifications.createChannels()
     }
 
     // One HTTP client for the whole app, without OkHttp's read timeout, so an idle
@@ -86,11 +96,26 @@ class SeekerVaultApplication : Application() {
     }
 
     /**
+     * The optional Firebase topic client (SEE-92). Tests replace it too: joining a feed's public
+     * topic is the only thing this app asks Firebase for besides its own registration.
+     */
+    var feedTopicClient: () -> FeedTopicClient = { FirebaseFeedTopicClient(this) }
+
+    /**
      * User-visible alerts exist only in an APK built with an operator-supplied Firebase project.
      * The manager holds no Firebase dependency or request data and permission denial is a no-op.
      */
     val requestNotifications: RequestNotificationManager by lazy {
         RequestNotificationManager(this, BuildConfig.FIREBASE_CONFIGURED)
+    }
+
+    /**
+     * The same, for the proposals a feed is waiting on (SEE-92). A separate manager and a separate
+     * channel, because a broadcast and a paired sidecar's request are different things and the
+     * owner may reasonably want to hear about one and not the other.
+     */
+    val proposalNotifications: ProposalNotificationManager by lazy {
+        ProposalNotificationManager(this, BuildConfig.FIREBASE_CONFIGURED)
     }
 
     /**
@@ -171,7 +196,12 @@ class SeekerVaultApplication : Application() {
                 io = connectionIo,
                 syncStore = SyncStore(File(filesDir, "sync")),
                 updateTransport = updateTransport(),
-                onConnectionUnavailable = requestNotifications::cancelConnection,
+                // A connection that is gone takes its alerts with it, of both kinds: a feed the
+                // owner removed must not leave a proposal alert behind (SEE-92).
+                onConnectionUnavailable = { id ->
+                    requestNotifications.cancelConnection(id)
+                    proposalNotifications.cancelConnection(id)
+                },
             )
         backgroundSync =
             BackgroundSyncScheduler.create(
@@ -191,6 +221,18 @@ class SeekerVaultApplication : Application() {
                     dispatcher = connectionIo,
                 )
                 .also(FcmRegistrationManager::start)
+        feedTopicManager =
+            FeedTopicManager(
+                    loaded = repository.loaded,
+                    connections = repository.connections,
+                    // The same gateway client the feeds are read through: asking where hints
+                    // arrive is one more read on that endpoint (SEE-92).
+                    gateway = feedGateway(),
+                    client = feedTopicClient(),
+                    loadConnections = repository::load,
+                    dispatcher = connectionIo,
+                )
+                .also(FeedTopicManager::start)
         repository
     }
 
@@ -221,6 +263,60 @@ class SeekerVaultApplication : Application() {
             connectionRepository
             return checkNotNull(fcmRegistration)
         }
+
+    /** The same for a hint's topic, and for the same reason: a message can start the process. */
+    val feedTopics: FeedTopicManager
+        get() {
+            connectionRepository
+            return checkNotNull(feedTopicManager)
+        }
+
+    /**
+     * The authoritative read a feed hint asks for (SEE-92), assembled here because this is where
+     * everything it needs already lives: the connections, the cursors, the repositories' own apply
+     * path, and what the owner is currently shown.
+     *
+     * It is deliberately the same documents and the same validators the foreground listener uses. A
+     * hint changes when the app reads a feed, and nothing else about how it reads one.
+     */
+    internal fun feedReadRunner(): FeedSyncRunner {
+        val host = RepositoryFeedHost(connectionRepository, proposalRepository)
+        return FeedSyncRunner(
+            load = {
+                connectionRepository.load()
+                proposalRepository.load()
+            },
+            connections = { connectionRepository.connections.value },
+            foreground = { foregroundFeeds.state.value },
+            progress = { serverId -> feedCursors.get(serverId)?.sequence ?: 0L },
+            read = { connectionId, known -> host.readFeed(connectionId, known) },
+            remember = { serverId, sequence ->
+                val held = feedCursors.get(serverId)
+                feedCursors.put(FeedCursorStore.Progress(serverId, held?.cursor, sequence))
+            },
+            reviewable = ::reviewableProposals,
+            reconcileNotifications = { before, after ->
+                proposalNotifications.reconcile(
+                    before,
+                    after,
+                    connectionRepository.connections.value,
+                )
+            },
+        )
+    }
+
+    /**
+     * The proposals waiting for the owner right now: the publisher stands behind them, this device
+     * has done nothing about them, and this build can act on them.
+     *
+     * Everything that makes a proposal stop waiting — a withdrawal, an expiry, a dismissal here, an
+     * operation already begun — takes it out of this set, which is what makes the notification
+     * reconciliation in one place enough (`proposals/ProposalState.proposalStanding`).
+     */
+    private fun reviewableProposals(): Set<ProposalRef> =
+        proposalRepository.proposals.value
+            .filter { proposalRepository.standing(it) is ProposalStanding.Open }
+            .mapTo(mutableSetOf()) { ProposalRef(it.connectionId, it.key.proposalId) }
 
     /** One foreground owner for every paired sidecar, independent of activities and navigation. */
     val foregroundUpdates: ForegroundUpdateManager by lazy {
@@ -277,6 +373,9 @@ class SeekerVaultApplication : Application() {
 
     /** Keeps the serialized registration owner alive with the application. */
     private var fcmRegistration: FcmRegistrationManager? = null
+
+    /** And the one that keeps this phone's topic subscriptions in line with its feeds (SEE-92). */
+    private var feedTopicManager: FeedTopicManager? = null
 
     /**
      * Where storage and network calls run — the connections' and the policy editor's alike. Tests

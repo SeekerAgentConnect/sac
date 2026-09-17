@@ -245,6 +245,41 @@ func TestBackoffGrowsAndStops(t *testing.T) {
 	}
 }
 
+// A deployment that both streams and relays delivers to both, every time (SEE-92). They are
+// different audiences rather than steps: one of them failing must not cost the other its delivery,
+// and only the failures that were reported reach the drainer.
+func TestEveryDispatcherInAFanIsToldAboutEveryDelivery(t *testing.T) {
+	first, second := &recorder{}, &recorder{}
+	one := Delivery{Channel: channelA, Kind: store.ProposalNotice, Revision: 1}
+
+	if err := (Fan{first, second}).Dispatch(context.Background(), one); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.delivered) != 1 || len(second.delivered) != 1 {
+		t.Fatalf("the fan delivered %d and %d times",
+			len(first.delivered), len(second.delivered))
+	}
+
+	// The first one fails: the second is still told, and the failure is what the drainer sees, so
+	// the notice is deferred and tried again.
+	failing := &recorder{fail: errors.New("the broker is not there")}
+	watching := &recorder{}
+	err := (Fan{failing, watching}).Dispatch(context.Background(), one)
+	if err == nil {
+		t.Fatal("a failure inside the fan was swallowed")
+	}
+	if len(watching.delivered) != 1 {
+		t.Fatal("a failing dispatcher stopped the one after it")
+	}
+
+	// And a dispatcher that reports nothing — which is what the relay does by design — cannot make
+	// a delivery fail.
+	quietOne := &recorder{}
+	if err := (Fan{quietOne}).Dispatch(context.Background(), one); err != nil {
+		t.Fatalf("a dispatcher that reported nothing failed the delivery: %v", err)
+	}
+}
+
 func TestADrainerNeedsSomewhereToDispatchTo(t *testing.T) {
 	// A gateway with no fan-out would pile up notices in silence. Saying so at startup is better
 	// than finding out from the queue.

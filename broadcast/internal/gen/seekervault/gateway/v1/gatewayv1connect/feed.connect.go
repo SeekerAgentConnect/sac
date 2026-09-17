@@ -6,13 +6,14 @@
 //
 // This is the whole of the client API, and nothing on it changes a document. A phone asks what a
 // publisher says about itself, what it is currently proposing, what one of those proposals says,
-// and — since SEE-91 — for permission to listen to a channel it already knows about. There is
-// nothing here to write, because a subscriber has nothing to tell the gateway. The publisher's own
+// for permission to listen to a channel it already knows about (SEE-91), and where hints about one
+// arrive (SEE-92). There is nothing here to write, because a subscriber has nothing to tell the
+// gateway. The publisher's own
 // server is never contacted by a phone, and never learns that a phone read anything
 // (docs/security.md).
 //
 // The publisher API is a separate service on a separate listener (publish.proto). That separation
-// is deployed, not just declared: a read port serves these four methods and no handler that could
+// is deployed, not just declared: a read port serves these five methods and no handler that could
 // change anything, so no routing mistake can turn a read endpoint into a write one.
 //
 // **Nothing about a subscriber may ever appear in this file.** There is no field for a wallet, a
@@ -61,6 +62,9 @@ const (
 	// FeedServiceGetStreamTicketProcedure is the fully-qualified name of the FeedService's
 	// GetStreamTicket RPC.
 	FeedServiceGetStreamTicketProcedure = "/seekervault.gateway.v1.FeedService/GetStreamTicket"
+	// FeedServiceGetFeedTopicsProcedure is the fully-qualified name of the FeedService's GetFeedTopics
+	// RPC.
+	FeedServiceGetFeedTopicsProcedure = "/seekervault.gateway.v1.FeedService/GetFeedTopics"
 )
 
 // FeedServiceClient is a client for the seekervault.gateway.v1.FeedService service.
@@ -92,6 +96,19 @@ type FeedServiceClient interface {
 	// (docs/security.md). It is a scoped, expiring grant rather than a secret: what it admits a
 	// listener to is a broadcast that every other subscriber to the same channel is receiving too.
 	GetStreamTicket(context.Context, *connect.Request[v1.GetStreamTicketRequest]) (*connect.Response[v1.GetStreamTicketResponse], error)
+	// Where this gateway's relay sends a hint that a channel changed (SEE-92).
+	//
+	// It exists because the name has to be the same on both sides, and neither side may guess it: the
+	// relay derives a topic from the channel in a committed publication, and the phone has to
+	// subscribe to exactly that. A name derived twice, in two languages, is a mismatch that shows up
+	// as silence rather than as an error — so it is derived once, here, and stated.
+	//
+	// It is separate from GetStreamTicket on purpose. A deployment may relay without streaming, or
+	// stream without relaying, and a phone asking about one must not be answered about the other.
+	// Like a ticket, the answer is about channels and never about the caller: a topic is public,
+	// holding its name grants nothing, and subscribing to it says nothing to this gateway — Firebase
+	// owns topic membership, and the gateway is not told who joined (docs/security.md).
+	GetFeedTopics(context.Context, *connect.Request[v1.GetFeedTopicsRequest]) (*connect.Response[v1.GetFeedTopicsResponse], error)
 }
 
 // NewFeedServiceClient constructs a client for the seekervault.gateway.v1.FeedService service. By
@@ -129,6 +146,12 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("GetStreamTicket")),
 			connect.WithClientOptions(opts...),
 		),
+		getFeedTopics: connect.NewClient[v1.GetFeedTopicsRequest, v1.GetFeedTopicsResponse](
+			httpClient,
+			baseURL+FeedServiceGetFeedTopicsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("GetFeedTopics")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -138,6 +161,7 @@ type feedServiceClient struct {
 	listProposals     *connect.Client[v1.ListProposalsRequest, v1.ListProposalsResponse]
 	getProposal       *connect.Client[v1.GetProposalRequest, v1.GetProposalResponse]
 	getStreamTicket   *connect.Client[v1.GetStreamTicketRequest, v1.GetStreamTicketResponse]
+	getFeedTopics     *connect.Client[v1.GetFeedTopicsRequest, v1.GetFeedTopicsResponse]
 }
 
 // GetServerManifest calls seekervault.gateway.v1.FeedService.GetServerManifest.
@@ -158,6 +182,11 @@ func (c *feedServiceClient) GetProposal(ctx context.Context, req *connect.Reques
 // GetStreamTicket calls seekervault.gateway.v1.FeedService.GetStreamTicket.
 func (c *feedServiceClient) GetStreamTicket(ctx context.Context, req *connect.Request[v1.GetStreamTicketRequest]) (*connect.Response[v1.GetStreamTicketResponse], error) {
 	return c.getStreamTicket.CallUnary(ctx, req)
+}
+
+// GetFeedTopics calls seekervault.gateway.v1.FeedService.GetFeedTopics.
+func (c *feedServiceClient) GetFeedTopics(ctx context.Context, req *connect.Request[v1.GetFeedTopicsRequest]) (*connect.Response[v1.GetFeedTopicsResponse], error) {
+	return c.getFeedTopics.CallUnary(ctx, req)
 }
 
 // FeedServiceHandler is an implementation of the seekervault.gateway.v1.FeedService service.
@@ -189,6 +218,19 @@ type FeedServiceHandler interface {
 	// (docs/security.md). It is a scoped, expiring grant rather than a secret: what it admits a
 	// listener to is a broadcast that every other subscriber to the same channel is receiving too.
 	GetStreamTicket(context.Context, *connect.Request[v1.GetStreamTicketRequest]) (*connect.Response[v1.GetStreamTicketResponse], error)
+	// Where this gateway's relay sends a hint that a channel changed (SEE-92).
+	//
+	// It exists because the name has to be the same on both sides, and neither side may guess it: the
+	// relay derives a topic from the channel in a committed publication, and the phone has to
+	// subscribe to exactly that. A name derived twice, in two languages, is a mismatch that shows up
+	// as silence rather than as an error — so it is derived once, here, and stated.
+	//
+	// It is separate from GetStreamTicket on purpose. A deployment may relay without streaming, or
+	// stream without relaying, and a phone asking about one must not be answered about the other.
+	// Like a ticket, the answer is about channels and never about the caller: a topic is public,
+	// holding its name grants nothing, and subscribing to it says nothing to this gateway — Firebase
+	// owns topic membership, and the gateway is not told who joined (docs/security.md).
+	GetFeedTopics(context.Context, *connect.Request[v1.GetFeedTopicsRequest]) (*connect.Response[v1.GetFeedTopicsResponse], error)
 }
 
 // NewFeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -222,6 +264,12 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("GetStreamTicket")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceGetFeedTopicsHandler := connect.NewUnaryHandler(
+		FeedServiceGetFeedTopicsProcedure,
+		svc.GetFeedTopics,
+		connect.WithSchema(feedServiceMethods.ByName("GetFeedTopics")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/seekervault.gateway.v1.FeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FeedServiceGetServerManifestProcedure:
@@ -232,6 +280,8 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceGetProposalHandler.ServeHTTP(w, r)
 		case FeedServiceGetStreamTicketProcedure:
 			feedServiceGetStreamTicketHandler.ServeHTTP(w, r)
+		case FeedServiceGetFeedTopicsProcedure:
+			feedServiceGetFeedTopicsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -255,4 +305,8 @@ func (UnimplementedFeedServiceHandler) GetProposal(context.Context, *connect.Req
 
 func (UnimplementedFeedServiceHandler) GetStreamTicket(context.Context, *connect.Request[v1.GetStreamTicketRequest]) (*connect.Response[v1.GetStreamTicketResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.GetStreamTicket is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) GetFeedTopics(context.Context, *connect.Request[v1.GetFeedTopicsRequest]) (*connect.Response[v1.GetFeedTopicsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.GetFeedTopics is not implemented"))
 }
