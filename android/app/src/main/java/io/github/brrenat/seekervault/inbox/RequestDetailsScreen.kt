@@ -144,6 +144,14 @@ fun RequestDetailsScreen(
     acknowledged: Boolean = false,
     onAcknowledge: (Boolean) -> Unit = {},
     onRules: (() -> Unit)? = null,
+    /**
+     * Whether this build supports the request's server well enough to act for it (SEE-88). When it
+     * doesn't, the request is still read in full and can still be rejected, and the affirmative
+     * answer is not offered: there is nothing on this phone that would carry the operation out, and
+     * no wallet is opened (docs/wiki/server-manifests.md#viewing-without-executing). It is not a
+     * warning to overrule, so there is no tick beside it.
+     */
+    executable: Boolean = true,
 ) {
     // Warnings are the owner's to overrule, and overruling one is something they say they are
     // doing. Having no rules at all is not a warning: it would be one on every request there is.
@@ -171,6 +179,7 @@ fun RequestDetailsScreen(
             acknowledged = acknowledged,
             onAcknowledge = onAcknowledge,
             onRules = onRules,
+            executable = executable,
         )
         return
     }
@@ -196,6 +205,7 @@ fun RequestDetailsScreen(
             acknowledged = acknowledged,
             onAcknowledge = onAcknowledge,
             onRules = onRules,
+            executable = executable,
         )
         return
     }
@@ -349,6 +359,7 @@ fun RequestDetailsScreen(
                     acknowledged = acknowledged,
                     onAcknowledge = onAcknowledge,
                     onRules = onRules,
+                    executable = executable,
                 )
             } else {
                 // A transfer's review has its own place for this, under the facts and above the
@@ -378,8 +389,9 @@ fun RequestDetailsScreen(
             )
             Field(R.string.request_field_id, request.ref.requestId, "requestId")
             if (canAnswer(request, result, now)) {
+                if (!executable) UnsupportedServer()
                 // A transfer's tick sits with its own Approve button, in the review above.
-                if (transfer == null && warns) {
+                if (transfer == null && warns && executable) {
                     ApproveAnyway(acknowledged, onAcknowledge)
                 }
                 Row(
@@ -394,7 +406,7 @@ fun RequestDetailsScreen(
                                     else R.string.acknowledge
                                 ),
                             onClick = { onAnswer(Answer.Acknowledge) },
-                            enabled = !sending && (!warns || acknowledged),
+                            enabled = !sending && executable && (!warns || acknowledged),
                             modifier = Modifier.testTag(InboxTags.ACKNOWLEDGE),
                         )
                     } else {
@@ -407,7 +419,11 @@ fun RequestDetailsScreen(
                                     else R.string.approve
                                 ),
                             onClick = onApprove,
-                            enabled = !sending && wallet != null && (!warns || acknowledged),
+                            enabled =
+                                !sending &&
+                                    executable &&
+                                    wallet != null &&
+                                    (!warns || acknowledged),
                             modifier = Modifier.testTag(InboxTags.APPROVE),
                         )
                     }
@@ -475,6 +491,7 @@ private fun SimpleRequestReview(
     acknowledged: Boolean,
     onAcknowledge: (Boolean) -> Unit,
     onRules: (() -> Unit)?,
+    executable: Boolean,
 ) {
     val message = messagePreview(request)
     val acknowledgement = request.action.kindCase == Action.KindCase.ACK
@@ -641,7 +658,8 @@ private fun SimpleRequestReview(
                     .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (warns) ApproveAnyway(acknowledged, onAcknowledge)
+                if (!executable) UnsupportedServer()
+                if (warns && executable) ApproveAnyway(acknowledged, onAcknowledge)
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -662,6 +680,7 @@ private fun SimpleRequestReview(
                         },
                         enabled =
                             !sending &&
+                                executable &&
                                 (acknowledgement || wallet != null) &&
                                 (!warns || acknowledged),
                         modifier =
@@ -1430,6 +1449,7 @@ private fun TransferRequestReview(
     acknowledged: Boolean,
     onAcknowledge: (Boolean) -> Unit,
     onRules: (() -> Unit)?,
+    executable: Boolean,
 ) {
     val transfer = checkNotNull(request.transfer())
     val ready = preparation as? Preparation.Ready
@@ -1478,82 +1498,87 @@ private fun TransferRequestReview(
                         ?: io.github.brrenat.seekervault.policy.networkText(transfer.network),
                 prepared = ready?.prepared,
             )
-            when (preparation) {
-                null,
-                Preparation.Running -> {
-                    if (result == null) {
+            // Nothing is prepared for a server this build doesn't support, so there is no
+            // transaction to show and none on the way: saying so is the whole of this block, and
+            // it must not read as still loading (SEE-88).
+            if (!executable) UnsupportedServer()
+            else
+                when (preparation) {
+                    null,
+                    Preparation.Running -> {
+                        if (result == null) {
+                            SeekerCard(
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                            ) {
+                                Text(
+                                    stringResource(R.string.transfer_checking),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier =
+                                        Modifier.fillMaxWidth()
+                                            .padding(16.dp)
+                                            .testTag(InboxTags.TRANSFER_CHECKING),
+                                )
+                            }
+                        } else if (result.signing is SigningOutcome.Sent) {
+                            DeviceVerification(Verdict.Verified)
+                        }
+                    }
+                    is Preparation.Failed -> {
                         SeekerCard(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            color = MaterialTheme.colorScheme.errorContainer,
                         ) {
                             Text(
-                                stringResource(R.string.transfer_checking),
+                                stringResource(
+                                    R.string.transfer_failed,
+                                    outcomeText(preparation.outcome),
+                                ),
                                 style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
                                 modifier =
                                     Modifier.fillMaxWidth()
                                         .padding(16.dp)
-                                        .testTag(InboxTags.TRANSFER_CHECKING),
+                                        .testTag(InboxTags.TRANSFER_FAILED),
                             )
                         }
-                    } else if (result.signing is SigningOutcome.Sent) {
-                        DeviceVerification(Verdict.Verified)
-                    }
-                }
-                is Preparation.Failed -> {
-                    SeekerCard(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.errorContainer,
-                    ) {
-                        Text(
-                            stringResource(
-                                R.string.transfer_failed,
-                                outcomeText(preparation.outcome),
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        SeekerButton(
+                            text = stringResource(R.string.transfer_prepare_again),
+                            onClick = onPrepareAgain,
+                            role = SeekerButtonRole.Neutral,
                             modifier =
                                 Modifier.fillMaxWidth()
-                                    .padding(16.dp)
-                                    .testTag(InboxTags.TRANSFER_FAILED),
+                                    .padding(horizontal = 16.dp)
+                                    .testTag(InboxTags.TRANSFER_AGAIN),
                         )
                     }
-                    SeekerButton(
-                        text = stringResource(R.string.transfer_prepare_again),
-                        onClick = onPrepareAgain,
-                        role = SeekerButtonRole.Neutral,
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .testTag(InboxTags.TRANSFER_AGAIN),
-                    )
-                }
-                is Preparation.Ready -> {
-                    val inspection = preparation.inspection
-                    DeviceVerification(inspection.verdict)
-                    if (inspection.findings.isNotEmpty()) {
-                        SeekerCard(
-                            Modifier.fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .testTag(InboxTags.TRANSFER_FINDINGS)
-                                .semantics(mergeDescendants = true) {},
-                            color = MaterialTheme.colorScheme.errorContainer,
-                        ) {
-                            Column(
-                                Modifier.fillMaxWidth().padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                    is Preparation.Ready -> {
+                        val inspection = preparation.inspection
+                        DeviceVerification(inspection.verdict)
+                        if (inspection.findings.isNotEmpty()) {
+                            SeekerCard(
+                                Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .testTag(InboxTags.TRANSFER_FINDINGS)
+                                    .semantics(mergeDescendants = true) {},
+                                color = MaterialTheme.colorScheme.errorContainer,
                             ) {
-                                inspection.findings.forEach {
-                                    Text(
-                                        stringResource(findingText(it)),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                    )
+                                Column(
+                                    Modifier.fillMaxWidth().padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    inspection.findings.forEach {
+                                        Text(
+                                            stringResource(findingText(it)),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
             facts?.programs?.takeIf { it.isNotEmpty() }?.let { ProgramSummary(it) }
             // Device verification and byte-derived facts remain above this advisory layer.
             PolicyReview(assessment, onRules = onRules, transaction = true)
@@ -1661,7 +1686,9 @@ private fun TransferRequestReview(
                     .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                val approvable = ready?.inspection?.approvable == true
+                // A preparation read before the server's manifest changed under it is not a
+                // way past the gate either: both have to hold for an Approve button to exist.
+                val approvable = executable && ready?.inspection?.approvable == true
                 if (warns && approvable) ApproveAnyway(acknowledged, onAcknowledge)
                 Row(
                     Modifier.fillMaxWidth(),
@@ -1729,6 +1756,23 @@ private fun TransferRequestReview(
  * and borrow its weight. Approve comes last, under everything it approves, and only for a
  * transaction this phone could account for whole.
  */
+/**
+ * Said in place of an approval when this build doesn't support the request's server (SEE-88).
+ *
+ * It is deliberately not phrased as a warning about the request. The request may be perfectly
+ * ordinary; what is missing is on this phone, and no answer the owner could give would make this
+ * build able to carry the operation out.
+ */
+@Composable
+private fun UnsupportedServer() {
+    Text(
+        stringResource(R.string.server_unsupported),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(16.dp).testTag(InboxTags.SERVER_UNSUPPORTED),
+    )
+}
+
 @Composable
 private fun TransferReview(
     preparation: Preparation?,
@@ -1744,7 +1788,14 @@ private fun TransferReview(
     acknowledged: Boolean,
     onAcknowledge: (Boolean) -> Unit,
     onRules: (() -> Unit)?,
+    executable: Boolean,
 ) {
+    // Nothing is prepared for a server this build doesn't support, so there is no transaction to
+    // show and none on the way: saying so is the whole of this block (SEE-88).
+    if (!executable) {
+        UnsupportedServer()
+        return
+    }
     when (preparation) {
         null,
         Preparation.Running ->

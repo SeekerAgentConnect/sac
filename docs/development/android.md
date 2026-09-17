@@ -145,7 +145,8 @@ The code is in `connections/`:
 | `PairingCode.kt` | Reads `seekervault://pair` codes by the sidecar's rules. Plain HTTP is accepted only where the platform's network security policy permits cleartext: loopback, in debug builds. |
 | `ConnectConnectionGateway.kt` | `Pair`, legacy `ListPending`, authenticated FCM target updates, and `RevokeConnection` over Connect-Kotlin and OkHttp, with the platform's certificate and host name checks. It classifies errors for the screens, including a certificate failure that OkHttp suppressed behind another address's failure. |
 | `ConnectionRepository.kt` | Pairs, refreshes, renames, disconnects, and removes. Refresh delegates to the shared update synchronizer and retains `ListPending` for old or unconfigured sidecars. It checks each `PairResponse`, sends each credential only to its own URL, counts only the connection's own requests, and deletes a credential the sidecar rejects. |
-| `storage/ConnectionStore.kt`, `storage/CredentialVault.kt`, `storage/AndroidKeystoreKey.kt` | The app's only storage: one JSON file per connection in `filesDir/connections/`, and the credentials, AES-256-GCM under a Keystore key, in `noBackupFilesDir/credentials/` |
+| `storage/ConnectionStore.kt`, `storage/CredentialVault.kt`, `storage/AndroidKeystoreKey.kt` | The app's only storage: one JSON file per connection in `filesDir/connections/`, and the credentials, AES-256-GCM under a Keystore key, in `noBackupFilesDir/credentials/`. The file is at version 2, which adds the connection's mode and the manifest it caches (SEE-88); a version 1 file is still read. |
+| `FeedGateway.kt` | The one way a publisher's feed is resolved: through the shared gateway, never from the publisher. This build carries no implementation (SEE-88, SEE-90). |
 | `ConnectionsViewModel.kt` | The screens' state: the pairing flow, refreshes, dialogs, and messages. The code being entered stays in memory, never in saved state. |
 | `ConnectionsScreen.kt`, `ConnectionDetailsScreen.kt`, `AddConnectionScreen.kt`, `ConnectionText.kt` | The stateless screens, the camera permission, and their texts |
 | `QrScanner.kt`, `QrDecoder.kt` | The CameraX preview and frame analysis, and ZXing's QR decoder |
@@ -258,6 +259,44 @@ The architecture page is [`docs/wiki/client-plugins.md`](../wiki/client-plugins.
 - **Two `StageBoundaryTest` checks hold the line.** One reads the package's imports against an exact list and fails if its code names a wallet interaction, a wallet token, a transport, an HTTP client, a store, or an approval. The other fails if a provider's name appears in core transport, policy, transaction or activity code, or if a file other than `SeekerVaultApplication.kt` and `InboxViewModel.kt` imports the package. Deliberately breaking either fails the named check.
 
 Writing a plugin, when a stage calls for one: implement `ActionPlugin`, add it to `PluginRegistry.bundled()`, and put its strings in resources — a `ParameterField` carries a `@StringRes` label rather than English. Nothing else in the app should need to change; if it does, the boundary is in the wrong place.
+
+## Server manifests and connection modes (SEE-88)
+
+The architecture page is [`docs/wiki/server-manifests.md`](../wiki/server-manifests.md); this is the
+Android-side summary.
+
+`servers/` is data and pure functions, like `plugins/`: the validated `ServerManifest` model,
+`manifestFrom` with one `ManifestProblem` per rule, `FeedReferences` for `seekervault://feed`
+references, and `serverSupport`, which matches a manifest's requirements against the plugins
+compiled into this build. It holds no state, opens nothing, and does not suspend.
+
+- **The mode is stored per connection.** `Connection.mode` and `Connection.server` — `Unknown`,
+  `Legacy`, `Known(manifest)` or `Refused(problem)` — are written by `ConnectionStore`, now at
+  version 2, which still reads a version 1 file as a direct connection whose server hasn't been
+  asked. One invariant holds the record together: a feed always has a validated manifest, and a
+  manifest a connection holds always agrees with its mode.
+- **`Connection.usable` carries the mode.** It already meant "the phone can still call this
+  connection's sidecar" and is the condition on refresh, synchronization, push registration, wallet
+  publication and every approval path, so requiring the direct mode there keeps a feed out of all
+  of them at once.
+- **Support is derived on every read, never stored.** `ConnectionsViewModel` computes it for each
+  connection from the process's one `PluginRegistry`, and `InboxViewModel.support(connectionId)`
+  does the same for a request. A verdict on disk would outlive the build that reached it.
+- **`ConnectionRepository.resolveManifest` reads and caches it.** It runs after pairing and on every
+  refresh, and it is where the cache rules live: an unchanged revision keeps what is held, a higher
+  one replaces it, and a stale revision, a changed identity, a changed origin, a changed mode or
+  content that changed without its revision are recorded as refusals. A server that couldn't be
+  reached leaves the record alone.
+- **`addFeed` resolves through `FeedGateway` and nothing else.** This build has no implementation —
+  the gateway is SEE-90 — so it answers `NoGateway` rather than pretending. The publisher's own
+  server is never contacted, and no credential is created for a feed.
+
+What the owner sees, in the approved design's own components and with no new screen:
+
+| Where | What it says |
+| --- | --- |
+| Connections, and Connection details | A feed says it is a shared feed read through the gateway, rather than a connection whose credential has gone missing. A server this build can't act for says which part is missing: a plugin, a plugin's version, the protocol, the environment, or a manifest that was refused. |
+| Request details | A request from a server this build doesn't support is shown in full and can be rejected. The affirmative answer is not offered, nothing is prepared, and no wallet is opened — with one line saying why, and no tick to overrule it. |
 
 ## Activity
 

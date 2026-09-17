@@ -5,10 +5,20 @@ import com.connectrpc.okhttp.ConnectOkHttpClient
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.PluginRegistry
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.submitResultRequest
+import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.PluginRequirement
+import io.github.brrenat.seekervault.servers.SERVER_PROTOCOL
+import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.ServerReference
+import io.github.brrenat.seekervault.servers.ServerSupport
+import io.github.brrenat.seekervault.servers.manifest
+import io.github.brrenat.seekervault.servers.serverSupport
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -53,6 +63,45 @@ class InboxRealSidecarTest {
     private fun code(): PairingCode =
         (PairingCodes.parse(sidecar.pairingCode()) { it == "127.0.0.1" } as PairingCodeResult.Valid)
             .code
+
+    @Test
+    fun theRealSidecarDescribesItselfAsADirectServerAndThePhoneAcceptsIt() = runBlocking {
+        // End to end for SEE-88: the manifest this repository's sidecar publishes passes the rules
+        // the phone applies to one, and pairing is what the phone checks it against — the server
+        // ID from the pairing code, the URL the owner paired, and the direct mode.
+        val app = repository()
+        val connection = app.pair(code())
+
+        val manifest = checkNotNull(app.connection(connection.id)?.server?.manifest)
+        assertEquals(connection.serverId, manifest.serverId)
+        assertEquals(SERVER_PROTOCOL, manifest.protocolVersion)
+        assertEquals(ConnectionMode.Direct, manifest.mode)
+        assertEquals(ServerReference.Direct(sidecar.url), manifest.reference)
+        // It needs no client plugin: an acknowledgement, a message signature and a transfer are
+        // actions this app carries out itself, so any build supports this server.
+        assertEquals(emptyList<PluginRequirement>(), manifest.required)
+        assertEquals(setOf(PluginEnvironment.Production), manifest.environments)
+        assertEquals(
+            ServerSupport.Supported,
+            serverSupport(
+                checkNotNull(app.connection(connection.id)).server,
+                PluginRegistry.bundled(),
+                PluginEnvironment.Production,
+            ),
+        )
+
+        // And the revision it publishes stands while its settings do, across a restart, so the
+        // phone keeps what it cached rather than rewriting it.
+        sidecar.restart()
+        val reopened = repository()
+        reopened.load()
+        reopened.refresh(connection.id)
+
+        assertEquals(
+            ServerRecord.Known(manifest),
+            reopened.connection(connection.id)?.server,
+        )
+    }
 
     @Test
     fun aRequestMadeWhileTheAppWasClosedIsFetchedAnsweredAndReadBack() = runBlocking {

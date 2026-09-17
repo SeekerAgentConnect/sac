@@ -56,6 +56,8 @@ object InboxTags {
     const val HIDDEN = "requestHiddenCharacters"
     const val NOT_A_PAYMENT = "requestNotAPayment"
     const val SIGNING_PROBLEM = "signingProblem"
+    /** Said in place of an approval when this build doesn't support the request's server. */
+    const val SERVER_UNSUPPORTED = "serverUnsupported"
     const val SEND_AGAIN = "sendAgain"
     const val SENDING = "sending"
     const val GONE = "requestGone"
@@ -296,6 +298,7 @@ fun problemText(problem: SigningProblem): Int =
         SigningProblem.NotChecked -> R.string.problem_not_checked
         SigningProblem.RulesChanged -> R.string.problem_rules_changed
         SigningProblem.NotAcknowledged -> R.string.problem_not_acknowledged
+        SigningProblem.ServerUnsupported -> R.string.problem_server_unsupported
     }
 
 /** Whether this app can put [request] in front of the owner for an answer at all. */

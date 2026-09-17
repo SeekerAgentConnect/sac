@@ -20,6 +20,7 @@ import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.signMessageAction
 import io.github.brrenat.seekervault.request.v1.swapAction
 import io.github.brrenat.seekervault.request.v1.transferAction
+import io.github.brrenat.seekervault.server.v1.ServerManifest
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
@@ -60,6 +61,12 @@ class FakeConnectionGateway : ConnectionGateway {
         val fcmTokens = mutableMapOf<String, String>()
         /** When set, every call to this server fails this way. */
         var failure: GatewayException.Kind? = null
+        /**
+         * What this server publishes about itself (SEE-88), or null for one that predates manifests
+         * and answers UNIMPLEMENTED. Null is the default, so a test that says nothing about
+         * manifests is testing a legacy direct server, exactly as it did before.
+         */
+        var manifest: ServerManifest? = null
         /** The next SubmitResult takes effect, but its response is lost on the way back. */
         var loseNextResponse = false
         /** How many requests one ListPending page holds. */
@@ -68,6 +75,8 @@ class FakeConnectionGateway : ConnectionGateway {
         val onChain = mutableMapOf<String, Confirmed>()
         /** How many times the phone has asked this server to check a status. */
         var checks = 0
+        /** How many ListPending pages the phone has asked this server for. */
+        var lists = 0
 
         /** A fresh pairing code for this server at [url], as `pnpm pair` shows it. */
         fun issue(url: String): PairingCode {
@@ -412,6 +421,16 @@ class FakeConnectionGateway : ConnectionGateway {
         } ?: paired
     }
 
+    override suspend fun serverManifest(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+    ): ServerManifest? {
+        val server = reach(serverUrl, credential)
+        authenticated(server, credential, connectionId)
+        return server.manifest
+    }
+
     override suspend fun listPending(
         serverUrl: String,
         credential: String,
@@ -420,6 +439,7 @@ class FakeConnectionGateway : ConnectionGateway {
     ): PendingRequests {
         val server = reach(serverUrl, credential)
         val id = authenticated(server, credential, connectionId)
+        server.lists++
         val all = server.pending[id].orEmpty() + foreignRequests
         val start = pageToken.toIntOrNull() ?: 0
         val end = start + server.pageSize

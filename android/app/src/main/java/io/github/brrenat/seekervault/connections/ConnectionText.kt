@@ -23,6 +23,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.ServerSupport
+import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import io.github.brrenat.seekervault.sync.UpdateAvailability
 import java.time.Instant
@@ -79,11 +82,21 @@ object ConnectionsTags {
 fun statusText(
     connection: Connection,
     live: ForegroundConnectionState? = null,
+    /**
+     * Whether this build supports the connection's server (SEE-88); null when it hasn't been worked
+     * out. It is said before anything about reachability, because it is the more basic fact: a
+     * server this app can't act for is not one whose pending count means much.
+     */
+    support: ServerSupport? = null,
 ): String {
     val check = connection.lastCheck
     return when {
         connection.revokedAt != null -> stringResource(R.string.connection_status_revoked)
+        // A feed holds no credential and never did, so it is not one that has gone missing.
+        connection.mode == ConnectionMode.GatewayFeed && support?.executable != false ->
+            stringResource(R.string.connection_status_feed)
         !connection.hasCredential -> stringResource(R.string.connection_status_credential_missing)
+        support != null && !support.executable -> supportText(support)
         live == ForegroundConnectionState.Background ->
             stringResource(R.string.connection_status_background)
         live == ForegroundConnectionState.Connecting ->
@@ -105,8 +118,15 @@ fun statusText(
 }
 
 /** Whether the connection needs the owner's attention. */
-fun hasProblem(connection: Connection, live: ForegroundConnectionState? = null): Boolean =
-    !connection.usable ||
+fun hasProblem(
+    connection: Connection,
+    live: ForegroundConnectionState? = null,
+    support: ServerSupport? = null,
+): Boolean =
+    // A feed is not "usable" in the sense that word has here — the phone never calls one — so its
+    // problems are its own: a manifest this build can't act on, and nothing else yet (SEE-88).
+    (connection.mode == ConnectionMode.Direct && !connection.usable) ||
+        support?.executable == false ||
         when (live) {
             is ForegroundConnectionState.Unreachable,
             ForegroundConnectionState.Revoked,
@@ -117,6 +137,28 @@ fun hasProblem(connection: Connection, live: ForegroundConnectionState? = null):
             is ForegroundConnectionState.Reconnecting -> false
             null -> connection.lastCheck.let { it != null && it.outcome != CheckOutcome.Ok }
         }
+
+/**
+ * Why this build can't act for the connection's server. Each state is said as itself: what is
+ * missing, and whether it is missing here or promised there (docs/wiki/server-manifests.md).
+ */
+@Composable
+private fun supportText(support: ServerSupport): String =
+    stringResource(
+        when (support) {
+            is ServerSupport.PluginMissing -> R.string.connection_status_unsupported_plugin
+            is ServerSupport.PluginIncompatible -> R.string.connection_status_unsupported_version
+            is ServerSupport.ProtocolUnsupported -> R.string.connection_status_unsupported_protocol
+            is ServerSupport.EnvironmentUnsupported ->
+                R.string.connection_status_unsupported_environment
+            is ServerSupport.ManifestRefused -> R.string.connection_status_manifest_refused
+            // Not reached: these are the executable states, and this is only asked about the
+            // others. Named rather than left to an else, so a state added later is decided here.
+            is ServerSupport.Supported,
+            is ServerSupport.LegacyDirect,
+            is ServerSupport.Unknown -> R.string.connection_status_not_checked
+        }
+    )
 
 @Composable
 private fun availabilityText(availability: UpdateAvailability): String =

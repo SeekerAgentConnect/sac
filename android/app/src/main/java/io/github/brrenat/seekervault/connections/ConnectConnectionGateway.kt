@@ -18,6 +18,7 @@ import io.github.brrenat.seekervault.request.v1.RequestServiceClient
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.checkStatusRequest
+import io.github.brrenat.seekervault.request.v1.getServerManifestRequest
 import io.github.brrenat.seekervault.request.v1.listPendingRequest
 import io.github.brrenat.seekervault.request.v1.pairRequest
 import io.github.brrenat.seekervault.request.v1.prepareRequestRequest
@@ -25,6 +26,7 @@ import io.github.brrenat.seekervault.request.v1.publishWalletRequest
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.revokeConnectionRequest
 import io.github.brrenat.seekervault.request.v1.setFcmTokenRequest
+import io.github.brrenat.seekervault.server.v1.ServerManifest
 import java.io.IOException
 import java.net.UnknownServiceException
 import java.security.cert.CertPathValidatorException
@@ -51,6 +53,36 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
             PairingServiceClient(protocolClient(code.serverUrl)).pair(request, bearer(code.token))
         }
         return PairedConnection(response.connectionId, response.phoneToken, response.serverId)
+    }
+
+    override suspend fun serverManifest(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+    ): ServerManifest? {
+        val request = getServerManifestRequest { this.connectionId = connectionId }
+        val response =
+            try {
+                call {
+                    PairingServiceClient(protocolClient(serverUrl))
+                        .getServerManifest(request, bearer(credential))
+                }
+            } catch (e: GatewayException) {
+                // A server that doesn't know the call publishes no manifest: that is the
+                // legacy-direct path, and it is reported as an absence rather than a failure so
+                // nothing upstream has to know which protocol detail said so.
+                if (e.kind == GatewayException.Kind.Unimplemented) return null
+                throw e
+            }
+        if (!response.hasManifest()) {
+            // A server that answers this call has a manifest by definition, so an empty response
+            // is a server this app can't read rather than one with nothing to say.
+            throw GatewayException(
+                GatewayException.Kind.BadResponse,
+                "a GetServerManifestResponse with no manifest",
+            )
+        }
+        return response.manifest
     }
 
     override suspend fun listPending(
@@ -233,6 +265,7 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
                         it is UnknownServiceException && "CLEARTEXT" in it.message.orEmpty()
                     } -> GatewayException.Kind.CleartextBlocked
                     code == Code.UNAUTHENTICATED -> GatewayException.Kind.Unauthenticated
+                    code == Code.UNIMPLEMENTED -> GatewayException.Kind.Unimplemented
                     code == Code.INVALID_ARGUMENT -> GatewayException.Kind.Rejected
                     code == Code.NOT_FOUND -> GatewayException.Kind.NotFound
                     code == Code.FAILED_PRECONDITION && stale ->

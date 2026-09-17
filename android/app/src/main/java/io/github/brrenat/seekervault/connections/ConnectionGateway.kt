@@ -4,6 +4,7 @@ import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
+import io.github.brrenat.seekervault.server.v1.ServerManifest
 
 /**
  * The phone's calls to a sidecar's `PairingService` and `RequestService` (docs/protocol.md),
@@ -13,6 +14,22 @@ import io.github.brrenat.seekervault.request.v1.WalletBinding
 interface ConnectionGateway {
     /** Exchanges [code]'s pairing token, at [code]'s URL, for a new connection. */
     suspend fun pair(code: PairingCode, deviceName: String): PairedConnection
+
+    /**
+     * What the connection's own server says about itself, unvalidated (SEE-88), or **null** when
+     * the server doesn't know this call at all.
+     *
+     * Null is the legacy-direct path and not a failure: a sidecar from before Stage 7.1 answers
+     * UNIMPLEMENTED, which means it publishes no manifest, and the phone keeps calling it exactly
+     * as it always has (docs/wiki/server-manifests.md#legacy-direct). Everything the manifest says
+     * is checked against what the phone already trusts about the connection before any of it is
+     * stored.
+     */
+    suspend fun serverManifest(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+    ): ServerManifest?
 
     /** One page, up to 100, of the connection's PENDING requests, from [pageToken] on. */
     suspend fun listPending(
@@ -131,6 +148,12 @@ class GatewayException(
         CleartextBlocked,
         /** The sidecar couldn't be reached (`unavailable`, network errors). */
         Unreachable,
+        /**
+         * `unimplemented`: the server doesn't know this call at all, which is how one from before
+         * the call existed says so. For `GetServerManifest` that is the legacy-direct path (SEE-88)
+         * rather than an error the owner needs to see.
+         */
+        Unimplemented,
         /** The sidecar answered with something the app can't use. */
         BadResponse,
         Other,

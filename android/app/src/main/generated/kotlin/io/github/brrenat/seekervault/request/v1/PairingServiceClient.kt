@@ -52,6 +52,26 @@ public class PairingServiceClient(
 
 
   /**
+   *  GetServerManifest returns what this server says about itself (SEE-88): its identity, the
+   *  contract it speaks, its settings revision, its mode, and the client plugins its operations
+   *  need. Every field is scoped to the authenticated connection, and connection_id must name that
+   *  connection. A sidecar from before Stage 7.1 returns UNIMPLEMENTED, which is the documented
+   *  legacy-direct path: it publishes no manifest, and the phone keeps calling it exactly as it
+   *  always has (docs/wiki/server-manifests.md#legacy-direct).
+   */
+  override suspend fun getServerManifest(request: GetServerManifestRequest, headers: Headers): ResponseMessage<GetServerManifestResponse> = client.unary(
+    request,
+    headers,
+    MethodSpec(
+    "seekervault.request.v1.PairingService/GetServerManifest",
+      io.github.brrenat.seekervault.request.v1.GetServerManifestRequest::class,
+      io.github.brrenat.seekervault.request.v1.GetServerManifestResponse::class,
+      StreamType.UNARY,
+    ),
+  )
+
+
+  /**
    *  SetFcmToken registers or rotates the caller's current FCM direct-send target. Clearing names
    *  the target being removed so a late invalid-token or unregistration result cannot erase a newer
    *  rotation. Neither the target nor the phone credential is returned or logged.

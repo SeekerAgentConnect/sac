@@ -75,6 +75,7 @@ import io.github.brrenat.seekervault.inbox.messagePreview
 import io.github.brrenat.seekervault.inbox.text
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.transactions.mint
@@ -146,6 +147,7 @@ fun ConnectionsScreen(
                 ConnectionItem(
                     connection,
                     state.updates.connections[connection.id],
+                    state.support[connection.id],
                     onClick = { onOpen(connection.id) },
                 )
             }
@@ -734,8 +736,10 @@ private fun ActivityItem(recorded: Int, onClick: () -> Unit) {
 private fun ConnectionItem(
     connection: Connection,
     live: io.github.brrenat.seekervault.sync.ForegroundConnectionState?,
+    support: ServerSupport?,
     onClick: () -> Unit,
 ) {
+    val problem = hasProblem(connection, live, support)
     SeekerCard(
         modifier =
             Modifier.padding(horizontal = 16.dp).testTag(ConnectionsTags.item(connection.id)),
@@ -750,8 +754,7 @@ private fun ConnectionItem(
                 Modifier.size(40.dp)
                     .clip(CircleShape)
                     .background(
-                        if (hasProblem(connection, live))
-                            MaterialTheme.colorScheme.surfaceContainerHighest
+                        if (problem) MaterialTheme.colorScheme.surfaceContainerHighest
                         else MaterialTheme.colorScheme.tertiaryContainer
                     ),
                 contentAlignment = Alignment.Center,
@@ -760,17 +763,17 @@ private fun ConnectionItem(
                     initials(connection.label),
                     style = MaterialTheme.typography.labelLarge,
                     color =
-                        if (hasProblem(connection, live)) MaterialTheme.colorScheme.onSurfaceVariant
+                        if (problem) MaterialTheme.colorScheme.onSurfaceVariant
                         else MaterialTheme.colorScheme.onTertiaryContainer,
                 )
             }
             Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                 Text(connection.label, style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    statusText(connection, live),
+                    statusText(connection, live, support),
                     style = MaterialTheme.typography.bodyMedium,
                     color =
-                        if (hasProblem(connection, live)) SeekerTheme.colors.errorText
+                        if (problem) SeekerTheme.colors.errorText
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

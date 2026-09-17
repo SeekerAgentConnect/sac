@@ -62,6 +62,9 @@ class MainActivity : ComponentActivity() {
                     repository = app.connectionRepository,
                     foregroundUpdates = app.foregroundUpdates.state,
                     cleartextPermitted = app::isCleartextPermitted,
+                    // The one registry for the process, so a server's requirements are matched
+                    // against the same plugins here as when a request is reviewed (SEE-88).
+                    plugins = app.pluginRegistry,
                 )
             }
         }

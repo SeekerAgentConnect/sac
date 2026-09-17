@@ -19,7 +19,16 @@ import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.VPS
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.policy.PolicyTags
+import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.SERVER_PROTOCOL
+import io.github.brrenat.seekervault.servers.ServerManifest
+import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.ServerReference
+import io.github.brrenat.seekervault.servers.ServerSupport
+import io.github.brrenat.seekervault.servers.channelFor
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -39,6 +48,7 @@ class ConnectionDetailsScreenTest {
         disconnect: DisconnectState? = null,
         refreshing: Boolean = false,
         live: ForegroundConnectionState? = null,
+        support: ServerSupport? = null,
     ) = compose.setContent {
         SeekerVaultTheme {
             ConnectionDetailsScreen(
@@ -58,8 +68,56 @@ class ConnectionDetailsScreenTest {
                 onMessageShown = {},
                 onRules = { calls += "rules" },
                 live = live,
+                support = support,
             )
         }
+    }
+
+    @Test
+    fun aSharedFeedSaysWhatItIsRatherThanThatItsCredentialIsMissing() {
+        // A feed holds no credential and never did (SEE-88). Reading its absence as a fault would
+        // put a warning on every feed the owner has.
+        val manifest =
+            ServerManifest(
+                serverId = HOME.serverId,
+                protocolVersion = SERVER_PROTOCOL,
+                settingsRevision = 1,
+                mode = ConnectionMode.GatewayFeed,
+                reference =
+                    ServerReference.Feed("https://gateway.example.com", channelFor(HOME.serverId)),
+                environments = setOf(PluginEnvironment.Production),
+            )
+        val feed =
+            HOME.copy(
+                hasCredential = false,
+                lastCheck = null,
+                mode = ConnectionMode.GatewayFeed,
+                server = ServerRecord.Known(manifest),
+            )
+
+        show(feed, support = ServerSupport.Supported)
+
+        compose
+            .onNodeWithTag(ConnectionsTags.STATUS)
+            .assertTextEquals(context.getString(R.string.connection_status_feed))
+    }
+
+    @Test
+    fun aServerThisBuildDoesNotSupportSaysWhichPartIsMissing() {
+        show(HOME, support = ServerSupport.PluginMissing(listOf(PluginId("jupiter.prediction"))))
+
+        compose
+            .onNodeWithTag(ConnectionsTags.STATUS)
+            .assertTextEquals(context.getString(R.string.connection_status_unsupported_plugin))
+    }
+
+    @Test
+    fun aServerSpeakingANewerProtocolSaysTheAppIsTheOneToUpdate() {
+        show(HOME, support = ServerSupport.ProtocolUnsupported(9))
+
+        compose
+            .onNodeWithTag(ConnectionsTags.STATUS)
+            .assertTextEquals(context.getString(R.string.connection_status_unsupported_protocol))
     }
 
     @Test

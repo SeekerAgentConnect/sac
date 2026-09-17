@@ -122,7 +122,12 @@ object PairingCodes {
         return if (uri.port == -1) uri.host else "${uri.host}:${uri.port}"
     }
 
-    private fun queryOf(rawQuery: String): Map<String, String> =
+    /**
+     * A URI's query, as `URLSearchParams.get` reads it. A feed reference is parsed by the same
+     * rules ([io.github.brrenat.seekervault.servers.FeedReferences]), so a repeated or
+     * badly-escaped parameter can't mean one thing in a pairing code and another in a reference.
+     */
+    internal fun queryOf(rawQuery: String): Map<String, String> =
         rawQuery
             .split('&')
             .filter { it.isNotEmpty() }

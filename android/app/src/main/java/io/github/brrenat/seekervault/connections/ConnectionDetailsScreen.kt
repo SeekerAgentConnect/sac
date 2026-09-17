@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.policy.PolicyTags
+import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import io.github.brrenat.seekervault.ui.Identifier
 import io.github.brrenat.seekervault.ui.SeekerButton
@@ -70,7 +71,10 @@ fun ConnectionDetailsScreen(
     onPendingRequests: (() -> Unit)? = null,
     onRules: (() -> Unit)? = null,
     live: ForegroundConnectionState? = null,
+    /** Whether this build supports this connection's server (SEE-88); null until worked out. */
+    support: ServerSupport? = null,
 ) {
+    val problem = hasProblem(connection, live, support)
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(message, snackbar, onMessageShown)
     var renaming by rememberSaveable { mutableStateOf(false) }
@@ -96,7 +100,7 @@ fun ConnectionDetailsScreen(
                 SeekerCard(
                     Modifier.fillMaxWidth(),
                     color =
-                        if (hasProblem(connection, live)) MaterialTheme.colorScheme.errorContainer
+                        if (problem) MaterialTheme.colorScheme.errorContainer
                         else MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Row(
@@ -105,12 +109,11 @@ fun ConnectionDetailsScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Icon(
-                            if (hasProblem(connection, live)) Icons.Rounded.ErrorOutline
-                            else Icons.Rounded.CheckCircle,
+                            if (problem) Icons.Rounded.ErrorOutline else Icons.Rounded.CheckCircle,
                             contentDescription = null,
                             modifier = Modifier.size(22.dp),
                             tint =
-                                if (hasProblem(connection, live)) {
+                                if (problem) {
                                     MaterialTheme.colorScheme.onErrorContainer
                                 } else {
                                     MaterialTheme.colorScheme.onPrimaryContainer
@@ -118,10 +121,10 @@ fun ConnectionDetailsScreen(
                         )
                         Column(Modifier.weight(1f)) {
                             Text(
-                                statusText(connection, live),
+                                statusText(connection, live, support),
                                 style = MaterialTheme.typography.titleMedium,
                                 color =
-                                    if (hasProblem(connection, live)) {
+                                    if (problem) {
                                         MaterialTheme.colorScheme.onErrorContainer
                                     } else {
                                         MaterialTheme.colorScheme.onPrimaryContainer
@@ -133,7 +136,7 @@ fun ConnectionDetailsScreen(
                                     stringResource(R.string.checked_at, formatInstant(it.at)),
                                     style = MaterialTheme.typography.bodySmall,
                                     color =
-                                        if (hasProblem(connection, live)) {
+                                        if (problem) {
                                             MaterialTheme.colorScheme.onErrorContainer
                                         } else {
                                             MaterialTheme.colorScheme.onPrimaryContainer
@@ -144,7 +147,7 @@ fun ConnectionDetailsScreen(
                         Box(
                             Modifier.size(40.dp)
                                 .background(
-                                    if (hasProblem(connection, live)) {
+                                    if (problem) {
                                         MaterialTheme.colorScheme.errorContainer
                                     } else {
                                         MaterialTheme.colorScheme.primaryContainer

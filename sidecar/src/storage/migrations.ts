@@ -205,4 +205,17 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE connections ADD COLUMN fcm_token TEXT;
     `,
   },
+  {
+    version: 6,
+    description: "the settings revision the server manifest publishes (SEE-88)",
+    sql: `
+      -- The revision in this server's manifest, and a fingerprint of the content it was computed
+      -- for. A phone caches a manifest by identity and revision, so the revision has to change
+      -- exactly when the manifest's content does and never go backwards: startup compares the
+      -- fingerprint and bumps the revision when it differs. It counts settings changes, not time,
+      -- and it is not a version of the sidecar's software.
+      ALTER TABLE server ADD COLUMN manifest_revision INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE server ADD COLUMN manifest_fingerprint TEXT;
+    `,
+  },
 ];

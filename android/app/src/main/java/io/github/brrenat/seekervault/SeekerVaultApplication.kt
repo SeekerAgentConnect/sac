@@ -145,6 +145,9 @@ class SeekerVaultApplication : Application() {
                 history = activityLog,
                 // A connection's overrides go when it does. Global rules are a separate document.
                 rules = policyStore,
+                // No gateway: a publisher's feed is resolved through the shared gateway, and this
+                // build has none to resolve it through (SEE-88; the gateway is SEE-90).
+                feeds = null,
                 deviceName = Build.MODEL,
                 io = connectionIo,
                 syncStore = SyncStore(File(filesDir, "sync")),

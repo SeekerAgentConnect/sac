@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.PluginRegistry
 import io.github.brrenat.seekervault.plugins.TestPlugin
 import io.github.brrenat.seekervault.policy.Allowlist
@@ -38,6 +39,8 @@ import io.github.brrenat.seekervault.policy.record as policyRecord
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
+import io.github.brrenat.seekervault.servers.ServerSupport
+import io.github.brrenat.seekervault.servers.directManifest
 import io.github.brrenat.seekervault.transactions.Finding
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
@@ -2047,6 +2050,136 @@ class InboxViewModelTest {
         val reviewed = viewModel.state.value.preparations[transfer] as Preparation.Ready
         assertEquals(Verdict.Verified, reviewed.inspection.verdict)
         assertTrue(checkNotNull(viewModel.state.value.assessments[transfer]).facts.fullyRead)
+    }
+
+    @Test
+    fun aRequestFromAServerThisBuildDoesNotSupportIsReadButNeverApproved() {
+        // SEE-88: the server needs a client plugin this build doesn't carry, so there is nothing
+        // here that would carry its operations out. The request is still read, and can still be
+        // rejected; the affirmative answer is refused before the wallet is even looked at.
+        val (key, selected) = readyToSign()
+        server.manifest =
+            directManifest(
+                serverId = server.serverId,
+                url = URL,
+                required = listOf("jupiter.swap" to 1..1),
+            )
+        runBlocking { repository.refresh(key.connectionId) }
+        val viewModel = viewModel()
+
+        viewModel.approve(key, selected)
+
+        assertEquals(
+            ServerSupport.PluginMissing(listOf(PluginId("jupiter.swap"))),
+            viewModel.support(key.connectionId),
+        )
+        assertEquals(SigningProblem.ServerUnsupported, viewModel.state.value.problem)
+        assertEquals(key, viewModel.state.value.problemKey)
+        // No wallet was opened, and nothing was sent: not an approval the sidecar refused, but one
+        // this phone never made.
+        assertEquals(emptyList<Any>(), adapter.signings)
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertNull(repository.inbox.value.result(key))
+    }
+
+    @Test
+    fun anAcknowledgementIsNotAnsweredForAnUnsupportedServerEither() {
+        // The button is disabled on screen, and the rule holds in the ViewModel too, so it does
+        // not depend on which caller asked (SEE-88).
+        val key = pendingRequest()
+        server.manifest =
+            directManifest(
+                serverId = server.serverId,
+                url = URL,
+                required = listOf("jupiter.swap" to 1..1),
+            )
+        runBlocking { repository.refresh(key.connectionId) }
+        val viewModel = viewModel()
+
+        viewModel.answer(key, Answer.Acknowledge)
+
+        assertEquals(SigningProblem.ServerUnsupported, viewModel.state.value.problem)
+        assertEquals(emptyList<Any>(), gateway.submits)
+    }
+
+    @Test
+    fun rejectingARequestFromAnUnsupportedServerStillWorks() {
+        // Viewable and refusable: what is missing is on this phone, and the owner is not stuck
+        // with a request they can neither answer nor clear.
+        val (key, _) = readyToSign()
+        server.manifest =
+            directManifest(
+                serverId = server.serverId,
+                url = URL,
+                required = listOf("jupiter.swap" to 1..1),
+            )
+        runBlocking { repository.refresh(key.connectionId) }
+        val viewModel = viewModel()
+
+        viewModel.answer(key, Answer.Reject)
+
+        assertEquals(
+            listOf(SubmitResultRequest.ResultCase.REJECTION),
+            gateway.submits.map { it.second.resultCase },
+        )
+    }
+
+    @Test
+    fun nothingIsPreparedForAServerThisBuildDoesNotSupport() {
+        // Preparing is the first step of executing, so it stops with the rest: no transaction is
+        // built for bytes that could never be signed here.
+        val (key, _) = pendingTransfer()
+        server.manifest =
+            directManifest(
+                serverId = server.serverId,
+                url = URL,
+                required = listOf("jupiter.prediction" to 1..1),
+            )
+        runBlocking { repository.refresh(key.connectionId) }
+        val viewModel = viewModel()
+
+        viewModel.prepare(key)
+
+        assertEquals(SigningProblem.ServerUnsupported, viewModel.state.value.problem)
+        assertNull(viewModel.state.value.preparations[key])
+        assertNull(gateway.preparations[key])
+    }
+
+    @Test
+    fun theSameServerIsSupportedByABuildThatCarriesWhatItNeeds() {
+        // The other half of the rule: support is derived from the plugins compiled in, so the same
+        // manifest is executable in a build that has them. Nothing on disk changes.
+        val (key, selected) = readyToSign()
+        server.manifest =
+            directManifest(
+                serverId = server.serverId,
+                url = URL,
+                required = listOf("jupiter.swap" to 1..1),
+            )
+        runBlocking { repository.refresh(key.connectionId) }
+        adapter.answerSigning(
+            SignResult.Signed(
+                ByteString.copyFromUtf8("Sign in to Example"),
+                selected.address,
+                ByteString.copyFrom(ByteArray(64) { 7 }),
+            )
+        )
+        val viewModel =
+            InboxViewModel(
+                repository,
+                wallet,
+                evaluator,
+                history,
+                plugins = PluginRegistry.of(TestPlugin(id = "jupiter.swap")),
+                io = Dispatchers.Unconfined,
+            )
+
+        assertEquals(ServerSupport.Supported, viewModel.support(key.connectionId))
+
+        viewModel.approve(key, selected)
+
+        assertNull(viewModel.state.value.problem)
+        assertEquals(1, adapter.signings.size)
     }
 
     private companion object {

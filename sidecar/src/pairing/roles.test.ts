@@ -12,6 +12,11 @@ import {
   RequestError,
   RequestErrorDetailSchema,
 } from "../gen/seekervault/request/v1/request_pb.js";
+import {
+  ConnectionMode,
+  ServerEnvironment,
+} from "../gen/seekervault/server/v1/manifest_pb.js";
+import { SERVER_PROTOCOL_VERSION } from "../manifest.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
 import { openDatabase } from "../storage/database.ts";
 import {
@@ -129,6 +134,16 @@ const RPCS: ReadonlyArray<{
     // Another connection's ID: past authentication, this gets NOT_FOUND and discloses nothing.
     call: (token) =>
       pairingClient(sidecar.url, token).getConnectionCapabilities({
+        connectionId: UNKNOWN,
+      }),
+  },
+  {
+    name: "PairingService.GetServerManifest",
+    role: "phone",
+    // Another connection's ID: past authentication, this gets NOT_FOUND and discloses nothing,
+    // so a credential for one connection can't read what the server tells another (SEE-88).
+    call: (token) =>
+      pairingClient(sidecar.url, token).getServerManifest({
         connectionId: UNKNOWN,
       }),
   },
@@ -382,6 +397,31 @@ describe("roles", () => {
       phone.phoneToken,
     ).getConnectionCapabilities({ connectionId: phone.connectionId });
     assert.equal(capabilities.updates, undefined);
+  });
+
+  it("tells the paired phone it is a direct server, and requires no client plugin", async () => {
+    // SEE-88: the manifest is how the phone learns the mode rather than assuming one. This
+    // sidecar is always the private kind, and the actions it serves are the app's own.
+    const { manifest } = await pairingClient(
+      sidecar.url,
+      phone.phoneToken,
+    ).getServerManifest({ connectionId: phone.connectionId });
+    assert.equal(manifest?.serverId, sidecar.serverId);
+    assert.equal(manifest?.protocolVersion, SERVER_PROTOCOL_VERSION);
+    assert.equal(manifest?.mode, ConnectionMode.DIRECT);
+    assert.equal(manifest?.reference.case, "direct");
+    assert.equal(
+      manifest?.reference.case === "direct"
+        ? manifest.reference.value.url
+        : undefined,
+      sidecar.url,
+    );
+    assert.deepEqual(manifest?.requiredPlugins, []);
+    assert.deepEqual(manifest?.environments, [ServerEnvironment.PRODUCTION]);
+    // A name the server picked for itself is not this app's word for it: the phone labels a
+    // direct connection by the host the owner paired with.
+    assert.equal(manifest?.displayName, "");
+    assert.ok((manifest?.settingsRevision ?? 0n) > 0n);
   });
 
   it("lets only the owning phone register, rotate, and compare-clear its target", async () => {

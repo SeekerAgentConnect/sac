@@ -2,6 +2,10 @@ package io.github.brrenat.seekervault.connections
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.servers.ServerSupport
+import io.github.brrenat.seekervault.servers.serverSupport
 import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +27,12 @@ data class ConnectionsUiState(
     val message: ConnectionMessage? = null,
     /** Current transport liveness; last successful sync remains on each [Connection]. */
     val updates: ForegroundUpdatesState = ForegroundUpdatesState(),
+    /**
+     * Whether this build supports each connection's server, by connection ID (SEE-88). It is worked
+     * out here from the manifest the connection caches and the plugins compiled into this build,
+     * and never stored: a verdict on disk would outlive the build that reached it.
+     */
+    val support: Map<String, ServerSupport> = emptyMap(),
 )
 
 /** A valid code, with what the phone already knows about its server. */
@@ -96,6 +106,10 @@ sealed interface ConnectionMessage {
 class ConnectionsViewModel(
     private val repository: ConnectionRepository,
     private val foregroundUpdates: StateFlow<ForegroundUpdatesState>? = null,
+    /** The bundled client plugins this build carries, which is what a manifest is matched to. */
+    private val plugins: PluginRegistry = PluginRegistry.bundled(),
+    /** The environment the app asks for; SEE-97 makes it the owner's choice. */
+    private val environment: PluginEnvironment = PluginEnvironment.Production,
     private val cleartextPermitted: (host: String) -> Boolean,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConnectionsUiState())
@@ -106,7 +120,12 @@ class ConnectionsViewModel(
 
     init {
         viewModelScope.launch {
-            repository.connections.collect { list -> _state.update { it.copy(connections = list) } }
+            repository.connections.collect { list ->
+                val support = list.associate { connection ->
+                    connection.id to serverSupport(connection.server, plugins, environment)
+                }
+                _state.update { it.copy(connections = list, support = support) }
+            }
         }
         foregroundUpdates?.let { updates ->
             viewModelScope.launch {
@@ -290,6 +309,8 @@ class ConnectionsViewModel(
                 GatewayException.Kind.CleartextBlocked -> PairingFailure.CleartextBlocked
                 GatewayException.Kind.Unreachable -> PairingFailure.Unreachable
                 GatewayException.Kind.NotFound,
+                // A host that doesn't know Pair is not a sidecar, whatever else it is.
+                GatewayException.Kind.Unimplemented,
                 GatewayException.Kind.BadResponse -> PairingFailure.BadResponse
                 // Neither can come of pairing, which has no request and nothing prepared.
                 GatewayException.Kind.InvalidState,
