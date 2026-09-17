@@ -1,48 +1,127 @@
 # Self-hosting the sidecar with Docker Compose
 
-The stack in [`gateway/compose.yaml`](../../gateway/compose.yaml) runs the sidecar on your own machine — a Mac, or a Linux VPS — behind a gateway, with durable requests on a volume that survives a restart. It has two configurations: plain HTTP on your own machine while you are working locally, and HTTPS on a domain you control when you put it on the internet ([Going public](#going-public-tls-dns-and-ports)). Everything builds from this checkout. There is no image to pull from us, no account to make, and no service of ours in the path.
+The stack in [`gateway/compose.yaml`](../../gateway/compose.yaml) runs the sidecar on your own machine — a Mac, or a Linux VPS — behind a gateway, with durable requests on a volume that survives a restart. It has two configurations: plain HTTP on your own machine while you are working locally, and HTTPS on a domain you control when you put it on the internet ([Going public](#going-public-tls-dns-and-ports)). Everything builds from this checkout: there is no image to pull from us, no account to make with us, and no service of ours in the path.
 
 What this gives you is the server half of Seeker Agent Connect. The phone still reviews and approves every request, and the wallet still signs; the sidecar holds no key and signs nothing ([`docs/architecture.md`](../architecture.md)).
+
+Everything builds from this checkout, and nothing in the path is ours. That is not the same as needing nothing: a public deployment needs a domain and a certificate authority, transfers need somebody's Solana RPC endpoint, and a hosted client needs an authorization server. [What this needs from outside](#what-this-needs-from-outside) is the whole list, with what is optional marked as optional.
 
 **Starting the stack does nothing on its own.** It opens a port and waits. It creates no request, asks for no signature, moves no funds, and runs no LLM. The test agent is not started by `docker compose up` at all.
 
 ## Before you start
 
 - Docker Engine 24 or newer with the Compose v2 plugin. `docker compose version` should print `v2.x`.
-- A clean checkout of this repository. Nothing else: the images build Node, the workspace, and the sidecar from source.
+- `git`, and a clean checkout of this repository. Nothing else: the images build Node, the workspace, and the sidecar from source.
+- For pairing, the app on the Seeker, and — on your own machine — `adb` to forward the port ([`macbook-seeker-quickstart.md`](macbook-seeker-quickstart.md)). The stack runs perfectly well before a phone is paired; it simply has nobody to ask.
+- To put it on the internet, the domain and the open ports in [Going public](#going-public-tls-dns-and-ports).
 
-## Start it
+## What this needs from outside
 
-```sh
-cd gateway
-cp .env.example .env
-```
+Nothing here talks to a service of ours, and nothing phones home. Other people's infrastructure is
+still involved, and it is better named than discovered later.
 
-Open `.env` and replace the two token placeholders with different random values:
+| | When | What it is |
+| --- | --- | --- |
+| Docker, and two base images | Always | `node` and `caddy`, pulled from Docker Hub the first time you build. Both are pinned by tag in the Dockerfiles and `compose.yaml`. |
+| The npm registry | At build time | The workspace installs with `--frozen-lockfile`, so a build resolves exactly the tree `pnpm-lock.yaml` names. Nothing is fetched at run time. |
+| A machine | Always | Your Mac, or a VPS you rent. A VPS provider can read the disk it gives you; the database on it holds request history and the phone's credential hash, and no wallet key. |
+| A domain name, and DNS | Only to go public | You buy it from a registrar and point a record at the host. |
+| A certificate authority | Only to go public | Caddy's default is Let's Encrypt, with ZeroSSL as its fallback. It creates an account tied to `ACME_EMAIL` and answers a challenge on port 80. |
+| A Solana RPC endpoint | Only for transfers | `SOLANA_RPC_URL`. Public endpoints are rate-limited; most people end up with a provider and an API key, and that key is somebody's account. **Without it the sidecar serves no transfer tool at all** — that is the default, and message signing needs no endpoint. |
+| An OAuth authorization server | Only for a hosted MCP client | A product you run (Keycloak and its kind) or sign up for. [`docs/integrations/claude.md`](../integrations/claude.md) says what it must support. Hermes and your own agents need none of this. |
+| A Firebase project | Only for push wake-ups | `FCM_PROJECT_ID`, plus Google credentials in the deployment's environment ([`firebase.md`](firebase.md)). Everything works without it; the phone simply syncs when it is opened, refreshed, or on its periodic job. |
 
-```sh
-openssl rand -hex 32   # MCP_TOKEN
-openssl rand -hex 32   # PHONE_TOKEN
-```
+The two that carry a secret are the RPC endpoint (its URL can contain an API key, which is why the
+sidecar never logs it) and the Firebase credentials (which never go in `.env`). Everything else is
+a name, an address, or a port.
 
-`MCP_TOKEN` is what an agent authenticates with. `PHONE_TOKEN` belongs to the Stage 1 live diagnostic. The sidecar refuses to start while either still holds its placeholder, is shorter than 32 characters, or matches the other. The rest of `.env` is documented in place and can stay as it is for a first run.
+## Deploy it on your own machine
 
-Then build and start:
+A Mac or a Linux desktop, reached over loopback. Nine steps from a clean checkout to a request
+waiting on the phone, and none of them moves any money.
 
-```sh
-docker compose up -d --build
-```
+1. **Get the checkout.**
 
-The first build compiles the workspace and takes a few minutes; later builds reuse the dependency layer. Check it came up:
+   ```sh
+   git clone https://github.com/BrRenat/SeekerAgentWallet.git
+   cd SeekerAgentWallet/gateway
+   ```
 
-```sh
-docker compose ps
-curl -fsS http://127.0.0.1:8080/healthz
-```
+2. **Make the deployment's settings.**
 
-`/healthz` answers `{"status":"ok"}`. It is the one unauthenticated route; everything else needs a token.
+   ```sh
+   cp .env.example .env
+   openssl rand -hex 32   # MCP_TOKEN
+   openssl rand -hex 32   # PHONE_TOKEN
+   ```
 
-Stop the stack with `docker compose down`. Your requests and pairing credentials stay on the `sidecar-data` volume. `docker compose down -v` deletes that volume, and with it the paired phone and every stored request.
+   Put those two values in `.env`. `MCP_TOKEN` is what an agent authenticates with; `PHONE_TOKEN`
+   belongs to the Stage 1 live diagnostic. The sidecar refuses to start while either still holds
+   its placeholder, is shorter than 32 characters, or matches the other. Everything else in the
+   file is documented in place and can stay as it is for a first run.
+
+3. **Build and start.**
+
+   ```sh
+   docker compose up -d --build
+   ```
+
+   The first build compiles the workspace and takes a few minutes; later builds reuse the
+   dependency layer.
+
+4. **Check it came up.**
+
+   ```sh
+   docker compose ps
+   curl -fsS http://127.0.0.1:8080/healthz
+   ```
+
+   `docker compose ps` shows `sidecar` and `gateway`, both healthy, and nothing else. `/healthz`
+   answers `{"status":"ok"}`: it is the one unauthenticated route, and everything else needs a
+   credential.
+
+5. **Print a pairing code.**
+
+   ```sh
+   docker compose exec sidecar node sidecar/dist/pairing/cli.js
+   ```
+
+   It prints a QR code in the terminal and the same code as text. It is one use, it lasts ten
+   minutes by default, and it is the one place this system ever shows a token, because showing it
+   is how pairing works.
+
+6. **Pair the phone.** On the Seeker, open Seeker Agent Connect, go to **Connections → Add
+   connection**, and scan the QR. [`pairing.md`](pairing.md) covers what the phone stores and what
+   to do if the code expires first. On your own machine the code carries a loopback URL, so the
+   phone reaches the sidecar over `adb reverse tcp:8080 tcp:8080`
+   ([`macbook-seeker-quickstart.md`](macbook-seeker-quickstart.md)); a phone on another network
+   needs [the public configuration](#going-public-tls-dns-and-ports) instead.
+
+7. **Check the pairing from the operator's side.**
+
+   ```sh
+   docker compose exec sidecar node sidecar/dist/pairing/cli.js status
+   ```
+
+8. **Point an agent at it.** `http://127.0.0.1:8080/mcp`, with `MCP_TOKEN` as a bearer token. See
+   [Connect an agent](#connect-an-agent).
+
+9. **Make one first request, which moves no money.**
+
+   ```sh
+   docker compose run --rm test-agent capabilities
+   docker compose run --rm test-agent sign "first request" --wait --for 600
+   ```
+
+   `capabilities` only reads: it prints what this sidecar actually serves. `sign` asks the owner's
+   wallet to sign a short message — a real durable request, answered by hand on the phone, that
+   moves nothing and touches no chain. It needs a wallet connected in the app
+   ([`wallet-setup.md`](wallet-setup.md)); without one it exits 9 and says so. `--wait` keeps
+   reading until the owner answers or ten minutes pass, and giving up changes nothing.
+
+Stop the stack with `docker compose down`. Your requests and pairing credentials stay on the
+`sidecar-data` volume. `docker compose down -v` deletes that volume, and with it the paired phone
+and every stored request — see [Deleting things on purpose](#deleting-things-on-purpose).
 
 ## What is running, and what is reachable
 
@@ -167,6 +246,115 @@ check and the test agent use.
 If the phone or an agent refuses the certificate, the certificate is the problem — the refusal is the check working. Do not reach for a self-signed certificate, a private CA, a pinning exception, or a "trust this anyway" setting: release builds of the app do not offer one, and the way to make a phone accept an untrusted certificate is to weaken exactly the check that makes this endpoint safe to expose. Fix the name, the DNS record, or the port instead, and let Caddy issue a real certificate.
 
 
+## Deploy it on a Linux VPS
+
+The same stack, on a machine on the internet, answering for a domain you own. It differs from the
+walkthrough above in three places: the overlay, the two settings the domain provides, and the fact
+that a mistake here is reachable by everyone rather than by you.
+
+1. **Prepare the host.** Install Docker Engine with the Compose plugin, and `git`. Nothing else is
+   needed on the host: no Node, no pnpm, no build tooling.
+
+2. **Open exactly two ports.** 80 and 443, in the provider's firewall or security group and in the
+   host's own (`ufw allow 80,443/tcp`, or its equivalent). Port 80 answers the certificate
+   authority's challenge and redirects; 443 serves everything. **Do not open 8080**: that is the
+   local-development port, it speaks plain HTTP, and the public configuration does not use it.
+
+3. **Point the domain at the host**, with an `A` record — and an `AAAA` record if the host has
+   IPv6. Check it from somewhere else before going on: `dig +short vault.example.com` must return
+   this host's address. The certificate authority resolves that name and connects back to it.
+
+4. **Get the checkout and the settings.**
+
+   ```sh
+   git clone https://github.com/BrRenat/SeekerAgentWallet.git
+   cd SeekerAgentWallet/gateway
+   cp .env.example .env
+   openssl rand -hex 32   # MCP_TOKEN
+   openssl rand -hex 32   # PHONE_TOKEN
+   ```
+
+   In `.env`, set those two, and the two the public overlay requires:
+
+   ```dotenv
+   GATEWAY_DOMAIN=vault.example.com
+   ACME_EMAIL=ops@example.com
+   ```
+
+   `MCP_ALLOWED_HOSTS` and `SIDECAR_PUBLIC_URL` are derived from the domain by the overlay. Do not
+   set them by hand.
+
+5. **Start it with the public overlay.**
+
+   ```sh
+   docker compose -f compose.yaml -f compose.public.yaml up -d --build
+   ```
+
+   This is the command that makes it public, and it is a different command from the one above on
+   purpose.
+
+6. **Watch the certificate arrive.**
+
+   ```sh
+   docker compose logs -f gateway
+   ```
+
+   Caddy asks, answers the challenge, and logs `certificate obtained successfully`. From your own
+   machine, `curl -fsS https://vault.example.com/healthz` should **fail to connect**: `/healthz` is
+   deliberately not public. What should work is the endpoint an agent uses, which answers `401`
+   without a credential:
+
+   ```sh
+   curl -si -X POST https://vault.example.com/mcp | head -1
+   ```
+
+7. **Check the stack from inside**, where the private endpoint lives:
+
+   ```sh
+   docker compose exec gateway wget -qO- http://127.0.0.1:8081/healthz
+   ```
+
+8. **Pair the phone over HTTPS.** Print a code, and scan it from the app:
+
+   ```sh
+   docker compose exec sidecar node sidecar/dist/pairing/cli.js
+   ```
+
+   The code carries `https://vault.example.com`, because the overlay set `SIDECAR_PUBLIC_URL` from
+   the domain. The phone can now reach this deployment from anywhere, over a certificate it trusts
+   on its own — see [Pair the phone over HTTPS](#pair-the-phone-over-https).
+
+9. **Point an agent at `https://vault.example.com/mcp`** — see [Connect an agent](#connect-an-agent)
+   — and make the same first request as step 9 above. It still moves no money, and it still waits
+   for the owner's hand on their own wallet.
+
+Two things that are worth doing on a VPS and are nobody else's job: keep the host patched, and keep
+a backup of the database somewhere that is not the same disk ([Backing up and
+restoring](#backing-up-and-restoring)).
+
+## Connect an agent
+
+There are two ways in, and a deployment serves one of them at a time on its public name.
+
+**Hermes, or any agent you run yourself — the default.** It sends `MCP_TOKEN` as a bearer token,
+and needs nothing else: no authorization server, no account anywhere.
+[`examples/hermes.config.yaml`](../../examples/hermes.config.yaml) is the entry for a stack on the
+same machine, [`examples/hermes.config.hosted.yaml`](../../examples/hermes.config.hosted.yaml) the
+one for a deployment on its own domain, and
+[`docs/integrations/hermes.md`](../integrations/hermes.md#9-hermes-against-the-packaged-stack)
+walks through both. Merge the one entry into your existing `~/.hermes/config.yaml`; nothing here
+asks you to replace that file.
+
+**A hosted client such as Claude — optional, and off unless you turn it on.** A hosted product
+cannot be given `MCP_TOKEN`, so it authorizes a person at an authorization server you choose, and
+the sidecar validates the access token it was issued. That is the third overlay, and
+[`docs/integrations/claude.md`](../integrations/claude.md) is the whole setup.
+
+While the OAuth profile is on, `MCP_TOKEN` no longer opens `/mcp` under the public name. That is
+what makes them alternatives rather than two doors: pick the one your agent can actually use. Both
+reach exactly the same tools, and neither can answer a request — that is still the owner's, by
+hand, on their own phone.
+
 ## The test agent
 
 The test agent is a CLI. It is in the `agent` Compose profile, which means `docker compose up` never starts it — a service in a profile runs only when that profile is named. That is deliberate: no ordinary start of this stack can create a request or reach a wallet.
@@ -194,7 +382,190 @@ docker compose restart sidecar
 docker compose run --rm test-agent get <id>              # still PENDING
 ```
 
-`MCP_DEMO_TOOLS=true` is what serves `vault_request_ack`, and it is for development only. A deployment leaves it `false` and uses a real request instead.
+`MCP_DEMO_TOOLS=true` is what serves `vault_request_ack`, and it is for development only. It reaches the test agent too, which needs it — or `--demo` — before it will run either of its two diagnostics at all. A deployment leaves it `false` and uses a real request instead, such as the `sign` in step 9.
+
+Copying that file somewhere safe is [Backing up and restoring](#backing-up-and-restoring); what a copy of it can and cannot bring back is [What recovery can and cannot do](#what-recovery-can-and-cannot-do).
+
+## Operating it
+
+### Logs
+
+```sh
+docker compose logs -f sidecar
+docker compose logs -f gateway
+```
+
+The sidecar prints its configuration summary at startup — which tools it serves, whether an RPC
+endpoint is configured, whether OAuth is on, where the database is and its schema version — then a
+line per lifecycle event. The gateway prints one line per request.
+
+What never appears in either, by design: a token, a phone credential, a pairing code, an access
+token, the text of a command or a note, the `SOLANA_RPC_URL` value (it can carry an API key), or an
+FCM target. A refusal names the reason, never the credential. Caddy redacts `Authorization` from
+its access log, and the option that would stop it doing so is deliberately absent from both
+Caddyfiles.
+
+Log rotation belongs to Docker, not to this stack: set `max-size` and `max-file` on the daemon's
+logging driver if these are long-running containers.
+
+### Rotating credentials
+
+| What | How | What it breaks |
+| --- | --- | --- |
+| `MCP_TOKEN` | Change it in `gateway/.env`, then `docker compose up -d` | Every agent, at once. Update each one's configuration. The old value stops working the moment the container restarts. |
+| `PHONE_TOKEN` | The same | Only the Stage 1 live diagnostic. |
+| The phone's credential | It cannot be rotated in place: [revoke and pair again](#revoking-the-phone-and-pairing-again) | That connection, and its pending requests. |
+| A pairing code | Nothing to do — it is one use and expires in ten minutes | Nothing. |
+| A Solana RPC key | Change `SOLANA_RPC_URL`, then `docker compose up -d` | Nothing stored; preparation uses the new endpoint from then on. |
+| An OAuth client | At the authorization server, not here | Only that client. The sidecar holds no client credential to rotate. |
+
+Compose recreates a container when its environment changes, so `up -d` is enough; there is no need
+to `down` first, and no need to rebuild for a settings change.
+
+### Revoking the phone, and pairing again
+
+```sh
+docker compose exec sidecar node sidecar/dist/pairing/cli.js status   # which phone is paired
+docker compose exec sidecar node sidecar/dist/pairing/cli.js revoke   # revoke it
+docker compose exec sidecar node sidecar/dist/pairing/cli.js          # a new code
+```
+
+Revoking cancels that connection's pending requests and stops its credential working at once. Do
+it when the phone is lost, sold, or replaced. Then print a new code and scan it from the app's
+**Connections → Add connection**, and remove the stale connection on the phone.
+
+One sidecar has one active phone: pairing a new one revokes the previous connection rather than
+running two ([`docs/security.md`](../security.md#one-active-phone-per-sidecar)).
+
+### Updating
+
+```sh
+git pull
+docker compose up -d --build
+```
+
+Read [the changelog](../changelog/) first. The images rebuild from the new checkout, the containers
+are replaced, and the volumes stay — which is where your requests, your pairing, and your
+certificate live. Database migrations run when the sidecar opens the database, before it listens.
+
+Going **backwards** is the case to know about: a database that a newer sidecar has already migrated
+is refused by an older one, with a message naming both versions. That is deliberate — guessing at a
+schema it does not know would be worse. Restore the backup you took before updating.
+
+### Migrations
+
+Migrations run at startup, in order, each in its own transaction with its version number, so an
+interrupted update leaves the database at the last complete version rather than half-way through
+one. The first startup line names the schema version in force. Nothing has to be run by hand, and
+there is no separate migration command to forget.
+
+### Backing up and restoring
+
+The whole of the sidecar's durable state is one SQLite file on the `sidecar-data` volume, at
+`/data/sidecar.db`. It holds pending and answered requests with their history, the phone's
+connection and the **hash** of its credential, the server ID, the FCM target if one is registered,
+and the bookkeeping the phone's sync uses. It holds **no wallet key, no private key of any kind,
+and nothing the phone keeps for itself**.
+
+Back it up while the stack runs — one consistent file, with no write-ahead log to reason about:
+
+```sh
+docker compose exec sidecar node -e "const{DatabaseSync}=require('node:sqlite');const d=new DatabaseSync('/data/sidecar.db');d.exec(\"VACUUM INTO '/data/backup.db'\");d.close()"
+docker compose cp sidecar:/data/backup.db ./sidecar-$(date +%F).db
+docker compose exec sidecar rm /data/backup.db
+```
+
+Or take it cold. A clean stop closes the database, which leaves no write-ahead log beside the
+file, so the file on its own is the whole backup:
+
+```sh
+docker compose stop sidecar
+docker compose cp sidecar:/data/sidecar.db ./sidecar-$(date +%F).db
+docker compose start sidecar
+```
+
+To restore, put the file back the same way, with the sidecar stopped:
+
+```sh
+docker compose stop sidecar
+docker compose cp ./sidecar-2026-09-17.db sidecar:/data/sidecar.db
+docker compose start sidecar
+```
+
+If the container is gone entirely — after `docker compose down` — reach the volume directly
+instead. It is named after the project, which `compose.yaml` fixes as `seeker-agent-wallet`, and
+`docker volume ls` confirms it. Remove any write-ahead log left behind by a stack that was killed
+rather than stopped:
+
+```sh
+docker run --rm -v seeker-agent-wallet_sidecar-data:/data -v "$PWD":/backup debian:bookworm-slim \
+  sh -c 'rm -f /data/sidecar.db-wal /data/sidecar.db-shm && cp /backup/sidecar-2026-09-17.db /data/sidecar.db'
+```
+
+Then check what you restored:
+
+```sh
+docker compose exec sidecar node sidecar/dist/pairing/cli.js status
+docker compose run --rm test-agent get <a request id you know>
+```
+
+Keep backups off this machine, and treat them as sensitive: no credential can be read out of one,
+but the request history describes what the owner was asked to do and when.
+
+`sidecar/src/backup.test.ts` runs exactly this procedure — a hot backup, an answer recorded after
+it, a restore — and asserts what the next section promises.
+
+### Deleting things on purpose
+
+- **`docker compose down -v`** deletes both volumes. `sidecar-data` takes every stored request and
+  the paired phone with it, and the phone must be paired again. `gateway-data` takes the
+  certificate and the certificate authority account key with it, so the next start asks for a new
+  certificate — and a certificate authority's rate limits are real. Take a backup first, or use
+  `docker compose down`, which keeps both.
+- **Uninstalling the app** removes everything the phone keeps: its connections and their
+  credentials, the owner's Activity records, and the rules they wrote. None of it is backed up by
+  Android, on purpose, and no backup of the sidecar can bring any of it back. Revoke the connection
+  first if the phone is going somewhere.
+- **Deleting the checkout** loses nothing durable. The images rebuild from a fresh clone.
+
+## What recovery can and cannot do
+
+**No wallet key is in this stack, so nothing here can lose or recover funds.** The sidecar holds no
+key, signs nothing, and has no way to send a transaction; the wallet on the phone is the owner's
+and its recovery is the wallet's business, not this guide's. A backup of this stack is a backup of
+*what was asked and what was answered*, and nothing else.
+
+What lives where:
+
+| | Where it is | What a sidecar backup does for it |
+| --- | --- | --- |
+| Requests, their history, and their outcomes | The sidecar's database | Restores it |
+| The phone's connection, as a credential hash, and the server ID | The sidecar's database | Restores it |
+| The owner's answers, their Activity records, the rules they wrote, the wallet they selected | The phone only | Nothing. The phone is the only copy, and nothing backs it up |
+| The certificate and the ACME account | The `gateway-data` volume | Nothing — back that volume up separately, or let Caddy issue again |
+| Wallet keys | The owner's wallet, and nowhere else | Nothing. There is nothing here to restore |
+
+**Restoring an older backup moves the sidecar's record backwards, and that is all it does.** A
+request that was answered after the backup was taken is PENDING again, because the answer is not in
+the file. Nothing is re-executed: no wallet is opened, no transaction is rebuilt, nothing is
+re-signed, and nothing is sent. The sidecar could not do any of those things if it wanted to.
+
+What actually happens next is the owner's phone re-delivering the answer it still holds, which
+settles the request again — the same answer, not a new one. A transfer is the case worth being
+precise about: if the wallet already sent the transaction, that signature is on the chain whatever
+this database says, and a status check reads the chain and settles the request from what it finds.
+It never builds a replacement transaction. So a restored backup cannot make a payment happen twice;
+it can only lose the record of one, and reading the request back restores the record.
+
+Three smaller things follow from the same fact:
+
+- **A backup from before the phone was paired** does not know that phone's credential. The phone
+  gets an authentication error and has to be paired again; its own Activity records survive on the
+  phone.
+- **Requests whose deadline passed while the stack was down** are EXPIRED the next time anything
+  reads them. Restoring does not revive a request past its expiry.
+- **A backup restored onto a newer sidecar** migrates forward on the first start. The other
+  direction is refused, as [Updating](#updating) describes.
 
 ## How the images are built
 

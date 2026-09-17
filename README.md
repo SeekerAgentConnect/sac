@@ -118,6 +118,12 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 
 To go from a fresh MacBook to "Hello Seeker" on the phone, follow [`docs/guides/macbook-seeker-quickstart.md`](docs/guides/macbook-seeker-quickstart.md). It assumes no Android experience. If a step fails, see [`docs/guides/troubleshooting.md`](docs/guides/troubleshooting.md).
 
+## Self-hosting
+
+To run the server half properly — in containers, on your own machine or a VPS you own — follow [`docs/guides/self-hosting.md`](docs/guides/self-hosting.md). It is numbered from a clean checkout to a first request waiting on the phone, for [your own machine](docs/guides/self-hosting.md#deploy-it-on-your-own-machine) and for [a Linux VPS](docs/guides/self-hosting.md#deploy-it-on-a-linux-vps) with HTTPS on a domain you control, and it covers what comes after the first start: [logs, credential rotation, re-pairing, updates, and backups](docs/guides/self-hosting.md#operating-it), and [what recovery can and cannot do](docs/guides/self-hosting.md#what-recovery-can-and-cannot-do).
+
+Everything builds from this checkout, and nothing in the path is ours. It does need things from other people — a domain and a certificate authority to go public, somebody's Solana RPC endpoint for transfers, an authorization server for a hosted client — and [What this needs from outside](docs/guides/self-hosting.md#what-this-needs-from-outside) is the full list. Connecting an agent is [Hermes](docs/integrations/hermes.md) by default, or [Claude over OAuth](docs/integrations/claude.md) as an option.
+
 ## Prerequisites
 
 Tested on a MacBook with macOS 26.5.2 on Apple silicon. Exact versions and setup details are in [`docs/development/toolchain.md`](docs/development/toolchain.md).
@@ -148,6 +154,7 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm check` | Runs Prettier, `buf format`, ESLint, `buf lint`, TypeScript type checks, and the sidecar tests without changing any files | Works |
 | `pnpm check:android` | Runs Spotless (ktfmt), Android unit tests, and Android lint, and builds the debug APK and the instrumentation test APK | Works |
 | `pnpm build` | Compiles the sidecar to `sidecar/dist` | Works |
+| `docker compose up -d --build` (in `gateway/`) | Builds and starts the self-hosted stack on a loopback address ([self-hosting](docs/guides/self-hosting.md)) | NOT RUN: no Docker daemon was available |
 | `pnpm dev:sidecar` | Starts the sidecar with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. | Works |
 | `pnpm pair [status \| revoke]` | Shows a one-use pairing code for the phone, as a QR code and as text. `status` shows the paired phone, and `revoke` revokes it. See [`docs/development/sidecar.md`](docs/development/sidecar.md#pairing-a-phone), and for the app, [`docs/guides/pairing.md`](docs/guides/pairing.md). | Works |
 | `pnpm generate` | Regenerates the TypeScript and Kotlin protocol code and the binary fixtures from `proto/`; needs network access | Works |
