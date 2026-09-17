@@ -167,6 +167,9 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         (application as SeekerVaultApplication).foregroundUpdates.onForeground()
+        // The feeds' own listener, which is a separate transport to a separate service and shares
+        // no state with the one above (SEE-91).
+        (application as SeekerVaultApplication).foregroundFeeds.onForeground()
         viewModel.onAppVisible()
         connections.onAppVisible()
         // Also after coming back from the wallet app: an approval whose answer never arrived is
@@ -184,6 +187,7 @@ class MainActivity : ComponentActivity() {
         // fetched inbox.
         if (!isChangingConfigurations) {
             (application as SeekerVaultApplication).foregroundUpdates.onBackground()
+            (application as SeekerVaultApplication).foregroundFeeds.onBackground()
             viewModel.onAppHidden()
             connections.onAppHidden()
             wallet.onAppHidden()

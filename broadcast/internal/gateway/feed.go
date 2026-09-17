@@ -29,10 +29,14 @@ const (
 type Feed struct {
 	store *store.Store
 	now   func() time.Time
+	// Whoever is fanning out, for the one method that grants a listener (ticket.go). Nil when the
+	// deployment configures no broker, which is a working deployment that answers reads and says so
+	// once to anyone who asks to listen.
+	grants Grants
 }
 
-func NewFeed(from *store.Store, now func() time.Time) *Feed {
-	return &Feed{store: from, now: now}
+func NewFeed(from *store.Store, now func() time.Time, grants Grants) *Feed {
+	return &Feed{store: from, now: now, grants: grants}
 }
 
 // GetServerManifest answers with what the publisher registered, or says it has nothing.

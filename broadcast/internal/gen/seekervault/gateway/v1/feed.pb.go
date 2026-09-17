@@ -6,14 +6,15 @@
 
 // What a phone reads from the broadcast gateway (SEE-90, docs/wiki/broadcast-gateway.md).
 //
-// This is the whole of the client API, and every method on it only reads. A phone asks what a
-// publisher says about itself, what it is currently proposing, and what one of those proposals
-// says; there is nothing here to write, because a subscriber has nothing to tell the gateway. The
-// publisher's own server is never contacted by a phone, and never learns that a phone read
-// anything (docs/security.md).
+// This is the whole of the client API, and nothing on it changes a document. A phone asks what a
+// publisher says about itself, what it is currently proposing, what one of those proposals says,
+// and — since SEE-91 — for permission to listen to a channel it already knows about. There is
+// nothing here to write, because a subscriber has nothing to tell the gateway. The publisher's own
+// server is never contacted by a phone, and never learns that a phone read anything
+// (docs/security.md).
 //
 // The publisher API is a separate service on a separate listener (publish.proto). That separation
-// is deployed, not just declared: a read port serves these three methods and no handler that could
+// is deployed, not just declared: a read port serves these four methods and no handler that could
 // change anything, so no routing mistake can turn a read endpoint into a write one.
 //
 // **Nothing about a subscriber may ever appear in this file.** There is no field for a wallet, a
@@ -416,6 +417,184 @@ func (x *GetProposalResponse) GetProposal() *v11.Proposal {
 	return nil
 }
 
+type GetStreamTicketRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The channels to listen to, each "server/<server_id>" and each one the caller holds a feed
+	// reference for. Asking for none is refused; asking for more than the gateway grants at once is
+	// refused with how many it allows, because a bound nobody can see is a bound nobody can respect.
+	Channels      []string `protobuf:"bytes,1,rep,name=channels,proto3" json:"channels,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetStreamTicketRequest) Reset() {
+	*x = GetStreamTicketRequest{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetStreamTicketRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetStreamTicketRequest) ProtoMessage() {}
+
+func (x *GetStreamTicketRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetStreamTicketRequest.ProtoReflect.Descriptor instead.
+func (*GetStreamTicketRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetStreamTicketRequest) GetChannels() []string {
+	if x != nil {
+		return x.Channels
+	}
+	return nil
+}
+
+type GetStreamTicketResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The credential a listener connects with, opaque to the caller. What it is made of is the
+	// stream's business (docs/wiki/broadcast-gateway.md#the-stream); what a caller needs to know is
+	// that it grants the channels below, expires, and can be asked for again.
+	Ticket string `protobuf:"bytes,1,opt,name=ticket,proto3" json:"ticket,omitempty"`
+	// The channels granted, one entry per channel the gateway hosts, in the order they were asked
+	// for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
+	// stale feed reference keeps the stream for its others, and learns which one was not granted by
+	// comparing what it asked with what it got. A malformed channel is refused outright, because that
+	// is a caller's mistake rather than a fact about the gateway.
+	Channels []*StreamChannel `protobuf:"bytes,2,rep,name=channels,proto3" json:"channels,omitempty"`
+	// How long the ticket is good for. A duration rather than an instant, so a phone whose clock
+	// disagrees with the gateway's still renews at the right time — and renewing is ordinary: the
+	// stream ends when the ticket expires, and the listener asks for another.
+	LifetimeSeconds uint32 `protobuf:"varint,3,opt,name=lifetime_seconds,json=lifetimeSeconds,proto3" json:"lifetime_seconds,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetStreamTicketResponse) Reset() {
+	*x = GetStreamTicketResponse{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetStreamTicketResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetStreamTicketResponse) ProtoMessage() {}
+
+func (x *GetStreamTicketResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetStreamTicketResponse.ProtoReflect.Descriptor instead.
+func (*GetStreamTicketResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetStreamTicketResponse) GetTicket() string {
+	if x != nil {
+		return x.Ticket
+	}
+	return ""
+}
+
+func (x *GetStreamTicketResponse) GetChannels() []*StreamChannel {
+	if x != nil {
+		return x.Channels
+	}
+	return nil
+}
+
+func (x *GetStreamTicketResponse) GetLifetimeSeconds() uint32 {
+	if x != nil {
+		return x.LifetimeSeconds
+	}
+	return 0
+}
+
+// StreamChannel maps a channel a caller knows to the name the same documents arrive under on the
+// stream.
+//
+// The two are not the same string on purpose. `channel` is the protocol's: "server/<server_id>",
+// the one a publisher's documents carry and the phone validates (SEE-88). `stream_channel` is the
+// transport's, and it is opaque — it exists so the broker's own namespaces can scope history,
+// recovery and permissions to these channels and nothing else, without the protocol having to know
+// that the broker has namespaces at all.
+type StreamChannel struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Channel       string                 `protobuf:"bytes,1,opt,name=channel,proto3" json:"channel,omitempty"`
+	StreamChannel string                 `protobuf:"bytes,2,opt,name=stream_channel,json=streamChannel,proto3" json:"stream_channel,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamChannel) Reset() {
+	*x = StreamChannel{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamChannel) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamChannel) ProtoMessage() {}
+
+func (x *StreamChannel) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamChannel.ProtoReflect.Descriptor instead.
+func (*StreamChannel) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *StreamChannel) GetChannel() string {
+	if x != nil {
+		return x.Channel
+	}
+	return ""
+}
+
+func (x *StreamChannel) GetStreamChannel() string {
+	if x != nil {
+		return x.StreamChannel
+	}
+	return ""
+}
+
 var File_seekervault_gateway_v1_feed_proto protoreflect.FileDescriptor
 
 const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
@@ -444,11 +623,21 @@ const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
 	"\vproposal_id\x18\x02 \x01(\tR\n" +
 	"proposalId\"T\n" +
 	"\x13GetProposalResponse\x12=\n" +
-	"\bproposal\x18\x01 \x01(\v2!.seekervault.proposal.v1.ProposalR\bproposal2\xdd\x02\n" +
+	"\bproposal\x18\x01 \x01(\v2!.seekervault.proposal.v1.ProposalR\bproposal\"4\n" +
+	"\x16GetStreamTicketRequest\x12\x1a\n" +
+	"\bchannels\x18\x01 \x03(\tR\bchannels\"\x9f\x01\n" +
+	"\x17GetStreamTicketResponse\x12\x16\n" +
+	"\x06ticket\x18\x01 \x01(\tR\x06ticket\x12A\n" +
+	"\bchannels\x18\x02 \x03(\v2%.seekervault.gateway.v1.StreamChannelR\bchannels\x12)\n" +
+	"\x10lifetime_seconds\x18\x03 \x01(\rR\x0flifetimeSeconds\"P\n" +
+	"\rStreamChannel\x12\x18\n" +
+	"\achannel\x18\x01 \x01(\tR\achannel\x12%\n" +
+	"\x0estream_channel\x18\x02 \x01(\tR\rstreamChannel2\xd1\x03\n" +
 	"\vFeedService\x12x\n" +
 	"\x11GetServerManifest\x120.seekervault.gateway.v1.GetServerManifestRequest\x1a1.seekervault.gateway.v1.GetServerManifestResponse\x12l\n" +
 	"\rListProposals\x12,.seekervault.gateway.v1.ListProposalsRequest\x1a-.seekervault.gateway.v1.ListProposalsResponse\x12f\n" +
-	"\vGetProposal\x12*.seekervault.gateway.v1.GetProposalRequest\x1a+.seekervault.gateway.v1.GetProposalResponseB\xff\x01\n" +
+	"\vGetProposal\x12*.seekervault.gateway.v1.GetProposalRequest\x1a+.seekervault.gateway.v1.GetProposalResponse\x12r\n" +
+	"\x0fGetStreamTicket\x12..seekervault.gateway.v1.GetStreamTicketRequest\x1a/.seekervault.gateway.v1.GetStreamTicketResponseB\xff\x01\n" +
 	"\x1acom.seekervault.gateway.v1B\tFeedProtoP\x01Z\\github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (
@@ -463,7 +652,7 @@ func file_seekervault_gateway_v1_feed_proto_rawDescGZIP() []byte {
 	return file_seekervault_gateway_v1_feed_proto_rawDescData
 }
 
-var file_seekervault_gateway_v1_feed_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_seekervault_gateway_v1_feed_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_seekervault_gateway_v1_feed_proto_goTypes = []any{
 	(*GetServerManifestRequest)(nil),  // 0: seekervault.gateway.v1.GetServerManifestRequest
 	(*GetServerManifestResponse)(nil), // 1: seekervault.gateway.v1.GetServerManifestResponse
@@ -471,24 +660,30 @@ var file_seekervault_gateway_v1_feed_proto_goTypes = []any{
 	(*ListProposalsResponse)(nil),     // 3: seekervault.gateway.v1.ListProposalsResponse
 	(*GetProposalRequest)(nil),        // 4: seekervault.gateway.v1.GetProposalRequest
 	(*GetProposalResponse)(nil),       // 5: seekervault.gateway.v1.GetProposalResponse
-	(*v1.ServerManifest)(nil),         // 6: seekervault.server.v1.ServerManifest
-	(*v11.Proposal)(nil),              // 7: seekervault.proposal.v1.Proposal
+	(*GetStreamTicketRequest)(nil),    // 6: seekervault.gateway.v1.GetStreamTicketRequest
+	(*GetStreamTicketResponse)(nil),   // 7: seekervault.gateway.v1.GetStreamTicketResponse
+	(*StreamChannel)(nil),             // 8: seekervault.gateway.v1.StreamChannel
+	(*v1.ServerManifest)(nil),         // 9: seekervault.server.v1.ServerManifest
+	(*v11.Proposal)(nil),              // 10: seekervault.proposal.v1.Proposal
 }
 var file_seekervault_gateway_v1_feed_proto_depIdxs = []int32{
-	6, // 0: seekervault.gateway.v1.GetServerManifestResponse.manifest:type_name -> seekervault.server.v1.ServerManifest
-	7, // 1: seekervault.gateway.v1.ListProposalsResponse.proposals:type_name -> seekervault.proposal.v1.Proposal
-	7, // 2: seekervault.gateway.v1.GetProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
-	0, // 3: seekervault.gateway.v1.FeedService.GetServerManifest:input_type -> seekervault.gateway.v1.GetServerManifestRequest
-	2, // 4: seekervault.gateway.v1.FeedService.ListProposals:input_type -> seekervault.gateway.v1.ListProposalsRequest
-	4, // 5: seekervault.gateway.v1.FeedService.GetProposal:input_type -> seekervault.gateway.v1.GetProposalRequest
-	1, // 6: seekervault.gateway.v1.FeedService.GetServerManifest:output_type -> seekervault.gateway.v1.GetServerManifestResponse
-	3, // 7: seekervault.gateway.v1.FeedService.ListProposals:output_type -> seekervault.gateway.v1.ListProposalsResponse
-	5, // 8: seekervault.gateway.v1.FeedService.GetProposal:output_type -> seekervault.gateway.v1.GetProposalResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	9,  // 0: seekervault.gateway.v1.GetServerManifestResponse.manifest:type_name -> seekervault.server.v1.ServerManifest
+	10, // 1: seekervault.gateway.v1.ListProposalsResponse.proposals:type_name -> seekervault.proposal.v1.Proposal
+	10, // 2: seekervault.gateway.v1.GetProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
+	8,  // 3: seekervault.gateway.v1.GetStreamTicketResponse.channels:type_name -> seekervault.gateway.v1.StreamChannel
+	0,  // 4: seekervault.gateway.v1.FeedService.GetServerManifest:input_type -> seekervault.gateway.v1.GetServerManifestRequest
+	2,  // 5: seekervault.gateway.v1.FeedService.ListProposals:input_type -> seekervault.gateway.v1.ListProposalsRequest
+	4,  // 6: seekervault.gateway.v1.FeedService.GetProposal:input_type -> seekervault.gateway.v1.GetProposalRequest
+	6,  // 7: seekervault.gateway.v1.FeedService.GetStreamTicket:input_type -> seekervault.gateway.v1.GetStreamTicketRequest
+	1,  // 8: seekervault.gateway.v1.FeedService.GetServerManifest:output_type -> seekervault.gateway.v1.GetServerManifestResponse
+	3,  // 9: seekervault.gateway.v1.FeedService.ListProposals:output_type -> seekervault.gateway.v1.ListProposalsResponse
+	5,  // 10: seekervault.gateway.v1.FeedService.GetProposal:output_type -> seekervault.gateway.v1.GetProposalResponse
+	7,  // 11: seekervault.gateway.v1.FeedService.GetStreamTicket:output_type -> seekervault.gateway.v1.GetStreamTicketResponse
+	8,  // [8:12] is the sub-list for method output_type
+	4,  // [4:8] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_gateway_v1_feed_proto_init() }
@@ -502,7 +697,7 @@ func file_seekervault_gateway_v1_feed_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_gateway_v1_feed_proto_rawDesc), len(file_seekervault_gateway_v1_feed_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

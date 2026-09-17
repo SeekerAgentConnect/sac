@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.request.v1.messageSignature
 import io.github.brrenat.seekervault.request.v1.submitResultRequest
 import io.github.brrenat.seekervault.request.v1.transactionSubmission
 import io.github.brrenat.seekervault.request.v1.unknownOutcome
+import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.ManifestExpectation
@@ -75,6 +76,34 @@ sealed interface FeedOutcome {
      * gateway).
      */
     data object NoGateway : FeedOutcome
+}
+
+/** What a publisher's settings came to, from a read or from the stream (SEE-91). */
+sealed interface FeedSettings {
+    /** The settings moved forward, and the connection now holds them. */
+    data class Stored(val manifest: ServerManifest) : FeedSettings
+
+    /** What arrived is what is already held. */
+    data object Unchanged : FeedSettings
+
+    /**
+     * A manifest that broke a rule, and nothing was written.
+     *
+     * A feed keeps the settings it validated until a manifest passes every rule at a higher
+     * revision, which is why a contradiction is reported rather than stored: the phone has no way
+     * to tell which version the publisher meant, and the one it already checked is the one its
+     * proposals were checked against.
+     */
+    data class Refused(val problem: ManifestProblem) : FeedSettings
+
+    /** The gateway couldn't be reached, or answered with something unusable. */
+    data class Failed(val outcome: CheckOutcome) : FeedSettings
+
+    /** This build has no gateway to read settings through. */
+    data object NoGateway : FeedSettings
+
+    /** No such connection, or one that is not a feed. */
+    data object NotAFeed : FeedSettings
 }
 
 /** What the inbox shows (docs/guides/pending-requests.md). */
@@ -355,7 +384,14 @@ class ConnectionRepository(
             }
         val message =
             try {
-                gateway.resolve(reference)
+                when (val answer = gateway.resolve(reference)) {
+                    is FeedManifest.Held -> answer.manifest
+                    // Nothing was asked to be spared, so nothing may be withheld: a gateway that
+                    // answers "unchanged" to a phone holding no revision is not answering this
+                    // request, and a feed added from it would have no settings at all.
+                    is FeedManifest.Unchanged ->
+                        return FeedOutcome.Failed(GatewayException.Kind.BadResponse.toOutcome())
+                }
             } catch (e: GatewayException) {
                 return FeedOutcome.Failed(e.kind.toOutcome())
             }
@@ -400,6 +436,70 @@ class ConnectionRepository(
             publish()
         }
         return FeedOutcome.Added(connection)
+    }
+
+    /**
+     * Reads a feed's settings and applies them, telling the gateway which revision is already held
+     * so an unchanged one costs one small answer (SEE-91).
+     */
+    suspend fun refreshSettings(id: String): FeedSettings {
+        val connection =
+            find(id)?.takeIf { it.mode == ConnectionMode.GatewayFeed }
+                ?: return FeedSettings.NotAFeed
+        val gateway = feeds ?: return FeedSettings.NoGateway
+        val held = connection.server.manifest?.settingsRevision ?: 0L
+        val answer =
+            try {
+                gateway.resolve(FeedReference(connection.serverUrl, connection.serverId), held)
+            } catch (e: GatewayException) {
+                return FeedSettings.Failed(e.kind.toOutcome())
+            }
+        return when (answer) {
+            is FeedManifest.Unchanged -> FeedSettings.Unchanged
+            is FeedManifest.Held -> applySettings(id, answer.manifest)
+        }
+    }
+
+    /**
+     * Applies a publisher's settings to a feed, from wherever they arrived.
+     *
+     * The stream delivers the same document a read would (SEE-91), so it goes through this one
+     * path: the same validator, the same expectation built from the feed's own reference, and the
+     * same contradiction rule. A streamed manifest is therefore not trusted more than a read one —
+     * it is only faster.
+     *
+     * The owner's own label for the connection is left alone. It was theirs to set, and a publisher
+     * renaming its server is not a reason to rename what someone called it on their phone.
+     */
+    suspend fun applySettings(id: String, message: WireManifest): FeedSettings {
+        val connection =
+            find(id)?.takeIf { it.mode == ConnectionMode.GatewayFeed }
+                ?: return FeedSettings.NotAFeed
+        val result =
+            manifestFrom(
+                message,
+                ManifestExpectation(
+                    serverId = connection.serverId,
+                    mode = ConnectionMode.GatewayFeed,
+                    origin = connection.serverUrl,
+                    heldRevision = connection.server.manifest?.settingsRevision,
+                ),
+            )
+        val manifest =
+            when (result) {
+                is ManifestResult.Valid -> result.manifest
+                is ManifestResult.Invalid -> return FeedSettings.Refused(result.problem)
+            }
+        if (manifest == connection.server.manifest) return FeedSettings.Unchanged
+        return when (val record = validated(manifest, connection.server)) {
+            is ServerRecord.Known -> {
+                update(id) { it.copy(server = record) }
+                FeedSettings.Stored(record.manifest)
+            }
+            // validated refuses one thing and one thing only: content that moved while the
+            // revision stood still. A feed must hold a manifest it checked, so nothing is written.
+            else -> FeedSettings.Refused(ManifestProblem.ChangedWithoutRevision)
+        }
     }
 
     /**

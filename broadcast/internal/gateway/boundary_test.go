@@ -81,24 +81,42 @@ func withoutComments(source string) string {
 	return strings.Join(kept, "\n")
 }
 
-// The gateway is called; it calls nobody. No publisher is ever contacted — that is the point of the
-// mode rather than a detail of it, because a publisher that could be reached could be told which
-// phones are interested in it — and no chain, provider or phone either. A fan-out will one day
-// speak to Centrifugo (SEE-91), and it will do it through dispatch.Dispatcher, which is a seam this
-// check is meant to make people use.
-func TestTheGatewayNeverCallsOut(t *testing.T) {
+// The gateway is called; it calls nobody it serves. No publisher is ever contacted — that is the
+// point of the mode rather than a detail of it, because a publisher that could be reached could be
+// told which phones are interested in it — and no chain, provider or phone either.
+//
+// One package calls out, and only one: internal/stream, to the broker that fans publications out
+// (SEE-91). That is the seam dispatch.Dispatcher exists to keep in one place, and this check is
+// what keeps it there. And a file that can dial may not carry an address: the one thing in this
+// service that opens a connection takes where to open it from its operator, so there is no
+// hostname compiled into the gateway anywhere.
+func TestOnlyTheBrokerClientCallsOut(t *testing.T) {
 	forbidden := regexp.MustCompile(
 		`\b(http\.Get|http\.Post|http\.Head|http\.PostForm|http\.DefaultClient|` +
 			`http\.NewRequest|http\.Client\{|net\.Dial|url\.Parse\(.*publisher)`)
-	var offenders []string
+	broker := filepath.Join("internal", "stream")
+	address := regexp.MustCompile(`https?://[a-z0-9\[]`)
+	var offenders, addresses []string
 	for name, source := range shipped(t) {
-		if forbidden.MatchString(withoutComments(source)) {
+		code := withoutComments(source)
+		if !forbidden.MatchString(code) {
+			continue
+		}
+		if !strings.HasPrefix(name, broker) {
 			offenders = append(offenders, name)
+			continue
+		}
+		if address.MatchString(code) {
+			addresses = append(addresses, name)
 		}
 	}
 	if len(offenders) > 0 {
 		slices.Sort(offenders)
 		t.Fatalf("these files acquired a way to call out: %v", offenders)
+	}
+	if len(addresses) > 0 {
+		slices.Sort(addresses)
+		t.Fatalf("these files carry an address of their own: %v", addresses)
 	}
 }
 
@@ -253,7 +271,16 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			"proposals", "next_page_token", "snapshot_sequence", "unchanged",
 			"channel", "proposal_id",
 			"proposal",
+			// A listener's grant (SEE-91): the channels asked for, the ticket, the channels
+			// granted with the broker's name for each, and how long it lasts. Nothing that
+			// identifies the listener, which is the whole reason this list is pinned.
+			"channels",
+			"ticket", "channels", "lifetime_seconds",
+			"channel", "stream_channel",
 		},
+		// What a subscriber receives (SEE-91): a sequence the gateway counted and a document a
+		// publisher published. A field here would be a field every listener on the channel sees.
+		"event.proto": {"sequence", "manifest", "proposal"},
 		"publish.proto": {
 			"manifest",
 			"status", "settings_revision",
@@ -308,6 +335,7 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 		},
 		documents,
 		dispatch.Logger{Log: slog.New(slog.NewTextHandler(io.Discard, nil))},
+		nil,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		time.Now,
 	)

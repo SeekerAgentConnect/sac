@@ -4,14 +4,15 @@
 
 // What a phone reads from the broadcast gateway (SEE-90, docs/wiki/broadcast-gateway.md).
 //
-// This is the whole of the client API, and every method on it only reads. A phone asks what a
-// publisher says about itself, what it is currently proposing, and what one of those proposals
-// says; there is nothing here to write, because a subscriber has nothing to tell the gateway. The
-// publisher's own server is never contacted by a phone, and never learns that a phone read
-// anything (docs/security.md).
+// This is the whole of the client API, and nothing on it changes a document. A phone asks what a
+// publisher says about itself, what it is currently proposing, what one of those proposals says,
+// and — since SEE-91 — for permission to listen to a channel it already knows about. There is
+// nothing here to write, because a subscriber has nothing to tell the gateway. The publisher's own
+// server is never contacted by a phone, and never learns that a phone read anything
+// (docs/security.md).
 //
 // The publisher API is a separate service on a separate listener (publish.proto). That separation
-// is deployed, not just declared: a read port serves these three methods and no handler that could
+// is deployed, not just declared: a read port serves these four methods and no handler that could
 // change anything, so no routing mistake can turn a read endpoint into a write one.
 //
 // **Nothing about a subscriber may ever appear in this file.** There is no field for a wallet, a
@@ -27,7 +28,7 @@ import { file_seekervault_server_v1_manifest } from "../../server/v1/manifest_pb
  * Describes the file seekervault/gateway/v1/feed.proto.
  */
 export const file_seekervault_gateway_v1_feed = /*@__PURE__*/
-  fileDesc("CiFzZWVrZXJ2YXVsdC9nYXRld2F5L3YxL2ZlZWQucHJvdG8SFnNlZWtlcnZhdWx0LmdhdGV3YXkudjEiTgoYR2V0U2VydmVyTWFuaWZlc3RSZXF1ZXN0EhEKCXNlcnZlcl9pZBgBIAEoCRIfChdrbm93bl9zZXR0aW5nc19yZXZpc2lvbhgCIAEoBCKCAQoZR2V0U2VydmVyTWFuaWZlc3RSZXNwb25zZRI3CghtYW5pZmVzdBgBIAEoCzIlLnNlZWtlcnZhdWx0LnNlcnZlci52MS5TZXJ2ZXJNYW5pZmVzdBIRCgl1bmNoYW5nZWQYAiABKAgSGQoRc2V0dGluZ3NfcmV2aXNpb24YAyABKAQibwoUTGlzdFByb3Bvc2Fsc1JlcXVlc3QSDwoHY2hhbm5lbBgBIAEoCRIRCglwYWdlX3NpemUYAiABKA0SEgoKcGFnZV90b2tlbhgDIAEoCRIfChdrbm93bl9zbmFwc2hvdF9zZXF1ZW5jZRgEIAEoBCKUAQoVTGlzdFByb3Bvc2Fsc1Jlc3BvbnNlEjQKCXByb3Bvc2FscxgBIAMoCzIhLnNlZWtlcnZhdWx0LnByb3Bvc2FsLnYxLlByb3Bvc2FsEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCRIZChFzbmFwc2hvdF9zZXF1ZW5jZRgDIAEoBBIRCgl1bmNoYW5nZWQYBCABKAgiOgoSR2V0UHJvcG9zYWxSZXF1ZXN0Eg8KB2NoYW5uZWwYASABKAkSEwoLcHJvcG9zYWxfaWQYAiABKAkiSgoTR2V0UHJvcG9zYWxSZXNwb25zZRIzCghwcm9wb3NhbBgBIAEoCzIhLnNlZWtlcnZhdWx0LnByb3Bvc2FsLnYxLlByb3Bvc2FsMt0CCgtGZWVkU2VydmljZRJ4ChFHZXRTZXJ2ZXJNYW5pZmVzdBIwLnNlZWtlcnZhdWx0LmdhdGV3YXkudjEuR2V0U2VydmVyTWFuaWZlc3RSZXF1ZXN0GjEuc2Vla2VydmF1bHQuZ2F0ZXdheS52MS5HZXRTZXJ2ZXJNYW5pZmVzdFJlc3BvbnNlEmwKDUxpc3RQcm9wb3NhbHMSLC5zZWVrZXJ2YXVsdC5nYXRld2F5LnYxLkxpc3RQcm9wb3NhbHNSZXF1ZXN0Gi0uc2Vla2VydmF1bHQuZ2F0ZXdheS52MS5MaXN0UHJvcG9zYWxzUmVzcG9uc2USZgoLR2V0UHJvcG9zYWwSKi5zZWVrZXJ2YXVsdC5nYXRld2F5LnYxLkdldFByb3Bvc2FsUmVxdWVzdBorLnNlZWtlcnZhdWx0LmdhdGV3YXkudjEuR2V0UHJvcG9zYWxSZXNwb25zZUKvAQooaW8uZ2l0aHViLmJycmVuYXQuc2Vla2VydmF1bHQuZ2F0ZXdheS52MUIJRmVlZFByb3RvUAGiAgNTR1iqAhZTZWVrZXJ2YXVsdC5HYXRld2F5LlYxygIWU2Vla2VydmF1bHRcR2F0ZXdheVxWMeICIlNlZWtlcnZhdWx0XEdhdGV3YXlcVjFcR1BCTWV0YWRhdGHqAhhTZWVrZXJ2YXVsdDo6R2F0ZXdheTo6VjFiBnByb3RvMw", [file_seekervault_proposal_v1_proposal, file_seekervault_server_v1_manifest]);
+  fileDesc("CiFzZWVrZXJ2YXVsdC9nYXRld2F5L3YxL2ZlZWQucHJvdG8SFnNlZWtlcnZhdWx0LmdhdGV3YXkudjEiTgoYR2V0U2VydmVyTWFuaWZlc3RSZXF1ZXN0EhEKCXNlcnZlcl9pZBgBIAEoCRIfChdrbm93bl9zZXR0aW5nc19yZXZpc2lvbhgCIAEoBCKCAQoZR2V0U2VydmVyTWFuaWZlc3RSZXNwb25zZRI3CghtYW5pZmVzdBgBIAEoCzIlLnNlZWtlcnZhdWx0LnNlcnZlci52MS5TZXJ2ZXJNYW5pZmVzdBIRCgl1bmNoYW5nZWQYAiABKAgSGQoRc2V0dGluZ3NfcmV2aXNpb24YAyABKAQibwoUTGlzdFByb3Bvc2Fsc1JlcXVlc3QSDwoHY2hhbm5lbBgBIAEoCRIRCglwYWdlX3NpemUYAiABKA0SEgoKcGFnZV90b2tlbhgDIAEoCRIfChdrbm93bl9zbmFwc2hvdF9zZXF1ZW5jZRgEIAEoBCKUAQoVTGlzdFByb3Bvc2Fsc1Jlc3BvbnNlEjQKCXByb3Bvc2FscxgBIAMoCzIhLnNlZWtlcnZhdWx0LnByb3Bvc2FsLnYxLlByb3Bvc2FsEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCRIZChFzbmFwc2hvdF9zZXF1ZW5jZRgDIAEoBBIRCgl1bmNoYW5nZWQYBCABKAgiOgoSR2V0UHJvcG9zYWxSZXF1ZXN0Eg8KB2NoYW5uZWwYASABKAkSEwoLcHJvcG9zYWxfaWQYAiABKAkiSgoTR2V0UHJvcG9zYWxSZXNwb25zZRIzCghwcm9wb3NhbBgBIAEoCzIhLnNlZWtlcnZhdWx0LnByb3Bvc2FsLnYxLlByb3Bvc2FsIioKFkdldFN0cmVhbVRpY2tldFJlcXVlc3QSEAoIY2hhbm5lbHMYASADKAkifAoXR2V0U3RyZWFtVGlja2V0UmVzcG9uc2USDgoGdGlja2V0GAEgASgJEjcKCGNoYW5uZWxzGAIgAygLMiUuc2Vla2VydmF1bHQuZ2F0ZXdheS52MS5TdHJlYW1DaGFubmVsEhgKEGxpZmV0aW1lX3NlY29uZHMYAyABKA0iOAoNU3RyZWFtQ2hhbm5lbBIPCgdjaGFubmVsGAEgASgJEhYKDnN0cmVhbV9jaGFubmVsGAIgASgJMtEDCgtGZWVkU2VydmljZRJ4ChFHZXRTZXJ2ZXJNYW5pZmVzdBIwLnNlZWtlcnZhdWx0LmdhdGV3YXkudjEuR2V0U2VydmVyTWFuaWZlc3RSZXF1ZXN0GjEuc2Vla2VydmF1bHQuZ2F0ZXdheS52MS5HZXRTZXJ2ZXJNYW5pZmVzdFJlc3BvbnNlEmwKDUxpc3RQcm9wb3NhbHMSLC5zZWVrZXJ2YXVsdC5nYXRld2F5LnYxLkxpc3RQcm9wb3NhbHNSZXF1ZXN0Gi0uc2Vla2VydmF1bHQuZ2F0ZXdheS52MS5MaXN0UHJvcG9zYWxzUmVzcG9uc2USZgoLR2V0UHJvcG9zYWwSKi5zZWVrZXJ2YXVsdC5nYXRld2F5LnYxLkdldFByb3Bvc2FsUmVxdWVzdBorLnNlZWtlcnZhdWx0LmdhdGV3YXkudjEuR2V0UHJvcG9zYWxSZXNwb25zZRJyCg9HZXRTdHJlYW1UaWNrZXQSLi5zZWVrZXJ2YXVsdC5nYXRld2F5LnYxLkdldFN0cmVhbVRpY2tldFJlcXVlc3QaLy5zZWVrZXJ2YXVsdC5nYXRld2F5LnYxLkdldFN0cmVhbVRpY2tldFJlc3BvbnNlQq8BCihpby5naXRodWIuYnJyZW5hdC5zZWVrZXJ2YXVsdC5nYXRld2F5LnYxQglGZWVkUHJvdG9QAaICA1NHWKoCFlNlZWtlcnZhdWx0LkdhdGV3YXkuVjHKAhZTZWVrZXJ2YXVsdFxHYXRld2F5XFYx4gIiU2Vla2VydmF1bHRcR2F0ZXdheVxWMVxHUEJNZXRhZGF0YeoCGFNlZWtlcnZhdWx0OjpHYXRld2F5OjpWMWIGcHJvdG8z", [file_seekervault_proposal_v1_proposal, file_seekervault_server_v1_manifest]);
 
 /**
  * Describes the message seekervault.gateway.v1.GetServerManifestRequest.
@@ -70,6 +71,27 @@ export const GetProposalRequestSchema = /*@__PURE__*/
  */
 export const GetProposalResponseSchema = /*@__PURE__*/
   messageDesc(file_seekervault_gateway_v1_feed, 5);
+
+/**
+ * Describes the message seekervault.gateway.v1.GetStreamTicketRequest.
+ * Use `create(GetStreamTicketRequestSchema)` to create a new message.
+ */
+export const GetStreamTicketRequestSchema = /*@__PURE__*/
+  messageDesc(file_seekervault_gateway_v1_feed, 6);
+
+/**
+ * Describes the message seekervault.gateway.v1.GetStreamTicketResponse.
+ * Use `create(GetStreamTicketResponseSchema)` to create a new message.
+ */
+export const GetStreamTicketResponseSchema = /*@__PURE__*/
+  messageDesc(file_seekervault_gateway_v1_feed, 7);
+
+/**
+ * Describes the message seekervault.gateway.v1.StreamChannel.
+ * Use `create(StreamChannelSchema)` to create a new message.
+ */
+export const StreamChannelSchema = /*@__PURE__*/
+  messageDesc(file_seekervault_gateway_v1_feed, 8);
 
 /**
  * FeedService is the read-only client API. It is unauthenticated on purpose: a feed is a

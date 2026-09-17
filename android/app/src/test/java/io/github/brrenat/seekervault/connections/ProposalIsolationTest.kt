@@ -108,18 +108,21 @@ class ProposalIsolationTest {
         var answers: List<WireProposal> = emptyList()
         val asked = mutableListOf<FeedReference>()
 
-        override suspend fun proposals(reference: FeedReference): List<WireProposal> {
+        override suspend fun snapshot(
+            reference: FeedReference,
+            knownSequence: Long,
+        ): FeedSnapshot {
             asked += reference
-            return answers
+            return FeedSnapshot.Read(1L, answers)
         }
     }
 
     private class FakeFeedGateway(private val manifest: WireManifest) : FeedGateway {
         val resolved = mutableListOf<FeedReference>()
 
-        override suspend fun resolve(reference: FeedReference): WireManifest {
+        override suspend fun resolve(reference: FeedReference, knownRevision: Long): FeedManifest {
             resolved += reference
-            return manifest
+            return FeedManifest.Held(manifest)
         }
     }
 

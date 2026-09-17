@@ -3,7 +3,9 @@
 // They drive the real thing: the handlers the binary serves, over a real HTTP listener, with the
 // generated Connect clients, against a real SQLite file. Nothing here stands in for a layer — the
 // only things injected are the clock, so that expiry and retention are assertions rather than
-// waits, and the dispatcher, because Centrifugo is SEE-91 (internal/dispatch).
+// waits, and the fan-out: a broker is a service, and what these tests are about is what the gateway
+// sends it and what it grants a listener, not whether Centrifugo works (internal/stream's own tests
+// drive a real one).
 //
 // The tests are in the external test package on purpose: they may use only what a publisher or a
 // phone could use, so a test cannot pass by reaching inside the service.
@@ -96,11 +98,44 @@ func (r *recorder) all() []dispatch.Delivery {
 	return append([]dispatch.Delivery(nil), r.delivered...)
 }
 
+// grantor is the broker's ticket half in these tests: it names channels the way internal/stream
+// does and signs nothing, so what is asserted here is the gateway's own behaviour — which channels
+// it grants, which it leaves out, and what it refuses.
+type grantor struct {
+	mutex    sync.Mutex
+	granted  [][]string
+	lifetime time.Duration
+	most     int
+	fail     error
+}
+
+func (g *grantor) StreamChannel(channel string) string { return "feed:" + channel }
+
+func (g *grantor) MostChannels() int { return g.most }
+
+func (g *grantor) Grant(channels []string, at time.Time) (string, time.Duration, error) {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+	if g.fail != nil {
+		return "", 0, g.fail
+	}
+	g.granted = append(g.granted, append([]string(nil), channels...))
+	return "ticket-for-" + strings.Join(channels, ",") + "-at-" +
+		at.UTC().Format(time.RFC3339), g.lifetime, nil
+}
+
+func (g *grantor) all() [][]string {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+	return append([][]string(nil), g.granted...)
+}
+
 type harness struct {
 	t          *testing.T
 	documents  *store.Store
 	settings   *config.Config
 	dispatcher *recorder
+	grants     *grantor
 	logs       *captured
 	read       *httptest.Server
 	publish    *httptest.Server
@@ -119,6 +154,18 @@ func newGateway(t *testing.T, change ...func(*config.Config)) *harness {
 }
 
 func gatewayOn(t *testing.T, path string, change ...func(*config.Config)) *harness {
+	t.Helper()
+	return built(t, path, true, change...)
+}
+
+// newGatewayWithoutStream is the deployment that configures no broker: it holds documents, answers
+// reads, drains its outbox to a log line, and has nothing to admit a listener to.
+func newGatewayWithoutStream(t *testing.T) *harness {
+	t.Helper()
+	return built(t, filepath.Join(t.TempDir(), "broadcast.db"), false)
+}
+
+func built(t *testing.T, path string, streaming bool, change ...func(*config.Config)) *harness {
 	t.Helper()
 	documents, err := store.Open(path)
 	if err != nil {
@@ -144,12 +191,17 @@ func gatewayOn(t *testing.T, path string, change ...func(*config.Config)) *harne
 		documents:  documents,
 		settings:   settings,
 		dispatcher: &recorder{},
+		grants:     &grantor{lifetime: time.Hour, most: 4},
 		logs:       &captured{},
 		clock:      published,
 		path:       path,
 	}
 	log := slog.New(slog.NewJSONHandler(one.logs, nil))
-	service := gateway.Build(settings, documents, one.dispatcher, log, one.now)
+	var grants gateway.Grants
+	if streaming {
+		grants = one.grants
+	}
+	service := gateway.Build(settings, documents, one.dispatcher, grants, log, one.now)
 	one.drainer = service.Drainer
 	one.read = httptest.NewServer(service.Read)
 	one.publish = httptest.NewServer(service.Publish)
@@ -319,6 +371,17 @@ func (h *harness) list(channel string, change ...func(*gatewayv1.ListProposalsRe
 	response, err := h.feed.ListProposals(context.Background(), connect.NewRequest(message))
 	if err != nil {
 		h.t.Fatalf("reading a feed failed: %v", err)
+	}
+	return response.Msg
+}
+
+// ticket asks for a listener's grant, the way the phone's session does before it opens a stream.
+func (h *harness) ticket(channels ...string) *gatewayv1.GetStreamTicketResponse {
+	h.t.Helper()
+	response, err := h.feed.GetStreamTicket(context.Background(),
+		connect.NewRequest(&gatewayv1.GetStreamTicketRequest{Channels: channels}))
+	if err != nil {
+		h.t.Fatalf("asking for a ticket failed: %v", err)
 	}
 	return response.Msg
 }

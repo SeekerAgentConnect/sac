@@ -69,4 +69,32 @@ public class FeedServiceClient(
     ),
   )
 
+
+  /**
+   *  Permission to listen to channels this gateway serves (SEE-91).
+   *
+   *  It exists because of what the stream transport is: a unidirectional stream, on which a client
+   *  cannot ask for anything after it connects — not a subscription, not history, not a refresh. Its
+   *  channels are fixed when the connection is made, by the credential it is made with. So the
+   *  gateway grants them: the caller names the channels it already holds feed references for, and
+   *  the answer is a short-lived ticket that admits a listener to exactly the ones this gateway
+   *  hosts.
+   *
+   *  The ticket says which channels and nothing about who. There is no account behind it, no device
+   *  identifier in it, and no record of it kept here — it is minted in the answer and never written
+   *  down, so this method changes nothing and the gateway still knows nothing about its subscribers
+   *  (docs/security.md). It is a scoped, expiring grant rather than a secret: what it admits a
+   *  listener to is a broadcast that every other subscriber to the same channel is receiving too.
+   */
+  override suspend fun getStreamTicket(request: GetStreamTicketRequest, headers: Headers): ResponseMessage<GetStreamTicketResponse> = client.unary(
+    request,
+    headers,
+    MethodSpec(
+    "seekervault.gateway.v1.FeedService/GetStreamTicket",
+      io.github.brrenat.seekervault.gateway.v1.GetStreamTicketRequest::class,
+      io.github.brrenat.seekervault.gateway.v1.GetStreamTicketResponse::class,
+      StreamType.UNARY,
+    ),
+  )
+
 }

@@ -161,6 +161,9 @@ class StageBoundaryTest {
                 File(main, "java/io/github/brrenat/seekervault/wallet/storage"),
                 File(main, "java/io/github/brrenat/seekervault/activity/storage"),
                 File(main, "java/io/github/brrenat/seekervault/policy/storage"),
+                // Where a feed's listener left off (SEE-91). Progress, never content: it holds a
+                // broker position and a snapshot boundary, and the documents live elsewhere.
+                File(main, "java/io/github/brrenat/seekervault/feeds/storage"),
             )
         val syncPackage = File(main, "java/io/github/brrenat/seekervault/sync")
         val storagePackages =
@@ -829,13 +832,17 @@ class StageBoundaryTest {
                 .filter { http.containsMatchIn(it.readText()) }
                 .map { it.name },
         )
-        // The sidecar transports and the one client they share, and nothing else. A new file here
-        // is a new host this app talks to, and has to be read as one.
+        // The sidecar transports, the broadcast gateway's two, and the one client they share.
+        // Nothing else. A new file here is a new host this app talks to, and has to be read as one:
+        // the first three reach the owner's own sidecar, and the last two reach a shared gateway
+        // that is told which channels a phone is interested in and nothing else (SEE-91).
         val allowed =
             setOf(
                 "ConnectConnectionGateway.kt",
                 "ConnectLiveCommandTransport.kt",
                 "ConnectUpdateTransport.kt",
+                "ConnectFeedGateway.kt",
+                "CentrifugoFeedStream.kt",
                 "SeekerVaultApplication.kt",
             )
         val clients = sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.toSet()

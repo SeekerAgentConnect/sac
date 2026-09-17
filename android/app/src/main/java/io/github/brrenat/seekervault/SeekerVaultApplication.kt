@@ -19,6 +19,12 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.feeds.CentrifugoFeedStream
+import io.github.brrenat.seekervault.feeds.ConnectFeedGateway
+import io.github.brrenat.seekervault.feeds.FeedStream
+import io.github.brrenat.seekervault.feeds.ForegroundFeedManager
+import io.github.brrenat.seekervault.feeds.RepositoryFeedHost
+import io.github.brrenat.seekervault.feeds.storage.FeedCursorStore
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import io.github.brrenat.seekervault.notifications.RequestNotificationManager
@@ -158,9 +164,9 @@ class SeekerVaultApplication : Application() {
                 rules = policyStore,
                 // And so do the proposals a feed read (SEE-89). The owner's Activity outlives both.
                 proposals = proposalStore,
-                // No gateway: a publisher's feed is resolved through the shared gateway, and this
-                // build has none to resolve it through (SEE-88; the gateway is SEE-90).
-                feeds = null,
+                // A feed's settings are resolved through the shared broadcast gateway, never by
+                // contacting the publisher's own server (SEE-88, SEE-90).
+                feeds = feedGateway(),
                 deviceName = Build.MODEL,
                 io = connectionIo,
                 syncStore = SyncStore(File(filesDir, "sync")),
@@ -192,19 +198,18 @@ class SeekerVaultApplication : Application() {
      * What this phone holds about publishers' proposals, and everything the owner does about one
      * (SEE-89, docs/wiki/shared-proposals.md).
      *
-     * It reads nothing in this build, and that is deliberate rather than unfinished: a proposal
-     * arrives through the shared gateway, which is SEE-90, and the plugins that read a proposal's
-     * terms and prepare its bytes are SEE-93 and SEE-94. Composed with no feed, `refresh` says so
-     * instead of pretending one was read, and no screen lists proposals because there is nothing
-     * for it to list.
+     * It reads a feed through the gateway now (SEE-91). The plugins that read a proposal's terms
+     * and prepare its bytes are SEE-93 and SEE-94, and there is still no screen that lists
+     * proposals, so what this holds is read by the tests and by the listener rather than by a
+     * person — for one more stage.
      */
     val proposalRepository: ProposalRepository by lazy {
         ProposalRepository(
             store = proposalStore,
             connections = { connectionRepository.connections.value },
             plugins = pluginRegistry,
-            // No gateway, and so nothing to subscribe to (SEE-90 supplies it, SEE-91 the stream).
-            feed = null,
+            // The same gateway the settings come from: one endpoint, one client (SEE-91).
+            feed = feedGateway(),
             history = activityLog,
             io = connectionIo,
         )
@@ -222,6 +227,47 @@ class SeekerVaultApplication : Application() {
         ForegroundUpdateManager(
             connections = connectionRepository.connections,
             synchronization = checkNotNull(connectionRepository.synchronization),
+            dispatcher = connectionIo,
+        )
+    }
+
+    /**
+     * The broadcast gateway a feed is read from, and the stream it is listened to on (SEE-91). Both
+     * are replaced in tests, which is why they are factories rather than singletons.
+     */
+    var feeds: () -> ConnectFeedGateway = { ConnectFeedGateway(httpClient) }
+
+    var feedStream: () -> FeedStream = { CentrifugoFeedStream(httpClient) }
+
+    /**
+     * One client for both feed seams, so a feed's settings and its proposals share a connection.
+     */
+    private val feedGateway: () -> ConnectFeedGateway by lazy {
+        val resolved = feeds()
+        ({ resolved })
+    }
+
+    /**
+     * Where each feed's listener left off, in `filesDir`. It holds progress and no content: losing
+     * it costs one snapshot (SEE-91).
+     */
+    val feedCursors: FeedCursorStore by lazy { FeedCursorStore(File(filesDir, "feeds")) }
+
+    /**
+     * One listener per gateway, for as long as the app is being looked at (SEE-91).
+     *
+     * There is no background worker beside it and no permanent connection: a shared feed has
+     * nothing to deliver to a phone nobody is holding, and what a phone needs after a while away is
+     * a snapshot. The direct path's own background sync is unaffected — it is about a paired
+     * sidecar's requests, which do wait for an owner.
+     */
+    val foregroundFeeds: ForegroundFeedManager by lazy {
+        ForegroundFeedManager(
+            connections = connectionRepository.connections,
+            host = RepositoryFeedHost(connectionRepository, proposalRepository),
+            tickets = feedGateway(),
+            stream = feedStream(),
+            cursors = feedCursors,
             dispatcher = connectionIo,
         )
     }

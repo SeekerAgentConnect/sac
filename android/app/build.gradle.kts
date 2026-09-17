@@ -44,6 +44,11 @@ android {
             // Written by `pnpm generate` from proto/ (buf.gen.yaml); do not edit.
             java.srcDir("src/main/generated/java")
             kotlin.srcDir("src/main/generated/kotlin")
+            // The vendored broker schema (buf.gen.centrifugo.yaml), kept in its own directory and
+            // its own package so an import of it is visible: only feeds/CentrifugoFeedStream.kt
+            // may have one (SEE-91, third_party/centrifugo/README.md).
+            java.srcDir("src/main/generated/centrifugo/java")
+            kotlin.srcDir("src/main/generated/centrifugo/kotlin")
         }
         // Cross-runtime fixtures, shared with the sidecar tests: the protobuf ones, and the
         // transfer transactions the sidecar builds and this app decodes (SAW-020).
@@ -107,6 +112,14 @@ tasks.withType<Test>().configureEach {
     // ConnectLiveCommandTransportTest runs the real sidecar from this repository.
     val repoRoot = layout.projectDirectory.dir("../..")
     systemProperty("seekervault.repoRoot", repoRoot.asFile.absolutePath)
+    // Opt-in integration switches, forwarded from the Gradle invocation to the test JVM: a broker
+    // and a Redis are services, so the tests that need them skip unless someone says where they
+    // are (CentrifugoStreamIntegrationTest, docs/development/broadcast.md). A property Gradle was
+    // given does not reach a test on its own, and a test that silently skipped because of that
+    // would be worse than one that fails.
+    for (name in listOf("seekervault.centrifugo", "seekervault.redis")) {
+        providers.systemProperty(name).orNull?.let { systemProperty(name, it) }
+    }
     inputs
         .dir(repoRoot.dir("sidecar/src"))
         .withPathSensitivity(PathSensitivity.RELATIVE)

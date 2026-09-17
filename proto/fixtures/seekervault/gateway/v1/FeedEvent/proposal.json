@@ -1,0 +1,34 @@
+{
+  "sequence": "2",
+  "proposal": {
+    "serverId": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "channel": "server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "proposalId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "revision": "4",
+    "operation": "swap",
+    "pluginId": "jupiter.swap",
+    "status": "PROPOSAL_STATUS_OPEN",
+    "createdAt": "2026-09-17T09:00:00Z",
+    "updatedAt": "2026-09-17T09:30:00Z",
+    "expiresAt": "2026-09-17T10:00:00Z",
+    "publisherNote": "Ротация в USDC 📉",
+    "values": [
+      {
+        "key": "input_mint",
+        "text": "So11111111111111111111111111111111111111112"
+      },
+      {
+        "key": "output_mint",
+        "text": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+      },
+      {
+        "key": "published_price",
+        "text": "139420000"
+      },
+      {
+        "key": "slippage_bps",
+        "text": "50"
+      }
+    ]
+  }
+}

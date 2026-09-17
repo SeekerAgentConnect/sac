@@ -437,10 +437,11 @@ func TestAPublicationIsFannedOutWithTheDocumentAsItStands(t *testing.T) {
 	if len(deliveries) != 1 || deliveries[0].Revision != 2 {
 		t.Fatalf("the delivery is %+v", deliveries)
 	}
-	carried := &proposalv1.Proposal{}
-	if err := proto.Unmarshal(deliveries[0].Document, carried); err != nil {
+	event := &gatewayv1.FeedEvent{}
+	if err := proto.Unmarshal(deliveries[0].Event, event); err != nil {
 		t.Fatal(err)
 	}
+	carried := event.GetProposal()
 	if carried.GetValues()[1].GetText() != "141000000" {
 		t.Fatalf("the delivery carried revision %d's terms", carried.GetRevision())
 	}

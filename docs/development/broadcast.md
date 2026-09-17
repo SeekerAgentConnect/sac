@@ -116,7 +116,8 @@ while the gateway is up.
 | `internal/rules` | What the gateway accepts, as pure functions: the document rules, the ordering rules, and what a withdrawal leaves behind. The phone's own rules, on this side |
 | `internal/store` | The only place that speaks SQL: six tables, one writer, and a publication that commits with its notice |
 | `internal/gateway` | The two handlers, the credential interceptor, the limiter, the page cursor, the strict JSON codec, and the boundary tests |
-| `internal/dispatch` | The outbox drainer, its backoff, and `Dispatcher` — the seam SEE-91 fills |
+| `internal/dispatch` | The outbox drainer, its backoff, `Dispatcher`, and the event envelope every subscriber receives |
+| `internal/stream` | The broker (SEE-91): publishing an event over its server API, and minting the ticket a listener connects with. The only package that opens a connection, and it takes the address from the operator |
 | `internal/gen` | Generated from `proto/`, committed, and never edited by hand |
 
 ## Tests
@@ -136,10 +137,34 @@ service, and nothing here is mocked that the binary does not also use.
 | `internal/gateway/boundary_test.go` | No HTTP client in shipped code, SQL only in the store, pure rules, no provider named, the schema's columns, the contract's fields, and neither listener serving the other's procedures |
 | `internal/gateway/fixtures_test.go` | The committed cross-runtime fixtures are what the gateway actually answers |
 | `internal/gateway/internal_test.go` | Page tokens, the limiter's arithmetic and bound, who a call is counted against, and that every problem has a code |
+| `internal/gateway/ticket_test.go` | Which channels a listener is granted, which are left out, what is refused, and that asking to listen writes nothing down |
+| `internal/stream/stream_test.go` | What a publication carries, that a retry is one publication, and that every refusal is a failure to retry rather than a delivery |
+| `internal/stream/ticket_test.go` | The claim set, exactly: an empty subject, an expiry, the channels — and a signature that verifies the way the broker verifies it |
+| `internal/stream/broker_test.go` | The same publication against a **real** Centrifugo with the shipped configuration. Opt-in: `SEEKERVAULT_CENTRIFUGO=/path/to/centrifugo go test ./internal/stream/ -run TestBroker` |
 
 The phone's side of the same contract is `GatewayProtocolFixturesTest`, which reads the same fixture
-files and requires the phone's validators to accept what is in them. Between them the loop is
-closed without the two runtimes talking to each other — which is what SEE-91 is for.
+files — including the three `FeedEvent` ones taken from the gateway's own outbox — and requires the
+phone's validators to accept what is in them.
+
+### The stream, end to end
+
+Two tests on the phone's side finish the loop, and one of them needs services:
+
+| Where | What it needs | What it proves |
+| --- | --- | --- |
+| `feeds/UniStreamInteropTest` | nothing (always runs) | the phone's generated client and adapter against real gRPC framing over TLS and HTTP/2: the request it sends, the pushes it decodes, the codes it classifies |
+| `feeds/CentrifugoStreamIntegrationTest` | a Centrifugo and a Redis binary | two real nodes sharing Redis: cross-node delivery, recovery from a cursor, a history gap, an epoch change, a duplicate, a node shutting down, and a listener that cannot keep up |
+
+```sh
+android/gradlew -p android :app:testDebugUnitTest \
+  --tests 'io.github.brrenat.seekervault.feeds.CentrifugoStreamIntegrationTest' \
+  -Dseekervault.centrifugo=/path/to/centrifugo \
+  -Dseekervault.redis=/path/to/redis-server
+```
+
+Both skip cleanly when the binaries are not named, which is why CI runs everything else. What is
+left after them is the device run: a real phone, a real certificate, one origin
+(`docs/testing/stage-7-1.md`).
 
 ## Deployment
 

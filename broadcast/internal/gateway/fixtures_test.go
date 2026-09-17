@@ -158,6 +158,29 @@ func TestTheFixturesAreWhatTheGatewayServes(t *testing.T) {
 	}
 	sameAsFixture(t, "GetProposalResponse", "cancelled", detail.Msg)
 
+	// What a subscriber receives for the same documents (SEE-91): the envelope, taken from the
+	// outbox rather than composed for the occasion. A phone reads these off the stream and runs
+	// what is inside them through the same validators it runs a read through, which is what the
+	// Android side of these fixtures asserts.
+	if sent := gateway.drain(); sent != 4 {
+		t.Fatalf("the outbox held %d deliveries", sent)
+	}
+	events := map[string]*gatewayv1.FeedEvent{}
+	for _, delivery := range gateway.dispatcher.all() {
+		event := &gatewayv1.FeedEvent{}
+		if err := proto.Unmarshal(delivery.Event, event); err != nil {
+			t.Fatal(err)
+		}
+		key := string(delivery.Kind)
+		if delivery.ProposalID != "" {
+			key += "/" + delivery.ProposalID
+		}
+		events[key] = event
+	}
+	sameAsFixture(t, "FeedEvent", "settings", events["manifest"])
+	sameAsFixture(t, "FeedEvent", "proposal", events["proposal/"+proposalA])
+	sameAsFixture(t, "FeedEvent", "withdrawn", events["proposal/"+proposalB])
+
 	// And the withdrawn document is the one the proposal package's own fixture holds, byte for
 	// byte: what the gateway writes on a withdrawal is what the phone's tests already read.
 	withdrawn := &proposalv1.Proposal{}

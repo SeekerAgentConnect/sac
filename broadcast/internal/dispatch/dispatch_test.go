@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/proposal/v1"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/store"
@@ -113,13 +114,17 @@ func TestWhatWasCommittedIsSentAndThenForgotten(t *testing.T) {
 		t.Fatalf("the delivery is about something else: %+v", delivery)
 	}
 	// The document goes with the notice, as it stands now: a subscriber gets what the gateway
-	// holds rather than a hint to come and ask.
-	carried := &proposalv1.Proposal{}
-	if err := proto.Unmarshal(delivery.Document, carried); err != nil {
+	// holds rather than a hint to come and ask. It arrives inside the event envelope every
+	// subscriber reads, with the sequence the channel was at when it was accepted.
+	event := &gatewayv1.FeedEvent{}
+	if err := proto.Unmarshal(delivery.Event, event); err != nil {
 		t.Fatal(err)
 	}
-	if !proto.Equal(carried, proposal(1)) {
-		t.Fatalf("the delivery carried a different document:\n%v", carried)
+	if !proto.Equal(event.GetProposal(), proposal(1)) {
+		t.Fatalf("the delivery carried a different document:\n%v", event.GetProposal())
+	}
+	if event.GetSequence() != 1 {
+		t.Fatalf("the event says sequence %d", event.GetSequence())
 	}
 	if pending, _ := documents.Pending(context.Background()); pending != 0 {
 		t.Fatalf("%d notices are left after a delivery", pending)

@@ -277,9 +277,11 @@ flowchart TB
     Rules["internal/rules<br>own server · own channel · feed only · bounds"] --> Commit
     Commit["one transaction<br>document + outbox notice"] --> Store[("SQLite<br>publications + publisher configuration")]
     Commit --> Drain["internal/dispatch<br>at-least-once, replayable"]
-    Drain -. "SEE-91" .-> Stream["Centrifugo"]
-    Store --> Read["FeedService<br>manifest · page · detail"]
+    Drain --> Broker["Centrifugo · Redis<br>bounded recovery cache"]
+    Broker --> Listen["a listener<br>one ticket, N channels"]
+    Store --> Read["FeedService<br>manifest · page · detail · ticket"]
     Read --> Phone["a phone<br>no credential"]
+    Listen --> Phone
     Phone -- "nothing" --x Store
 ```
 
@@ -296,6 +298,12 @@ flowchart TB
 - **A revision is the idempotency key.** A retry is the same revision with the same content and
   writes nothing; the same revision with different content is a conflict; a lower one is stale; a
   withdrawal is final.
+- **The stream is a faster way to learn something, never a more trusted one.** A publication is
+  fanned out through Centrifugo as an event the phone validates exactly as it validates a read
+  (SEE-91). The broker's history is a bounded recovery cache; when it cannot prove it replayed
+  everything a listener missed, the phone reads the authoritative snapshot from the gateway. A
+  listener's ticket is minted by the gateway, says which channels and nothing about who, and names
+  no host — the stream is one path on the gateway's own origin.
 - **Persist first, fan out second.** The notice commits in the same transaction as the document, so
   a crash between them leaves work to redo rather than a document nobody hears about. Delivery is
   at-least-once and says so — which is exactly what the phone's idempotent apply path is for.

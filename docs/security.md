@@ -114,7 +114,7 @@ What each owner does about one is theirs, and it stays on their phone
   revision, the plugin, the cluster and the parameters they chose — on the phone, and nowhere else.
   It outlives the feed being removed.
 
-### The broadcast gateway holds no person (SEE-90)
+### The broadcast gateway holds no person (SEE-90, SEE-91)
 
 The shared gateway in [`broadcast/`](../broadcast) is what a publisher publishes to and every
 subscribed phone reads from ([`wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md)). It is a
@@ -137,6 +137,23 @@ more than what it does.
   The phone would refuse it too — its own rule is that the origin must equal the one it added the
   feed from — and this is the same rule applied a hop earlier, so neither side depends on the other
   getting it right.
+- **Listening says which channels and nothing about who (SEE-91).** A stream is opened with a
+  ticket the gateway mints: an anonymous subject, an expiry, and the channels. No device
+  identifier, no address, no session, nothing derived from any of them — and the gateway writes no
+  record of having minted one, so a gateway that has been fanning out for a year still knows
+  nothing about its subscribers. A Go test pins the claim set, so adding one is a deliberate act
+  with an argument attached.
+- **The broker is configured so that a listener can only listen.** One unidirectional transport, so
+  a connection has no commands to send at all; every publish, history and presence permission off;
+  presence and join/leave off, so who is listening is not collected anywhere; every other transport
+  disabled; and the broker's own usage statistics turned off, because a service that exists so a
+  developer's server never learns who subscribed to it should not report its own shape either. Its
+  API port and its Redis are on an internal network with no route out of the deployment; the single
+  public path is the one procedure a listener consumes.
+- **The broker holds a cache, not a record.** A bounded history per channel — 256 publications or an
+  hour — in a Redis that is deliberately not persisted, evicting the oldest first. Everything in it
+  can be rebuilt from the gateway, so losing it costs a listener one snapshot. What that history
+  holds is the same public documents the channel broadcast.
 - **A publisher's grant is one server.** The credential says which server the caller publishes as;
   the document's own claim is checked against that, never the other way round. A channel is
   `server/<server_id>`, so a publisher cannot address another's audience, and a withdrawal names no
