@@ -18,6 +18,7 @@ flowchart LR
 | **Agent** | Proposing actions and reading their results | Approve, sign, or see the phone's policy |
 | **Sidecar** (`sidecar/`) | The MCP and phone endpoints. From SAW-010 and SAW-011 on, it also holds requests and their states, prepared transactions, results, idempotency records, and pairing; Stage 5.2 adds durable update revisions/cursors and bounded snapshots. | Hold keys, sign, decide for the user, or execute anything on its own after a restart |
 | **Android app** (`android/`) | Connections and their credentials, policies and their assessments, the user's decision, invoking the wallet, results the sidecar hasn't acknowledged yet, and Stage 5.2's minimal server-state cache/sync metadata | Sign without the user's approval, or trust the agent's description over the transaction's contents |
+| **Broadcast gateway** (`broadcast/`) | From SEE-90: the shared publication and read API for gateway-feed servers — publisher registration and credentials, the manifests and proposals they publish, the per-channel sequence a reader pages against, and the outbox that fans a publication out | Hold anything about a subscriber — an address, a chosen amount, a decision, a result — contact a publisher or a phone, or serve any financial endpoint |
 | **Seed Vault Wallet** | Keys, signing, and sending | Know anything about Seeker Agent Connect |
 
 ### The wallet adapter boundary
@@ -264,6 +265,46 @@ flowchart TB
   `PrepareRequest`, `SubmitResult` or sync upload — all of them already require
   `Connection.usable`, which requires the direct mode (SEE-88).
 
+### The broadcast gateway
+
+From SEE-90 the shared gateway exists: the Go service in [`broadcast/`](../broadcast) that a
+developer's publisher publishes to and every subscribed phone reads from.
+[`wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md) is the full account.
+
+```mermaid
+flowchart TB
+    Publisher["a publisher<br>PublisherService · credential"] --> Rules
+    Rules["internal/rules<br>own server · own channel · feed only · bounds"] --> Commit
+    Commit["one transaction<br>document + outbox notice"] --> Store[("SQLite<br>publications + publisher configuration")]
+    Commit --> Drain["internal/dispatch<br>at-least-once, replayable"]
+    Drain -. "SEE-91" .-> Stream["Centrifugo"]
+    Store --> Read["FeedService<br>manifest · page · detail"]
+    Read --> Phone["a phone<br>no credential"]
+    Phone -- "nothing" --x Store
+```
+
+- **Two APIs, two listeners.** The client API only reads and takes no credential; the publisher API
+  takes one scoped to a single server. A read port serves no handler that could change anything, so
+  the separation survives a routing mistake, and `publish.proto` is not generated for the phone at
+  all.
+- **A credential is the whole grant.** It says which server the caller publishes as, and every
+  document is checked against that rather than against what the document claims. A channel is
+  `server/<server_id>`, so a publisher can only ever address its own audience.
+- **The gateway will not relay a redirection.** A published manifest must be a feed naming this
+  gateway's own origin; a direct manifest carries a URL, and holding one would let a publisher hand
+  every subscribed phone an address of its choosing.
+- **A revision is the idempotency key.** A retry is the same revision with the same content and
+  writes nothing; the same revision with different content is a conflict; a lower one is stale; a
+  withdrawal is final.
+- **Persist first, fan out second.** The notice commits in the same transaction as the document, so
+  a crash between them leaves work to redo rather than a document nobody hears about. Delivery is
+  at-least-once and says so — which is exactly what the phone's idempotent apply path is for.
+- **A walk has a documented boundary, not a transaction.** Every page of one reports the sequence it
+  began at; a page set from mixed moments converges because each document carries its own revision.
+- **It keeps nothing about a reader.** No session, no subscription record, no count. Reading a feed
+  writes nothing down, and there is no column anywhere for an address, an amount, a decision or a
+  result.
+
 ## Trust boundaries
 
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
@@ -283,6 +324,12 @@ flowchart TB
   ahead, and what came of it are written to their own phone and read by it alone; a publisher and
   the gateway learn only that someone subscribed to a channel
   ([`wiki/shared-proposals.md`](wiki/shared-proposals.md)).
+- **The shared gateway is a relay, and is trusted with nothing (SEE-90).** It holds the documents a
+  publisher published and the configuration that says who may publish to which channel, and it has
+  no table, column or endpoint for anything about a subscriber. It contacts no publisher and no
+  phone — a boundary test fails if shipped code acquires an HTTP client — and it cannot serve a
+  manifest that points a phone anywhere but at itself. What it learns from a read is which channel
+  someone asked about ([`wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md)).
 - **Policies stay on the phone.** The sidecar never receives the policy or its assessment, so an agent can't learn or change the rules through it. One global document supplies defaults and one optional override document records where each connection differs; a connection never reads another connection's overrides ([`policy.md`](policy.md)).
 - **A policy advises; it never decides.** Input validation settles what is executable, and it is judged before any policy is consulted. A policy can only add reasons for the owner to read: there is no `BLOCKED`, and no rule can make a preparation the phone couldn't read whole approvable (SAW-025). The editor offers no setting that would change that, because there is none to offer (SAW-027), and the review screen shows the two apart, in their own words, with no tick that crosses between them (SAW-028).
 - **A verdict is read, never acted on.** Nothing stores one. The rules and the records are read again at the moment the owner answers, and an answer whose assessment changed while it was on screen stops instead of going ahead on what they read (SAW-028).

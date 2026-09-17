@@ -1,0 +1,15 @@
+{
+  "proposal": {
+    "serverId": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "channel": "server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "proposalId": "a1b2c3d4-e5f6-4789-abcd-0123456789ab",
+    "revision": "9",
+    "operation": "prediction",
+    "pluginId": "jupiter.prediction",
+    "status": "PROPOSAL_STATUS_CANCELLED",
+    "createdAt": "2026-09-17T08:00:00Z",
+    "updatedAt": "2026-09-17T08:45:00Z",
+    "expiresAt": "2026-09-17T12:00:00Z",
+    "values": [{ "key": "market", "text": "SOL above 200 on 2026-10-01" }]
+  }
+}

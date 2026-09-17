@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+// How a publisher publishes (SEE-90, docs/wiki/broadcast-gateway.md).
+//
+// A developer's server calls this once per thing it wants to say, and then has nothing further to
+// do: the gateway holds the document and every subscribed phone reads it from there. The publisher
+// maintains no connection to any phone, learns nothing about who is subscribed, and is never
+// called by one.
+//
+// It is authenticated, and the credential is the whole of the grant: it says which server the
+// caller publishes as, and every document is checked against that rather than against anything the
+// document claims. There is no field here for a channel on a cancellation and no field anywhere
+// for a server other than the caller's own.
+//
+// **This file is generated for Go only.** The phone and the sidecar are not publishers, so
+// buf.gen.yaml excludes it from their generation: there is no publisher client in the app because
+// there is no publisher client compiled for the app.
+//
+// Retrying is the ordinary case, not an exception: a template that lost its answer, was restarted,
+// or ran twice publishes the same revision again and is told it was unchanged. The contract's own
+// revision is the idempotency key — a publisher's promise about its content — so there is no
+// second key to mint, store or expire.
+package seekervault.gateway.v1;
+
+import "seekervault/proposal/v1/proposal.proto";
+import "seekervault/server/v1/manifest.proto";
+
+// PublisherService is the write API, served on its own listener with its own credential. A
+// deployment can publish the read port to the internet and keep this one on a private address, and
+// the Caddy configuration in broadcast/ routes them separately by default.
+service PublisherService {
+  // Register or replace what this server says about itself. The manifest must be a gateway feed
+  // naming this gateway's own origin and the caller's own channel: a direct manifest carries a
+  // URL, and the gateway refuses to relay one.
+  rpc PublishManifest(PublishManifestRequest) returns (PublishManifestResponse);
+  // Create or update one proposal. The document is the publisher's whole current statement about
+  // it — the gateway stores what it validated and never merges a partial one.
+  rpc PublishProposal(PublishProposalRequest) returns (PublishProposalResponse);
+  // Withdraw one. It takes an ID and a revision rather than a document, because a publisher that
+  // has to cancel may no longer hold what it published — and because the gateway is then the only
+  // thing that writes the transition, in one place, from one state.
+  rpc CancelProposal(CancelProposalRequest) returns (CancelProposalResponse);
+}
+
+// What became of a publication. Both answers mean the gateway holds what the caller sent; they
+// differ in whether anything changed, which is what a retry needs to know.
+enum PublishStatus {
+  PUBLISH_STATUS_UNSPECIFIED = 0;
+  // The document is new, or its content moved to a higher revision. Subscribers are notified.
+  PUBLISH_STATUS_STORED = 1;
+  // The gateway already held exactly this, at this revision. Nothing was written and nothing was
+  // notified: a retry is not an event.
+  PUBLISH_STATUS_UNCHANGED = 2;
+}
+
+message PublishManifestRequest {
+  seekervault.server.v1.ServerManifest manifest = 1;
+}
+
+message PublishManifestResponse {
+  PublishStatus status = 1;
+  // The revision the gateway now holds, which is the one that was sent.
+  uint64 settings_revision = 2;
+}
+
+message PublishProposalRequest {
+  seekervault.proposal.v1.Proposal proposal = 1;
+}
+
+message PublishProposalResponse {
+  PublishStatus status = 1;
+  uint64 revision = 2;
+  // The channel's sequence after this publication: the same counter a reader sees as a snapshot
+  // boundary, so a publisher can tell a subscriber's snapshot apart from the one it just created.
+  uint64 snapshot_sequence = 3;
+}
+
+message CancelProposalRequest {
+  string proposal_id = 1;
+  // The revision this withdrawal is published at, which must be above the one the gateway holds.
+  // Revisions stay the publisher's to choose, including this one: the gateway never invents a
+  // number that a subscriber would then order other documents against.
+  uint64 revision = 2;
+}
+
+message CancelProposalResponse {
+  PublishStatus status = 1;
+  // The document as the gateway now holds it, so the publisher can see exactly what subscribers
+  // will read — including the update time, which is the one field in a proposal the gateway ever
+  // writes, because the withdrawal happened here.
+  seekervault.proposal.v1.Proposal proposal = 2;
+  uint64 snapshot_sequence = 3;
+}

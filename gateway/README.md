@@ -2,6 +2,8 @@
 
 The self-hosting stack: Docker Compose, the gateway in front of the sidecar, and the deployment's configuration.
 
+**This is the owner's own deployment, and not the broadcast gateway.** Everything here belongs to one owner: their sidecar, their reverse proxy, their paired phone. The shared service a developer's publisher publishes to and every subscribed phone reads from is [`broadcast/`](../broadcast) (SEE-90) — a different service with a different operator, and its own compose stack.
+
 - [`compose.yaml`](compose.yaml) — the stack. The sidecar and the gateway start; the test agent sits behind the `agent` profile and does not.
 - [`compose.public.yaml`](compose.public.yaml) — the internet-facing overlay: HTTPS on your own domain, ports 80 and 443.
 - [`compose.oauth.yaml`](compose.oauth.yaml) — the optional OAuth overlay, for a hosted MCP client that authorizes a person instead of carrying a shared token.
