@@ -33,14 +33,12 @@ import {
   invalidActionReason,
   messageBytes,
 } from "./action.ts";
-import type { ConfirmationTracker } from "./confirmation.ts";
+import type { AgentRequests, AgentTransfers } from "./agent-api.ts";
 import { isTerminal } from "./lifecycle.ts";
-import type { TransactionPreparer } from "./preparation.ts";
 import {
   MAX_EXPIRES_IN_SECONDS,
   MIN_EXPIRES_IN_SECONDS,
   networkName,
-  type RequestStore,
 } from "../storage/request-store.ts";
 import { RequestFailure } from "./failure.ts";
 
@@ -328,30 +326,26 @@ const CANCEL_REQUEST_DESCRIPTION =
 export interface RequestToolOptions {
   /** Serves vault_request_ack, a development and demo tool (MCP_DEMO_TOOLS). */
   readonly demoTools?: boolean;
-  /**
-   * Serves vault_transfer. It's absent unless a Solana RPC endpoint is configured
-   * (SOLANA_RPC_URL): without one the sidecar could prepare no transfer, so it offers none.
-   */
-  readonly preparer?: TransactionPreparer;
-  /**
-   * Asks the chain what became of a submitted transaction, when vault_get_request reads one
-   * (SAW-022). Absent with no endpoint configured, which is when nothing can be checked: a
-   * request then stays SUBMITTED, and says so.
-   */
-  readonly tracker?: ConfirmationTracker;
 }
+
+/*
+ * What the core serves is no longer an option handed in beside it: `core.transfers` is present
+ * exactly when a Solana RPC endpoint is configured, and `core.confirmations` with it (SEE-87,
+ * requests/agent-api.ts). Without an endpoint the sidecar could prepare no transfer, so it offers
+ * none, and nothing can be checked on chain: a submitted request then stays SUBMITTED and says so.
+ */
 
 /** Registers the durable request tools on an MCP server session; vault_request_ack only in demo mode. */
 export function registerRequestTools(
   server: McpServer,
-  store: RequestStore,
+  core: AgentRequests,
   log: (message: string) => void,
   options: RequestToolOptions = {},
 ): void {
-  if (options.demoTools === true) registerAckTool(server, store, log);
-  registerSignMessageTool(server, store, log);
-  if (options.preparer !== undefined) {
-    registerTransferTool(server, store, options.preparer, log);
+  if (options.demoTools === true) registerAckTool(server, core, log);
+  registerSignMessageTool(server, core, log);
+  if (core.transfers !== undefined) {
+    registerTransferTool(server, core, core.transfers, log);
   }
 
   server.registerTool(
@@ -375,17 +369,17 @@ export function registerRequestTools(
         operations: [
           ...(options.demoTools === true ? ["ack"] : []),
           "sign_message",
-          ...(options.preparer === undefined ? [] : ["transfer"]),
+          ...(core.transfers === undefined ? [] : ["transfer"]),
         ],
-        wallet_connected: store.connectedWallet() !== undefined,
+        wallet_connected: core.connectedWallet() !== undefined,
         max_message_bytes: MAX_MESSAGE_BYTES,
         max_note_bytes: MAX_NOTE_BYTES,
-        max_pending_requests: store.pendingLimit,
+        max_pending_requests: core.pendingLimit,
         min_expires_in_seconds: MIN_EXPIRES_IN_SECONDS,
         max_expires_in_seconds: MAX_EXPIRES_IN_SECONDS,
-        ...(options.tracker === undefined
+        ...(core.confirmations === undefined
           ? {}
-          : { confirmed_with: options.tracker.endpoint }),
+          : { confirmed_with: core.confirmations.endpoint }),
       })),
   );
 
@@ -403,7 +397,7 @@ export function registerRequestTools(
         openWorldHint: false,
       },
     },
-    () => answer(() => addressView(store.activeWallet())),
+    () => answer(() => addressView(core.activeWallet())),
   );
 
   server.registerTool(
@@ -426,12 +420,14 @@ export function registerRequestTools(
     },
     ({ request_id }) =>
       answerAsync(async () => {
-        const request = store.get(request_id);
+        const request = core.get(request_id);
         // Reading is how the sidecar's knowledge advances: it has no background worker, so a
         // submitted transaction is checked against the chain when somebody asks about it.
-        const tracker = options.tracker;
+        const confirmations = core.confirmations;
         return requestView(
-          tracker === undefined ? request : await tracker.settle(request),
+          confirmations === undefined
+            ? request
+            : await confirmations.settle(request),
         );
       }),
   );
@@ -456,7 +452,7 @@ export function registerRequestTools(
     },
     ({ request_id }) =>
       answer(() => {
-        const request = store.cancel(request_id);
+        const request = core.cancel(request_id);
         log(`request ${idOf(request)} cancelled by the agent`);
         return requestView(request);
       }),
@@ -469,7 +465,7 @@ export function registerRequestTools(
  */
 function registerSignMessageTool(
   server: McpServer,
-  store: RequestStore,
+  core: AgentRequests,
   log: (message: string) => void,
 ): void {
   server.registerTool(
@@ -516,7 +512,7 @@ function registerSignMessageTool(
     },
     ({ wallet, message, idempotency_key, note, expires_in_seconds }) =>
       answer(() => {
-        const { request, created } = store.create({
+        const { request, created } = core.create({
           action: signMessageAction(wallet, message),
           agentNote: note ?? "",
           idempotencyKey: idempotency_key,
@@ -540,8 +536,8 @@ function registerSignMessageTool(
  */
 function registerTransferTool(
   server: McpServer,
-  store: RequestStore,
-  preparer: TransactionPreparer,
+  core: AgentRequests,
+  transfers: AgentTransfers,
   log: (message: string) => void,
 ): void {
   server.registerTool(
@@ -639,13 +635,13 @@ function registerTransferTool(
         // A retry is answered before anything is read from a chain: the tool's contract is that
         // the same idempotency key gives back the same request, and that must not depend on an
         // endpoint being reachable, or on the mint looking the same as it did then.
-        const replay = store.replayOf(idempotency_key, action);
+        const replay = core.replayOf(idempotency_key, action);
         if (replay !== undefined) {
           log(`request ${idOf(replay)} returned again for its idempotency key`);
           return requestView(replay);
         }
-        await preparer.checkAsset(asset);
-        const { request, created } = store.create({
+        await transfers.checkAsset(asset);
+        const { request, created } = core.create({
           action,
           agentNote: note ?? "",
           idempotencyKey: idempotency_key,
@@ -679,7 +675,7 @@ function signMessageAction(wallet: string, text: string): Action {
 /** vault_request_ack: queues a wallet-free acknowledgement. Not a financial action. */
 function registerAckTool(
   server: McpServer,
-  store: RequestStore,
+  core: AgentRequests,
   log: (message: string) => void,
 ): void {
   server.registerTool(
@@ -721,7 +717,7 @@ function registerAckTool(
     },
     ({ text, idempotency_key, note, expires_in_seconds }) =>
       answer(() => {
-        const { request, created } = store.create({
+        const { request, created } = core.create({
           action: create(ActionSchema, {
             kind: { case: "ack", value: { text } },
           }),

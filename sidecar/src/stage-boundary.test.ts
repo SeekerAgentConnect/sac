@@ -7,8 +7,10 @@
  * through src/storage/. SAW-054 allows Firebase Admin only in src/push/, SAW-055 stores one
  * connection-owned target through src/storage/, and SAW-056 sends only an audited content-free
  * invalidation after a durable commit. SAW-059 closes that optional push scope without giving the
- * sender a request body, credential, policy, transaction authority, or wallet operation. These
- * checks fail when that narrow boundary changes.
+ * sender a request body, credential, policy, transaction authority, or wallet operation. SEE-87
+ * makes MCP an optional adapter: it reaches the request core only through requests/agent-api.ts,
+ * nothing but server.ts knows the endpoint exists, and MCP_ENABLED=false serves no /mcp at all.
+ * These checks fail when that narrow boundary changes.
  */
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -254,6 +256,68 @@ describe("stage boundary", () => {
       [],
       "nothing here issues or exchanges a token",
     );
+  });
+
+  it("keeps MCP an optional adapter that reaches the core through one boundary", () => {
+    // SEE-87: MCP is one way an agent reaches this sidecar, not what the sidecar is
+    // (docs/wiki/mcp-adapter.md). The adapter asks the request core through
+    // requests/agent-api.ts, so it cannot reach around idempotency, validation, the lifecycle or
+    // the pending limit — and a second adapter has one named surface rather than a new set of
+    // reach-ins.
+    const adapters = ["mcp-endpoint.ts", "requests/mcp-tools.ts"].map((path) =>
+      join(SRC, path),
+    );
+    for (const file of adapters) assert.ok(existsSync(file), file);
+    const collaborators =
+      /\b(RequestStore|TransactionPreparer|ConfirmationTracker)\b/;
+    assert.deepEqual(
+      adapters
+        .filter((file) => collaborators.test(readFileSync(file, "utf8")))
+        .map((file) => relative(SRC, file)),
+      [],
+      "an adapter names the core's classes again instead of the boundary",
+    );
+
+    // And the core knows nothing about the adapter. Only the file that composes the process may
+    // name it, so turning it off cannot leave a dangling reference in the request core, the phone
+    // API, pairing, updates, or push.
+    const composition = new Set(["server.ts", "mcp-endpoint.ts"]);
+    const importers = shippedSources()
+      .filter((file) => !composition.has(relative(SRC, file)))
+      .filter((file) =>
+        /from "\.{1,2}\/(mcp-endpoint|requests\/mcp-tools)\.ts"/.test(
+          readFileSync(file, "utf8"),
+        ),
+      )
+      .map((file) => relative(SRC, file));
+    assert.deepEqual(importers, []);
+
+    // The boundary itself forwards and holds nothing: no listener, no credential, no SQL, and no
+    // store of its own.
+    const api = readFileSync(join(SRC, "requests/agent-api.ts"), "utf8");
+    for (const forbidden of [
+      /createServer/,
+      /\bSELECT\b/,
+      /\bnew RequestStore\b/,
+      /Authorization/,
+      /bearerToken/,
+    ]) {
+      assert.ok(
+        !forbidden.test(api),
+        `agent-api.ts matches ${String(forbidden)}`,
+      );
+    }
+
+    // The switch is one setting, and the endpoint is built in one place.
+    const config = readFileSync(join(SRC, "config.ts"), "utf8");
+    assert.match(config, /MCP_ENABLED/);
+    const constructions = shippedSources().filter((file) =>
+      /\bcreateMcpEndpoint\(/.test(readFileSync(file, "utf8")),
+    );
+    assert.deepEqual(constructions.map((file) => relative(SRC, file)).sort(), [
+      "mcp-endpoint.ts",
+      "server.ts",
+    ]);
   });
 
   it("serves nothing that swaps, sends, or needs a key of an agent's own", () => {

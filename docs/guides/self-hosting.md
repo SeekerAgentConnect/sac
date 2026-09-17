@@ -379,6 +379,30 @@ what makes them alternatives rather than two doors: pick the one your agent can 
 reach exactly the same tools, and neither can answer a request — that is still the owner's, by
 hand, on their own phone.
 
+### Running with no agent endpoint at all
+
+MCP is one way an agent reaches this sidecar, not what the sidecar is (SEE-87,
+[`docs/wiki/mcp-adapter.md`](../wiki/mcp-adapter.md)). Setting `MCP_ENABLED=false` in
+`gateway/.env` serves no `/mcp`:
+
+```bash
+# in gateway/.env
+MCP_ENABLED=false
+```
+
+`/mcp` then answers 404, and so do both OAuth metadata paths — not served rather than locked,
+because a challenge would suggest some credential would open one. No MCP setting is required: a
+leftover `MCP_TOKEN`, `MCP_ALLOWED_HOSTS` or `MCP_DEMO_TOOLS` is ignored and named in the startup
+log, so you needn't delete a token you may want back. An OAuth profile is refused outright, because
+it would advertise authorization for an endpoint this deployment does not serve.
+
+Everything else is exactly the same: pairing and its one-use code, the phone's credential and what
+it may reach, stored requests and their identity, production updates, push, `/healthz`, and the
+rule that the wallet is asked only after the owner approves by hand. The test-agent container is an
+MCP client, so it has nothing to talk to in this mode — and in this stage nothing else creates
+requests, so the phone sees an empty inbox. Leave the setting alone unless you are deliberately
+running the core without an agent endpoint.
+
 ## The test agent
 
 The test agent is a CLI. It is in the `agent` Compose profile, which means `docker compose up` never starts it — a service in a profile runs only when that profile is named. That is deliberate: no ordinary start of this stack can create a request or reach a wallet.

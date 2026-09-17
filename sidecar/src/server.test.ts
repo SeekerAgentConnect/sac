@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { request } from "node:http";
 import { after, before, describe, it } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -7,6 +8,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import type { Message } from "firebase-admin/messaging";
 
 import { AcknowledgementResult } from "./gen/seekervault/live/v1/live_pb.js";
+import { Network } from "./gen/seekervault/request/v1/request_pb.js";
 import { DISPLAY_COMMAND_TOOL } from "./mcp-endpoint.ts";
 import { REQUEST_ACK_TOOL } from "./requests/mcp-tools.ts";
 import { FcmSender } from "./push/fcm.ts";
@@ -21,6 +23,7 @@ import {
   pairPhone,
   pairingClient,
   phoneClient,
+  requestClient,
   viewOf,
   waitFor,
 } from "./testing/clients.ts";
@@ -28,6 +31,7 @@ import { temporaryDatabasePath } from "./testing/process.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);
+const WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW";
 const logs: string[] = [];
 let sidecar: Sidecar;
 
@@ -51,6 +55,26 @@ function postMcp(
     );
     req.on("error", reject);
     req.end(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }));
+  });
+}
+
+/** A raw GET, so a test can read a path the Connect router never sees. */
+function getPath(
+  path: string,
+  target: Sidecar = sidecar,
+): Promise<{ status: number; body: string }> {
+  const { hostname, port } = new URL(target.url);
+  return new Promise((resolve, reject) => {
+    const req = request({ hostname, port, path, method: "GET" }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk: string) => {
+        body += chunk;
+      });
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+    });
+    req.on("error", reject);
+    req.end();
   });
 }
 
@@ -522,5 +546,135 @@ describe("sidecar", () => {
       assert.ok(!line.includes(MCP_TOKEN) && !line.includes(PHONE_TOKEN), line);
       assert.ok(!line.includes("Hello Seeker"), line);
     }
+  });
+});
+
+/**
+ * The sidecar without its MCP adapter (SEE-87, docs/wiki/mcp-adapter.md).
+ *
+ * MCP is one way an agent reaches this sidecar, not what the sidecar is. With the adapter off the
+ * generic core has to start, serve the phone, pair, and stop exactly as it does with the adapter
+ * on — and /mcp has to be absent rather than merely locked.
+ */
+describe("the sidecar without the MCP adapter", () => {
+  const databasePath = temporaryDatabasePath();
+  const lines: string[] = [];
+  let core: Sidecar;
+
+  before(async () => {
+    core = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        // No mcpToken: the adapter is off. Nothing else about this configuration differs.
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 1,
+        databasePath,
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
+      },
+      { log: (line) => lines.push(line) },
+    );
+  });
+
+  after(async () => {
+    await core.close();
+  });
+
+  it("starts without an MCP token and says the adapter is off", () => {
+    assert.ok(core.url.startsWith("http://127.0.0.1:"));
+    assert.ok(
+      lines.some((line) =>
+        line.startsWith(
+          "the MCP adapter is off (MCP_ENABLED=false): /mcp is not served",
+        ),
+      ),
+      lines.join("\n"),
+    );
+    // Nothing claims an endpoint that isn't there, and nothing mentions a demo tool that
+    // only /mcp could have served.
+    assert.ok(lines.some((line) => line.includes("no MCP endpoint")));
+    assert.ok(!lines.some((line) => line.includes("vault_request_ack")));
+    assert.ok(!lines.some((line) => line.includes("MCP OAuth")));
+  });
+
+  it("does not serve /mcp, and no credential opens it", async () => {
+    // 404 rather than 401: there is no endpoint here, and an authentication challenge would
+    // suggest that some token would open one.
+    assert.equal(await postMcp({}, core), 404);
+    assert.equal(
+      await postMcp(
+        {
+          Authorization: `Bearer ${MCP_TOKEN}`,
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+        },
+        core,
+      ),
+      404,
+    );
+    // And no authorization is advertised for it either.
+    for (const path of [
+      "/.well-known/oauth-protected-resource",
+      "/.well-known/oauth-protected-resource/mcp",
+    ]) {
+      assert.equal((await getPath(path, core)).status, 404);
+    }
+  });
+
+  it("serves the generic APIs: health, pairing, the phone API, and the diagnostic", async () => {
+    const health = await getPath("/healthz", core);
+    assert.equal(health.status, 200);
+    assert.deepEqual(JSON.parse(health.body), { status: "ok" });
+
+    // Direct pairing is untouched: the phone gets its own credential the way it always has.
+    const paired = await pairPhone(core.url, databasePath);
+    assert.equal(paired.serverId, core.serverId);
+    const requests = requestClient(core.url, paired.phoneToken);
+    const pending = await requests.listPending({
+      connectionId: paired.connectionId,
+    });
+    assert.deepEqual(pending.requests, []);
+
+    // Phone permissions are unchanged: a connection this credential doesn't name is still
+    // refused, and the agent's token still opens nothing of the phone's.
+    await assert.rejects(
+      requests.listPending({ connectionId: randomUUID() }),
+      isConnectError(Code.NotFound),
+    );
+    await assert.rejects(
+      requestClient(core.url, MCP_TOKEN).listPending({
+        connectionId: paired.connectionId,
+      }),
+      isConnectError(Code.Unauthenticated),
+    );
+
+    // The wallet binding still publishes, so the wallet-signing rules are the same rules.
+    const published = await requests.publishWallet({
+      connectionId: paired.connectionId,
+      binding: { wallet: WALLET, network: Network.DEVNET },
+    });
+    assert.equal(published.binding?.wallet, WALLET);
+
+    // And the Stage 1 diagnostic keeps its own development token.
+    const phone = await connectPhone(core.url, PHONE_TOKEN);
+    phone.disconnect();
+  });
+
+  it("stops cleanly, and stopping twice is the same as stopping once", async () => {
+    const second = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 1,
+        databasePath: ":memory:",
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
+      },
+      { log: () => undefined },
+    );
+    await second.close();
+    await second.close();
   });
 });
