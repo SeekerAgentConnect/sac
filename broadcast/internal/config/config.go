@@ -43,6 +43,28 @@ type Config struct {
 	// Publications per second and the burst above it, per publisher.
 	PublishRate  float64
 	PublishBurst int
+	// The broker that fans publications out, when one is configured (SEE-91).
+	Stream Stream
+}
+
+// Stream is the fan-out, and an empty URL is a complete answer: the gateway holds the documents,
+// answers reads, keeps its outbox draining to a log line, and tells anyone who asks to listen that
+// there is no stream here. Running one without a broker is a smaller deployment rather than a
+// broken one.
+type Stream struct {
+	// The broker's API origin, reachable from the gateway and from nowhere else — a compose
+	// service name or a loopback port, never the public URL. It is the gateway that talks to the
+	// broker's API; a phone never does, and the broker's API key would let it publish anything to
+	// any channel if it could.
+	URL string
+	// The broker's API key, and the HMAC key it verifies listener tickets with. Both are secrets of
+	// the deployment, not of a publisher: they say nothing about who may publish (that is a
+	// credential in the store) and everything about who may fan out and who may listen.
+	APIKey   string
+	TokenKey string
+	// How long a listener's ticket is good for, and how many channels one may grant.
+	TicketLifetime time.Duration
+	MostChannels   int
 }
 
 // Defaults every setting that has one. They are deliberately modest: a gateway is a shared service,
@@ -57,6 +79,15 @@ const (
 	DefaultReadBurst        = 60
 	DefaultPublishRate      = 2
 	DefaultPublishBurst     = 20
+	// An hour is long enough that a phone in the foreground rarely renews, and short enough that a
+	// grant which escaped stops mattering on its own. The broker ends the connection when it
+	// expires and the listener asks for another, which is a path the client has to have working
+	// anyway — every reconnect takes it.
+	DefaultTicketLifetime = time.Hour
+	// Enough for every feed a phone is plausibly subscribed to, on one connection. It is also the
+	// bound on how much one ticket can cost the broker to honour, which is why it is a number and
+	// not a hope.
+	DefaultMostChannels = 32
 )
 
 // Lookup is os.LookupEnv, injected so the tests configure a gateway without touching the process.
@@ -132,6 +163,43 @@ func Load(lookup Lookup) (*Config, []string) {
 	config.PublishRate = number("BROADCAST_PUBLISH_RATE", DefaultPublishRate, 0.1, 10000)
 	config.PublishBurst = int(number("BROADCAST_PUBLISH_BURST", DefaultPublishBurst, 1, 100000))
 
+	// The stream, all of it or none of it. A URL with no keys would start a gateway that cannot
+	// publish to its broker and cannot grant a listener, and the first sign of it would be an
+	// outbox that never drains — so the three are one setting in three variables, and a partial
+	// one is a problem at startup instead.
+	stream := Stream{
+		URL:            text("BROADCAST_STREAM_URL", ""),
+		APIKey:         text("BROADCAST_STREAM_API_KEY", ""),
+		TokenKey:       text("BROADCAST_STREAM_TOKEN_KEY", ""),
+		TicketLifetime: DefaultTicketLifetime,
+		MostChannels:   DefaultMostChannels,
+	}
+	switch {
+	case stream.URL != "":
+		canonical, err := reachable(stream.URL)
+		if err != nil {
+			note("BROADCAST_STREAM_URL %v", err)
+		} else {
+			stream.URL = canonical
+		}
+		if stream.APIKey == "" {
+			note("BROADCAST_STREAM_API_KEY must be set when BROADCAST_STREAM_URL is: " +
+				"the gateway publishes to the broker's API with it")
+		}
+		if stream.TokenKey == "" {
+			note("BROADCAST_STREAM_TOKEN_KEY must be set when BROADCAST_STREAM_URL is, " +
+				"to the same key the broker verifies connection tokens with: " +
+				"the gateway signs a listener's ticket with it")
+		}
+	case stream.APIKey != "" || stream.TokenKey != "":
+		note("BROADCAST_STREAM_URL must be set when BROADCAST_STREAM_API_KEY or " +
+			"BROADCAST_STREAM_TOKEN_KEY is: without it nothing is fanned out")
+	}
+	stream.TicketLifetime = time.Duration(number("BROADCAST_TICKET_MINUTES",
+		DefaultTicketLifetime.Minutes(), 1, 24*60)) * time.Minute
+	stream.MostChannels = int(number("BROADCAST_MAX_CHANNELS", DefaultMostChannels, 1, 128))
+	config.Stream = stream
+
 	if len(problems) > 0 {
 		return nil, problems
 	}
@@ -178,6 +246,53 @@ func Origin(raw string) (string, error) {
 		}
 	}
 	// An IPv6 host is written in brackets in a URL, and the phone compares the written form.
+	written := host
+	if strings.Contains(host, ":") {
+		written = "[" + host + "]"
+	}
+	if port != "" {
+		written += ":" + port
+	}
+	return scheme + "://" + written, nil
+}
+
+// reachable is the canonical form of a URL the gateway calls, rather than one anybody calls it by
+// (the broker's API, SEE-91). It is a different check from [Origin] on purpose, and the difference
+// is who the address is for.
+//
+// A gateway origin is a public promise: a phone compares it with the feed reference it was added
+// from, so plain HTTP is allowed only on loopback and there is no room for a path. A broker API URL
+// is a link inside one deployment — a compose service name, a private host, a loopback port — that
+// no phone ever sees and nothing compares. So any host may be named over plain HTTP here, and the
+// reason to say so out loud is that it is a weaker rule: what keeps the broker's API key off the
+// network is the network it is on, which is the deployment's job and is documented as such
+// (broadcast/README.md).
+//
+// Still no path, query, fragment or user information: this is an origin the gateway appends its own
+// paths to, and a base URL carrying half a request would produce requests nobody meant.
+func reachable(raw string) (string, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("is not a URL: %w", err)
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	host := strings.ToLower(parsed.Hostname())
+	switch {
+	case host == "":
+		return "", fmt.Errorf("must name a host")
+	case scheme != "http" && scheme != "https":
+		return "", fmt.Errorf("must use HTTP or HTTPS")
+	case parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "":
+		return "", fmt.Errorf("must have no user information, query or fragment")
+	case strings.Trim(parsed.Path, "/") != "":
+		return "", fmt.Errorf("must have no path: the gateway appends its own")
+	}
+	port := parsed.Port()
+	if port != "" {
+		if number, err := strconv.Atoi(port); err != nil || number < 1 || number > 65535 {
+			return "", fmt.Errorf("has a port that is not a port")
+		}
+	}
 	written := host
 	if strings.Contains(host, ":") {
 		written = "[" + host + "]"

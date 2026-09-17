@@ -75,6 +75,11 @@ func codeOf(problem gatewayv1.GatewayProblem) connect.Code {
 		return connect.CodeNotFound
 	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_REQUESTS:
 		return connect.CodeResourceExhausted
+	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_STREAM:
+		// Not a mistake in the request: the method is there and this deployment does not implement
+		// it. It is the same answer a sidecar without live updates gives the phone (SEE-66), and
+		// the phone already reads it as "this one does not do that" rather than as a failure.
+		return connect.CodeUnimplemented
 	default:
 		// Every remaining problem is a document or a request the gateway could not read.
 		return connect.CodeInvalidArgument

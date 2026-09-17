@@ -47,8 +47,18 @@ import kotlinx.coroutines.withContext
 
 /** What reading a feed came to (SEE-89). */
 sealed interface FeedRefresh {
-    /** How many documents were stored, and which rules the refused ones broke. */
-    data class Read(val applied: Int, val refused: List<ProposalProblem>) : FeedRefresh
+    /**
+     * How many documents were stored, which rules the refused ones broke, and the sequence the walk
+     * began at — the boundary a live stream's events are joined to (SEE-91).
+     */
+    data class Read(
+        val applied: Int,
+        val refused: List<ProposalProblem>,
+        val sequence: Long = 0L,
+    ) : FeedRefresh
+
+    /** The channel has not moved since the sequence asked with, so there was nothing to apply. */
+    data class Unchanged(val sequence: Long) : FeedRefresh
 
     /** The gateway couldn't be reached, or answered with something unusable. */
     data class Failed(val outcome: CheckOutcome) : FeedRefresh
@@ -174,14 +184,22 @@ class ProposalRepository(
      * The publisher is not contacted, and nothing about this phone goes out: a subscription names a
      * channel, and that is the whole of what the gateway learns.
      */
-    suspend fun refresh(id: String): FeedRefresh {
+    suspend fun refresh(id: String, knownSequence: Long = 0L): FeedRefresh {
         val connection = feedConnection(id) ?: return FeedRefresh.NotAFeed
         val source = feed ?: return FeedRefresh.NoFeed
-        val messages =
+        val answer =
             try {
-                source.proposals(FeedReference(connection.serverUrl, connection.serverId))
+                source.snapshot(
+                    FeedReference(connection.serverUrl, connection.serverId),
+                    knownSequence,
+                )
             } catch (e: GatewayException) {
                 return FeedRefresh.Failed(e.kind.toOutcome())
+            }
+        val (sequence, messages) =
+            when (answer) {
+                is FeedSnapshot.Unchanged -> return FeedRefresh.Unchanged(answer.sequence)
+                is FeedSnapshot.Read -> answer.sequence to answer.proposals
             }
         var applied = 0
         val refused = mutableListOf<ProposalProblem>()
@@ -193,7 +211,7 @@ class ProposalRepository(
                 is ProposalApplied.NotAFeed -> return FeedRefresh.NotAFeed
             }
         }
-        return FeedRefresh.Read(applied, refused.toList())
+        return FeedRefresh.Read(applied, refused.toList(), sequence)
     }
 
     /**

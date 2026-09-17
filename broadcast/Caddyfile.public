@@ -74,6 +74,31 @@
 		reverse_proxy 127.0.0.1:8091
 	}
 
+	# --- The stream: one gRPC procedure, and only that one (SEE-91) ----------
+	# The path is fixed by the protocol, so this is an allow-list of exactly one
+	# procedure: a listener consumes a stream of publications and can send
+	# nothing on it. The broker's API, its admin surface and Redis are on the
+	# internal network and have no route through here at all.
+	#
+	# h2c because gRPC is an HTTP/2 protocol and the hop behind this proxy is on a
+	# private network: TLS is terminated here, at the one address a phone ever
+	# learns — the gateway's own origin, which is also what a published manifest
+	# has to name (SEE-88). A ticket names no host for exactly that reason.
+	@stream path /centrifugal.centrifugo.unistream.CentrifugoUniStream/Consume
+	handle @stream {
+		reverse_proxy h2c://centrifugo:11000 {
+			# A listener stays open for as long as the screen is on. Nothing here
+			# may cut an idle stream: the transport sends no keep-alive of its
+			# own, and HTTP/2's pings are the phone's (feeds/CentrifugoFeedStream).
+			flush_interval -1
+			transport http {
+				versions h2c
+				read_timeout 0
+				write_timeout 0
+			}
+		}
+	}
+
 	# /healthz is not published: it belongs to the operator, not to the internet.
 	handle {
 		abort

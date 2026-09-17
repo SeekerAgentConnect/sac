@@ -287,6 +287,26 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_TOO_MANY_REQUESTS = 30;</code>
    */
   GATEWAY_PROBLEM_TOO_MANY_REQUESTS(30),
+  /**
+   * <pre>
+   * --- Listening (SEE-91) ---------------------------------------------------
+   * This gateway serves no stream: it holds the documents and answers reads, and nothing is
+   * configured to fan them out. A client gets this once and reads unary from then on, which is the
+   * whole feature working at a smaller size rather than a failure.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_NO_STREAM = 31;</code>
+   */
+  GATEWAY_PROBLEM_NO_STREAM(31),
+  /**
+   * <pre>
+   * More channels in one ticket than the gateway grants at once. The message carries the bound, so
+   * a client can ask again for fewer rather than guess.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_TOO_MANY_CHANNELS = 32;</code>
+   */
+  GATEWAY_PROBLEM_TOO_MANY_CHANNELS(32),
   UNRECOGNIZED(-1),
   ;
 
@@ -561,6 +581,26 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_TOO_MANY_REQUESTS = 30;</code>
    */
   public static final int GATEWAY_PROBLEM_TOO_MANY_REQUESTS_VALUE = 30;
+  /**
+   * <pre>
+   * --- Listening (SEE-91) ---------------------------------------------------
+   * This gateway serves no stream: it holds the documents and answers reads, and nothing is
+   * configured to fan them out. A client gets this once and reads unary from then on, which is the
+   * whole feature working at a smaller size rather than a failure.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_NO_STREAM = 31;</code>
+   */
+  public static final int GATEWAY_PROBLEM_NO_STREAM_VALUE = 31;
+  /**
+   * <pre>
+   * More channels in one ticket than the gateway grants at once. The message carries the bound, so
+   * a client can ask again for fewer rather than guess.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_TOO_MANY_CHANNELS = 32;</code>
+   */
+  public static final int GATEWAY_PROBLEM_TOO_MANY_CHANNELS_VALUE = 32;
 
 
   @java.lang.Override
@@ -614,6 +654,8 @@ public enum GatewayProblem
       case 28: return GATEWAY_PROBLEM_BAD_CURSOR;
       case 29: return GATEWAY_PROBLEM_BAD_PAGE_SIZE;
       case 30: return GATEWAY_PROBLEM_TOO_MANY_REQUESTS;
+      case 31: return GATEWAY_PROBLEM_NO_STREAM;
+      case 32: return GATEWAY_PROBLEM_TOO_MANY_CHANNELS;
       default: return null;
     }
   }

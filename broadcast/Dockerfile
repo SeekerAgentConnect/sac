@@ -29,10 +29,13 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/broadcast ./cmd/broadcast \
 
 # --- runtime ----------------------------------------------------------------
 # Nothing but the two binaries. No shell, no package manager, and — deliberately —
-# no CA certificates: the gateway is called and calls nobody, so there is no
-# outbound connection for a trust store to be needed by. If a later change needs
-# one (SEE-91's Centrifugo, over TLS, from inside the deployment), adding it is a
-# visible line in this file rather than something that was always there.
+# still no CA certificates.
+#
+# SEE-91 gave the gateway one outbound connection: the broker it publishes events
+# to. That link is plain HTTP on an internal compose network with no route out of
+# the deployment, so there is nothing for a trust store to verify. A deployment
+# that puts its broker behind TLS instead needs a bundle here, and adding one is
+# a visible line in this file rather than something that was always there.
 FROM scratch AS runtime
 # The publications and the publisher configuration. It is the only writable path.
 ENV BROADCAST_DATABASE_PATH=/data/broadcast.db

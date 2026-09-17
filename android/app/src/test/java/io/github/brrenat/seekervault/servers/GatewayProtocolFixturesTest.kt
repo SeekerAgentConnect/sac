@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.servers
 
+import io.github.brrenat.seekervault.gateway.v1.FeedEvent
 import io.github.brrenat.seekervault.gateway.v1.GetProposalResponse
 import io.github.brrenat.seekervault.gateway.v1.GetServerManifestResponse
 import io.github.brrenat.seekervault.gateway.v1.ListProposalsResponse
@@ -30,8 +31,9 @@ import org.junit.Test
  * documents the gateway serves are documents this build can use.
  *
  * The publisher, the gateway origin and the documents are the ones the manifest and proposal
- * fixtures already hold, so what is new here is the envelope: the caching answers, the page, and
- * the snapshot boundary a walk reports.
+ * fixtures already hold, so what is new here is the envelope: the caching answers, the page, the
+ * snapshot boundary a walk reports, and — since SEE-91 — what the same documents look like when
+ * they arrive on the stream instead of being asked for.
  */
 class GatewayProtocolFixturesTest {
     @Test
@@ -133,6 +135,56 @@ class GatewayProtocolFixturesTest {
         assertEquals("SOL above 200 on 2026-10-01", proposal.value("market"))
     }
 
+    /**
+     * What arrives on the stream is the same document, in an envelope this build can read (SEE-91).
+     *
+     * These three fixtures are taken from the gateway's own outbox, so they are what a subscriber
+     * actually receives — and the point of reading them here is that the phone runs them through
+     * the same validators it runs a read through. A document is not trusted more for having arrived
+     * quickly.
+     */
+    @Test
+    fun anEventCarriesADocumentThePhoneValidatesLikeAnyOther() {
+        val settings = FeedEvent.parseFrom(bytes("FeedEvent/settings"))
+        assertEquals(1L, settings.sequence)
+        val manifest =
+            (manifestFrom(
+                    settings.manifest,
+                    ManifestExpectation(
+                        serverId = PUBLISHER,
+                        mode = ConnectionMode.GatewayFeed,
+                        origin = GATEWAY,
+                        // The revision the phone already holds: a settings event is how it learns
+                        // there is a newer one.
+                        heldRevision = 11,
+                    ),
+                )
+                    as ManifestResult.Valid)
+                .manifest
+        assertEquals(12L, manifest.settingsRevision)
+        assertEquals(ServerReference.Feed(GATEWAY, channelFor(PUBLISHER)), manifest.reference)
+
+        val published = FeedEvent.parseFrom(bytes("FeedEvent/proposal"))
+        assertEquals(2L, published.sequence)
+        val swap = valid(published.proposal)
+        assertEquals(SWAP_ID, swap.key.proposalId)
+        assertEquals(4L, swap.revision)
+        assertEquals(ProposalStatus.Open, swap.status)
+
+        // A withdrawal is a document with its status closed, not an absence: a phone that acted on
+        // a proposal has to be told what happened to it (SEE-89).
+        val withdrawn = FeedEvent.parseFrom(bytes("FeedEvent/withdrawn"))
+        assertEquals(5L, withdrawn.sequence)
+        val prediction = valid(withdrawn.proposal)
+        assertEquals(PREDICTION_ID, prediction.key.proposalId)
+        assertEquals(ProposalStatus.Cancelled, prediction.status)
+        assertEquals(9L, prediction.revision)
+        assertEquals(Instant.parse("2026-09-17T08:45:00Z"), prediction.updatedAt)
+        // And the sequence is the gateway's count, never the broker's cursor: a later event on the
+        // same channel has a higher one, and neither number is ever compared with the other.
+        assertTrue(withdrawn.sequence > published.sequence)
+    }
+
     @Test
     fun coversEveryFixture() {
         val dir = File(checkNotNull(javaClass.getResource("/$PACKAGE")) { "no fixtures" }.toURI())
@@ -144,6 +196,9 @@ class GatewayProtocolFixturesTest {
                 .toList()
         assertEquals(
             listOf(
+                "FeedEvent/proposal",
+                "FeedEvent/settings",
+                "FeedEvent/withdrawn",
                 "GetProposalResponse/cancelled",
                 "GetServerManifestResponse/manifest",
                 "GetServerManifestResponse/unchanged",

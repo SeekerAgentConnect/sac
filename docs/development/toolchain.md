@@ -47,6 +47,21 @@ and CI runs the same command; installing Go is not needed for `pnpm check`.
 | `google.golang.org/protobuf`, the message runtime | 1.36.12 | `broadcast/go.mod`; it must match the `protocolbuffers/go` generator |
 | `modernc.org/sqlite`, the pure-Go SQLite driver | 1.59.0 | `broadcast/go.mod` |
 
+The broker the gateway fans out through is a service rather than a dependency, and it is pinned
+where the deployment names it:
+
+| Service | Version | Pinned in |
+| --- | --- | --- |
+| Centrifugo | 6.9.6 | `broadcast/compose.yaml` (`centrifugo/centrifugo:v6.9.6`), and the schema in `third_party/centrifugo` is that release's |
+| Redis | 8.2 (alpine) | `broadcast/compose.yaml`; it holds a bounded recovery cache and nothing durable |
+
+**The broker's client schema is vendored, not fetched.** `third_party/centrifugo` holds a
+byte-for-byte copy of the release's `unistream.proto` with its digest in `SHA256SUMS`, and
+`pnpm generate` refuses to run if the file no longer matches — so upgrading is an edit to the file
+and to the digest, in one commit (see that directory's README). An upgrade also moves the version in
+`compose.yaml`: a client schema from one release with a server from another is the mismatch that
+directory exists to prevent.
+
 **Three direct dependencies, and no more.** The rate limiter, the page cursor, the credential
 hashing and the logging are the standard library's, because each is a few lines and the alternative
 is a dependency to audit for a service whose whole point is holding nothing personal.
@@ -104,12 +119,15 @@ before the tests.
 | `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0, with its OkHttp transport and lite codec at the same version |
 | `buf.build/protocolbuffers/go:v1.36.12`, `paths=source_relative` (in `buf.gen.go.yaml`) | `broadcast/internal/gen` | `google.golang.org/protobuf` 1.36.12 |
 | `buf.build/connectrpc/go:v1.21.0`, `paths=source_relative` (in `buf.gen.go.yaml`) | `broadcast/internal/gen` | `connectrpc.com/connect` 1.21.0 |
+| the same three Kotlin plugins (in `buf.gen.centrifugo.yaml`) | `android/app/src/main/generated/centrifugo` | the vendored broker schema, for the phone alone |
 
-- **There are two templates.** `buf.gen.yaml` writes the phone's Kotlin and the sidecar's
+- **There are three templates.** `buf.gen.yaml` writes the phone's Kotlin and the sidecar's
   TypeScript for everything in `proto/` except `seekervault/gateway/v1/publish.proto` — neither of
-  them is a publisher — and `buf.gen.go.yaml` writes the gateway's Go for the three packages it
-  speaks. `pnpm generate` runs both, and `pnpm check:generated` compares all three output
-  directories.
+  them is a publisher; `buf.gen.go.yaml` writes the gateway's Go for the three packages it speaks;
+  and `buf.gen.centrifugo.yaml` writes Kotlin for the vendored broker schema, into its own
+  directory and keeping its own package name, because only the phone speaks that protocol and only
+  one file in it may (SEE-91). `pnpm generate` runs all three, and `pnpm check:generated` compares
+  every output directory.
 - **Generation is covered in the protocol doc.** [`docs/protocol.md`](../protocol.md#generated-code) describes generation, the cross-runtime fixtures, and the stale-output check (`pnpm check:generated`).
 - **The TypeScript output is JavaScript plus type declarations.** Node's type stripping can't run the TypeScript `enum`s that `target=ts` produces. `sidecar/tsconfig.build.json` sets `allowJs`, so `pnpm build` also copies that JavaScript to `dist/`.
 - **Generation needs network access.** `pnpm generate` and `pnpm check:generated` call the Kotlin plugins, which run remotely on the Buf Schema Registry.

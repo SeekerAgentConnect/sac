@@ -1,5 +1,6 @@
 // Generates the protocol code (buf.gen.yaml for the phone and the sidecar, buf.gen.go.yaml for
-// the broadcast gateway) and the binary protobuf fixtures:
+// the broadcast gateway, buf.gen.centrifugo.yaml for the phone's vendored broker schema) and the
+// binary protobuf fixtures:
 // proto/fixtures/<package path>/<Message>/<case>.json → <case>.binpb, via `buf convert`.
 //
 //   pnpm generate           write the output into the repository
@@ -7,6 +8,7 @@
 //
 // Run it through pnpm so the pinned buf and protoc-gen-es from node_modules/.bin are on PATH.
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -28,9 +30,20 @@ const generatedDirs = [
 ];
 // One template per runtime pair. buf.gen.yaml writes the phone's Kotlin and the sidecar's
 // TypeScript; buf.gen.go.yaml writes the broadcast gateway's Go, which is a different subset of
-// the protocol (SEE-90). Each template cleans only its own output directories, so the order is
-// not load-bearing.
-const templates = ["buf.gen.yaml", "buf.gen.go.yaml"];
+// the protocol (SEE-90); buf.gen.centrifugo.yaml writes the phone's client for the vendored broker
+// schema, which neither of the others speaks (SEE-91). Each template cleans only its own output
+// directories, so the order is not load-bearing.
+const templates = [
+  "buf.gen.yaml",
+  "buf.gen.go.yaml",
+  "buf.gen.centrifugo.yaml",
+];
+
+// Schemas we did not write, with the digest of the release they were copied from
+// (third_party/<name>/SHA256SUMS). Generating from an edited copy would produce a client for a
+// protocol no server speaks, so the digest is checked before anything is generated: an upgrade is
+// an edit to the file and to its digest, in one commit, on purpose.
+const vendored = ["third_party/centrifugo"];
 
 const check = process.argv.includes("--check");
 const out = check
@@ -38,6 +51,7 @@ const out = check
   : root;
 
 try {
+  for (const directory of vendored) verifyVendored(directory);
   for (const template of templates) {
     buf("generate", "--template", template, "--output", out);
   }
@@ -84,6 +98,29 @@ try {
   }
 } finally {
   if (check) rmSync(out, { recursive: true, force: true });
+}
+
+// Reads a `shasum -a 256` file and checks every line of it, so the same file a human can run
+// `shasum -a 256 -c SHA256SUMS` against is the one this script trusts.
+function verifyVendored(directory) {
+  const sums = join(root, directory, "SHA256SUMS");
+  for (const line of readFileSync(sums, "utf8").trim().split("\n")) {
+    const [expected, file] = line.trim().split(/\s+/);
+    const actual = createHash("sha256")
+      .update(readFileSync(join(root, directory, file)))
+      .digest("hex");
+    if (actual !== expected) {
+      console.error(
+        [
+          `${directory}/${file} is not the copy ${directory}/SHA256SUMS records.`,
+          `  recorded ${expected}`,
+          `  found    ${actual}`,
+          `Restore the vendored file, or record the new digest deliberately: see ${directory}/README.md.`,
+        ].join("\n"),
+      );
+      process.exit(1);
+    }
+  }
 }
 
 function buf(...args) {

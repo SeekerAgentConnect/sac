@@ -303,6 +303,24 @@ export enum GatewayProblem {
    * @generated from enum value: GATEWAY_PROBLEM_TOO_MANY_REQUESTS = 30;
    */
   TOO_MANY_REQUESTS = 30,
+
+  /**
+   * --- Listening (SEE-91) ---------------------------------------------------
+   * This gateway serves no stream: it holds the documents and answers reads, and nothing is
+   * configured to fan them out. A client gets this once and reads unary from then on, which is the
+   * whole feature working at a smaller size rather than a failure.
+   *
+   * @generated from enum value: GATEWAY_PROBLEM_NO_STREAM = 31;
+   */
+  NO_STREAM = 31,
+
+  /**
+   * More channels in one ticket than the gateway grants at once. The message carries the bound, so
+   * a client can ask again for fewer rather than guess.
+   *
+   * @generated from enum value: GATEWAY_PROBLEM_TOO_MANY_CHANNELS = 32;
+   */
+  TOO_MANY_CHANNELS = 32,
 }
 
 /**

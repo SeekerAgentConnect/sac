@@ -4,14 +4,15 @@
 
 // What a phone reads from the broadcast gateway (SEE-90, docs/wiki/broadcast-gateway.md).
 //
-// This is the whole of the client API, and every method on it only reads. A phone asks what a
-// publisher says about itself, what it is currently proposing, and what one of those proposals
-// says; there is nothing here to write, because a subscriber has nothing to tell the gateway. The
-// publisher's own server is never contacted by a phone, and never learns that a phone read
-// anything (docs/security.md).
+// This is the whole of the client API, and nothing on it changes a document. A phone asks what a
+// publisher says about itself, what it is currently proposing, what one of those proposals says,
+// and — since SEE-91 — for permission to listen to a channel it already knows about. There is
+// nothing here to write, because a subscriber has nothing to tell the gateway. The publisher's own
+// server is never contacted by a phone, and never learns that a phone read anything
+// (docs/security.md).
 //
 // The publisher API is a separate service on a separate listener (publish.proto). That separation
-// is deployed, not just declared: a read port serves these three methods and no handler that could
+// is deployed, not just declared: a read port serves these four methods and no handler that could
 // change anything, so no routing mistake can turn a read endpoint into a write one.
 //
 // **Nothing about a subscriber may ever appear in this file.** There is no field for a wallet, a
@@ -221,6 +222,96 @@ export declare type GetProposalResponse = Message<"seekervault.gateway.v1.GetPro
 export declare const GetProposalResponseSchema: GenMessage<GetProposalResponse>;
 
 /**
+ * @generated from message seekervault.gateway.v1.GetStreamTicketRequest
+ */
+export declare type GetStreamTicketRequest = Message<"seekervault.gateway.v1.GetStreamTicketRequest"> & {
+  /**
+   * The channels to listen to, each "server/<server_id>" and each one the caller holds a feed
+   * reference for. Asking for none is refused; asking for more than the gateway grants at once is
+   * refused with how many it allows, because a bound nobody can see is a bound nobody can respect.
+   *
+   * @generated from field: repeated string channels = 1;
+   */
+  channels: string[];
+};
+
+/**
+ * Describes the message seekervault.gateway.v1.GetStreamTicketRequest.
+ * Use `create(GetStreamTicketRequestSchema)` to create a new message.
+ */
+export declare const GetStreamTicketRequestSchema: GenMessage<GetStreamTicketRequest>;
+
+/**
+ * @generated from message seekervault.gateway.v1.GetStreamTicketResponse
+ */
+export declare type GetStreamTicketResponse = Message<"seekervault.gateway.v1.GetStreamTicketResponse"> & {
+  /**
+   * The credential a listener connects with, opaque to the caller. What it is made of is the
+   * stream's business (docs/wiki/broadcast-gateway.md#the-stream); what a caller needs to know is
+   * that it grants the channels below, expires, and can be asked for again.
+   *
+   * @generated from field: string ticket = 1;
+   */
+  ticket: string;
+
+  /**
+   * The channels granted, one entry per channel the gateway hosts, in the order they were asked
+   * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
+   * stale feed reference keeps the stream for its others, and learns which one was not granted by
+   * comparing what it asked with what it got. A malformed channel is refused outright, because that
+   * is a caller's mistake rather than a fact about the gateway.
+   *
+   * @generated from field: repeated seekervault.gateway.v1.StreamChannel channels = 2;
+   */
+  channels: StreamChannel[];
+
+  /**
+   * How long the ticket is good for. A duration rather than an instant, so a phone whose clock
+   * disagrees with the gateway's still renews at the right time — and renewing is ordinary: the
+   * stream ends when the ticket expires, and the listener asks for another.
+   *
+   * @generated from field: uint32 lifetime_seconds = 3;
+   */
+  lifetimeSeconds: number;
+};
+
+/**
+ * Describes the message seekervault.gateway.v1.GetStreamTicketResponse.
+ * Use `create(GetStreamTicketResponseSchema)` to create a new message.
+ */
+export declare const GetStreamTicketResponseSchema: GenMessage<GetStreamTicketResponse>;
+
+/**
+ * StreamChannel maps a channel a caller knows to the name the same documents arrive under on the
+ * stream.
+ *
+ * The two are not the same string on purpose. `channel` is the protocol's: "server/<server_id>",
+ * the one a publisher's documents carry and the phone validates (SEE-88). `stream_channel` is the
+ * transport's, and it is opaque — it exists so the broker's own namespaces can scope history,
+ * recovery and permissions to these channels and nothing else, without the protocol having to know
+ * that the broker has namespaces at all.
+ *
+ * @generated from message seekervault.gateway.v1.StreamChannel
+ */
+export declare type StreamChannel = Message<"seekervault.gateway.v1.StreamChannel"> & {
+  /**
+   * @generated from field: string channel = 1;
+   */
+  channel: string;
+
+  /**
+   * @generated from field: string stream_channel = 2;
+   */
+  streamChannel: string;
+};
+
+/**
+ * Describes the message seekervault.gateway.v1.StreamChannel.
+ * Use `create(StreamChannelSchema)` to create a new message.
+ */
+export declare const StreamChannelSchema: GenMessage<StreamChannel>;
+
+/**
  * FeedService is the read-only client API. It is unauthenticated on purpose: a feed is a
  * broadcast, its reference can be printed in a README, and holding one grants nothing. What the
  * gateway learns from a read is which channel someone is interested in, which is the minimum a
@@ -264,6 +355,29 @@ export declare const FeedService: GenService<{
     methodKind: "unary";
     input: typeof GetProposalRequestSchema;
     output: typeof GetProposalResponseSchema;
+  },
+  /**
+   * Permission to listen to channels this gateway serves (SEE-91).
+   *
+   * It exists because of what the stream transport is: a unidirectional stream, on which a client
+   * cannot ask for anything after it connects — not a subscription, not history, not a refresh. Its
+   * channels are fixed when the connection is made, by the credential it is made with. So the
+   * gateway grants them: the caller names the channels it already holds feed references for, and
+   * the answer is a short-lived ticket that admits a listener to exactly the ones this gateway
+   * hosts.
+   *
+   * The ticket says which channels and nothing about who. There is no account behind it, no device
+   * identifier in it, and no record of it kept here — it is minted in the answer and never written
+   * down, so this method changes nothing and the gateway still knows nothing about its subscribers
+   * (docs/security.md). It is a scoped, expiring grant rather than a secret: what it admits a
+   * listener to is a broadcast that every other subscriber to the same channel is receiving too.
+   *
+   * @generated from rpc seekervault.gateway.v1.FeedService.GetStreamTicket
+   */
+  getStreamTicket: {
+    methodKind: "unary";
+    input: typeof GetStreamTicketRequestSchema;
+    output: typeof GetStreamTicketResponseSchema;
   },
 }>;
 

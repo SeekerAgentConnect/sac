@@ -94,13 +94,22 @@ class ProposalRepositoryTest {
     /** A gateway that answers with whatever a test published, and records what it was asked. */
     private class FakeProposalFeed : ProposalFeed {
         var answers: List<WireProposal> = emptyList()
+        var sequence = 1L
         var failure: GatewayException.Kind? = null
         val asked = mutableListOf<FeedReference>()
+        val known = mutableListOf<Long>()
 
-        override suspend fun proposals(reference: FeedReference): List<WireProposal> {
+        override suspend fun snapshot(
+            reference: FeedReference,
+            knownSequence: Long,
+        ): FeedSnapshot {
             asked += reference
+            known += knownSequence
             failure?.let { throw GatewayException(it, "fake $it") }
-            return answers
+            if (knownSequence != 0L && knownSequence == sequence) {
+                return FeedSnapshot.Unchanged(sequence)
+            }
+            return FeedSnapshot.Read(sequence, answers)
         }
     }
 
@@ -108,7 +117,7 @@ class ProposalRepositoryTest {
     fun readsAFeedThroughTheGatewayAndNeverAsksThePublisher() = runBlocking {
         feed.answers = listOf(wireProposal(), wireProposal(proposalId = PROPOSAL_B))
 
-        assertEquals(FeedRefresh.Read(2, emptyList()), repository.refresh(FEED))
+        assertEquals(FeedRefresh.Read(2, emptyList(), 1L), repository.refresh(FEED))
 
         // The gateway was asked for this publisher's channel, and that is the whole of what went
         // out: the publisher's own address is not something this phone has.

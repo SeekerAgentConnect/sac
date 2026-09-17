@@ -795,7 +795,7 @@ the contract.
 sign — and the phone's boundary check reads the proto and fails if the field set changes.
 
 **A proposal is delivered, never fetched per phone.** The transport is the shared gateway (SEE-90)
-and its live stream (SEE-91); the phone subscribes to a channel, and that is the whole of what the
+and its stream (SEE-91); the phone subscribes to a channel, and that is the whole of what the
 gateway learns. Delivery is not trustworthy about repetition, so the phone's apply path is
 idempotent: the same revision with the same terms writes nothing, a lower revision is refused, a
 higher one replaces the publisher's half and leaves the device's decisions where they were, and the
@@ -875,6 +875,37 @@ quantity, a decision or a signature; the JSON codec refuses a field the contract
 unknown protobuf field is dropped, because every document is rebuilt from what was validated rather
 than relayed; and there is no endpoint that would take any of it. A Go boundary test reads these
 protos and fails if the field set changes or a forbidden word appears.
+
+### The stream (SEE-91)
+
+Two more pieces of the same package carry the fan-out.
+
+**`event.proto` — what a subscriber receives.** `FeedEvent` is a channel sequence and a `oneof` of
+the manifest or the proposal, rebuilt by the gateway from the fields it validated. The envelope is
+ours rather than the broker's so that a phone parses one type and runs what is inside through the
+same validators a read goes through; an event of a kind a client does not know is not read as an
+empty document, it is a reason to read the snapshot. Its field set is pinned by the gateway's
+boundary test, like every other file here.
+
+**`feed.proto` gained `GetStreamTicket`.** It exists because of what the transport is: a
+unidirectional stream whose channels are fixed by the credential it was opened with, so a phone
+cannot subscribe itself and the gateway has to grant it. The request is the channels a phone holds
+feed references for; the answer is a ticket, the channels actually granted (each with the opaque
+name the same documents arrive under on the stream), and a lifetime. A channel this gateway does not
+host is **absent from the grant rather than fatal**, because a ticket is about several channels and
+refusing one would take the stream away from all of them. The ticket carries no identity, and the
+gateway keeps no record of minting it.
+
+**The broker's own client schema is vendored, not ours.** `third_party/centrifugo` holds the pinned
+release's `unistream.proto` with its digest, and `buf.gen.centrifugo.yaml` generates Kotlin from it
+into a directory of its own — so the sidecar and the gateway are never compiled against a client
+protocol neither of them speaks, and the app's one adapter file is the only place that imports it
+(`feeds/CentrifugoFeedStream.kt`, pinned by `FeedBoundaryTest`). Same argument as excluding
+`publish.proto` from the phone's generation: a boundary that needs no test to hold.
+
+**The cross-runtime fixtures cover the stream.** `FeedEvent/settings`, `FeedEvent/proposal` and
+`FeedEvent/withdrawn` are taken from the gateway's own outbox by its fixtures test and read back
+through the phone's validators by `GatewayProtocolFixturesTest`.
 
 ## Generated code
 

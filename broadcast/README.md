@@ -17,8 +17,10 @@ means this one when it is next to "broadcast", "shared" or "feed", and that one 
 | [`internal/rules`](internal/rules) | What the gateway accepts, as pure functions — the phone's own rules, on this side |
 | [`internal/store`](internal/store) | The only place that speaks SQL: publications, publisher configuration, the outbox |
 | [`internal/gateway`](internal/gateway) | The two APIs, their interceptors, and the boundary tests |
-| [`internal/dispatch`](internal/dispatch) | Persist first, fan out second: the outbox drainer and the seam SEE-91 fills |
-| [`compose.yaml`](compose.yaml) | The stack. The gateway and the proxy start; `ctl` sits behind a profile and does not |
+| [`internal/dispatch`](internal/dispatch) | Persist first, fan out second: the outbox drainer, and the event envelope every subscriber reads |
+| [`internal/stream`](internal/stream) | The broker: publishing an event to it, and minting the ticket a listener connects with (SEE-91) |
+| [`centrifugo.yaml`](centrifugo.yaml) | The broker's configuration — one transport, one namespace, and nothing a listener may do but listen |
+| [`compose.yaml`](compose.yaml) | The stack: the gateway, the broker, its Redis and the proxy. `ctl` sits behind a profile and does not start |
 | [`compose.public.yaml`](compose.public.yaml) | The internet-facing overlay: HTTPS on your own domain, ports 80 and 443 |
 | [`Caddyfile`](Caddyfile) / [`Caddyfile.public`](Caddyfile.public) | The proxy's local and public configurations |
 | [`.env.example`](.env.example) | The deployment's settings. Copy to `.env` here, which git ignores |
@@ -38,6 +40,24 @@ On the internet, once `BROADCAST_DOMAIN` resolves to the host and `ACME_EMAIL` i
 ```sh
 docker compose -f compose.yaml -f compose.public.yaml up -d --build
 ```
+
+`.env` needs two secrets before the first start — the key the gateway publishes to the broker with,
+and the key a listener's ticket is signed with (`openssl rand -base64 32` for each). **Leave
+`BROADCAST_STREAM_URL` empty to run without a stream**: the gateway then holds the documents and
+answers every read, and a phone that asks to listen is told there is none.
+
+### More than one broker node
+
+Redis is what makes two broker nodes one broker: a publication accepted by either reaches the
+clients attached to both. Add a second service with the same configuration and give the proxy both
+upstreams:
+
+```
+reverse_proxy h2c://centrifugo:11000 h2c://centrifugo-b:11000
+```
+
+Nothing else changes, and nothing about a phone does. `feeds/CentrifugoStreamIntegrationTest` drives
+exactly this — two real nodes and a real Redis — on a machine where the binaries are available.
 
 Without Docker — which is how the checks in this repository run it:
 

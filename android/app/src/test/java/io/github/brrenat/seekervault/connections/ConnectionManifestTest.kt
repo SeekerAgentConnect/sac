@@ -65,11 +65,18 @@ class ConnectionManifestTest {
         var answer: WireManifest? = null
         var failure: GatewayException.Kind? = null
         val resolved = mutableListOf<FeedReference>()
+        val known = mutableListOf<Long>()
 
-        override suspend fun resolve(reference: FeedReference): WireManifest {
+        override suspend fun resolve(reference: FeedReference, knownRevision: Long): FeedManifest {
             resolved += reference
+            known += knownRevision
             failure?.let { throw GatewayException(it, "fake $it") }
-            return checkNotNull(answer) { "no manifest was published for $reference" }
+            if (knownRevision != 0L && knownRevision == answer?.settingsRevision) {
+                return FeedManifest.Unchanged(knownRevision)
+            }
+            return FeedManifest.Held(
+                checkNotNull(answer) { "no manifest was published for $reference" }
+            )
         }
     }
 

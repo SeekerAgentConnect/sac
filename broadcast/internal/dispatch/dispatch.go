@@ -16,11 +16,18 @@
 // cannot happen is a second *logical* proposal: identity is (channel, proposal_id), and a repeat is
 // the same document arriving again.
 //
-// # What this build fans out to
+// # What it fans out to
 //
-// Nothing but a log line. Centrifugo and Redis are SEE-91, and [Dispatcher] is the seam they fill;
-// until they exist [Logger] records what would have been sent, so the machinery that makes a crash
-// harmless is exercised and nothing pretends a subscriber heard anything.
+// Whatever implements [Dispatcher]. Centrifugo does, since SEE-91 (internal/stream); a deployment
+// that configures no broker gets [Logger], which records what would have been sent so that the
+// machinery making a crash harmless is exercised and nothing pretends a subscriber heard anything.
+//
+// # What a delivery carries
+//
+// A serialized seekervault.gateway.v1.FeedEvent: the document as the gateway rebuilt it, wrapped
+// with the channel sequence it was accepted at. The envelope is built here rather than in a
+// dispatcher, because it is the contract every subscriber reads (proto/.../event.proto) and not one
+// transport's framing — a second dispatcher would carry the same bytes.
 package dispatch
 
 import (
@@ -34,6 +41,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/store"
 )
@@ -51,10 +59,10 @@ type Delivery struct {
 	ProposalID string
 	Revision   uint64
 	Sequence   uint64
-	// The serialized seekervault.proposal.v1.Proposal or seekervault.server.v1.ServerManifest, as
-	// the gateway validated and rebuilt it. Public by construction: it is the document every
-	// subscriber to this channel may read.
-	Document []byte
+	// The serialized seekervault.gateway.v1.FeedEvent. Public by construction: it is what every
+	// subscriber to this channel receives, and it holds a document the publisher published and a
+	// number the gateway counted — nothing about anyone reading it.
+	Event []byte
 }
 
 // Dispatcher delivers to whatever is fanning out. SEE-91 implements it over Centrifugo; a test
@@ -79,7 +87,7 @@ func (l Logger) Dispatch(_ context.Context, delivery Delivery) error {
 		"proposal", delivery.ProposalID,
 		"revision", delivery.Revision,
 		"sequence", delivery.Sequence,
-		"bytes", len(delivery.Document))
+		"bytes", len(delivery.Event))
 	return nil
 }
 
@@ -183,7 +191,7 @@ func (d *Drainer) Drain(ctx context.Context) (int, error) {
 		if err := ctx.Err(); err != nil {
 			return sent, err
 		}
-		document, found, err := d.document(ctx, notice)
+		event, found, err := d.event(ctx, notice)
 		if err != nil {
 			return sent, err
 		}
@@ -201,7 +209,7 @@ func (d *Drainer) Drain(ctx context.Context) (int, error) {
 			ProposalID: notice.ProposalID,
 			Revision:   notice.Revision,
 			Sequence:   notice.Sequence,
-			Document:   document,
+			Event:      event,
 		}
 		if err := d.dispatcher.Dispatch(ctx, delivery); err != nil {
 			due := d.now().Add(d.backoff(notice.Attempts))
@@ -223,24 +231,40 @@ func (d *Drainer) Drain(ctx context.Context) (int, error) {
 	return sent, nil
 }
 
-// document reads what a notice is about, as it stands now.
-func (d *Drainer) document(ctx context.Context, notice store.Notice) ([]byte, bool, error) {
+// event reads what a notice is about, as it stands now, and wraps it for its subscribers.
+//
+// The document is read here rather than when the notice was written, so what goes out is what the
+// gateway holds — and two publications that have not been fanned out yet collapse into the later
+// one. The sequence comes from the stored row for a proposal, which is exact. A manifest has no
+// sequence of its own in the store, so the notice's is used; a publication landing between reading
+// the notice and reading the document could make that number one behind, and the conditional clear
+// then leaves the notice pending and the next pass sends the current one. Understating it is safe
+// in the one direction that matters: the sequence is a hint about what a snapshot already covers,
+// never a reason for a subscriber to skip an event (event.proto).
+func (d *Drainer) event(ctx context.Context, notice store.Notice) ([]byte, bool, error) {
+	var wrapper *gatewayv1.FeedEvent
 	switch notice.Kind {
 	case store.ManifestNotice:
 		manifest, err := d.store.Manifest(ctx, rules.ServerOf(notice.Channel))
 		if err != nil || manifest == nil {
 			return nil, false, err
 		}
-		bytes, err := proto.Marshal(manifest.Document)
-		return bytes, err == nil, err
+		wrapper = &gatewayv1.FeedEvent{
+			Sequence: notice.Sequence,
+			Document: &gatewayv1.FeedEvent_Manifest{Manifest: manifest.Document},
+		}
 	case store.ProposalNotice:
 		proposal, err := d.store.Proposal(ctx, notice.Channel, notice.ProposalID)
 		if err != nil || proposal == nil {
 			return nil, false, err
 		}
-		bytes, err := proto.Marshal(proposal.Document)
-		return bytes, err == nil, err
+		wrapper = &gatewayv1.FeedEvent{
+			Sequence: proposal.Sequence,
+			Document: &gatewayv1.FeedEvent_Proposal{Proposal: proposal.Document},
+		}
 	default:
 		return nil, false, fmt.Errorf("dispatch: unknown notice kind %q", notice.Kind)
 	}
+	bytes, err := proto.Marshal(wrapper)
+	return bytes, err == nil, err
 }

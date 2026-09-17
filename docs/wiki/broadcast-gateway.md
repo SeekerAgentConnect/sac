@@ -1,4 +1,4 @@
-# The broadcast gateway (SEE-90)
+# The broadcast gateway (SEE-90, SEE-91)
 
 SEE-88 made the kind of server part of a connection's record, and left `FeedGateway` as the seam a
 publisher's manifest arrives through. SEE-89 added the document a publisher broadcasts, and left
@@ -147,9 +147,155 @@ workflow's push invalidations already do under one collapse key (SAW-056). A not
 if the revision it was sent at is still the current one, so a publication that lands mid-flight is
 sent afterwards rather than silently swallowed.
 
-**This build fans out to a log line.** Centrifugo and Redis are SEE-91, and `dispatch.Dispatcher` is
-the seam they fill; the machinery that makes a crash harmless is exercised either way, and nothing
-pretends a subscriber heard anything.
+**What it fans out to** is whatever implements `dispatch.Dispatcher`. Since SEE-91 that is
+Centrifugo ([the stream](#the-stream)); a deployment that configures no broker keeps the dispatcher
+that writes a log line, and every guarantee above holds either way.
+
+## The stream
+
+A phone that is being looked at should not have to poll a feed to find out that a proposal moved.
+So a publication is fanned out as well as stored: the gateway commits the document, and a broker
+delivers it to the phones listening.
+
+**Centrifugo v6.9.6, with Redis 8** as the engine, and both pinned
+(`docs/development/toolchain.md`). Redis is what makes two broker nodes one broker — a publication
+accepted by either reaches the clients attached to both — and where the bounded recovery cache
+lives. It is a cache and never the authority: the documents are the gateway's, in its own database.
+
+### The transport, and what it cannot do
+
+The phone listens over Centrifugo's **unidirectional gRPC** transport: one call, a request up,
+publications down, and nothing up again. Everything below was established by running the pinned
+release rather than read off a page, because the design turns on it.
+
+- **A listener cannot subscribe itself.** The connect request has a `subs` map that looks like a
+  subscription request and is not one: the broker reads only a *recovery position* from it, and
+  takes the channels from the connection token. A request naming channels there is answered with a
+  connection and no subscriptions at all.
+- **So the gateway grants the channels.** `FeedService.GetStreamTicket` takes the channels a phone
+  holds feed references for and answers with a short-lived ticket admitting a listener to the ones
+  this gateway hosts. The ticket is the whole subscription: adding or removing a feed means a new
+  ticket and a new stream, which is why the phone debounces that (`feeds/ForegroundFeedManager`).
+- **The ticket says which channels and nothing about who.** Its subject is empty — an anonymous
+  connection, which is what a broadcast's listener is — and there is no device identifier, no
+  address and no session in it. The gateway keeps no record of having minted one. A Go test pins the
+  claim set, so adding one is a deliberate act with an argument attached.
+- **A token-granted channel bypasses the anonymous-subscribe permission**, so the broker's own
+  `allow_subscribe_for_anonymous` stays off, no bidirectional transport is enabled, and the ticket
+  is the only way in. `channel_regex` would not help here — it constrains client-initiated
+  subscriptions, which this transport does not have — so it is not configured, and the ticket's own
+  validation against registered publishers is the bound that exists.
+- **There are no application-level pings.** The connect answer carries a ping interval and the
+  pinned release does not honour it on this transport: an idle stream is silent for as long as it is
+  idle. Liveness is therefore HTTP/2's, through OkHttp's protocol pings, rather than a heartbeat the
+  application invents.
+- **The disconnect code carries the retry policy, and the `reconnect` field beside it does not.** A
+  graceful shutdown arrives as `3001` with `reconnect: false`, which is plainly something to come
+  back from. The documented rule is the range: `3500`–`3505` are terminal, everything below
+  reconnects, and `3005` (expired) and `3014` (state invalidated) reconnect with a fresh ticket.
+- **Payloads are binary, and the consequence is written down here.** A publication carries a
+  serialized `seekervault.gateway.v1.FeedEvent` in the API's `b64data` field. protobuf-lite on
+  Android cannot parse protojson at all, so JSON was never an option for the phone — and the price
+  is that the broker's **JSON history API cannot render these channels** (it answers 500 on binary
+  payloads). `POST /api/history` with `"limit": 0` still answers the channel's epoch and offset,
+  which is the supported way to ask whether a channel has advanced.
+
+### The envelope
+
+`FeedEvent` is ours rather than the broker's: a channel sequence and a `oneof` of the manifest or
+the proposal, rebuilt by the gateway from the fields it validated. A phone parses one type and runs
+what is inside through the same validators a read goes through (SEE-88, SEE-89) — **the stream is a
+faster way to learn something, never a more trusted one.** An event of a kind a client does not know
+is not read as an empty document: it reads the snapshot instead, because an event it could not
+understand still means the channel moved.
+
+Two counters travel alongside each other and are never compared:
+
+| | what it is | what it is for |
+| --- | --- | --- |
+| `FeedEvent.sequence` | the gateway's count of accepted publications on the channel | the snapshot boundary a walk reports |
+| the broker's `offset` and `epoch` | a position in the broker's own bounded history | asking for what was missed, once, at connect time |
+
+And neither of them decides which document wins: the revision does, on both sides.
+
+### Recovery, and what happens when it cannot be proven
+
+Recovery happens **once, at the moment the stream opens**, because that is the only moment a
+unidirectional client can ask for anything. The phone sends the cursor it holds per channel; the
+broker answers, per channel, whether it replayed everything that was missed.
+
+- `recovered: true` — continuity is proven. The missed documents arrive as ordinary events right
+  after the opening, and nothing is read from the gateway.
+- anything else — continuity is not proven, and the phone reads the **authoritative snapshot**. The
+  reasons are kept apart because they mean different things: nothing held, an epoch that changed
+  (the history was replaced, so an offset in it means nothing), further behind than the broker keeps
+  or will replay at once (`history_size`, `history_ttl`,
+  `client.recovery_max_publication_limit`), a channel that is not recoverable, or a channel the
+  stream opened without.
+
+A successful recovery echoes the *requested* offset in the subscribe answer, so the new cursor is
+the offset of the last document actually applied — not that field. A phone that read its position
+from there would go backwards on every reconnect.
+
+### Joining the snapshot to the stream
+
+The order is: open the stream, then read what could not be proven, applying everything as it
+arrives. There is **no buffer between them, and none is needed**: both paths apply through the
+phone's revision-ordered idempotent apply (SEE-89), which refuses a document that is not newer than
+what is held. A page from the middle of a walk and an event that arrives during that walk converge
+whichever order they land in — so "could a publication fall into a gap?" is answered by the
+documents themselves rather than by the client being careful.
+
+What the sequence is for, then, is the next time: a completed walk's boundary is stored, and a
+gateway that has not moved since answers it with one small `unchanged`.
+
+### Bounds, and what each one protects
+
+| bound | value | what it is for |
+| --- | --- | --- |
+| channels per ticket | 32 (`BROADCAST_MAX_CHANNELS`) | what one listener may cost the broker to honour |
+| channels per connection | 32 (`client.channel_limit`) | the same rule at the broker's end |
+| ticket lifetime | 60 minutes (`BROADCAST_TICKET_MINUTES`) | a bound on a grant; expiry is an ordinary reconnect |
+| recovery cache | 256 publications or 1 hour per channel | how far behind a listener can be and still be caught up |
+| replay in one go | 300 publications (`recovery_max_publication_limit`) | past it recovery fails rather than truncating |
+| queued bytes per connection | 64 KiB (`client.queue_max_size`) | the broker closes a client whose queue grows past it |
+| document size | 64 KiB | one publication, at both ends |
+
+Two honest notes about the last two. The queue bound protects the **broker**: a client that stops
+reading its socket is buffered by the transport's own flow-control window first, and a non-reading
+gRPC client was measured surviving several megabytes with the queue set to 256 KiB — which is why
+the shipped number is 64 KiB instead. And it does not protect a **phone** that falls behind: our
+client keeps reading the stream however slowly the application consumes it, so what bounds a slow
+phone is the gateway's publish rate limit per publisher, not the broker's queue. What was verified
+either way is that a listener which cannot keep up does not hold up the listeners beside it. Both
+measurements are in [`docs/testing/stage-7-1.md`](../testing/stage-7-1.md).
+
+**Each listener still costs a connection** on a broker node. Redis makes the nodes interchangeable,
+not free.
+
+### Deployment
+
+The broker's API port, its Redis and the gateway's own two listeners are on an internal compose
+network with no route out of the deployment. The single public path is one gRPC procedure:
+
+```
+/centrifugal.centrifugo.unistream.CentrifugoUniStream/Consume
+```
+
+Caddy forwards exactly that, as h2c, to the broker — on **the gateway's own origin**, which is the
+only address a phone ever learns and the one a published manifest has to name (SEE-88). A ticket
+names no host for that reason: SEE-90 refused to relay a redirection, and a ticket that carried an
+address would have reintroduced one.
+
+To run a second broker node, add a service with the same configuration and give the proxy both
+upstreams (`reverse_proxy h2c://centrifugo:11000 h2c://centrifugo-b:11000`). Nothing else changes:
+Redis is what makes the two one broker, and a phone connected to either receives the same
+publications. That property is tested against two real nodes in
+`feeds/CentrifugoStreamIntegrationTest`.
+
+Two secrets live in `.env`, shared by the gateway and the broker: the API key the gateway publishes
+with, and the HMAC key a ticket is signed with. Rotating them restarts two services and ends every
+listener's stream; each one reconnects, asks for a new ticket, and carries on.
 
 ## Reading a feed
 
@@ -263,15 +409,19 @@ appears. The gateway cannot lose a user's financial history because it never has
 
 - **It serves the whole API**, and its own tests drive it over a real listener with the generated
   clients against a real database file.
-- **It fans out to a log line.** Centrifugo and Redis are SEE-91.
-- **No phone talks to it yet.** The Android client for `FeedGateway` and `ProposalFeed` is SEE-91's,
-  which is where a real stream and real unary reads over TLS are proven. What this task proves
-  instead is that the documents it serves are the documents the phone's own validators accept: the
-  cross-runtime fixtures in `proto/fixtures/seekervault/gateway/v1` are checked against the running
-  gateway by [`fixtures_test.go`](../../broadcast/internal/gateway/fixtures_test.go) and against the
-  phone's rules by `GatewayProtocolFixturesTest`.
+- **It fans out to a real broker**, and the phone listens to it: the pair is tested against two
+  Centrifugo nodes and a real Redis in `feeds/CentrifugoStreamIntegrationTest`, and the phone's own
+  client and adapter are tested against real gRPC framing over TLS and HTTP/2 in
+  `feeds/UniStreamInteropTest`. A deployment with no broker configured is a supported deployment: it
+  answers every read and says once that there is no stream.
+- **The cross-runtime fixtures cover the stream too.** `FeedEvent/settings`, `FeedEvent/proposal`
+  and `FeedEvent/withdrawn` are taken from the gateway's own outbox by
+  [`fixtures_test.go`](../../broadcast/internal/gateway/fixtures_test.go) and read back through the
+  phone's validators by `GatewayProtocolFixturesTest`.
+- **No screen lists a feed yet.** The listener applies what arrives through the repositories, and
+  the plugins that read a proposal's terms are SEE-93 and SEE-94.
 - **Nothing was run in Docker.** No daemon is reachable on the machine these checks ran on, so the
-  compose and Caddy configurations were validated statically and the binaries were run natively
-  (`docs/changelog/2026-09-17.md`).
+  compose and Caddy configurations were validated statically and every binary — the gateway, the
+  broker, Redis — was run natively instead (`docs/changelog/2026-09-17.md`).
 - Not a user-account platform, not an execution-result database, not an order processor, not a
   message broker of its own, and no financial endpoint of any kind.
