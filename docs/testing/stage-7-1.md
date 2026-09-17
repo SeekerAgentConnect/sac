@@ -1,7 +1,7 @@
-# Stage 7.1 — the broadcast gateway, its stream, its hints, and the first swap
+# Stage 7.1 — the broadcast gateway, its stream, its hints, and the two Jupiter plugins
 
-What was verified for SEE-90, SEE-91, SEE-92 and SEE-93, what was verified by hand, and what is left
-for the owner to run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast` and
+What was verified for SEE-90 to SEE-94, what was verified by hand, and what is left for the owner to
+run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast` and
 `pnpm check:android`; this page is about the rest.
 
 ## What no machine here could run
@@ -22,6 +22,11 @@ for the owner to run on the phone. The automated checks are `pnpm check`, `pnpm 
   signed or sent**. What was run against the live provider instead is the whole path up to the
   signature: real quotes, real builds, and the phone's own review of the real bytes — see the table
   below. The one thing left is the transaction itself, in step 6 of the device run.
+- **A real prediction order (SEE-94).** The same, and for the same reason: an order needs a wallet
+  holding the stake. What *was* run is everything up to it — a live market read, a real order built
+  for a wallet holding nothing and refused by the provider as such, and a real order captured
+  earlier whose address lookup tables were read from a real RPC and whose every field the phone read
+  back. Step 7 of the device run is the order itself.
 
 ## Verified by hand, against the pinned broker
 
@@ -81,6 +86,28 @@ was anywhere near it. Recorded on **2026-09-17** against `https://lite-api.jup.a
 | A build for a wallet holding nothing, with `dynamicComputeUnitLimit` | The provider's own simulation failed and said why ("Attempt to debit an account but found no record of a prior credit"), so nothing was prepared. This is how "insufficient balance" is detected by a phone that reaches no chain |
 | `api.jup.ag/swap/v2/order` keyless | `200`, so v2 exists — and it is a combined quote-and-build tied to Jupiter's own `/execute`. v1 is what this app pins, and why is in `docs/integrations/jupiter.md` |
 | A signed transaction, on chain | **NOT RUN.** No funds and no wallet here; step 6 below |
+
+## Verified by hand, against the live prediction API (SEE-94)
+
+Nothing here places an order: a market read is public, an order build returns unsigned bytes, and the
+one order requested was for a wallet holding nothing. Recorded on **2026-09-17** against
+`https://lite-api.jup.ag`, with lookup tables read from `https://api.mainnet-beta.solana.com`.
+
+| What was asked | What happened |
+| --- | --- |
+| `GET /prediction/v1/events` and `/markets/{id}` keyless | `200` both, with real markets, statuses, prices and rules. No API key anywhere |
+| `POST /prediction/v1/orders` keyless, for a wallet with a balance | `200`, with an unsigned transaction, the order and position accounts, and the order's own numbers |
+| The transaction's shape | **Versioned (v0) with address lookup tables, every time.** `asLegacyTransaction`, `legacyTransaction`, `useLookupTables:false`, `asLegacy`, `transactionVersion:"legacy"` and `maxAccounts` were each tried and all are ignored — which is the finding that decided this ticket's design |
+| Its signatures | Two slots, and the protocol's own **already filled**: `requiredSigners` lists the owner alone |
+| `getMultipleAccounts` for the tables the message names | `200`, each owned by `AddressLookupTab1e1111111111111111111111111`, each a whole number of 32-byte addresses after a 56-byte header |
+| The rebuilt account list | 16 static accounts plus 4 tables resolved to 42; every instruction's every index landed inside it, program included |
+| The order instruction's fields against the provider's own JSON | Every one matched exactly: the external order ID, the market hash, the side, the contracts, the price ceiling, the cost and the slippage. Committed as `fixtures/jupiter/orders.json` with its tables |
+| Whose accounts they are | The payer and the order's owner are the wallet; the stake leaves the wallet's own derived account for the deposit mint and lands in the very account the order spends from; the contracts go to the order's own account |
+| `POST /prediction/v1/orders` for a wallet holding nothing | `400` with `INSUFFICIENT_FUNDS` — the provider checks balances, which is how a phone that reaches no chain can honestly report one |
+| Whether the market hash can be derived from the market ID | **No.** md5, sha1, sha256 and blake2s were all checked against a real pair; none matches. Recorded as a limit rather than glossed over |
+| Whether a market page can be verified | **No.** `https://jup.ag/prediction/<marketId>` is a real route and echoes the market ID into its page, but the site answers `200` for a market that does not exist. So the handoff is the market, for an ID the provider answered about, and no position URL is invented |
+| `JupiterLiveTest` with `-Dseekervault.jupiter=https://lite-api.jup.ag` | **PASS**, both cases: the swap path, and a live market plus an order refused for want of funds |
+| A signed order, on chain | **NOT RUN.** No funds and no wallet here; step 7 below |
 
 ## The device run (for the owner)
 
@@ -167,12 +194,47 @@ over a real certificate, a real network and the app's own lifecycle.
    before anything is asked), and a signal whose `input_mint` is a ticker rather than a mint (read
    in full, with no Prepare offered).
 
-Record the date, the app build, the gateway, broker and Firebase project, the pair and amount
-swapped, and the transaction's signature — as `docs/testing/stage-5-3.md` does for the direct path.
+7. **Place one real prediction order (SEE-94).** This needs a build with a Solana endpoint
+   configured, because the phone cannot review an order without resolving its lookup tables:
+
+   ```sh
+   android/gradlew -p android :app:assembleDebug \
+     -Pseekervault.solanaRpc=https://<your-endpoint>
+   ```
+
+   First check the refusals, which cost nothing:
+   - install a build with **no** endpoint configured and prepare an order: it must refuse with "this
+     build has no Solana endpoint configured" and offer nothing to sign;
+   - point the endpoint at something unreachable and prepare again: it must refuse with the
+     endpoint's own reason, and still offer nothing;
+   - publish a signal naming a market that does not exist: "the provider has no such market";
+   - publish one naming a market that has settled: "this market is no longer open";
+   - stake more than the wallet holds: the provider's own refusal, before the wallet opens.
+
+   Then, with an endpoint configured and a market that is open:
+   - open the feed's **Signals**, open the market signal, and read what the publisher said;
+   - pick a side and a **small** stake, at least the five-dollar minimum, and prepare;
+   - check the review shows the contracts, what the order costs, what it pays out if that side
+     wins, and the price ceiling — and that "accounts read from lookup tables" is not zero, which is
+     the resolution having happened;
+   - check the facts name your own wallet as payer and the **order's own account** as what receives;
+   - tap **Approve and swap**, approve in the wallet, and record the signature;
+   - check **Where to look now**: the transaction opens on the explorer, and "This market on
+     Jupiter" opens the market. There must be **no** position link and no claim that the order
+     filled;
+   - check Activity: one **prediction** record, `Sent`, with the side and stake you chose and the
+     order and position accounts — and confirm those are still there after force-stopping and
+     reopening the app;
+   - open the signal again: it says you acted on it, and there is **no second Approve**;
+   - and confirm the app tells you nothing further over the following minutes: no fill, no position
+     value, no settlement, no payout. Continuing happens in Jupiter, which is the whole design.
+
+Record the date, the app build, the Solana endpoint used, the gateway, broker and Firebase project,
+the pair and amount swapped, the market and stake ordered, and both transactions' signatures — as
+`docs/testing/stage-5-3.md` does for the direct path.
 
 ## Not covered here
 
-- The prediction plugin and its market handoff: SEE-94.
 - Load, isolation and failover at size: SEE-99.
 - The direct-mode and gateway-mode comparison, and MCP compatibility: SEE-98.
 - The server development guide the steps above will eventually live in: SEE-100.

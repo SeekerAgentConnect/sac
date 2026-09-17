@@ -830,6 +830,25 @@ What is *not* in the terms is the amount, the slippage the owner settles on, or 
 subscriber. Those are chosen on the phone and stay there
 ([`wiki/jupiter-swap.md`](wiki/jupiter-swap.md)).
 
+### A prediction market's terms (SEE-94)
+
+The second set, for `jupiter.prediction`, and the striking thing is how little of it there is:
+
+| Key | Meaning | Rules |
+| --- | --- | --- |
+| `market_id` | The provider's identifier for the market | A bounded identifier of letters, digits and `._:-`; never a URL or anything loadable. |
+| `event_id`, `provider` | The event it belongs to, and its source | Optional, and cross-checked against what the provider says about the market. |
+| `deposit_mint`, `deposit_decimals` | The token a stake is deposited in | One of the two the provider takes, as an exact base58 mint; 0 to 18 units, display only. |
+| `least_deposit`, `most_deposit` | Optional bounds, in base units | Whole numbers; the provider's own five-dollar minimum is a floor under both. |
+| `deposit_symbol` | An optional label | At most 16 characters, unverified. |
+
+**A publisher names which market and is believed about nothing else.** Whether it is open, what the
+sides cost, what the rules say, when it settles and whether it has already resolved are all read
+from the provider at the moment the owner looks — so a publisher's prose can never stand in for a
+fact about execution, and a stale signal shows as a closed market rather than as an order that
+fails. The side and the stake are the owner's, and neither is in the document
+([`wiki/jupiter-prediction.md`](wiki/jupiter-prediction.md)).
+
 ## The broadcast gateway (SEE-90)
 
 A publisher publishes to the shared gateway and every subscribed phone reads from it. That is a

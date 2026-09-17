@@ -374,6 +374,7 @@ fun SeekerVaultApp(
                                 }
                             }
                         } else {
+                            val linkContext = LocalContext.current
                             ProposalReviewScreen(
                                 review = open,
                                 label =
@@ -390,6 +391,9 @@ fun SeekerVaultApp(
                                     pop()
                                 },
                                 onRules = { push(Routes.POLICY + id) },
+                                // Handed to whatever opens links, exactly as a transfer's explorer
+                                // link is. This app fetches nothing from any of them.
+                                onOpenLink = { openLink(linkContext, it) },
                             )
                         }
                     }

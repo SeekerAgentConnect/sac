@@ -530,6 +530,77 @@ with their own earlier signature, and that is not something this review can undo
 `SwapAction` from an agent establishes nothing and can never be `ALLOWED` — bundling the plugin
 changed nothing about that.
 
+## Resolving a lookup table (SEE-94)
+
+Everything above rests on one thing: the phone reads the bytes it is asked to sign and needs nobody's
+account of them. A versioned Solana message breaks that, because it carries only some of its
+accounts and names the rest by index into tables stored on the chain. Until those tables are read,
+an instruction's account indexes are numbers with no meaning, and a review of such a transaction
+cannot say whose accounts it touches.
+
+One provider gives no alternative: a prediction order arrives only in that shape
+([`wiki/jupiter-prediction.md`](wiki/jupiter-prediction.md#why-the-phone-reads-the-chain)). So the
+app now has **a read-only chain endpoint**, for that one purpose, and this is what it does and does
+not mean.
+
+**What is checked**, in `solana/AddressLookupTables.kt`: the table's account is owned by the address
+lookup table program and its state discriminator says it is an initialized table; its header is the
+length it must be and what follows is a whole number of addresses; it has not been deactivated,
+because the runtime will stop loading from one that has; every index the message takes from it
+exists; and the account list is rebuilt in the runtime's own order — the static accounts, then every
+table's writable indexes in the order the message names the tables, then every table's readonly
+ones. Any other order resolves each instruction to the wrong addresses, silently, which is the worst
+way for a review to be wrong, so the order has its own test.
+
+**What resolving does not establish.** It says which accounts the runtime will use. It says nothing
+whatever about whether they are the right ones, so every check that made a swap approvable still
+has to pass afterwards — the payer, the signatures, the owner's own token accounts, the amounts, the
+absence of anything else. Resolution is a precondition for the review, not a substitute for it.
+
+**What it costs.** A review that resolves a lookup table is only as accurate as the endpoint that
+served the table. This app does not call that trustless and does not call it offline verification:
+
+- the endpoint is **the application's or its host's**, never a publisher's — nothing in a manifest,
+  a proposal, or a provider's answer can set it, because an endpoint chosen by the thing being
+  reviewed is not a second opinion;
+- it is **empty by default**, so a checkout reaches no cluster and a build that wants prediction
+  orders configures one deliberately (`-Pseekervault.solanaRpc=…`);
+- the component has **one method** and it is a read: no send, no simulate, no subscribe, no
+  signature lookup, no balance query — not because those are unreachable over the same wire, but
+  because a component with one method cannot grow a second use by accident, and a boundary test
+  holds it there;
+- and **a table that cannot be fetched or validated blocks signing**, with the reason on screen.
+  There is no parameter-only review and no blind signature anywhere in that path.
+
+## Inspecting a prediction order (SEE-94)
+
+Once the accounts are resolved, an order is reviewed as strictly as a swap, with two differences
+worth stating.
+
+**The provider co-signs.** An order arrives with two signature slots and the protocol's own already
+filled, so "nothing else signs" would be the wrong rule. The rule is: exactly one signature is still
+missing, it is the owner's, and the owner is the fee payer. Both ways of breaking that are refused.
+
+**What is established, out of the instructions:** the owner pays and the order is theirs; it buys
+rather than sells; it buys **the side the owner picked**, read from the instruction's own byte and
+not from the provider's answer; it is for the market the provider answered about; the contracts, the
+per-contract ceiling, the cost and the slippage are the ones quoted; the stake leaves the owner's
+own token account for the provider's own token and the contracts land in the order's own account;
+the funding swap takes no more of the owner's deposit token than they staked and puts it in the very
+account the order spends from; and every other instruction is one of the small set an order may
+contain, each about the owner's own accounts.
+
+**What is out of reach, and named as such:** the provider's market hash is not a plain digest of the
+market identifier — md5, sha1, sha256 and blake2s were each checked against a real pair — so the
+market is cross-checked between the answer and the bytes rather than proved from the identifier.
+What narrows that gap is that the market was read from the provider first, and its identity, event
+and source all had to agree with the signal before an order was requested.
+
+**And the app stops at submission.** No fill, no position, no settlement, no payout, no profit or
+loss: "order submitted" means the wallet reported that it signed and sent a transaction, and the
+screen says as much beneath the links. An answer the phone never received is recorded as unresolved,
+never as a failure, and a possibly dispatched order is never repeated.
+
 ## Verification versus advisory rules
 
 Two different things on the review screen look, at a glance, like the same kind of judgement. They are not, and the difference is the one the whole design rests on.

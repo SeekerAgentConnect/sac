@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityLog
+import io.github.brrenat.seekervault.activity.ReviewedValue
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ExecutionOutcome
 import io.github.brrenat.seekervault.connections.FeedRefresh
@@ -20,6 +21,7 @@ import io.github.brrenat.seekervault.plugins.ParameterForm
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginDestination
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFailure
 import io.github.brrenat.seekervault.plugins.PluginPreparation
@@ -183,6 +185,10 @@ class OperationViewModel(
                 record = record,
                 standing = proposals.standing(record),
                 form = form,
+                // Where the owner may carry on outside the app, if the operation's provider has
+                // anywhere truthful to send them (SEE-94). It comes from the terms alone, so it
+                // survives a restart and needs no preparation — and no URL is ever stored.
+                destinations = resolved?.destinations(subjectFor(record)).orEmpty(),
                 // A review already written for these terms is what the owner last chose about
                 // them; anything else starts from the plugin's own suggestion.
                 choice =
@@ -341,11 +347,16 @@ class OperationViewModel(
                 contentHash = hash(prepared.transaction),
                 expiresAtEpochSeconds = prepared.expiresAtEpochSeconds,
             )
-        // The assessment the owner read, kept for the record that is about to be written.
-        history.reviewed(
-            RequestKey(open.connectionId, open.proposalId),
-            reviewedPolicy(fresh.decision, fresh.at, wentAhead = true),
-        )
+        // The assessment the owner read, and the identifiers the provider named, both kept for the
+        // record that is about to be written (SAW-028, SEE-94).
+        val key = RequestKey(open.connectionId, open.proposalId)
+        history.reviewed(key, reviewedPolicy(fresh.decision, fresh.at, wentAhead = true))
+        open.inspection
+            ?.references
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { references ->
+                history.referenced(key, references.map { ReviewedValue(it.key, it.value) })
+            }
         // One wallet interaction at a time, for the whole process (SEE-84). Everything that has to
         // be true is checked inside the lock, because the wait for it is exactly where the world
         // changes underneath an approval.
@@ -556,6 +567,8 @@ data class OperationReview(
     /** What this phone made of the prepared bytes, read independently of the provider. */
     val inspection: ActionInspection? = null,
     val failure: OperationFailure? = null,
+    /** Where the owner may continue outside the app, built fresh and never read off disk. */
+    val destinations: List<PluginDestination> = emptyList(),
     val assessment: RequestAssessment? = null,
     val acknowledged: Boolean = false,
     val sending: Boolean = false,

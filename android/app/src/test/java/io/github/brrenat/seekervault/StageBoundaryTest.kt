@@ -41,12 +41,19 @@ class StageBoundaryTest {
 
     private val main = File(repoRoot, "android/app/src/main")
 
-    /** [file]'s code, with the comments taken out, for a check that is about what it does. */
+    /**
+     * [file]'s source with its comments removed, so an assertion about what the code does is not
+     * answered by prose about what it does.
+     *
+     * A line comment starts at `//` — except after a colon or a slash, which is a URL's own double
+     * slash and not a comment at all. Without that exception this helper truncates every address in
+     * the source to `https:`, and an assertion that looks for one can never find it.
+     */
     private fun withoutComments(file: File): String =
         file
             .readText()
             .replace(Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL), "")
-            .replace(Regex("""//.*"""), "")
+            .replace(Regex("""(?<![:/])//.*"""), "")
 
     private fun xml(path: String): Element =
         DocumentBuilderFactory.newInstance()
@@ -289,20 +296,110 @@ class StageBoundaryTest {
     }
 
     @Test
-    fun theSwapPluginReachesItsProviderAndNothingElseOfThisApps() {
-        // SEE-93 is the first thing written against the plugin boundary, and it is the test of
-        // whether that boundary was worth having: a plugin that had to reach into the app to work
-        // would mean the boundary described nothing. This one reaches one host of its own and
-        // takes everything else from what it is handed (docs/wiki/jupiter-swap.md).
+    fun theChainReaderReadsAndIsTheApplicationsOwn() {
+        // SEE-94 gives this app a chain endpoint for the first time, for one purpose: resolving the
+        // address lookup tables a prediction order's transaction names, without which the phone
+        // cannot see what it would be signing. That is a real addition and these are the limits on
+        // it (docs/security.md#resolving-a-lookup-table).
+        val solana = File(main, "java/io/github/brrenat/seekervault/solana")
+        assertTrue(solana.isDirectory)
+        val sources = solana.walk().filter { it.extension == "kt" }.toList()
+        assertTrue(sources.isNotEmpty())
+        // It reads accounts and rebuilds an account list, and it reaches for nothing else in the
+        // app but the decoder's own types and base58.
+        val reaches =
+            sources
+                .flatMap { it.readLines() }
+                .map { it.trim() }
+                .filter { it.startsWith("import io.github.brrenat.seekervault.") }
+                .map { it.removePrefix("import ").substringBeforeLast('.') }
+                .filterNot { it == "io.github.brrenat.seekervault.solana" }
+                .distinct()
+                .sorted()
+        assertEquals(
+            listOf(
+                "io.github.brrenat.seekervault.transactions",
+                "io.github.brrenat.seekervault.wallet",
+            ),
+            reaches,
+        )
+        // One method, and it is a read. There is no send, no simulate, no subscribe, no signature
+        // lookup and no balance query — not because they are unreachable over the same wire, but
+        // because a component with one method cannot grow a second use by accident.
+        val writing =
+            Regex(
+                """\b(sendTransaction|simulateTransaction|requestAirdrop|signatureSubscribe|""" +
+                    """getSignatureStatuses|getBalance|getTokenAccount|accountSubscribe|""" +
+                    """WalletAdapter|WalletRepository|signAndSend|approve)\b"""
+            )
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { writing.containsMatchIn(withoutComments(it)) }.map { it.name },
+        )
+        // The JSON-RPC methods it names, as string literals: exactly one.
+        assertEquals(
+            listOf("\"getMultipleAccounts\""),
+            Regex(""""(get|send|simulate|request)[A-Z][A-Za-z]+"""")
+                .findAll(sources.joinToString("\n") { withoutComments(it) })
+                .map { it.value }
+                .distinct()
+                .toList(),
+        )
+        // It names no provider: it is a Solana component, and both plugins may use it.
+        val provider = Regex("""(?i)\b(jupiter|polymarket|centrifugo|redis)\b""")
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { provider.containsMatchIn(it.readText()) }.map { it.name },
+        )
+        // And the endpoint is the application's own. Nothing a server sends can set it: it comes
+        // from the build, through the composition root, and no manifest, proposal or provider
+        // answer reaches it.
+        val composition = File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt")
+        assertTrue(
+            composition
+                .readText()
+                .contains("HttpSolanaAccounts(httpClient, BuildConfig.SOLANA_RPC)")
+        )
+        assertEquals(
+            listOf("SeekerVaultApplication.kt"),
+            File(main, "java")
+                .walk()
+                .filter { it.extension == "kt" }
+                .filter { Regex("""SOLANA_RPC""").containsMatchIn(it.readText()) }
+                .map { it.name }
+                .toList(),
+        )
+        // No URL is ever persisted. A link read back off disk is a link something else could have
+        // written, so every destination is built at the moment it is shown (SEE-94).
+        val stores =
+            listOf("activity/storage", "connections/storage", "policy/storage", "wallet/storage")
+                .map { File(main, "java/io/github/brrenat/seekervault/$it") }
+        assertEquals(
+            emptyList<String>(),
+            stores
+                .flatMap { it.walk().filter { file -> file.extension == "kt" } }
+                .filter { Regex("""https?://""").containsMatchIn(withoutComments(it)) }
+                .map { it.name },
+        )
+    }
+
+    @Test
+    fun theJupiterPluginsReachTheirProviderAndNothingElseOfThisApps() {
+        // SEE-93 was the first thing written against the plugin boundary and SEE-94 the second, so
+        // between them they are the test of whether that boundary was worth having: a plugin that
+        // had to reach into the app to work would mean the boundary described nothing. These reach
+        // their own provider, and one shared Solana component, and take everything else from what
+        // they are handed (docs/wiki/jupiter-swap.md, docs/wiki/jupiter-prediction.md).
         val jupiter = File(main, "java/io/github/brrenat/seekervault/jupiter")
         assertTrue(jupiter.isDirectory)
         val sources = jupiter.walk().filter { it.extension == "kt" }.toList()
         assertTrue(sources.isNotEmpty())
-        // What it reaches for in the rest of the app: the boundary it implements, the one decoder
-        // and the instruction readers that already exist, the app's three-state verdict, the
-        // owner's selected wallet as a public address, base58, and the string resources its own
-        // words live in. No wallet interaction, no store, no approval, and neither of the app's
-        // own transports — it does not know a sidecar or a gateway exists.
+        // What they reach for in the rest of the app: the boundary they implement, the one decoder
+        // and the instruction readers that already exist, the shared component that resolves a
+        // versioned message's accounts (SEE-94), the app's three-state verdict, the owner's
+        // selected wallet as a public address, base58, and the string resources their own words
+        // live in. No wallet interaction, no store, no approval, and neither of the app's own
+        // transports — they do not know a sidecar or a gateway exists.
         val reaches =
             sources
                 .flatMap { it.readLines() }
@@ -318,6 +415,7 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault",
                 "io.github.brrenat.seekervault.plugins",
                 "io.github.brrenat.seekervault.request.v1",
+                "io.github.brrenat.seekervault.solana",
                 "io.github.brrenat.seekervault.transactions",
                 "io.github.brrenat.seekervault.wallet",
             ),
@@ -336,24 +434,33 @@ class StageBoundaryTest {
             emptyList<String>(),
             sources.filter { authority.containsMatchIn(withoutComments(it)) }.map { it.name },
         )
-        // The provider's address is written once, in the file that dials it, and is a parameter
-        // everywhere else — which is what lets a test point the plugin at a local server and what
-        // keeps a hostname out of the rest of the app.
-        val host = Regex("""jup\.ag""")
+        // The provider's addresses are written once each, and there are two of them with two
+        // different jobs: the API the plugins dial, and the platform a link is handed to. Both are
+        // parameters or constants in the plugin's own package, which is what lets a test point a
+        // plugin at a local server and what keeps every hostname out of the rest of the app.
+        val everywhere = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        fun named(host: Regex) =
+            everywhere.filter { host.containsMatchIn(it.readText()) }.map { it.name }.sorted()
         assertEquals(
-            listOf("JupiterProvider.kt"),
-            File(main, "java")
-                .walk()
-                .filter { it.extension == "kt" }
-                .filter { host.containsMatchIn(it.readText()) }
-                .map { it.name }
-                .toList(),
+            listOf("JupiterPredictionPlugin.kt", "JupiterProvider.kt"),
+            named(Regex("""jup\.ag""")),
         )
-        // And the build actually carries it: the list is in the composition root, because a real
+        // The endpoint the plugins read from, in the one file that makes a request to it.
+        assertEquals(listOf("JupiterProvider.kt"), named(Regex("""lite-api\.jup\.ag""")))
+        // And the platform the owner is sent to afterwards, which this app never dials: it is a
+        // link, built at the moment it is shown and never stored (SEE-94).
+        assertEquals(
+            listOf("JupiterPredictionPlugin.kt"),
+            named(Regex(""""https://jup\.ag"""")),
+        )
+        // And the build actually carries both: the list is in the composition root, because a real
         // plugin needs something built, and `plugins/` holds no client (SEE-86's `bundled()` could
         // only ever list plugins that needed nothing).
         val composition = File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt")
         assertTrue(composition.readText().contains("JupiterSwapPlugin(HttpJupiterProvider("))
+        assertTrue(
+            composition.readText().contains("JupiterPredictionPlugin(HttpJupiterPrediction(")
+        )
         assertEquals(
             emptyList<String>(),
             File(main, "java/io/github/brrenat/seekervault/plugins")
@@ -1008,6 +1115,15 @@ class StageBoundaryTest {
                 // address, because a transaction has to be built for the account that signs it.
                 // The publisher and the shared gateway are told none of it.
                 "JupiterProvider.kt",
+                // The same provider, for a prediction market: which market, which side, how much,
+                // and the address that will sign (SEE-94).
+                "JupiterPrediction.kt",
+                // And the one chain endpoint this app has ever had, for one purpose: reading the
+                // address lookup tables a prediction order's transaction names, without which the
+                // phone cannot see what it would be signing. One method, read-only, and the
+                // application's own endpoint rather than any publisher's
+                // (docs/security.md#resolving-a-lookup-table).
+                "SolanaAccounts.kt",
             )
         val clients = sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.toSet()
         assertTrue(clients.all { it in allowed })

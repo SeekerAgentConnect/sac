@@ -1,4 +1,4 @@
-# Client plugins and the SDK boundary (SEE-86, SEE-93)
+# Client plugins and the SDK boundary (SEE-86, SEE-93, SEE-94)
 
 This page is the short architecture document SEE-86 asks for: what boundary exists in the app **now**, and what a later SDK extraction (SEE-102) would still have to do. It is not a description of an SDK, because there isn't one.
 
@@ -36,6 +36,8 @@ flowchart TB
     end
     Plugin["jupiter.swap (SEE-93)<br>jupiter.prediction (SEE-94)"]
     Operations["operations/<br>review, parameters, approval"]
+    Solana["solana/<br>read-only accounts, lookup tables"]
+    Plugin -. "resolve a versioned message" .-> Solana
     Inbox -- "which operation is this?" --> Registry
     Operations -- "a proposal's terms" --> Registry
     Registry --> Contract
@@ -53,6 +55,15 @@ flowchart TB
 - **Operations are named at the protocol's own level.** Core says `swap`; a plugin claims `swap`. That Jupiter is what makes a swap work is the plugin's business, which is why `connections/`, `sync/`, `live/`, `push/`, `policy/`, `transactions/` and `activity/` contain no provider's name — another `StageBoundaryTest` check fails if one appears.
 - **Preparing can fail, and says why.** A plugin reaches a provider, and reaching a provider fails: unreachable, rate-limited, no route, an answer that cannot be used, an environment that does not execute. It raises a `PluginFailure` with a stable code, its own string resource and the provider's own words when it gave any — because there is no approximate preparation to fall back on.
 - **Typed facts, and no borrowed verdicts.** A plugin reports what it read as an [`InspectedAction`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/ActionInspection.kt): a payer, an amount in base units, a mint, a recipient, the programs called, and how many of the instructions it actually read. Coverage is derived from those two counts rather than stated, so a plugin can't claim it read bytes it didn't finish. The chain is core's: a rule is about the network the owner's wallet is selected for, and a plugin's own idea of which network its bytes are on is never consulted.
+- **Somewhere to continue, when there is one.** `destinations(subject)` is how a plugin says where
+  an operation carries on outside the app — a market on its provider's platform, say — built from
+  something the plugin validated and never from a publisher's prose. A destination that does not
+  exist is not invented: a provider with no address for a position gets no position link (SEE-94).
+  It is defaulted, because most operations have nowhere to send anybody.
+- **Identifiers for the record.** `ActionInspection.references` carries what an operation's provider
+  named for it, as stable keys and public values, and core puts them in the owner's Activity record
+  without reading any of them. No URL is ever among them: a link kept on disk is a link something
+  else could have written.
 - **Labelled values, for reading and never for evaluating.** An operation establishes things no rule has a field for: the least a swap will pay out, what a transaction costs to be picked up. A plugin puts those in `ActionInspection.details` as a string resource and a formatted value, and core shows them in order without knowing what any of them mean. Nothing in there reaches `RequestFacts`, so no plugin can make a rule pass by saying something reassuring.
 - **An unserved operation establishes nothing.** No plugin, no preparation, or bytes that couldn't be read all map to [`RequestFacts.unread`](../../android/app/src/main/java/io/github/brrenat/seekervault/policy/RequestFacts.kt): value moves, nothing is verified, and the verdict can never be `ALLOWED`. A missing plugin is a gap in the review, never a byte that turned out to be fine. Rules written for a transfer are not inherited by an operation they were never applied to — `PluginFactsTest` asserts both halves of that: the same generous rules give `UNDER_RESTRICTIONS` with nothing read, and `ALLOWED` once every byte is.
 
@@ -65,7 +76,11 @@ SEE-86 landed the boundary before anything was written against it; SEE-93 is the
 - `prepare` may raise a `PluginFailure`;
 - a `ParameterForm` may carry the reason there is nothing to collect, so a document the plugin cannot read is told apart from an operation with no parameters.
 
-Nothing outside Stage 7.1 could be affected by that: the app had never carried a plugin, no publisher exists yet (SEE-95, SEE-96), and the manifests that require `jupiter.swap` at `1..1` are this stage's own fixtures. **The next change to `ActionPlugin` after a publisher exists raises the number.**
+SEE-94 added two more, on the same reasoning: `destinations` and `references`. Both are additive and defaulted, so a plugin written for contract 1 without them is still correct to call.
+
+Nothing outside Stage 7.1 could be affected by any of it: the app had never carried a plugin, no publisher exists yet (SEE-95, SEE-96), and the manifests that require `jupiter.swap` at `1..1` are this stage's own fixtures. **The next change to `ActionPlugin` after a publisher exists raises the number.**
+
+One thing was deliberately *not* changed: `inspect` is still not a suspending function. A prediction order has to read the chain before it can be reviewed, which would have been the obvious reason to make it one — and instead the reading happens in `prepare`, where a plugin is already allowed to reach a network, and `inspect` returns what that reading found. So the boundary keeps its plainest promise: **an inspection reads bytes, and never a network** (SEE-94).
 
 ## What has not changed
 
@@ -93,7 +108,7 @@ This is the shape a later extraction would take. **None of it exists yet**, and 
 
 ## Where the rules for this live
 
-- The first plugin written against all of this: [`jupiter-swap.md`](jupiter-swap.md), and its provider in [`integrations/jupiter.md`](../integrations/jupiter.md).
+- The plugins written against all of this: [`jupiter-swap.md`](jupiter-swap.md) and [`jupiter-prediction.md`](jupiter-prediction.md), with their provider in [`integrations/jupiter.md`](../integrations/jupiter.md).
 - Stage boundary and what the guards hold: [`AGENTS.md`](../../AGENTS.md#stage-boundaries), enforced by [`StageBoundaryTest`](../../android/app/src/test/java/io/github/brrenat/seekervault/StageBoundaryTest.kt).
 - What a policy is applied to: [`policy.md`](../policy.md#what-is-evaluated).
 - Why validation is judged before a rule, and never softened by one: [`security.md`](../security.md#verification-versus-advisory-rules).

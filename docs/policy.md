@@ -141,6 +141,12 @@ Three things follow, and they matter:
 
 - **A swap of native SOL spends SOL.** It reaches the pool as the wrapped mint, but what leaves the
   owner is SOL, so the asset is native and a SOL threshold or a daily SOL limit covers it.
+- **A prediction order is its own action** (SEE-94), not a swap: what leaves is a stake and what
+  comes back is a claim on an outcome, and an owner willing to exchange one token for another has
+  not thereby said they are willing to bet. `PolicyAction.Prediction` is the word for it, so the
+  action list can permit one without the other. What it spends is the deposit token the owner chose,
+  in the amount they entered — and where it provably goes is the order's own account, which is not
+  the owner's, so a recipient rule is about that account rather than about them.
 - **The amount is what leaves**, read out of the routing instruction, not the output the owner hopes
   for. A rule is about what is being risked.
 - **What a plugin says beyond the facts is not evaluated.** The least a swap will pay out, its fee,

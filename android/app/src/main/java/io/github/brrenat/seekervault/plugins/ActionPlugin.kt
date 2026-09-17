@@ -74,7 +74,36 @@ interface ActionPlugin {
         choice: ParameterChoice,
         prepared: PluginPreparation,
     ): ActionInspection
+
+    /**
+     * Where the owner can carry on with this operation outside the app, if anywhere truthful exists
+     * (SEE-94).
+     *
+     * Some operations end where this app's part of them ends. A market order is one: the app opens
+     * a position and does not follow it — no fill, no settlement, no payout, no profit or loss — so
+     * the honest finish is a link to the provider's own platform rather than a screen that pretends
+     * to know more.
+     *
+     * Two rules. A destination is built from something this plugin validated, never from a
+     * publisher's prose. And a destination that does not exist is not invented: a provider with no
+     * address for a position gets no position link, and the owner is sent to the market instead
+     * (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
+     *
+     * It is defaulted because most operations have nowhere to send anybody, and an empty list is
+     * the truthful answer for them.
+     */
+    fun destinations(subject: ActionSubject): List<PluginDestination> = emptyList()
 }
+
+/**
+ * Somewhere the owner may continue, outside this app (SEE-94).
+ *
+ * [label] is the plugin's own string resource, so the words stay in resources, and [url] is built
+ * at the moment it is shown rather than stored: a link read back off disk is a link something else
+ * could have written, and this app hands nothing to a browser that it did not just construct itself
+ * (`activity/Explorer.kt` does the same with the one address it knows).
+ */
+data class PluginDestination(@StringRes val label: Int, val url: String)
 
 /**
  * What a plugin is, as a stable identity a server manifest can name (SEE-88) and a build can

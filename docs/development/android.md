@@ -407,6 +407,41 @@ by the same screens:
 The plugin is selected where the app is composed (`SeekerVaultApplication.plugins`), because a real
 plugin needs an HTTP client and `plugins/` holds none.
 
+## The Jupiter prediction plugin, and the chain read it needs (SEE-94)
+
+The architecture page is [`docs/wiki/jupiter-prediction.md`](../wiki/jupiter-prediction.md).
+Android-side it adds one package and four files to another.
+
+**`solana/` is the shared component**, and it names no provider so both plugins may use it:
+
+| File | What is in it |
+| --- | --- |
+| `SolanaAccounts.kt` | One read method, `getMultipleAccounts`, over the app's shared client. The app's first and only chain endpoint, configured by the build (`-Pseekervault.solanaRpc=…`) and **empty by default** |
+| `AddressLookupTables.kt` | Parsing and validating a table account, and rebuilding a versioned message's account list in the runtime's own order — static, then every table's writable indexes, then every table's readonly ones |
+
+**`jupiter/` gains the plugin**: `PredictionTerms.kt` (the market payload), `PredictionParameters.kt`
+(the side and the stake), `JupiterPrediction.kt` (the market and the order), `PredictionInstructions.kt`
+(the order instruction's Borsh layout, with the funding swap delegated to `SwapInstructions`), and
+`PredictionInspection.kt` with `JupiterPredictionPlugin.kt`.
+
+Three things about the shape of it are worth knowing before changing any of it:
+
+- **`inspect` is still not suspending.** Resolving reads the chain, so it happens in `prepare` — where
+  a plugin may reach a network — and `inspect` returns what that reading found, keyed by the exact
+  bytes it was made for. The boundary keeps its promise that an inspection reads bytes and not a
+  network, and the ViewModel calls the same two methods it calls for a swap.
+- **A resolution failure is a preparation failure.** `inspectPrediction` lets `SolanaException` and
+  `LookupException` propagate, and the plugin turns each into a `PluginFailure` with its own reason.
+  There is deliberately no path that produces a review of an order whose accounts were never seen.
+- **The readers are account-list agnostic.** `transactions.readInstruction` and `jupiter.swapStep`
+  take a program, a list of accounts and the data, so the same code reads a self-contained message
+  and a resolved one. That is what lets an order's funding swap be read by exactly the code that
+  reads a swap.
+
+The plugin also implements `destinations`, which is where the market link comes from, and returns
+`references` from its inspection — the order and position accounts — which `operations/` copies into
+the Activity record through `ActivityLog.referenced`, the same channel the policy snapshot uses.
+
 ## Activity
 
 The owner's guide is [`docs/guides/transfers.md`](../guides/transfers.md#the-activity-record). The history is the owner's own record of what this phone did (SAW-023), and it is deliberately not the same thing as a `LocalResult`: an answer is what the sidecar is owed, and it is dropped a week after it settles and when its connection is removed. A record of a payment outlives both.
@@ -571,7 +606,15 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `OperationViewModelTest` | The whole path with the real plugin: two owners acting on one signal with their own amounts, the fields the owner is asked for, a changed amount throwing away what was prepared, a stale quote prepared again rather than signed, the wallet asked once with exactly the reviewed bytes, a decline and an answer that never arrived recorded honestly, one execution per proposal ever, an operation the app closed on settled as unresolved, a provider that could not quote, bytes that do not do what was chosen never reaching the wallet, a devnet wallet refused before anything is asked, a dismissal a republication cannot undo, and terms that moved under an open review |
 | `OperationPrivacyTest` | The captured traffic (SEE-93's privacy acceptance): the whole path against two real HTTP servers, then every byte sent to each read back and searched. The gateway is told a channel and a sequence and none of the owner's numbers; the provider is told two mints, an amount and — for the build alone — the owner's address, and never the publisher, the proposal or the signature; and nothing goes anywhere after the wallet |
 | `ProposalScreensTest` | Compose on Robolectric: the list and its empty state, the publisher's words and terms shown as theirs, an amount typed in the asset's own units reaching the app in exact base units, too many decimal places refused rather than rounded, Approve offered only for bytes the phone accounted for whole, a finding shown and nothing to approve beside it, a provider quoted as itself, an unsupported server read in full, and an expired proposal offering no preparation |
-| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, only the non-exported messaging service, `INTERNET`, optional camera, and `POST_NOTIFICATIONS`. Firebase imports stay under `push/`; the service has registration callbacks and only the fixed invalidation-to-`PushSyncScheduler` message path, with no repository, transport, coroutine, notification, or wallet dependency in the callback. Notification code is limited to one channel, permission, generic post-Sync alerts, immutable activity intents, and a read-only route; it has no wallet, approval, scheduler, or background component. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, notification actions, and wallet-key APIs remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. SEE-93 adds one check and extends four: the swap plugin reaches its provider and nothing else of this app's, its provider's host is written in one file, the build's plugin list is in the composition root, `operations/` names no provider, and the message format is still parsed in exactly one package. |
+| `AddressLookupTablesTest` | Resolving a versioned message's accounts (SEE-94), and every way it must refuse to: a table missing, owned by the wrong program, deactivated, the wrong length, an index past its end, and a message reaching past the rebuilt list. The rebuild order has its own case, because getting it wrong would resolve every instruction to the wrong addresses silently |
+| `SolanaAccountsTest` | The chain read over a real HTTP endpoint: the one method it names, nothing about the owner in the request, a JSON-RPC error arriving with a 200, a partial answer, data that is not base64, a rate limit, a dead endpoint, and a build with no endpoint asking nobody anything |
+| `PredictionTermsTest` | What a publisher has to say for a market to be readable, the provider's minimum as a floor under the publisher's, a stake token the provider does not take, and every way the owner's own side and stake can fall outside what was published |
+| `PredictionFixturesTest` | A real order from the live API with the real contents of the tables it names: refused before resolution, resolved from the tables the message itself names, read field for field against the provider's own JSON, its funding swap read by SEE-93's reader unchanged, verified whole, and blocked outright when the chain cannot be read |
+| `PredictionInspectionTest` | Everything the order review refuses, one changed thing at a time: the side, the market, the order's identifier and accounts, the contracts, the ceiling, the cost, the slippage, whose order it is, who pays, buying against selling, two orders, the token, whose account funds it, where the funding lands, how much it takes, an account created for somebody else, a second missing signature, the owner's slot already filled, an extra transfer, a foreign program, another instruction of the prediction program, trailing bytes, and each way the tables can be unusable |
+| `JupiterPredictionPluginTest` | The order the plugin does things in: the market read before an order is asked for, a closed or settled market refusing without an order, a market in another event or from another source, an order wanting somebody else's signature, the chain failing with its own reason, sandbox asking nothing, a review that belongs to one side and one stake, and two owners backing two sides |
+| `HttpJupiterPredictionTest` | The prediction wire over a real HTTP endpoint: what a market read and an order carry, nothing about the publisher in either, an answer about another market or side refused, and the two provider refusals worth telling apart |
+| `PredictionOperationTest` | A market proposal from the feed to a signature and the links after it: the side and stake asked for and neither suggested, the market and chain read in order, the wallet asked once, the record keeping which order it was across a restart, a closed market, a chain that cannot be read, an order for the other side never reaching the wallet, a changed side throwing the order away, an answer that never arrived not repeated, and nothing about the side or stake reaching the gateway |
+| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, only the non-exported messaging service, `INTERNET`, optional camera, and `POST_NOTIFICATIONS`. Firebase imports stay under `push/`; the service has registration callbacks and only the fixed invalidation-to-`PushSyncScheduler` message path, with no repository, transport, coroutine, notification, or wallet dependency in the callback. Notification code is limited to one channel, permission, generic post-Sync alerts, immutable activity intents, and a read-only route; it has no wallet, approval, scheduler, or background component. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, notification actions, and wallet-key APIs remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. SEE-93 adds one check and extends four: the plugins reach their provider and nothing else of this app's, the provider's API host is written in one file and its platform link in one other, the build's plugin list is in the composition root, `operations/` names no provider, and the message format is still parsed in exactly one package. SEE-94 adds one more: the chain reader names one RPC method and it is a read, reaches nothing of the app but the decoder's types and base58, names no provider at all, takes its endpoint from the build through the composition root alone, and no storage package persists a URL. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
 
