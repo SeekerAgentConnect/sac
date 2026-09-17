@@ -245,6 +245,20 @@ The split a follow-up would make, in this order:
 it, and the reusable half must need neither. Packaging and publishing an SDK is out of scope here
 (SEE-102); this is the boundary a later stage would cut along.
 
+## Client plugins (SEE-86)
+
+The architecture page is [`docs/wiki/client-plugins.md`](../wiki/client-plugins.md); this is the Android-side summary.
+
+`plugins/` is one boundary where a bundled client plugin can be registered, so the Stage 7.1 Jupiter plugins (SEE-93, SEE-94) can be written without changing `connections/`, `sync/`, `live/`, `push/`, `policy/`, `transactions/`, `wallet/`, or any storage package. It is data and pure functions: no coroutine scope, no store, no transport, no Compose.
+
+- **`ActionPlugin`** has three behaviours and no others. `parameters(subject)` describes the fields the operation leaves to the owner, as a typed form rather than a screen — the app owns its own presentation. `prepare(subject, choice)` fetches whatever the operation needs to be executable now and returns the exact bytes. `inspect(subject, prepared)` reads those bytes and returns typed facts.
+- **`ActionSubject` is the complete list of what a plugin receives:** the connection ID, the operation, the environment, the structured request, and the owner's `SelectedWallet`. `SelectedWallet` is an address, a network, a label and a timestamp — the wallet's authorization token lives in `wallet/storage/WalletStore` and is not part of it (SEE-84). Nothing in the subject can reach a sidecar, approve anything, or sign.
+- **`PluginRegistry.bundled()` is the build-time selection**, and it is where SEE-93 and SEE-94 add their plugins. `SeekerVaultApplication.plugins` makes it settable, which is how tests register a plugin; `MainActivity` passes the composed registry to `InboxViewModel` without naming the package.
+- **`InboxViewModel.factsFor` is the only place it is consulted.** `actionOwner(request)` separates the actions the app carries out itself — ack, sign_message, transfer — from an operation a plugin would serve. The first path is unchanged. The second resolves against the registry, and an unresolved operation produces `RequestFacts.unread`, so it can never be `ALLOWED`.
+- **Two `StageBoundaryTest` checks hold the line.** One reads the package's imports against an exact list and fails if its code names a wallet interaction, a wallet token, a transport, an HTTP client, a store, or an approval. The other fails if a provider's name appears in core transport, policy, transaction or activity code, or if a file other than `SeekerVaultApplication.kt` and `InboxViewModel.kt` imports the package. Deliberately breaking either fails the named check.
+
+Writing a plugin, when a stage calls for one: implement `ActionPlugin`, add it to `PluginRegistry.bundled()`, and put its strings in resources — a `ParameterField` carries a `@StringRes` label rather than English. Nothing else in the app should need to change; if it does, the boundary is in the wrong place.
+
 ## Activity
 
 The owner's guide is [`docs/guides/transfers.md`](../guides/transfers.md#the-activity-record). The history is the owner's own record of what this phone did (SAW-023), and it is deliberately not the same thing as a `LocalResult`: an answer is what the sidecar is owed, and it is dropped a week after it settles and when its connection is removed. A record of a payment outlives both.

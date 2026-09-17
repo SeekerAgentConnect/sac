@@ -18,6 +18,7 @@ import io.github.brrenat.seekervault.request.v1.confirmation
 import io.github.brrenat.seekervault.request.v1.preparedTransaction
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.signMessageAction
+import io.github.brrenat.seekervault.request.v1.swapAction
 import io.github.brrenat.seekervault.request.v1.transferAction
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -144,6 +145,39 @@ class FakeConnectionGateway : ConnectionGateway {
             state = RequestState.REQUEST_STATE_PENDING
             createdAt = timestamp { seconds = Instant.now().epochSecond }
             this.expiresAt = timestamp { seconds = expiresAt.epochSecond }
+        }
+            .also { pending.getOrPut(connectionId) { mutableListOf() } += it }
+
+        /**
+         * Stores a PENDING swap, which a client plugin would carry out (SEE-86). Nothing in this
+         * build serves the operation, so it exists here to prove the phone establishes nothing
+         * about it rather than to exercise a swap.
+         */
+        fun addPendingSwap(
+            connectionId: String,
+            wallet: String,
+            network: Network,
+            requestId: String = UUID.randomUUID().toString(),
+            outputMint: String = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            inputAmount: String = "250",
+        ): ActionRequest = actionRequest {
+            ref = requestRef {
+                this.connectionId = connectionId
+                this.requestId = requestId
+            }
+            action = action {
+                swap = swapAction {
+                    this.wallet = wallet
+                    this.network = network
+                    inputAsset = asset { nativeSol = Asset.NativeSol.getDefaultInstance() }
+                    outputAsset = asset { tokenMint = outputMint }
+                    this.inputAmount = inputAmount
+                    slippageBps = 50
+                }
+            }
+            state = RequestState.REQUEST_STATE_PENDING
+            createdAt = timestamp { seconds = Instant.now().epochSecond }
+            expiresAt = timestamp { seconds = Instant.now().plusSeconds(86_400).epochSecond }
         }
             .also { pending.getOrPut(connectionId) { mutableListOf() } += it }
 

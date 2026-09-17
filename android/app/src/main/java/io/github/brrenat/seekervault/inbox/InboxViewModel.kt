@@ -22,6 +22,11 @@ import io.github.brrenat.seekervault.connections.messageBytes
 import io.github.brrenat.seekervault.connections.resultDetail
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.connections.toOutcome
+import io.github.brrenat.seekervault.plugins.ActionOwner
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.actionOwner
+import io.github.brrenat.seekervault.plugins.pluginFacts
 import io.github.brrenat.seekervault.policy.EffectivePolicy
 import io.github.brrenat.seekervault.policy.PolicyCheck
 import io.github.brrenat.seekervault.policy.PolicyDecision
@@ -231,6 +236,17 @@ class InboxViewModel(
      * never read back as rules.
      */
     private val history: ActivityLog,
+    /**
+     * The bundled client plugins this build carries (SEE-86). It is asked about the operations core
+     * doesn't carry out itself, and about nothing else: an acknowledgement, a message and a
+     * transfer never reach it. Resolving is a lookup — it opens no wallet and sends nothing.
+     */
+    private val plugins: PluginRegistry = PluginRegistry.bundled(),
+    /**
+     * Which promise an approval would keep. SEE-97 makes it the owner's own choice; until then the
+     * app asks for the one it has always kept.
+     */
+    private val environment: PluginEnvironment = PluginEnvironment.Production,
     /**
      * How long the app waits for the wallet before it gives up on an approval. It is the owner's
      * own time in the wallet app, so it is generous; a wallet that never answers at all must still
@@ -494,15 +510,30 @@ class InboxViewModel(
      * What the phone itself established about [key], which is all a policy is ever applied to. The
      * chain comes from the wallet the owner connected, and the rest from the structured request and
      * from the transaction's own bytes when one has been read.
+     *
+     * An action the app carries out itself is read the way it always has been. One a plugin would
+     * carry out is read by that plugin, and an operation this build carries none for establishes
+     * nothing — which is what a swap has always come to here, since nothing yet serves it (SEE-86,
+     * docs/wiki/client-plugins.md).
      */
     private fun factsFor(key: RequestKey): RequestFacts? {
         val inbox = repository.inbox.value
         val request = inbox.pendingRequest(key) ?: inbox.result(key)?.request ?: return null
         val prepared = activity.value.preparations[key] as? Preparation.Ready
+        val network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED
+        val owner = actionOwner(request)
+        if (owner is ActionOwner.Plugin) {
+            return pluginFacts(
+                connectionId = key.connectionId,
+                request = request,
+                network = network,
+                resolution = plugins.resolve(owner.operation, environment),
+            )
+        }
         return policyFacts(
             connectionId = key.connectionId,
             request = request,
-            network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED,
+            network = network,
             inspection = prepared?.inspection,
         )
     }

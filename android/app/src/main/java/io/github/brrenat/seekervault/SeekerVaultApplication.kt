@@ -20,6 +20,7 @@ import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import io.github.brrenat.seekervault.notifications.RequestNotificationManager
+import io.github.brrenat.seekervault.plugins.PluginRegistry
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.push.FcmRegistrationClient
@@ -118,6 +119,17 @@ class SeekerVaultApplication : Application() {
             unreadableRecords = { activityLog.unreadableRecords.value },
         )
     }
+
+    /**
+     * The bundled client plugins this build carries (SEE-86, docs/wiki/client-plugins.md). The list
+     * is chosen when the app is built and nothing adds to it at runtime; a plugin a server requires
+     * and this build doesn't have is reported as missing rather than fetched. Tests replace it
+     * before the first activity starts, to exercise the boundary without a provider.
+     */
+    var plugins: () -> PluginRegistry = PluginRegistry::bundled
+
+    /** One registry for the process, so every screen resolves an operation the same way. */
+    val pluginRegistry: PluginRegistry by lazy { plugins() }
 
     /**
      * The phone's connections and their requests (docs/security.md#local-storage-and-recovery):
