@@ -34,6 +34,30 @@ dependency version syntax. `@firebase/util`'s script can read `FIREBASE_WEBAPP_C
 Firebase endpoint, and write web-app defaults; the sidecar uses runtime Admin SDK credentials
 instead, so installation remains deterministic and credential-independent.
 
+### The broadcast gateway's side (SEE-90)
+
+The Go service in [`broadcast/`](../../broadcast) has its own toolchain and its own dependency list,
+and nothing in it is shared with the Node or Android sides. `pnpm check:broadcast` runs its checks
+and CI runs the same command; installing Go is not needed for `pnpm check`.
+
+| Tool | Version | Pinned in |
+| --- | --- | --- |
+| Go | 1.27.1 | the `go` line in `broadcast/go.mod`, which `actions/setup-go` reads through `go-version-file` |
+| `connectrpc.com/connect`, the Connect runtime for both services | 1.21.0 | `broadcast/go.mod`; it must match the `connectrpc/go` generator |
+| `google.golang.org/protobuf`, the message runtime | 1.36.12 | `broadcast/go.mod`; it must match the `protocolbuffers/go` generator |
+| `modernc.org/sqlite`, the pure-Go SQLite driver | 1.59.0 | `broadcast/go.mod` |
+
+**Three direct dependencies, and no more.** The rate limiter, the page cursor, the credential
+hashing and the logging are the standard library's, because each is a few lines and the alternative
+is a dependency to audit for a service whose whole point is holding nothing personal.
+
+**The SQLite driver is pure Go, so `CGO_ENABLED=0` is what the image builds with.** That is what
+lets the runtime image be `FROM scratch` with no libc and no CA bundle in it
+([`broadcast/Dockerfile`](../../broadcast/Dockerfile)).
+
+**Formatting is `gofmt`**, which is not configurable and therefore not configured. `go vet` runs
+before the tests.
+
 ### Android side
 
 | Tool | Version | Pinned in |
@@ -72,13 +96,20 @@ instead, so installation remains deterministic and credential-independent.
 
 ### Code generators
 
-| Generator in `buf.gen.yaml` | Output | Runtime library that must match |
+| Generator | Output | Runtime library that must match |
 | --- | --- | --- |
 | `protoc-gen-es` 2.14.1 (local), `target=js+dts` | `sidecar/src/gen` | `@bufbuild/protobuf` 2.14.1, plus `@connectrpc/connect` 2.2.0 for the service |
 | `buf.build/protocolbuffers/java:v36.1`, `lite` | `android/app/src/main/generated/java` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/protocolbuffers/kotlin:v36.1`, `lite` | `android/app/src/main/generated/kotlin` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0, with its OkHttp transport and lite codec at the same version |
+| `buf.build/protocolbuffers/go:v1.36.12`, `paths=source_relative` (in `buf.gen.go.yaml`) | `broadcast/internal/gen` | `google.golang.org/protobuf` 1.36.12 |
+| `buf.build/connectrpc/go:v1.21.0`, `paths=source_relative` (in `buf.gen.go.yaml`) | `broadcast/internal/gen` | `connectrpc.com/connect` 1.21.0 |
 
+- **There are two templates.** `buf.gen.yaml` writes the phone's Kotlin and the sidecar's
+  TypeScript for everything in `proto/` except `seekervault/gateway/v1/publish.proto` — neither of
+  them is a publisher — and `buf.gen.go.yaml` writes the gateway's Go for the three packages it
+  speaks. `pnpm generate` runs both, and `pnpm check:generated` compares all three output
+  directories.
 - **Generation is covered in the protocol doc.** [`docs/protocol.md`](../protocol.md#generated-code) describes generation, the cross-runtime fixtures, and the stale-output check (`pnpm check:generated`).
 - **The TypeScript output is JavaScript plus type declarations.** Node's type stripping can't run the TypeScript `enum`s that `target=ts` produces. `sidecar/tsconfig.build.json` sets `allowJs`, so `pnpm build` also copies that JavaScript to `dist/`.
 - **Generation needs network access.** `pnpm generate` and `pnpm check:generated` call the Kotlin plugins, which run remotely on the Buf Schema Registry.
@@ -113,7 +144,10 @@ The existing pins already support the production update protocol, so SAW-048 add
    export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
    ```
 
-5. **First build:** run `pnpm install --frozen-lockfile && pnpm check:android`. The first time, Gradle downloads the pinned Temurin 21 into `~/.gradle/jdks`.
+5. **Go, for the broadcast gateway (SEE-90):** `brew install go`, or the installer from
+   <https://go.dev/dl/>. It is needed only for `pnpm check:broadcast` and for working in
+   `broadcast/`; the Node and Android checks do not use it.
+6. **First build:** run `pnpm install --frozen-lockfile && pnpm check:android`. The first time, Gradle downloads the pinned Temurin 21 into `~/.gradle/jdks`.
 
 ## How Android Studio and the terminal stay compatible
 

@@ -1,0 +1,168 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/store"
+)
+
+const publisher = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+
+// The tool and the gateway have to agree about what a credential is: one creates it, the other
+// resolves it, and neither ever holds the thing itself. These tests are that agreement.
+func command(t *testing.T, arguments ...string) string {
+	t.Helper()
+	out := &bytes.Buffer{}
+	if err := run(arguments, out); err != nil {
+		t.Fatalf("%v failed: %v", arguments, err)
+	}
+	return out.String()
+}
+
+func refuses(t *testing.T, arguments ...string) error {
+	t.Helper()
+	err := run(arguments, &bytes.Buffer{})
+	if err == nil {
+		t.Fatalf("%v was accepted", arguments)
+	}
+	return err
+}
+
+// credentialOf reads the credential out of what register printed, which is the only place it ever
+// appears.
+func credentialOf(t *testing.T, printed string) string {
+	t.Helper()
+	for _, line := range strings.Split(printed, "\n") {
+		line = strings.TrimSpace(line)
+		// 32 random bytes as base64url, which is the shape the sidecar's own credentials have.
+		if len(line) == 43 && !strings.Contains(line, " ") {
+			return line
+		}
+	}
+	t.Fatalf("no credential was printed:\n%s", printed)
+	return ""
+}
+
+func TestRegisteringAPublisherGrantsExactlyOneThing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broadcast.db")
+	printed := command(t, "register", "--database", path, "--server", publisher, "--label", "demo")
+	credential := credentialOf(t, printed)
+	if !strings.Contains(printed, "server/"+publisher) {
+		t.Fatalf("register did not say which channel was granted:\n%s", printed)
+	}
+
+	documents, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = documents.Close() }()
+	sum := sha256.Sum256([]byte(credential))
+	// What the gateway will do with the credential the publisher was given.
+	serverID, err := documents.PublisherFor(context.Background(), sum[:])
+	if err != nil || serverID != publisher {
+		t.Fatalf("the credential resolved to %q (%v)", serverID, err)
+	}
+	// And the credential itself is nowhere in the file: only its hash is.
+	if strings.Contains(fileText(t, path), credential) {
+		t.Fatal("the credential was stored, not just its hash")
+	}
+}
+
+func TestRotatingAndRevoking(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broadcast.db")
+	first := credentialOf(t, command(t, "register", "--database", path, "--server", publisher))
+	second := credentialOf(t, command(t, "rotate", "--database", path, "--server", publisher))
+	if first == second {
+		t.Fatal("rotation printed the same credential again")
+	}
+
+	documents, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	resolves := func(credential string) string {
+		sum := sha256.Sum256([]byte(credential))
+		serverID, err := documents.PublisherFor(ctx, sum[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return serverID
+	}
+	if resolves(first) != publisher || resolves(second) != publisher {
+		t.Fatal("both credentials should work while the new one is being deployed")
+	}
+	listed := command(t, "list", "--database", path, "--server", publisher)
+	if strings.Count(listed, "in use") != 2 {
+		t.Fatalf("list says:\n%s", listed)
+	}
+	handle := strings.Fields(strings.Split(listed, "\n")[0])[0]
+	_ = documents.Close()
+
+	command(t, "revoke", "--database", path, "--credential", handle)
+	documents, err = store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = documents.Close() }()
+	if resolves(first) != "" {
+		t.Fatal("a revoked credential still publishes")
+	}
+	if resolves(second) != publisher {
+		t.Fatal("revoking one credential stopped the other")
+	}
+	// Revoking something that is not in use says so rather than reporting success.
+	if err := refuses(t, "revoke", "--database", path, "--credential", "00000000"); !strings.Contains(
+		err.Error(), "no credential") {
+		t.Fatalf("revoking an unknown credential said %v", err)
+	}
+}
+
+func TestForgettingIsDeliberate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broadcast.db")
+	command(t, "register", "--database", path, "--server", publisher)
+
+	// It deletes documents, so it takes more than a typo.
+	if err := refuses(t, "forget", "--database", path, "--server", publisher); !strings.Contains(
+		err.Error(), "--yes") {
+		t.Fatalf("forget without confirmation said %v", err)
+	}
+	printed := command(t, "forget", "--database", path, "--server", publisher, "--yes")
+	if !strings.Contains(printed, "Phones that already read") {
+		t.Fatalf("forget did not say what it does not do:\n%s", printed)
+	}
+	if listed := command(t, "list", "--database", path); !strings.Contains(
+		listed, "no publishers") {
+		t.Fatalf("the publisher is still listed:\n%s", listed)
+	}
+}
+
+func TestWhatTheToolRefuses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broadcast.db")
+	for _, arguments := range [][]string{
+		{},
+		{"register", "--server", publisher}, // no database
+		{"register", "--database", path, "--server", "copytrading"},
+		{"register", "--database", path},
+		{"revoke", "--database", path},
+		{"rotate", "--database", path, "--server", publisher}, // not registered
+		{"something-else", "--database", path},
+	} {
+		refuses(t, arguments...)
+	}
+}
+
+func fileText(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(content)
+}

@@ -1,4 +1,5 @@
-// Generates the protocol code (buf.gen.yaml) and the binary protobuf fixtures:
+// Generates the protocol code (buf.gen.yaml for the phone and the sidecar, buf.gen.go.yaml for
+// the broadcast gateway) and the binary protobuf fixtures:
 // proto/fixtures/<package path>/<Message>/<case>.json → <case>.binpb, via `buf convert`.
 //
 //   pnpm generate           write the output into the repository
@@ -20,7 +21,16 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const fixturesDir = "proto/fixtures";
 // Owned entirely by `buf generate` (clean: true); --check compares every file in them.
-const generatedDirs = ["sidecar/src/gen", "android/app/src/main/generated"];
+const generatedDirs = [
+  "sidecar/src/gen",
+  "android/app/src/main/generated",
+  "broadcast/internal/gen",
+];
+// One template per runtime pair. buf.gen.yaml writes the phone's Kotlin and the sidecar's
+// TypeScript; buf.gen.go.yaml writes the broadcast gateway's Go, which is a different subset of
+// the protocol (SEE-90). Each template cleans only its own output directories, so the order is
+// not load-bearing.
+const templates = ["buf.gen.yaml", "buf.gen.go.yaml"];
 
 const check = process.argv.includes("--check");
 const out = check
@@ -28,7 +38,9 @@ const out = check
   : root;
 
 try {
-  buf("generate", "--template", "buf.gen.yaml", "--output", out);
+  for (const template of templates) {
+    buf("generate", "--template", template, "--output", out);
+  }
 
   const fixtures = listFiles(join(root, fixturesDir));
   if (!check) {

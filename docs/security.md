@@ -114,6 +114,46 @@ What each owner does about one is theirs, and it stays on their phone
   revision, the plugin, the cluster and the parameters they chose — on the phone, and nowhere else.
   It outlives the feed being removed.
 
+### The broadcast gateway holds no person (SEE-90)
+
+The shared gateway in [`broadcast/`](../broadcast) is what a publisher publishes to and every
+subscribed phone reads from ([`wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md)). It is a
+third party in the middle of the stage's one public relationship, so what it is unable to do matters
+more than what it does.
+
+- **It has nowhere to put anything about a subscriber.** Six tables: a publisher, its credential
+  hashes, its manifest, its proposals, its channel's sequence, and the outbox. No address, no chosen
+  quantity, no decision, no signature, no history — and a Go boundary test reads the schema and the
+  protocol files and fails if a column or a field for any of it appears.
+- **A document cannot be smuggled through it.** Every publication is rebuilt from the fields that
+  were validated rather than stored as it arrived, so a protobuf field the gateway does not
+  understand is dropped instead of relayed to every phone on the channel. Over JSON the same attempt
+  is refused outright: the codec is strict, and a field the contract does not have is an error.
+- **There is no endpoint that would take a result.** No financial method exists on either service,
+  and the read listener serves no handler that could change anything at all — a publication sent to
+  it answers 404 with a valid credential.
+- **It cannot point a phone anywhere but at itself.** A published manifest must be a feed naming
+  this gateway's own origin; a `direct` manifest carries a URL, and the gateway refuses to hold one.
+  The phone would refuse it too — its own rule is that the origin must equal the one it added the
+  feed from — and this is the same rule applied a hop earlier, so neither side depends on the other
+  getting it right.
+- **A publisher's grant is one server.** The credential says which server the caller publishes as;
+  the document's own claim is checked against that, never the other way round. A channel is
+  `server/<server_id>`, so a publisher cannot address another's audience, and a withdrawal names no
+  channel at all.
+- **A credential is never stored and never logged.** Only its SHA-256 is kept, as the sidecar keeps
+  a phone's (SAW-011). It is shown once, by a local tool with no network surface; rotation is two
+  steps so it needs no outage; and a refusal says nothing about whether what was presented used to
+  work. Caddy redacts `Authorization` in front, and a test publishes with a credential and requires
+  it to appear in no log line.
+- **It calls nobody.** No publisher is ever contacted — which is the point of the mode rather than a
+  detail of it, because a publisher that could be reached could be told which phones are interested
+  in it — and no phone, chain or provider either. A boundary test fails if shipped code acquires an
+  HTTP client, and the image ships no CA bundle.
+- **Reading writes nothing down.** No session, no subscription record, no count of who read what: a
+  test reads the database after several reads and requires every row count to be unchanged. What the
+  gateway learns from a read is which channel someone asked about.
+
 ## One active phone per sidecar
 
 A sidecar has one paired phone at a time. A phone can pair with several sidecars (SAW-012).
@@ -163,6 +203,10 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 - **The Stage 7 gateway terminates TLS in front of the sidecar,** with a certificate it obtains and renews itself for a domain the operator owns. It adds no authentication and removes none, so every boundary below is still the sidecar's own. The optional OAuth profile (SAW-036) changes nothing about that: it is the sidecar, as the MCP server, that validates an access token.
 
 ### The gateway (SAW-035)
+
+This is the deployment's reverse proxy in front of one owner's sidecar, and not the shared broadcast
+gateway of SEE-90 above: different service, different operator, different directory
+([`broadcast/README.md`](../broadcast/README.md)).
 
 [`gateway/Caddyfile`](../gateway/Caddyfile) and [`gateway/Caddyfile.public`](../gateway/Caddyfile.public) are two configurations, not one with a switch: the first is plain HTTP on a loopback address for local work, and the second is the internet-facing one, reached through [`gateway/compose.public.yaml`](../gateway/compose.public.yaml). Making a deployment public is a different command, so loopback HTTP cannot become the public default by omission.
 

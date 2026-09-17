@@ -1,0 +1,31 @@
+version: v2
+clean: true
+# Go for the broadcast gateway (SEE-90, docs/wiki/broadcast-gateway.md). A separate template from
+# buf.gen.yaml because the two sides speak different parts of the protocol: the gateway publishes
+# and serves manifests and proposals, and has never heard of a durable request, a live command, or
+# a production update. Generating those for it would be dead code in a service whose whole point is
+# that it holds nothing personal.
+managed:
+  enabled: true
+  override:
+    # The module path plus the proto directory, so an import reads
+    # .../broadcast/internal/gen/seekervault/proposal/v1.
+    - file_option: go_package_prefix
+      value: github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen
+plugins:
+  # Messages. The runtime library in broadcast/go.mod must match this version
+  # (docs/development/toolchain.md).
+  - remote: buf.build/protocolbuffers/go:v1.36.12
+    out: broadcast/internal/gen
+    opt: paths=source_relative
+  # The Connect handlers and clients: the gateway serves two of these services, and the Go
+  # publisher templates (SEE-95, SEE-96) will call one of them.
+  - remote: buf.build/connectrpc/go:v1.21.0
+    out: broadcast/internal/gen
+    opt: paths=source_relative
+inputs:
+  - directory: proto
+    paths:
+      - proto/seekervault/gateway/v1
+      - proto/seekervault/proposal/v1
+      - proto/seekervault/server/v1

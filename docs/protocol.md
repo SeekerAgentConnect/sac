@@ -806,14 +806,86 @@ same revision with different terms is a contradiction the phone stops acting on.
 are gated on `Connection.usable`, which requires the direct mode (SEE-88). The owner's parameters,
 their approval and their execution record stay on the device that made them.
 
+## The broadcast gateway (SEE-90)
+
+A publisher publishes to the shared gateway and every subscribed phone reads from it. That is a
+different relationship from the durable request above — nobody is addressed, and nothing comes back
+— so it is a separate package with two services in it:
+[`seekervault.gateway.v1`](../proto/seekervault/gateway/v1).
+[`docs/wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md) is the architecture page and
+[`docs/development/broadcast.md`](development/broadcast.md) is how to run one; this section is the
+contract.
+
+**The two services are separate on purpose, and separately deployed.** `FeedService` is read-only
+and unauthenticated; `PublisherService` takes a credential scoped to one server. They listen on
+different sockets, and `publish.proto` is generated for Go alone — the phone is not a publisher, so
+no publisher client is compiled for it.
+
+### PublisherService
+
+Authenticated with `Authorization: Bearer <credential>`, which says which server the caller
+publishes as. Every document is checked against that rather than against what the document claims.
+
+| Method | What it does | Rules |
+| --- | --- | --- |
+| `PublishManifest` | Registers or replaces what the server says about itself | Must be a `CONNECTION_MODE_GATEWAY_FEED` manifest naming this gateway's own origin and the caller's own channel, at `protocol_version` 1. A direct manifest is refused: relaying one would let a publisher point a phone at an address of its choosing. |
+| `PublishProposal` | Creates or updates one proposal | The whole current document, `PROPOSAL_STATUS_OPEN`, by the same bounds the phone applies (`## Shared proposals`). A cancelled status is refused — withdrawing is a transition, and `CancelProposal` is where it happens. |
+| `CancelProposal` | Withdraws one | Takes an ID and a revision, so a publisher that no longer holds the document can still withdraw it. The gateway keeps every other field and writes the status and the update time. |
+
+**The revision is the idempotency key.** It is already the publisher's promise about its content, so
+a retry needs no second one: the same revision with the same content answers
+`PUBLISH_STATUS_UNCHANGED` and writes nothing, the same revision with different content is a
+conflict, a lower one is stale, and a higher one is the terms moving. A revision must be positive
+and at most 2⁶³−1, which is what the phone can order. A creation time that moved, and any
+publication over a withdrawal, are refused.
+
+Every refusal carries a `GatewayErrorDetail` with one `GatewayProblem`, the field it was about, and
+the revision the gateway holds where that is the point. The Connect code groups them: `unauthenticated`,
+`permission_denied` for another server or channel, `failed_precondition` for a revision or lifecycle
+rule, `not_found`, `resource_exhausted` for a rate limit, and `invalid_argument` for everything a
+document got wrong.
+
+### FeedService
+
+| Method | Answers | Version-aware |
+| --- | --- | --- |
+| `GetServerManifest` | The manifest the publisher registered, by server ID | `known_settings_revision` answers `unchanged` with no document |
+| `ListProposals` | A page of the channel's current proposals, at most 200, ordered by proposal ID | `known_snapshot_sequence` answers `unchanged` with no proposals, on a first page |
+| `GetProposal` | One proposal, by channel and ID | — |
+
+**The snapshot boundary is documented and not a transaction.** Every page of one walk reports the
+`snapshot_sequence` the walk began at — the channel's count of accepted publications, which never
+goes backwards. A completed walk holds every proposal that existed at that sequence and still exists
+at the end, some possibly at a newer revision, plus any published during it that sort after where
+the walk had reached. Nothing is lost by that: a phone applies a document only over an older
+revision of itself, so a page set from mixed moments converges, and a live stream's events (SEE-91)
+can be buffered during a walk and applied after it. A reconnecting client needs no stream — a full
+walk is the recovery path.
+
+**Caching is in the contract, not in a header.** Both reads take the version the caller holds and
+answer `unchanged`, and every read answers with `Cache-Control: no-store`: a proxy deciding how long
+a feed stays current would be a second opinion about what a publisher is proposing.
+
+**Retention** serves a proposal until its own expiry plus the gateway's window (a week by default),
+withdrawn ones included, so a phone that was switched off learns that a proposal was taken back
+rather than simply failing to find it. Nothing on a phone is deleted by it.
+
+**Nothing about a subscriber can be submitted.** There is no field for an address, a chosen
+quantity, a decision or a signature; the JSON codec refuses a field the contract does not have; an
+unknown protobuf field is dropped, because every document is rebuilt from what was validated rather
+than relayed; and there is no endpoint that would take any of it. A Go boundary test reads these
+protos and fails if the field set changes or a forbidden word appears.
+
 ## Generated code
 
 | Runtime | Output | Generators | Runtime libraries |
 | --- | --- | --- | --- |
 | TypeScript (sidecar) | `sidecar/src/gen`, as `.js` plus `.d.ts` | `protoc-gen-es` 2.14.1 | `@bufbuild/protobuf` 2.14.1 |
+| Go (broadcast gateway) | `broadcast/internal/gen` | `protocolbuffers/go` 1.36.12 and `connectrpc/go` 1.21.0, from `buf.gen.go.yaml` | `google.golang.org/protobuf` 1.36.12, `connectrpc.com/connect` 1.21.0 |
 | Kotlin (Android) | `android/app/src/main/generated/java` and `android/app/src/main/generated/kotlin` | `protocolbuffers/java` and `protocolbuffers/kotlin` v36.1 (lite), `connectrpc/kotlin` v0.9.0 | `protobuf-kotlin-lite` 4.36.1, `connect-kotlin` 0.9.0 |
 
-- **`pnpm generate`** regenerates the code and the binary fixtures. Commit the result, and never edit generated files by hand.
+- **`pnpm generate`** regenerates the code and the binary fixtures from both templates. Commit the result, and never edit generated files by hand.
+- **Two templates, because the two sides speak different parts of the protocol.** `buf.gen.yaml` writes the phone's Kotlin and the sidecar's TypeScript, and excludes `seekervault/gateway/v1/publish.proto`: neither of them is a publisher, so no publisher client exists for either. `buf.gen.go.yaml` writes the gateway's Go for the three packages it speaks — the gateway has never heard of a durable request, a live command or a production update.
 - **`pnpm check:generated`** generates into a temporary directory and fails if any committed file differs. CI runs it, and running generation twice produces no diff.
 - **`pnpm check`** includes `buf format` and `buf lint` with the STANDARD rules.
 - **Buf managed mode** sets the Java and Kotlin package to `io.github.brrenat.<proto package>`: `io.github.brrenat.seekervault.live.v1`, `io.github.brrenat.seekervault.request.v1`, and `io.github.brrenat.seekervault.update.v1`.
@@ -826,6 +898,7 @@ Each fixture case is a Protobuf JSON file at `proto/fixtures/<package path>/<Mes
 
 - **The sidecar tests** decode the JSON with protobuf-es, and require both the encoding and the decoding to match the `.binpb` byte for byte.
 - **The Android unit tests** build the same message in Kotlin, and require both parsing and serialization to match the same bytes.
+- **The gateway's Go tests** go the other way round for `seekervault/gateway/v1` (SEE-90): `broadcast/internal/gateway/fixtures_test.go` runs the scenario those fixtures describe through the real service and requires each committed file to be exactly what it answered, and `GatewayProtocolFixturesTest` then requires the phone's own validators to accept what is in them. The sidecar is not in that pair: it neither publishes a proposal nor subscribes to one.
 
 | Package | Sidecar test | Android test | Cases |
 | --- | --- | --- | --- |

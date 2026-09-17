@@ -109,7 +109,8 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 | `proto/` | Protobuf contract (a Buf module) and cross-runtime fixtures in `proto/fixtures`; see [`docs/protocol.md`](docs/protocol.md) |
 | `scripts/` | `generate.mjs`, which backs `pnpm generate` and `pnpm check:generated` |
 | `test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`test-agent/README.md`](test-agent/README.md). |
-| `gateway/` | Docker Compose, the TLS gateway, and the optional OAuth overlay (Stage 7) |
+| `gateway/` | Docker Compose, the TLS gateway, and the optional OAuth overlay for one owner's own deployment (Stage 7) |
+| `broadcast/` | The shared broadcast gateway in Go (Stage 7.1, SEE-90): a developer's publisher publishes once, and every subscribed phone reads from here. A different service from `gateway/`, with a different operator; see [`docs/wiki/broadcast-gateway.md`](docs/wiki/broadcast-gateway.md) and [`docs/development/broadcast.md`](docs/development/broadcast.md) |
 | `examples/` | Configuration to merge into other tools: `hermes.config.yaml`; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md) |
 | `docs/` | The architecture and the protocol, plus development docs, guides, testing notes, and the changelog |
 | `.github/workflows/ci.yml` | CI for pull requests and pushes |
@@ -141,6 +142,7 @@ corepack enable pnpm             # or: npm install --global pnpm
 pnpm install --frozen-lockfile
 pnpm check                       # formatting, lint, type checks, tests
 pnpm check:android               # Kotlin formatting, unit tests, Android lint, debug APK
+pnpm check:broadcast             # the broadcast gateway: gofmt, go vet, go test (needs Go)
 (cd android && ./gradlew :app:assembleDebug)
 ```
 
@@ -153,6 +155,8 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm install --frozen-lockfile` | Installs exactly what the committed lockfile specifies | Works |
 | `pnpm check` | Runs Prettier, `buf format`, ESLint, `buf lint`, TypeScript type checks, and the sidecar tests without changing any files | Works |
 | `pnpm check:android` | Runs Spotless (ktfmt), Android unit tests, and Android lint, and builds the debug APK and the instrumentation test APK | Works |
+| `pnpm check:broadcast` | Checks the broadcast gateway (SEE-90): `gofmt`, `go vet`, and its Go tests. Needs Go; no other check does | Works |
+| `docker compose up -d --build` (in `broadcast/`) | Builds and starts the broadcast gateway on a loopback address ([the gateway's own README](broadcast/README.md)) | NOT RUN: no Docker daemon was available |
 | `pnpm build` | Compiles the sidecar to `sidecar/dist` | Works |
 | `docker compose up -d --build` (in `gateway/`) | Builds and starts the self-hosted stack on a loopback address ([self-hosting](docs/guides/self-hosting.md)) | NOT RUN: no Docker daemon was available |
 | `pnpm dev:sidecar` | Starts the sidecar with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. | Works |
@@ -196,6 +200,7 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 `.github/workflows/ci.yml` runs on pull requests and on pushes to `master` and `develop`:
 
 - **Node:** `pnpm install --frozen-lockfile`, then `pnpm check`, `pnpm test:hello`, `pnpm test:queue`, `pnpm check:generated`, and `pnpm build`
+- **Broadcast gateway:** `pnpm check:broadcast`, with the Go version read from `broadcast/go.mod`
 - **Android:** `pnpm check:android` on Temurin 21
 - **Emulator:** `pnpm test:hello --device` on an Android 16 (API 36) emulator. An emulator run never counts as the physical Seeker check.
 

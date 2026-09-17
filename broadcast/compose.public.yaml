@@ -1,0 +1,39 @@
+# Internet-facing overlay for compose.yaml (SEE-90).
+#
+# The base file on its own is the local-development stack: plain HTTP on the
+# host's loopback address. This overlay is what makes the stack public, and it is
+# a deliberate, separate command rather than a default:
+#
+#   docker compose -f compose.yaml -f compose.public.yaml up -d --build
+#
+# Before the first start, the domain in BROADCAST_DOMAIN must already resolve to
+# this host (an A record, an AAAA record, or both), and ports 80 and 443 must be
+# reachable from the internet. Caddy answers the certificate authority's
+# challenge on port 80 and serves HTTPS on 443; it then renews on its own.
+#
+# What changes compared with the base file: the proxy serves Caddyfile.public
+# instead of Caddyfile, 80 and 443 are published on every interface, and the one
+# setting a public deployment must not get wrong — the origin every published
+# manifest has to name — is derived from the domain rather than typed again.
+
+services:
+  broadcast:
+    # The gateway still binds loopback inside the namespace and is still
+    # unpublished. These are the proxy's ports: it shares this namespace.
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # The origin phones use. A manifest that names anything else is refused at
+      # publication, because the phone compares this string with the feed
+      # reference it was added from, character for character (SEE-88).
+      BROADCAST_PUBLIC_URL: https://${BROADCAST_DOMAIN:?set BROADCAST_DOMAIN in broadcast/.env - the public domain name, for example feeds.example.com}
+
+  proxy:
+    environment:
+      BROADCAST_DOMAIN: ${BROADCAST_DOMAIN:?set BROADCAST_DOMAIN in broadcast/.env - the public domain name, for example feeds.example.com}
+      # Where the certificate authority sends expiry and problem notices.
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in broadcast/.env - the address your certificate authority should contact}
+    volumes:
+      # Replaces the development Caddyfile mounted by the base file.
+      - ./Caddyfile.public:/etc/caddy/Caddyfile:ro

@@ -1,0 +1,139 @@
+# The broadcast gateway's stack (SEE-90). Run it from this directory:
+#   cp .env.example .env
+#   docker compose up -d --build
+#   docker compose run --rm ctl register --server <uuid>
+#
+# That is the local-development configuration: plain HTTP, published on the host's
+# loopback address. The internet-facing one is this file plus an overlay, which
+# terminates TLS for a domain you own:
+#
+#   docker compose -f compose.yaml -f compose.public.yaml up -d --build
+#
+# It is the same shape as `gateway/compose.yaml`, and it is a different thing.
+# That stack is one owner's private sidecar behind a reverse proxy, run by the
+# owner. This one is the shared service developers publish to and phones read
+# from, run by whoever hosts the broadcast — usually not either of them.
+#
+# What starts: the gateway and the proxy in front of it. Starting the stack
+# creates no publisher, accepts no publication and reaches nothing: a publisher
+# can only publish once an operator has registered it with `ctl`, which is a
+# deliberate local act and has no network surface at all.
+
+name: seeker-broadcast
+
+services:
+  # The gateway owns the network namespace the proxy joins, so it is declared
+  # first and carries the published port.
+  broadcast:
+    build:
+      context: ..
+      dockerfile: broadcast/Dockerfile
+    image: seeker-broadcast/gateway:local
+    restart: unless-stopped
+
+    # The one published port is the proxy's listener, which lives in this
+    # namespace. The gateway's own two ports bind 127.0.0.1 inside the namespace
+    # and are unreachable from the host and from every other container.
+    ports:
+      - "${BROADCAST_BIND:-127.0.0.1}:${BROADCAST_PORT:-8080}:8081"
+
+    environment:
+      # The origin phones use, which every published manifest has to name: the
+      # phone compares it with the feed reference it added the feed from, so a
+      # deployment that gets this wrong has a feed nobody can read. The default
+      # is the published port above, which is what a laptop reaches over
+      # `adb reverse`.
+      BROADCAST_PUBLIC_URL: ${BROADCAST_PUBLIC_URL:-http://127.0.0.1:${BROADCAST_PORT:-8080}}
+      BROADCAST_READ_ADDRESS: 127.0.0.1:8090
+      BROADCAST_PUBLISHER_ADDRESS: 127.0.0.1:8091
+      BROADCAST_DATABASE_PATH: /data/broadcast.db
+      # How long past its own expiry a proposal is still served. Empty means a
+      # week (docs/wiki/broadcast-gateway.md#retention).
+      BROADCAST_RETENTION_HOURS: ${BROADCAST_RETENTION_HOURS:-}
+      BROADCAST_MAX_PROPOSALS: ${BROADCAST_MAX_PROPOSALS:-}
+      BROADCAST_READ_RATE: ${BROADCAST_READ_RATE:-}
+      BROADCAST_READ_BURST: ${BROADCAST_READ_BURST:-}
+      BROADCAST_PUBLISH_RATE: ${BROADCAST_PUBLISH_RATE:-}
+      BROADCAST_PUBLISH_BURST: ${BROADCAST_PUBLISH_BURST:-}
+
+    volumes:
+      # The publications and the publisher configuration. This is the only state
+      # that must outlive a container, and the only writable path in the image.
+      - broadcast-data:/data
+
+    # Everything else is read-only, which a scratch image with one volume makes
+    # easy to mean literally. SQLite writes its journal beside the database on
+    # the volume and needs nothing in /tmp.
+    read_only: true
+
+    # main.go handles SIGTERM: it stops accepting, lets what is in flight finish,
+    # makes one last fan-out pass and closes the database. The grace period is
+    # longer than the drain window inside it.
+    stop_grace_period: 30s
+    stop_signal: SIGTERM
+
+    # The gateway holds no key, signs nothing and calls nobody.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    # The namespace share is what lets the gateway keep its loopback binds while
+    # still being reachable by something. It also means the proxy has no route to
+    # the gateway that anything else could take.
+    network_mode: "service:broadcast"
+    depends_on:
+      # A scratch image has no shell to probe itself with, so the gateway
+      # declares no healthcheck of its own and the proxy's covers both: it goes
+      # through the published listener and out the other side.
+      - broadcast
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+      - proxy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8081/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 15s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # Not started by `docker compose up`, and not reachable over any network. This
+  # is the operator's own tool, and registering a publisher is the one act that
+  # grants the ability to publish:
+  #
+  #   docker compose run --rm ctl register --server <uuid> --label "copy trading"
+  #   docker compose run --rm ctl list
+  #   docker compose run --rm ctl rotate --server <uuid>
+  #   docker compose run --rm ctl revoke --credential <id>
+  #
+  # It writes to the same volume the gateway reads, and it can run while the
+  # gateway is up.
+  ctl:
+    profiles: ["ctl"]
+    build:
+      context: ..
+      dockerfile: broadcast/Dockerfile
+    image: seeker-broadcast/gateway:local
+    entrypoint: ["/broadcastctl"]
+    environment:
+      BROADCAST_DATABASE_PATH: /data/broadcast.db
+    volumes:
+      - broadcast-data:/data
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  broadcast-data:
+  proxy-data:
+  proxy-config:

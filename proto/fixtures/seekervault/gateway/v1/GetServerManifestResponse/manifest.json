@@ -1,0 +1,22 @@
+{
+  "manifest": {
+    "serverId": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "protocolVersion": 1,
+    "settingsRevision": "12",
+    "mode": "CONNECTION_MODE_GATEWAY_FEED",
+    "feed": {
+      "gatewayUrl": "https://gateway.example.com",
+      "channel": "server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+    },
+    "requiredPlugins": [
+      { "pluginId": "jupiter.swap", "minContract": 1, "maxContract": 1 },
+      { "pluginId": "jupiter.prediction", "minContract": 1, "maxContract": 2 }
+    ],
+    "environments": [
+      "SERVER_ENVIRONMENT_PRODUCTION",
+      "SERVER_ENVIRONMENT_SANDBOX"
+    ],
+    "displayName": "Копи-трейдинг 📈"
+  },
+  "settingsRevision": "12"
+}

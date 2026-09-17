@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+// What a phone reads from the broadcast gateway (SEE-90, docs/wiki/broadcast-gateway.md).
+//
+// This is the whole of the client API, and every method on it only reads. A phone asks what a
+// publisher says about itself, what it is currently proposing, and what one of those proposals
+// says; there is nothing here to write, because a subscriber has nothing to tell the gateway. The
+// publisher's own server is never contacted by a phone, and never learns that a phone read
+// anything (docs/security.md).
+//
+// The publisher API is a separate service on a separate listener (publish.proto). That separation
+// is deployed, not just declared: a read port serves these three methods and no handler that could
+// change anything, so no routing mistake can turn a read endpoint into a write one.
+//
+// **Nothing about a subscriber may ever appear in this file.** There is no field for a wallet, a
+// quantity someone chose, a decision they made, or anything they signed, and a Go boundary test
+// reads this proto and fails if the field set changes or a forbidden word appears in it — so a
+// field that could carry any of it has to be argued for in that test first.
+package seekervault.gateway.v1;
+
+import "seekervault/proposal/v1/proposal.proto";
+import "seekervault/server/v1/manifest.proto";
+
+// FeedService is the read-only client API. It is unauthenticated on purpose: a feed is a
+// broadcast, its reference can be printed in a README, and holding one grants nothing. What the
+// gateway learns from a read is which channel someone is interested in, which is the minimum a
+// subscription can be made of.
+service FeedService {
+  // The manifest the publisher registered: what contract it speaks, which client plugins its
+  // operations need, which environments it serves, and the channel it publishes on. The phone
+  // validates all of it against the reference it added the feed from before storing any of it
+  // (SEE-88), so this method is asked, never believed.
+  rpc GetServerManifest(GetServerManifestRequest) returns (GetServerManifestResponse);
+  // A page of the channel's current proposals. Every proposal the publisher has open, and the ones
+  // it has cancelled or let expire while the gateway still keeps them, are here: expiry and
+  // cancellation are facts inside a document rather than reasons to hide it.
+  rpc ListProposals(ListProposalsRequest) returns (ListProposalsResponse);
+  // One proposal, for a phone that learned its ID some other way — a notification, or a page it
+  // read before the document moved.
+  rpc GetProposal(GetProposalRequest) returns (GetProposalResponse);
+}
+
+message GetServerManifestRequest {
+  // The publisher's lasting ID, which is what a feed reference carries.
+  string server_id = 1;
+  // The settings revision the caller already holds, or zero. The gateway answers `unchanged`
+  // rather than re-sending a document the caller has, which is the same rule the phone's own cache
+  // is built on: an unchanged revision means it may keep what it has (SEE-88). It is in the
+  // request rather than in an HTTP header because the revision is the contract's own, and a
+  // caching proxy in between must not be the thing that decides what a phone believes.
+  uint64 known_settings_revision = 2;
+}
+
+message GetServerManifestResponse {
+  // Absent when `unchanged` is set, and complete otherwise: the gateway does not serve a patch.
+  seekervault.server.v1.ServerManifest manifest = 1;
+  // The caller's revision is the current one, and the manifest was not sent.
+  bool unchanged = 2;
+  // The revision the gateway holds, set either way, so a caller that asked with the wrong number
+  // still learns which one is current.
+  uint64 settings_revision = 3;
+}
+
+message ListProposalsRequest {
+  // The channel to read, which is "server/<server_id>" and the only channel that publisher owns.
+  // A phone has it from its own feed reference and never has to be told it.
+  string channel = 1;
+  // How many proposals at most, 1 to 200. Zero means the gateway's own default.
+  uint32 page_size = 2;
+  // The token from a previous response, echoed exactly. Absent starts a new walk. A token is
+  // opaque: it is this gateway's own note to itself about where the walk was, and a client that
+  // builds one instead of echoing it is refused.
+  string page_token = 3;
+  // The snapshot sequence the caller already holds, or zero, and only on the first page. When the
+  // channel has not moved since, the gateway answers `unchanged` with no proposals — one round
+  // trip for a phone that is up to date, on the connection of someone paying for it by the
+  // megabyte.
+  uint64 known_snapshot_sequence = 4;
+}
+
+message ListProposalsResponse {
+  // This page of proposals, ordered by proposal ID so the walk is stable while the feed moves.
+  repeated seekervault.proposal.v1.Proposal proposals = 1;
+  // Set when there is more to read, and absent on the last page.
+  string next_page_token = 2;
+  // The channel's sequence when this walk began: the gateway's count of accepted publications on
+  // it, which never goes backwards. It is the walk's **consistency boundary**, and the documented
+  // one: a completed walk holds every proposal that existed at this sequence and still exists at
+  // the end, possibly at a newer revision than it had then, plus any that were published during
+  // it. It is not a transaction. Nothing is lost by that, because every document carries its own
+  // revision and the phone applies one only over an older one (SEE-89) — so a page set from mixed
+  // moments converges, and a live stream's events (SEE-91) can be buffered during a walk and
+  // applied after it.
+  uint64 snapshot_sequence = 3;
+  // The caller's sequence is the current one, and no proposals were sent. Only ever set for a
+  // first page.
+  bool unchanged = 4;
+}
+
+message GetProposalRequest {
+  string channel = 1;
+  string proposal_id = 2;
+}
+
+message GetProposalResponse {
+  seekervault.proposal.v1.Proposal proposal = 1;
+}

@@ -28,6 +28,7 @@ proto/         Protobuf contract, Buf, Kotlin and TypeScript code generation
 sidecar/       TypeScript/Node: MCP, Connect API, queue, transaction building
 android/       Kotlin/Compose: connections, policies, requests, MWA, history
 gateway/       Docker Compose, TLS, OAuth/MCP gateway configuration
+broadcast/     The shared broadcast gateway (Go): the publication and feed-read API
 test-agent/    Minimal MCP client for testing and demos
 docs/          Architecture, protocol, policies, setup, and integrations
 ```
