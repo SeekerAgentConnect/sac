@@ -1,4 +1,4 @@
-# A publisher template's signal API (SEE-95)
+# A publisher template's signal API (SEE-95, SEE-96)
 
 How an external system publishes signals through a publisher template: a trader's script, a cron
 job, or a strategy engine that decides what to propose. It is plain JSON over HTTP, so it can be
@@ -63,6 +63,45 @@ caller learns that it may not publish and never whether what it presented used t
 Every answer is JSON, including the router's own refusals, and every answer carries
 `Cache-Control: no-store`: what a publisher currently proposes is the answer, and a proxy deciding
 how long that stays true would be a second opinion about it.
+
+## Two templates, and one of them does not take signals
+
+The endpoints above are the **CopyTrading** template's, whose signals are written by its callers —
+which is what this whole page is about. The **Prediction** template (SEE-96,
+[`wiki/prediction-template.md`](../wiki/prediction-template.md)) writes its own from a provider's
+listing, so on that one the three writing endpoints answer **403** and two of its own are added:
+
+| Method and path | What it does |
+| --- | --- |
+| `POST /v1/signals`, `PUT /v1/signals/{id}`, `POST /v1/signals/{id}/cancel` | `403 written_by_discovery` — nothing is stored |
+| `GET /v1/discovery` | The filters in force, the last cycle, and every market it is tracking |
+| `POST /v1/discovery/poll` | Run a discovery cycle now, rather than at the next interval. `409 busy` while one is running |
+
+`GET /v1/status` says which of the two you are talking to before you try, so a client can branch on
+an answer rather than on a refusal:
+
+```json
+{
+  "operation": "prediction",
+  "plugin_id": "jupiter.prediction",
+  "writable": false,
+  "discovery": { "markets": 7, "working": true, "last_cycle": { "outcome": "ok", "created": 7 } }
+}
+```
+
+The refusal itself says where to look instead, because the way to change what a discovering template
+publishes is to change what it looks for:
+
+```json
+{
+  "error": "written_by_discovery",
+  "detail": "this template's signals are written by its own discovery of prediction markets, not by callers. What it publishes is decided by the filters its deployment configured (GET /v1/discovery), and a cycle would undo anything posted here"
+}
+```
+
+Reading is identical on both, and so is `POST /v1/signals/{id}/retry`: a retry is about the gateway
+rather than about the statement, so it belongs to whoever operates the template rather than to
+whoever wrote the signal.
 
 ## Publishing a signal
 

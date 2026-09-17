@@ -199,10 +199,12 @@ subscribed will read ([`wiki/copytrading-template.md`](wiki/copytrading-template
 about it is the same thing that matters about the gateway — not what it does, but what it has no way
 to do.
 
-- **It has nowhere to put anything about a subscriber.** Four tables: the deployment's own stamp,
-  its manifest's revision, its signals, and the idempotency keys callers created them with. No
-  address, no chosen amount, no decision, no signature, no outcome — and a test reads the **live**
-  schema rather than the source and fails if a column for any of it appears.
+- **It has nowhere to put anything about a subscriber.** Six tables: the deployment's own stamp, its
+  manifest's revision, its signals, the idempotency keys callers created them with, and — for the
+  template that discovers its own (SEE-96) — the *provider's* markets it is tracking and what its
+  last cycle did. No address, no chosen amount, no side, no decision, no signature, no outcome — and
+  a test reads the **live** schema rather than the source and fails if a column for any of it
+  appears.
 - **Nothing about one can be sent to it.** Its API has no such field, and the decoder refuses a
   field the contract does not have rather than dropping it, so a caller that believes otherwise is
   told that there is no field for it. A term is refused the same way: a kind rejects a term it does
@@ -234,6 +236,44 @@ to do.
   file with a sandbox configuration is refused at startup, as is opening another publisher's file.
   The way this gets confused is a copied compose file pointed at a volume that already exists, which
   is why the check is in the file rather than in the argument.
+
+### A template that discovers its own signals reads nothing about anybody (SEE-96)
+
+The Prediction template is the second one, and it is the first server in this stage that reaches out
+to somebody else's API on its own schedule
+([`wiki/prediction-template.md`](wiki/prediction-template.md)). That is a new surface, so it is worth
+saying exactly how small it is.
+
+- **What it asks the provider is public, and is not about a person.** Two endpoints: which markets
+  exist, and what one market currently is. The provider's endpoints for orders, positions, history
+  and profiles are not in the module — a boundary test allows the provider's package to be imported
+  by four files and its host to appear in one, and fails otherwise. The owner's phone places the
+  order, and this template never learns that one was placed.
+- **Nobody may write a signal through it.** Its proposals are the reconciler's, so `POST
+  /v1/signals`, `PUT /v1/signals/{id}` and `POST /v1/signals/{id}/cancel` answer 403 and store
+  nothing, and the front door does not forward them either. A caller's signal would be undone by the
+  next cycle, and the 403 says where the filters are instead.
+- **The provider's key is a third credential, and it is the easiest to leak.** Unlike the other two
+  it is *sent to somebody else's service*, which puts it next to a URL, inside a transport error's
+  text and in whatever a client library logs. So it goes in one `x-api-key` header, transport errors
+  are reported with the URL stripped out, and a test presents a key, runs a cycle, and searches every
+  answer the API gives and the whole log for it.
+- **Nothing a publisher chose is put on a phone's screen.** The document carries the provider's
+  market and event identifiers — which is what lets the phone look the market up itself — and the
+  link to the provider's page stays in this template's own row. A URL a publisher chose, rendered on
+  a phone, is the thing the manifest rules exist to prevent, and a test searches a published document
+  for `http` and for the provider's domain.
+- **Provider text cannot make a document the phone would refuse.** A market title arrives from
+  somebody else, so the note is folded to one printable line and truncated on a character boundary
+  before anything is published: a title with a newline in it would otherwise become a signal the
+  gateway refuses and nobody ever sees.
+- **An outage cannot withdraw anybody's proposal.** A provider that is unreachable, rate limiting or
+  refusing this deployment's key ends nothing at all: the cycle is recorded as partial and the
+  proposals stand. Only the provider's own answer — closed, cancelled, settled, or no such market —
+  withdraws one, and a table of every case is tested.
+- **There is no opinion in it.** No model, no probability of its own, no ranking but by close time,
+  and no term a side could be published in: a term the kind does not know is refused, so `side`,
+  `is_yes`, `confidence` and `recommendation` cannot be published at all.
 
 ## One active phone per sidecar
 

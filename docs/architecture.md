@@ -22,7 +22,7 @@ flowchart LR
 | **Sidecar** (`sidecar/`) | The MCP and phone endpoints. From SAW-010 and SAW-011 on, it also holds requests and their states, prepared transactions, results, idempotency records, and pairing; Stage 5.2 adds durable update revisions/cursors and bounded snapshots. | Hold keys, sign, decide for the user, or execute anything on its own after a restart |
 | **Android app** (`android/`) | Connections and their credentials, policies and their assessments, the user's decision, invoking the wallet, results the sidecar hasn't acknowledged yet, and Stage 5.2's minimal server-state cache/sync metadata | Sign without the user's approval, or trust the agent's description over the transaction's contents |
 | **Broadcast gateway** (`broadcast/`) | From SEE-90: the shared publication and read API for gateway-feed servers — publisher registration and credentials, the manifests and proposals they publish, the per-channel sequence a reader pages against, and the outbox that fans a publication out | Hold anything about a subscriber — an address, a chosen amount, a decision, a result — contact a publisher or a phone, or serve any financial endpoint |
-| **Publisher template** (`publisher/`) | From SEE-95: a developer's or a trader's own server — its signals, the revision each is at, what the gateway has confirmed about each, the idempotency keys callers used, and its own manifest's revision | Hold anything about a subscriber, read the feed it publishes to (no client for one is compiled for it), deliver anything to a phone, hold a key or sign anything |
+| **Publisher templates** (`publisher/`) | From SEE-95 and SEE-96: a developer's or a trader's own server — its signals, the revision each is at, what the gateway has confirmed about each, the idempotency keys callers used, its own manifest's revision, and (the discovering one) the provider's markets it is tracking | Hold anything about a subscriber, read the feed it publishes to (no client for one is compiled for it), deliver anything to a phone, hold a key or sign anything, or publish an opinion about which way a market will go |
 | **Seed Vault Wallet** | Keys, signing, and sending | Know anything about Seeker Agent Connect |
 
 ### The wallet adapter boundary
@@ -383,11 +383,40 @@ flowchart TB
   operator has to change something, and nothing retries until somebody asks.
 - **It is a template, and the seam is one interface.** `signals.Kind` says which operation is
   published, which bundled plugin serves it, and what its terms must say; `cmd/copytrading`
-  registers the swap kind, and SEE-96's prediction template is a second kind over the same core.
-  Neither can be turned into the other by configuration.
-- **It knows nothing about a subscriber, and cannot.** Four tables with no column for one, an API
-  that refuses a field it does not have, and no feed client compiled for the module at all
+  registers the swap kind and `cmd/prediction` registers the prediction kind (SEE-96). Neither can
+  be turned into the other by configuration, and each `main` says which it is.
+- **It knows nothing about a subscriber, and cannot.** No column for one, an API that refuses a
+  field it does not have, and no feed client compiled for the module at all
   ([`security.md`](security.md#a-publisher-template-holds-no-subscriber-either-see-95)).
+
+#### The second template discovers what to publish (SEE-96)
+
+`cmd/prediction` is the same core with two things added and one taken away: a provider client, a
+reconciler, and nobody who may write a signal through its API
+([`wiki/prediction-template.md`](wiki/prediction-template.md)).
+
+```mermaid
+flowchart TB
+    Provider["Jupiter Prediction<br>events · one market"] -- "bounded polling, paced" --> Cycle
+    Cycle["internal/discovery<br>filter · then reconcile"] --> Kind
+    Kind["internal/signals<br>the prediction kind's terms"] --> Store
+    Store[("SQLite<br>markets · signals · two revisions each")] --> Drain
+    Drain["internal/publish<br>the same one path out"] -- "PublisherService" --> Gateway
+    Gateway["the broadcast gateway"] --> Phones["every subscribed phone"]
+    API["internal/api<br>read only: 403 on a write"] -. "reads" .-> Store
+```
+
+- **A filter is discovery, not withdrawal.** Two filters are the provider's own parameters; the rest
+  are applied to the records that came back, over fields those records carry. A market that stops
+  matching keeps its proposal until the source ends it.
+- **Absence is not closure.** A market missing from a filtered listing is asked about directly, and
+  only the provider's own answer — closed, cancelled, settled or gone — withdraws a proposal. A
+  provider that cannot be reached withdraws nothing at all.
+- **Nothing is announced twice.** The expiry is the market's own close time rather than anything
+  derived from the clock, the idempotency key is derived from the market and its generation, and the
+  outbox is the same two revisions — so a cycle every five minutes, a retry and a restart all wake
+  nobody.
+- **One market is one live proposal**, said as a `UNIQUE` index rather than as a convention.
 
 ## Trust boundaries
 
@@ -488,5 +517,5 @@ These hold across the components, and every stage keeps them:
 | 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
-| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` plugin and the path from a signal to a signature (SEE-93), the `jupiter.prediction` plugin with a read-only chain endpoint for lookup tables and a truthful handoff (SEE-94), the Go CopyTrading publisher template with a CLI and an authenticated API (SEE-95), and the prediction template |
+| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` plugin and the path from a signal to a signature (SEE-93), the `jupiter.prediction` plugin with a read-only chain endpoint for lookup tables and a truthful handoff (SEE-94), the Go CopyTrading publisher template with a CLI and an authenticated API (SEE-95), and the Go Prediction template, which discovers markets through operator filters and keeps each proposal in step with its source (SEE-96) |
 | 8 | Release checks |

@@ -851,6 +851,11 @@ fact about execution, and a stale signal shows as a closed market rather than as
 fails. The side and the stake are the owner's, and neither is in the document
 ([`wiki/jupiter-prediction.md`](wiki/jupiter-prediction.md)).
 
+From SEE-96 these terms have a publisher: `publisher/cmd/prediction` discovers markets through its
+operator's filters and writes exactly this set, with the provider's own five-dollar minimum already
+raised into `least_deposit` so that the document says what will be enforced
+([`wiki/prediction-template.md`](wiki/prediction-template.md)).
+
 ## The broadcast gateway (SEE-90)
 
 A publisher publishes to the shared gateway and every subscribed phone reads from it. That is a

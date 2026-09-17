@@ -4,7 +4,6 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
-	"unicode/utf16"
 )
 
 // Swap is the kind the CopyTrading template publishes: a spot swap, served on the phone by the
@@ -129,16 +128,15 @@ func (s Swap) Terms(raw map[string]string) (map[string]string, *Fault) {
 	}
 
 	for _, name := range []string{InputSymbol, OutputSymbol} {
-		label, given := raw[name]
+		symbol, given := raw[name]
 		if !given {
 			continue
 		}
-		if len(utf16.Encode([]rune(label))) > mostSymbolUnits ||
-			!Printable(label, MaxValueTextBytes, false) {
+		if !IsLabel(symbol) {
 			return nil, &Fault{Code: "bad_symbol", Term: name}
 		}
-		if label != "" {
-			terms[name] = label
+		if symbol != "" {
+			terms[name] = symbol
 		}
 	}
 	return terms, nil

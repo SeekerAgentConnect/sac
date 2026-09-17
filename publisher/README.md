@@ -1,9 +1,13 @@
 # publisher
 
-The Go publisher templates (SEE-95): a developer's — or a trader's — own server. It publishes one
-signal to the [shared broadcast gateway](../broadcast), every phone subscribed to its channel reads
-the same document, and each owner then chooses their own amount on their own device and approves it
-there.
+The Go publisher templates (SEE-95, SEE-96): a developer's — or a trader's — own server. It publishes
+one signal to the [shared broadcast gateway](../broadcast), every phone subscribed to its channel
+reads the same document, and each owner then chooses their own amount on their own device and
+approves it there.
+
+**Two templates, one module.** `cmd/copytrading` publishes what a trader tells it; `cmd/prediction`
+finds its own, by discovering Jupiter Prediction markets through its operator's filters. They share
+everything but the kind they register and who writes their signals.
 
 **Nothing comes back.** This server never learns who is subscribed, what anyone chose, whether they
 went ahead, or what came of it. There is no table for any of that, no field in its API that would
@@ -12,15 +16,20 @@ accept it, and no endpoint that would answer about it.
 | File | What it is |
 | --- | --- |
 | [`cmd/copytrading`](cmd/copytrading) | The CopyTrading template: trader-authored spot-swap signals, served by the bundled `jupiter.swap` plugin |
+| [`cmd/prediction`](cmd/prediction) | The Prediction template: markets it discovered itself, served by the bundled `jupiter.prediction` plugin. Nobody may write a signal through its API |
 | [`cmd/publishctl`](cmd/publishctl) | The operator's tool, and a worked example of the API: every command is one HTTP call |
 | [`internal/signals`](internal/signals) | What a signal is, as pure data — and the one seam a template supplies: `Kind` |
+| [`internal/jupiter`](internal/jupiter) | The prediction provider: two endpoints, paced, and the only file here that names its host |
+| [`internal/discovery`](internal/discovery) | What a filter means, and what one cycle does: publish what matches, and keep each proposal in step with its source |
 | [`internal/manifest`](internal/manifest) | What this server says about itself, and the `seekervault://feed` reference a phone adds it from |
 | [`internal/store`](internal/store) | The only place that speaks SQL: the signals, and what the gateway has confirmed about each |
 | [`internal/publish`](internal/publish) | The one thing that reaches out of the process: the gateway client, the retry judgment, the drainer |
 | [`internal/api`](internal/api) | The JSON API a person, a script or a strategy engine calls, and the boundary tests |
 | [`compose.yaml`](compose.yaml) | The stack: the template and a proxy on loopback. `ctl` sits behind a profile and does not start |
 | [`compose.public.yaml`](compose.public.yaml) | The internet-facing overlay — read the warning in it first |
-| [`.env.example`](.env.example) | The deployment's settings. Copy to `.env` here, which git ignores |
+| [`compose.prediction.yaml`](compose.prediction.yaml) | The Prediction template's own stack: its own database, its own port, its own everything |
+| [`.env.example`](.env.example) | The CopyTrading deployment's settings. Copy to `.env` here, which git ignores |
+| [`.env.prediction.example`](.env.prediction.example) | The Prediction deployment's. It is a second publisher, so it is a second file |
 
 ## Running it
 
@@ -100,6 +109,21 @@ strategy system, and [`docs/wiki/copytrading-template.md`](../docs/wiki/copytrad
 why the template is shaped like this — including a complete worked example of where publication ends
 and each owner's own execution begins.
 
+## Publishing markets you did not write
+
+The other template takes no signal at all: it finds them.
+
+```sh
+export PUBLISHER_API_TOKEN=…
+prediction &                  # with PREDICTION_CATEGORIES, PREDICTION_KEYWORDS, …
+publishctl poll               # a cycle now, rather than at the next interval
+publishctl discovery          # the filters in force, and every market it is tracking
+publishctl create …           # 403: its signals are its own
+```
+
+What each filter means, exactly, and what happens when a market closes or the provider goes down, is
+[`docs/wiki/prediction-template.md`](../docs/wiki/prediction-template.md).
+
 ## What a signal says, and what it cannot
 
 A swap signal names the asset spent, the asset received, the decimals for display, and the most
@@ -124,8 +148,11 @@ otherwise is told, and `internal/api/boundary_test.go` tries every one of those 
 
 ## What it holds, and what it cannot
 
-Its own signals, and what the gateway has confirmed about each of them. A boundary test reads the
-live schema and fails if a column for an address, a chosen amount, a decision or a result appears —
-and another reads this module's source and fails if Firebase, a broker, a feed client or MCP turns
-up in it, because delivery to phones is the gateway's and a publisher submits one document and
-stops.
+Its own signals, what the gateway has confirmed about each of them, and — for the discovering
+template — the *provider's* markets it is tracking. A boundary test reads the live schema and fails
+if a column for an address, a chosen amount, a decision or a result appears — and another reads this
+module's source and fails if Firebase, a broker, a feed client or MCP turns up in it, because
+delivery to phones is the gateway's and a publisher submits one document and stops.
+
+There is no opinion in it either. The prediction template publishes *which market*, never which
+way: no model, no probability of its own, and no term a side could be published in.

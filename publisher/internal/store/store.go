@@ -49,8 +49,8 @@ import (
 )
 
 // Version is the schema this build writes and reads. A file from a later version is refused rather
-// than guessed at.
-const Version = 1
+// than guessed at, and a file from an earlier one is brought forward (see [steps]).
+const Version = 2
 
 var (
 	// ErrNewerSchema is returned by Open when the file was written by a later version.
@@ -160,7 +160,17 @@ func (s *Store) Close() error {
 	return errors.Join(s.reader.Close(), s.writer.Close())
 }
 
-const schema = `
+// steps are the schema, one version at a time: steps[0] is version 1, and a file at version N is
+// brought forward by applying the rest.
+//
+// There is a second one because the Prediction template needed two tables the CopyTrading template
+// does not use (SEE-96), and both templates are one module with one file format. A publisher who
+// has been running the first template since Stage 7.1 opens their database with a newer build and
+// keeps their signals: refusing it, or quietly creating a second file beside it, would both lose
+// the outbox that makes a restart safe.
+var steps = []string{schemaV1, schemaV2}
+
+const schemaV1 = `
 -- Whose file this is. One row, and it is checked on every open: a database is a publisher's
 -- identity as much as its credential is, and two publishers sharing one would publish each
 -- other's signals.
@@ -224,6 +234,66 @@ CREATE TABLE idempotency (
 );
 `
 
+// Version 2: what a template that discovers its own signals has to remember (SEE-96,
+// internal/discovery).
+//
+// A tracked market and the proposal published for it are one fact, which is why the row points at
+// the signal and the index is UNIQUE: one market is one live proposal, said as a constraint rather
+// than as a convention, so a bug that tried to publish a market twice fails a write instead of
+// waking every subscriber twice.
+//
+// There is still nothing about a subscriber here. These rows are about the *provider's* markets —
+// public facts, the same for everybody — and `store_test.go` reads the live schema, so a column for
+// somebody's choice could not be added quietly.
+const schemaV2 = `
+CREATE TABLE market (
+  provider           TEXT NOT NULL,
+  market_id          TEXT NOT NULL,
+  event_id           TEXT NOT NULL,
+  -- What the provider last said about it. The title is its words, folded to one line; the state is
+  -- its status and its resolution as one word (jupiter.Market.State).
+  title              TEXT NOT NULL,
+  state              TEXT NOT NULL,
+  close_at_ms        INTEGER NOT NULL,
+  -- The provider's own page for the event. Kept for this template's operator and never published:
+  -- what the document carries is the identifiers, which is what lets a phone look the market up
+  -- for itself (docs/wiki/prediction-template.md).
+  source_url         TEXT NOT NULL,
+  proposal_id        TEXT NOT NULL REFERENCES signal(proposal_id) ON DELETE CASCADE,
+  -- How many proposals this market has had. A withdrawal is final, so a market that closes and
+  -- re-opens gets a new one, and this is what makes its idempotency key different.
+  generation         INTEGER NOT NULL,
+  first_seen_at_ms   INTEGER NOT NULL,
+  last_seen_at_ms    INTEGER NOT NULL,
+  last_checked_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (provider, market_id)
+);
+CREATE UNIQUE INDEX market_proposal ON market(proposal_id);
+
+-- The last discovery cycle, and only the last one: it exists to answer "is this publisher
+-- working", and a publisher that kept a history of its own polling would be a second thing to
+-- operate. What a cycle *did* is in the signals themselves.
+CREATE TABLE discovery (
+  id             INTEGER PRIMARY KEY CHECK (id = 1),
+  number         INTEGER NOT NULL,
+  started_at_ms  INTEGER NOT NULL,
+  finished_at_ms INTEGER NOT NULL,
+  outcome        TEXT NOT NULL,
+  problem        TEXT NOT NULL,
+  detail         TEXT NOT NULL,
+  pages          INTEGER NOT NULL,
+  events         INTEGER NOT NULL,
+  considered     INTEGER NOT NULL,
+  matched        INTEGER NOT NULL,
+  created        INTEGER NOT NULL,
+  updated        INTEGER NOT NULL,
+  cancelled      INTEGER NOT NULL,
+  checked        INTEGER NOT NULL,
+  skipped        INTEGER NOT NULL,
+  reasons        TEXT NOT NULL
+);
+`
+
 func (s *Store) migrate(ctx context.Context, stamp Stamp) error {
 	var present int
 	if err := s.writer.QueryRowContext(ctx,
@@ -237,8 +307,10 @@ func (s *Store) migrate(ctx context.Context, stamp Stamp) error {
 			return err
 		}
 		defer func() { _ = transaction.Rollback() }()
-		if _, err := transaction.ExecContext(ctx, schema); err != nil {
-			return fmt.Errorf("create the schema: %w", err)
+		for at, step := range steps {
+			if _, err := transaction.ExecContext(ctx, step); err != nil {
+				return fmt.Errorf("create the schema (version %d): %w", at+1, err)
+			}
 		}
 		if _, err := transaction.ExecContext(ctx,
 			`INSERT INTO deployment (id, schema_version, server_id, environment, gateway_url,
@@ -272,6 +344,28 @@ func (s *Store) migrate(ctx context.Context, stamp Stamp) error {
 	case environment != stamp.Environment:
 		return fmt.Errorf("%w: it is a %s database, and PUBLISHER_ENVIRONMENT is %s",
 			ErrOtherEnvironment, environment, stamp.Environment)
+	}
+	if version < Version {
+		// An older file, brought forward. Every step is additive — a table this build needs and
+		// that one did not have — so nothing already in the file is rewritten, and the signals and
+		// their two revisions come through untouched.
+		transaction, err := s.writer.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = transaction.Rollback() }()
+		for at, step := range steps[version:] {
+			if _, err := transaction.ExecContext(ctx, step); err != nil {
+				return fmt.Errorf("bring the schema forward to version %d: %w", version+at+1, err)
+			}
+		}
+		if _, err := transaction.ExecContext(ctx,
+			`UPDATE deployment SET schema_version = ? WHERE id = 1`, Version); err != nil {
+			return err
+		}
+		if err := transaction.Commit(); err != nil {
+			return err
+		}
 	}
 	// The gateway may move; the publisher and the environment may not.
 	_, err := s.writer.ExecContext(ctx,
@@ -386,20 +480,34 @@ func (s *Store) Create(ctx context.Context, key, request string, signal signals.
 		return signals.Record{}, false, err
 	}
 	defer func() { _ = transaction.Rollback() }()
+	record, held, err := createIn(ctx, transaction, s.serverID, key, request, signal)
+	if err != nil {
+		return signals.Record{}, false, err
+	}
+	return record, held, transaction.Commit()
+}
 
+// createIn is Create's own work, in a transaction its caller opened.
+//
+// It is a function rather than a method because there is a second caller: the reconciler stores a
+// signal and the market row it was derived from in one write, and the two have to be one
+// transaction or neither (markets.go, internal/discovery).
+func createIn(
+	ctx context.Context,
+	transaction *sql.Tx,
+	serverID, key, request string,
+	signal signals.Signal,
+) (signals.Record, bool, error) {
 	var (
 		held    string
 		earlier string
 	)
-	err = transaction.QueryRowContext(ctx,
+	err := transaction.QueryRowContext(ctx,
 		`SELECT proposal_id, request FROM idempotency WHERE key = ?`, key).Scan(&held, &earlier)
 	switch {
 	case err == nil && earlier == request:
 		record, err := read(ctx, transaction, held)
 		if err != nil {
-			return signals.Record{}, false, err
-		}
-		if err := transaction.Commit(); err != nil {
 			return signals.Record{}, false, err
 		}
 		return record, true, nil
@@ -414,7 +522,7 @@ func (s *Store) Create(ctx context.Context, key, request string, signal signals.
 	// revision below what the gateway already holds and be refused as stale for ever.
 	signal.Revision = 1
 	signal.Status = signals.Open
-	signal.Fingerprint = signals.Fingerprint(s.serverID, signal)
+	signal.Fingerprint = signals.Fingerprint(serverID, signal)
 	terms, err := json.Marshal(signal.Terms)
 	if err != nil {
 		return signals.Record{}, false, err
@@ -441,7 +549,7 @@ func (s *Store) Create(ctx context.Context, key, request string, signal signals.
 	if err != nil {
 		return signals.Record{}, false, err
 	}
-	return record, false, transaction.Commit()
+	return record, false, nil
 }
 
 // Update replaces a signal's terms, expiry and note with the whole statement given, and moves the
@@ -458,7 +566,21 @@ func (s *Store) Update(ctx context.Context, id string, next signals.Signal, now 
 		return signals.Record{}, false, err
 	}
 	defer func() { _ = transaction.Rollback() }()
+	record, changed, err := updateIn(ctx, transaction, s.serverID, id, next, now)
+	if err != nil {
+		return signals.Record{}, false, err
+	}
+	return record, changed, transaction.Commit()
+}
 
+// updateIn is Update's own work, in a transaction its caller opened (see [createIn]).
+func updateIn(
+	ctx context.Context,
+	transaction *sql.Tx,
+	serverID, id string,
+	next signals.Signal,
+	now time.Time,
+) (signals.Record, bool, error) {
 	held, err := read(ctx, transaction, id)
 	if err != nil {
 		return signals.Record{}, false, err
@@ -473,9 +595,9 @@ func (s *Store) Update(ctx context.Context, id string, next signals.Signal, now 
 	candidate.ExpiresAt = next.ExpiresAt
 	candidate.Note = next.Note
 	candidate.Terms = next.Terms
-	candidate.Fingerprint = signals.Fingerprint(s.serverID, candidate)
+	candidate.Fingerprint = signals.Fingerprint(serverID, candidate)
 	if held.Signal.Fingerprint == candidate.Fingerprint {
-		return held, false, transaction.Commit()
+		return held, false, nil
 	}
 	revision := held.Signal.Revision + 1
 	if revision > signals.MaxRevision {
@@ -500,7 +622,7 @@ func (s *Store) Update(ctx context.Context, id string, next signals.Signal, now 
 	if err != nil {
 		return signals.Record{}, false, err
 	}
-	return record, true, transaction.Commit()
+	return record, true, nil
 }
 
 // Cancel withdraws a signal at the next revision. Withdrawing one that is already withdrawn
@@ -513,13 +635,26 @@ func (s *Store) Cancel(ctx context.Context, id string, now time.Time) (
 		return signals.Record{}, false, err
 	}
 	defer func() { _ = transaction.Rollback() }()
+	record, changed, err := cancelIn(ctx, transaction, s.serverID, id, now)
+	if err != nil {
+		return signals.Record{}, false, err
+	}
+	return record, changed, transaction.Commit()
+}
 
+// cancelIn is Cancel's own work, in a transaction its caller opened (see [createIn]).
+func cancelIn(
+	ctx context.Context,
+	transaction *sql.Tx,
+	serverID, id string,
+	now time.Time,
+) (signals.Record, bool, error) {
 	held, err := read(ctx, transaction, id)
 	if err != nil {
 		return signals.Record{}, false, err
 	}
 	if held.Signal.Status == signals.Cancelled {
-		return held, false, transaction.Commit()
+		return held, false, nil
 	}
 	revision := held.Signal.Revision + 1
 	if revision > signals.MaxRevision {
@@ -535,7 +670,7 @@ func (s *Store) Cancel(ctx context.Context, id string, now time.Time) (
 		                   attempts = 0, due_at_ms = ?, problem = '', detail = ''
 		 WHERE proposal_id = ?`,
 		revision, string(signals.Cancelled), milliseconds(now),
-		signals.Fingerprint(s.serverID, withdrawn), milliseconds(now), id,
+		signals.Fingerprint(serverID, withdrawn), milliseconds(now), id,
 	); err != nil {
 		return signals.Record{}, false, err
 	}
@@ -543,7 +678,7 @@ func (s *Store) Cancel(ctx context.Context, id string, now time.Time) (
 	if err != nil {
 		return signals.Record{}, false, err
 	}
-	return record, true, transaction.Commit()
+	return record, true, nil
 }
 
 // Signal is one record, or [ErrNoSignal].

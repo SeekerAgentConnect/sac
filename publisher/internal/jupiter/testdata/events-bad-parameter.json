@@ -1,0 +1,7 @@
+{
+  "type": "invalid_request_error",
+  "message": "Invalid option: expected one of \"all\"|\"crypto\"|\"sports\"|\"politics\"|\"esports\"|\"culture\"|\"economics\"|\"tech\"|\"finance\"|\"climate & science\"|\"weather\"|\"mentions\"",
+  "code": "invalid_value",
+  "param": "category",
+  "request_id": "14913af8-4211-4167-8e16-18725f8b0467"
+}

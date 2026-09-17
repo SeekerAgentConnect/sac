@@ -1,0 +1,47 @@
+{
+  "provider": "polymarket",
+  "marketId": "POLY-4052423",
+  "status": "closed",
+  "result": "yes",
+  "marketResultPubkey": "7KQfqE4G6w27HnjMBzX8FutgvCRJUhyDEJ7wBiUu8Wun",
+  "title": "↓ 75,000",
+  "openTime": 1788239239,
+  "closeTime": 1790827200,
+  "isTeamMarket": false,
+  "rulesPrimary": "This market will immediately resolve to \"Yes\" if any Binance 1 minute candle for BTC/USDT during the month specified in the title (from 00:00 AM ET on the first day to 11:59 PM ET on the last), has a final Low price equal to or lower than the price specified in the title. Otherwise, this market will resolve to \"No.\"\n\nThe resolution source for this market is Binance, specifically the BTC/USDT Low prices available at https://www.binance.com/en/trade/BTC_USDT, with the chart settings on \"1m\" for one-minute candles selected on the top bar.\n\nPlease note that the outcome of this market depends solely on the price data from the Binance BTC/USDT trading pair. Prices from other exchanges, different trading pairs, or spot markets will not be considered for the resolution of this market.",
+  "rulesSecondary": "",
+  "resolveAt": "2026-09-15T19:04:33.747Z",
+  "pricing": {
+    "buyYesPriceUsd": 0,
+    "sellYesPriceUsd": 0,
+    "sellNoPriceUsd": 0,
+    "buyNoPriceUsd": 0,
+    "volume": 454602
+  },
+  "imageUrl": null,
+  "team": null,
+  "outcomes": [
+    "Yes",
+    "No"
+  ],
+  "clobTokenIds": [
+    "71614294149761045250341803495546587007139052187428360469103433437522297039820",
+    "100467295924325421140754471982372955079736329971424937440630976229858097963453"
+  ],
+  "marketOptions": [
+    {
+      "label": "Yes",
+      "buyYes": true
+    },
+    {
+      "label": "No",
+      "buyYes": false
+    }
+  ],
+  "sportsMarketType": null,
+  "sportsLine": null,
+  "periodType": null,
+  "periodNumber": null,
+  "gameNumber": null,
+  "eventId": "POLY-946004"
+}

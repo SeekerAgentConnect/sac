@@ -1,0 +1,275 @@
+{
+  "data": [
+    {
+      "eventId": "POLY-606452",
+      "isActive": true,
+      "isLive": false,
+      "category": "economics",
+      "subcategory": "",
+      "tags": [
+        "economics",
+        "economy",
+        "politics",
+        "japan",
+        "boj",
+        "world",
+        "economic-policy",
+        "Global-Rates",
+        "recurring"
+      ],
+      "metadata": {
+        "slug": "bank-of-japan-decision-in-september-20260616002734979",
+        "title": "Bank of Japan Decision in September?",
+        "isLive": false,
+        "series": "polymarket",
+        "eventId": "POLY-606452",
+        "imageUrl": "https://polymarket-upload.s3.us-east-2.amazonaws.com/boj-emergency-rate-cut-in-august-K4KcXEDWiliA.jpg",
+        "subtitle": "",
+        "closeTime": "2026-09-18T15:59:00Z"
+      },
+      "volumeUsd": "1183455000000",
+      "volume24hr": "328776000000",
+      "beginAt": null,
+      "closeCondition": "This market will close and expire after a winner is declared.",
+      "rulesPdf": "",
+      "markets": [
+        {
+          "provider": "polymarket",
+          "marketId": "POLY-2589856",
+          "status": "open",
+          "result": null,
+          "marketResultPubkey": null,
+          "title": "25 bps increase",
+          "openTime": 1781740027,
+          "closeTime": 1789747140,
+          "isTeamMarket": false,
+          "rulesPrimary": "This market will resolve according to the change in basis points in the uncollateralized overnight call rate resulting from the September 2026 meeting of the Bank of Japan, relative to the level it was prior to this meeting.\n\nThe resolution source will be official information from the Bank of Japan, including the statement or release from its September 2026 meeting, scheduled for September 17-18, 2026, as listed on the official Bank of Japan calendar (https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm). This market may resolve as soon as the statement or release of the Bank of Japan’s September 2026 meeting with relevant data is issued.\n\nIf the specified rate is defined by an upper and lower bound, the relevant change will be the change to the upper bound.\n\nIf the specified rate is changed to a level not expressed in the displayed options, the change will be rounded according to the following guidelines. Increases or decreases of less than 25 bps will be rounded to 25 bps (e.g. an increase or decrease of 10 bps would be considered to be an increase or decrease of 25 bps). Increases or decreases of greater than 25 bps will be rounded to the nearest 25 bps and will be rounded away from 0 in cases of equidistance (e.g., an increase or decrease of 37.5 bps would be considered to be an increase or decrease of 50 bps). Displayed options of “Increase” or “Decrease” will include policy rate increases or decreases of any size.\n\nIf the specified meeting is postponed to a date and time before the start of the next scheduled meeting, this market will resolve based on the outcome of that postponed meeting. If the specified meeting is cancelled, or postponed such that no decision is announced by the start of the next scheduled meeting, this market will resolve to the “No Change” bracket. Emergency changes to the specified rate not resulting from the specified meeting will not be considered.",
+          "rulesSecondary": "",
+          "resolveAt": null,
+          "pricing": {
+            "buyYesPriceUsd": 998000,
+            "sellYesPriceUsd": 997000,
+            "sellNoPriceUsd": 2000,
+            "buyNoPriceUsd": 3000,
+            "volume": 380400
+          },
+          "imageUrl": null,
+          "team": null,
+          "outcomes": [
+            "Yes",
+            "No"
+          ],
+          "clobTokenIds": [
+            "34224127560083720453608705144696778706696450679056926524338211964623002524966",
+            "78728112054519033757681466973844566499703528896052761274000178959410659593"
+          ],
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ],
+          "sportsMarketType": null,
+          "sportsLine": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null
+        },
+        {
+          "provider": "polymarket",
+          "marketId": "POLY-2589855",
+          "status": "open",
+          "result": null,
+          "marketResultPubkey": null,
+          "title": "No change",
+          "openTime": 1781739556,
+          "closeTime": 1789747140,
+          "isTeamMarket": false,
+          "rulesPrimary": "This market will resolve according to the change in basis points in the uncollateralized overnight call rate resulting from the September 2026 meeting of the Bank of Japan, relative to the level it was prior to this meeting.\n\nThe resolution source will be official information from the Bank of Japan, including the statement or release from its September 2026 meeting, scheduled for September 17-18, 2026, as listed on the official Bank of Japan calendar (https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm). This market may resolve as soon as the statement or release of the Bank of Japan’s September 2026 meeting with relevant data is issued.\n\nIf the specified rate is defined by an upper and lower bound, the relevant change will be the change to the upper bound.\n\nIf the specified rate is changed to a level not expressed in the displayed options, the change will be rounded according to the following guidelines. Increases or decreases of less than 25 bps will be rounded to 25 bps (e.g. an increase or decrease of 10 bps would be considered to be an increase or decrease of 25 bps). Increases or decreases of greater than 25 bps will be rounded to the nearest 25 bps and will be rounded away from 0 in cases of equidistance (e.g., an increase or decrease of 37.5 bps would be considered to be an increase or decrease of 50 bps). Displayed options of “Increase” or “Decrease” will include policy rate increases or decreases of any size.\n\nIf the specified meeting is postponed to a date and time before the start of the next scheduled meeting, this market will resolve based on the outcome of that postponed meeting. If the specified meeting is cancelled, or postponed such that no decision is announced by the start of the next scheduled meeting, this market will resolve to the “No Change” bracket. Emergency changes to the specified rate not resulting from the specified meeting will not be considered.",
+          "rulesSecondary": "",
+          "resolveAt": null,
+          "pricing": {
+            "buyYesPriceUsd": 3000,
+            "sellYesPriceUsd": 2000,
+            "sellNoPriceUsd": 997000,
+            "buyNoPriceUsd": 998000,
+            "volume": 315409
+          },
+          "imageUrl": null,
+          "team": null,
+          "outcomes": [
+            "Yes",
+            "No"
+          ],
+          "clobTokenIds": [
+            "112431461021505836897916787462152469473019876346204991863467631318352621795701",
+            "86552093336794022657547808830018030132862118488175362608452948893506552556980"
+          ],
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ],
+          "sportsMarketType": null,
+          "sportsLine": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null
+        },
+        {
+          "provider": "polymarket",
+          "marketId": "POLY-2589857",
+          "status": "open",
+          "result": null,
+          "marketResultPubkey": null,
+          "title": "50+ bps increase",
+          "openTime": 1781739153,
+          "closeTime": 1789747140,
+          "isTeamMarket": false,
+          "rulesPrimary": "This market will resolve according to the change in basis points in the uncollateralized overnight call rate resulting from the September 2026 meeting of the Bank of Japan, relative to the level it was prior to this meeting.\n\nThe resolution source will be official information from the Bank of Japan, including the statement or release from its September 2026 meeting, scheduled for September 17-18, 2026, as listed on the official Bank of Japan calendar (https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm). This market may resolve as soon as the statement or release of the Bank of Japan’s September 2026 meeting with relevant data is issued.\n\nIf the specified rate is defined by an upper and lower bound, the relevant change will be the change to the upper bound.\n\nIf the specified rate is changed to a level not expressed in the displayed options, the change will be rounded according to the following guidelines. Increases or decreases of less than 25 bps will be rounded to 25 bps (e.g. an increase or decrease of 10 bps would be considered to be an increase or decrease of 25 bps). Increases or decreases of greater than 25 bps will be rounded to the nearest 25 bps and will be rounded away from 0 in cases of equidistance (e.g., an increase or decrease of 37.5 bps would be considered to be an increase or decrease of 50 bps). Displayed options of “Increase” or “Decrease” will include policy rate increases or decreases of any size.\n\nIf the specified meeting is postponed to a date and time before the start of the next scheduled meeting, this market will resolve based on the outcome of that postponed meeting. If the specified meeting is cancelled, or postponed such that no decision is announced by the start of the next scheduled meeting, this market will resolve to the “No Change” bracket. Emergency changes to the specified rate not resulting from the specified meeting will not be considered.",
+          "rulesSecondary": "",
+          "resolveAt": null,
+          "pricing": {
+            "buyYesPriceUsd": 2000,
+            "sellYesPriceUsd": 1000,
+            "sellNoPriceUsd": 998000,
+            "buyNoPriceUsd": 999000,
+            "volume": 409882
+          },
+          "imageUrl": null,
+          "team": null,
+          "outcomes": [
+            "Yes",
+            "No"
+          ],
+          "clobTokenIds": [
+            "103132202609309728827090712113710241319061353485478554519590882633645711636771",
+            "102036862461978519901496002295399852746949802748313374585039192080853678849713"
+          ],
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ],
+          "sportsMarketType": null,
+          "sportsLine": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null
+        },
+        {
+          "provider": "polymarket",
+          "marketId": "POLY-2589854",
+          "status": "open",
+          "result": null,
+          "marketResultPubkey": null,
+          "title": "25 bps decrease",
+          "openTime": 1781740719,
+          "closeTime": 1789747140,
+          "isTeamMarket": false,
+          "rulesPrimary": "This market will resolve according to the change in basis points in the uncollateralized overnight call rate resulting from the September 2026 meeting of the Bank of Japan, relative to the level it was prior to this meeting.\n\nThe resolution source will be official information from the Bank of Japan, including the statement or release from its September 2026 meeting, scheduled for September 17-18, 2026, as listed on the official Bank of Japan calendar (https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm). This market may resolve as soon as the statement or release of the Bank of Japan’s September 2026 meeting with relevant data is issued.\n\nIf the specified rate is defined by an upper and lower bound, the relevant change will be the change to the upper bound.\n\nIf the specified rate is changed to a level not expressed in the displayed options, the change will be rounded according to the following guidelines. Increases or decreases of less than 25 bps will be rounded to 25 bps (e.g. an increase or decrease of 10 bps would be considered to be an increase or decrease of 25 bps). Increases or decreases of greater than 25 bps will be rounded to the nearest 25 bps and will be rounded away from 0 in cases of equidistance (e.g., an increase or decrease of 37.5 bps would be considered to be an increase or decrease of 50 bps). Displayed options of “Increase” or “Decrease” will include policy rate increases or decreases of any size.\n\nIf the specified meeting is postponed to a date and time before the start of the next scheduled meeting, this market will resolve based on the outcome of that postponed meeting. If the specified meeting is cancelled, or postponed such that no decision is announced by the start of the next scheduled meeting, this market will resolve to the “No Change” bracket. Emergency changes to the specified rate not resulting from the specified meeting will not be considered.",
+          "rulesSecondary": "",
+          "resolveAt": null,
+          "pricing": {
+            "buyYesPriceUsd": 1000,
+            "sellYesPriceUsd": 0,
+            "sellNoPriceUsd": 999000,
+            "buyNoPriceUsd": 1000000,
+            "volume": 45110
+          },
+          "imageUrl": null,
+          "team": null,
+          "outcomes": [
+            "Yes",
+            "No"
+          ],
+          "clobTokenIds": [
+            "14790339096127835191094158003502642292076090553540577256888146225082447185780",
+            "92212343554635842939773592060011136705211005292322845560525938193989357857717"
+          ],
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ],
+          "sportsMarketType": null,
+          "sportsLine": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null
+        },
+        {
+          "provider": "polymarket",
+          "marketId": "POLY-2589853",
+          "status": "open",
+          "result": null,
+          "marketResultPubkey": null,
+          "title": "50+ bps decrease",
+          "openTime": 1781741139,
+          "closeTime": 1789747140,
+          "isTeamMarket": false,
+          "rulesPrimary": "This market will resolve according to the change in basis points in the uncollateralized overnight call rate resulting from the September 2026 meeting of the Bank of Japan, relative to the level it was prior to this meeting.\n\nThe resolution source will be official information from the Bank of Japan, including the statement or release from its September 2026 meeting, scheduled for September 17-18, 2026, as listed on the official Bank of Japan calendar (https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm). This market may resolve as soon as the statement or release of the Bank of Japan’s September 2026 meeting with relevant data is issued.\n\nIf the specified rate is defined by an upper and lower bound, the relevant change will be the change to the upper bound.\n\nIf the specified rate is changed to a level not expressed in the displayed options, the change will be rounded according to the following guidelines. Increases or decreases of less than 25 bps will be rounded to 25 bps (e.g. an increase or decrease of 10 bps would be considered to be an increase or decrease of 25 bps). Increases or decreases of greater than 25 bps will be rounded to the nearest 25 bps and will be rounded away from 0 in cases of equidistance (e.g., an increase or decrease of 37.5 bps would be considered to be an increase or decrease of 50 bps). Displayed options of “Increase” or “Decrease” will include policy rate increases or decreases of any size.\n\nIf the specified meeting is postponed to a date and time before the start of the next scheduled meeting, this market will resolve based on the outcome of that postponed meeting. If the specified meeting is cancelled, or postponed such that no decision is announced by the start of the next scheduled meeting, this market will resolve to the “No Change” bracket. Emergency changes to the specified rate not resulting from the specified meeting will not be considered.",
+          "rulesSecondary": "",
+          "resolveAt": null,
+          "pricing": {
+            "buyYesPriceUsd": 1000,
+            "sellYesPriceUsd": 0,
+            "sellNoPriceUsd": 999000,
+            "buyNoPriceUsd": 1000000,
+            "volume": 32654
+          },
+          "imageUrl": null,
+          "team": null,
+          "outcomes": [
+            "Yes",
+            "No"
+          ],
+          "clobTokenIds": [
+            "105368755491807281332566560733484149104312401286156930579447921269581073123581",
+            "60064370717057957826148877873879897688867327131334534027482472954311134771454"
+          ],
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ],
+          "sportsMarketType": null,
+          "sportsLine": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null
+        }
+      ],
+      "sportsMarketGroups": []
+    }
+  ],
+  "pagination": {
+    "start": 1,
+    "end": 2,
+    "hasNext": true
+  }
+}

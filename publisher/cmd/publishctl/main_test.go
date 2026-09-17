@@ -182,6 +182,10 @@ func TestEveryCommandIsOneCall(t *testing.T) {
 		{[]string{"retry", id}, http.MethodPost, "/v1/signals/" + id + "/retry"},
 		{append([]string{"update", "--in", "1h"}, append(swapTerms, id)...), http.MethodPut,
 			"/v1/signals/" + id},
+		// The two a template that discovers its own signals has (SEE-96). They are the same kind
+		// of thing as the rest: one call, no privileged path.
+		{[]string{"discovery"}, http.MethodGet, "/v1/discovery"},
+		{[]string{"poll"}, http.MethodPost, "/v1/discovery/poll"},
 	} {
 		t.Run(one.arguments[0], func(t *testing.T) {
 			held := &recorded{}

@@ -1,0 +1,81 @@
+# The Prediction template's front door (SEE-96).
+#
+# Plain HTTP, reachable only on the host's loopback address through the port
+# compose publishes. There is no internet-facing variant of this one, and it
+# needs none: this template's signals are written by its own discovery, so its
+# API is something an operator reads rather than something a strategy engine
+# writes to (docs/wiki/prediction-template.md).
+#
+# The proxy shares the template's network namespace (compose.prediction.yaml),
+# so the API is reachable here and nowhere else. Nothing here authenticates
+# anything: the token is checked by the template, in one place, in constant time
+# (publisher/internal/api), and this proxy neither adds nor removes an
+# Authorization header.
+{
+	admin off
+	log {
+		output stderr
+		format console
+	}
+	# `log_credentials` is deliberately absent, so Caddy redacts the
+	# Authorization, Cookie, Set-Cookie and Proxy-Authorization headers from
+	# every request log: neither the API token, the gateway credential nor the
+	# provider's key is ever written down here.
+}
+
+:8095 {
+	log {
+		output stderr
+		format console
+	}
+	log_skip /healthz
+
+	# Reading: the status, the manifest, the signals, and what discovery is
+	# doing.
+	@read {
+		method GET
+		path /v1/*
+	}
+	handle @read {
+		reverse_proxy 127.0.0.1:8092
+	}
+
+	# The two things a call may actually change here, and they are both an
+	# operator's: run a cycle now rather than at the next interval, and try a
+	# refused publication again.
+	#
+	# The three that write a signal — POST /v1/signals, PUT /v1/signals/{id} and
+	# POST /v1/signals/{id}/cancel — are not forwarded at all. The template
+	# itself answers them 403 with an explanation, and this door means they do
+	# not reach it: two places saying no is the right number for the one thing
+	# that would put a document nobody's cycle agreed to in front of every
+	# subscriber.
+	@poll {
+		method POST
+		path /v1/discovery/poll
+	}
+	handle @poll {
+		request_body {
+			max_size 1KB
+		}
+		reverse_proxy 127.0.0.1:8092
+	}
+	@retry {
+		method POST
+		path /v1/signals/*/retry
+	}
+	handle @retry {
+		request_body {
+			max_size 1KB
+		}
+		reverse_proxy 127.0.0.1:8092
+	}
+
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8092
+	}
+
+	handle {
+		abort
+	}
+}

@@ -1,0 +1,56 @@
+{
+  "note": "Real answers from Jupiter's keyless prediction API, captured by scripts/capture-jupiter.mjs --events and served back to the publisher template's own client by internal/jupiter's tests. `path` is the request as the template sends it, parameters and all, so a change to what it asks for fails a test instead of quietly testing something else.",
+  "endpoint": "https://lite-api.jup.ag",
+  "capturedAt": "2026-09-17T21:53:04.599Z",
+  "cases": [
+    {
+      "name": "events-first",
+      "description": "The first page of a filtered listing, with more to come.",
+      "path": "/prediction/v1/events?category=economics&end=1&includeMarkets=true&provider=polymarket&start=0",
+      "status": 200,
+      "body": "events-first.json"
+    },
+    {
+      "name": "events-second",
+      "description": "The second page of the same walk.",
+      "path": "/prediction/v1/events?category=economics&end=2&includeMarkets=true&provider=polymarket&start=1",
+      "status": 200,
+      "body": "events-second.json"
+    },
+    {
+      "name": "events-empty",
+      "description": "A page past the end: no events, and `hasNext` false, which is what stops a walk.",
+      "path": "/prediction/v1/events?end=100002&includeMarkets=true&provider=polymarket&start=100000",
+      "status": 200,
+      "body": "events-empty.json"
+    },
+    {
+      "name": "events-bad-parameter",
+      "description": "A category the provider does not have. Its answer names the parameter, and lists the categories it does have — which is where this template's own list came from.",
+      "path": "/prediction/v1/events?category=nonsense&end=1&includeMarkets=true&provider=polymarket&start=0",
+      "status": 400,
+      "body": "events-bad-parameter.json"
+    },
+    {
+      "name": "market-closed",
+      "description": "A market that has closed and settled. It is one of September's Bitcoin price markets, so it stays settled: what it is a fixture for is the shape of a closure.",
+      "path": "/prediction/v1/markets/POLY-4052423",
+      "status": 200,
+      "body": "market-closed.json"
+    },
+    {
+      "name": "market-missing",
+      "description": "A market that does not exist. `code` is what tells this apart from any other 404.",
+      "path": "/prediction/v1/markets/SEEKER-NO-SUCH-MARKET",
+      "status": 404,
+      "body": "market-missing.json"
+    },
+    {
+      "name": "market-open",
+      "description": "A market read directly, as a reconciliation reads one: the same market the first page lists, asked about on its own.",
+      "path": "/prediction/v1/markets/POLY-2589813",
+      "status": 200,
+      "body": "market-open.json"
+    }
+  ]
+}

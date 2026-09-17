@@ -23,22 +23,29 @@
 // everything but `/healthz`. It is the whole of the grant: a caller that holds it can say anything
 // this publisher can say, which is why it has a floor under its length and why the API binds
 // loopback unless a deployment deliberately moves it (publisher/README.md).
+//
+// # Who writes the signals
+//
+// Two templates use this API and they differ in one thing, which [Authorship] names. The
+// CopyTrading template's signals are written by its callers, so it routes create, update and cancel
+// (SEE-95). The Prediction template's are written by its own discovery, so those three answer 403
+// and say why, and two endpoints are added that show what discovery is doing: a template whose
+// proposals have two authors would be a template where a cycle silently undoes what somebody
+// posted (SEE-96, internal/discovery).
 package api
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
+	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/discovery"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/ids"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/manifest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/publish"
@@ -63,15 +70,46 @@ type Documents interface {
 	Pending(ctx context.Context) (int, error)
 }
 
+// Markets is the part of the store a template that discovers its own signals reads: what it is
+// tracking, what its last cycle did, and how many proposals it is holding open. Nil for a template
+// whose signals come from its callers.
+type Markets interface {
+	Markets(ctx context.Context) ([]discovery.Tracked, error)
+	Cycle(ctx context.Context) (discovery.Cycle, error)
+	Live(ctx context.Context) (int, error)
+}
+
+// Cycles is the reconciler, as this API uses it: the filters it is applying, and a cycle now.
+type Cycles interface {
+	Filters() discovery.Filters
+	Pass(ctx context.Context) (discovery.Cycle, error)
+}
+
+// Authorship is who writes a template's signals, which is the one way the two templates' APIs
+// differ.
+type Authorship int
+
+const (
+	// ByCallers: a trader, a script or a strategy engine posts signals, and this API routes
+	// create, update and cancel (SEE-95).
+	ByCallers Authorship = iota
+	// ByDiscovery: the template writes its own from a provider's listing, so those three are
+	// refused with 403 and the discovery endpoints are added (SEE-96).
+	ByDiscovery
+)
+
 // Server is the API.
 type Server struct {
-	documents Documents
-	drainer   *publish.Drainer
-	kind      signals.Kind
-	settings  manifest.Settings
-	token     string
-	log       *slog.Logger
-	now       func() time.Time
+	documents  Documents
+	drainer    *publish.Drainer
+	kind       signals.Kind
+	settings   manifest.Settings
+	token      string
+	log        *slog.Logger
+	now        func() time.Time
+	authorship Authorship
+	markets    Markets
+	cycles     Cycles
 	// The identity minted for a new signal, injected so a test can pin one.
 	newID func() string
 }
@@ -86,6 +124,12 @@ type Plan struct {
 	Log       *slog.Logger
 	Now       func() time.Time
 	NewID     func() string
+	// Who writes this template's signals. The zero value is [ByCallers], which is the CopyTrading
+	// template.
+	Authorship Authorship
+	// Required when Authorship is [ByDiscovery], and meaningless otherwise.
+	Markets Markets
+	Cycles  Cycles
 }
 
 // New builds the API.
@@ -98,15 +142,24 @@ func New(plan Plan) *Server {
 	if newID == nil {
 		newID = ids.New
 	}
+	if plan.Authorship == ByDiscovery && (plan.Markets == nil || plan.Cycles == nil) {
+		// A wiring mistake in a template's own main, caught the first time it runs rather than
+		// when somebody calls the endpoint that would have needed them.
+		panic("api: a template whose signals are written by discovery has to supply its markets " +
+			"and its reconciler")
+	}
 	return &Server{
-		documents: plan.Documents,
-		drainer:   plan.Drainer,
-		kind:      plan.Kind,
-		settings:  plan.Settings,
-		token:     plan.Token,
-		log:       plan.Log,
-		now:       now,
-		newID:     newID,
+		documents:  plan.Documents,
+		drainer:    plan.Drainer,
+		kind:       plan.Kind,
+		settings:   plan.Settings,
+		token:      plan.Token,
+		log:        plan.Log,
+		now:        now,
+		authorship: plan.Authorship,
+		markets:    plan.Markets,
+		cycles:     plan.Cycles,
+		newID:      newID,
 	}
 }
 
@@ -118,12 +171,30 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /v1/status", s.authorized(s.status))
 	mux.HandleFunc("GET /v1/manifest", s.authorized(s.manifest))
-	mux.HandleFunc("POST /v1/signals", s.authorized(s.create))
 	mux.HandleFunc("GET /v1/signals", s.authorized(s.list))
 	mux.HandleFunc("GET /v1/signals/{id}", s.authorized(s.show))
-	mux.HandleFunc("PUT /v1/signals/{id}", s.authorized(s.update))
-	mux.HandleFunc("POST /v1/signals/{id}/cancel", s.authorized(s.cancel))
+	// Retrying a refused publication is an operator's, not an author's: it is about the gateway
+	// rather than about the statement, so both templates have it.
 	mux.HandleFunc("POST /v1/signals/{id}/retry", s.authorized(s.retry))
+
+	writing := map[string]http.HandlerFunc{
+		"POST /v1/signals":             s.create,
+		"PUT /v1/signals/{id}":         s.update,
+		"POST /v1/signals/{id}/cancel": s.cancel,
+	}
+	if s.authorship == ByDiscovery {
+		// Routed, and refused: a caller that posts a signal to this template is told that its
+		// proposals come from a provider's listing and which filters decide them, rather than
+		// being answered "no such route" and left to wonder.
+		for route := range writing {
+			writing[route] = s.byDiscovery
+		}
+		mux.HandleFunc("GET /v1/discovery", s.authorized(s.discovery))
+		mux.HandleFunc("POST /v1/discovery/poll", s.authorized(s.poll))
+	}
+	for route, handler := range writing {
+		mux.HandleFunc(route, s.authorized(handler))
+	}
 	return answering(mux)
 }
 
@@ -223,7 +294,7 @@ func (s *Server) status(writer http.ResponseWriter, request *http.Request) {
 		s.fail(writer, err)
 		return
 	}
-	send(writer, http.StatusOK, map[string]any{
+	answer := map[string]any{
 		"server_id":   s.settings.ServerID,
 		"channel":     signals.ChannelFor(s.settings.ServerID),
 		"gateway_url": s.settings.GatewayURL,
@@ -236,7 +307,135 @@ func (s *Server) status(writer http.ResponseWriter, request *http.Request) {
 			"publication":       publicationOf(state, revision),
 		},
 		"pending": pending,
+		// Whether a caller may write a signal here at all, so a client learns it from the status
+		// rather than from a 403 on its first attempt.
+		"writable": s.authorship == ByCallers,
+	}
+	if s.authorship == ByDiscovery {
+		cycle, err := s.markets.Cycle(request.Context())
+		if err != nil {
+			s.fail(writer, err)
+			return
+		}
+		live, err := s.markets.Live(request.Context())
+		if err != nil {
+			s.fail(writer, err)
+			return
+		}
+		answer["discovery"] = map[string]any{
+			"markets":    live,
+			"last_cycle": cycle.Describe(),
+			"working":    cycle.Working(),
+		}
+	}
+	send(writer, http.StatusOK, answer)
+}
+
+// byDiscovery is what the three writing endpoints answer on a template whose signals are its own.
+//
+// It is 403 rather than 404 or 405: the caller is authorized, the endpoint exists, and what it
+// asked for is not something anybody may do here. The answer names the filters, because the way to
+// change what this publisher says is to change what it looks for.
+func (s *Server) byDiscovery(writer http.ResponseWriter, _ *http.Request) {
+	refuse(writer, http.StatusForbidden, &problem{
+		Error: "written_by_discovery",
+		Detail: "this template's signals are written by its own discovery of " +
+			s.kind.Operation() + " markets, not by callers. What it publishes is decided by the " +
+			"filters its deployment configured (GET /v1/discovery), and a cycle would undo " +
+			"anything posted here",
 	})
+}
+
+// discovery is what this template is looking for and what it has found: the filters in force, the
+// last cycle, and every market it is tracking with the link to the provider's own page.
+//
+// The links are here and nowhere else. A proposal carries the provider's identifiers, which is what
+// lets a phone look a market up for itself; a URL a publisher chose is the thing the manifest rules
+// exist to prevent, so it stays on this side of the boundary, for this template's operator
+// (docs/wiki/prediction-template.md).
+func (s *Server) discovery(writer http.ResponseWriter, request *http.Request) {
+	cycle, err := s.markets.Cycle(request.Context())
+	if err != nil {
+		s.fail(writer, err)
+		return
+	}
+	tracked, err := s.markets.Markets(request.Context())
+	if err != nil {
+		s.fail(writer, err)
+		return
+	}
+	markets := make([]map[string]any, 0, len(tracked))
+	for _, one := range tracked {
+		markets = append(markets, s.tracking(one))
+	}
+	send(writer, http.StatusOK, map[string]any{
+		"filters":    s.cycles.Filters().Describe(),
+		"last_cycle": cycle.Describe(),
+		"working":    cycle.Working(),
+		"markets":    markets,
+	})
+}
+
+// poll runs a cycle now and answers with what it did.
+//
+// It exists for the first five minutes of a deployment — an operator who has just changed a filter
+// should not have to wait for the timer — and for the acceptance run. Two cycles cannot overlap, so
+// a call while one is running is answered 409 rather than queued.
+func (s *Server) poll(writer http.ResponseWriter, request *http.Request) {
+	cycle, err := s.cycles.Pass(request.Context())
+	switch {
+	case errors.Is(err, discovery.ErrBusy):
+		refuse(writer, http.StatusConflict, &problem{
+			Error:  "busy",
+			Detail: "a discovery cycle is already running; ask again when it has finished",
+		})
+		return
+	case err != nil:
+		s.fail(writer, err)
+		return
+	}
+	// Whatever the cycle produced is published before the answer, so that a caller polling by hand
+	// is told the state of the publication rather than "pending" on everything it just created.
+	if _, err := s.drainer.Pass(request.Context()); err != nil {
+		s.fail(writer, err)
+		return
+	}
+	pending, err := s.documents.Pending(request.Context())
+	if err != nil {
+		s.fail(writer, err)
+		return
+	}
+	send(writer, http.StatusOK, map[string]any{
+		"cycle":   cycle.Describe(),
+		"working": cycle.Working(),
+		"pending": pending,
+	})
+}
+
+// tracking is one tracked market as an answer reads it.
+func (s *Server) tracking(one discovery.Tracked) map[string]any {
+	market := map[string]any{
+		"provider":    one.Market.Provider,
+		"market_id":   one.Market.MarketID,
+		"event_id":    one.Market.EventID,
+		"title":       one.Market.Title,
+		"state":       one.Market.State,
+		"generation":  one.Market.Generation,
+		"source_url":  one.Market.SourceURL,
+		"signal":      s.view(one.Record.Signal),
+		"publication": publicationOf(one.Record.Publication, one.Record.Signal.Revision),
+	}
+	for name, at := range map[string]time.Time{
+		"close_at":        one.Market.CloseAt,
+		"first_seen_at":   one.Market.FirstSeenAt,
+		"last_seen_at":    one.Market.LastSeenAt,
+		"last_checked_at": one.Market.LastCheckedAt,
+	} {
+		if !at.IsZero() {
+			market[name] = instant(at)
+		}
+	}
+	return market
 }
 
 // manifest is the document this template publishes about itself, and the reference a phone adds
@@ -321,7 +520,7 @@ func (s *Server) create(writer http.ResponseWriter, request *http.Request) {
 	signal.Operation = s.kind.Operation()
 	signal.PluginID = s.kind.Requirement().PluginID
 
-	record, held, err := s.documents.Create(request.Context(), key, fingerprint(signal), signal)
+	record, held, err := s.documents.Create(request.Context(), key, signals.Statement(signal), signal)
 	switch {
 	case errors.Is(err, store.ErrKeyReused):
 		refuse(writer, http.StatusConflict, &problem{
@@ -643,27 +842,6 @@ func publicationOf(state signals.Publication, revision uint64) map[string]any {
 func number(value uint64) string { return fmt.Sprintf("%d", value) }
 
 func instant(at time.Time) string { return at.UTC().Format(time.RFC3339) }
-
-// fingerprint is what an idempotency key is checked against: the signal a request asked for, with
-// the parts this template minted left out.
-//
-// It is the validated statement rather than the bytes that arrived, so two calls that differ only
-// in whitespace, key order or how a number was spelled are the same request — which is what a
-// retrying client actually sends — while a call that asks for different terms under the same key
-// is a conflict.
-func fingerprint(signal signals.Signal) string {
-	keys := make([]string, 0, len(signal.Terms))
-	for key := range signal.Terms {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	digest := sha256.New()
-	fmt.Fprintf(digest, "%s\n%s\n", signal.ExpiresAt.UTC().Format(time.RFC3339), signal.Note)
-	for _, key := range keys {
-		fmt.Fprintf(digest, "%s=%s\n", key, signal.Terms[key])
-	}
-	return hex.EncodeToString(digest.Sum(nil))
-}
 
 // isKey is the shape of an idempotency key: short, printable, and one word. It is the caller's own
 // string — a strategy engine's order ID, a timestamp and a pair, whatever it can reproduce — so

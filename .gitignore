@@ -11,6 +11,9 @@ build/
 .env
 .env.*
 !.env.example
+# The Prediction template's own example, which is a second deployment's
+# (publisher/.env.prediction.example, SEE-96).
+!.env.prediction.example
 # deploy/server ships its settings template under this name.
 !.env.template
 local.properties
@@ -26,6 +29,7 @@ google-services.json
 /broadcast/broadcast
 /broadcast/broadcastctl
 /publisher/copytrading
+/publisher/prediction
 /publisher/publishctl
 
 # Local databases
