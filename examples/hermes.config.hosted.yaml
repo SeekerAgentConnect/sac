@@ -1,0 +1,54 @@
+# Seeker Agent Connect: a Hermes MCP server entry for a hosted deployment.
+#
+# The same entry as examples/hermes.config.yaml, pointed at the Stage 7 stack's
+# public HTTPS endpoint instead of a loopback address (docs/guides/self-hosting.md,
+# docs/integrations/hermes.md#9-hermes-against-the-packaged-stack).
+#
+# Merge the `seeker_vault` entry into the `mcp_servers` section of your existing
+# ~/.hermes/config.yaml. Don't replace that file, and don't remove other entries.
+# Keep the token out of this file: put it in ~/.hermes/.env as
+#
+#   MCP_SEEKER_VAULT_API_KEY=<the MCP_TOKEN value from gateway/.env>
+#
+# Before this works:
+#   - the stack runs with the public overlay, and its certificate is a real one
+#     (`docker compose -f compose.yaml -f compose.public.yaml up -d --build`);
+#   - the deployment's MCP_ALLOWED_HOSTS carries the domain, which the overlay
+#     sets from GATEWAY_DOMAIN, or the sidecar answers 403;
+#   - the OAuth profile is **off**. Hermes sends a fixed bearer token, and with
+#     OAuth on the public endpoint takes only access tokens from the configured
+#     authorization server (docs/integrations/claude.md).
+#
+# Never work around a certificate warning to make this connect. A refused
+# certificate is the check working; fix the name, the DNS record, or the port.
+mcp_servers:
+  seeker_vault:
+    # The deployment's own domain, over HTTPS. Nothing here is a loopback
+    # address: the gateway terminates TLS and the sidecar stays unreachable.
+    url: "https://vault.example.com/mcp"
+    headers:
+      # Hermes fills in ${...} from ~/.hermes/.env or the environment. An unset
+      # variable is sent as the literal text, and the sidecar answers 401.
+      Authorization: "Bearer ${MCP_SEEKER_VAULT_API_KEY}"
+    # Seconds Hermes waits for a tool call. The durable tools answer at once;
+    # only vault_display_command waits for the owner, and a public deployment
+    # does not serve it (see the tool list below).
+    timeout: 90
+    tools:
+      # A public deployment's tools, and no others. Two of the local entry's are
+      # deliberately absent:
+      # - vault_display_command: the Stage 1 live diagnostic. The public gateway
+      #   does not forward LiveCommandService, so the phone could not answer it.
+      # - vault_request_ack: a demo tool the sidecar serves only with
+      #   MCP_DEMO_TOOLS=true, which a deployment leaves off.
+      include:
+        [
+          vault_get_address,
+          vault_get_capabilities,
+          vault_sign_message,
+          vault_transfer,
+          vault_get_request,
+          vault_cancel_request,
+        ]
+      resources: false
+      prompts: false

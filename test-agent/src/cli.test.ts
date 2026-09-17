@@ -77,6 +77,9 @@ function envFor(
     MCP_TOKEN,
     PHONE_TOKEN, // present in a developer's .env; the CLI must not print it either
     LIVE_COMMAND_TIMEOUT_SECONDS: target === quickSidecar ? "1" : "30",
+    // `hello` and `ack` are diagnostics, and the CLI runs them only in development mode. A
+    // developer's own .env sets this, and so does the test environment; its own test is below.
+    MCP_DEMO_TOOLS: "true",
     ...overrides,
   };
 }
@@ -363,9 +366,189 @@ describe("pnpm agent ack, get, and cancel", () => {
       ["cancel", "a", "b"],
       ["tools", "extra"],
       ["ack", "x", "--expires", "soon"],
+      ["wait"],
+      ["wait", "a", "b"],
+      ["swap", "one-argument-only"],
     ]) {
       assert.equal((await agent(args, envFor(queue))).code, 2, args.join(" "));
     }
+  });
+
+  it("waits for the owner's answer, and prints one JSON document when it comes", async () => {
+    const phone = await pairPhone(queue.url, databasePath);
+    const created = JSON.parse(
+      (await agent(["ack", "Waited for", "--key", "wait-1"], envFor(queue)))
+        .stdout,
+    ) as { request_id: string };
+
+    // The owner answers while the CLI is waiting, as they would on the phone.
+    const answering = setTimeout(() => {
+      void requestClient(queue.url, phone.phoneToken).submitResult({
+        ref: {
+          connectionId: phone.connectionId,
+          requestId: created.request_id,
+        },
+        result: { case: "acknowledgement", value: {} },
+      });
+    }, 300);
+    const waited = await agent(
+      ["wait", created.request_id, "--for", "20", "--every", "1"],
+      envFor(queue),
+    );
+    clearTimeout(answering);
+    assert.equal(waited.code, 0, waited.stderr);
+    // One document, so `| jq` reads it: nothing else is written to stdout.
+    const view = JSON.parse(waited.stdout) as Record<string, unknown>;
+    assert.equal(waited.stdout.trimEnd().split("\n").length, 1);
+    assert.equal(view.status, "COMPLETED");
+    assert.equal(view.outcome, "succeeded");
+    assert.equal(view.terminal, true);
+    assert.equal(view.timed_out, false);
+    assert.ok(typeof view.polls === "number" && view.polls >= 1);
+  });
+
+  it("gives up at its deadline without touching the request", async () => {
+    await pairPhone(queue.url, databasePath);
+    const created = JSON.parse(
+      (await agent(["ack", "Nobody answers", "--key", "wait-2"], envFor(queue)))
+        .stdout,
+    ) as { request_id: string };
+
+    const waited = await agent(
+      ["wait", created.request_id, "--for", "1", "--every", "1"],
+      envFor(queue),
+    );
+    // Unsettled, not failed: the owner simply has not answered yet.
+    assert.equal(waited.code, 10, waited.stderr);
+    const view = JSON.parse(waited.stdout) as Record<string, unknown>;
+    assert.equal(view.status, "PENDING");
+    assert.equal(view.outcome, "unsettled");
+    assert.equal(view.timed_out, true);
+    assert.match(waited.stderr, /still PENDING after \d+ s/);
+
+    // And the request is exactly as it was: waiting changed nothing.
+    const after = await agent(["status", created.request_id], envFor(queue));
+    assert.equal(after.code, 10);
+    assert.equal(
+      (JSON.parse(after.stdout) as { status: string }).status,
+      "PENDING",
+    );
+  });
+
+  it("returns at once for a request that has already ended", async () => {
+    const phone = await pairPhone(queue.url, databasePath);
+    const created = JSON.parse(
+      (await agent(["ack", "Already done", "--key", "wait-3"], envFor(queue)))
+        .stdout,
+    ) as { request_id: string };
+    await requestClient(queue.url, phone.phoneToken).submitResult({
+      ref: { connectionId: phone.connectionId, requestId: created.request_id },
+      result: { case: "rejection", value: {} },
+    });
+
+    const waited = await agent(
+      ["wait", created.request_id, "--for", "600", "--every", "60"],
+      envFor(queue),
+    );
+    // It ended, and not the way it was asked for.
+    assert.equal(waited.code, 11, waited.stderr);
+    const view = JSON.parse(waited.stdout) as Record<string, unknown>;
+    assert.equal(view.status, "REJECTED");
+    assert.equal(view.outcome, "failed");
+    assert.equal(view.polls, 1, "it read the request once and stopped");
+  });
+
+  it("prints the request_id before it starts waiting", async () => {
+    await pairPhone(queue.url, databasePath);
+    const run = await agent(
+      ["ack", "Queued and waited", "--key", "wait-4", "--wait", "--for", "1"],
+      envFor(queue),
+    );
+    assert.equal(run.code, 10, run.stderr);
+    const view = JSON.parse(run.stdout) as Record<string, unknown>;
+    assert.match(run.stderr, /^request_id: [0-9a-f-]{36}$/m);
+    assert.equal(
+      run.stderr.match(/^request_id: (\S+)$/m)?.[1],
+      view.request_id,
+    );
+    assert.equal(view.timed_out, true);
+  });
+
+  it("refuses wait settings it cannot honour, and --wait where it means nothing", async () => {
+    for (const args of [
+      ["wait", "an-id", "--for", "0"],
+      ["wait", "an-id", "--every", "0"],
+      ["wait", "an-id", "--for", "soon"],
+      ["wait", "an-id", "--every", "99999"],
+      ["get", "an-id", "--wait"],
+      ["tools", "--wait"],
+    ]) {
+      const run = await agent(args, envFor(queue));
+      assert.equal(run.code, 2, args.join(" "));
+      assert.equal(run.stdout, "");
+    }
+  });
+
+  it("keeps the two diagnostics in development mode", async () => {
+    // Neither MCP_DEMO_TOOLS nor --demo: the CLI refuses before it opens a session.
+    for (const command of [
+      ["hello", "Anyone?"],
+      ["ack", "Anything?"],
+    ]) {
+      const run = await agent(command, envFor(queue, { MCP_DEMO_TOOLS: "" }));
+      assert.equal(run.code, 2, command.join(" "));
+      assert.equal(run.stdout, "");
+      assert.match(run.stderr, /development diagnostic/);
+      assert.match(run.stderr, /neither a wallet signature nor a payment/);
+    }
+    // --demo is the explicit way to run one anyway.
+    await pairPhone(queue.url, databasePath);
+    const explicit = await agent(
+      ["ack", "Asked for on purpose", "--key", "demo-1", "--demo"],
+      envFor(queue, { MCP_DEMO_TOOLS: "" }),
+    );
+    assert.equal(explicit.code, 0, explicit.stderr);
+    assert.equal(
+      (JSON.parse(explicit.stdout) as { status: string }).status,
+      "PENDING",
+    );
+    assert.match(explicit.stderr, /not a signature and not a payment/);
+    // A value that is neither true nor false is a configuration problem, as in the sidecar.
+    const wrong = await agent(
+      ["tools"],
+      envFor(queue, { MCP_DEMO_TOOLS: "yes" }),
+    );
+    assert.equal(wrong.code, 2);
+    assert.match(wrong.stderr, /MCP_DEMO_TOOLS must be true or false/);
+  });
+
+  it("says that swaps are not served, and queues nothing", async () => {
+    await pairPhone(queue.url, databasePath);
+    const run = await agent(
+      [
+        "swap",
+        "So11111111111111111111111111111111111111112",
+        "1000000",
+        "--wallet",
+        WALLET,
+        "--network",
+        "devnet",
+      ],
+      envFor(queue),
+    );
+    assert.equal(run.code, 3);
+    assert.equal(run.stdout, "");
+    assert.match(run.stderr, /does not offer vault_swap/);
+    assert.match(run.stderr, /swaps are a later stage/);
+
+    // And it is held to the same rules as a transfer: a swap that doesn't say whose money moves,
+    // or on which cluster, is refused before a session is opened.
+    const vague = await agent(
+      ["swap", "So11111111111111111111111111111111111111112", "1000000"],
+      envFor(queue),
+    );
+    assert.equal(vague.code, 2);
+    assert.match(vague.stderr, /swap needs --wallet and --network/);
   });
 });
 

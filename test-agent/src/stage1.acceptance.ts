@@ -68,6 +68,7 @@ function agent(
       MCP_TOKEN,
       PHONE_TOKEN, // present in a developer's .env; the CLI must not print it either
       LIVE_COMMAND_TIMEOUT_SECONDS: String(liveCommandTimeoutSeconds),
+      MCP_DEMO_TOOLS: "true", // `hello` is a development diagnostic (SAW-037)
     },
   });
   let stdout = "";
