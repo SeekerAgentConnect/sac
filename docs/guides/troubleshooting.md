@@ -2,6 +2,8 @@
 
 Fixes for problems in the [MacBook → Seeker quickstart](macbook-seeker-quickstart.md), grouped by where they show up. The messages in code blocks are real outputs captured on 2026-09-11, unless a section says it wasn't reproduced.
 
+This page is about a development machine: Node, `adb`, and a sidecar started with `pnpm dev:sidecar`. For a deployment — containers, the gateway, certificates, backups, and recovery — read [self-hosting](self-hosting.md#troubleshooting), whose own troubleshooting section covers the stack, and [Operating it](self-hosting.md#operating-it) for everything after the first start. The two overlap where the sidecar is the same program in both.
+
 Quick checks, in this order:
 
 ```bash
@@ -448,6 +450,38 @@ rather than guessing.
 Look the signature up on an explorer to see what it actually is, and check your wallet's own
 history for your transfer. Treat it as a problem with the wallet app, and do not send a
 replacement until you know what happened.
+
+## Running the packaged stack
+
+The stack is the same sidecar in a container, so most of this page still applies once you find the
+log: `docker compose logs sidecar` instead of the terminal you started it in. Three differences are
+worth knowing before they surprise you.
+
+### The port that answers is the gateway's
+
+`curl http://127.0.0.1:8080/healthz` reaches the **gateway**, which passes it to the sidecar. The
+sidecar's own port is not reachable from the host at all — not merely unmapped — because the two
+containers share one network namespace and the sidecar binds its loopback inside it. A refused
+connection on 8080 means the stack is not running, not that the sidecar is unhealthy; `docker
+compose ps` says which.
+
+### The configuration lives in `gateway/.env`, not the repository root
+
+The root `.env` belongs to `pnpm dev:sidecar`. A deployment reads `gateway/.env`, and the two are
+deliberately separate files with different defaults — `MCP_DEMO_TOOLS=true` in one and `false` in
+the other, for instance. Editing the wrong one is the commonest reason a change appears to do
+nothing. After editing, `docker compose up -d` recreates the containers that need it.
+
+### A database from a newer sidecar is refused
+
+Downgrading the images after an update names both schema versions and stops:
+
+```text
+the database has schema version 6, newer than this sidecar's 5; run a newer sidecar, or restore a backup
+```
+
+That is the guard working. Go back to the newer images, or restore the backup you took before
+updating ([Backing up and restoring](self-hosting.md#backing-up-and-restoring)).
 
 ## Reporting a problem
 

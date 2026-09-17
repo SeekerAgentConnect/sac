@@ -1,6 +1,6 @@
 # Stage 7 tests
 
-Stage 7 packages what the earlier stages built for the owner's own infrastructure. SAW-034 containerizes the sidecar and the test agent and gives them a Compose stack that builds from a checkout, SAW-035 puts a TLS gateway in front of it and separates the public endpoints from the private ones ([`../guides/self-hosting.md`](../guides/self-hosting.md)), SAW-036 adds the optional OAuth profile a hosted MCP client needs ([`../integrations/claude.md`](../integrations/claude.md)), and SAW-037 finishes the test agent and the Hermes integration against that stack ([`../../test-agent/README.md`](../../test-agent/README.md), [`../integrations/hermes.md`](../integrations/hermes.md)).
+Stage 7 packages what the earlier stages built for the owner's own infrastructure. SAW-034 containerizes the sidecar and the test agent and gives them a Compose stack that builds from a checkout, SAW-035 puts a TLS gateway in front of it and separates the public endpoints from the private ones ([`../guides/self-hosting.md`](../guides/self-hosting.md)), SAW-036 adds the optional OAuth profile a hosted MCP client needs ([`../integrations/claude.md`](../integrations/claude.md)), SAW-037 finishes the test agent and the Hermes integration against that stack ([`../../test-agent/README.md`](../../test-agent/README.md), [`../integrations/hermes.md`](../integrations/hermes.md)), and SAW-038 turns the whole of it into a guide somebody else can follow ([`../guides/self-hosting.md`](../guides/self-hosting.md)).
 
 Nothing in this stage changes what the software does. An authorized client is a client that may ask; every request still waits for the owner's hand on their own wallet. The sidecar still holds no key and signs nothing, still binds loopback, and still serves no transfer tool without `SOLANA_RPC_URL`. Starting the stack creates no request, spends nothing, and launches no LLM.
 
@@ -307,3 +307,57 @@ What has never been run with Hermes is the packaged stack.
 | --- | --- | --- | --- |
 | 2026-09-17 | Implementation environment, no Docker daemon | The automated suites, and the CLI through the packaged gateway | PASS |
 | — | A host running the stack, with Hermes and the Seeker | One durable request from Hermes, answered on the phone | NOT RUN |
+
+## SAW-038 — the self-hosting and operations guide
+
+### What was checked, and how
+
+A guide cannot be proved correct by reading it. Two of the ticket's three checks are automated and
+run in `pnpm check`; the third needs a Docker daemon and is NOT RUN.
+
+### Backup and restore, run for real
+
+`sidecar/src/backup.test.ts` performs the procedure the guide gives an operator, against a real
+sidecar and a real database file, in a throwaway directory. It is the ticket's second check, and it
+passed.
+
+| Check | Result |
+| --- | --- |
+| A hot backup (`VACUUM INTO`) taken from a second connection while the sidecar is serving | One consistent file; the sidecar keeps answering, and the copy opens at the same schema version |
+| An answer recorded **after** the backup, then the backup restored | The answered request is PENDING again; the untouched one is unchanged |
+| The server ID across the restore | The same. A restored backup is not a new deployment |
+| What ran on the way up | Nothing. No submission, no retry, no execution in the log, and the restored sidecar has no chain endpoint at all |
+| The phone re-delivering the answer it still holds | Settles the request again — the same answer, and no wallet is involved |
+| A database from a newer sidecar | Refused, naming both versions and saying what to do |
+
+### The guide against the files it describes
+
+`sidecar/src/self-hosting-guide.test.ts` is the ticket's third check: every name on the page is
+held to the shipped files, so a rename cannot quietly leave the guide behind.
+
+| Check | Result |
+| --- | --- |
+| Every `MCP_*`, `SIDECAR_*`, `GATEWAY_*`, `ACME_*`, `SOLANA_*`, `FCM_*` … setting the guide names is one the stack reads | PASS |
+| Every `docker compose` command names a Compose file that exists, a service that exists, and a profile that exists | PASS |
+| The ports: the published mapping, the private endpoint, and the two public ones | PASS |
+| The paths: `sidecar/dist/pairing/cli.js` against the image's `WORKDIR` and a real entry point, `/data/sidecar.db`, and the volume's full name | PASS |
+| Every relative link on the page, and every link to one of its own headings | PASS |
+
+Deliberately breaking the guide — an invented setting, a link to a file that is not there — fails
+those checks, which is how they were confirmed to bite.
+
+### What is NOT RUN
+
+| Check | What it needs | Status |
+| --- | --- | --- |
+| Following the guide end to end on a fresh checkout, using only its prerequisites | A Docker daemon. Every command's spelling is checked above; none of them has been executed | NOT RUN |
+| The same on a Linux VPS, with a real domain and certificate | A VPS and a domain | NOT RUN |
+| Pairing a physical Seeker by scanning the printed code | The phone | NOT RUN |
+| Screenshots | There are none in the guide; it is text and commands throughout | — |
+
+### Record
+
+| Date | Machine | What was run | Result |
+| --- | --- | --- | --- |
+| 2026-09-17 | Implementation environment, no Docker daemon | The backup/restore suite and the guide-consistency suite | PASS |
+| — | A fresh machine with Docker | The guide followed end to end | NOT RUN |
