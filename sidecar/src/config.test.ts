@@ -54,6 +54,116 @@ describe("loadSidecarConfig", () => {
     );
   });
 
+  /**
+   * MCP is one adapter over the request core, and MCP_ENABLED is its switch (SEE-87,
+   * docs/wiki/mcp-adapter.md). The default is on, so a deployment that has never heard of the
+   * setting keeps every behaviour it had; off, nothing MCP-only is required and the endpoint is
+   * never built.
+   */
+  describe("the optional MCP adapter", () => {
+    const withoutMcp = {
+      SIDECAR_HOST: "127.0.0.1",
+      SIDECAR_PORT: "8080",
+      PHONE_TOKEN,
+      LIVE_COMMAND_TIMEOUT_SECONDS: "60",
+      MCP_ENABLED: "false",
+    };
+
+    it("keeps the adapter on when nothing says otherwise", () => {
+      assert.equal(loadSidecarConfig(validEnv).mcpToken, MCP_TOKEN);
+      assert.equal(
+        loadSidecarConfig({ ...validEnv, MCP_ENABLED: "true" }).mcpToken,
+        MCP_TOKEN,
+      );
+      assert.equal(loadSidecarConfig(validEnv).ignoredSettings, undefined);
+    });
+
+    it("needs no MCP token, and no other MCP setting, when it is off", () => {
+      const config = loadSidecarConfig(withoutMcp);
+
+      // Absent rather than empty: one place says whether the adapter exists.
+      assert.equal(config.mcpToken, undefined);
+      assert.equal(config.demoTools, false);
+      assert.deepEqual(config.mcpAllowedHosts, []);
+      assert.equal(config.oauth, undefined);
+      assert.equal(config.ignoredSettings, undefined);
+      // Everything that is not the adapter is configured exactly as before.
+      assert.equal(config.phoneToken, PHONE_TOKEN);
+      assert.equal(config.databasePath, DEFAULT_DATABASE_PATH);
+      assert.equal(config.requestTtlSeconds, 86_400);
+      assert.equal(config.pendingLimit, 100);
+      assert.equal(config.publicUrl, "http://127.0.0.1:8080");
+      assert.equal(config.pairingTokenTtlSeconds, 600);
+    });
+
+    it("names the MCP settings it will not act on rather than dropping them in silence", () => {
+      // Turning the adapter off must not force an operator to delete a token they may want back,
+      // so a leftover is ignored — but startup says which ones, so nothing quietly does nothing.
+      const config = loadSidecarConfig({
+        ...withoutMcp,
+        MCP_TOKEN,
+        MCP_ALLOWED_HOSTS: "vault.example.com",
+        MCP_DEMO_TOOLS: "true",
+      });
+
+      assert.equal(config.mcpToken, undefined);
+      assert.deepEqual(config.ignoredSettings, [
+        "MCP_TOKEN",
+        "MCP_ALLOWED_HOSTS",
+        "MCP_DEMO_TOOLS",
+      ]);
+      // A setting left at its own default is not something anybody is waiting on.
+      assert.equal(
+        loadSidecarConfig({ ...withoutMcp, MCP_DEMO_TOOLS: "false" })
+          .ignoredSettings,
+        undefined,
+      );
+    });
+
+    it("refuses an OAuth profile for an endpoint it would not serve", () => {
+      // The other MCP settings can outlive the adapter; this one contradicts it. The profile makes
+      // a public promise — metadata telling a client where to authorize — for an endpoint that
+      // would not exist.
+      assert.deepEqual(
+        problemsFor({
+          ...withoutMcp,
+          MCP_OAUTH_ISSUER: "https://auth.example.com/realms/seeker",
+        }),
+        [
+          "MCP_OAUTH_ISSUER configures authorization for /mcp, which MCP_ENABLED=false does not serve: either enable MCP or remove the OAuth profile.",
+        ],
+      );
+      assert.deepEqual(
+        problemsFor({
+          ...withoutMcp,
+          MCP_OAUTH_RESOURCE: "https://vault.example.com/mcp",
+          MCP_OAUTH_SCOPE: "vault.use",
+        }),
+        [
+          "MCP_OAUTH_RESOURCE, MCP_OAUTH_SCOPE configures authorization for /mcp, which MCP_ENABLED=false does not serve: either enable MCP or remove the OAuth profile.",
+        ],
+      );
+    });
+
+    it("says so when the switch itself is not true or false", () => {
+      assert.deepEqual(problemsFor({ ...validEnv, MCP_ENABLED: "off" }), [
+        "MCP_ENABLED must be true or false.",
+      ]);
+      // A word nobody meant leaves the adapter on, so the token is still required and a broken
+      // switch never silently removes the endpoint.
+      assert.deepEqual(problemsFor({ ...withoutMcp, MCP_ENABLED: "no" }), [
+        "MCP_ENABLED must be true or false.",
+        "MCP_TOKEN is not set. Set it, or set MCP_ENABLED=false to run without the MCP adapter.",
+      ]);
+    });
+
+    it("still refuses a token that is the phone's, whichever way the switch is set", () => {
+      assert.deepEqual(problemsFor({ ...validEnv, MCP_TOKEN: PHONE_TOKEN }), [
+        "MCP_TOKEN and PHONE_TOKEN must be different values.",
+      ]);
+    });
+  });
+
   it("accepts the other loopback hosts", () => {
     for (const host of ["::1", "localhost"]) {
       assert.equal(
@@ -67,7 +177,8 @@ describe("loadSidecarConfig", () => {
     assert.deepEqual(problemsFor({ SIDECAR_HOST: " " }), [
       "SIDECAR_HOST is not set.",
       "SIDECAR_PORT is not set.",
-      "MCP_TOKEN is not set.",
+      // The MCP adapter is optional (SEE-87), so its own problem names the other way out.
+      "MCP_TOKEN is not set. Set it, or set MCP_ENABLED=false to run without the MCP adapter.",
       "PHONE_TOKEN is not set.",
       "LIVE_COMMAND_TIMEOUT_SECONDS is not set.",
     ]);

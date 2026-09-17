@@ -11,13 +11,14 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 
 `pnpm dev:sidecar` reads the git-ignored root `.env`; start from `.env.example`. Variables already set in the environment take precedence over `.env`.
 
-`MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `MCP_OAUTH_ISSUER`, `MCP_OAUTH_RESOURCE`, `MCP_OAUTH_JWKS_URL`, `MCP_OAUTH_SCOPE`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, `SOLANA_RPC_TIMEOUT_MS`, and `FCM_PROJECT_ID` are optional, and an empty one counts as unset. The others are required.
+`MCP_ENABLED`, `MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `MCP_OAUTH_ISSUER`, `MCP_OAUTH_RESOURCE`, `MCP_OAUTH_JWKS_URL`, `MCP_OAUTH_SCOPE`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, `SOLANA_RPC_TIMEOUT_MS`, and `FCM_PROJECT_ID` are optional, and an empty one counts as unset. The others are required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
 | `SIDECAR_HOST` | Address to listen on | `127.0.0.1`, `::1`, or `localhost`. Stage 1 never listens beyond the machine. |
 | `SIDECAR_PORT` | Port to listen on | 1 to 65535; `.env.example` uses 8080 |
-| `MCP_TOKEN` | Bearer token that agents send to `/mcp` | At least 32 characters, only bearer-token characters (letters, digits, and `- . _ ~ + /`), and not the placeholder |
+| `MCP_ENABLED` | Optional, and the switch for the whole MCP adapter (SEE-87, [`client adapters`](../wiki/mcp-adapter.md)). `true`, or unset, serves `/mcp`; `false` serves no `/mcp` and requires no MCP setting at all. | `true` or `false`; unset or empty means `true`, so a deployment that has never heard of it keeps the behaviour it has |
+| `MCP_TOKEN` | Bearer token that agents send to `/mcp`. Required while `MCP_ENABLED` is on, and ignored when it is off. | At least 32 characters, only bearer-token characters (letters, digits, and `- . _ ~ + /`), and not the placeholder |
 | `PHONE_TOKEN` | Bearer token for the Stage 1 live-test screen, which only `LiveCommandService` accepts. The durable workflow uses the credential from [pairing](#pairing-a-phone) instead. | The same rules as `MCP_TOKEN`, and a different value |
 | `LIVE_COMMAND_TIMEOUT_SECONDS` | How long a live command waits for the user's OK | 1 to 3600 |
 | `MCP_URL` | Not read by the sidecar; the test agent (SAW-005) uses it | None |
@@ -39,6 +40,17 @@ The sidecar listens on loopback only. A phone on another network reaches it thro
 | `FCM_PROJECT_ID` | Optional. The Firebase/Google Cloud project for the SAW-054 Firebase Admin sender | A 6–30 character lowercase Google Cloud project ID. Empty means no Firebase Admin app or sender is constructed. Credentials come from Application Default Credentials, not this value; see the [Firebase setup guide](../guides/firebase.md). |
 
 Generate each token with `openssl rand -hex 32`. If the configuration is invalid, the sidecar names every problem and exits with status 1. It never prints a token value.
+
+### Running without the MCP adapter
+
+`MCP_ENABLED=false` starts the same sidecar with no agent endpoint on it (SEE-87, [`mcp-adapter.md`](../wiki/mcp-adapter.md)):
+
+- `/mcp` answers **404**, and so do both OAuth metadata paths. It is not served rather than locked — an authentication challenge would suggest that some token would open one.
+- `MCP_TOKEN` is not required. A leftover `MCP_TOKEN`, `MCP_ALLOWED_HOSTS` or `MCP_DEMO_TOOLS` is ignored, and the startup log names which: turning the adapter off should not force you to delete a token you may want back, but nothing is allowed to do nothing quietly.
+- `MCP_OAUTH_*` is a **configuration error**, because the OAuth profile publishes metadata telling a client where to authorize for an endpoint this deployment would not serve.
+- Everything else is unchanged: pairing and the one-use code, the phone credential and what it may reach, the request store and its lifecycle, `PrepareRequest`/`SubmitResult`, production updates, FCM registration and invalidations, and the rule that the wallet is asked only after the owner approves. A stored request's identity does not depend on which adapter created it.
+
+With the adapter off nothing creates requests yet — MCP is the only source in this stage — so the sidecar serves the phone an empty inbox. That is the point of the switch: the core stands on its own, and the Stage 7.1 Go publisher templates and shared gateway are separate components rather than MCP speakers.
 
 ## Start and stop
 

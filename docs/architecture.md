@@ -139,6 +139,34 @@ opens normally, a result this phone already recorded opens with that result, and
 revoked, or unreachable state gets a non-authorizing explanation. The permission decision governs
 presentation only and is not an input to registration, foreground streams, Sync, or either worker.
 
+### The server adapter boundary
+
+From SEE-87 the sidecar's MCP interface is one optional adapter over the request core rather than
+the core itself. [`wiki/mcp-adapter.md`](wiki/mcp-adapter.md) is the full account, including the
+distinction that makes Stage 7.1 work: the Node sidecar is the owner's **private** server, and the
+Go publisher templates are a developer's **broadcast** servers that speak no MCP at all.
+
+```mermaid
+flowchart LR
+    Agent["An agent"] --> Endpoint["mcp-endpoint.ts<br>token / OAuth"]
+    Endpoint --> Tools["requests/mcp-tools.ts"]
+    Tools --> Boundary["requests/agent-api.ts<br>AgentRequests"]
+    Boundary --> Store["RequestStore<br>identity, idempotency, lifecycle"]
+    PhoneApi["phone API, pairing,<br>updates, push"] --> Store
+```
+
+- **`AgentRequests` is the whole of what an adapter may ask for:** store a request, read one,
+  withdraw one, answer a retry, read the wallet binding, and — only with a chain endpoint
+  configured — check an asset and read what became of a submitted transaction.
+- **It forwards and decides nothing.** Idempotency, validation, the lifecycle, the pending limit
+  and result handling stay in the core, so the agent-facing error codes are the same whichever
+  adapter is asking.
+- **It authenticates nobody.** A credential belongs to the adapter that accepts it; the phone's
+  credential still reaches `RequestService` and nothing else.
+- **`MCP_ENABLED=false` serves no `/mcp`,** needs no MCP setting, and changes nothing about pairing,
+  the phone API, updates, push, stored request identity, or the rule that the wallet is asked only
+  after the owner approves.
+
 ### The client plugin boundary
 
 From SEE-86 the app has one place a bundled *client plugin* can be registered, so an action it doesn't carry out itself — a Jupiter swap (SEE-93), a Jupiter prediction submission (SEE-94) — can be written without touching a transport, a policy, the wallet, or storage. [`wiki/client-plugins.md`](wiki/client-plugins.md) is the full account, including what a later SDK extraction would still have to do.
@@ -163,6 +191,7 @@ flowchart LR
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
 - **The agent is untrusted input.** Its parameters are validated before they're stored. Its note is shown apart from the verified parameters, and the phone checks the actual transaction, not the agent's description of it.
 - **The sidecar is trusted to relay, not to sign.** The phone parses each prepared transaction itself, and the approval names that transaction's exact hash. A sidecar that swapped the transaction after the review couldn't get it approved.
+- **An adapter gets no authority of its own (SEE-87).** MCP is one optional way an agent reaches the sidecar. The adapter asks the request core through one named boundary that decides nothing, holds nothing, and authenticates nobody, so it cannot reach around idempotency, validation or the lifecycle; and a deployment can serve no `/mcp` at all without changing pairing, the phone's permissions or the wallet-signing rules ([`wiki/mcp-adapter.md`](wiki/mcp-adapter.md)).
 - **A plugin gets no wallet authority (SEE-86).** A bundled client plugin prepares bytes and reads them back; it never receives a credential or the wallet's authorization token, never reaches a sidecar, and cannot approve or send. The owner's approval and the one wallet interaction stay in core, and a stage-boundary check fails if that changes ([`wiki/client-plugins.md`](wiki/client-plugins.md)).
 - **Policies stay on the phone.** The sidecar never receives the policy or its assessment, so an agent can't learn or change the rules through it. One global document supplies defaults and one optional override document records where each connection differs; a connection never reads another connection's overrides ([`policy.md`](policy.md)).
 - **A policy advises; it never decides.** Input validation settles what is executable, and it is judged before any policy is consulted. A policy can only add reasons for the owner to read: there is no `BLOCKED`, and no rule can make a preparation the phone couldn't read whole approvable (SAW-025). The editor offers no setting that would change that, because there is none to offer (SAW-027), and the review screen shows the two apart, in their own words, with no tick that crosses between them (SAW-028).
@@ -228,5 +257,5 @@ These hold across the components, and every stage keeps them:
 | 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
-| 7.1 | A client-plugin boundary in the existing core (SEE-86), server manifests and connection modes, shared proposals with device-local decisions, the Go broadcast gateway, and the two Jupiter plugins with their server templates |
+| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests and connection modes, shared proposals with device-local decisions, the Go broadcast gateway, and the two Jupiter plugins with their server templates |
 | 8 | Release checks |

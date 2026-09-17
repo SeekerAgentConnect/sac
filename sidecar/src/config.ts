@@ -19,11 +19,21 @@ import {
 export interface SidecarConfig {
   readonly host: string;
   readonly port: number;
-  readonly mcpToken: string;
+  /**
+   * The agent's bearer token for /mcp, and the switch for the whole MCP adapter (SEE-87,
+   * docs/wiki/mcp-adapter.md): absent means MCP_ENABLED=false, and then the endpoint is never
+   * constructed, /mcp is not served, and no MCP-only setting is required. It is the same shape
+   * every other optional subsystem here uses — [solanaRpcUrl], [fcmProjectId], [oauth] — so there
+   * is one place that says whether the adapter exists rather than two that could disagree.
+   */
+  readonly mcpToken?: string;
   /** The Stage 1 live diagnostic's development token; the durable phone API needs pairing. */
   readonly phoneToken: string;
   readonly liveCommandTimeoutSeconds: number;
-  /** Host names besides loopback that /mcp accepts in Host and Origin (MCP_ALLOWED_HOSTS). */
+  /**
+   * Host names besides loopback that /mcp accepts in Host and Origin (MCP_ALLOWED_HOSTS). Ignored,
+   * with a log line, when the adapter is off.
+   */
   readonly mcpAllowedHosts?: readonly string[];
   /**
    * The authorization server /mcp accepts access tokens from, for a hosted MCP client (SAW-036).
@@ -33,7 +43,7 @@ export interface SidecarConfig {
   readonly oauth?: OAuthConfig;
   /**
    * Serves vault_request_ack, which queues a wallet-free acknowledgement, for development and demos
-   * (MCP_DEMO_TOOLS). Off unless it's set.
+   * (MCP_DEMO_TOOLS). Off unless it's set, and ignored, with a log line, when the adapter is off.
    */
   readonly demoTools?: boolean;
   /** The SQLite file for durable requests (DATABASE_PATH). ":memory:" keeps them in memory, for tests. */
@@ -67,6 +77,15 @@ export interface SidecarConfig {
    * separately through Application Default Credentials and never enter this configuration.
    */
   readonly fcmProjectId?: string;
+  /**
+   * Settings this configuration read and will not act on, named so startup can say so (SEE-87).
+   *
+   * Turning the MCP adapter off must not force an operator to delete a token they may want back,
+   * so a leftover MCP-only setting is dropped rather than refused — but nothing here is allowed to
+   * do nothing *quietly*. A setting that would contradict the deployment instead of merely
+   * outliving it, such as the OAuth profile, is a configuration error rather than an entry here.
+   */
+  readonly ignoredSettings?: readonly string[];
 }
 
 export class ConfigError extends Error {
@@ -135,7 +154,18 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     );
   }
   const port = wholeNumber(env, "SIDECAR_PORT", 1, 65_535, problems);
-  const mcpToken = token(env, "MCP_TOKEN", problems);
+  // MCP is one adapter over the request core, and this is its switch (SEE-87,
+  // docs/wiki/mcp-adapter.md). It defaults to on, so an existing deployment keeps every setting
+  // and every behaviour it has; off, the endpoint is never built and nothing MCP-only is required.
+  const mcpEnabled = enabled(env, "MCP_ENABLED", problems);
+  const mcpToken = mcpEnabled
+    ? token(
+        env,
+        "MCP_TOKEN",
+        problems,
+        "Set it, or set MCP_ENABLED=false to run without the MCP adapter.",
+      )
+    : undefined;
   const phoneToken = token(env, "PHONE_TOKEN", problems);
   if (mcpToken !== undefined && mcpToken === phoneToken) {
     problems.push("MCP_TOKEN and PHONE_TOKEN must be different values.");
@@ -147,8 +177,21 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     MAX_LIVE_COMMAND_TIMEOUT_SECONDS,
     problems,
   );
-  const mcpAllowedHosts = allowedHosts(env, problems);
-  const demoTools = flag(env, "MCP_DEMO_TOOLS", problems);
+  const mcpAllowedHosts = mcpEnabled ? allowedHosts(env, problems) : [];
+  const demoTools = mcpEnabled ? flag(env, "MCP_DEMO_TOOLS", problems) : false;
+  // Named at startup rather than dropped in silence. A token kept in .env while the adapter is off
+  // is an operator's own business; a setting nobody is told about is not. A setting left at its
+  // own default is not something anybody is waiting on, so only a demo-tools value that would
+  // have done something counts.
+  const ignoredSettings = mcpEnabled
+    ? []
+    : [
+        ...(env.MCP_TOKEN?.trim() ? ["MCP_TOKEN"] : []),
+        ...(env.MCP_ALLOWED_HOSTS?.trim() ? ["MCP_ALLOWED_HOSTS"] : []),
+        ...(env.MCP_DEMO_TOOLS?.trim().toLowerCase() === "true"
+          ? ["MCP_DEMO_TOOLS"]
+          : []),
+      ];
   const databasePath = env.DATABASE_PATH?.trim() || DEFAULT_DATABASE_PATH;
   const requestTtlSeconds = optionalWholeNumber(
     env,
@@ -175,7 +218,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     DEFAULT_PAIRING_TOKEN_TTL_SECONDS,
     problems,
   );
-  const oauth = oauthConfig(env, publicUrl, problems);
+  const oauth = oauthConfig(env, publicUrl, mcpEnabled, problems);
   const solanaRpcUrl = endpointUrl(env, problems);
   const solanaRpcTimeoutMs = optionalWholeNumber(
     env,
@@ -225,7 +268,6 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     problems.length > 0 ||
     host === undefined ||
     port === undefined ||
-    mcpToken === undefined ||
     phoneToken === undefined ||
     liveCommandTimeoutSeconds === undefined ||
     requestTtlSeconds === undefined ||
@@ -239,7 +281,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
   return {
     host,
     port,
-    mcpToken,
+    ...(mcpToken === undefined ? {} : { mcpToken }),
     phoneToken,
     liveCommandTimeoutSeconds,
     mcpAllowedHosts,
@@ -256,6 +298,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     ...(tlsCertificatePath === undefined ? {} : { tlsCertificatePath }),
     ...(tlsPrivateKeyPath === undefined ? {} : { tlsPrivateKeyPath }),
     ...(fcmProjectId === undefined ? {} : { fcmProjectId }),
+    ...(ignoredSettings.length === 0 ? {} : { ignoredSettings }),
   };
 }
 
@@ -269,12 +312,32 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
 function oauthConfig(
   env: Env,
   publicUrl: string | undefined,
+  mcpEnabled: boolean,
   problems: string[],
 ): OAuthConfig | undefined {
   const issuer = env.MCP_OAUTH_ISSUER?.trim();
   const resource = env.MCP_OAUTH_RESOURCE?.trim();
   const jwksUrl = env.MCP_OAUTH_JWKS_URL?.trim();
   const scope = env.MCP_OAUTH_SCOPE?.trim();
+  // With the adapter off this is a contradiction rather than a leftover, so it is refused where
+  // the other MCP-only settings are ignored (SEE-87). The profile is a public promise: the sidecar
+  // publishes protected-resource metadata telling a client where to authorize, and the endpoint it
+  // would authorize for does not exist. Silently dropping it would leave an operator believing a
+  // hosted client could connect.
+  if (!mcpEnabled) {
+    const configured = [
+      ...(issuer ? ["MCP_OAUTH_ISSUER"] : []),
+      ...(resource ? ["MCP_OAUTH_RESOURCE"] : []),
+      ...(jwksUrl ? ["MCP_OAUTH_JWKS_URL"] : []),
+      ...(scope ? ["MCP_OAUTH_SCOPE"] : []),
+    ];
+    if (configured.length > 0) {
+      problems.push(
+        `${configured.join(", ")} configures authorization for /mcp, which MCP_ENABLED=false does not serve: either enable MCP or remove the OAuth profile.`,
+      );
+    }
+    return undefined;
+  }
   if (!issuer) {
     const orphans = [
       ...(resource ? ["MCP_OAUTH_RESOURCE"] : []),
@@ -428,6 +491,18 @@ function allowedHosts(env: Env, problems: string[]): readonly string[] {
   return entries;
 }
 
+/**
+ * A setting that turns something off; unset or empty means on. It is spelled this way round so an
+ * existing deployment that has never heard of it keeps the behaviour it has.
+ */
+function enabled(env: Env, name: string, problems: string[]): boolean {
+  const value = env[name]?.trim().toLowerCase() ?? "";
+  if (value === "" || value === "true") return true;
+  if (value === "false") return false;
+  problems.push(`${name} must be true or false.`);
+  return true;
+}
+
 /** A setting that is true or false; unset or empty means false. */
 function flag(env: Env, name: string, problems: string[]): boolean {
   const value = env[name]?.trim().toLowerCase() ?? "";
@@ -493,9 +568,18 @@ function optionalNumber(
   return wholeNumber(env, name, min, max, problems);
 }
 
-function token(env: Env, name: string, problems: string[]): string | undefined {
-  const value = required(env, name, problems);
-  if (value === undefined) return undefined;
+/** [hint] is appended to the "not set" problem, for a token whose requirement has a way out. */
+function token(
+  env: Env,
+  name: string,
+  problems: string[],
+  hint?: string,
+): string | undefined {
+  const value = env[name]?.trim();
+  if (!value) {
+    problems.push([`${name} is not set.`, hint].filter(Boolean).join(" "));
+    return undefined;
+  }
   if (value.startsWith(PLACEHOLDER_PREFIX)) {
     problems.push(
       `${name} still has the .env.example placeholder; set a random value (for example \`openssl rand -hex 32\`).`,

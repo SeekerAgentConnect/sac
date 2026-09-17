@@ -45,7 +45,12 @@ services:
       # loopback and is reached through the gateway.
       SIDECAR_HOST: 127.0.0.1
       SIDECAR_PORT: 8080
-      MCP_TOKEN: ${MCP_TOKEN:?set MCP_TOKEN in gateway/.env - see .env.example}
+      # MCP is an optional adapter (SEE-87, docs/wiki/mcp-adapter.md). On by default, so an
+      # existing deployment keeps every setting and behaviour it has. MCP_TOKEN is not required
+      # here, because whether it is required depends on MCP_ENABLED and the sidecar's own
+      # configuration check is the one place that knows the rule; it names both ways out.
+      MCP_ENABLED: ${MCP_ENABLED:-true}
+      MCP_TOKEN: ${MCP_TOKEN:-}
       PHONE_TOKEN: ${PHONE_TOKEN:?set PHONE_TOKEN in gateway/.env - see .env.example}
       LIVE_COMMAND_TIMEOUT_SECONDS: ${LIVE_COMMAND_TIMEOUT_SECONDS:-60}
       # The public hostname agents and the phone use. Without it only loopback
@@ -146,7 +151,10 @@ services:
         condition: service_healthy
     environment:
       MCP_URL: ${AGENT_MCP_URL:-http://127.0.0.1:8081/mcp}
-      MCP_TOKEN: ${MCP_TOKEN:?set MCP_TOKEN in gateway/.env - see .env.example}
+      # The test agent is an MCP client, so it has nothing to talk to when the stack runs with
+      # MCP_ENABLED=false. Its own configuration check says so rather than compose refusing to
+      # parse a stack whose sidecar does not need the token.
+      MCP_TOKEN: ${MCP_TOKEN:-}
       LIVE_COMMAND_TIMEOUT_SECONDS: ${LIVE_COMMAND_TIMEOUT_SECONDS:-60}
       # The stack's own development switch, which also gates the CLI's two
       # diagnostics: `hello` and `ack` return an acknowledgement, and an

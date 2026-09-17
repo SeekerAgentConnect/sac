@@ -1,7 +1,13 @@
 /**
- * The sidecar: GET /healthz, the MCP endpoint at /mcp, and the phone's Connect API on one listener.
- * A configured TLS listener also carries production gRPC/HTTP2 updates; loopback development may
- * put those updates on a separate h2c port. Durable requests and pairing live in SQLite.
+ * The sidecar: GET /healthz, the phone's Connect API, and — when the MCP adapter is configured —
+ * the agent endpoint at /mcp, all on one listener. A configured TLS listener also carries
+ * production gRPC/HTTP2 updates; loopback development may put those updates on a separate h2c
+ * port. Durable requests and pairing live in SQLite.
+ *
+ * MCP is optional (SEE-87, docs/wiki/mcp-adapter.md). Everything below the adapter — the request
+ * store and its lifecycle, pairing, the phone API, updates, push, and both listeners — is built
+ * and closed the same way whether or not MCP_ENABLED is on, and with it off no endpoint is
+ * constructed and /mcp is not served.
  */
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
@@ -30,7 +36,7 @@ import { DEFAULT_SOLANA_RPC_TIMEOUT_MS, type SidecarConfig } from "./config.ts";
 import { LiveCommandService } from "./gen/seekervault/live/v1/live_pb.js";
 import { UpdateCapabilitySchema } from "./gen/seekervault/request/v1/service_pb.js";
 import { LiveCommandBridge } from "./live/bridge.ts";
-import { createMcpEndpoint } from "./mcp-endpoint.ts";
+import { createMcpEndpoint, type McpEndpoint } from "./mcp-endpoint.ts";
 import {
   PROTECTED_RESOURCE_PATHS,
   protectedResourceMetadata,
@@ -40,6 +46,7 @@ import { pairingRoutes } from "./pairing/service.ts";
 import { phoneRoutes } from "./phone-api.ts";
 import { createFcmSender, type FcmSender } from "./push/fcm.ts";
 import { FcmInvalidationDispatcher } from "./push/invalidation.ts";
+import { agentRequests, type AgentRequests } from "./requests/agent-api.ts";
 import { ConfirmationTracker } from "./requests/confirmation.ts";
 import { requestRoutes } from "./requests/phone-service.ts";
 import { TransactionPreparer } from "./requests/preparation.ts";
@@ -163,11 +170,6 @@ async function serve(
         : `paired phone: connection ${phone.connectionId}`),
   );
   log(
-    config.demoTools === true
-      ? "the demo tool vault_request_ack is on (MCP_DEMO_TOOLS=true)"
-      : "the demo tool vault_request_ack is off; MCP_DEMO_TOOLS=true serves it",
-  );
-  log(
     fcmSender === undefined
       ? "FCM sender is off; FCM_PROJECT_ID is not configured"
       : "FCM sender is configured through Application Default Credentials",
@@ -199,18 +201,10 @@ async function serve(
     timeoutSeconds: config.liveCommandTimeoutSeconds,
     log,
   });
-  const mcp = createMcpEndpoint(bridge, requests, config.mcpToken, log, {
-    allowedHosts: config.mcpAllowedHosts,
-    demoTools: config.demoTools,
-    preparer,
-    tracker,
-    ...(config.oauth === undefined ? {} : { oauth: config.oauth }),
-  });
-  log(
-    config.oauth === undefined
-      ? "MCP OAuth is off; /mcp takes MCP_TOKEN (docs/integrations/claude.md configures a hosted client)"
-      : `MCP OAuth is on: /mcp takes an access token issued by ${config.oauth.issuer} for ${config.oauth.resource}`,
-  );
+  // The one place an adapter reaches the request core (SEE-87). It forwards and decides nothing:
+  // idempotency, validation, the lifecycle and the pending limit stay in the store.
+  const core = agentRequests(requests, { preparer, tracker });
+  const mcp = mcpAdapter(config, bridge, core, log);
   let updateUrl: string | undefined;
   const routes = (includeUpdates: boolean) =>
     connectNodeAdapter({
@@ -258,6 +252,13 @@ async function serve(
     } else if (PROTECTED_RESOURCE_PATHS.includes(path)) {
       protectedResource(req, res, config.oauth);
     } else if (path === "/mcp") {
+      // Not served rather than refused: a deployment without the adapter has no such endpoint,
+      // and saying 401 would suggest a credential would open one.
+      if (mcp === undefined) {
+        response.writeHead(404, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ error: "not_found" }));
+        return;
+      }
       mcp
         .handle(req as IncomingMessage, res as ServerResponse)
         .catch((error: unknown) => {
@@ -311,7 +312,7 @@ async function serve(
     updateUrl = new URL(config.publicUrl ?? url).origin;
   }
   log(
-    `listening on ${url}: MCP at ${url}/mcp, phone API at ${url}/${LiveCommandService.typeName}`,
+    `listening on ${url}: ${mcp === undefined ? "no MCP endpoint (MCP_ENABLED=false)" : `MCP at ${url}/mcp`}, phone API at ${url}/${LiveCommandService.typeName}`,
   );
   log(
     updateUrl === undefined
@@ -340,7 +341,7 @@ async function serve(
           Promise.all([stopped, updatesStopped]),
           delay(CLOSE_GRACE_MS, undefined, { ref: false }),
         ]);
-        await mcp.close();
+        await mcp?.close();
         closeAll(server);
         if (updateServer !== undefined) closeAll(updateServer);
         for (const session of updateSessions) session.destroy();
@@ -353,6 +354,47 @@ async function serve(
       return closing;
     },
   };
+}
+
+/**
+ * Builds the agent-facing MCP adapter, or nothing at all when the deployment doesn't serve it
+ * (SEE-87, docs/wiki/mcp-adapter.md).
+ *
+ * Adapter construction lives here so generic startup does not have to know what an adapter is:
+ * `serve` builds the core, calls this once, and from then on treats the result as an optional
+ * route. Every MCP-only setting is read in this function and nowhere else.
+ */
+function mcpAdapter(
+  config: SidecarConfig,
+  bridge: LiveCommandBridge,
+  core: AgentRequests,
+  log: (message: string) => void,
+): McpEndpoint | undefined {
+  if (config.mcpToken === undefined) {
+    log(
+      "the MCP adapter is off (MCP_ENABLED=false): /mcp is not served, and no MCP token is needed" +
+        (config.ignoredSettings === undefined
+          ? ""
+          : `; ignoring ${config.ignoredSettings.join(", ")}`),
+    );
+    return undefined;
+  }
+  const endpoint = createMcpEndpoint(bridge, core, config.mcpToken, log, {
+    allowedHosts: config.mcpAllowedHosts,
+    demoTools: config.demoTools,
+    ...(config.oauth === undefined ? {} : { oauth: config.oauth }),
+  });
+  log(
+    config.demoTools === true
+      ? "the demo tool vault_request_ack is on (MCP_DEMO_TOOLS=true)"
+      : "the demo tool vault_request_ack is off; MCP_DEMO_TOOLS=true serves it",
+  );
+  log(
+    config.oauth === undefined
+      ? "MCP OAuth is off; /mcp takes MCP_TOKEN (docs/integrations/claude.md configures a hosted client)"
+      : `MCP OAuth is on: /mcp takes an access token issued by ${config.oauth.issuer} for ${config.oauth.resource}`,
+  );
+  return endpoint;
 }
 
 type MainRequest = IncomingMessage | Http2ServerRequest;

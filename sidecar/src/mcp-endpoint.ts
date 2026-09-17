@@ -3,6 +3,12 @@
  * OAuth access token when a hosted client's authorization server is configured (SAW-036). It
  * serves the Stage 1 tool `vault_display_command` and the durable request tools
  * (requests/mcp-tools.ts), with the demo tool `vault_request_ack` only when MCP_DEMO_TOOLS is set.
+ *
+ * It is one adapter over the request core and not the core itself (SEE-87,
+ * docs/wiki/mcp-adapter.md): it reaches requests only through
+ * {@link ./requests/agent-api.ts | AgentRequests}, and a deployment that sets MCP_ENABLED=false
+ * never constructs it. Nothing in `server.ts`, the phone API, pairing, updates, or push depends on
+ * whether this file ran.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -21,10 +27,8 @@ import {
   createAccessTokenVerifier,
   type OAuthConfig,
 } from "./oauth.ts";
-import type { ConfirmationTracker } from "./requests/confirmation.ts";
+import type { AgentRequests } from "./requests/agent-api.ts";
 import { registerRequestTools } from "./requests/mcp-tools.ts";
-import type { TransactionPreparer } from "./requests/preparation.ts";
-import type { RequestStore } from "./storage/request-store.ts";
 
 export const DISPLAY_COMMAND_TOOL = "vault_display_command";
 
@@ -80,15 +84,11 @@ export interface McpEndpointOptions {
    * from a loopback Host — the stack's own private endpoint, which is published nowhere.
    */
   readonly oauth?: OAuthConfig;
-  /** Serves vault_transfer; absent when no Solana RPC endpoint is configured (SOLANA_RPC_URL). */
-  readonly preparer?: TransactionPreparer;
-  /** Checks a submitted transaction against the chain when a tool reads it (SAW-022). */
-  readonly tracker?: ConfirmationTracker;
 }
 
 export function createMcpEndpoint(
   bridge: LiveCommandBridge,
-  requests: RequestStore,
+  core: AgentRequests,
   mcpToken: string,
   log: (message: string) => void,
   options: McpEndpointOptions = {},
@@ -109,10 +109,7 @@ export function createMcpEndpoint(
     const server = new McpServer(
       { name: "seeker-vault", version: "0.1.0" },
       {
-        instructions: instructionsFor(
-          demoTools,
-          options.preparer !== undefined,
-        ),
+        instructions: instructionsFor(demoTools, core.transfers !== undefined),
       },
     );
     server.registerTool(
@@ -162,11 +159,7 @@ export function createMcpEndpoint(
         }
       },
     );
-    registerRequestTools(server, requests, log, {
-      demoTools,
-      preparer: options.preparer,
-      tracker: options.tracker,
-    });
+    registerRequestTools(server, core, log, { demoTools });
     return server;
   }
 
