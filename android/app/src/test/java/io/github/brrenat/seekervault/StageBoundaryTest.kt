@@ -342,6 +342,98 @@ class StageBoundaryTest {
     }
 
     @Test
+    fun theClientPluginBoundaryCantReachAWalletOrASidecar() {
+        // SEE-86 adds a place a bundled client plugin can be registered, and it lifts no limit.
+        // A plugin says what parameters an operation takes, prepares bytes, and reads them back as
+        // typed facts. It is handed a request, an operation, an environment and the owner's public
+        // address; it is handed no credential, no wallet authorization token, and no way to reach a
+        // sidecar — so the owner's approval and the one wallet interaction stay where they were
+        // (docs/wiki/client-plugins.md).
+        val plugins = File(main, "java/io/github/brrenat/seekervault/plugins")
+        assertTrue(plugins.isDirectory)
+        val sources = plugins.walk().filter { it.extension == "kt" }.toList()
+        assertTrue(sources.isNotEmpty())
+        // What it reaches for in the rest of the app, and every one of them is a read: the typed
+        // facts a policy is applied to and the asset those facts name, the protocol's own requests,
+        // actions and networks, the app's three-state verdict, and the owner's selected wallet —
+        // which is a public address and a network, never a token (SEE-84).
+        val reaches =
+            sources
+                .flatMap { it.readLines() }
+                .map { it.trim() }
+                .filter { it.startsWith("import io.github.brrenat.seekervault.") }
+                .map { it.removePrefix("import ") }
+                .filterNot { it.startsWith("io.github.brrenat.seekervault.plugins.") }
+                .distinct()
+                .sorted()
+        assertEquals(
+            listOf(
+                "io.github.brrenat.seekervault.policy.PolicyAsset",
+                "io.github.brrenat.seekervault.policy.RequestFacts",
+                "io.github.brrenat.seekervault.policy.policyAction",
+                "io.github.brrenat.seekervault.request.v1.Action",
+                "io.github.brrenat.seekervault.request.v1.ActionRequest",
+                "io.github.brrenat.seekervault.request.v1.Network",
+                "io.github.brrenat.seekervault.transactions.Verdict",
+                "io.github.brrenat.seekervault.wallet.SelectedWallet",
+            ),
+            reaches,
+        )
+        // And nothing in it names a wallet interaction, a wallet token, a transport, an HTTP
+        // client, a store, or an approval. The comments discuss all of those on purpose, so this
+        // reads the code with the comments taken out of it.
+        val authority =
+            Regex(
+                """\b(WalletAdapter|WalletSession|WalletRepository|WalletStore|authToken|""" +
+                    """signMessage|signAndSend|signAndSendTransactions|withWallet|""" +
+                    """ConnectionGateway|ConnectionRepository|UpdateTransport|LiveCommandTransport|""" +
+                    """OkHttp|HttpClient|CredentialVault|ConnectionStore|ResultStore|PolicyStore|""" +
+                    """ActivityLog|ActivityStore|SyncStore|approve|Approval)\b"""
+            )
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { authority.containsMatchIn(withoutComments(it)) }.map { it.name },
+        )
+    }
+
+    @Test
+    fun coreNamesNoProviderAndOnlyCompositionAndReviewKnowPluginsExist() {
+        // The point of the boundary: adding `jupiter.swap` (SEE-93) or `jupiter.prediction`
+        // (SEE-94) must not put a provider's name, or a plugin's ID, into the code that carries
+        // requests, synchronizes them, reads a transaction, or applies the owner's rules. This
+        // fails if one appears there.
+        val packages =
+            listOf("connections", "sync", "live", "push", "policy", "transactions", "activity")
+                .map { File(main, "java/io/github/brrenat/seekervault/$it") }
+        packages.forEach { assertTrue(it.name, it.isDirectory) }
+        val provider = Regex("""(?i)\b(jupiter|centrifugo|centrifuge|redis)\b""")
+        assertEquals(
+            emptyList<String>(),
+            packages
+                .flatMap { it.walk().filter { file -> file.extension == "kt" } }
+                .filter { provider.containsMatchIn(it.readText()) }
+                .map { it.name },
+        )
+        // Two files know the registry exists at all: the one that composes the app, and the one
+        // that asks which operation a request is for so the owner's rules can be applied to it.
+        // MainActivity passes the composed registry along without naming the package.
+        val importers =
+            File(main, "java")
+                .walk()
+                .filter { it.extension == "kt" }
+                .filterNot {
+                    it.startsWith(File(main, "java/io/github/brrenat/seekervault/plugins"))
+                }
+                .filter {
+                    it.readText().contains("import io.github.brrenat.seekervault.plugins.")
+                }
+                .map { it.name }
+                .sorted()
+                .toList()
+        assertEquals(listOf("InboxViewModel.kt", "SeekerVaultApplication.kt"), importers)
+    }
+
+    @Test
     fun theWalletClientIsOnTheClasspathFromSaw015() {
         // The check below must fail for a library that is missing, so prove it finds one that is
         // there: the Mobile Wallet Adapter client the app now drives the wallet with.

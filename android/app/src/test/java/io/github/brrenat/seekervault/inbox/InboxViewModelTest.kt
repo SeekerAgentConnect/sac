@@ -19,6 +19,8 @@ import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.TestPlugin
 import io.github.brrenat.seekervault.policy.Allowlist
 import io.github.brrenat.seekervault.policy.AssetLimits
 import io.github.brrenat.seekervault.policy.ConnectionAssetLimits
@@ -1970,6 +1972,81 @@ class InboxViewModelTest {
         PolicyReason.entries.forEach { assertFalse(it.code, it.code in sent) }
         PolicyAssessment.entries.forEach { assertFalse(it.code, it.code in sent) }
         assertFalse(OTHER_WALLET in sent)
+    }
+
+    /**
+     * A PENDING swap, which a client plugin would carry out (SEE-86). This build bundles none, so
+     * the phone establishes nothing about it — which is what these two tests are about.
+     */
+    private fun pendingSwap(): RequestKey = runBlocking {
+        val connection = repository.pair(server.issue(URL))
+        adapter.answerConnected(WALLET)
+        wallet.connect(WalletNetwork.Devnet)
+        val request =
+            server.addPendingSwap(
+                connection.id,
+                WALLET,
+                io.github.brrenat.seekervault.request.v1.Network.NETWORK_DEVNET,
+            )
+        repository.refresh(connection.id)
+        RequestKey(connection.id, request.ref.requestId)
+    }
+
+    @Test
+    fun anOperationNoBundledPluginServesIsNeverAllowedHoweverGenerouslyTheRulesRead() {
+        // The rules name the action and the recipient, and this build carries no plugin for the
+        // operation. Nothing about the swap was read, so nothing about it can be allowed: a missing
+        // plugin is a gap in the review and never a byte that turned out to be fine (SEE-86).
+        val key = pendingSwap()
+        globalRules(actions = Allowlist.of(PolicyAction.Swap), recipients = Allowlist.of(WALLET))
+        val viewModel = viewModel()
+
+        viewModel.review(key)
+
+        val decision = checkNotNull(viewModel.state.value.assessments[key]).decision
+        assertEquals(PolicyAssessment.UnderRestrictions, decision.assessment)
+        assertTrue("the owner is warned rather than quietly refused", decision.warns)
+        assertFalse(checkNotNull(viewModel.state.value.assessments[key]).facts.fullyRead)
+        // Reading the rules answers nothing and opens nothing.
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertEquals(emptyList<Any>(), adapter.sendings)
+        assertEquals(emptyList<Any>(), adapter.signings)
+    }
+
+    @Test
+    fun aRegisteredPluginIsNeverAskedAboutAnActionTheAppCarriesOutItself() {
+        // The app's own actions stay the app's: an acknowledgement, a message and a transfer are
+        // read exactly as they were before this stage, and no plugin can change what they mean.
+        val plugin = TestPlugin()
+        val (transfer, _) = pendingTransfer()
+        val message = runBlocking {
+            val request = server.addPendingMessage(transfer.connectionId, WALLET)
+            repository.refresh(transfer.connectionId)
+            RequestKey(transfer.connectionId, request.ref.requestId)
+        }
+        val ack = runBlocking {
+            val request = server.addPending(transfer.connectionId)
+            repository.refresh(transfer.connectionId)
+            RequestKey(transfer.connectionId, request.ref.requestId)
+        }
+        val viewModel =
+            InboxViewModel(
+                repository,
+                wallet,
+                evaluator,
+                history,
+                plugins = PluginRegistry.of(plugin),
+                io = Dispatchers.Unconfined,
+            )
+
+        viewModel.prepare(transfer)
+        listOf(transfer, message, ack).forEach(viewModel::review)
+
+        assertEquals(emptyList<String>(), plugin.calls)
+        // And the transfer is still read by this app's own parser, as it always has been.
+        val reviewed = viewModel.state.value.preparations[transfer] as Preparation.Ready
+        assertEquals(Verdict.Verified, reviewed.inspection.verdict)
+        assertTrue(checkNotNull(viewModel.state.value.assessments[transfer]).facts.fullyRead)
     }
 
     private companion object {

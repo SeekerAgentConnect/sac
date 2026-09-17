@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
                     app.walletRepository,
                     app.policyEvaluator,
                     app.activityLog,
+                    plugins = app.pluginRegistry,
                     io = app.connectionIo,
                 )
             }
