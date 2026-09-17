@@ -122,16 +122,18 @@ class PluginRegistryTest {
     }
 
     @Test
-    fun theBundledListIsEmptyUntilAPluginIsWrittenAgainstTheBoundary() {
-        // SEE-86 lands the boundary; SEE-93 and SEE-94 add to this one list. An empty registry is
-        // reported as empty, and never as an operation that turned out not to need a plugin.
-        val bundled = PluginRegistry.bundled()
+    fun aRegistryWithNothingInItIsReportedAsEmpty() {
+        // A build that carries no plugin for an operation says so, and never reports one that
+        // turned out not to need a plugin. Which plugins a build *does* carry is the composition
+        // root's business rather than this package's (SEE-93), and `StageBoundaryTest` is what
+        // holds the real list to naming `jupiter.swap`.
+        val empty = PluginRegistry.of()
 
-        assertEquals(emptyList<PluginDescriptor>(), bundled.descriptors)
-        assertNull(bundled.byId(PluginId("jupiter.swap")))
+        assertEquals(emptyList<PluginDescriptor>(), empty.descriptors)
+        assertNull(empty.byId(PluginId("jupiter.swap")))
         assertEquals(
             PluginResolution.Unsupported(SWAP_OPERATION, UnsupportedReason.NoPlugin),
-            bundled.resolve(SWAP_OPERATION, production),
+            empty.resolve(SWAP_OPERATION, production),
         )
     }
 

@@ -119,8 +119,15 @@ class TransactionDecoderTest {
     @Test
     fun refusesAMessageThatLoadsAccountsFromALookupTable() {
         // A lookup table names accounts this phone can't see, so what the transaction touches
-        // can't be established offline at all.
-        assertEquals(DecodeFailure.AddressTableLookup, failure(message(lookups = 1)))
+        // can't be established offline at all. The table's own entry is read first, so the reason
+        // given is that it uses one rather than that the bytes made no sense (SEE-93).
+        val entry = ByteArray(32) { 4 } + byteArrayOf(1, 0) + byteArrayOf(0)
+        assertEquals(
+            DecodeFailure.AddressTableLookup,
+            failure(message(lookups = 1, trailing = entry)),
+        )
+        // A count with nothing behind it is a truncated message, which is a different thing.
+        assertEquals(DecodeFailure.Malformed, failure(message(lookups = 1)))
     }
 
     @Test

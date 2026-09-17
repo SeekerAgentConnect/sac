@@ -43,15 +43,14 @@ class PluginRegistry private constructor(private val plugins: Map<PluginId, Acti
 
     companion object {
         /**
-         * The plugins compiled into this build. It is empty at SEE-86: the boundary lands before
-         * anything is written against it, and `jupiter.swap` (SEE-93) and `jupiter.prediction`
-         * (SEE-94) are added to this one list. A host app selecting its own set replaces this call
-         * and nothing else (docs/wiki/client-plugins.md#selecting-plugins-at-build-time).
-         */
-        fun bundled(): PluginRegistry = of()
-
-        /**
-         * A registry of exactly [plugins].
+         * A registry of exactly [plugins], which is the whole of how a build selects them.
+         *
+         * The selection itself is made where the app is composed rather than here
+         * (`SeekerVaultApplication`). SEE-86 kept a `bundled()` in this file, which could only ever
+         * list plugins that need nothing to be constructed; the first real one needs an HTTP client
+         * (SEE-93), and this package holds no client and reaches no transport. So the list is named
+         * where every other dependency in this app is named, and this stays data and pure functions
+         * (docs/wiki/client-plugins.md#selecting-plugins-at-build-time).
          *
          * Two plugins with the same ID is a mistake in the build's own list, not a state to report:
          * an ID is what a manifest names, and a name that means two things means nothing.

@@ -353,9 +353,8 @@ between a review and the wallet. It holds no state, opens nothing, and does not 
 - **`beginExecution` writes the binding before the wallet opens,** under the lock that reads it, so a
   second tap answers `AlreadyExecuted`. There is one execution per proposal identity, ever, and
   `load()` settles one the app closed on as *unresolved* rather than as a failure.
-- **`refresh` goes through `ProposalFeed` and nothing else.** This build has no implementation — the
-  gateway is SEE-90 and the stream SEE-91 — so it answers `NoFeed` rather than pretending, and there
-  is no proposals screen because there is nothing for it to list.
+- **`refresh` goes through `ProposalFeed` and nothing else** — `ConnectFeedGateway` (SEE-91). A build
+  wired without one answers `NoFeed` rather than pretending.
 - **A dismissal is final for the proposal's identity,** so a republished revision cannot put a
   dismissed proposal back in front of the owner.
 - **Nothing on this side goes out.** A feed is excluded from `PublishWallet`, `PrepareRequest`,
@@ -367,6 +366,46 @@ operation and plugin as codes, the proposal revision, the wallet and cluster, th
 version, and the parameters the owner chose. The outcomes are the transfer path's own (`Sent` is not
 paid, and an answer nobody received is `Unknown`), its signature is a transaction's ID, and its
 record outlives the feed being removed.
+
+## The Jupiter swap plugin, and the path to a wallet (SEE-93)
+
+The architecture pages are [`docs/wiki/jupiter-swap.md`](../wiki/jupiter-swap.md) and
+[`docs/integrations/jupiter.md`](../integrations/jupiter.md). Android-side, it is two packages.
+
+**`jupiter/` is the plugin.** It implements the boundary and reaches one host of its own:
+
+| File | What is in it |
+| --- | --- |
+| `SwapTerms.kt` | The payload a publisher broadcasts, with one `SwapTermProblem` per rule. Mints, never tickers |
+| `SwapParameters.kt` | The half that is the owner's: the amount and the slippage, and the publisher's bounds on both |
+| `JupiterProvider.kt` | The two calls, over the app's shared OkHttp client and `org.json`. The only file in the app that names the provider's host |
+| `SwapInstructions.kt` | The aggregator's two routing instructions, both account layouts, the trailing Borsh arguments, and the two token instructions the transfer path does not read |
+| `SwapInspection.kt` | `inspectSwap`: every check, one `SwapFinding` each, and the labelled values the owner is shown |
+| `JupiterSwapPlugin.kt` | The descriptor, `parameters`, `prepare`, `inspect`, and the offer it holds against the bytes it prepared |
+
+It calls `decodeTransaction` rather than having a decoder of its own — `StageBoundaryTest` fails if
+any file outside `transactions/` reads the message format itself — and it imports nothing that could
+sign, store or approve.
+
+**`operations/` is the path a person walks**, and it names no provider, so SEE-94's plugin is shown
+by the same screens:
+
+- `OperationViewModel` holds one review at a time and serializes preparing against approving. The
+  order is the whole of the safety: preparing writes the owner's choice down and asks the plugin;
+  approving re-reads the rules and compares the verdict with the one they were shown, **then** takes
+  the wallet lock, and only inside it binds the operation and writes it down — which is where expiry,
+  the revision, the choice, the plugin and the wallet are all checked at once (SAW-046's rule for a
+  transfer's window, applied here).
+- It takes the connection *list* rather than `ConnectionRepository`, because a feed has no
+  server-facing half: no pairing, no credential, no outbox.
+- `ProposalsScreen` and `ProposalReviewScreen` are the shapes Pending requests and Request details
+  already established, and they reuse `PolicyReview` unchanged. A feed connection's details offer
+  **Signals** where a direct connection offers Pending requests.
+- Changing any parameter throws away what was prepared for the old one, and a revision that moved
+  under an open review does the same.
+
+The plugin is selected where the app is composed (`SeekerVaultApplication.plugins`), because a real
+plugin needs an HTTP client and `plugins/` holds none.
 
 ## Activity
 
@@ -523,7 +562,16 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `ExplorerTest` | The cluster in the link for each network, no link for a message signature, and no link without a signature or without a cluster |
 | `ActivityViewModelTest` | Reading what is stored, a history that can't be read leaving the records on screen and saying so, recovery on the next read, a link nothing could open, and clearing |
 | `ActivityScreenTest`, `ActivityDetailsScreenTest` | Compose on Robolectric: the list and the empty state, the unreadable warning with the records still openable, Clear only after a confirmation, the record in full, the cluster named on every transfer, the explorer offered only for a sent transaction and on its own cluster, the words that say a message signature is not a payment, and the message when nothing can open a link |
-| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, only the non-exported messaging service, `INTERNET`, optional camera, and `POST_NOTIFICATIONS`. Firebase imports stay under `push/`; the service has registration callbacks and only the fixed invalidation-to-`PushSyncScheduler` message path, with no repository, transport, coroutine, notification, or wallet dependency in the callback. Notification code is limited to one channel, permission, generic post-Sync alerts, immutable activity intents, and a read-only route; it has no wallet, approval, scheduler, or background component. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, notification actions, and wallet-key APIs remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. |
+| `SwapTermsTest` | What a publisher has to say for a swap to be readable (SEE-93): mints rather than tickers, every rule and the term it broke on, absent told apart from unreadable, a term this plugin does not know changing nothing, and every way the owner's own choice can fall outside what was published |
+| `SwapInstructionsTest` (in `SwapInspectionTest`), `JupiterFixturesTest` | The four transactions Jupiter really built, read by the phone's own reader, and the capture script's independent reader agreeing with it instruction for instruction. The accounts the route names are the owner's own derived addresses, the floor the chain will enforce is the one the quote stated, and the wrap and unwrap touch nothing but the owner's own account |
+| `SwapInspectionTest` | Everything the review refuses, one changed thing at a time: the amount, the slippage, the quoted output, the source, the destination, either mint, the authority, the payer, a second signer, a platform fee in either form, the number of hops, a second swap, bytes already signed, a transaction with no swap in it, an extra transfer, an `Approve`, an instruction from elsewhere, a routing instruction this plugin was not written for, a lookup table, wrapping into or closing to somebody else, an account created for somebody else, and no wallet or the wrong network |
+| `JupiterSwapPluginTest` | The plugin over a stood-in provider: what it declares, a signal it cannot read asking for nothing and saying which term, two owners getting two transactions, every preparation being a new thing to approve, the minute a preparation stands for, sandbox asking the provider nothing at all, each provider failure reported as itself, and an offer this phone no longer holds being said rather than assumed |
+| `HttpJupiterProviderTest` | The wire, over a real HTTP endpoint: a quote that carries two mints and an amount and nothing about the owner, a build that carries the quote back whole and the account that will sign, every answer to a different question refused, a rate limit and a route failure reported as themselves, a status quoted and never a body, and one of the captured real answers going through the adapter unchanged |
+| `JupiterLiveTest` | Opt-in, one real quote and one real build against the live provider, asserting the review still verifies the result. It spends nothing. Run it with `-Dseekervault.jupiter=https://lite-api.jup.ag`; it skips otherwise |
+| `OperationViewModelTest` | The whole path with the real plugin: two owners acting on one signal with their own amounts, the fields the owner is asked for, a changed amount throwing away what was prepared, a stale quote prepared again rather than signed, the wallet asked once with exactly the reviewed bytes, a decline and an answer that never arrived recorded honestly, one execution per proposal ever, an operation the app closed on settled as unresolved, a provider that could not quote, bytes that do not do what was chosen never reaching the wallet, a devnet wallet refused before anything is asked, a dismissal a republication cannot undo, and terms that moved under an open review |
+| `OperationPrivacyTest` | The captured traffic (SEE-93's privacy acceptance): the whole path against two real HTTP servers, then every byte sent to each read back and searched. The gateway is told a channel and a sequence and none of the owner's numbers; the provider is told two mints, an amount and — for the build alone — the owner's address, and never the publisher, the proposal or the signature; and nothing goes anywhere after the wallet |
+| `ProposalScreensTest` | Compose on Robolectric: the list and its empty state, the publisher's words and terms shown as theirs, an amount typed in the asset's own units reaching the app in exact base units, too many decimal places refused rather than rounded, Approve offered only for bytes the phone accounted for whole, a finding shown and nothing to approve beside it, a provider quoted as itself, an unsupported server read in full, and an expired proposal offering no preparation |
+| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, only the non-exported messaging service, `INTERNET`, optional camera, and `POST_NOTIFICATIONS`. Firebase imports stay under `push/`; the service has registration callbacks and only the fixed invalidation-to-`PushSyncScheduler` message path, with no repository, transport, coroutine, notification, or wallet dependency in the callback. Notification code is limited to one channel, permission, generic post-Sync alerts, immutable activity intents, and a read-only route; it has no wallet, approval, scheduler, or background component. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, notification actions, and wallet-key APIs remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. SEE-93 adds one check and extends four: the swap plugin reaches its provider and nothing else of this app's, its provider's host is written in one file, the build's plugin list is in the composition root, `operations/` names no provider, and the message format is still parsed in exactly one package. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
 

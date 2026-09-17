@@ -17,4 +17,17 @@ python3 -m http.server 8000 --directory docs/design
 
 The main reference renders live dark and light phones side by side. The flow map shows the approved screen hierarchy and tap paths. Both were opened from a local server after import with no console errors.
 
+## Screens added since the approved reference
+
+The v4 flow map is the approved hierarchy, and a stage that adds a destination adds one to it. What
+has been added, with the components it is built from and the shape it copies:
+
+| Screen | Stage | Built from |
+| --- | --- | --- |
+| Signals, under a feed connection's details | SEE-93 | The same list and rows as Pending requests: `SeekerCard`, the v4 `primaryContainer` circle and `ChevronRight` a details row already uses, and a `LinearProgressIndicator` while a feed is read |
+| A signal's review | SEE-93 | The same column as Request details: the publisher's words, the facts, `PolicyReview` unchanged, `TextField` with `seekerTextFieldColors()`, and `SeekerButton` for Prepare, Approve and Hide |
+
+No token, palette, typeface, shape or component was added or changed for either; they compose the
+approved ones. Nothing in the reference HTML was edited.
+
 These files govern the v4 theme and component presentation. Read them together with `SeekerVaultTheme` and the existing screen code before changing Android UI or resolving a UI merge conflict. Keep the HTML bytes intact: an intentional design revision belongs in a new version with its source and differences documented here. Never edit the reference to make current application output appear correct.

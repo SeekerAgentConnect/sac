@@ -32,6 +32,7 @@ import io.github.brrenat.seekervault.live.LiveCommandViewModel
 import io.github.brrenat.seekervault.notifications.ProposalNotificationIntent
 import io.github.brrenat.seekervault.notifications.ProposalRef
 import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
+import io.github.brrenat.seekervault.operations.OperationViewModel
 import io.github.brrenat.seekervault.policy.GlobalPolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.wallet.WalletViewModel
@@ -129,6 +130,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Reviewing a publisher's proposal and acting on it (SEE-93). */
+    private val operations: OperationViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val app = application as SeekerVaultApplication
+                OperationViewModel(
+                    proposals = app.proposalRepository,
+                    connections = app.connectionRepository.connections,
+                    connectionsLoaded = app.connectionRepository.loaded,
+                    wallet = app.walletRepository,
+                    policies = app.policyEvaluator,
+                    history = app.activityLog,
+                    // The one registry for the process, so the plugin that prepares an
+                    // operation's bytes is the same one a server's requirements were matched
+                    // against (SEE-86, SEE-88).
+                    plugins = app.pluginRegistry,
+                    io = app.connectionIo,
+                )
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         acceptNotificationTap(intent)
@@ -148,6 +171,7 @@ class MainActivity : ComponentActivity() {
                     viewModel,
                     notificationTaps,
                     feedTaps,
+                    operations,
                 )
             }
         }

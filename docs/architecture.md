@@ -238,6 +238,12 @@ flowchart TB
     B --> ApplyB["apply · idempotent"]
     ApplyA --> LocalA["phone A's own half<br>dismissal · review · binding · outcome"]
     ApplyB --> LocalB["phone B's own half"]
+    LocalA --> PlugA["jupiter.swap (SEE-93)<br>A's own amount"]
+    LocalB --> PlugB["jupiter.swap<br>B's own amount"]
+    PlugA --> Provider["the provider<br>quote · build"]
+    PlugB --> Provider
+    PlugA --> WalletA["A's wallet<br>signs once, by hand"]
+    PlugB --> WalletB["B's wallet"]
     LocalA -. "nothing goes back" .-> Gateway
     LocalB -. "nothing goes back" .-> Gateway
 ```
@@ -313,6 +319,14 @@ flowchart TB
   that phone holds, so a hint that was coalesced, dropped or delayed costs nothing. The credential
   is the deployment's and is mounted into the gateway alone — a publisher is given none and cannot
   name a topic — and Firebase owns topic membership, so nothing here keeps a list of who subscribed.
+- **What an owner does with a signal is theirs, and one plugin does it (SEE-93).** `jupiter.swap`
+  reads a swap signal's terms, asks the owner how much of their own money to spend, gets a route and
+  a transaction from the provider itself, and reads those bytes back independently before anything
+  is put to a wallet. The provider is told two mints, an amount, and — for the build alone — the
+  owner's public address; the publisher and the gateway are told none of it, because a feed has
+  nowhere to send it. What the review can and cannot establish about a swap transaction is stated
+  rather than implied: the bounds are verified on the phone and enforced by the program
+  ([`security.md`](security.md#inspecting-a-swap)).
 - **Persist first, fan out second.** The notice commits in the same transaction as the document, so
   a crash between them leaves work to redo rather than a document nobody hears about. Delivery is
   at-least-once and says so — which is exactly what the phone's idempotent apply path is for.
@@ -377,6 +391,8 @@ flowchart TB
 | FCM invalidation payload | Nowhere; two fixed strings are validated and discarded before empty-input Sync work is enqueued | SAW-056 |
 | Which feeds' hints a phone asked Firebase for | Nowhere durable: Firebase owns topic membership, the gateway is never told, and the phone derives its subscriptions from the connections the owner has | SEE-92 |
 | A feed hint's payload and the topic it arrived on | Nowhere; the payload is two fixed strings and the topic is compared in memory before empty-input read work is enqueued | SEE-92 |
+| The amount and slippage an owner chose for a proposal | The phone, in that proposal's own file, as the review and then the binding. Never published, and never sent to the provider's own answer either — only the amount reaches the provider, and only to build the transaction | SEE-93 |
+| A swap's quote, and the bytes it was built for | Nowhere durable: the plugin holds the offer against the exact bytes it prepared, for four preparations at a time. A restart loses it, and the answer is to prepare again rather than to review an offer nobody can vouch for | SEE-93 |
 | Minimal request/status cache and sync metadata | The phone in `filesDir`, through `sync/storage/`; never backed up | SAW-048 contract; SAW-050 implementation |
 | Keys | Seed Vault Wallet | Stage 3 |
 
@@ -417,5 +433,5 @@ These hold across the components, and every stage keeps them:
 | 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
-| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), and the two Jupiter plugins with their server templates |
+| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` plugin and the path from a signal to a signature (SEE-93), and the prediction plugin with the two server templates |
 | 8 | Release checks |

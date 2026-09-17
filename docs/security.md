@@ -489,6 +489,47 @@ network, and it is checked against transactions the sidecar really builds
 ([`docs/testing/transaction-fixtures.md`](testing/transaction-fixtures.md)).
 `StageBoundaryTest` fails if a source file starts importing an SDK decoder instead.
 
+## Inspecting a swap (SEE-93)
+
+A swap is built by a provider rather than by the owner's own sidecar, and a swap transaction is not
+a shape anyone could read whole. So the review is narrower than a transfer's on purpose, and what it
+covers is stated rather than implied ([`wiki/jupiter-swap.md`](wiki/jupiter-swap.md)).
+
+**The bytes have to be readable at all.** The phone reaches no chain, and a versioned Solana message
+loads most of its accounts from an address lookup table — which cannot be resolved offline. The
+plugin therefore asks the provider for a legacy transaction, whose every account is in the message,
+and refuses one that needs a table anyway. The provider will happily say what its tables contain,
+and that is precisely the thing this document has refused everywhere else: a builder's account of
+its own bytes is not evidence about them.
+
+**What is established, out of the instructions:** nothing is signed yet, the owner's wallet pays and
+nothing else signs, there is exactly one routing instruction and the owner authorizes it, the input
+leaves the owner's own token account for the mint the publisher named in exactly the amount the
+owner entered, the output arrives in the owner's own token account for the mint the publisher named,
+the floor the instruction will enforce is the one the offer stated, nobody takes a share, and every
+other instruction is one of the five a swap has a reason for — wrapping SOL into the owner's own
+account, crediting it, closing it back to the owner, creating the owner's own token account, and
+setting the fee the owner pays to be picked up.
+
+**What is not established: the route plan.** Inside the routing instruction is a list of the pools
+the aggregator will hop through, in a different encoding for each of the hundred-odd venues it
+supports. It is not read. That is a real limit and it is not a gap in the review, because the route
+plan cannot change any of the things above: the program takes the input from that account, puts the
+output in that account, and fails the whole transaction unless the output is at least the quoted
+amount less the slippage the owner chose. **The phone verifies the bound; the chain enforces it.**
+The worst case the owner agrees to is the worst case they were shown.
+
+**The destination differs from a transfer's, and so does the proof.** In a transfer the recipient is
+an address somebody else named, so a derived address establishes nothing on its own and the
+transaction is made to have the chain confirm it ([above](#inspecting-a-transfer)). In a swap the
+destination is derived from the owner's own key and the publisher's mint — there is no third party's
+claim to check. An owner who had previously handed their own token account to somebody else did so
+with their own earlier signature, and that is not something this review can undo.
+
+**And a direct-mode swap request is still not executable.** Nothing in core prepares a swap, so a
+`SwapAction` from an agent establishes nothing and can never be `ALLOWED` — bundling the plugin
+changed nothing about that.
+
 ## Verification versus advisory rules
 
 Two different things on the review screen look, at a glance, like the same kind of judgement. They are not, and the difference is the one the whole design rests on.

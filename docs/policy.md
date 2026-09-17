@@ -118,7 +118,7 @@ A policy is applied to facts the phone established for itself, and to nothing el
 | Fact | Read from |
 | --- | --- |
 | the request identity used to exclude an existing attempt | the structured request reference, qualified by its connection |
-| the kind of action | the structured request: `ack`, `sign_message`, `transfer`, `swap` |
+| the kind of action | the structured request: `ack`, `sign_message`, `transfer`, `swap` — or, for a broadcast proposal, the operation's own name, which is the same word (SEE-93) |
 | the asset, the amount, the recipient, the programs called | the prepared transaction's own bytes, decoded on the phone (SAW-020) |
 | the chain | the wallet the owner connected on this phone |
 | whether the whole transaction was read | how many instructions the phone accounted for |
@@ -126,6 +126,29 @@ A policy is applied to facts the phone established for itself, and to nothing el
 **Nothing an agent wrote is an input.** Not the description, not the memo, not a ticker in a note, and not the sidecar's account of what it built. An agent that renames a transfer changes nothing about how it is assessed, because none of the words reach the assessment.
 
 A fact the phone could not establish is absent, and an absent fact never passes a check. The clearest case is a token transfer's recipient: an address the tokens are sent to is not yet a wallet that receives them, and only a transaction that has the chain vouch for the destination account establishes one. Without that, the recipient is unknown, and a recipient rule comes back `recipient_unverified` rather than matching an address.
+
+### A broadcast proposal is assessed the same way (SEE-93)
+
+The owner's rules do not have a second set for a publisher's proposals, and that is deliberate. An
+operation is named at the protocol's own level — `swap` — and a rule names an action at the
+protocol's own level — `swap` — so a rule the owner wrote about swaps applies whether an agent asked
+for one privately or a publisher broadcast one. The facts come from the plugin that read the bytes
+([`wiki/jupiter-swap.md`](wiki/jupiter-swap.md)) and are the same shape as a transfer's: a payer, an
+amount in base units, the asset on the owner's own chain, who provably receives it, the programs
+called, and how many instructions were accounted for.
+
+Three things follow, and they matter:
+
+- **A swap of native SOL spends SOL.** It reaches the pool as the wrapped mint, but what leaves the
+  owner is SOL, so the asset is native and a SOL threshold or a daily SOL limit covers it.
+- **The amount is what leaves**, read out of the routing instruction, not the output the owner hopes
+  for. A rule is about what is being risked.
+- **What a plugin says beyond the facts is not evaluated.** The least a swap will pay out, its fee,
+  its route — a plugin reports those as labelled values for the owner to read, and no rule is
+  applied to them. There is no way for a plugin to make a check pass by saying something reassuring.
+
+A day's spending counts a proposal once, under the proposal's own identity, exactly as a request is
+counted under its own.
 
 ### An action that moves nothing
 

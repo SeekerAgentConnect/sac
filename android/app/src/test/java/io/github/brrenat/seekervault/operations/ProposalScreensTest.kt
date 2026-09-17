@@ -1,0 +1,361 @@
+package io.github.brrenat.seekervault.operations
+
+import android.content.Context
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.jupiter.SOL_MINT
+import io.github.brrenat.seekervault.jupiter.SwapParameterNames
+import io.github.brrenat.seekervault.jupiter.SwapTermNames
+import io.github.brrenat.seekervault.jupiter.SwapTerms
+import io.github.brrenat.seekervault.jupiter.USDC_MINT
+import io.github.brrenat.seekervault.jupiter.swapParameters
+import io.github.brrenat.seekervault.plugins.ActionInspection
+import io.github.brrenat.seekervault.plugins.InspectedAction
+import io.github.brrenat.seekervault.plugins.ParameterChoice
+import io.github.brrenat.seekervault.plugins.ParameterKey
+import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginFact
+import io.github.brrenat.seekervault.plugins.PluginFinding
+import io.github.brrenat.seekervault.plugins.PluginPreparation
+import io.github.brrenat.seekervault.proposals.ProposalRecord
+import io.github.brrenat.seekervault.proposals.ProposalStanding
+import io.github.brrenat.seekervault.proposals.proposal
+import io.github.brrenat.seekervault.transactions.Verdict
+import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.WalletNetwork
+import java.time.Instant
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/**
+ * The two screens a person actually uses (SEE-93).
+ *
+ * They are the same layout the transfer review already established, and the things worth asserting
+ * are the same: the publisher's words are shown as theirs, the facts this phone read are shown
+ * separately, Approve appears only for bytes the phone accounted for whole, and the amount the
+ * owner types reaches the app in exact base units.
+ */
+@RunWith(AndroidJUnit4::class)
+class ProposalScreensTest {
+    @get:Rule val compose = createComposeRule()
+
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val now: Instant = Instant.parse("2026-09-17T10:00:00Z")
+    private val chosen = mutableListOf<Pair<ParameterKey, ParameterValue>>()
+    private var prepares = 0
+    private var approvals = 0
+    private var dismissals = 0
+
+    private val terms =
+        SwapTerms(
+            inputMint = USDC_MINT,
+            inputDecimals = 6,
+            outputMint = SOL_MINT,
+            outputDecimals = 9,
+            maxSlippageBps = 100,
+            inputSymbol = "USDC",
+            outputSymbol = "SOL",
+        )
+
+    private fun record(): ProposalRecord =
+        ProposalRecord(connectionId = CONNECTION, proposal = proposal(swapProposal()))
+
+    private fun review(
+        prepared: Boolean = false,
+        verdict: Verdict = Verdict.Verified,
+        findings: List<PluginFinding> = emptyList(),
+        standing: ProposalStanding = ProposalStanding.Open,
+        served: Boolean = true,
+        failure: OperationFailure? = null,
+        problem: OperationProblem? = null,
+    ): OperationReview =
+        OperationReview(
+            connectionId = CONNECTION,
+            proposalId = PROPOSAL,
+            record = record(),
+            standing = standing,
+            form =
+                if (served) swapParameters(terms)
+                else io.github.brrenat.seekervault.plugins.ParameterForm(),
+            choice =
+                ParameterChoice(
+                    mapOf(
+                        SwapParameterNames.INPUT_AMOUNT to ParameterValue.Amount(2_500_000UL),
+                        SwapParameterNames.SLIPPAGE_BPS to ParameterValue.Count(50U),
+                    )
+                ),
+            served = served,
+            prepared =
+                if (prepared) PluginPreparation(com.google.protobuf.ByteString.EMPTY, 1) else null,
+            inspection =
+                if (!prepared) null
+                else
+                    ActionInspection(
+                        verdict = verdict,
+                        findings = findings,
+                        facts =
+                            InspectedAction(
+                                wallet = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+                                movesValue = true,
+                                mint = USDC_MINT,
+                                recipient = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+                                programs = listOf("11111111111111111111111111111111"),
+                                amount = 2_500_000UL,
+                                decimals = 6,
+                                instructionCount = 4,
+                                recognizedInstructions = 4,
+                            ),
+                        version = 1,
+                        details =
+                            listOf(PluginFact(R.string.jupiter_fact_minimum_out, "0.0985 SOL")),
+                    ),
+            failure = failure,
+            problem = problem,
+        )
+
+    /**
+     * Scrolls the review to a node and then asserts it is on screen.
+     *
+     * The review is one long column on purpose — the publisher's words, then the owner's part, then
+     * what the phone read, then the rules — so most of what a test is about starts below the fold.
+     */
+    private fun shown(tag: String) {
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag(tag))
+        compose.onNodeWithTag(tag).assertIsDisplayed()
+    }
+
+    private fun showReview(review: OperationReview) = compose.setContent {
+        SeekerVaultTheme {
+            ProposalReviewScreen(
+                review = review,
+                label = "A trader",
+                wallet =
+                    SelectedWallet(
+                        "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+                        WalletNetwork.Mainnet,
+                        selectedAt = now,
+                    ),
+                now = now,
+                onChoose = { key, value -> chosen += key to value },
+                onPrepare = { prepares++ },
+                onApprove = { approvals++ },
+                onDismiss = { dismissals++ },
+                onAcknowledge = {},
+                onBack = {},
+            )
+        }
+    }
+
+    @Test
+    fun theListShowsWhatWasProposedAndWhereItStands() {
+        val opened = mutableListOf<String>()
+        compose.setContent {
+            SeekerVaultTheme {
+                ProposalsScreen(
+                    label = "A trader",
+                    records = listOf(record()),
+                    standings = { ProposalStanding.Open },
+                    refreshing = false,
+                    now = now,
+                    onOpen = { opened += it.key.proposalId },
+                    onRefresh = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag(OperationTags.row(PROPOSAL)).assertIsDisplayed()
+        // The operation at the protocol's own level, and the publisher's own unverified words.
+        compose.onNodeWithText("swap").assertIsDisplayed()
+        compose.onNodeWithText("Rotating out of the stable leg.").assertIsDisplayed()
+        compose
+            .onNodeWithText(context.getString(R.string.operation_standing_open))
+            .assertIsDisplayed()
+
+        compose.onNodeWithTag(OperationTags.row(PROPOSAL)).performClick()
+        assertEquals(listOf(PROPOSAL), opened)
+    }
+
+    @Test
+    fun anEmptyFeedSaysSoRatherThanLookingRead() {
+        compose.setContent {
+            SeekerVaultTheme {
+                ProposalsScreen(
+                    label = "A trader",
+                    records = emptyList(),
+                    standings = { ProposalStanding.Open },
+                    refreshing = false,
+                    now = now,
+                    onOpen = {},
+                    onRefresh = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag(OperationTags.EMPTY).assertIsDisplayed()
+    }
+
+    @Test
+    fun thePublishersWordsAndTheirTermsAreShownAsTheirs() {
+        showReview(review())
+
+        compose.onNodeWithTag(OperationTags.NOTE).assertIsDisplayed()
+        compose
+            .onNodeWithTag(OperationTags.NOTE)
+            .assertTextContains("Rotating out of the stable leg.")
+        // Their term names and values, carried and not interpreted.
+        compose.onNodeWithText(SwapTermNames.INPUT_MINT).assertIsDisplayed()
+        compose.onNodeWithText(USDC_MINT).assertIsDisplayed()
+    }
+
+    @Test
+    fun theAmountIsTypedInTheAssetsOwnUnitsAndReachesTheAppExactly() {
+        showReview(review())
+
+        compose.onNodeWithTag(OperationTags.AMOUNT).performTextClearance()
+        compose.onNodeWithTag(OperationTags.AMOUNT).performTextInput("1.5")
+
+        // Six decimals, shifted rather than multiplied: nothing rounds, and no floating-point type
+        // comes between what was typed and what the transaction will carry.
+        assertEquals(
+            listOf(SwapParameterNames.INPUT_AMOUNT to ParameterValue.Amount(1_500_000UL)),
+            chosen,
+        )
+    }
+
+    @Test
+    fun anAmountWithTooManyPlacesIsRefusedRatherThanRounded() {
+        showReview(review())
+
+        compose.onNodeWithTag(OperationTags.AMOUNT).performTextClearance()
+        compose.onNodeWithTag(OperationTags.AMOUNT).performTextInput("1.1234567")
+
+        assertEquals(emptyList<Pair<ParameterKey, ParameterValue>>(), chosen)
+        compose
+            .onNodeWithText(context.getString(R.string.operation_amount_invalid))
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun approveIsOfferedOnlyForBytesThePhoneAccountedForWhole() {
+        // Nothing prepared: there is a Prepare button and no Approve.
+        showReview(review(prepared = false))
+        shown(OperationTags.PREPARE)
+        compose.onNodeWithTag(OperationTags.APPROVE).assertDoesNotExist()
+    }
+
+    @Test
+    fun anApprovableReviewShowsTheFactsAndOffersTheWallet() {
+        showReview(review(prepared = true))
+
+        shown(OperationTags.FACTS)
+        // The plugin's own labelled value, shown by a screen that does not know what it means.
+        compose
+            .onNodeWithText(context.getString(R.string.jupiter_fact_minimum_out))
+            .assertIsDisplayed()
+        shown(OperationTags.APPROVE)
+        compose.onNodeWithTag(OperationTags.APPROVE).performClick()
+        assertEquals(1, approvals)
+    }
+
+    @Test
+    fun aReviewWithAFindingInItOffersNothingToApprove() {
+        showReview(
+            review(
+                prepared = true,
+                verdict = Verdict.Invalid,
+                findings =
+                    listOf(PluginFinding("amount_mismatch", R.string.jupiter_finding_amount)),
+            )
+        )
+
+        shown(OperationTags.FINDINGS)
+        compose
+            .onNodeWithText(context.getString(R.string.jupiter_finding_amount))
+            .assertIsDisplayed()
+        compose.onNodeWithTag(OperationTags.APPROVE).assertDoesNotExist()
+    }
+
+    @Test
+    fun aProviderThatCouldNotPrepareIsQuotedAsItself() {
+        showReview(
+            review(
+                failure =
+                    OperationFailure(
+                        "would_fail",
+                        R.string.jupiter_failure_would_fail,
+                        "Attempt to debit an account but found no record of a prior credit.",
+                    )
+            )
+        )
+
+        shown(OperationTags.FAILURE)
+        compose
+            .onNodeWithText(context.getString(R.string.jupiter_failure_would_fail))
+            .assertIsDisplayed()
+        // The provider's words, marked as theirs.
+        compose
+            .onNodeWithText(
+                context.getString(
+                    R.string.operation_provider_said,
+                    "Attempt to debit an account but found no record of a prior credit.",
+                )
+            )
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun aServerThisBuildDoesNotServeIsReadInFullAndOffersNothing() {
+        showReview(review(served = false))
+
+        shown(OperationTags.UNSUPPORTED)
+        // The publisher's own terms are still there to read.
+        shown(OperationTags.TERMS)
+        compose.onNodeWithTag(OperationTags.PREPARE).assertDoesNotExist()
+        compose.onNodeWithTag(OperationTags.APPROVE).assertDoesNotExist()
+    }
+
+    @Test
+    fun aProposalThatCannotBeActedOnSaysWhichRuleStoppedIt() {
+        showReview(
+            review(
+                prepared = true,
+                problem =
+                    OperationProblem.Binding(
+                        io.github.brrenat.seekervault.proposals.BindingProblem.PreparationExpired
+                    ),
+            )
+        )
+
+        shown(OperationTags.PROBLEM)
+        compose
+            .onNodeWithText(context.getString(R.string.operation_binding_preparation_expired))
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun anExpiredProposalOffersNoPreparationAtAll() {
+        showReview(review(standing = ProposalStanding.Expired))
+
+        compose
+            .onNodeWithText(context.getString(R.string.operation_standing_expired))
+            .assertIsDisplayed()
+        compose.onNodeWithTag(OperationTags.PREPARE).assertDoesNotExist()
+    }
+}

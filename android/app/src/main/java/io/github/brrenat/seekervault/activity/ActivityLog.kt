@@ -95,10 +95,21 @@ class ActivityLog(
      * under its own key, and one that is about something else under that key is refused rather than
      * merged (`ActivityStore.put`).
      *
+     * The one thing this does add is the assessment the owner read when they went ahead, which
+     * reaches it the same way an answer's does — through [reviewed], under the same key — because
+     * the caller that binds an operation and the caller that shows the owner their rules are not
+     * the same code, and the record is about what they read (SAW-028, SEE-93). An outcome recorded
+     * later keeps it rather than dropping it.
+     *
      * Nothing about it is delivered anywhere. A proposal owes no server an answer, so there is no
      * outbox here and nothing to retry: this is the owner's own record and its only reader.
      */
-    fun record(record: ActivityRecord): ActivityRecord = publish(store.put(record))
+    fun record(record: ActivityRecord): ActivityRecord {
+        val key = RequestKey(record.connectionId, record.requestId)
+        val policy =
+            record.policy ?: shown[key] ?: store.get(record.connectionId, record.requestId)?.policy
+        return publish(store.put(record.copy(policy = policy)))
+    }
 
     /**
      * Advances an existing Activity record from server state observed by Sync. It never creates an

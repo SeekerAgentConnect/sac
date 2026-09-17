@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -70,6 +72,14 @@ fun ConnectionDetailsScreen(
     modifier: Modifier = Modifier,
     onPendingRequests: (() -> Unit)? = null,
     onRules: (() -> Unit)? = null,
+    /**
+     * Where the proposals a feed published are reviewed (SEE-93). Null for a direct connection,
+     * which is addressed requests rather than broadcasts, and for a build with no plugin to serve
+     * any of them.
+     */
+    onSignals: (() -> Unit)? = null,
+    /** How many of them this phone holds for this feed. */
+    signals: Int = 0,
     live: ForegroundConnectionState? = null,
     /** Whether this build supports this connection's server (SEE-88); null until worked out. */
     support: ServerSupport? = null,
@@ -215,6 +225,59 @@ fun ConnectionDetailsScreen(
                                 )
                                 Text(
                                     stringResource(R.string.connection_rules_note),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Icon(
+                                Icons.Rounded.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                if (onSignals != null) {
+                    SeekerCard(
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    onClick = onSignals,
+                                )
+                                .testTag(ConnectionsTags.SIGNALS)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(14.dp, 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier.size(40.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        CircleShape,
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(Icons.Rounded.SwapHoriz, contentDescription = null)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.operations_signals),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    if (signals == 0) {
+                                        stringResource(R.string.operations_signals_note)
+                                    } else {
+                                        pluralStringResource(
+                                            R.plurals.connection_signals_held,
+                                            signals,
+                                            signals,
+                                        )
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

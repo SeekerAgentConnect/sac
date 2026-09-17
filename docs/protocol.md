@@ -806,6 +806,30 @@ same revision with different terms is a contradiction the phone stops acting on.
 are gated on `Connection.usable`, which requires the direct mode (SEE-88). The owner's parameters,
 their approval and their execution record stay on the device that made them.
 
+### A swap signal's terms (SEE-93)
+
+`values` is bounded, named text and the protocol says nothing about what the names mean: which keys
+an operation uses belongs to the plugin that serves it, and core carries them uninterpreted. The
+first plugin to define a set is `jupiter.swap`, and it is written down as a contract because the
+publisher templates (SEE-95) write it:
+
+| Key | Meaning | Rules |
+| --- | --- | --- |
+| `input_mint`, `output_mint` | The asset spent and the asset received | An exact base58 32-byte mint, never a ticker; native SOL is the wrapped mint spelled out; the two differ. |
+| `input_decimals`, `output_decimals` | Base units per whole token | 0 to 18, and for display only — nothing is compared in them. |
+| `max_slippage_bps` | The most the publisher will have its signal acted on with | 1 to 10000. The owner chooses at or below it. |
+| `least_input`, `most_input` | Optional bounds on the amount, in the input mint's base units | Whole numbers; a floor above the ceiling is refused. |
+| `input_symbol`, `output_symbol` | Optional labels | At most 16 characters, shown as the publisher's word and never believed. |
+
+**Direction is the pair**, ordered, with no separate side field: one that could disagree with the
+pair eventually would. **An asset is a mint**, because a ticker names several things on this chain
+and nothing off it — there is deliberately no way to propose "buy Bitcoin", only a specific wrapped
+mint. A key this plugin does not read is ignored rather than refused, and is never consulted.
+
+What is *not* in the terms is the amount, the slippage the owner settles on, or anything about a
+subscriber. Those are chosen on the phone and stay there
+([`wiki/jupiter-swap.md`](wiki/jupiter-swap.md)).
+
 ## The broadcast gateway (SEE-90)
 
 A publisher publishes to the shared gateway and every subscribed phone reads from it. That is a

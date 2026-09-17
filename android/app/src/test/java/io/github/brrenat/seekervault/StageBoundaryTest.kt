@@ -289,6 +289,84 @@ class StageBoundaryTest {
     }
 
     @Test
+    fun theSwapPluginReachesItsProviderAndNothingElseOfThisApps() {
+        // SEE-93 is the first thing written against the plugin boundary, and it is the test of
+        // whether that boundary was worth having: a plugin that had to reach into the app to work
+        // would mean the boundary described nothing. This one reaches one host of its own and
+        // takes everything else from what it is handed (docs/wiki/jupiter-swap.md).
+        val jupiter = File(main, "java/io/github/brrenat/seekervault/jupiter")
+        assertTrue(jupiter.isDirectory)
+        val sources = jupiter.walk().filter { it.extension == "kt" }.toList()
+        assertTrue(sources.isNotEmpty())
+        // What it reaches for in the rest of the app: the boundary it implements, the one decoder
+        // and the instruction readers that already exist, the app's three-state verdict, the
+        // owner's selected wallet as a public address, base58, and the string resources its own
+        // words live in. No wallet interaction, no store, no approval, and neither of the app's
+        // own transports — it does not know a sidecar or a gateway exists.
+        val reaches =
+            sources
+                .flatMap { it.readLines() }
+                .map { it.trim() }
+                .filter { it.startsWith("import io.github.brrenat.seekervault.") }
+                .map { it.removePrefix("import ") }
+                .filterNot { it.startsWith("io.github.brrenat.seekervault.jupiter.") }
+                .map { it.substringBeforeLast('.') }
+                .distinct()
+                .sorted()
+        assertEquals(
+            listOf(
+                "io.github.brrenat.seekervault",
+                "io.github.brrenat.seekervault.plugins",
+                "io.github.brrenat.seekervault.request.v1",
+                "io.github.brrenat.seekervault.transactions",
+                "io.github.brrenat.seekervault.wallet",
+            ),
+            reaches,
+        )
+        val authority =
+            Regex(
+                """\b(WalletAdapter|WalletSession|WalletRepository|WalletStore|authToken|""" +
+                    """signMessage|signAndSend|signAndSendTransactions|withWallet|""" +
+                    """ConnectionGateway|ConnectionRepository|ProposalRepository|UpdateTransport|""" +
+                    """FeedGateway|FeedStream|CredentialVault|ConnectionStore|ResultStore|""" +
+                    """PolicyStore|ProposalStore|ActivityLog|ActivityStore|SyncStore|""" +
+                    """PolicyEvaluator|approve|Approval)\b"""
+            )
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { authority.containsMatchIn(withoutComments(it)) }.map { it.name },
+        )
+        // The provider's address is written once, in the file that dials it, and is a parameter
+        // everywhere else — which is what lets a test point the plugin at a local server and what
+        // keeps a hostname out of the rest of the app.
+        val host = Regex("""jup\.ag""")
+        assertEquals(
+            listOf("JupiterProvider.kt"),
+            File(main, "java")
+                .walk()
+                .filter { it.extension == "kt" }
+                .filter { host.containsMatchIn(it.readText()) }
+                .map { it.name }
+                .toList(),
+        )
+        // And the build actually carries it: the list is in the composition root, because a real
+        // plugin needs something built, and `plugins/` holds no client (SEE-86's `bundled()` could
+        // only ever list plugins that needed nothing).
+        val composition = File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt")
+        assertTrue(composition.readText().contains("JupiterSwapPlugin(HttpJupiterProvider("))
+        assertEquals(
+            emptyList<String>(),
+            File(main, "java/io/github/brrenat/seekervault/plugins")
+                .walk()
+                .filter { it.extension == "kt" }
+                // The comment there explains why it is gone, so this reads the code without it.
+                .filter { Regex("""bundled\(""").containsMatchIn(withoutComments(it)) }
+                .map { it.name }
+                .toList(),
+        )
+    }
+
+    @Test
     fun readingATransactionStaysInOnePackageAndOnlyReads() {
         // SAW-020: the phone reads a transfer's own bytes so the owner's review doesn't depend on
         // the server's description of them. That reading is worth keeping in one place, and worth
@@ -296,12 +374,27 @@ class StageBoundaryTest {
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         val decoding = Regex("""decodeTransaction|findProgramAddress|\bisOnCurve\b""")
         val transactions = File(main, "java/io/github/brrenat/seekervault/transactions")
+        val jupiter = File(main, "java/io/github/brrenat/seekervault/jupiter")
         val outside =
             sources
                 .filterNot { it.startsWith(transactions) }
+                .filterNot { it.startsWith(jupiter) }
                 .filter { decoding.containsMatchIn(it.readText()) }
                 .map { it.name }
         assertEquals(emptyList<String>(), outside)
+        // `jupiter/` is allowed to *call* the decoder, because a plugin has to read back the bytes
+        // it prepared and this is the one decoder there is (SEE-93). What it must not do is have a
+        // second one: the message format — the signature array, the header, the account list, the
+        // shortvec lengths — is read in exactly one place, and a plugin that parsed it again is a
+        // plugin that could disagree with the review about what a transaction even contains.
+        val format = Regex("""compactU16|recentBlockhash =|addressTableLookups =""")
+        assertEquals(
+            emptyList<String>(),
+            sources
+                .filterNot { it.startsWith(transactions) }
+                .filter { format.containsMatchIn(withoutComments(it)) }
+                .map { it.name },
+        )
         assertTrue(transactions.isDirectory)
         // The parser holds no key and makes none: it turns bytes into facts and nothing else.
         val keys = Regex("""KeyPairGenerator|PrivateKey|Signature\.getInstance|\bsign\(""")
@@ -375,6 +468,10 @@ class StageBoundaryTest {
                 .sorted()
         assertEquals(
             listOf(
+                // The vocabulary a rule names an action in. SEE-93 reads it because a broadcast
+                // proposal carries no `ActionRequest` to take the kind of action from, and the
+                // operation's own name is the same word a rule uses (`swap`).
+                "io.github.brrenat.seekervault.policy.PolicyAction",
                 "io.github.brrenat.seekervault.policy.PolicyAsset",
                 "io.github.brrenat.seekervault.policy.RequestFacts",
                 "io.github.brrenat.seekervault.policy.policyAction",
@@ -410,7 +507,20 @@ class StageBoundaryTest {
         // requests, synchronizes them, reads a transaction, or applies the owner's rules. This
         // fails if one appears there.
         val packages =
-            listOf("connections", "sync", "live", "push", "policy", "transactions", "activity")
+            listOf(
+                    "connections",
+                    "sync",
+                    "live",
+                    "push",
+                    "policy",
+                    "transactions",
+                    "activity",
+                    // And the screens that review a proposal and act on it (SEE-93). They are the
+                    // part a person actually uses, and they are written against the boundary's
+                    // own types — a labelled value, a finding, a verdict — so the next plugin
+                    // (SEE-94) is shown by the same screens without touching them.
+                    "operations",
+                )
                 .map { File(main, "java/io/github/brrenat/seekervault/$it") }
         packages.forEach { assertTrue(it.name, it.isDirectory) }
         val provider = Regex("""(?i)\b(jupiter|centrifugo|centrifuge|redis)\b""")
@@ -421,17 +531,19 @@ class StageBoundaryTest {
                 .filter { provider.containsMatchIn(it.readText()) }
                 .map { it.name },
         )
-        // Which code knows the registry exists at all. Three packages: the boundary itself,
-        // `servers/`, where a server's stated requirements are matched against it (SEE-88), and
+        // Which code knows the registry exists at all. Four packages: the boundary itself,
+        // `servers/`, where a server's stated requirements are matched against it (SEE-88),
         // `proposals/`, where a publisher's document is matched against the plugin this build
-        // resolves for its operation (SEE-89). Outside them, six files: the one that composes the
-        // app, the one that asks which operation a request is for so the owner's rules can be
-        // applied to it, the one that shows the owner whether their servers are supported, the one
-        // that holds what the owner chose about a proposal, and the two stores that read a cached
-        // manifest's plugin names and a stored choice back off disk. MainActivity passes the
-        // composed registry along without naming the package.
+        // resolves for its operation (SEE-89), and `jupiter/`, which *is* a plugin — listing its
+        // files would say nothing, since being written against the boundary is what it is (SEE-93).
+        // Outside them, eight files: the one that composes the app, the one that asks which
+        // operation a request is for so the owner's rules can be applied to it, the one that shows
+        // the owner whether their servers are supported, the one that holds what the owner chose
+        // about a proposal, the two stores that read a cached manifest's plugin names and a stored
+        // choice back off disk, and the two that review a proposal and prepare it. MainActivity
+        // passes the composed registry along without naming the package.
         val owners =
-            listOf("plugins", "servers", "proposals").map {
+            listOf("plugins", "servers", "proposals", "jupiter").map {
                 File(main, "java/io/github/brrenat/seekervault/$it")
             }
         val importers =
@@ -450,7 +562,9 @@ class StageBoundaryTest {
                 "ConnectionStore.kt",
                 "ConnectionsViewModel.kt",
                 "InboxViewModel.kt",
+                "OperationViewModel.kt",
                 "ProposalRepository.kt",
+                "ProposalReviewScreen.kt",
                 "ProposalStore.kt",
                 "SeekerVaultApplication.kt",
             ),
@@ -888,6 +1002,12 @@ class StageBoundaryTest {
                 "ConnectFeedGateway.kt",
                 "CentrifugoFeedStream.kt",
                 "SeekerVaultApplication.kt",
+                // And one more, deliberately: a swap's execution data comes from a provider, and
+                // the plugin fetches it itself from the owner's own phone (SEE-93). What goes there
+                // is two mint addresses, an amount, and — for the build alone — the owner's public
+                // address, because a transaction has to be built for the account that signs it.
+                // The publisher and the shared gateway are told none of it.
+                "JupiterProvider.kt",
             )
         val clients = sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.toSet()
         assertTrue(clients.all { it in allowed })

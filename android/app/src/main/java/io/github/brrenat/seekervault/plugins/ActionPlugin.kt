@@ -17,10 +17,11 @@ import io.github.brrenat.seekervault.wallet.SelectedWallet
  * [io.github.brrenat.seekervault.activity.ActivityLog]).
  *
  * What a plugin is not given is the whole point of the interface. It receives an [ActionSubject]:
- * the request, the operation asked of it, the environment, and the public address of the wallet the
- * owner selected. It receives no credential, no wallet authorization token, no way to reach a
- * sidecar, and no means of approving or sending anything. It hands back bytes and an inspection of
- * them, and the owner's hand on the wallet is still the only thing that executes either.
+ * the operation asked of it, the environment, either a request or a broadcast proposal's terms, and
+ * the public address of the wallet the owner selected. It receives no credential, no wallet
+ * authorization token, no way to reach a sidecar, and no means of approving or sending anything. It
+ * hands back bytes and an inspection of them, and the owner's hand on the wallet is still the only
+ * thing that executes either.
  *
  * Nothing here downloads code. A plugin is compiled into this build and chosen at build time
  * ([PluginRegistry.bundled]); a server can name one it requires, and a plugin this build doesn't
@@ -47,6 +48,10 @@ interface ActionPlugin {
      * It is called with the owner's own [choice], on their phone, and it is the plugin's own
      * business who it asks: a provider's endpoint is the plugin's, not core's. It may not sign,
      * send, or approve, and a preparation is not consent to anything.
+     *
+     * Raises [PluginFailure] when it cannot produce the exact bytes — the provider is unreachable
+     * or rate-limited, there is no route, the environment does not execute — because there is no
+     * approximate preparation to fall back on (SEE-93).
      */
     suspend fun prepare(subject: ActionSubject, choice: ParameterChoice): PluginPreparation
 
@@ -58,8 +63,17 @@ interface ActionPlugin {
      * the bytes are read first and judged afterwards. What the provider said it built is a claim
      * about the bytes and never evidence about them, and an instruction the plugin can't account
      * for is a gap in the review rather than a byte that turned out to be safe.
+     *
+     * [choice] is passed in rather than remembered, and it is core's copy — the one the owner
+     * reviewed and the one an execution is bound to (`ProposalReview`, `ExecutionBinding`). So the
+     * question being answered is "do these bytes do what *the owner* chose", and a plugin that
+     * asked its provider for something else is caught by the app rather than trusted about it.
      */
-    fun inspect(subject: ActionSubject, prepared: PluginPreparation): ActionInspection
+    fun inspect(
+        subject: ActionSubject,
+        choice: ParameterChoice,
+        prepared: PluginPreparation,
+    ): ActionInspection
 }
 
 /**
@@ -90,6 +104,15 @@ data class PluginDescriptor(
 /**
  * The version of this boundary. It goes up when a change to [ActionPlugin] would make an older
  * plugin wrong to call, and [SUPPORTED_PLUGIN_CONTRACTS] then names the ones still callable.
+ *
+ * It is still 1 after SEE-93, and that is a decision rather than an oversight. SEE-86 landed the
+ * boundary before anything was written against it and SEE-93 is the first thing written against it,
+ * so what contract 1 *means* — that a subject may be a broadcast proposal's terms instead of a
+ * request, and that preparing can fail with a [PluginFailure] — is settled here rather than changed
+ * here. Nothing outside this stage could be affected: the app has never carried a plugin, no
+ * publisher exists yet (SEE-95, SEE-96), and the manifests that require `jupiter.swap` at `1..1`
+ * are this stage's own. The next change to [ActionPlugin] after a publisher exists raises this
+ * number.
  */
 const val PLUGIN_CONTRACT: Int = 1
 
@@ -158,20 +181,69 @@ enum class PluginEnvironment(val code: String) {
  * guessing an address.
  */
 data class ActionSubject(
-    /** The connection the request came from. A plugin never reaches it. */
+    /** The connection the request or the feed came from. A plugin never reaches it. */
     val connectionId: String,
     val operation: OperationId,
     val environment: PluginEnvironment,
-    /** The structured request, as the protocol carries it. */
-    val request: ActionRequest,
+    /**
+     * The structured request, as the protocol carries it — or null, because a broadcast proposal
+     * has none (SEE-89).
+     *
+     * The two kinds of thing a plugin can be asked about are genuinely different, and the
+     * difference is not a detail: a request is addressed to this phone by a server it is paired
+     * with, and names the wallet it expects; a proposal is addressed to nobody in particular, is
+     * identical for everyone who received it, and names no subscriber at all. Exactly one of this
+     * and [terms] describes what is being asked.
+     */
+    val request: ActionRequest?,
     val wallet: SelectedWallet?,
+    /**
+     * A broadcast proposal's common terms, as its publisher wrote them; empty for a request.
+     *
+     * Core carries them and interprets none of them (`Proposal.values`): which keys mean what
+     * belongs to the plugin that serves the operation, and the publisher's prose is never evidence
+     * about anything. They are bounded before they get here — at most 32 of them, each short enough
+     * to show — because a publisher is a stranger.
+     */
+    val terms: Map<String, String> = emptyMap(),
 )
+
+/**
+ * Why a plugin could not prepare anything (SEE-93).
+ *
+ * [ActionPlugin.prepare] reaches a provider, and reaching a provider fails: it is unreachable,
+ * rate-limited, has no route for the pair, or answers with something unusable. None of that is a
+ * verdict on the operation and none of it is a reason to carry on with something approximate, so
+ * preparing either produces the exact bytes or raises this.
+ *
+ * [code] is stable and is what a record keeps; [explanation] is the plugin's own string resource,
+ * so the words stay in resources — it is not called `message`, because [Throwable] already has one
+ * and that one is for a log; [detail] is a provider's own words when it gave any, for display only
+ * and never for parsing.
+ */
+class PluginFailure(
+    val code: String,
+    @StringRes val explanation: Int,
+    val detail: String? = null,
+) : Exception("plugin could not prepare: $code")
 
 /**
  * The fields one operation leaves to the owner. Every field has a stable [ParameterKey], so what
  * they chose can be kept and compared without depending on how it was shown.
  */
-data class ParameterForm(val fields: List<ParameterField> = emptyList()) {
+data class ParameterForm(
+    val fields: List<ParameterField> = emptyList(),
+    /**
+     * Why there is nothing to collect, when that is the reason: the terms a publisher broadcast
+     * cannot be read as this operation at all (SEE-93).
+     *
+     * It is told apart from an empty form because the two are opposite situations. An operation
+     * with no parameters is ready to prepare; a document the plugin cannot make sense of is one
+     * nothing will ever be prepared from, and the owner is owed the reason — which term, and what
+     * was wrong with it. Core shows it and offers no preparation.
+     */
+    val problem: PluginFinding? = null,
+) {
     val isEmpty: Boolean
         get() = fields.isEmpty()
 }
@@ -206,13 +278,29 @@ sealed interface ParameterKind {
         val mint: String?,
         val decimals: Int,
         val most: ULong? = null,
+        /**
+         * The least that may be entered, in the same base units. Zero unless the operation has a
+         * floor of its own — a publisher's minimum, a provider's dust limit — and it is a bound on
+         * the field rather than advice about it: below it there is nothing to prepare.
+         */
+        val least: ULong = 0UL,
     ) : ParameterKind
 
     /** One of a fixed set: the outcome of a market, the side of a signal. */
     data class Choice(val options: List<ParameterOption>) : ParameterKind
 
     /** A bounded whole number, such as a slippage tolerance in basis points. */
-    data class Count(val least: UInt, val most: UInt) : ParameterKind
+    data class Count(
+        val least: UInt,
+        val most: UInt,
+        /**
+         * What the field starts at before the owner touches it. A plugin states it because a
+         * sensible starting point is knowledge about the operation — the usual slippage for a pair
+         * — and core has none of that; it is a starting point and never a choice, which is still
+         * only ever [ParameterChoice].
+         */
+        val initial: UInt = least,
+    ) : ParameterKind
 }
 
 data class ParameterOption(val key: ParameterKey, @StringRes val label: Int)

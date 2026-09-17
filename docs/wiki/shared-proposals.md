@@ -213,19 +213,22 @@ proposal whatever directory it is in.
 
 ## What this build does and doesn't do
 
-**It receives no proposal.**
+Both halves are joined up as of SEE-93. Proposals arrive through
 [`ProposalFeed`](../../android/app/src/main/java/io/github/brrenat/seekervault/connections/ProposalFeed.kt)
-is the one seam a proposal arrives through, and the gateway that answers it is SEE-90 with the live
-stream SEE-91. `ProposalRepository.refresh` reports `NoFeed` rather than pretending, and there is no
-proposals screen, because there is nothing for it to list.
+— the gateway is SEE-90, the live stream SEE-91, and a hint that wakes the app SEE-92 — and
+`jupiter.swap` is what reads a swap signal's terms, collects the owner's amount and prepares its
+bytes ([`jupiter-swap.md`](jupiter-swap.md)).
 
-**It executes none.** The plugins that read a proposal's terms, collect the owner's parameters and
-prepare bytes are SEE-93 (`jupiter.swap`) and SEE-94 (`jupiter.prediction`), and
-`PluginRegistry.bundled()` is still empty.
+**Where the owner does it.** A feed connection's details offer its **signals** where a direct
+connection offers its pending requests, and one of them opens a review of the same shape as a
+transfer's: the publisher's words as theirs, the facts this phone read out of the bytes, then what
+the owner's rules make of those facts. `operations/` holds the path and names no provider, so the
+next plugin is shown by the same screens.
 
-What is held whole by tests is the local path: apply, review, bind, execute, record — against a fake
-feed and a test plugin, including the replays, the stale revisions, the contradictions, the double
-tap, the restart, and the two devices.
+What is held whole by tests is that path, end to end: apply, review, prepare, bind, execute, record
+— with the real plugin, a real store, a real wallet order, and two phones choosing differently from
+one document. The traffic to the gateway is captured and searched, and it carries a channel and a
+sequence.
 
 - Not a per-subscriber copy on the publishing server. There is nothing there about any phone.
 - Not multi-device history sync, and not a central financial record. Each device's decisions are its

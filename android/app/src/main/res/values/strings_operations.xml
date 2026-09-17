@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Reviewing and acting on a publisher's shared proposal (SEE-93). -->
+    <string name="operations_title">Signals</string>
+    <string name="operations_from">From %1$s</string>
+    <string name="operations_empty">Nothing has been published to this feed yet, or nothing has been read from it. Refresh to read the feed again.</string>
+    <string name="operations_settled">Already answered here</string>
+    <string name="operations_expires">Expires %1$s</string>
+    <string name="operations_expired">Expired %1$s</string>
+    <string name="operations_signals">Signals</string>
+    <string name="operations_signals_note">What this feed has proposed, and what you decided about each one</string>
+    <plurals name="connection_signals_held">
+        <item quantity="one">%1$d signal held on this phone</item>
+        <item quantity="other">%1$d signals held on this phone</item>
+    </plurals>
+
+    <!-- Where a proposal stands for this owner. -->
+    <string name="operation_standing_open">Waiting for you</string>
+    <string name="operation_standing_executed">You acted on this</string>
+    <string name="operation_standing_dismissed">You hid this</string>
+    <string name="operation_standing_refused">The publisher contradicted itself about these terms, so nothing is executed from them.</string>
+    <string name="operation_standing_cancelled">The publisher withdrew this</string>
+    <string name="operation_standing_expired">This has expired</string>
+    <string name="operation_standing_unsupported">This build does not support this server</string>
+
+    <!-- What became of the one operation this device executed. -->
+    <string name="operation_outcome_pending">The wallet is being asked.</string>
+    <string name="operation_outcome_submitted">The wallet signed and sent it. Whether it succeeded on chain is a separate question, and this app does not follow it.</string>
+    <string name="operation_outcome_declined">You declined in the wallet. Nothing was signed.</string>
+    <string name="operation_outcome_failed">Nothing was signed.</string>
+    <string name="operation_outcome_unresolved">This phone never learned what the wallet did, so it may or may not have been sent. Nothing is asked of the wallet again.</string>
+
+    <!-- The sections of the review. -->
+    <string name="operation_publisher_note">What the publisher says</string>
+    <string name="operation_terms">What the publisher proposed</string>
+    <string name="operation_expires">Expires %1$s</string>
+    <string name="operation_your_part">Your part</string>
+    <string name="operation_your_part_note">How much to swap is yours alone. It stays on this phone: the publisher and the shared gateway are never told the amount, your wallet, or whether you acted.</string>
+    <string name="operation_what_this_phone_read">What this phone read in the transaction</string>
+    <string name="operation_not_prepared">Nothing was prepared</string>
+    <string name="operation_not_prepared_unknown">The plugin could not prepare this operation.</string>
+    <string name="operation_provider_said">The provider said: %1$s</string>
+    <string name="operation_unsupported">This build has no plugin for what this server proposes, so it is shown in full and nothing here can carry it out.</string>
+
+    <!-- What the phone read, as facts. -->
+    <string name="operation_fact_spends">You spend</string>
+    <string name="operation_fact_payer">Paid and signed by</string>
+    <string name="operation_fact_receives">Received by</string>
+    <string name="operation_fact_network">Network</string>
+
+    <!-- The fields, and the buttons. -->
+    <string name="operation_amount_note">In this asset\'s own units. Nothing is rounded.</string>
+    <string name="operation_amount_between">Between %1$s and %2$s</string>
+    <string name="operation_amount_invalid">Enter a plain amount, with no more decimal places than this asset has.</string>
+    <string name="operation_count_between">Between %1$s and %2$s</string>
+    <string name="operation_prepare">Get a quote and prepare</string>
+    <string name="operation_prepare_again">Get a fresh quote and prepare again</string>
+    <string name="operation_approve">Approve and swap</string>
+    <string name="operation_approve_note">This opens your wallet with exactly the transaction above. Nothing is signed or sent until you approve it there.</string>
+    <string name="operation_dismiss">Hide this signal</string>
+    <string name="operation_acknowledge">I have read the warnings above and mean to go ahead</string>
+    <string name="operation_proposal_id">Proposal</string>
+    <string name="operation_publisher">Publisher</string>
+    <string name="operation_revision">Revision %1$d</string>
+
+    <!-- Why an approval stopped. -->
+    <string name="operation_problem_rules_changed">Your rules changed while this was open, so the review was made again. Read it and approve again if you still mean to.</string>
+    <string name="operation_problem_not_acknowledged">Tick the box above to go ahead past the warnings.</string>
+    <string name="operation_problem_no_wallet">Connect a wallet first.</string>
+    <string name="operation_problem_wallet_changed">The selected wallet is not the one this review was made for. Nothing was signed.</string>
+    <string name="operation_problem_gone">This proposal, or the feed it came from, is no longer on this phone.</string>
+
+    <!-- The rules between a review and the wallet. -->
+    <string name="operation_binding_already_executed">You already acted on this proposal. There is never a second time.</string>
+    <string name="operation_binding_dismissed">You hid this proposal.</string>
+    <string name="operation_binding_refused">The publisher contradicted itself about these terms, so nothing is executed from them.</string>
+    <string name="operation_binding_cancelled">The publisher withdrew this proposal.</string>
+    <string name="operation_binding_expired">This proposal has expired.</string>
+    <string name="operation_binding_unsupported">This build does not support this server.</string>
+    <string name="operation_binding_not_reviewed">Nothing was reviewed here, so there is nothing to act on.</string>
+    <string name="operation_binding_changed">The publisher changed these terms. Read the new ones and prepare again.</string>
+    <string name="operation_binding_choice_changed">What was about to be signed is not what you reviewed. Prepare again.</string>
+    <string name="operation_binding_other_plugin">These bytes were prepared by a different plugin than this proposal was written for.</string>
+    <string name="operation_binding_other_contract">These bytes were prepared against a plugin boundary this build does not use.</string>
+    <string name="operation_binding_nothing_prepared">Nothing was prepared, so there is nothing to sign.</string>
+    <string name="operation_binding_preparation_expired">The quote and the transaction have expired. Prepare again for a fresh one.</string>
+    <string name="operation_binding_no_wallet">No wallet is connected on this phone.</string>
+    <string name="operation_binding_other_wallet">The wallet selected now is not the one this was prepared for.</string>
+    <string name="operation_binding_other_network">Your wallet is selected for another network than this was prepared for.</string>
+</resources>
