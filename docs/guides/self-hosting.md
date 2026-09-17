@@ -484,23 +484,38 @@ docker compose cp sidecar:/data/sidecar.db ./sidecar-$(date +%F).db
 docker compose start sidecar
 ```
 
-To restore, put the file back the same way, with the sidecar stopped:
+Restoring is the direction that needs care about **ownership**. The sidecar runs as uid 10001, and
+`/data` belongs to that account; a file copied in as root is a file the sidecar cannot write, and
+SQLite needs to write even to read a database with a journal. So restore through the volume, and
+set the owner explicitly:
+
+```sh
+docker compose down
+docker run --rm -v seeker-agent-wallet_sidecar-data:/data -v "$PWD":/backup debian:bookworm-slim \
+  sh -c 'rm -f /data/sidecar.db-wal /data/sidecar.db-shm \
+         && cp /backup/sidecar-2026-09-17.db /data/sidecar.db \
+         && chown 10001:10001 /data/sidecar.db'
+docker compose up -d
+```
+
+The volume is named after the project, which `compose.yaml` fixes as `seeker-agent-wallet`, and
+`docker volume ls` confirms it. Removing the write-ahead log matters when the stack was killed
+rather than stopped: a log left over from the old database must not be replayed onto the restored
+one.
+
+If you would rather use `docker compose cp`, which does not set ownership for you, put the file in
+place with the sidecar stopped and then fix the owner before starting it:
 
 ```sh
 docker compose stop sidecar
 docker compose cp ./sidecar-2026-09-17.db sidecar:/data/sidecar.db
+docker compose run --rm --user root --entrypoint chown sidecar 10001:10001 /data/sidecar.db
 docker compose start sidecar
 ```
 
-If the container is gone entirely — after `docker compose down` — reach the volume directly
-instead. It is named after the project, which `compose.yaml` fixes as `seeker-agent-wallet`, and
-`docker volume ls` confirms it. Remove any write-ahead log left behind by a stack that was killed
-rather than stopped:
-
-```sh
-docker run --rm -v seeker-agent-wallet_sidecar-data:/data -v "$PWD":/backup debian:bookworm-slim \
-  sh -c 'rm -f /data/sidecar.db-wal /data/sidecar.db-shm && cp /backup/sidecar-2026-09-17.db /data/sidecar.db'
-```
+Either way, check the result before trusting it: `docker compose exec sidecar ls -l /data` should
+show the database owned by `sidecar`, and the startup log should name a schema version rather than
+a permission error.
 
 Then check what you restored:
 
