@@ -27,15 +27,18 @@ const generatedDirs = [
   "sidecar/src/gen",
   "android/app/src/main/generated",
   "broadcast/internal/gen",
+  "publisher/internal/gen",
 ];
 // One template per runtime pair. buf.gen.yaml writes the phone's Kotlin and the sidecar's
 // TypeScript; buf.gen.go.yaml writes the broadcast gateway's Go, which is a different subset of
-// the protocol (SEE-90); buf.gen.centrifugo.yaml writes the phone's client for the vendored broker
-// schema, which neither of the others speaks (SEE-91). Each template cleans only its own output
-// directories, so the order is not load-bearing.
+// the protocol (SEE-90); buf.gen.publisher.yaml writes the publisher templates' Go, which is a
+// third subset — it publishes and never reads a feed (SEE-95); buf.gen.centrifugo.yaml writes the
+// phone's client for the vendored broker schema, which none of the others speaks (SEE-91). Each
+// template cleans only its own output directories, so the order is not load-bearing.
 const templates = [
   "buf.gen.yaml",
   "buf.gen.go.yaml",
+  "buf.gen.publisher.yaml",
   "buf.gen.centrifugo.yaml",
 ];
 

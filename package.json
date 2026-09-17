@@ -14,6 +14,7 @@
     "build": "pnpm --recursive run build",
     "check": "pnpm run check:format && pnpm run check:lint && pnpm --recursive run typecheck && pnpm --recursive run test",
     "check:broadcast": "node scripts/check-broadcast.mjs",
+    "check:publisher": "node scripts/check-publisher.mjs",
     "check:android": "android/gradlew -p android spotlessCheck :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest",
     "check:format": "prettier --check . && buf format --diff --exit-code",
     "check:generated": "node scripts/generate.mjs --check",

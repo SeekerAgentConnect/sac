@@ -109,6 +109,34 @@ one order requested was for a wallet holding nothing. Recorded on **2026-09-17**
 | `JupiterLiveTest` with `-Dseekervault.jupiter=https://lite-api.jup.ag` | **PASS**, both cases: the swap path, and a live market plus an order refused for want of funds |
 | A signed order, on chain | **NOT RUN.** No funds and no wallet here; step 7 below |
 
+## Verified by hand, with the real gateway and the real template (SEE-95)
+
+The publisher template is a service, so its acceptance is a run rather than a description: two real
+binaries, two databases, a credential the gateway's own tool issued, and the feed read back the way
+a phone reads it. Everything below happened on this machine on 2026-09-17
+([`docs/changelog/2026-09-17.md`](../changelog/2026-09-17.md) has the commands).
+
+| What was asked | What happened |
+| --- | --- |
+| `broadcastctl register --server <uuid>` | One credential, printed once, for `server/3f1b2c4d-…` |
+| The template started with it | Manifest published — `stored`, revision 1 — and the feed reference printed on stdout: `seekervault://feed?v=1&gateway=http%3A%2F%2F127.0.0.1%3A8090&server=3f1b2c4d-…` |
+| The template pointed at the **read** origin instead of the publisher API | Refused at startup: `unimplemented`, `404`, with the line naming `PUBLISHER_PUBLISH_URL`. **This is why that setting exists**; it was found by running the thing rather than by reading it |
+| `publishctl create` (CLI), a SOL → USDC signal with seven terms | `201`, revision 1, `publication: published` |
+| The same create again with the same `Idempotency-Key` | `200`, `idempotent: true`, the same proposal ID, and **no second document at the gateway** |
+| The same key with a different statement | `409 key_reused`, and nothing stored |
+| `curl POST /v1/signals` (API), a JUP → USDC signal | `201`. Both signals in the feed, read with no credential at all |
+| A wallet address in the body | `400`: "there is no field \"wallet\" in a signal…" |
+| No token | `401` |
+| `publishctl update` with a different slippage | `200`, revision 3, published |
+| Re-posting the **current** statement unchanged | `200`, `changed: false`, no publication — the template's log shows four publications in total for two creates and two real updates |
+| Restarting the template | Nothing republished: `pending: 0`, and the channel's `snapshotSequence` stayed where it was. A restart is not an event on anybody's phone |
+| `publishctl cancel`, then again | Revision 4 `cancelled` in the feed; the second withdrawal changed nothing; updating a withdrawn signal was `409` |
+| The gateway **stopped**, then a signal published | `202`, `publication: pending`, `attempts: 1`, with the next attempt's time. `GET /v1/status` said `pending: 1` |
+| The gateway brought back | The signal appeared in the feed on its own, `snapshotSequence` +1 — one publication, no duplicate, nothing asked of the caller |
+| `caddy validate` on both Caddyfiles, `docker compose config` on the base and the public overlay | Valid, all four, with no daemon |
+
+What is left is the part that needs two phones, which is step 8 below.
+
 ## The device run (for the owner)
 
 The automated tests cover the phone's client against real gRPC framing over TLS and HTTP/2, and
@@ -124,8 +152,21 @@ over a real certificate, a real network and the app's own lifecycle.
    docker compose run --rm ctl register --server <uuid> --label "copy trading"
    ```
 
-2. **Publish something** with the credential that printed: a manifest, then a proposal. (A Go
-   publisher template is SEE-95; until then, any Connect client will do.)
+2. **Publish something** with the credential that printed. The Go template is the way to do it
+   (SEE-95, [`docs/development/publisher.md`](../development/publisher.md)); any Connect client
+   would also do:
+
+   ```sh
+   cd ../publisher
+   cp .env.example .env         # PUBLISHER_SERVER_ID, PUBLISHER_GATEWAY_URL, PUBLISHER_ENVIRONMENT,
+                                # BROADCAST_CREDENTIAL, and a PUBLISHER_API_TOKEN of your own
+   docker compose up -d --build
+   docker compose run --rm ctl reference     # the line the phone scans or pastes
+   docker compose run --rm ctl create --in 2h --note "trimming SOL into USDC" \
+     --term input_mint=So11111111111111111111111111111111111111112 --term input_decimals=9 \
+     --term output_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v --term output_decimals=6 \
+     --term max_slippage_bps=50
+   ```
 
 3. **Add the feed on the phone** from `seekervault://feed?v=1&gateway=https://<domain>&server=<uuid>`
    and check, with the app in the foreground:
@@ -229,9 +270,25 @@ over a real certificate, a real network and the app's own lifecycle.
    - and confirm the app tells you nothing further over the following minutes: no fill, no position
      value, no settlement, no payout. Continuing happens in Jupiter, which is the whole design.
 
+8. **Two phones, one signal, two amounts (SEE-95).** This is the acceptance criterion no machine
+   here can run, and it is the whole point of the stage:
+   - add the same feed reference on **two** phones, with two different wallets;
+   - publish one signal from the template, and check that both phones show the **same** terms, the
+     same note and the same expiry — the document is one document;
+   - on each phone, enter a **different** amount, within the publisher's bounds, and act on it;
+   - check that neither phone shows anything about the other's amount, decision or result, and that
+     the signal's own screen on each phone reflects only that phone's own action;
+   - then check the template: `publishctl show <id>` reports what **it** published and what the
+     gateway confirmed, and nothing about either owner. `publishctl status` counts signals, not
+     subscribers;
+   - grep the template's log and its database for either wallet address, either amount and either
+     signature. There must be nothing: `sqlite3 publisher.db .schema` has no column that could hold
+     one.
+
 Record the date, the app build, the Solana endpoint used, the gateway, broker and Firebase project,
-the pair and amount swapped, the market and stake ordered, and both transactions' signatures — as
-`docs/testing/stage-5-3.md` does for the direct path.
+the publisher's server ID and environment, the pair and amount swapped, the market and stake
+ordered, and both transactions' signatures — as `docs/testing/stage-5-3.md` does for the direct
+path.
 
 ## Not covered here
 

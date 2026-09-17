@@ -107,6 +107,35 @@
 - **A private top-level declaration still collides inside its package** (SEE-94). A second
   `private class Layout` in the same Kotlin package as SEE-93's failed to compile. Name file-private
   helpers after what they parse — `OrderLayout` — rather than after their role.
+- **A test that constructs a client directly can hide the setting the binary needs** (SEE-95). The
+  opt-in test against the real gateway built `publish.New` with the publisher listener's port, so it
+  passed while the *binary* published to the read origin and got a 404 from a listener with no write
+  handler at all. The gap appeared in the first native run, not in any test. When a service has two
+  addresses, ask which of them each piece of code is for — where a document is read from and where
+  it is sent are different questions — and make the end-to-end run part of the acceptance rather
+  than an illustration, because a test that skips the wiring skips the mistake.
+- **One mistake with no error message anywhere deserves a line at startup** (SEE-95). The gateway
+  cannot report a misconfigured publish address, because the address that answered was not its
+  publisher API; the phone cannot report it either, because it only sees a feed with no manifest. So
+  the template checks its own manifest's publication state after the first pass and, if it was
+  refused, logs what it means and names the two variables. A failure that nothing downstream can
+  explain has to be explained where it is detected.
+- **`http.ServeMux` answers 404 and 405 in plain text** (SEE-95). An API whose every other answer is
+  JSON had two that were not, which a client parsing answers has to special-case. A small
+  `ResponseWriter` wrapper rewrites exactly those two, and it tells them apart from a handler's own
+  404 by the content type already set — "there is no such signal" and "there is no such route" are
+  different answers and both are 404.
+- **A repeated protobuf field's order is part of the bytes, so an unordered map is a conflict
+  waiting to happen** (SEE-95). The gateway compares a republication with what it holds field by
+  field; a template that built its `values` list by iterating a Go map would send a different
+  document every time and turn its own retry into a revision conflict. Sort once, where the document
+  is built, and write the test that fails if the sort goes.
+- **Emulating only what is needed is right, until a break shows which rule was needed** (SEE-95). The
+  test gateways emulated "the same document again is unchanged" and nothing else, which was a
+  deliberate choice — and it let a break that published a withdrawn document instead of withdrawing
+  it pass two tests, because the real gateway refuses a cancelled status and the fakes stored it. A
+  fake should carry the rules the tests' own claims depend on, and the way to find out which those
+  are is to break the code and see which tests notice.
 
 ## Scope
 

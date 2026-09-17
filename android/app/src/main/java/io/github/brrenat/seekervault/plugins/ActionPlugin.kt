@@ -138,10 +138,10 @@ data class PluginDescriptor(
  * boundary before anything was written against it and SEE-93 is the first thing written against it,
  * so what contract 1 *means* — that a subject may be a broadcast proposal's terms instead of a
  * request, and that preparing can fail with a [PluginFailure] — is settled here rather than changed
- * here. Nothing outside this stage could be affected: the app has never carried a plugin, no
- * publisher exists yet (SEE-95, SEE-96), and the manifests that require `jupiter.swap` at `1..1`
- * are this stage's own. The next change to [ActionPlugin] after a publisher exists raises this
- * number.
+ * here. Nothing outside this stage could be affected: the app has never carried a plugin, nothing
+ * had been published against it, and the manifests that require `jupiter.swap` at `1..1` are this
+ * stage's own. A publisher exists now — SEE-95's template publishes `jupiter.swap` at `1..1` — so
+ * the next change to [ActionPlugin] raises this number rather than redefining it.
  */
 const val PLUGIN_CONTRACT: Int = 1
 

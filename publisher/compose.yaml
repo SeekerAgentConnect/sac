@@ -1,0 +1,155 @@
+# A publisher template's stack (SEE-95). Run it from this directory:
+#   cp .env.example .env
+#   docker compose up -d --build
+#   docker compose run --rm ctl status
+#
+# That is the local configuration: plain HTTP, published on the host's loopback
+# address. It is the right one for a template whose signals are written on the
+# same machine — by a person, a cron job, or a strategy process beside it — and
+# for a server reached over a VPN or an SSH tunnel.
+#
+# The internet-facing one is this file plus an overlay, which terminates TLS for a
+# domain you own:
+#
+#   docker compose -f compose.yaml -f compose.public.yaml up -d --build
+#
+# **Think before running that one.** The token on this API is the whole grant to
+# publish as this server: whoever holds it can say anything this publisher can
+# say, to everybody subscribed. A publisher that writes its own signals locally
+# should stay on the base file (publisher/README.md).
+#
+# What starts: the template, and the proxy in front of it. Nothing else — no
+# broker, no Redis, no push credential. Delivery to phones is the shared
+# gateway's (SEE-91, SEE-92), and this template submits one document per thing it
+# has to say and is done.
+
+name: seeker-publisher
+
+services:
+  # The template owns the network namespace the proxy joins, so it is declared
+  # first and carries the published port.
+  copytrading:
+    build:
+      context: ..
+      dockerfile: publisher/Dockerfile
+    image: seeker-publisher/copytrading:local
+    restart: unless-stopped
+
+    # The one published port is the proxy's listener, which lives in this
+    # namespace. The template's own port binds 127.0.0.1 inside the namespace and
+    # is unreachable from the host and from every other container.
+    ports:
+      - "${PUBLISHER_BIND:-127.0.0.1}:${PUBLISHER_PORT:-8092}:8093"
+
+    environment:
+      # Who this publisher is. It is the UUID the gateway's operator registered,
+      # and the gateway checks every document against the credential rather than
+      # against what the document claims.
+      PUBLISHER_SERVER_ID: ${PUBLISHER_SERVER_ID:?set PUBLISHER_SERVER_ID in publisher/.env - the lowercase UUID this publisher was registered with}
+      # The shared gateway's own origin: its BROADCAST_PUBLIC_URL, exactly.
+      PUBLISHER_GATEWAY_URL: ${PUBLISHER_GATEWAY_URL:?set PUBLISHER_GATEWAY_URL in publisher/.env - the shared gateway's origin, for example https://feeds.example.com}
+      # Where publications are sent, when that is not the origin above. Empty is
+      # right for a gateway whose proxy serves both APIs on one origin, which is
+      # what broadcast/compose.yaml does.
+      PUBLISHER_PUBLISH_URL: ${PUBLISHER_PUBLISH_URL:-}
+      # production or sandbox. One deployment serves one of them, and the
+      # database remembers which (internal/store).
+      PUBLISHER_ENVIRONMENT: ${PUBLISHER_ENVIRONMENT:?set PUBLISHER_ENVIRONMENT in publisher/.env - production or sandbox}
+      # The credential the gateway's operator issued this publisher, and the
+      # token a caller of this template's API presents. Both are secrets; both
+      # may be a file instead (see .env.example).
+      BROADCAST_CREDENTIAL: ${BROADCAST_CREDENTIAL:-}
+      BROADCAST_CREDENTIAL_FILE: ${BROADCAST_CREDENTIAL_FILE:-}
+      PUBLISHER_API_TOKEN: ${PUBLISHER_API_TOKEN:-}
+      PUBLISHER_API_TOKEN_FILE: ${PUBLISHER_API_TOKEN_FILE:-}
+      PUBLISHER_API_ADDRESS: 127.0.0.1:8092
+      PUBLISHER_DATABASE_PATH: /data/publisher.db
+      PUBLISHER_DISPLAY_NAME: ${PUBLISHER_DISPLAY_NAME:-}
+      PUBLISHER_PUBLISH_TIMEOUT_SECONDS: ${PUBLISHER_PUBLISH_TIMEOUT_SECONDS:-}
+
+    volumes:
+      # The signals and what the gateway has confirmed about each of them. This is
+      # the only state that must outlive a container, and the only writable path
+      # in the image: a signal is stored before it is published, so this file is
+      # what makes a retry after a crash send the same document rather than a
+      # second one.
+      - publisher-data:/data
+      # A secret as a file instead of a value: mount it read-only and point
+      # BROADCAST_CREDENTIAL_FILE or PUBLISHER_API_TOKEN_FILE at it here.
+      # - ${PUBLISHER_SECRETS_DIR:-./secrets}:/etc/seeker:ro
+
+    read_only: true
+    # main.go handles SIGTERM: it stops accepting, lets what is in flight finish,
+    # and leaves anything unpublished in the file for the next start.
+    stop_grace_period: 20s
+    stop_signal: SIGTERM
+
+    # The template holds no key, signs nothing, and calls one address: the
+    # gateway its operator configured.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    # The namespace share is what lets the template keep its loopback bind while
+    # still being reachable by something. It also means the proxy has no route to
+    # the template that anything else could take.
+    network_mode: "service:copytrading"
+    depends_on:
+      # A scratch image has no shell to probe itself with, so the template
+      # declares no healthcheck of its own and the proxy's covers both: it goes
+      # through the published listener and out the other side.
+      - copytrading
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+      - proxy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8093/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 15s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # Not started by `docker compose up`. It is the same CLI a strategy engine's
+  # HTTP calls go through, run from inside the deployment's network:
+  #
+  #   docker compose run --rm ctl status
+  #   docker compose run --rm ctl reference
+  #   docker compose run --rm ctl create --in 2h \
+  #     --term input_mint=So11111111111111111111111111111111111111112 \
+  #     --term input_decimals=9 \
+  #     --term output_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
+  #     --term output_decimals=6 --term max_slippage_bps=50
+  #   docker compose run --rm ctl cancel <proposal id>
+  #
+  # It reaches the API over the proxy's published listener like any other client:
+  # there is no privileged path into the store for it (internal/api).
+  ctl:
+    profiles: ["ctl"]
+    build:
+      context: ..
+      dockerfile: publisher/Dockerfile
+    image: seeker-publisher/copytrading:local
+    entrypoint: ["/publishctl"]
+    network_mode: "service:copytrading"
+    environment:
+      PUBLISHER_API_URL: http://127.0.0.1:8093
+      PUBLISHER_API_TOKEN: ${PUBLISHER_API_TOKEN:-}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  publisher-data:
+  proxy-data:
+  proxy-config:

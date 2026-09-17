@@ -78,7 +78,7 @@ SEE-86 landed the boundary before anything was written against it; SEE-93 is the
 
 SEE-94 added two more, on the same reasoning: `destinations` and `references`. Both are additive and defaulted, so a plugin written for contract 1 without them is still correct to call.
 
-Nothing outside Stage 7.1 could be affected by any of it: the app had never carried a plugin, no publisher exists yet (SEE-95, SEE-96), and the manifests that require `jupiter.swap` at `1..1` are this stage's own fixtures. **The next change to `ActionPlugin` after a publisher exists raises the number.**
+Nothing outside Stage 7.1 could be affected by any of it: the app had never carried a plugin, nothing had been published against it, and the manifests that require `jupiter.swap` at `1..1` are this stage's own fixtures. **A publisher exists now** — SEE-95's CopyTrading template publishes `jupiter.swap` at `1..1` ([`copytrading-template.md`](copytrading-template.md)) — so the next change to `ActionPlugin` raises the number rather than redefining this one.
 
 One thing was deliberately *not* changed: `inspect` is still not a suspending function. A prediction order has to read the chain before it can be reviewed, which would have been the obvious reason to make it one — and instead the reading happens in `prepare`, where a plugin is already allowed to reach a network, and `inspect` returns what that reading found. So the boundary keeps its plainest promise: **an inspection reads bytes, and never a network** (SEE-94).
 

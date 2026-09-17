@@ -34,18 +34,24 @@ dependency version syntax. `@firebase/util`'s script can read `FIREBASE_WEBAPP_C
 Firebase endpoint, and write web-app defaults; the sidecar uses runtime Admin SDK credentials
 instead, so installation remains deterministic and credential-independent.
 
-### The broadcast gateway's side (SEE-90)
+### The Go side (SEE-90, SEE-95)
 
-The Go service in [`broadcast/`](../../broadcast) has its own toolchain and its own dependency list,
-and nothing in it is shared with the Node or Android sides. `pnpm check:broadcast` runs its checks
-and CI runs the same command; installing Go is not needed for `pnpm check`.
+Two Go modules, and nothing in either is shared with the Node or Android sides: the shared gateway
+in [`broadcast/`](../../broadcast), and the publisher templates in
+[`publisher/`](../../publisher). `pnpm check:broadcast` and `pnpm check:publisher` run their checks
+and CI runs the same commands; installing Go is not needed for `pnpm check`.
+
+They are separate modules on purpose — a template is meant to be copyable out of this repository —
+so each has its own `go.mod`, and the versions below are the same in both. Where that could drift,
+a test in `publisher/` reads the gateway's own source rather than trusting the match
+(`internal/signals/contract_test.go`).
 
 | Tool | Version | Pinned in |
 | --- | --- | --- |
-| Go | 1.27.1 | the `go` line in `broadcast/go.mod`, which `actions/setup-go` reads through `go-version-file` |
-| `connectrpc.com/connect`, the Connect runtime for both services | 1.21.0 | `broadcast/go.mod`; it must match the `connectrpc/go` generator |
-| `google.golang.org/protobuf`, the message runtime | 1.36.12 | `broadcast/go.mod`; it must match the `protocolbuffers/go` generator |
-| `modernc.org/sqlite`, the pure-Go SQLite driver | 1.59.0 | `broadcast/go.mod` |
+| Go | 1.27.1 | the `go` line in `broadcast/go.mod` and `publisher/go.mod`, which `actions/setup-go` reads through `go-version-file` |
+| `connectrpc.com/connect`, the Connect runtime for both services | 1.21.0 | both `go.mod` files; it must match the `connectrpc/go` generator |
+| `google.golang.org/protobuf`, the message runtime | 1.36.12 | both `go.mod` files; it must match the `protocolbuffers/go` generator |
+| `modernc.org/sqlite`, the pure-Go SQLite driver | 1.59.0 | both `go.mod` files |
 
 The broker the gateway fans out through is a service rather than a dependency, and it is pinned
 where the deployment names it:
@@ -119,14 +125,18 @@ before the tests.
 | `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0, with its OkHttp transport and lite codec at the same version |
 | `buf.build/protocolbuffers/go:v1.36.12`, `paths=source_relative` (in `buf.gen.go.yaml`) | `broadcast/internal/gen` | `google.golang.org/protobuf` 1.36.12 |
 | `buf.build/connectrpc/go:v1.21.0`, `paths=source_relative` (in `buf.gen.go.yaml`) | `broadcast/internal/gen` | `connectrpc.com/connect` 1.21.0 |
+| the same two Go plugins (in `buf.gen.publisher.yaml`) | `publisher/internal/gen` | the same two runtimes, pinned in `publisher/go.mod` |
 | the same three Kotlin plugins (in `buf.gen.centrifugo.yaml`) | `android/app/src/main/generated/centrifugo` | the vendored broker schema, for the phone alone |
 
-- **There are three templates.** `buf.gen.yaml` writes the phone's Kotlin and the sidecar's
+- **There are four templates.** `buf.gen.yaml` writes the phone's Kotlin and the sidecar's
   TypeScript for everything in `proto/` except `seekervault/gateway/v1/publish.proto` — neither of
   them is a publisher; `buf.gen.go.yaml` writes the gateway's Go for the three packages it speaks;
-  and `buf.gen.centrifugo.yaml` writes Kotlin for the vendored broker schema, into its own
+  `buf.gen.publisher.yaml` writes the publisher templates' Go for a fourth subset — the publisher
+  API, its problem detail and the two documents a publisher writes, and **no feed client at all**,
+  because a publisher publishes and never reads a feed (SEE-95); and
+  `buf.gen.centrifugo.yaml` writes Kotlin for the vendored broker schema, into its own
   directory and keeping its own package name, because only the phone speaks that protocol and only
-  one file in it may (SEE-91). `pnpm generate` runs all three, and `pnpm check:generated` compares
+  one file in it may (SEE-91). `pnpm generate` runs all four, and `pnpm check:generated` compares
   every output directory.
 - **Generation is covered in the protocol doc.** [`docs/protocol.md`](../protocol.md#generated-code) describes generation, the cross-runtime fixtures, and the stale-output check (`pnpm check:generated`).
 - **The TypeScript output is JavaScript plus type declarations.** Node's type stripping can't run the TypeScript `enum`s that `target=ts` produces. `sidecar/tsconfig.build.json` sets `allowJs`, so `pnpm build` also copies that JavaScript to `dist/`.
