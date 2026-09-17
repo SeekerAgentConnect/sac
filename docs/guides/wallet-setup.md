@@ -13,7 +13,7 @@ If a screen, a page, or an agent ever asks you for one, it isn't part of this pr
 | | Where it goes |
 | --- | --- |
 | Your wallet's **address** (a public key) and the **network** you picked | Kept on the phone, and published to every sidecar you've paired with, so agents can read it |
-| The wallet's **authorization** for this app | Kept on the phone only, encrypted, never backed up, never sent to a sidecar or written to a log |
+| The wallet's **authorization** for this app | Kept on the phone only, encrypted, never backed up, never sent to a sidecar or written to a log. It is kept in one sealed record with the address and network above, so this phone can never hold one wallet's authorization beside another wallet's address. |
 | Your **seed phrase** or **private keys** | Never asked for, never seen, never stored |
 
 The sidecar holds no keys and makes no wallet of its own. Until you connect one, an agent that asks for your address is told `WALLET_NOT_CONNECTED`.

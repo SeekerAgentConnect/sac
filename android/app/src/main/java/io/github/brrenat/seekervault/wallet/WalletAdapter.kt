@@ -72,8 +72,10 @@ sealed interface SignResult {
     data object NotConnected : SignResult
 
     /**
-     * The app didn't ask the wallet anything: the owner's selection isn't the one they reviewed, so
-     * the request needs another look. [WalletAdapter] never returns it, only [WalletRepository].
+     * Nothing was signed, because the account that would have signed isn't the one the owner
+     * reviewed: either this phone's selection changed under the request, or the wallet's own
+     * reauthorization no longer names that account (SEE-84). Either way the request needs another
+     * look, and the owner connects the wallet again.
      */
     data object Changed : SignResult
 }
@@ -102,7 +104,9 @@ sealed interface SendResult {
     data object AuthorizationExpired : SendResult
 
     /**
-     * The wallet refused before it signed anything. [message] is for display, never for parsing.
+     * Nothing was sent, and this phone can say so: the wallet refused before it signed anything, or
+     * the session ended before the transaction was ever put to the wallet. [message] is for
+     * display, never for parsing.
      */
     data class Failed(val message: String?) : SendResult
 
@@ -118,7 +122,9 @@ sealed interface SendResult {
     data object NotConnected : SendResult
 
     /**
-     * The app didn't ask the wallet anything: the owner's selection isn't the one they reviewed.
+     * Nothing was signed and nothing was sent, because the account that would have signed isn't the
+     * one the owner reviewed: either this phone's selection changed under the request, or the
+     * wallet's own reauthorization no longer names that account (SEE-84).
      */
     data object Changed : SendResult
 }
@@ -138,6 +144,21 @@ data class SigningAnswer(val result: SignResult, val authToken: String? = null) 
 }
 
 /**
+ * What the wallet answered when it was asked to sign and send a transaction: the [result], and the
+ * authorization it reported while answering.
+ *
+ * A wallet reauthorizes this app before it sends, exactly as it does before it signs a message, and
+ * it may hand back a replacement authorization then. [authToken] is the one to keep from now on,
+ * whatever the wallet then did with the transaction — a declined transfer, and one whose outcome
+ * nobody here knows, both carry a perfectly good authorization (SEE-84). It is null when the wallet
+ * reported none, and it is a secret like any other, so it never leaves the phone.
+ */
+data class SendingAnswer(val result: SendResult, val authToken: String? = null) {
+    override fun toString() =
+        "SendingAnswer(result=$result, authToken=${if (authToken == null) "none" else "<redacted>"})"
+}
+
+/**
  * The phone's boundary to the installed wallet (docs/architecture.md#the-wallet-adapter-boundary).
  * The app talks to a wallet only through this interface, so the screens and the repository can be
  * tested without one. [MwaWalletAdapter] is the real implementation, over Mobile Wallet Adapter.
@@ -153,10 +174,10 @@ interface WalletAdapter {
     suspend fun connect(network: WalletNetwork, authToken: String?): WalletResult
 
     /**
-     * Tells the wallet this app no longer needs [authToken]. Failures are not reported: the phone
-     * forgets the authorization either way.
+     * Tells the wallet this app no longer needs [authToken], which was [wallet]'s. Failures are not
+     * reported: the phone forgets the authorization either way.
      */
-    suspend fun disconnect(authToken: String)
+    suspend fun disconnect(wallet: SelectedWallet, authToken: String)
 
     /**
      * Asks the wallet to sign exactly [message] with [wallet]'s account, using the authorization
@@ -175,10 +196,12 @@ interface WalletAdapter {
      * authorization [authToken] from the owner's earlier connection. The wallet does the sending:
      * this app reaches no network of its own, and builds nothing. It is called only after the owner
      * has approved this exact transaction on this phone, and the sidecar has accepted the approval.
+     * Like [signMessage] it opens the wallet once, and the answer carries both what the wallet did
+     * and the authorization it reported, so nothing has to ask again.
      */
     suspend fun signAndSendTransaction(
         transaction: ByteString,
         wallet: SelectedWallet,
         authToken: String,
-    ): SendResult
+    ): SendingAnswer
 }

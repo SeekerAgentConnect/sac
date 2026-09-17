@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.ConnectionRepository
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.walletBinding
+import io.github.brrenat.seekervault.wallet.storage.StoredSession
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.IOException
 import java.security.GeneralSecurityException
@@ -63,12 +64,15 @@ class WalletRepository(
      */
     private val published = mutableSetOf<String>()
 
-    /** Reads the stored selection. A selection whose authorization is gone is dropped. */
+    /**
+     * Reads the stored session. Anything but a whole one — a selection whose authorization is gone,
+     * an authorization this phone can no longer decrypt, half of the storage an older build left
+     * behind — is not a wallet, and is forgotten rather than half-used (SEE-84).
+     */
     suspend fun load() = lock.withLock {
-        val stored = withContext(io) { store.selected() }
-        val usable = stored != null && withContext(io) { store.authorization() } != null
-        if (stored != null && !usable) withContext(io) { store.clear() }
-        _wallet.value = if (usable) stored else null
+        val stored = withContext(io) { store.session() }
+        if (stored == null) withContext(io) { store.clear() }
+        _wallet.value = stored?.wallet
     }
 
     /**
@@ -77,7 +81,7 @@ class WalletRepository(
      * authorization the wallet refused, which is forgotten.
      */
     suspend fun connect(network: WalletNetwork): WalletResult = lock.withLock {
-        val authorization = withContext(io) { store.authorization() }
+        val authorization = withContext(io) { store.session() }?.authToken
         val result = adapter.connect(network, authorization)
         when (result) {
             is WalletResult.Connected -> {
@@ -126,12 +130,15 @@ class WalletRepository(
         if (selected.address != reviewed.address || selected.network != reviewed.network) {
             return@withLock SignResult.Changed
         }
-        val authorization =
-            withContext(io) { store.authorization() } ?: return@withLock SignResult.NotConnected
-        val answer = adapter.signMessage(message, selected, authorization)
-        if (answer.result == SignResult.AuthorizationExpired) {
-            withContext(io) { store.clear() }
-            setWallet(null)
+        val stored = held(selected) ?: return@withLock SignResult.NotConnected
+        val answer = adapter.signMessage(message, selected, stored.authToken)
+        // A refused authorization, and a wallet that no longer authorizes the reviewed account,
+        // both leave this phone with nothing it may sign with: the session is forgotten, and the
+        // owner connects the wallet again and reviews the request afresh (SEE-84).
+        if (
+            answer.result == SignResult.AuthorizationExpired || answer.result == SignResult.Changed
+        ) {
+            forget()
             return@withLock answer.result
         }
         // The wallet may replace this phone's authorization while it signs, and the replacement is
@@ -139,15 +146,33 @@ class WalletRepository(
         // declined signature carries a perfectly good one. The selection stays exactly as it is,
         // so the wallet, address, and network the owner reviewed don't change, and the token goes
         // no further than [store].
-        keepRefreshed(selected, answer.authToken, offered = authorization)
+        keepRefreshed(selected, answer.authToken, offered = stored.authToken)
         answer.result
     }
 
     /**
-     * Replaces the stored authorization when the wallet handed back a new one. If this phone can't
-     * store it, the wallet's answer still stands: the next signing is refused with the old
-     * authorization, and the owner connects the wallet again, which is what an expired one does
-     * anyway.
+     * The stored session, when it is the one [selected] names. A record whose account or network
+     * isn't the selection this app is holding is not this wallet's, and nothing is signed with it:
+     * that is the pair the single stored record exists to keep true (SEE-84).
+     */
+    private suspend fun held(selected: SelectedWallet): StoredSession? =
+        withContext(io) { store.session() }
+            ?.takeIf {
+                it.wallet.address == selected.address && it.wallet.network == selected.network
+            }
+
+    /** Forgets the wallet on this phone, and tells every sidecar there is none. */
+    private suspend fun forget() {
+        withContext(io) { store.clear() }
+        setWallet(null)
+    }
+
+    /**
+     * Replaces the stored authorization when the wallet handed back a new one, as one record with
+     * the selection it belongs to. If this phone can't store it, the wallet's answer still stands:
+     * nothing is asked of the wallet again, the outcome that was reported is reported, and the next
+     * operation is refused with the old authorization, after which the owner connects the wallet
+     * again — which is what an expired one does anyway.
      */
     private suspend fun keepRefreshed(
         selected: SelectedWallet,
@@ -207,21 +232,26 @@ class WalletRepository(
         if (selected.address != reviewed.address || selected.network != reviewed.network) {
             return SendResult.Changed
         }
-        val authorization =
-            withContext(io) { store.authorization() } ?: return SendResult.NotConnected
-        val result = adapter.signAndSendTransaction(transaction, selected, authorization)
-        if (result == SendResult.AuthorizationExpired) {
-            withContext(io) { store.clear() }
-            setWallet(null)
+        val stored = held(selected) ?: return SendResult.NotConnected
+        val answer = adapter.signAndSendTransaction(transaction, selected, stored.authToken)
+        if (
+            answer.result == SendResult.AuthorizationExpired || answer.result == SendResult.Changed
+        ) {
+            forget()
+            return answer.result
         }
-        return result
+        // A wallet reauthorizes this app before it sends, just as it does before it signs, and the
+        // replacement it hands back has to survive the transfer — sent, declined, or with an
+        // outcome nobody knows (SEE-84). Storing it can only replace the token: it never touches
+        // what the wallet did with the transaction, and the wallet is not asked anything again.
+        keepRefreshed(selected, answer.authToken, offered = stored.authToken)
+        return answer.result
     }
 
     /** Tells the wallet, forgets the selection and its authorization, and publishes "no wallet". */
     suspend fun disconnect() = lock.withLock {
-        withContext(io) { store.authorization() }?.let { adapter.disconnect(it) }
-        withContext(io) { store.clear() }
-        setWallet(null)
+        withContext(io) { store.session() }?.let { adapter.disconnect(it.wallet, it.authToken) }
+        forget()
     }
 
     /**
