@@ -766,6 +766,46 @@ The sidecar portion covers the secure TLS/ALPN HTTP/2 listener and loopback h2c 
 
 The suite deliberately does not simulate a push wake-up, wallet action, or transaction send. Periodic WorkManager runs are eligible no more often than Android's 15-minute minimum and can be deferred by the OS; Force stop suppresses them until the owner reopens the app. Stage 5.2 therefore has no immediate background-delivery guarantee. Push-triggered reconciliation is the separate follow-up [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73).
 
+## Shared proposals (SEE-89)
+
+A publisher broadcasts an operation once and everyone subscribed receives the same document. That is
+a different contract from the durable request above, and it is a separate package:
+[`seekervault.proposal.v1.Proposal`](../proto/seekervault/proposal/v1/proposal.proto).
+[`docs/wiki/shared-proposals.md`](wiki/shared-proposals.md) is the architecture page; this section is
+the contract.
+
+| Field | Meaning | Rules |
+| --- | --- | --- |
+| `server_id` | The publisher's lasting ID | A lowercase UUID, and the one whose feed it arrived on. |
+| `channel` | The channel it was published on | `server/<server_id>` for this document's own `server_id`: a publisher may name only its own. |
+| `proposal_id` | The publisher's ID for this proposal | A lowercase UUID, stable for as long as the proposal exists. |
+| `revision` | The revision of everything else here | A positive `uint64` that changes whenever the content does and never goes backwards. |
+| `operation` | What is proposed | An operation name at the protocol's own level (`swap`), never a provider's. |
+| `plugin_id` | The bundled plugin it was written for | A well-formed plugin ID. It is checked against the plugin the phone resolves for the operation, never used to select one. |
+| `status` | `PROPOSAL_STATUS_OPEN` or `_CANCELLED` | Never unspecified, and a missing status is not read as open. |
+| `created_at`, `updated_at` | The publisher's clock | `updated_at` is not before `created_at`; ordering is the revision's job, not a clock's. |
+| `expires_at` | When nothing more is executed from it | Required and absolute, and strictly after `created_at`. |
+| `publisher_note` | The publisher's own description | Optional; at most 1024 UTF-8 bytes of printable text (a line break is text). Unverified, and shown apart from anything the phone established. |
+| `values` | The operation's common terms | At most 32 entries, each key a lowercase name unique in the list, each text at most 512 UTF-8 bytes. |
+
+**There is no per-proposal protocol version.** Which contract a publisher speaks is in its
+`ServerManifest`, and a phone holds no feed without having validated that manifest first.
+
+**There is nothing in it about a subscriber** — no address, no chosen quantity, nothing prepared to
+sign — and the phone's boundary check reads the proto and fails if the field set changes.
+
+**A proposal is delivered, never fetched per phone.** The transport is the shared gateway (SEE-90)
+and its live stream (SEE-91); the phone subscribes to a channel, and that is the whole of what the
+gateway learns. Delivery is not trustworthy about repetition, so the phone's apply path is
+idempotent: the same revision with the same terms writes nothing, a lower revision is refused, a
+higher one replaces the publisher's half and leaves the device's decisions where they were, and the
+same revision with different terms is a contradiction the phone stops acting on.
+
+**Nothing goes back.** For a `gateway_feed` connection the phone calls no `PublishWallet`,
+`PrepareRequest` or `SubmitResult`, and uploads no outcome through `UpdateService.Sync`: all of them
+are gated on `Connection.usable`, which requires the direct mode (SEE-88). The owner's parameters,
+their approval and their execution record stay on the device that made them.
+
 ## Generated code
 
 | Runtime | Output | Generators | Runtime libraries |

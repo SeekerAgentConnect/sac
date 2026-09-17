@@ -112,6 +112,50 @@ class ActivityDetailsScreenTest {
     }
 
     @Test
+    fun showsAnOperationFromASharedProposalInTheTermsTheOwnerChose() {
+        // A proposal is common to everyone who received it; what is on screen here is what this
+        // owner did about it (SEE-89).
+        val operation = operationRecord()
+        show(operation)
+        compose
+            .onNodeWithTag(ActivityTags.OUTCOME)
+            .assertTextContains(context.getString(R.string.activity_outcome_sent))
+        // The operation at the protocol's own level, and the plugin that prepared its bytes.
+        compose
+            .onNodeWithTag(ActivityTags.OPERATION)
+            .assertTextContains(
+                context.getString(R.string.activity_operation_plugin, "swap", "jupiter.swap")
+            )
+        compose
+            .onNodeWithTag(ActivityTags.CLUSTER)
+            .assertTextContains(
+                context.getString(R.string.activity_cluster_mainnet),
+                substring = true,
+            )
+        // The parameters this owner chose, in the base units they were chosen in.
+        compose
+            .onNodeWithTag(
+                ActivityTags.field(context.getString(R.string.activity_field_parameters))
+            )
+            .performScrollTo()
+            .assertTextContains("input_amount 1500000", substring = true)
+        // Its bytes were a transaction, so the signature is labelled as one and the explorer for
+        // its own cluster is offered.
+        compose
+            .onNodeWithTag(ActivityTags.SIGNATURE)
+            .performScrollTo()
+            .assertTextContains(
+                context.getString(R.string.activity_field_signature),
+                substring = true,
+            )
+        compose.onNodeWithTag(ActivityTags.EXPLORER).performScrollTo().performClick()
+        assertEquals(
+            listOf("https://explorer.solana.com/tx/${operation.signature}"),
+            opened,
+        )
+    }
+
+    @Test
     fun namesTheClusterOnEveryTransferAndNeverGuessesIt() {
         show(record(network = Network.NETWORK_MAINNET))
         compose

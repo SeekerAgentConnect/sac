@@ -415,15 +415,17 @@ class StageBoundaryTest {
                 .filter { provider.containsMatchIn(it.readText()) }
                 .map { it.name },
         )
-        // Which code knows the registry exists at all. Two packages: the boundary itself, and
-        // `servers/`, which is where a server's stated requirements are matched against it
-        // (SEE-88). Outside them, four files: the one that composes the app, the one that asks
-        // which operation a request is for so the owner's rules can be applied to it, the one that
-        // shows the owner whether their servers are supported, and the store that reads a cached
-        // manifest's plugin names back off disk. MainActivity passes the composed registry along
-        // without naming the package.
+        // Which code knows the registry exists at all. Three packages: the boundary itself,
+        // `servers/`, where a server's stated requirements are matched against it (SEE-88), and
+        // `proposals/`, where a publisher's document is matched against the plugin this build
+        // resolves for its operation (SEE-89). Outside them, six files: the one that composes the
+        // app, the one that asks which operation a request is for so the owner's rules can be
+        // applied to it, the one that shows the owner whether their servers are supported, the one
+        // that holds what the owner chose about a proposal, and the two stores that read a cached
+        // manifest's plugin names and a stored choice back off disk. MainActivity passes the
+        // composed registry along without naming the package.
         val owners =
-            listOf("plugins", "servers").map {
+            listOf("plugins", "servers", "proposals").map {
                 File(main, "java/io/github/brrenat/seekervault/$it")
             }
         val importers =
@@ -442,9 +444,120 @@ class StageBoundaryTest {
                 "ConnectionStore.kt",
                 "ConnectionsViewModel.kt",
                 "InboxViewModel.kt",
+                "ProposalRepository.kt",
+                "ProposalStore.kt",
                 "SeekerVaultApplication.kt",
             ),
             importers,
+        )
+    }
+
+    @Test
+    fun aProposalIsBoundedDataAndTheCodeThatReadsOneDecidesNothing() {
+        // SEE-89 adds the document a publisher broadcasts: its identity, its revision, the
+        // operation it proposes, its expiry, whether the publisher still stands behind it, and the
+        // operation's common terms. The package that reads one is data and pure functions — it
+        // says where a proposal stands and what would have to hold before its operation could be
+        // executed, and it cannot execute anything (docs/wiki/shared-proposals.md).
+        val proposals = File(main, "java/io/github/brrenat/seekervault/proposals")
+        assertTrue(proposals.isDirectory)
+        val sources = proposals.walk().filter { it.extension == "kt" }.toList()
+        assertTrue(sources.isNotEmpty())
+        // What it reaches for, and every one of them is a rule or a name: the ID rule a publisher's
+        // identity is held to, the channel rule it owns, the plugin registry this build carries and
+        // the names a proposal may use for it, the owner's selected wallet as a public address and
+        // a network, what this build supports, and the protocol message itself.
+        val reaches =
+            sources
+                .flatMap { it.readLines() }
+                .map { it.trim() }
+                .filter { it.startsWith("import io.github.brrenat.seekervault.") }
+                .map { it.removePrefix("import ").substringBefore(" as ") }
+                .filterNot { it.startsWith("io.github.brrenat.seekervault.proposals.") }
+                .distinct()
+                .sorted()
+        assertEquals(
+            listOf(
+                "io.github.brrenat.seekervault.connections.isConnectionId",
+                "io.github.brrenat.seekervault.plugins.OperationId",
+                "io.github.brrenat.seekervault.plugins.ParameterChoice",
+                "io.github.brrenat.seekervault.plugins.PluginEnvironment",
+                "io.github.brrenat.seekervault.plugins.PluginId",
+                "io.github.brrenat.seekervault.plugins.PluginRegistry",
+                "io.github.brrenat.seekervault.plugins.PluginResolution",
+                "io.github.brrenat.seekervault.plugins.SUPPORTED_PLUGIN_CONTRACTS",
+                "io.github.brrenat.seekervault.plugins.UnsupportedReason",
+                "io.github.brrenat.seekervault.plugins.isOperationId",
+                "io.github.brrenat.seekervault.plugins.isPluginId",
+                "io.github.brrenat.seekervault.proposal.v1.Proposal",
+                "io.github.brrenat.seekervault.proposal.v1.ProposalStatus",
+                "io.github.brrenat.seekervault.request.v1.Network",
+                "io.github.brrenat.seekervault.servers.ServerSupport",
+                "io.github.brrenat.seekervault.servers.channelFor",
+                "io.github.brrenat.seekervault.servers.executable",
+                "io.github.brrenat.seekervault.wallet.SelectedWallet",
+            ),
+            reaches,
+        )
+        // And nothing in it subscribes to a feed, opens a wallet, stores anything, approves
+        // anything, or so much as suspends. The rules it holds are about what *would* have to be
+        // true; carrying an operation out is the repository's and the owner's. The comments discuss
+        // all of that on purpose, so this reads the code with the comments taken out of it.
+        val authority =
+            Regex(
+                """\b(WalletAdapter|WalletSession|WalletRepository|WalletStore|authToken|""" +
+                    """signMessage|signAndSend|withWallet|ConnectionGateway|FeedGateway|""" +
+                    """ProposalFeed|ConnectionRepository|ProposalRepository|UpdateTransport|""" +
+                    """OkHttp|HttpClient|CredentialVault|ConnectionStore|ResultStore|""" +
+                    """ProposalStore|PolicyStore|ActivityLog|ActivityStore|SyncStore|approve|""" +
+                    """Approval|suspend)\b"""
+            )
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { authority.containsMatchIn(withoutComments(it)) }.map { it.name },
+        )
+        // The document itself is bounded, and this is the whole of it. There is nothing in it
+        // about any subscriber — no address they would pay from, no quantity they chose, nothing
+        // prepared for them to sign — and a field that could carry one would have to be added here
+        // first.
+        val proto =
+            File(repoRoot, "proto/seekervault/proposal/v1/proposal.proto")
+                .readLines()
+                .filterNot { it.trim().startsWith("//") }
+                .joinToString("\n")
+        val fields =
+            Regex("""^\s*(?:repeated\s+)?[\w.]+\s+(\w+)\s*=\s*\d+;""", RegexOption.MULTILINE)
+                .findAll(proto)
+                .map { it.groupValues[1] }
+                .toList()
+        assertEquals(
+            listOf(
+                "server_id",
+                "channel",
+                "proposal_id",
+                "revision",
+                "operation",
+                "plugin_id",
+                "status",
+                "created_at",
+                "updated_at",
+                "expires_at",
+                "publisher_note",
+                "values",
+                "key",
+                "text",
+            ),
+            fields,
+        )
+        assertEquals(
+            emptyList<String>(),
+            Regex(
+                    """(?i)\b(permission|policy|wallet|credential|token|secret|install|script|""" +
+                        """amount|signature|approval|transaction|prepared)\b"""
+                )
+                .findAll(proto)
+                .map { it.value }
+                .toList(),
         )
     }
 

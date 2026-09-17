@@ -4,6 +4,7 @@ import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
+import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
@@ -126,6 +127,13 @@ class ConnectionRepository(
      * global rules.
      */
     private val rules: PolicyStore? = null,
+    /**
+     * A feed's proposals (SEE-89). Optional for the same reason [rules] is, and used for one thing
+     * only: a removed connection's proposals go with it, in the same place its answers and its
+     * rules do, so nothing of a feed the owner removed is left on the disk. Nothing here reads a
+     * proposal — [ProposalRepository] owns them.
+     */
+    private val proposals: ProposalStore? = null,
     /**
      * How a publisher's feed is resolved, when this build has a gateway to resolve it through
      * (SEE-88). It is optional because the gateway is SEE-90: without one, [addFeed] says so and
@@ -998,7 +1006,10 @@ class ConnectionRepository(
 
     /**
      * Removes the connection from this phone only: its credential first, then its answers, the
-     * rules the owner wrote for it, and its metadata.
+     * rules the owner wrote for it, the proposals it read (SEE-89), and its metadata.
+     *
+     * What outlives it is the owner's own Activity: what this phone did is worth keeping after the
+     * connection that asked for it is gone (SAW-023, docs/wiki/shared-proposals.md#retention).
      */
     suspend fun remove(id: String) {
         synchronization?.remove(id)
@@ -1006,6 +1017,7 @@ class ConnectionRepository(
             vault.delete(id)
             results.deleteConnection(id)
             rules?.delete(id)
+            proposals?.deleteConnection(id)
             store.delete(id)
             _inbox.update { it.copy(pending = it.pending - id) }
             publish()

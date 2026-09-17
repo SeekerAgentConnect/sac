@@ -48,6 +48,7 @@ fun kindText(kind: ActivityKind): String =
             ActivityKind.Acknowledgement -> R.string.activity_kind_ack
             ActivityKind.MessageSignature -> R.string.activity_kind_message
             ActivityKind.Transfer -> R.string.activity_kind_transfer
+            ActivityKind.Operation -> R.string.activity_kind_operation
             ActivityKind.Other -> R.string.activity_kind_other
         }
     )
@@ -76,9 +77,11 @@ fun outcomeText(outcome: ActivityOutcome): Int =
  */
 @Composable
 fun clusterText(record: ActivityRecord): String? =
-    record.transfer?.let {
+    // A transfer's own cluster, or the one an operation from a shared proposal was bound to
+    // (SEE-89): its signature is a transaction's ID too, and means nothing without the cluster.
+    (record.transfer?.network ?: record.operation?.network)?.let { network ->
         stringResource(
-            when (it.network) {
+            when (network) {
                 Network.NETWORK_MAINNET -> R.string.activity_cluster_mainnet
                 Network.NETWORK_DEVNET -> R.string.activity_cluster_devnet
                 Network.NETWORK_TESTNET -> R.string.activity_cluster_testnet
@@ -94,6 +97,12 @@ fun clusterText(record: ActivityRecord): String? =
  */
 @Composable
 fun operationText(record: ActivityRecord): String {
+    // An operation from a shared proposal is named at the protocol's level, with the plugin that
+    // prepared its bytes beside it: both are codes the record kept, and neither is this app's
+    // word for what a provider does (SEE-89).
+    record.operation?.let {
+        return stringResource(R.string.activity_operation_plugin, it.operation, it.plugin)
+    }
     val transfer = record.transfer ?: return kindText(record.kind)
     val mint = transfer.mint
     val amount = transfer.amount.toULongOrNull()

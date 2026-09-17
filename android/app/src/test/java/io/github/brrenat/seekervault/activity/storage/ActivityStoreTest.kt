@@ -6,7 +6,10 @@ import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.activity.CONNECTION
 import io.github.brrenat.seekervault.activity.MINT
 import io.github.brrenat.seekervault.activity.OTHER_REQUEST
+import io.github.brrenat.seekervault.activity.RECIPIENT
 import io.github.brrenat.seekervault.activity.REQUEST
+import io.github.brrenat.seekervault.activity.WALLET
+import io.github.brrenat.seekervault.activity.operationRecord
 import io.github.brrenat.seekervault.activity.record
 import io.github.brrenat.seekervault.activity.reviewedPolicy
 import io.github.brrenat.seekervault.request.v1.Network
@@ -36,6 +39,37 @@ class ActivityStoreTest {
         // A new store on the same directory is what a restart is: nothing is held in memory.
         assertEquals(confirmed, ActivityStore(dir).get(CONNECTION, REQUEST))
         assertEquals(listOf(confirmed), ActivityStore(dir).list())
+    }
+
+    @Test
+    fun keepsAnOperationFromASharedProposalAcrossARestart() {
+        // The whole binding, because it is the record of what was executed: the proposal revision,
+        // the plugin and its contract, the cluster, and the parameters this owner chose (SEE-89).
+        val operation = operationRecord()
+        store.put(operation)
+
+        val stored = ActivityStore(dir).get(CONNECTION, REQUEST)
+
+        assertEquals(operation, stored)
+        assertEquals(6L, stored?.operation?.revision)
+        assertEquals("jupiter.swap", stored?.operation?.plugin)
+        assertEquals(
+            listOf("input_amount" to "1500000", "slippage_bps" to "50"),
+            stored?.operation?.values?.map { it.key to it.text },
+        )
+        // Its bytes were a transaction, so the signature it holds is one.
+        assertEquals(true, stored?.signatureIsTransaction)
+    }
+
+    @Test
+    fun refusesAnOperationRecordAboutAnotherWalletUnderTheSameProposal() {
+        // What makes it the same record includes the wallet that paid, for an operation as for a
+        // transfer: a later write that disagrees is about something else.
+        store.put(operationRecord())
+
+        val other = store.put(operationRecord(wallet = RECIPIENT))
+
+        assertEquals(WALLET, other.operation?.wallet)
     }
 
     @Test

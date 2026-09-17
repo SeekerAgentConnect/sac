@@ -16,6 +16,13 @@ enum class ActivityKind {
     MessageSignature,
     /** A payment from the owner's wallet. */
     Transfer,
+
+    /**
+     * An operation a bundled client plugin carried out from a publisher's shared proposal (SEE-89).
+     * Its bytes are a transaction the wallet signed and sent, so its signature is a transaction's
+     * ID on chain, like a transfer's and unlike a message's.
+     */
+    Operation,
     /** Something this version of the app doesn't have a name for. */
     Other,
 }
@@ -67,6 +74,42 @@ data class ReviewedTransfer(
     /** The preparation the approval was bound to, which is what the sidecar checked it against. */
     val preparedVersion: Int = 0,
 )
+
+/**
+ * The operation the owner executed from a shared proposal, in the terms they executed it in
+ * (SEE-89, docs/wiki/shared-proposals.md#the-owners-own-record).
+ *
+ * It is the binding, written down: the exact proposal revision the terms came from, the parameters
+ * this owner chose, the wallet and cluster it happened on, and which plugin at which boundary
+ * version prepared the bytes. All of it was pinned before the wallet was opened
+ * ([io.github.brrenat.seekervault.proposals.ExecutionBinding]), so recording it records what was
+ * executed and not an account of it.
+ *
+ * [operation] and [plugin] are codes, for the same reason [ReviewedPolicy] holds codes: this
+ * package has never heard of a plugin and does not need to, and a name a later build has better
+ * words for can be read better later without the record being rewritten.
+ */
+data class ReviewedOperation(
+    /** The operation's own name at the protocol's level, such as `swap`. */
+    val operation: String,
+    /** The plugin that prepared the bytes, by the stable ID it declares. */
+    val plugin: String,
+    /** The plugin-boundary contract version it was written against. */
+    val contract: Int,
+    /** The publisher's revision of the proposal these terms came from. */
+    val revision: Long,
+    /** The wallet that paid, as a public address. */
+    val wallet: String,
+    /** The cluster it was bound to. A signature belongs to this cluster and to no other. */
+    val network: Network,
+    /** Which preparation the owner reviewed, as the plugin counted it. */
+    val preparedVersion: Int,
+    /** What the owner chose, by the plugin's own field names. Base units, as they were chosen. */
+    val values: List<ReviewedValue> = emptyList(),
+)
+
+/** One parameter the owner chose, as a name and the text of what they chose. */
+data class ReviewedValue(val key: String, val text: String)
 
 /**
  * What the owner was shown about their own rules when they answered, kept with the record (SAW-028,
@@ -139,6 +182,8 @@ data class ActivityRecord(
     val outcome: ActivityOutcome,
     /** The terms of a transfer; null for everything else. */
     val transfer: ReviewedTransfer? = null,
+    /** The terms of an operation from a shared proposal; null for everything else (SEE-89). */
+    val operation: ReviewedOperation? = null,
     /**
      * What the rules made of the request when the owner answered; null when nothing assessed it.
      */
@@ -158,7 +203,8 @@ data class ActivityRecord(
      * bytes and nothing more: no explorer has it, and calling it a payment would be a lie.
      */
     val signatureIsTransaction: Boolean
-        get() = kind == ActivityKind.Transfer && signature != null
+        get() =
+            (kind == ActivityKind.Transfer || kind == ActivityKind.Operation) && signature != null
 
     /**
      * What makes this the same record and not another: the connection it came from, the wallet that
@@ -169,8 +215,8 @@ data class ActivityRecord(
         get() =
             ActivityIdentity(
                 connectionId = connectionId,
-                wallet = transfer?.wallet,
-                network = transfer?.network,
+                wallet = transfer?.wallet ?: operation?.wallet,
+                network = transfer?.network ?: operation?.network,
                 asset = transfer?.mint,
             )
 }
