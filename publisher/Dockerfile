@@ -8,6 +8,13 @@
 # publishes to (SEE-90). This is a developer's own publisher: it submits
 # documents to that gateway and serves its own small API to whoever writes the
 # signals (docs/wiki/copytrading-template.md).
+#
+# One image, two templates. `/copytrading` is the entrypoint and publishes a
+# trader's own signals (SEE-95); `/prediction` discovers Jupiter Prediction
+# markets and publishes those (SEE-96, docs/wiki/prediction-template.md). They
+# share everything but the kind they register and who writes their signals, so
+# they share an image too — a deployment names the one it runs
+# (compose.prediction.yaml overrides the entrypoint).
 
 # Pinned to the version publisher/go.mod requires, so a build from a clean
 # checkout uses the toolchain the tests were run with
@@ -27,17 +34,19 @@ COPY publisher/ ./
 # out of it.
 ENV CGO_ENABLED=0
 RUN go build -trimpath -ldflags="-s -w" -o /out/copytrading ./cmd/copytrading \
+ && go build -trimpath -ldflags="-s -w" -o /out/prediction ./cmd/prediction \
  && go build -trimpath -ldflags="-s -w" -o /out/publishctl ./cmd/publishctl
 
 # --- runtime ----------------------------------------------------------------
-# The two binaries, a CA bundle, and nothing else. No shell and no package
+# The three binaries, a CA bundle, and nothing else. No shell and no package
 # manager.
 #
 # The bundle is here because this service calls out over TLS in the ordinary
-# case: the shared gateway is somebody else's HTTPS endpoint, and a publisher
-# that could not verify it would be publishing to whatever answered. That is the
-# difference from the gateway's own image, which shipped none until it gained an
-# outbound call of its own (broadcast/Dockerfile).
+# case: the shared gateway is somebody else's HTTPS endpoint, and so is the
+# prediction provider — a publisher that could not verify either would be
+# publishing to, and believing, whatever answered. That is the difference from
+# the gateway's own image, which shipped none until it gained an outbound call of
+# its own (broadcast/Dockerfile).
 #
 # It is copied from the build image's Debian bundle, so it is the same set of
 # roots the toolchain was built against and it is pinned by GO_VERSION with
@@ -52,7 +61,7 @@ ENV PUBLISHER_DATABASE_PATH=/data/publisher.db
 # not published to the host by the compose file; that is the proxy's job.
 ENV PUBLISHER_API_ADDRESS=127.0.0.1:8092
 
-COPY --from=build /out/copytrading /out/publishctl /
+COPY --from=build /out/copytrading /out/prediction /out/publishctl /
 # A fixed, unprivileged uid/gid, the same pair the other images use, so a volume's
 # ownership is the same on every host. There is no /etc/passwd in a scratch image
 # and none is needed: the number is what the kernel checks.
@@ -64,4 +73,7 @@ EXPOSE 8092
 # Exec form: the binary is PID 1 and receives SIGTERM itself, which is what its
 # shutdown needs — stop accepting, finish what is in flight, and leave anything
 # unpublished in the file for the next start.
+#
+# The CopyTrading template is the default because it is the one with no provider
+# to configure. A Prediction deployment overrides this with ["/prediction"].
 ENTRYPOINT ["/copytrading"]

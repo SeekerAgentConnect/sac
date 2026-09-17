@@ -1,6 +1,8 @@
-# Jupiter, as this app uses it (SEE-93, SEE-94)
+# Jupiter, as this app uses it (SEE-93, SEE-94, SEE-96)
 
 Two plugins get their execution data from Jupiter, directly from the owner's phone: `jupiter.swap` a route and a transaction, `jupiter.prediction` a market and an order. This page is what was verified about those APIs, what the app sends them, and what happens when they say no. What the plugins do with the answers is [wiki/jupiter-swap.md](../wiki/jupiter-swap.md) and [wiki/jupiter-prediction.md](../wiki/jupiter-prediction.md).
+
+One thing here is not the phone's: the Prediction publisher template reads the same provider's **listing**, from a server, to discover markets to publish (SEE-96). It is a different half of the same API — public information about which markets exist, rather than an order for somebody — and it is [its own section below](#prediction-discovery-see-96).
 
 ## The endpoints, pinned
 
@@ -21,7 +23,7 @@ Three calls, on the same keyless host, all verified on 2026-09-17:
 
 | Call | Request | What is read from the answer |
 | --- | --- | --- |
-| `GET /prediction/v1/events` | `filter`, `end` — used only to find an open market when capturing fixtures | The events, their markets, and each market's status and pricing |
+| `GET /prediction/v1/events` | `filter`, `end` — the phone never calls this; the publisher template does ([below](#prediction-discovery-see-96)) | The events, their markets, and each market's status and pricing |
 | `GET /prediction/v1/markets/{marketId}` | — | `marketId`, `eventId`, `provider`, `title`, `status`, `result`, `pricing.buyYesPriceUsd`, `pricing.buyNoPriceUsd`, `rulesPrimary`, `closeTime` |
 | `POST /prediction/v1/orders` | `ownerPubkey`, `marketId`, `isYes`, `isBuy` (always true), `depositAmount`, `depositMint` | `transaction`, `requiredSigners`, and `order.*`: the order and position accounts, the external order ID, the market hash, the contracts, the price ceiling, the cost, the payout, the fees, the slippage |
 
@@ -37,9 +39,36 @@ Three calls, on the same keyless host, all verified on 2026-09-17:
 
 One more endpoint, and it is not Jupiter's: a Solana RPC, `getMultipleAccounts`, used only to read the address lookup tables a prediction order's transaction names. It is the **application's** endpoint, configured at build time (`-Pseekervault.solanaRpc=…`) and empty by default, so a checkout reaches no cluster; no publisher, manifest or provider answer can set it. What it is asked is a list of table addresses — public accounts, and asking about one says nothing about who asked.
 
+## Prediction discovery (SEE-96)
+
+The publisher template in [`publisher/`](../../publisher) reads two of these endpoints from a server, to find markets worth publishing. It is the only part of this repository that calls Jupiter from anything but a phone, and what it asks for is public: which markets exist, and what one market currently is. The provider's endpoints for orders, positions, history and profiles are not compiled into that module at all — the phone places the order, and the template never learns that one was placed.
+
+| Call | Request | What is read from the answer |
+| --- | --- | --- |
+| `GET /prediction/v1/events` | `provider`, `category`, `filter`, `start`, `end`, `includeMarkets=true` | `data[]`: `eventId`, `isActive`, `isLive`, `category`, `subcategory`, `tags[]`, `metadata.title`, `metadata.slug`, and each `markets[]` entry; `pagination.{start,end,hasNext}` |
+| `GET /prediction/v1/markets/{marketId}` | — | `marketId`, `eventId`, `provider`, `title`, `status`, `result`, `openTime`, `closeTime`, and Forecast's `tradable` and `lifecycleStatus` |
+
+**Pagination is an offset and an exclusive bound**, not a page number: `start=0&end=25` then `start=25&end=50`, with `hasNext` saying whether to continue. A range of more than 100 items is refused (`"Range cannot exceed 100 items"`), and a `start` past the end answers `{"data":[],"pagination":{…,"hasNext":false}}` — which is how a walk finishes rather than an error.
+
+**The live API accepts more categories than the published schema lists.** The schema names eight; `category=nonsense` is refused with a message naming twelve: `all`, `crypto`, `sports`, `politics`, `esports`, `culture`, `economics`, `tech`, `finance`, `climate & science`, `weather`, `mentions`. The template's own list is that refusal, and [the refusal is committed as a fixture](../../publisher/internal/jupiter/testdata/events-bad-parameter.json) so a test reads it rather than trusting this paragraph.
+
+**The named filters** are `new` (created in the last 24 hours), `live` (begun), `trending` (recent trade activity) and `upcoming` (not begun), and the venues are `polymarket` (the default), `kalshi` and `bisonfi` (Jupiter Forecast). The template always sends the venue explicitly, because a default that changed under it would change what it publishes.
+
+**There is a keyword search, and the template does not use it.** `GET /prediction/v1/events/search?query=…` matches event **titles** only, is capped at 20 results, and cannot be combined with the bucket, the named filter or the pagination — so keyword filtering happens on the retrieved records instead, over the title, the bucket, the subcategory, the tags and the market's own title ([wiki/prediction-template.md](../wiki/prediction-template.md#the-filters-and-what-they-mean)). A `search` parameter on `/events` itself is ignored: it answers the unfiltered listing.
+
+**Errors have a shape**, and its `code` is what tells two 400s apart: `{"type","message","code","param","request_id"}`, where `type` is one of `invalid_request_error`, `authentication_error`, `permission_error`, `idempotency_error`, `rate_limit_error`, `api_error`. A market that does not exist is `404` with `code: market_not_found`, which is the difference between "this market has gone" and any other refusal — and the difference between withdrawing a proposal and leaving it alone.
+
+**There is no stream.** The published OpenAPI document has no websocket, no webhook and no subscription: the only "live" things in it are the `live` filter and the score endpoints. So discovery is bounded polling, paced inside the keyless allowance, and a rate limit is an answer rather than a reason to try harder. Checked on 2026-09-17.
+
+**The API is in beta**, by its own documentation: "The Prediction Market API is currently in beta and subject to breaking changes." What the template does about that is skip a market it cannot read, with the market named in the log, rather than crash or publish half an answer. Seven real answers are committed under [`publisher/internal/jupiter/testdata`](../../publisher/internal/jupiter/testdata) — two pages, an empty page, a refused parameter, an open market, a settled one and a missing one — captured by `node scripts/capture-jupiter.mjs --events`, with the request that produced each recorded beside it. An opt-in test (`SEEKERVAULT_JUPITER=1`) reads the live provider and checks that the fields discovery depends on are all still there.
+
+**A key is optional here too.** The keyless host serves these endpoints without one, which is what the template defaults to; `PREDICTION_API_KEY` raises the allowance on the keyed host. It goes in one `x-api-key` header and nowhere else — never in a manifest, a document, a log line or an answer — and [a test presents one and searches every answer and the whole log for it](../../publisher/internal/api/discovery_test.go).
+
 ## Authentication: none, deliberately
 
-Nothing here is authenticated. Jupiter's keyless tier is what the app uses, so **there is no secret in the APK to extract** and no proxy of the owner's requests through anything of ours — the two things the stage explicitly rules out. An operator who wants higher limits would supply their own key to their own build; that is a build's business and not this app's, and the endpoint is already a parameter.
+Nothing the **app** sends is authenticated. Jupiter's keyless tier is what it uses, so **there is no secret in the APK to extract** and no proxy of the owner's requests through anything of ours — the two things the stage explicitly rules out. An operator who wants higher limits would supply their own key to their own build; that is a build's business and not this app's, and the endpoint is already a parameter.
+
+A publisher's server is the other case, and it is not the same one. The Prediction template may hold a key (`PREDICTION_API_KEY`), because a server polling a listing is exactly what a rate allowance is about — and it is that server's own secret, held by its own deployment, never in anything it publishes. No phone is ever asked to carry it, and no owner's request goes through it.
 
 ## Rate limits
 
@@ -50,7 +79,9 @@ Jupiter's documented figures, in a 60-second sliding window, and they cover both
 | Keyless | 0.5 | 30 | No |
 | Free | 1 | 60 | Yes |
 
-That is ample for a person deciding about one signal — two calls to prepare a swap, three to prepare an order — and it is not ample for polling, so nothing in either plugin polls. `lite-api.jup.ag` returns no rate-limit headers, so the plugin treats HTTP 429 as the signal and reports it as itself: the owner is told to wait a moment and prepare again, and nothing retries in a loop.
+That is ample for a person deciding about one signal — two calls to prepare a swap, three to prepare an order — and it is not ample for polling, so **nothing in either plugin polls**. `lite-api.jup.ag` returns no rate-limit headers, so the plugin treats HTTP 429 as the signal and reports it as itself: the owner is told to wait a moment and prepare again, and nothing retries in a loop.
+
+The publisher template does poll, and the allowance is the reason its defaults look the way they do: at most one call every 2.1 seconds, at most 24 calls in a cycle, one cycle every five minutes — about five calls a minute at the busiest. The gap is enforced inside its provider client rather than in its callers, because the way to exceed an allowance is to have two places that each think they are the only one calling. A 429 there stops the walk and makes the cycle partial; nothing retries in a loop on this side either (SEE-96).
 
 ## What goes to Jupiter, and what does not
 
@@ -98,9 +129,12 @@ Four real swap transactions are committed under `fixtures/jupiter/swaps.json` �
 
 They are what makes the claim honest: a transaction the tests built themselves would be readable by construction.
 
+The publisher template's own fixtures are separate, and they are answers rather than transactions: seven of them under `publisher/internal/jupiter/testdata`, each with the request that produced it, because what they are for is the shape of a listing and the shape of a refusal ([above](#prediction-discovery-see-96)).
+
 ```
 node scripts/capture-jupiter.mjs            # recapture the swaps
 node scripts/capture-jupiter.mjs --orders   # recapture the order and its tables
+node scripts/capture-jupiter.mjs --events   # recapture the listing answers (SEE-96)
 node scripts/capture-jupiter.mjs --check    # decode what is committed
 ```
 

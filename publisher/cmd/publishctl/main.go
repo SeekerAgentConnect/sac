@@ -20,6 +20,8 @@
 //	publishctl retry  <id>
 //	publishctl list
 //	publishctl show   <id>
+//	publishctl discovery            # the Prediction template: what it looks for and what it found
+//	publishctl poll                 # …and a cycle now, rather than at the next interval
 //
 // The template's address is --url or PUBLISHER_API_URL; the token is --token or
 // PUBLISHER_API_TOKEN, which is the same token the template was started with. The answer is JSON
@@ -58,6 +60,10 @@ const usage = `publishctl publishes signals through a publisher template's API.
   retry  <id>           try a refused publication again
   list                  every signal this template holds
   show   <id>           one signal, and what the gateway has confirmed
+
+On a template that discovers its own signals (the Prediction one, SEE-96):
+  discovery             the filters in force, the last cycle, and every market it tracks
+  poll                  run a discovery cycle now and publish what it finds
 
   --url <origin>        the template's API, or PUBLISHER_API_URL (default http://127.0.0.1:8092)
   --token <token>       its API token, or PUBLISHER_API_TOKEN
@@ -166,6 +172,15 @@ func run(arguments []string, out, messages io.Writer) error {
 
 	case "list":
 		return client.call(http.MethodGet, "/v1/signals", "", nil)
+
+	case "discovery":
+		// Only a template that discovers its own signals has this; the other answers 404 with
+		// `no_such_route`, which is the honest answer to asking a CopyTrading publisher what it is
+		// looking for (internal/api).
+		return client.call(http.MethodGet, "/v1/discovery", "", nil)
+
+	case "poll":
+		return client.call(http.MethodPost, "/v1/discovery/poll", "", nil)
 
 	case "show":
 		id, err := identity()

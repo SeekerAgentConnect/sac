@@ -1,0 +1,7 @@
+{
+  "type": "invalid_request_error",
+  "message": "Market not found",
+  "code": "market_not_found",
+  "param": "marketId",
+  "request_id": "ed22cd24-c125-48b1-97bb-9f37ff4327ac"
+}

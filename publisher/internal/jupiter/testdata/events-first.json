@@ -1,0 +1,280 @@
+{
+  "data": [
+    {
+      "eventId": "POLY-606422",
+      "isActive": true,
+      "isLive": false,
+      "category": "economics",
+      "subcategory": "",
+      "tags": [
+        "economics",
+        "economy",
+        "finance",
+        "fed-rates",
+        "Global-Rates",
+        "economic-policy",
+        "trump",
+        "kevin-warsh",
+        "fomc",
+        "macro-indicators",
+        "fed",
+        "jerome-powell",
+        "politics",
+        "recurring"
+      ],
+      "metadata": {
+        "slug": "fed-decision-in-october-20260617190323537",
+        "title": "Fed Decision in October?",
+        "isLive": false,
+        "series": "polymarket",
+        "eventId": "POLY-606422",
+        "imageUrl": "https://polymarket-upload.s3.us-east-2.amazonaws.com/fed-decision-in-september-762-c4RyWuxRPo1L.jpg",
+        "subtitle": "",
+        "closeTime": "2026-10-28T23:59:00Z"
+      },
+      "volumeUsd": "6317878000000",
+      "volume24hr": "1797188000000",
+      "beginAt": null,
+      "closeCondition": "This market will close and expire after a winner is declared.",
+      "rulesPdf": "",
+      "markets": [
+        {
+          "provider": "polymarket",
+          "marketId": "POLY-2589813",
+          "status": "open",
+          "result": null,
+          "marketResultPubkey": null,
+          "title": "25 bps increase",
+          "openTime": 1781739268,
+          "closeTime": 1793231940,
+          "isTeamMarket": false,
+          "rulesPrimary": "The FED interest rates are defined in this market by the upper bound of the target federal funds range. The decisions on the target federal funds range are made by the Federal Open Market Committee (FOMC) meetings.\n\nThis market will resolve to the amount of basis points the upper bound of the target federal funds rate is changed by versus the level it was prior to the Federal Reserve's October 2026 meeting.\n\nIf the target federal funds rate is changed to a level not expressed in the displayed options, the change will be rounded up to the nearest 25 and will resolve to the relevant bracket. (e.g. if there's a cut/increase of 12.5 bps it will be considered to be 25 bps)\n\nThe resolution source for this market is the FOMC’s statement after its meeting scheduled for October 27-28, 2026 according to the official calendar: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm.\n\nThe level and change of the target federal funds rate is also published at the official website of the Federal Reserve at https://www.federalreserve.gov/monetarypolicy/openmarket.htm.\n\nThis market may resolve as soon as the FOMC’s statement for their October meeting with relevant data is issued. If no statement is released by the end date of the next scheduled meeting, this market will resolve to the \"No change\" bracket.",
+          "rulesSecondary": "",
+          "resolveAt": null,
+          "pricing": {
+            "buyYesPriceUsd": 500000,
+            "sellYesPriceUsd": 490000,
+            "sellNoPriceUsd": 500000,
+            "buyNoPriceUsd": 510000,
+            "volume": 1488914
+          },
+          "imageUrl": null,
+          "team": null,
+          "outcomes": [
+            "Yes",
+            "No"
+          ],
+          "clobTokenIds": [
+            "55159722761418013044126414276680602270318000841690689684819994448621694923050",
+            "78632395083310670734315205502061249602319069653915932320155846460019107676757"
+          ],
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ],
+          "sportsMarketType": null,
+          "sportsLine": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null
+        },
+        {
+          "provider": "polymarket",
+          "marketId": "POLY-2589812",
+          "status": "open",
+          "result": null,
+          "marketResultPubkey": null,
+          "title": "No change",
+          "openTime": 1781740971,
+          "closeTime": 1793231940,
+          "isTeamMarket": false,
+          "rulesPrimary": "The FED interest rates are defined in this market by the upper bound of the target federal funds range. The decisions on the target federal funds range are made by the Federal Open Market Committee (FOMC) meetings.\n\nThis market will resolve to the amount of basis points the upper bound of the target federal funds rate is changed by versus the level it was prior to the Federal Reserve's October 2026 meeting.\n\nIf the target federal funds rate is changed to a level not expressed in the displayed options, the change will be rounded up to the nearest 25 and will resolve to the relevant bracket. (e.g. if there's a cut/increase of 12.5 bps it will be considered to be 25 bps)\n\nThe resolution source for this market is the FOMC’s statement after its meeting scheduled for October 27-28, 2026 according to the official calendar: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm.\n\nThe level and change of the target federal funds rate is also published at the official website of the Federal Reserve at https://www.federalreserve.gov/monetarypolicy/openmarket.htm.\n\nThis market may resolve as soon as the FOMC’s statement for their October meeting with relevant data is issued. If no statement is released by the end date of the next scheduled meeting, this market will resolve to the \"No change\" bracket.",
+          "rulesSecondary": "",
+          "resolveAt": null,
+          "pricing": {
+            "buyYesPriceUsd": 490000,
+            "sellYesPriceUsd": 480000,
+            "sellNoPriceUsd": 510000,
+            "buyNoPriceUsd": 520000,
+            "volume": 1866919
+          },
+          "imageUrl": null,
+          "team": null,
+          "outcomes": [
+            "Yes",
+            "No"
+          ],
+          "clobTokenIds": [
+            "111061902544814266207267295505639408607400625795891618462682726460921782993748",
+            "42038775866198212615491650114881818219665139981763207699110491615333273795415"
+          ],
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ],
+          "sportsMarketType": null,
+          "sportsLine": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null
+        },
+        {
+          "provider": "polymarket",
+          "marketId": "POLY-2589811",
+          "status": "open",
+          "result": null,
+          "marketResultPubkey": null,
+          "title": "25 bps decrease",
+          "openTime": 1781740928,
+          "closeTime": 1793231940,
+          "isTeamMarket": false,
+          "rulesPrimary": "The FED interest rates are defined in this market by the upper bound of the target federal funds range. The decisions on the target federal funds range are made by the Federal Open Market Committee (FOMC) meetings.\n\nThis market will resolve to the amount of basis points the upper bound of the target federal funds rate is changed by versus the level it was prior to the Federal Reserve's October 2026 meeting.\n\nIf the target federal funds rate is changed to a level not expressed in the displayed options, the change will be rounded up to the nearest 25 and will resolve to the relevant bracket. (e.g. if there's a cut/increase of 12.5 bps it will be considered to be 25 bps)\n\nThe resolution source for this market is the FOMC’s statement after its meeting scheduled for October 27-28, 2026 according to the official calendar: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm.\n\nThe level and change of the target federal funds rate is also published at the official website of the Federal Reserve at https://www.federalreserve.gov/monetarypolicy/openmarket.htm.\n\nThis market may resolve as soon as the FOMC’s statement for their October meeting with relevant data is issued. If no statement is released by the end date of the next scheduled meeting, this market will resolve to the \"No change\" bracket.",
+          "rulesSecondary": "",
+          "resolveAt": null,
+          "pricing": {
+            "buyYesPriceUsd": 7000,
+            "sellYesPriceUsd": 6000,
+            "sellNoPriceUsd": 993000,
+            "buyNoPriceUsd": 994000,
+            "volume": 1252926
+          },
+          "imageUrl": null,
+          "team": null,
+          "outcomes": [
+            "Yes",
+            "No"
+          ],
+          "clobTokenIds": [
+            "33268510350568915228897273528353467773422190590579607471427765079749830445947",
+            "110888499829195123034987289109543572302716575133123608254293945182185650232552"
+          ],
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ],
+          "sportsMarketType": null,
+          "sportsLine": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null
+        },
+        {
+          "provider": "polymarket",
+          "marketId": "POLY-2589814",
+          "status": "open",
+          "result": null,
+          "marketResultPubkey": null,
+          "title": "50+ bps increase",
+          "openTime": 1781739272,
+          "closeTime": 1793231940,
+          "isTeamMarket": false,
+          "rulesPrimary": "The FED interest rates are defined in this market by the upper bound of the target federal funds range. The decisions on the target federal funds range are made by the Federal Open Market Committee (FOMC) meetings.\n\nThis market will resolve to the amount of basis points the upper bound of the target federal funds rate is changed by versus the level it was prior to the Federal Reserve's October 2026 meeting.\n\nIf the target federal funds rate is changed to a level not expressed in the displayed options, the change will be rounded up to the nearest 25 and will resolve to the relevant bracket. (e.g. if there's a cut/increase of 12.5 bps it will be considered to be 25 bps)\n\nThe resolution source for this market is the FOMC’s statement after its meeting scheduled for October 27-28, 2026 according to the official calendar: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm.\n\nThe level and change of the target federal funds rate is also published at the official website of the Federal Reserve at https://www.federalreserve.gov/monetarypolicy/openmarket.htm.\n\nThis market may resolve as soon as the FOMC’s statement for their October meeting with relevant data is issued. If no statement is released by the end date of the next scheduled meeting, this market will resolve to the \"No change\" bracket.",
+          "rulesSecondary": "",
+          "resolveAt": null,
+          "pricing": {
+            "buyYesPriceUsd": 7000,
+            "sellYesPriceUsd": 6000,
+            "sellNoPriceUsd": 993000,
+            "buyNoPriceUsd": 994000,
+            "volume": 794258
+          },
+          "imageUrl": null,
+          "team": null,
+          "outcomes": [
+            "Yes",
+            "No"
+          ],
+          "clobTokenIds": [
+            "18246296022868501258060085368606280205967114341141276439803424448463050819498",
+            "41864497411878191766967581422432961750808440991174085516384293402629587721839"
+          ],
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ],
+          "sportsMarketType": null,
+          "sportsLine": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null
+        },
+        {
+          "provider": "polymarket",
+          "marketId": "POLY-2589810",
+          "status": "open",
+          "result": null,
+          "marketResultPubkey": null,
+          "title": "50+ bps decrease",
+          "openTime": 1781742796,
+          "closeTime": 1793231940,
+          "isTeamMarket": false,
+          "rulesPrimary": "The FED interest rates are defined in this market by the upper bound of the target federal funds range. The decisions on the target federal funds range are made by the Federal Open Market Committee (FOMC) meetings.\n\nThis market will resolve to the amount of basis points the upper bound of the target federal funds rate is changed by versus the level it was prior to the Federal Reserve's October 2026 meeting.\n\nIf the target federal funds rate is changed to a level not expressed in the displayed options, the change will be rounded up to the nearest 25 and will resolve to the relevant bracket. (e.g. if there's a cut/increase of 12.5 bps it will be considered to be 25 bps)\n\nThe resolution source for this market is the FOMC’s statement after its meeting scheduled for October 27-28, 2026 according to the official calendar: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm.\n\nThe level and change of the target federal funds rate is also published at the official website of the Federal Reserve at https://www.federalreserve.gov/monetarypolicy/openmarket.htm.\n\nThis market may resolve as soon as the FOMC’s statement for their October meeting with relevant data is issued. If no statement is released by the end date of the next scheduled meeting, this market will resolve to the \"No change\" bracket.",
+          "rulesSecondary": "",
+          "resolveAt": null,
+          "pricing": {
+            "buyYesPriceUsd": 4000,
+            "sellYesPriceUsd": 3000,
+            "sellNoPriceUsd": 996000,
+            "buyNoPriceUsd": 997000,
+            "volume": 914860
+          },
+          "imageUrl": null,
+          "team": null,
+          "outcomes": [
+            "Yes",
+            "No"
+          ],
+          "clobTokenIds": [
+            "17010377994663817312158123655937348199252960045746746128731746451645055725586",
+            "61725366781282351729996972759460154434089275036953062948669003249092837754960"
+          ],
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ],
+          "sportsMarketType": null,
+          "sportsLine": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null
+        }
+      ],
+      "sportsMarketGroups": []
+    }
+  ],
+  "pagination": {
+    "start": 0,
+    "end": 1,
+    "hasNext": true
+  }
+}

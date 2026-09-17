@@ -79,7 +79,11 @@ func TestNothingAboutASubscriberHasAColumn(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	expected := "deployment,idempotency,manifest,signal"
+	// Six: the four a publisher's own documents need, and the two the Prediction template's
+	// discovery keeps (SEE-96). Naming them here rather than counting them is the point — a table
+	// added by a migration has to be added to this line, which is where somebody reads what a
+	// publisher holds.
+	expected := "deployment,discovery,idempotency,manifest,market,signal"
 	if strings.Join(tables, ",") != expected {
 		t.Fatalf("the tables are %v, expected %s", tables, expected)
 	}

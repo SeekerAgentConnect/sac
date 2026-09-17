@@ -101,39 +101,8 @@ type Lookup func(name string) (string, bool)
 // configuration would either publish as the wrong server or serve an API with no token on it, and
 // both are worse than not starting.
 func Load(lookup Lookup) (*Config, []string) {
-	var problems []string
-	note := func(format string, argument ...any) {
-		problems = append(problems, fmt.Sprintf(format, argument...))
-	}
-	text := func(name, fallback string) string {
-		value, set := lookup(name)
-		if !set || strings.TrimSpace(value) == "" {
-			return fallback
-		}
-		return strings.TrimSpace(value)
-	}
-	// A secret is either a value or the path of a file holding one, never both: a deployment that
-	// set both would have two answers and no way to tell which one was used.
-	secret := func(name string) string {
-		value := text(name, "")
-		path := text(name+"_FILE", "")
-		switch {
-		case value != "" && path != "":
-			note("%s and %s_FILE must not both be set: name the secret or the file it is in, "+
-				"not both", name, name)
-			return ""
-		case path != "":
-			contents, err := os.ReadFile(path)
-			if err != nil {
-				// The error names the path and never any part of the contents.
-				note("%s_FILE %s cannot be read: %v", name, path, pathError(err))
-				return ""
-			}
-			return strings.TrimSpace(string(contents))
-		default:
-			return value
-		}
-	}
+	read := &reader{lookup: lookup}
+	note, text, secret := read.note, read.text, read.secret
 
 	config := &Config{
 		ServerID:       text("PUBLISHER_SERVER_ID", ""),
@@ -230,10 +199,88 @@ func Load(lookup Lookup) (*Config, []string) {
 		}
 	}
 
-	if len(problems) > 0 {
-		return nil, problems
+	if len(read.problems) > 0 {
+		return nil, read.problems
 	}
 	return config, nil
+}
+
+// reader is the environment, as every setting is read from it: one variable per setting, a problem
+// that names the variable rather than guessing a value, and every problem collected so that a first
+// start is fixed in one pass.
+//
+// It is a type rather than a closure because there are two loaders — this one, and the Prediction
+// template's (prediction.go) — and a secret read two slightly different ways would be a
+// deployment's worst kind of surprise.
+type reader struct {
+	lookup   Lookup
+	problems []string
+}
+
+func (r *reader) note(format string, argument ...any) {
+	r.problems = append(r.problems, fmt.Sprintf(format, argument...))
+}
+
+func (r *reader) text(name, fallback string) string {
+	value, set := r.lookup(name)
+	if !set || strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return strings.TrimSpace(value)
+}
+
+// secret is either a value or the path of a file holding one, never both: a deployment that set
+// both would have two answers and no way to tell which one was used.
+func (r *reader) secret(name string) string {
+	value := r.text(name, "")
+	path := r.text(name+"_FILE", "")
+	switch {
+	case value != "" && path != "":
+		r.note("%s and %s_FILE must not both be set: name the secret or the file it is in, "+
+			"not both", name, name)
+		return ""
+	case path != "":
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			// The error names the path and never any part of the contents.
+			r.note("%s_FILE %s cannot be read: %v", name, path, pathError(err))
+			return ""
+		}
+		return strings.TrimSpace(string(contents))
+	default:
+		return value
+	}
+}
+
+// whole reads a setting that is a whole number in a range, with a default for the deployments that
+// have no opinion about it. The message says the range, because a number outside it is almost
+// always somebody reading a different unit than the one the variable is in.
+func (r *reader) whole(name string, fallback, least, most int, about string) int {
+	raw := r.text(name, "")
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < least || value > most {
+		r.note("%s must be a whole number between %d and %d: %s", name, least, most, about)
+		return fallback
+	}
+	return value
+}
+
+// list reads a comma-separated setting: each item trimmed, empties dropped, and the order kept.
+func (r *reader) list(name string) []string {
+	raw := r.text(name, "")
+	if raw == "" {
+		return nil
+	}
+	items := []string{}
+	for _, one := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(one); trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+	return items
 }
 
 var loopback = map[string]bool{"127.0.0.1": true, "localhost": true, "::1": true}

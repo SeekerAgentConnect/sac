@@ -1,7 +1,8 @@
-// Captures real Jupiter transactions as test fixtures (SEE-93, SEE-94).
+// Captures real Jupiter answers as test fixtures (SEE-93, SEE-94, SEE-96).
 //
 //   node scripts/capture-jupiter.mjs            # rewrite fixtures/jupiter/swaps.json
 //   node scripts/capture-jupiter.mjs --orders   # rewrite fixtures/jupiter/orders.json
+//   node scripts/capture-jupiter.mjs --events   # rewrite publisher/internal/jupiter/testdata
 //   node scripts/capture-jupiter.mjs --check    # decode what is committed and print it
 //
 // Why this exists: neither plugin will sign a transaction it cannot read, so the tests have to be
@@ -263,6 +264,159 @@ if (process.argv.includes("--check")) {
       `${one.name}: ${same ? "as recorded" : "CHANGED"} ${JSON.stringify(shape)}`,
     );
   }
+  process.exit(0);
+}
+
+// --- Prediction discovery (SEE-96) ------------------------------------------
+//
+// The publisher template that discovers prediction markets reads two endpoints, and its tests serve
+// these answers back to it from a local server. They are captured verbatim — the whole body, as it
+// arrived, with the request that produced it recorded beside it — because the point of them is that
+// the template's decoder is written against what the provider actually sends rather than against a
+// tidied-up version of it. The provider's prediction API is in beta by its own documentation, so a
+// re-capture that changes a shape is news rather than noise.
+//
+// Seven cases, which are the seven things a poll can run into: a first page, a second page, an empty
+// page, a parameter the provider refuses, a market that is open, one that has closed and settled,
+// and one that does not exist. A rate limit is not here, because provoking one deliberately is
+// rude; the test constructs that body from the provider's published error schema and says so.
+const TESTDATA = fileURLToPath(
+  new URL("../publisher/internal/jupiter/testdata", import.meta.url),
+);
+
+/** The query string the template itself would send: the same parameters, in the same order. */
+function query(parameters) {
+  const values = new URLSearchParams();
+  for (const name of Object.keys(parameters).sort()) {
+    if (parameters[name] === undefined) continue;
+    values.set(name, String(parameters[name]));
+  }
+  return values.toString();
+}
+
+async function captureEvents() {
+  // One event per page, from the smallest bucket the provider has, so a committed fixture is
+  // readable. `economics` events carry five or six markets each, which is what makes them useful:
+  // one event is several candidates.
+  const listing = {
+    provider: "polymarket",
+    category: "economics",
+    includeMarkets: true,
+  };
+  const wantedCases = [
+    {
+      name: "events-first",
+      description: "The first page of a filtered listing, with more to come.",
+      path: `/prediction/v1/events?${query({ ...listing, start: 0, end: 1 })}`,
+    },
+    {
+      name: "events-second",
+      description: "The second page of the same walk.",
+      path: `/prediction/v1/events?${query({ ...listing, start: 1, end: 2 })}`,
+    },
+    {
+      name: "events-empty",
+      description:
+        "A page past the end: no events, and `hasNext` false, which is what stops a walk.",
+      path: `/prediction/v1/events?${query({ ...listing, category: undefined, start: 100000, end: 100002 })}`,
+    },
+    {
+      name: "events-bad-parameter",
+      description:
+        "A category the provider does not have. Its answer names the parameter, and lists the " +
+        "categories it does have — which is where this template's own list came from.",
+      path: `/prediction/v1/events?${query({ ...listing, category: "nonsense", start: 0, end: 1 })}`,
+    },
+    {
+      name: "market-closed",
+      description:
+        "A market that has closed and settled. It is one of September's Bitcoin price markets, " +
+        "so it stays settled: what it is a fixture for is the shape of a closure.",
+      path: "/prediction/v1/markets/POLY-4052423",
+    },
+    {
+      name: "market-missing",
+      description:
+        "A market that does not exist. `code` is what tells this apart from any other 404.",
+      path: "/prediction/v1/markets/SEEKER-NO-SUCH-MARKET",
+    },
+  ];
+
+  const captured = [];
+  for (const one of wantedCases) {
+    captured.push(await answer(one));
+    // The keyless allowance is half a request a second (docs/integrations/jupiter.md).
+    await new Promise((resume) => setTimeout(resume, 2500));
+  }
+  // The open market is whichever the first page's event begins with, so this stays a real pair: the
+  // listing and the direct read of something in it.
+  const first = JSON.parse(captured[0].body);
+  const open = (first.data?.[0]?.markets ?? []).find(
+    (market) => market.status === "open",
+  );
+  if (!open) {
+    throw new Error("the first page carries no open market to read directly");
+  }
+  captured.push(
+    await answer({
+      name: "market-open",
+      description:
+        "A market read directly, as a reconciliation reads one: the same market the first page " +
+        "lists, asked about on its own.",
+      path: `/prediction/v1/markets/${encodeURIComponent(open.marketId)}`,
+    }),
+  );
+  return captured;
+}
+
+async function answer(one) {
+  const response = await fetch(`${endpoint}${one.path}`, {
+    headers: { accept: "application/json" },
+  });
+  const body = await response.text();
+  console.log(`${one.name}: HTTP ${response.status}, ${body.length} bytes`);
+  return { ...one, status: response.status, body };
+}
+
+if (process.argv.includes("--events")) {
+  const captured = await captureEvents();
+  mkdirSync(TESTDATA, { recursive: true });
+  const cases = [];
+  for (const one of captured) {
+    const file = `${one.name}.json`;
+    // Pretty-printed, because a fixture nobody can read is a fixture nobody checks. It is the same
+    // document either way: the test parses it and serves it back.
+    writeFileSync(
+      `${TESTDATA}/${file}`,
+      `${JSON.stringify(JSON.parse(one.body), null, 2)}\n`,
+    );
+    cases.push({
+      name: one.name,
+      description: one.description,
+      path: one.path,
+      status: one.status,
+      body: file,
+    });
+  }
+  writeFileSync(
+    `${TESTDATA}/captured.json`,
+    `${JSON.stringify(
+      {
+        note:
+          "Real answers from Jupiter's keyless prediction API, captured by " +
+          "scripts/capture-jupiter.mjs --events and served back to the publisher template's own " +
+          "client by internal/jupiter's tests. `path` is the request as the template sends it, " +
+          "parameters and all, so a change to what it asks for fails a test instead of quietly " +
+          "testing something else.",
+        endpoint,
+        capturedAt: new Date().toISOString(),
+        cases,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  console.log(`wrote ${cases.length} answers to ${TESTDATA}`);
   process.exit(0);
 }
 

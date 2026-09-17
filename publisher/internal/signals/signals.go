@@ -25,6 +25,7 @@ package signals
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -298,6 +299,28 @@ func Proposal(serverID string, signal Signal) *proposalv1.Proposal {
 		PublisherNote: signal.Note,
 		Values:        values,
 	}
+}
+
+// Statement is what an idempotency key is checked against: the signal a caller asked for, with the
+// parts a template mints left out.
+//
+// It is the validated statement rather than the bytes that arrived, so two calls that differ only
+// in whitespace, key order or how a number was spelled are the same request — which is what a
+// retrying client actually sends — while a call that asks for different terms under the same key is
+// a conflict. The reconciler uses it too, for the same reason: it re-derives a market's statement
+// every cycle, and the key it would use is the same key (internal/discovery).
+func Statement(signal Signal) string {
+	keys := make([]string, 0, len(signal.Terms))
+	for key := range signal.Terms {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	digest := sha256.New()
+	fmt.Fprintf(digest, "%s\n%s\n", signal.ExpiresAt.UTC().Format(time.RFC3339), signal.Note)
+	for _, key := range keys {
+		fmt.Fprintf(digest, "%s=%s\n", key, signal.Terms[key])
+	}
+	return hex.EncodeToString(digest.Sum(nil))
 }
 
 // Fingerprint is the content of a signal, with the two fields that are not content left out: the

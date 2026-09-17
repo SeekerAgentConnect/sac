@@ -1,0 +1,156 @@
+# The Prediction publisher template's stack (SEE-96). Run it from this directory:
+#   cp .env.prediction.example .env.prediction
+#   docker compose --env-file .env.prediction -f compose.prediction.yaml up -d --build
+#   docker compose --env-file .env.prediction -f compose.prediction.yaml run --rm ctl discovery
+#
+# It is a **separate stack** rather than a service added to compose.yaml, and
+# that is the whole point: the two templates are two deployments. Each has its
+# own server ID, its own credential from the gateway, its own database and its
+# own environment, and a publisher running both is running two publishers. They
+# share one image (publisher/Dockerfile) and nothing else — this file names the
+# other binary in it.
+#
+# What starts: the template, and the proxy in front of it. No broker, no Redis,
+# no push credential: delivery to phones is the shared gateway's (SEE-91,
+# SEE-92). Nothing here is internet-facing either — the API is on the host's
+# loopback address, and this template's API is read-only anyway, because its
+# signals are written by its own discovery and not by callers
+# (docs/wiki/prediction-template.md).
+
+name: seeker-prediction
+
+services:
+  prediction:
+    build:
+      context: ..
+      dockerfile: publisher/Dockerfile
+    image: seeker-publisher/copytrading:local
+    # The other binary in the same image. Everything else about the two
+    # templates is shared; the kind each registers, and who writes its signals,
+    # is not.
+    entrypoint: ["/prediction"]
+    restart: unless-stopped
+
+    ports:
+      - "${PREDICTION_BIND:-127.0.0.1}:${PREDICTION_PORT:-8094}:8095"
+
+    environment:
+      # --- the publisher's own half, which both templates share ------------
+      PUBLISHER_SERVER_ID: ${PUBLISHER_SERVER_ID:?set PUBLISHER_SERVER_ID in .env.prediction - the lowercase UUID this publisher was registered with}
+      PUBLISHER_GATEWAY_URL: ${PUBLISHER_GATEWAY_URL:?set PUBLISHER_GATEWAY_URL in .env.prediction - the shared gateway's origin, for example https://feeds.example.com}
+      PUBLISHER_PUBLISH_URL: ${PUBLISHER_PUBLISH_URL:-}
+      PUBLISHER_ENVIRONMENT: ${PUBLISHER_ENVIRONMENT:?set PUBLISHER_ENVIRONMENT in .env.prediction - production or sandbox}
+      BROADCAST_CREDENTIAL: ${BROADCAST_CREDENTIAL:-}
+      BROADCAST_CREDENTIAL_FILE: ${BROADCAST_CREDENTIAL_FILE:-}
+      PUBLISHER_API_TOKEN: ${PUBLISHER_API_TOKEN:-}
+      PUBLISHER_API_TOKEN_FILE: ${PUBLISHER_API_TOKEN_FILE:-}
+      PUBLISHER_API_ADDRESS: 127.0.0.1:8092
+      PUBLISHER_DATABASE_PATH: /data/prediction.db
+      PUBLISHER_DISPLAY_NAME: ${PUBLISHER_DISPLAY_NAME:-}
+      PUBLISHER_PUBLISH_TIMEOUT_SECONDS: ${PUBLISHER_PUBLISH_TIMEOUT_SECONDS:-}
+
+      # --- the provider ----------------------------------------------------
+      # Empty is the keyless host, which serves the prediction endpoints without
+      # a credential and is what a first deployment uses. A key raises the rate
+      # allowance and belongs to the deployment alone: it is never in a
+      # manifest, a document, a log line or an answer (docs/security.md).
+      PREDICTION_PROVIDER_URL: ${PREDICTION_PROVIDER_URL:-}
+      PREDICTION_API_KEY: ${PREDICTION_API_KEY:-}
+      PREDICTION_API_KEY_FILE: ${PREDICTION_API_KEY_FILE:-}
+      PREDICTION_PROVIDER_TIMEOUT_SECONDS: ${PREDICTION_PROVIDER_TIMEOUT_SECONDS:-}
+      PREDICTION_CALL_GAP_MS: ${PREDICTION_CALL_GAP_MS:-}
+
+      # --- what this publisher looks for -----------------------------------
+      PREDICTION_SOURCE: ${PREDICTION_SOURCE:-}
+      PREDICTION_CATEGORIES: ${PREDICTION_CATEGORIES:-}
+      PREDICTION_FILTER: ${PREDICTION_FILTER:-}
+      PREDICTION_TAGS: ${PREDICTION_TAGS:-}
+      PREDICTION_KEYWORDS: ${PREDICTION_KEYWORDS:-}
+      PREDICTION_STATE: ${PREDICTION_STATE:-}
+      PREDICTION_LEAST_CLOSE_IN_MINUTES: ${PREDICTION_LEAST_CLOSE_IN_MINUTES:-}
+      PREDICTION_MOST_CLOSE_IN_MINUTES: ${PREDICTION_MOST_CLOSE_IN_MINUTES:-}
+      PREDICTION_LIFETIME_HOURS: ${PREDICTION_LIFETIME_HOURS:-}
+      PREDICTION_POLL_SECONDS: ${PREDICTION_POLL_SECONDS:-}
+      PREDICTION_PAGE_SIZE: ${PREDICTION_PAGE_SIZE:-}
+      PREDICTION_MOST_PAGES: ${PREDICTION_MOST_PAGES:-}
+      PREDICTION_MOST_OPEN: ${PREDICTION_MOST_OPEN:-}
+      PREDICTION_MOST_CHECKS: ${PREDICTION_MOST_CHECKS:-}
+
+      # --- what every signal says about a deposit --------------------------
+      PREDICTION_DEPOSIT_MINT: ${PREDICTION_DEPOSIT_MINT:-}
+      PREDICTION_LEAST_DEPOSIT: ${PREDICTION_LEAST_DEPOSIT:-}
+      PREDICTION_MOST_DEPOSIT: ${PREDICTION_MOST_DEPOSIT:-}
+      PREDICTION_NOTE: ${PREDICTION_NOTE:-}
+
+    volumes:
+      # The markets this template is tracking, the signals it publishes for them
+      # and what the gateway has confirmed about each. It is the only writable
+      # path in the image, and the only state that must outlive a container: it
+      # is what makes a restart publish nothing new (internal/store).
+      - prediction-data:/data
+      # A secret as a file instead of a value: mount it read-only and point
+      # BROADCAST_CREDENTIAL_FILE, PUBLISHER_API_TOKEN_FILE or
+      # PREDICTION_API_KEY_FILE at it here.
+      # - ${PUBLISHER_SECRETS_DIR:-./secrets}:/etc/seeker:ro
+
+    read_only: true
+    stop_grace_period: 20s
+    stop_signal: SIGTERM
+
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    network_mode: "service:prediction"
+    depends_on:
+      - prediction
+    volumes:
+      - ./Caddyfile.prediction:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+      - proxy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8095/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 15s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # Not started by `up`. It is the same CLI, against this template's API:
+  #
+  #   … run --rm ctl status
+  #   … run --rm ctl discovery      # the filters in force, and every market tracked
+  #   … run --rm ctl poll           # a cycle now, rather than at the next interval
+  #   … run --rm ctl list
+  #
+  # `create`, `update` and `cancel` answer 403 here: this template's signals are
+  # its own, and the way to change what it publishes is to change what it looks
+  # for (internal/api).
+  ctl:
+    profiles: ["ctl"]
+    build:
+      context: ..
+      dockerfile: publisher/Dockerfile
+    image: seeker-publisher/copytrading:local
+    entrypoint: ["/publishctl"]
+    network_mode: "service:prediction"
+    environment:
+      PUBLISHER_API_URL: http://127.0.0.1:8095
+      PUBLISHER_API_TOKEN: ${PUBLISHER_API_TOKEN:-}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  prediction-data:
+  proxy-data:
+  proxy-config:

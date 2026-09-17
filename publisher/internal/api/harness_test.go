@@ -169,12 +169,24 @@ type template struct {
 
 func start(t *testing.T, fake *fakeGateway) *template {
 	t.Helper()
+	return startWith(t, fake, signals.Swap{}, nil)
+}
+
+// startWith is start with the kind the template registered, and a chance to change the plan before
+// the API is built — which is what the Prediction template's own tests need (discovery_test.go).
+func startWith(
+	t *testing.T,
+	fake *fakeGateway,
+	kind signals.Kind,
+	discovering func(*template, *Plan),
+) *template {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "publisher.db")
 	settings := manifest.Settings{
 		ServerID:    server,
 		GatewayURL:  "https://feeds.example.com",
 		Environment: "production",
-		Requirement: signals.Swap{}.Requirement(),
+		Requirement: kind.Requirement(),
 		DisplayName: "Copy trading desk",
 	}
 	documents, err := store.Open(path, store.Stamp{
@@ -223,18 +235,22 @@ func start(t *testing.T, fake *fakeGateway) *template {
 		Now:     func() time.Time { return held.nowValue },
 		Backoff: func(int) time.Duration { return time.Minute },
 	})
-	held.api = httptest.NewServer(New(Plan{
+	plan := Plan{
 		Documents: documents,
 		Drainer:   held.drainer,
-		Kind:      signals.Swap{},
+		Kind:      kind,
 		Settings:  settings,
 		Token:     token,
 		Log:       log,
 		Now:       func() time.Time { return held.nowValue },
 		NewID:     held.nextID,
-	}).Handler())
-	t.Cleanup(held.api.Close)
+	}
 	held.pathValue = path
+	if discovering != nil {
+		discovering(held, &plan)
+	}
+	held.api = httptest.NewServer(New(plan).Handler())
+	t.Cleanup(held.api.Close)
 	return held
 }
 

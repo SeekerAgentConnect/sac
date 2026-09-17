@@ -140,8 +140,9 @@ data class PluginDescriptor(
  * request, and that preparing can fail with a [PluginFailure] — is settled here rather than changed
  * here. Nothing outside this stage could be affected: the app has never carried a plugin, nothing
  * had been published against it, and the manifests that require `jupiter.swap` at `1..1` are this
- * stage's own. A publisher exists now — SEE-95's template publishes `jupiter.swap` at `1..1` — so
- * the next change to [ActionPlugin] raises this number rather than redefining it.
+ * stage's own. Publishers exist now — SEE-95's template publishes `jupiter.swap` at `1..1` and
+ * SEE-96's publishes `jupiter.prediction` at `1..1` — so the next change to [ActionPlugin] raises
+ * this number rather than redefining it.
  */
 const val PLUGIN_CONTRACT: Int = 1
 

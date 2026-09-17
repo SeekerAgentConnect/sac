@@ -136,6 +136,48 @@
   it pass two tests, because the real gateway refuses a cancelled status and the fakes stored it. A
   fake should carry the rules the tests' own claims depend on, and the way to find out which those
   are is to break the code and see which tests notice.
+- **Absence is not evidence** (SEE-96). A market missing from a filtered listing has not necessarily
+  closed: it may have left the filter, stopped trending, or fallen off the pages a cycle read. The
+  first design withdrew on absence, which would have taken back statements for reasons no subscriber
+  could see — and would have made a provider outage look like every market closing at once. The rule
+  that came out of it: when a poll is *filtered*, the listing's silence says nothing, so ask the
+  source about the thing itself and let only its own answer be a conclusion. A temporary failure is
+  then not a small version of a closure; it is not a closure at all.
+- **A derived expiry must not be derived from the clock** (SEE-96). The expiry of a discovered
+  proposal looked like a natural `now + lifetime`, and that would have moved the document on every
+  cycle — a revision every five minutes, and every subscribed phone woken by it. It is the market's
+  own close time, and for a market with none it is counted from a *stored* instant (when the template
+  first saw it). Anything a document is built from has to be as stable as the document is supposed to
+  be, and the clock is the least stable thing in the process.
+- **A test that runs inside one second cannot see a clock bug** (SEE-96). The break above was caught
+  by the test that checks the expiry directly and by the one that reads a real listing — but *not* by
+  "a second cycle publishes nothing", because both of its cycles happen in the same second and the
+  expiry truncates to the same instant. A property that depends on time needs a test that owns the
+  clock, not one that merely runs twice.
+- **A key that must survive a crash should be derived, not minted** (SEE-96). A reconciler that
+  minted an idempotency key per cycle would publish a market twice if it were interrupted between
+  reading the listing and storing the signal. Deriving the key from the thing itself —
+  `market:<venue>:<id>:<generation>` — makes the next cycle reach the same conclusion, and the
+  generation is what lets a re-opened market get a new proposal without reusing a withdrawn one's
+  identity. The same fact said twice, as a `UNIQUE` index, is cheaper than a convention.
+- **Two authors for one document is a bug with a three-day fuse** (SEE-96). The discovering template
+  shares an API with the one whose signals are written by callers, and leaving the writing endpoints
+  routed would have let somebody post a signal that the next cycle silently undid. Naming the
+  difference in the type system (`api.Authorship`) and answering 403 with the reason — rather than
+  404, or nothing — turns "my signal disappeared" into "this template writes its own, and here are
+  its filters".
+- **A filter's semantics are a promise, so write them down before the code** (SEE-96). Whether a
+  keyword is a substring or a word, whether a tag matches half of one, whether a market with no close
+  time passes a window, and whether a market that stops matching is withdrawn are all things an
+  operator will assume one way or the other. Each of them is now a row in a table in the wiki page
+  and a case in a test named after the reason — and the reasons are *counted per cycle*, so "my
+  filters match nothing" is answered by the API rather than by reading the code.
+- **When a fake stands in for the thing under test, the test can stop being about the code**
+  (SEE-96). The opt-in test against the real gateway built its prediction statement by hand, so it
+  proved that *a* document is accepted rather than that the template's own document is — and a break
+  that put a provider's URL in the note left it green. It now runs the reconciler and publishes what
+  a cycle produced. The rule: in an end-to-end test, the only things that may be stand-ins are the
+  things at the ends.
 
 ## Scope
 

@@ -1,17 +1,23 @@
-# Stage 7.1 — the broadcast gateway, its stream, its hints, and the two Jupiter plugins
+# Stage 7.1 — the broadcast gateway, its stream, its hints, the two Jupiter plugins, and the two publisher templates
 
-What was verified for SEE-90 to SEE-94, what was verified by hand, and what is left for the owner to
-run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast` and
-`pnpm check:android`; this page is about the rest.
+What was verified for SEE-90 to SEE-96, what was verified by hand, and what is left for the owner to
+run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast`,
+`pnpm check:publisher` and `pnpm check:android`; this page is about the rest.
 
 ## What no machine here could run
 
 - **Docker.** No daemon is reachable on the machine these checks ran on (`docs/testing/stage-7.md`
-  records the same limit). `docker compose config` accepts the base file and the public overlay,
-  `caddy validate` and `caddy fmt` accept both Caddyfiles, and `centrifugo checkconfig` accepts
-  `broadcast/centrifugo.yaml` — and then every binary was **run natively** instead: the gateway, two
-  broker nodes and Redis.
+  records the same limit). `docker compose config` accepts every stack — the gateway's base file and
+  its overlays, the publisher's base file and public overlay, and the prediction stack — `caddy
+  validate` and `caddy fmt` accept every Caddyfile, and `centrifugo checkconfig` accepts
+  `broadcast/centrifugo.yaml`. Then every binary was **run natively** instead: the gateway, two
+  broker nodes, Redis, and both publisher templates.
 - **A physical Seeker.** The device run below is the owner's.
+- **A market closing on cue (SEE-96).** The live provider's markets close when they close, so the
+  closure path — a tracked market leaving the listing, being asked about directly, and being
+  withdrawn — was run against a **local stand-in** serving the provider's own answer shapes, with
+  the real gateway and the real template binaries either side of it. Everything else in that run
+  used the live keyless provider.
 - **Firebase (SEE-92).** No project or service-account credential was available, so the real send
   leg is an **opt-in** test that skipped: `internal/relay/firebase_test.go` sends one hint to a real
   project when `SEEKERVAULT_FCM_CREDENTIALS` and `SEEKERVAULT_FCM_SERVER` are set. Everything up to
@@ -136,6 +142,36 @@ a phone reads it. Everything below happened on this machine on 2026-09-17
 | `caddy validate` on both Caddyfiles, `docker compose config` on the base and the public overlay | Valid, all four, with no daemon |
 
 What is left is the part that needs two phones, which is step 8 below.
+
+## Verified by hand, with the real prediction template (SEE-96)
+
+The second template discovers what to publish, so its acceptance needs a real listing as well as a
+real gateway. Everything below happened on this machine on 2026-09-17 and 2026-09-18: the real
+gateway binary on two loopback ports, the real template binary, and **the live keyless provider**
+for everything except the closure path — which needs a market to close on cue, and so was run
+against a local stand-in serving the provider's own answer shapes.
+
+| What was asked | What happened |
+| --- | --- |
+| The template started with `PREDICTION_CATEGORIES=economics`, `PREDICTION_KEYWORDS=fed`, `PREDICTION_MOST_OPEN=3` | Manifest published — `stored`, revision 1 — the feed reference printed on stdout, and the filters in a log line of their own |
+| Its first cycle, against the live provider | Four pages, 100 events, **684 markets considered, 36 matched, 3 published, 33 skipped** for the ceiling — and the reasons counted: `no_keyword` 476, `closes_too_late` 126, `not_tradeable` 46 |
+| The documents the gateway then held | Three proposals, `operation: prediction`, `pluginId: jupiter.prediction`, each with the seven terms and an expiry equal to **the market's own close time** (`2026-09-30T12:00:00Z`) |
+| The note in one of them | `Markets I follow. Not advice.` (the operator's line) then `Listed on Jupiter Prediction as "How low will 5-year Treasury yield get in September? — Below 4.20%" (economics), closing 2026-09-30T12:00:00Z. Its state, prices and rules are read on your own phone; which side to take, and how much, is yours.` |
+| The feed read **twice, with no credential**, by two independent clients | **Byte-identical**, 3017 bytes each, `snapshotSequence: 4` |
+| `publishctl create` — a caller trying to publish a signal | `403 written_by_discovery`, nothing stored, and the detail naming `GET /v1/discovery` |
+| `publishctl discovery` | The filters, the last cycle with its reasons, and the three markets with their state, close time, generation and **the link to the provider's own page** — which is in no published document |
+| `publishctl poll` | A cycle now: the same 684 considered, the same 36 matched, `created: 0`, `updated: 0`. `snapshotSequence` stayed at 4 — **a cycle that finds the same markets wakes nobody** |
+| A second `poll` while one was running | `409 busy` |
+| Restarting the template | `markets: 3`, `pending: 0`, the next cycle `created: 0`, and the manifest not republished at all. `snapshotSequence` stayed at 4 |
+| The provider made **unreachable** (`PREDICTION_PROVIDER_URL` pointed at a closed port) | The cycle was `failed` with `provider_unreachable` and the dial error, `cancelled: 0`, and all three signals still `open` and `published`. **An outage withdraws nothing** |
+| A tracked market **gone from the listing**, still open when asked directly | `checked: 1`, `cancelled: 0`, the signal still open at revision 1, and the row's `last_checked_at` set. **Absence is not closure** |
+| The same market gone from the listing and **closed** when asked directly | `cancelled: 1`: revision 2, `PROPOSAL_STATUS_CANCELLED` in the feed |
+| Another cycle with it still closed | `cancelled: 0`, nothing republished — a withdrawal happens once |
+| The market **listed again, open** | A **new** proposal at revision 1 with a new ID, generation 2 on the row, and the withdrawn one still readable as cancelled. A withdrawal is final for every phone that saw it |
+| `caddy validate` on `Caddyfile.prediction`, `docker compose config` on `compose.prediction.yaml` | Valid, with no daemon |
+| `SEEKERVAULT_JUPITER=1 go test ./internal/jupiter/ -run Live` | **PASS** — a live listing and a live market read, with every field discovery depends on present |
+
+What is left is the part that needs two phones, which is step 9 below.
 
 ## The device run (for the owner)
 
@@ -285,10 +321,41 @@ over a real certificate, a real network and the app's own lifecycle.
      signature. There must be nothing: `sqlite3 publisher.db .schema` has no column that could hold
      one.
 
+9. **Two phones, one discovered market, two sides (SEE-96).** The same acceptance as step 8, for the
+   template that finds its own signals — and the difference is what each phone does with one
+   document:
+
+   ```sh
+   cd publisher
+   cp .env.prediction.example .env.prediction   # its own server ID, its own credential
+   docker compose --env-file .env.prediction -f compose.prediction.yaml up -d --build
+   docker compose --env-file .env.prediction -f compose.prediction.yaml run --rm ctl poll
+   docker compose --env-file .env.prediction -f compose.prediction.yaml run --rm ctl discovery
+   ```
+
+   - add **this** publisher's reference on both phones (it is a second publisher, so it is a second
+     connection);
+   - check that both phones show the **same** market, the same note and the same expiry, and that
+     each of them shows the market's *current* state — the price of each side, the rules, the close
+     time — which each phone read from the provider itself, not from the document;
+   - on one phone take **YES**, on the other take **NO**, with different stakes, and act on both;
+   - check that neither phone shows anything about the other's side, stake or result;
+   - then check the template: `ctl discovery` reports the markets it is tracking and what it
+     published, and nothing about either owner; `ctl status` counts markets and signals, not
+     subscribers;
+   - grep the template's log and its database for either wallet address, either side, either stake
+     and either signature. There must be nothing, and `.schema` has no column that could hold one;
+   - wait for a cycle (or run `ctl poll`) and check that **nothing on either phone changes**: a
+     cycle that finds the same market again is not an event;
+   - finally, the closure: when that market closes for real — or, to see it on cue, with
+     `PREDICTION_STATE` left at `open` and the market's event over — check that the next cycle
+     withdraws the proposal, that both phones show it as withdrawn, and that **neither offers to
+     place a new order from it**, while what each of them already did stays in its own Activity.
+
 Record the date, the app build, the Solana endpoint used, the gateway, broker and Firebase project,
-the publisher's server ID and environment, the pair and amount swapped, the market and stake
-ordered, and both transactions' signatures — as `docs/testing/stage-5-3.md` does for the direct
-path.
+the publisher's server ID and environment (**both** publishers, if you run the prediction template
+too), the pair and amount swapped, the market and stake ordered, and both transactions' signatures —
+as `docs/testing/stage-5-3.md` does for the direct path.
 
 ## Not covered here
 

@@ -6,5 +6,10 @@ android/
 # Written by `node sidecar/src/testing/transaction-fixtures.ts`; its own test checks it byte for
 # byte, so reformatting it here would only make the two disagree.
 fixtures/transactions/
+# Real answers from Jupiter's prediction API, written by `node scripts/capture-jupiter.mjs
+# --events` (SEE-96). What they are for is the shape the provider really sends, so a formatter
+# rewriting them would make the committed file disagree with the next capture — and with what the
+# tests serve back.
+publisher/internal/jupiter/testdata/
 # Approved Linear design attachments; docs/design/README.md records their exact hashes.
 docs/design/*.html
