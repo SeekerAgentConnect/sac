@@ -262,4 +262,6 @@
     <string name="acknowledge_despite_warnings">Acknowledge despite warnings</string>
     <string name="problem_rules_changed">Your rules, or this phone\'s own records, changed while this was on screen, so what you read is not what stands now. Nothing was answered and no wallet was opened. The review above has been made again — read it, then answer.</string>
     <string name="problem_not_acknowledged">This request is outside your rules. Read the reasons above, then say you want to go ahead anyway.</string>
+    <string name="problem_server_unsupported">This app does not support what this server needs, so nothing from it can be approved. You can read it and reject it, and this app opened no wallet.</string>
+    <string name="server_unsupported">This app does not support what this server needs. You can read this request and reject it; approving it is unavailable, and no wallet is opened.</string>
 </resources>

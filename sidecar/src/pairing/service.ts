@@ -1,7 +1,8 @@
 /**
  * The phone's PairingService over Connect (docs/protocol.md#pairing). Pair takes the one-use
- * pairing token as its bearer credential. GetConnectionCapabilities, SetFcmToken, and
- * RevokeConnection take the phone's own credential. No credential or FCM target reaches the log.
+ * pairing token as its bearer credential. GetConnectionCapabilities, GetServerManifest,
+ * SetFcmToken, and RevokeConnection take the phone's own credential. No credential or FCM target
+ * reaches the log.
  */
 import type { ConnectRouter } from "@connectrpc/connect";
 
@@ -11,6 +12,7 @@ import {
   PairingService,
   type UpdateCapability,
 } from "../gen/seekervault/request/v1/service_pb.js";
+import type { ServerManifest } from "../gen/seekervault/server/v1/manifest_pb.js";
 import { connectError } from "../requests/phone-service.ts";
 import { RequestFailure } from "../requests/failure.ts";
 import type { PairingStore } from "../storage/pairing-store.ts";
@@ -19,6 +21,10 @@ export function pairingRoutes(
   pairing: PairingStore,
   log: (message: string) => void,
   updateCapability: () => UpdateCapability | undefined = () => undefined,
+  // What this server says about itself (SEE-88). It is published once the listener is up, because
+  // the manifest names the URL the phone reaches — so like updateCapability it is read per call
+  // rather than captured, and the only way it is absent is before anything can ask for it.
+  serverManifest: () => ServerManifest | undefined = () => undefined,
 ): (router: ConnectRouter) => void {
   return (router) =>
     router.service(PairingService, {
@@ -70,6 +76,41 @@ export function pairingRoutes(
           );
         }
         return { updates: updateCapability() };
+      },
+
+      getServerManifest(request, context) {
+        const connectionId = pairing.authenticate(
+          bearerToken(context.requestHeader.get("authorization")),
+        );
+        if (connectionId === undefined) {
+          log(
+            "rejected GetServerManifest: missing, wrong, or revoked phone credential",
+          );
+          throw connectError(
+            new RequestFailure(
+              RequestError.UNAUTHENTICATED,
+              "a valid phone credential is required",
+            ),
+          );
+        }
+        if (request.connectionId !== connectionId) {
+          throw connectError(
+            new RequestFailure(RequestError.NOT_FOUND, "no such connection"),
+          );
+        }
+        const manifest = serverManifest();
+        if (manifest === undefined) {
+          // Not reachable while the sidecar is listening, and deliberately not answered with
+          // UNIMPLEMENTED: that is what an older sidecar says, and it would tell the phone this
+          // server has no manifest when what happened is that this one failed to publish its own.
+          throw connectError(
+            new RequestFailure(
+              RequestError.UNSPECIFIED,
+              "the server manifest is not published",
+            ),
+          );
+        }
+        return { manifest };
       },
 
       setFcmToken(request, context) {

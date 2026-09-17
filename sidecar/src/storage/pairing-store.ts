@@ -88,6 +88,34 @@ export class PairingStore {
     return transaction(this.#db, () => this.#serverId());
   }
 
+  /**
+   * The settings revision to publish for manifest content that fingerprints as [fingerprint]
+   * (SEE-88). It is what a phone caches by, so it changes exactly when the content does: the same
+   * fingerprint gets the same revision however often the sidecar restarts, and a different one
+   * gets the next number up. It never goes backwards, which is what lets a phone refuse a manifest
+   * that claims a revision older than the one it already holds.
+   */
+  settingsRevision(fingerprint: string): number {
+    return transaction(this.#db, () => {
+      this.#serverId(); // the singleton row exists from here on
+      const row = this.#db
+        .prepare(
+          "SELECT manifest_revision, manifest_fingerprint FROM server WHERE singleton = 1",
+        )
+        .get();
+      const stored = integer(row?.manifest_revision);
+      if (stored > 0 && row?.manifest_fingerprint === fingerprint)
+        return stored;
+      const revision = stored + 1;
+      this.#db
+        .prepare(
+          "UPDATE server SET manifest_revision = ?, manifest_fingerprint = ? WHERE singleton = 1",
+        )
+        .run(revision, fingerprint);
+      return revision;
+    });
+  }
+
   /** The paired phone, if there is one. */
   activeConnection(): PairedPhone | undefined {
     const row = this.#db

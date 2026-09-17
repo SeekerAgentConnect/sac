@@ -18,6 +18,15 @@ import io.github.brrenat.seekervault.request.v1.messageSignature
 import io.github.brrenat.seekervault.request.v1.submitResultRequest
 import io.github.brrenat.seekervault.request.v1.transactionSubmission
 import io.github.brrenat.seekervault.request.v1.unknownOutcome
+import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.FeedReference
+import io.github.brrenat.seekervault.servers.ManifestExpectation
+import io.github.brrenat.seekervault.servers.ManifestProblem
+import io.github.brrenat.seekervault.servers.ManifestResult
+import io.github.brrenat.seekervault.servers.ServerManifest
+import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.manifest
+import io.github.brrenat.seekervault.servers.manifestFrom
 import io.github.brrenat.seekervault.sync.ConnectionSyncState
 import io.github.brrenat.seekervault.sync.LocalRequestState
 import io.github.brrenat.seekervault.sync.SyncConnection
@@ -31,6 +40,7 @@ import java.io.IOException
 import java.security.GeneralSecurityException
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +54,27 @@ import kotlinx.coroutines.withContext
 
 /** Storing a new connection failed on this phone; nothing was saved. */
 class StorageException(cause: Throwable) : Exception(cause.message, cause)
+
+/** What adding a publisher's feed came to (SEE-88). */
+sealed interface FeedOutcome {
+    data class Added(val connection: Connection) : FeedOutcome
+
+    /** The phone already reads this publisher's feed; a reference scanned twice adds nothing. */
+    data class Already(val connection: Connection) : FeedOutcome
+
+    /** The gateway answered with a manifest this phone refused, and which rule it broke. */
+    data class Refused(val problem: ManifestProblem) : FeedOutcome
+
+    /** The gateway couldn't be reached, or answered with something unusable. */
+    data class Failed(val outcome: CheckOutcome) : FeedOutcome
+
+    /**
+     * This build has no gateway to resolve a feed through. It is said plainly because the
+     * alternative is worse: a feed that looks added and reads nothing (SEE-90 supplies the
+     * gateway).
+     */
+    data object NoGateway : FeedOutcome
+}
 
 /** What the inbox shows (docs/guides/pending-requests.md). */
 data class Inbox(
@@ -95,6 +126,12 @@ class ConnectionRepository(
      * global rules.
      */
     private val rules: PolicyStore? = null,
+    /**
+     * How a publisher's feed is resolved, when this build has a gateway to resolve it through
+     * (SEE-88). It is optional because the gateway is SEE-90: without one, [addFeed] says so and
+     * adds nothing. Nothing else here uses it, and a direct connection never touches it.
+     */
+    private val feeds: FeedGateway? = null,
     private val deviceName: String,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -285,19 +322,154 @@ class ConnectionRepository(
             }
             publish()
         }
-        return connection
+        // What the server says about itself, asked with the credential it just issued. A server
+        // that answers nothing is the legacy path and the pairing stands either way: the manifest
+        // is what the phone knows about the server, never what makes the connection valid.
+        resolveManifest(connection.id)
+        return find(connection.id) ?: connection
     }
 
     /**
-     * Fetches the connection's pending requests (docs/protocol.md#phone-api). It first sends the
-     * owner's answers that are still waiting, then reads every page. If the sidecar no longer
-     * accepts the credential, the connection is marked revoked and the credential deleted. One
-     * fetch per connection runs at a time.
+     * Adds a publisher's feed from [reference], by resolving its manifest through the shared
+     * gateway (SEE-88).
+     *
+     * The publisher's own server is never contacted — there is nothing in a reference to contact —
+     * and no credential is created or stored, because a feed is a broadcast the phone subscribes to
+     * rather than a server it calls. Everything the gateway hands back is checked against the
+     * reference before anything is written: the identity, the gateway origin, and the channel,
+     * which a publisher may only own.
+     */
+    suspend fun addFeed(reference: FeedReference): FeedOutcome {
+        val gateway = feeds ?: return FeedOutcome.NoGateway
+        find { it.serverId == reference.serverId && it.mode == ConnectionMode.GatewayFeed }
+            ?.let {
+                return FeedOutcome.Already(it)
+            }
+        val message =
+            try {
+                gateway.resolve(reference)
+            } catch (e: GatewayException) {
+                return FeedOutcome.Failed(e.kind.toOutcome())
+            }
+        val manifest =
+            when (
+                val result =
+                    manifestFrom(
+                        message,
+                        ManifestExpectation(
+                            serverId = reference.serverId,
+                            mode = ConnectionMode.GatewayFeed,
+                            origin = reference.gatewayUrl,
+                        ),
+                    )
+            ) {
+                is ManifestResult.Valid -> result.manifest
+                is ManifestResult.Invalid -> return FeedOutcome.Refused(result.problem)
+            }
+        // The phone's own ID for a connection it wasn't given one for. A feed pairs with nothing,
+        // so there is no server to assign it and no device name to have told anyone.
+        val connection =
+            Connection(
+                id = UUID.randomUUID().toString(),
+                label = manifest.name.ifEmpty { PairingCodes.hostOf(reference.gatewayUrl) },
+                serverUrl = reference.gatewayUrl,
+                serverId = manifest.serverId,
+                deviceName = "",
+                pairedAt = now(),
+                hasCredential = false,
+                mode = ConnectionMode.GatewayFeed,
+                server = ServerRecord.Known(manifest),
+            )
+        locked {
+            if (store.get(connection.id) != null) {
+                throw GatewayException(GatewayException.Kind.BadResponse, "a known connection ID")
+            }
+            try {
+                store.put(connection)
+            } catch (e: IOException) {
+                throw StorageException(e)
+            }
+            publish()
+        }
+        return FeedOutcome.Added(connection)
+    }
+
+    /**
+     * Reads what the connection's server says about itself and caches it (SEE-88).
+     *
+     * The cache is keyed by the server's identity and its settings revision: a manifest that
+     * repeats what the phone holds is not written again, and one with a higher revision replaces
+     * it. Anything the phone refuses — another identity, another origin, another mode, a revision
+     * that went backwards — is recorded as a refusal rather than followed, so the credential keeps
+     * going exactly where it always did.
+     *
+     * A server that couldn't be reached leaves the record alone. Not hearing an answer is not an
+     * answer: what the phone last validated stands until the server says something else.
+     *
+     * Only a direct connection is read here, because a feed's manifest is the gateway's to answer
+     * and this build has no gateway to ask (SEE-90). A feed keeps the manifest it was added with.
+     */
+    suspend fun resolveManifest(id: String) {
+        val connection = find(id)?.takeIf { it.usable } ?: return
+        val credential = withContext(io) { vault.get(id) } ?: return
+        val message =
+            try {
+                gateway.serverManifest(connection.serverUrl, credential, id)
+            } catch (e: GatewayException) {
+                return
+            }
+        val record =
+            if (message == null) ServerRecord.Legacy
+            else
+                when (
+                    val result =
+                        manifestFrom(
+                            message,
+                            ManifestExpectation(
+                                serverId = connection.serverId,
+                                mode = connection.mode,
+                                origin = connection.serverUrl,
+                                heldRevision = connection.server.manifest?.settingsRevision,
+                            ),
+                        )
+                ) {
+                    is ManifestResult.Valid -> validated(result.manifest, connection.server)
+                    is ManifestResult.Invalid -> ServerRecord.Refused(result.problem)
+                }
+        if (record == connection.server) return // the same revision, and nothing to rewrite
+        update(id) { it.copy(server = record) }
+    }
+
+    /**
+     * The record for a manifest that passed every rule, against the one the phone already holds.
+     *
+     * The last rule can only be applied here, because it is about the cache rather than about the
+     * document: a revision is the server's promise about its content, so content that changed while
+     * the revision stood still is a contradiction. The phone keeps neither version, because it has
+     * no way to tell which one the server meant.
+     */
+    private fun validated(manifest: ServerManifest, held: ServerRecord): ServerRecord {
+        val known = held.manifest ?: return ServerRecord.Known(manifest)
+        if (manifest.settingsRevision == known.settingsRevision && manifest != known) {
+            return ServerRecord.Refused(ManifestProblem.ChangedWithoutRevision)
+        }
+        return ServerRecord.Known(manifest)
+    }
+
+    /**
+     * Fetches the connection's pending requests (docs/protocol.md#phone-api). It first reads what
+     * the server says about itself, then sends the owner's answers that are still waiting, then
+     * reads every page. If the sidecar no longer accepts the credential, the connection is marked
+     * revoked and the credential deleted. One fetch per connection runs at a time.
      */
     suspend fun refresh(id: String) =
         fetching
             .computeIfAbsent(id) { Mutex() }
             .withLock {
+                // Asked every time rather than once: a server's settings can change under a
+                // connection, and the phone finds out by reading the revision again. It is one
+                // small call the server answers without touching its database.
+                resolveManifest(id)
                 when (val outcome = synchronization?.synchronize(id)) {
                     null,
                     is SynchronizeOutcome.Legacy -> fetch(id)
@@ -933,6 +1105,9 @@ class ConnectionRepository(
 
     private fun find(id: String): Connection? = _connections.value.firstOrNull { it.id == id }
 
+    private fun find(match: (Connection) -> Boolean): Connection? =
+        _connections.value.firstOrNull(match)
+
     // Runs [block] under the lock on the I/O dispatcher.
     private suspend fun <T> locked(block: () -> T): T = lock.withLock {
         withContext(io) { block() }
@@ -941,7 +1116,14 @@ class ConnectionRepository(
     private fun publish() {
         _connections.value =
             store.list().map {
-                it.copy(hasCredential = it.revokedAt == null && vault.contains(it.id))
+                // A feed holds no credential and never did, which is not the same as one having
+                // gone missing: the mode is what the app reads, and it says so itself.
+                it.copy(
+                    hasCredential =
+                        it.mode == ConnectionMode.Direct &&
+                            it.revokedAt == null &&
+                            vault.contains(it.id)
+                )
             }
         _inbox.update { it.copy(results = results.list()) }
     }
@@ -1111,7 +1293,9 @@ class ConnectionRepository(
                     GatewayException.Kind.InvalidState,
                     GatewayException.Kind.StalePreparation,
                     GatewayException.Kind.CertificateRejected,
-                    GatewayException.Kind.CleartextBlocked -> true
+                    GatewayException.Kind.CleartextBlocked,
+                    // A server that doesn't know the call understood it and stored nothing.
+                    GatewayException.Kind.Unimplemented -> true
                     GatewayException.Kind.Unreachable,
                     GatewayException.Kind.BadResponse,
                     GatewayException.Kind.Other -> false

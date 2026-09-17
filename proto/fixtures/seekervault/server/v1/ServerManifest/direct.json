@@ -1,0 +1,10 @@
+{
+  "serverId": "9fda5035-f3b4-4ec3-a68a-5e6caa02397a",
+  "protocolVersion": 1,
+  "settingsRevision": "3",
+  "mode": "CONNECTION_MODE_DIRECT",
+  "direct": {
+    "url": "https://vault.example.com"
+  },
+  "environments": ["SERVER_ENVIRONMENT_PRODUCTION"]
+}

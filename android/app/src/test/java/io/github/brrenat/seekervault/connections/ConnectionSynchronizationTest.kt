@@ -65,7 +65,9 @@ class ConnectionSynchronizationTest {
             repository.inbox.value.pending[connection.id]?.map { it.ref.requestId },
         )
         assertEquals(1, transport.calls)
-        assertEquals(1, gateway.sent.count { it.first == URL }) // pairing only; no ListPending
+        // The pending list came from the snapshot: the shared sync path replaces ListPending, and
+        // reading what the server says about itself (SEE-88) is not a fetch of requests.
+        assertEquals(0, server.lists)
         assertEquals(CheckOutcome.Ok, repository.connection(connection.id)?.lastCheck?.outcome)
     }
 

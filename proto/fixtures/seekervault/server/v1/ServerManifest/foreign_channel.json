@@ -1,0 +1,11 @@
+{
+  "serverId": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+  "protocolVersion": 1,
+  "settingsRevision": "1",
+  "mode": "CONNECTION_MODE_GATEWAY_FEED",
+  "feed": {
+    "gatewayUrl": "https://gateway.example.com",
+    "channel": "server/9fda5035-f3b4-4ec3-a68a-5e6caa02397a"
+  },
+  "environments": ["SERVER_ENVIRONMENT_PRODUCTION"]
+}

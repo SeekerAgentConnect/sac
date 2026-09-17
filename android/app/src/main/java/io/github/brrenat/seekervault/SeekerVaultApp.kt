@@ -55,6 +55,7 @@ import io.github.brrenat.seekervault.live.LiveCommandViewModel
 import io.github.brrenat.seekervault.notifications.RequestNotificationPermission
 import io.github.brrenat.seekervault.policy.PolicyEditorScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
+import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.ui.BottomDestination
 import io.github.brrenat.seekervault.ui.SeekerBottomBar
 import io.github.brrenat.seekervault.ui.SeekerSheet
@@ -444,6 +445,10 @@ fun SeekerVaultApp(
                                             inboxState.assessments[key]?.consent,
                                 onAcknowledge = { inbox.acknowledge(key, it) },
                                 onRules = { push(Routes.POLICY + connectionId) },
+                                // Whether this build supports the server this came from (SEE-88).
+                                // Read here rather than stored: it depends on the plugins this
+                                // build carries, which the connection on disk knows nothing about.
+                                executable = inbox.support(connectionId).executable,
                                 onBack = pop,
                             )
                             // Opening a transfer fetches a fresh transaction and reads it on this
@@ -560,6 +565,7 @@ private fun ConnectionDetailsRoute(
         onPendingRequests = onPendingRequests,
         onRules = onRules,
         live = state.updates.connections[id],
+        support = state.support[id],
     )
 }
 

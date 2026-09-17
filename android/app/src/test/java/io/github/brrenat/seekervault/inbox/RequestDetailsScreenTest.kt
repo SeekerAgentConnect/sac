@@ -70,6 +70,7 @@ class RequestDetailsScreenTest {
         signingProblem: SigningProblem? = null,
         checking: Boolean = false,
         assessment: RequestAssessment? = null,
+        executable: Boolean = true,
     ) = compose.setContent {
         SeekerVaultTheme {
             RequestDetailsScreen(
@@ -87,12 +88,45 @@ class RequestDetailsScreenTest {
                 checking = checking,
                 onCheckStatus = { checks++ },
                 assessment = assessment,
+                executable = executable,
             )
         }
     }
 
     private fun status(id: Int, vararg args: Any) =
         compose.onNodeWithTag(InboxTags.STATUS).assertTextEquals(context.getString(id, *args))
+
+    @Test
+    fun aRequestFromAnUnsupportedServerIsReadableAndRejectableButNotApprovable() {
+        // SEE-88: what is missing is on this phone, so the request is shown in full, Reject stays,
+        // and the affirmative answer is not offered — with a line saying why, in the same place
+        // everything else about the request is said (docs/wiki/server-manifests.md).
+        show(executable = false)
+
+        compose.onNodeWithTag(InboxTags.MESSAGE, useUnmergedTree = true).assertTextEquals(TEXT)
+        compose
+            .onNodeWithTag(InboxTags.SERVER_UNSUPPORTED)
+            .assertTextEquals(context.getString(R.string.server_unsupported))
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertIsNotEnabled()
+        compose.onNodeWithTag(InboxTags.REJECT).assertIsEnabled()
+
+        compose.onNodeWithTag(InboxTags.REJECT).performClick()
+
+        assertEquals(listOf(Answer.Reject), answers)
+    }
+
+    @Test
+    fun anUnsupportedServersTransferIsNotPreparedAndHasNoApproveButton() {
+        show(TRANSFER, wallet = SELECTED, executable = false)
+
+        compose
+            .onNodeWithTag(InboxTags.SERVER_UNSUPPORTED)
+            .assertTextEquals(context.getString(R.string.server_unsupported))
+        // Not "checking": nothing was asked for, so nothing is on the way.
+        compose.onNodeWithTag(InboxTags.TRANSFER_CHECKING).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertDoesNotExist()
+        assertEquals(0, approvals)
+    }
 
     @Test
     fun showsThePendingRequestAndOffersAcknowledgeAndReject() {

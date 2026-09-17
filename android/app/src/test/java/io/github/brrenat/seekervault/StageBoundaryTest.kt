@@ -29,13 +29,14 @@ import org.w3c.dom.Element
  * one changes them.
  */
 class StageBoundaryTest {
-    private val main =
+    private val repoRoot =
         File(
             checkNotNull(System.getProperty("seekervault.repoRoot")) {
                 "run this test through Gradle"
-            },
-            "android/app/src/main",
+            }
         )
+
+    private val main = File(repoRoot, "android/app/src/main")
 
     /** [file]'s code, with the comments taken out, for a check that is about what it does. */
     private fun withoutComments(file: File): String =
@@ -414,23 +415,133 @@ class StageBoundaryTest {
                 .filter { provider.containsMatchIn(it.readText()) }
                 .map { it.name },
         )
-        // Two files know the registry exists at all: the one that composes the app, and the one
-        // that asks which operation a request is for so the owner's rules can be applied to it.
-        // MainActivity passes the composed registry along without naming the package.
+        // Which code knows the registry exists at all. Two packages: the boundary itself, and
+        // `servers/`, which is where a server's stated requirements are matched against it
+        // (SEE-88). Outside them, four files: the one that composes the app, the one that asks
+        // which operation a request is for so the owner's rules can be applied to it, the one that
+        // shows the owner whether their servers are supported, and the store that reads a cached
+        // manifest's plugin names back off disk. MainActivity passes the composed registry along
+        // without naming the package.
+        val owners =
+            listOf("plugins", "servers").map {
+                File(main, "java/io/github/brrenat/seekervault/$it")
+            }
         val importers =
             File(main, "java")
                 .walk()
                 .filter { it.extension == "kt" }
-                .filterNot {
-                    it.startsWith(File(main, "java/io/github/brrenat/seekervault/plugins"))
-                }
+                .filterNot { file -> owners.any { file.startsWith(it) } }
                 .filter {
                     it.readText().contains("import io.github.brrenat.seekervault.plugins.")
                 }
                 .map { it.name }
                 .sorted()
                 .toList()
-        assertEquals(listOf("InboxViewModel.kt", "SeekerVaultApplication.kt"), importers)
+        assertEquals(
+            listOf(
+                "ConnectionStore.kt",
+                "ConnectionsViewModel.kt",
+                "InboxViewModel.kt",
+                "SeekerVaultApplication.kt",
+            ),
+            importers,
+        )
+    }
+
+    @Test
+    fun aServerManifestIsBoundedDataAndTheCodeThatReadsItActsOnNothing() {
+        // SEE-88 lets a server say what it is: its identity, the contract it speaks, its settings
+        // revision, its mode, one endpoint or channel reference, and the client plugins its
+        // operations need. The package that reads one is data and pure functions — it decides
+        // whether this build supports a server, and it cannot do anything about it
+        // (docs/wiki/server-manifests.md).
+        val servers = File(main, "java/io/github/brrenat/seekervault/servers")
+        assertTrue(servers.isDirectory)
+        val sources = servers.walk().filter { it.extension == "kt" }.toList()
+        assertTrue(sources.isNotEmpty())
+        // What it reaches for, and every one of them is a rule or a name: the pairing code's own
+        // URL and ID rules, which a manifest's endpoint is held to as well; the plugin registry
+        // this build carries, and the names a manifest may use for it; and the protocol message
+        // itself.
+        val reaches =
+            sources
+                .flatMap { it.readLines() }
+                .map { it.trim() }
+                .filter { it.startsWith("import io.github.brrenat.seekervault.") }
+                .map { it.removePrefix("import ").substringBefore(" as ") }
+                .filterNot { it.startsWith("io.github.brrenat.seekervault.servers.") }
+                .distinct()
+                .sorted()
+        assertEquals(
+            listOf(
+                "io.github.brrenat.seekervault.connections.PairingCodeProblem",
+                "io.github.brrenat.seekervault.connections.PairingCodes",
+                "io.github.brrenat.seekervault.connections.isConnectionId",
+                "io.github.brrenat.seekervault.plugins.PluginEnvironment",
+                "io.github.brrenat.seekervault.plugins.PluginId",
+                "io.github.brrenat.seekervault.plugins.PluginRegistry",
+                "io.github.brrenat.seekervault.plugins.isPluginId",
+                "io.github.brrenat.seekervault.server.v1.ConnectionMode",
+                "io.github.brrenat.seekervault.server.v1.ServerEnvironment",
+                "io.github.brrenat.seekervault.server.v1.ServerManifest",
+            ),
+            reaches,
+        )
+        // And nothing in it opens a connection, holds a credential, stores anything, approves
+        // anything, or so much as suspends: reading a manifest is a decision about what this build
+        // can do, made from data, with no way to act on the answer. The comments discuss all of
+        // that on purpose, so this reads the code with the comments taken out of it.
+        val authority =
+            Regex(
+                """\b(WalletAdapter|WalletSession|WalletRepository|WalletStore|authToken|""" +
+                    """signMessage|signAndSend|withWallet|ConnectionGateway|FeedGateway|""" +
+                    """ConnectionRepository|UpdateTransport|OkHttp|HttpClient|CredentialVault|""" +
+                    """ConnectionStore|ResultStore|PolicyStore|ActivityLog|SyncStore|approve|""" +
+                    """Approval|suspend)\b"""
+            )
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { authority.containsMatchIn(withoutComments(it)) }.map { it.name },
+        )
+        // The document itself is bounded, and this is the whole of it. A field that could carry a
+        // permission, a policy, or a wallet endpoint would have to be added here first.
+        val proto =
+            File(repoRoot, "proto/seekervault/server/v1/manifest.proto")
+                .readLines()
+                .filterNot { it.trim().startsWith("//") }
+                .joinToString("\n")
+        val fields =
+            Regex("""^\s*(?:repeated\s+)?[\w.]+\s+(\w+)\s*=\s*\d+;""", RegexOption.MULTILINE)
+                .findAll(proto)
+                .map { it.groupValues[1] }
+                .toList()
+        assertEquals(
+            listOf(
+                "server_id",
+                "protocol_version",
+                "settings_revision",
+                "mode",
+                "required_plugins",
+                "environments",
+                "display_name",
+                "direct",
+                "feed",
+                "url",
+                "gateway_url",
+                "channel",
+                "plugin_id",
+                "min_contract",
+                "max_contract",
+            ),
+            fields,
+        )
+        assertEquals(
+            emptyList<String>(),
+            Regex("""(?i)\b(permission|policy|wallet|credential|token|secret|install|script)\b""")
+                .findAll(proto)
+                .map { it.value }
+                .toList(),
+        )
     }
 
     @Test

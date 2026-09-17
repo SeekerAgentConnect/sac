@@ -4,6 +4,7 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
+import type { ServerManifest } from "../../server/v1/manifest_pb.js";
 import type { ActionRequest, Approval, PreparedTransaction, RequestRef, WalletBinding } from "./request_pb.js";
 
 /**
@@ -146,6 +147,44 @@ export declare type GetConnectionCapabilitiesResponse = Message<"seekervault.req
  * Use `create(GetConnectionCapabilitiesResponseSchema)` to create a new message.
  */
 export declare const GetConnectionCapabilitiesResponseSchema: GenMessage<GetConnectionCapabilitiesResponse>;
+
+/**
+ * @generated from message seekervault.request.v1.GetServerManifestRequest
+ */
+export declare type GetServerManifestRequest = Message<"seekervault.request.v1.GetServerManifestRequest"> & {
+  /**
+   * Must be the connection authenticated by the bearer phone credential.
+   *
+   * @generated from field: string connection_id = 1;
+   */
+  connectionId: string;
+};
+
+/**
+ * Describes the message seekervault.request.v1.GetServerManifestRequest.
+ * Use `create(GetServerManifestRequestSchema)` to create a new message.
+ */
+export declare const GetServerManifestRequestSchema: GenMessage<GetServerManifestRequest>;
+
+/**
+ * @generated from message seekervault.request.v1.GetServerManifestResponse
+ */
+export declare type GetServerManifestResponse = Message<"seekervault.request.v1.GetServerManifestResponse"> & {
+  /**
+   * Always set: a server that speaks this RPC has a manifest. Its mode is always
+   * CONNECTION_MODE_DIRECT here, because this is the private sidecar the phone paired with; a
+   * publisher's manifest is resolved through the gateway and never from the publisher itself.
+   *
+   * @generated from field: seekervault.server.v1.ServerManifest manifest = 1;
+   */
+  manifest?: ServerManifest | undefined;
+};
+
+/**
+ * Describes the message seekervault.request.v1.GetServerManifestResponse.
+ * Use `create(GetServerManifestResponseSchema)` to create a new message.
+ */
+export declare const GetServerManifestResponseSchema: GenMessage<GetServerManifestResponse>;
 
 /**
  * @generated from message seekervault.request.v1.SetFcmTokenRequest
@@ -669,6 +708,21 @@ export declare const PairingService: GenService<{
     methodKind: "unary";
     input: typeof GetConnectionCapabilitiesRequestSchema;
     output: typeof GetConnectionCapabilitiesResponseSchema;
+  },
+  /**
+   * GetServerManifest returns what this server says about itself (SEE-88): its identity, the
+   * contract it speaks, its settings revision, its mode, and the client plugins its operations
+   * need. Every field is scoped to the authenticated connection, and connection_id must name that
+   * connection. A sidecar from before Stage 7.1 returns UNIMPLEMENTED, which is the documented
+   * legacy-direct path: it publishes no manifest, and the phone keeps calling it exactly as it
+   * always has (docs/wiki/server-manifests.md#legacy-direct).
+   *
+   * @generated from rpc seekervault.request.v1.PairingService.GetServerManifest
+   */
+  getServerManifest: {
+    methodKind: "unary";
+    input: typeof GetServerManifestRequestSchema;
+    output: typeof GetServerManifestResponseSchema;
   },
   /**
    * SetFcmToken registers or rotates the caller's current FCM direct-send target. Clearing names

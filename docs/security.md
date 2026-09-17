@@ -64,6 +64,28 @@ Pairing tokens are:
 - **The phone does the same.** A scanned code is always a new pairing. It never changes the URL of a connection the phone already has, even when its `server` ID matches. So a code that points at another host can't take over an existing connection or its credential. The phone sends each credential only to the URL it paired with. Before pairing, the app shows the code's server URL and ID for the owner to confirm, and notes a server it already knows.
 - **The server ID is how the phone recognizes a sidecar.** It stays the same across restarts and pairings, so the phone can tell the owner that a new code comes from a sidecar it already knows, possibly at a new address.
 
+### A manifest never redirects one either (SEE-88)
+
+From Stage 7.1 a server also *describes* itself, and the same rule holds: a description confirms
+what the phone already has, and can never change it
+([`wiki/server-manifests.md`](wiki/server-manifests.md)).
+
+- **The identity has to be the one the connection trusts.** A manifest naming another server's ID
+  is refused, so no server can hand a connection over to a different one.
+- **The origin has to be the one the connection already uses** — the paired server URL, character
+  for character, or the gateway a feed was added through. A manifest naming another origin is
+  refused, and the credential keeps going exactly where it did.
+- **The mode cannot change.** A paired direct connection can never become a gateway feed, and a
+  feed can never become a direct connection. A missing mode is refused rather than read as either.
+- **A publisher may name only its own channel** (`server/<its own ID>`), so a manifest cannot claim
+  another publisher's audience.
+- **A refusal is recorded, not acted on.** The connection stays as it was and keeps working as it
+  always did; what changes is that nothing from that server can be executed, because a server whose
+  own description this phone would not accept is not one to act for.
+- **A manifest can ask for nothing.** There is no field in it for a permission, a policy, a wallet
+  endpoint, or anything loadable, and a stage-boundary check reads the protocol file and fails if
+  the field set changes.
+
 ## One active phone per sidecar
 
 A sidecar has one paired phone at a time. A phone can pair with several sidecars (SAW-012).

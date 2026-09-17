@@ -35,6 +35,10 @@ import io.github.brrenat.seekervault.policy.RequestFacts
 import io.github.brrenat.seekervault.policy.policyFacts
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
+import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.ServerSupport
+import io.github.brrenat.seekervault.servers.executable
+import io.github.brrenat.seekervault.servers.serverSupport
 import io.github.brrenat.seekervault.transactions.TransferInspection
 import io.github.brrenat.seekervault.transactions.inspectTransfer
 import io.github.brrenat.seekervault.transactions.transfer
@@ -108,6 +112,15 @@ enum class SigningProblem {
      * A warning is theirs to overrule, and overruling it is a thing they do on purpose.
      */
     NotAcknowledged,
+    /**
+     * This build doesn't support what the request's server needs (SEE-88): a client plugin it
+     * doesn't carry, one at a contract version it doesn't call, a protocol version it doesn't
+     * speak, or a manifest it refused. The request can be read and rejected; nothing about it is
+     * approved, nothing is prepared, and no wallet is opened. It is not a warning the owner can
+     * overrule — there is nothing on this phone that would carry the operation out
+     * (docs/wiki/server-manifests.md#viewing-without-executing).
+     */
+    ServerUnsupported,
 }
 
 /**
@@ -380,6 +393,12 @@ class InboxViewModel(
         val inbox = repository.inbox.value
         if (key in activity.value.sending || inbox.result(key) != null) return
         if (inbox.pendingRequest(key) == null) return
+        // Rejecting always works: the owner must be able to clear a request whatever its server
+        // is. An affirmative answer to a server this build doesn't support does not (SEE-88), and
+        // it stops here as well as in the screen, so the rule holds wherever the call came from.
+        if (answer != Answer.Reject && !support(key.connectionId).executable) {
+            return problem(key, SigningProblem.ServerUnsupported)
+        }
         activity.update { it.copy(sending = it.sending + key) }
         viewModelScope.launch {
             try {
@@ -538,6 +557,21 @@ class InboxViewModel(
         )
     }
 
+    /**
+     * Whether this build supports the server [connectionId] belongs to (SEE-88).
+     *
+     * Derived on every read from the manifest the connection caches and the plugins compiled into
+     * this build, so a build that carries more plugins than the last one supports more servers
+     * without anything stored having to change. A connection this phone no longer has supports
+     * nothing.
+     */
+    fun support(connectionId: String): ServerSupport =
+        serverSupport(
+            repository.connection(connectionId)?.server ?: ServerRecord.Unknown,
+            plugins,
+            environment,
+        )
+
     private fun preparedFor(key: RequestKey): PreparedTransaction? =
         (activity.value.preparations[key] as? Preparation.Ready)?.prepared
 
@@ -590,6 +624,10 @@ class InboxViewModel(
         val selected = wallet.wallet.value
         val problem =
             when {
+                // Before the wallet is even looked at: a server this build doesn't support has
+                // nothing here that would carry its operations out, and an approval is not a
+                // smaller version of one (SEE-88).
+                !support(key.connectionId).executable -> SigningProblem.ServerUnsupported
                 selected == null -> SigningProblem.NoWallet
                 reviewed == null ||
                     selected.address != reviewed.address ||
@@ -654,6 +692,11 @@ class InboxViewModel(
         if (!force && existing != null) return
         val request = repository.inbox.value.pendingRequest(key) ?: return
         if (request.transfer() == null) return
+        // Preparing is the first step of executing, so it stops with everything else: a server
+        // this build doesn't support gets no transaction built for it to sign (SEE-88).
+        if (!support(key.connectionId).executable) {
+            return problem(key, SigningProblem.ServerUnsupported)
+        }
         activity.update { it.copy(preparations = it.preparations + (key to Preparation.Running)) }
         viewModelScope.launch {
             val outcome =
@@ -687,6 +730,9 @@ class InboxViewModel(
         if (key in activity.value.sending || inbox.result(key) != null) return
         val request = inbox.pendingRequest(key) ?: return
         val transfer = request.transfer() ?: return
+        if (!support(key.connectionId).executable) {
+            return problem(key, SigningProblem.ServerUnsupported)
+        }
         val held = activity.value.preparations[key]
         // What they reviewed must be what this phone holds now: a version read again while they
         // were reading is a different transaction, and has to be reviewed on its own.

@@ -186,6 +186,42 @@ flowchart LR
 - **An unserved operation establishes nothing.** No plugin, no preparation, or unreadable bytes all produce unread facts: value moves, nothing is verified, and the verdict can never be `ALLOWED`. Rules written for one thing are never inherited by an operation they were never applied to.
 - **The bundled list is empty at SEE-86.** The boundary lands before anything is written against it, so a swap resolves to "no plugin" and behaves exactly as it did before.
 
+### Server manifests and connection modes
+
+From SEE-88 a connection's kind is part of its record, and it comes from the server's own validated
+statement rather than from how it was added. [`wiki/server-manifests.md`](wiki/server-manifests.md)
+is the full account.
+
+```mermaid
+flowchart TB
+    Pair["a pairing code<br>seekervault://pair"] --> Direct["a direct connection"]
+    Ref["a feed reference<br>seekervault://feed"] --> Feed["a gateway feed"]
+    Direct -- "GetServerManifest" --> Validate
+    Feed -- "through the gateway (SEE-90)" --> Validate
+    Validate["servers/manifestFrom<br>identity · origin · mode · ownership · bounds"]
+    Validate --> Record["Connection.mode + ServerRecord<br>cached by identity and revision"]
+    Record --> Support["servers/serverSupport<br>derived, never stored"]
+    Registry["PluginRegistry<br>what this build carries"] --> Support
+    Support --> Review["review and approval<br>executable, or viewable only"]
+```
+
+- **A manifest confirms; it can never move a connection.** The identity, the origin and the mode it
+  names must be the ones the connection already has, so no manifest redirects a credential, changes
+  a transport, or claims another publisher's channel. A mode is never guessed, and a missing one is
+  never read as the more permissive case.
+- **A revision is a promise about content.** The phone caches by identity and revision: the same
+  revision keeps what it holds, a higher one replaces it, a lower one is refused, and content that
+  changed while the revision stood still is a contradiction the phone keeps neither half of.
+- **Support is derived on every read.** What a build can do depends on the plugins compiled into it,
+  so a verdict is never written to disk — it would outlive the build that reached it. Missing,
+  incompatible, unsupported protocol, unsupported environment and refused are separate states.
+- **Viewable is not a smaller kind of executable.** A server this build doesn't support can be read
+  and its requests rejected; nothing is prepared, no wallet is opened, and nothing falls back to
+  signing a raw message or an unaccounted-for transaction.
+- **The modes are independent.** One phone holds a direct connection and any number of feeds at
+  once; one server's manifest says nothing about another's connection, and a private request is
+  never converted into a broadcast one.
+
 ## Trust boundaries
 
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
@@ -193,6 +229,12 @@ flowchart LR
 - **The sidecar is trusted to relay, not to sign.** The phone parses each prepared transaction itself, and the approval names that transaction's exact hash. A sidecar that swapped the transaction after the review couldn't get it approved.
 - **An adapter gets no authority of its own (SEE-87).** MCP is one optional way an agent reaches the sidecar. The adapter asks the request core through one named boundary that decides nothing, holds nothing, and authenticates nobody, so it cannot reach around idempotency, validation or the lifecycle; and a deployment can serve no `/mcp` at all without changing pairing, the phone's permissions or the wallet-signing rules ([`wiki/mcp-adapter.md`](wiki/mcp-adapter.md)).
 - **A plugin gets no wallet authority (SEE-86).** A bundled client plugin prepares bytes and reads them back; it never receives a credential or the wallet's authorization token, never reaches a sidecar, and cannot approve or send. The owner's approval and the one wallet interaction stay in core, and a stage-boundary check fails if that changes ([`wiki/client-plugins.md`](wiki/client-plugins.md)).
+- **A server describes itself; it decides nothing (SEE-88).** A manifest is bounded declarative
+  data: it cannot install code, ask for a permission, carry or relax a policy, or name a wallet
+  endpoint, and it cannot name an identity, an origin, a mode or a channel other than the one the
+  connection already has. What the phone will do with a server is settled by the build it is
+  running and by the owner, and a server it doesn't support is viewable and never executable
+  ([`wiki/server-manifests.md`](wiki/server-manifests.md)).
 - **Policies stay on the phone.** The sidecar never receives the policy or its assessment, so an agent can't learn or change the rules through it. One global document supplies defaults and one optional override document records where each connection differs; a connection never reads another connection's overrides ([`policy.md`](policy.md)).
 - **A policy advises; it never decides.** Input validation settles what is executable, and it is judged before any policy is consulted. A policy can only add reasons for the owner to read: there is no `BLOCKED`, and no rule can make a preparation the phone couldn't read whole approvable (SAW-025). The editor offers no setting that would change that, because there is none to offer (SAW-027), and the review screen shows the two apart, in their own words, with no tick that crosses between them (SAW-028).
 - **A verdict is read, never acted on.** Nothing stores one. The rules and the records are read again at the moment the owner answers, and an answer whose assessment changed while it was on screen stops instead of going ahead on what they read (SAW-028).
@@ -214,6 +256,8 @@ flowchart LR
 | The assessment the owner read when they answered | The phone, as codes on the Activity record; never the rules themselves, and never sent anywhere | SAW-028 |
 | Assessments | Nowhere — computed on demand from the rules and the records, never stored | SAW-026 |
 | Daily counters | The phone, derived from the Activity records in `filesDir` | SAW-026 |
+| A connection's mode, and the server manifest it caches | The phone, in the connection's own JSON file in `filesDir` (version 2). Whether this build *supports* that server is never stored: it is derived from the compiled plugin registry on every read | SEE-88 |
+| The manifest's settings revision, and a fingerprint of the content it was computed for | The sidecar's SQLite database, on the `server` singleton | SEE-88 |
 | Update revisions, cursors, retained replay, and frozen snapshots | The sidecar's SQLite database, through `src/storage/` | SAW-048 contract; SAW-049 implementation |
 | One private current FCM target per active connection | The sidecar's SQLite database, through `src/storage/`; no phone copy and no read API | SAW-055 |
 | FCM invalidation payload | Nowhere; two fixed strings are validated and discarded before empty-input Sync work is enqueued | SAW-056 |
@@ -257,5 +301,5 @@ These hold across the components, and every stage keeps them:
 | 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
-| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests and connection modes, shared proposals with device-local decisions, the Go broadcast gateway, and the two Jupiter plugins with their server templates |
+| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local decisions, the Go broadcast gateway, and the two Jupiter plugins with their server templates |
 | 8 | Release checks |

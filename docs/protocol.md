@@ -546,6 +546,44 @@ SAW-056 adds the separate content-free invalidation below.
 
 <a id="fcm-invalidation-saw-056"></a>
 
+### The server manifest (SEE-88)
+
+A server says what it is, and the phone reads it rather than assuming. The document is
+[`seekervault.server.v1.ServerManifest`](../proto/seekervault/server/v1/manifest.proto), and
+[`docs/wiki/server-manifests.md`](wiki/server-manifests.md) is the architecture page; this section
+is the contract.
+
+| Field | Meaning | Rules |
+| --- | --- | --- |
+| `server_id` | The server's lasting ID | A lowercase UUID. It must be the one the connection already trusts: the pairing code's, or the feed reference's. |
+| `protocol_version` | The phone–server contract it speaks | `1` is Stage 7.1. Zero is never published. A version the phone doesn't speak makes the server *unsupported*, not malformed. |
+| `settings_revision` | The revision of everything else here | A positive `uint64` that changes whenever the content does and never goes backwards. |
+| `mode` | `CONNECTION_MODE_DIRECT` or `CONNECTION_MODE_GATEWAY_FEED` | Never unspecified. The phone does not guess a mode, and never reads a missing one as a feed. |
+| `required_plugins` | The bundled client plugins its operations need | At most 16, each a well-formed plugin ID (`jupiter.swap`) with `1 <= min_contract <= max_contract`, no duplicates. |
+| `environments` | `production`, `sandbox`, or both | At least one, never unspecified, no repeats. |
+| `display_name` | What the server calls itself | Optional; at most 64 UTF-8 bytes of printable, trimmed text. Never verified, and only ever a default label. |
+| `direct.url` | Where a direct server is reached | The connection's own server URL, character for character, in the pairing code's normalized form. |
+| `feed.gateway_url` | The shared gateway's origin | The origin the feed was added through, with no path, query, user info, or fragment. |
+| `feed.channel` | The channel the publisher publishes on | `server/<server_id>` for this manifest's own `server_id`: a publisher may name only its own. |
+
+**`PairingService.GetServerManifest`** serves it, authenticated with the phone credential and scoped
+to the caller's connection like `GetConnectionCapabilities`: a `connection_id` that isn't the
+caller's gets `not_found`. The response always carries a manifest.
+
+**A sidecar from before Stage 7.1 answers `unimplemented`.** That is the legacy-direct path: the
+server publishes no manifest, requires nothing, and the phone keeps calling it exactly as it always
+has. It is an absence, not a failure, and the phone records it as one.
+
+**The Node sidecar always declares `direct`,** its own public URL, no required plugins, and
+`production`. Its revision is real: it is stored, and it moves by one exactly when the content the
+manifest is built from changes, so restarting with the same settings republishes the same revision.
+
+**The phone refuses a manifest rather than following it** when the identity, the origin or the mode
+is not the one the connection already has, when the revision goes backwards, when the content
+changed while the revision stood still, when a feed names a channel its server doesn't own, or when
+anything here is malformed or unbounded. A refusal is recorded against the connection and changes
+nothing about where its credential goes.
+
 ### FCM invalidation and authoritative fetch (SAW-056)
 
 Every durable request creation or state/outcome/confirmation change already appends a complete
@@ -620,6 +658,7 @@ Each credential opens one role:
 | `/mcp`: every method and tool | Yes | 401 | 401 | 401 | 401 |
 | `PairingService.Pair` | `unauthenticated` | Yes, once | `unauthenticated` | `unauthenticated` | `unauthenticated` |
 | `PairingService.GetConnectionCapabilities` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
+| `PairingService.GetServerManifest` (from SEE-88) | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `PairingService.SetFcmToken` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `PairingService.RevokeConnection` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `RequestService`: `ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, `CheckStatus`, `PublishWallet` | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |

@@ -47,8 +47,12 @@ describe("compatibility with the Stage 1 live diagnostic", () => {
     assert.deepEqual(imports(file_seekervault_request_v1_request), [
       "google/protobuf/timestamp",
     ]);
+    // The service also carries what a server says about itself (SEE-88), which is its own
+    // package because every kind of server publishes one, including the ones that serve no
+    // RequestService at all.
     assert.deepEqual(imports(file_seekervault_request_v1_service), [
       "seekervault/request/v1/request",
+      "seekervault/server/v1/manifest",
     ]);
   });
 
@@ -61,6 +65,7 @@ describe("compatibility with the Stage 1 live diagnostic", () => {
       [
         ["Pair", "unary"],
         ["GetConnectionCapabilities", "unary"],
+        ["GetServerManifest", "unary"],
         ["SetFcmToken", "unary"],
         ["RevokeConnection", "unary"],
         ["ListPending", "unary"],

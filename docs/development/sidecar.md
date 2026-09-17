@@ -139,11 +139,31 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
 | `/seekervault.request.v1.PairingService/Pair` | A phone that's pairing | `Authorization: Bearer <pairing token>`, from `pnpm pair` | Exchanges the pairing token for a connection and its credential |
 | `/seekervault.request.v1.PairingService/GetConnectionCapabilities` | The paired phone | `Authorization: Bearer <phone credential>` | Reports the caller's optional production-update capability without requiring re-pairing (SAW-048) |
+| `/seekervault.request.v1.PairingService/GetServerManifest` | The paired phone | `Authorization: Bearer <phone credential>` | Reports what this server says about itself: identity, protocol version, settings revision, `direct` mode, its own URL, and the client plugins it needs — which is none (SEE-88) |
 | `/seekervault.request.v1.PairingService/SetFcmToken` | The paired phone | `Authorization: Bearer <phone credential>` | Registers, rotates, or compare-clears the caller connection's private FCM target (SAW-055) |
 | `/seekervault.request.v1.PairingService/RevokeConnection` | The paired phone | `Authorization: Bearer <phone credential>` | Revokes the caller's own connection |
 | `/seekervault.request.v1.RequestService/ListPending`, `GetRequest`, `PrepareRequest`, `SubmitResult`, `CheckStatus`, and `PublishWallet` | The paired phone | `Authorization: Bearer <phone credential>` | Connect unary calls of the durable workflow, and the wallet the owner selected (SAW-015) |
 | `/seekervault.update.v1.UpdateService/Subscribe` | The paired phone, configured update origin | `Authorization: Bearer <phone credential>` | Bidirectional gRPC/HTTP2 replay and live durable request changes |
 | `/seekervault.update.v1.UpdateService/Sync` | The paired phone, configured update origin | `Authorization: Bearer <phone credential>` | Unary gRPC/HTTP2 frozen reconciliation and bounded read-only confirmation |
+
+### What the sidecar says about itself (SEE-88)
+
+`GetServerManifest` answers with this server's own manifest
+([`docs/protocol.md#the-server-manifest-see-88`](../protocol.md#the-server-manifest-see-88),
+[`docs/wiki/server-manifests.md`](../wiki/server-manifests.md)). It is always the same shape,
+because this sidecar is always the same kind of server: `CONNECTION_MODE_DIRECT`, protocol version
+1, the URL the phone paired with (`SIDECAR_PUBLIC_URL`, or the listening URL when none is set),
+`production`, and no required client plugins — an acknowledgement, a message signature and a
+transfer are actions the app carries out itself.
+
+The settings revision is stored, not a constant. At startup the sidecar fingerprints the content of
+the manifest it would publish and asks the database for the revision that content is at
+([migration 6](#migrations)): the same settings republish the same revision however often the
+sidecar restarts, and changing one — the public URL, say — moves it up by one. It never moves down,
+which is what lets a phone refuse a manifest older than the one it already holds.
+
+There is nothing to configure. A deployment from before Stage 7.1 answers `unimplemented`, which
+the phone reads as the legacy-direct path: no manifest, and behaviour exactly as it was.
 
 ### Production update listener
 
@@ -326,6 +346,12 @@ To look inside, run `sqlite3 sidecar/data/sidecar.db "SELECT request_id, kind, s
 - **Migration 5 adds FCM registration (SAW-055):** nullable `fcm_token` on each connection. Existing
   and revoked connections start with no target; registration fills only the active connection, and
   revocation clears it.
+- **Migration 6 adds the manifest's settings revision (SEE-88):** `manifest_revision` and
+  `manifest_fingerprint` on the `server` singleton. A phone caches a manifest by identity and
+  revision, so the revision has to change exactly when the content does and never go backwards.
+  Startup fingerprints the manifest it would publish and compares: the same fingerprint keeps the
+  revision, a different one takes the next number. An upgraded database starts at revision 1 the
+  first time it publishes.
 
 ### The lifecycle in the sidecar
 

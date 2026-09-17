@@ -42,6 +42,8 @@ import {
   protectedResourceMetadata,
   type OAuthConfig,
 } from "./oauth.ts";
+import type { ServerManifest } from "./gen/seekervault/server/v1/manifest_pb.js";
+import { publishManifest } from "./manifest.ts";
 import { pairingRoutes } from "./pairing/service.ts";
 import { phoneRoutes } from "./phone-api.ts";
 import { createFcmSender, type FcmSender } from "./push/fcm.ts";
@@ -206,19 +208,27 @@ async function serve(
   const core = agentRequests(requests, { preparer, tracker });
   const mcp = mcpAdapter(config, bridge, core, log);
   let updateUrl: string | undefined;
+  // What this server says about itself (SEE-88). It names the URL the phone paired with and
+  // calls, which is known only once the listener is up, so it is published there and read per
+  // call. The routes close over this box rather than over the manifest itself.
+  const published: { manifest?: ServerManifest } = {};
   const routes = (includeUpdates: boolean) =>
     connectNodeAdapter({
       routes: (router) => {
         // The Stage 1 diagnostic keeps its development token; the durable API needs a paired phone.
         phoneRoutes(bridge, config.phoneToken, log)(router);
         requestRoutes(requests, pairing, log, preparer, tracker)(router);
-        pairingRoutes(pairing, log, () =>
-          updateUrl === undefined
-            ? undefined
-            : create(UpdateCapabilitySchema, {
-                protocolVersion: UPDATE_PROTOCOL_VERSION,
-                grpcUrl: updateUrl,
-              }),
+        pairingRoutes(
+          pairing,
+          log,
+          () =>
+            updateUrl === undefined
+              ? undefined
+              : create(UpdateCapabilitySchema, {
+                  protocolVersion: UPDATE_PROTOCOL_VERSION,
+                  grpcUrl: updateUrl,
+                }),
+          () => published.manifest,
         )(router);
         if (includeUpdates) {
           updateRoutes(
@@ -311,6 +321,15 @@ async function serve(
   } else if (secure) {
     updateUrl = new URL(config.publicUrl ?? url).origin;
   }
+  // The manifest names the URL the phone pairs with and calls, which is the public URL when the
+  // operator configured one and the listening URL otherwise. Its revision moves only when that
+  // content changes, so a restart with the same settings republishes the same revision and the
+  // phone keeps what it cached.
+  const manifest = publishManifest(pairing, {
+    serverId,
+    url: config.publicUrl ?? url,
+  });
+  published.manifest = manifest;
   log(
     `listening on ${url}: ${mcp === undefined ? "no MCP endpoint (MCP_ENABLED=false)" : `MCP at ${url}/mcp`}, phone API at ${url}/${LiveCommandService.typeName}`,
   );
@@ -318,6 +337,10 @@ async function serve(
     updateUrl === undefined
       ? "production updates are not configured"
       : `production updates are served as gRPC over HTTP/2 at ${updateUrl}`,
+  );
+  log(
+    `the server manifest names ${config.publicUrl ?? url} as a direct server, ` +
+      `protocol ${manifest.protocolVersion}, settings revision ${manifest.settingsRevision}`,
   );
 
   let closing: Promise<void> | undefined;

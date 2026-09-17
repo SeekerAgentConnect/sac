@@ -3,11 +3,23 @@ package io.github.brrenat.seekervault.connections.storage
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.PluginId
+import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.ManifestProblem
+import io.github.brrenat.seekervault.servers.PluginRequirement
+import io.github.brrenat.seekervault.servers.SERVER_PROTOCOL
+import io.github.brrenat.seekervault.servers.ServerManifest
+import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.ServerReference
+import io.github.brrenat.seekervault.servers.channelFor
 import java.io.File
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -86,5 +98,119 @@ class ConnectionStoreTest {
             store.put(a.copy(id = "../../shared_prefs/x"))
         }
         assertNull(store.get("../../shared_prefs/x"))
+    }
+
+    @Test
+    fun readsAConnectionPairedBeforeManifestsExistedAsWhatItIs() {
+        // A version 1 file: a direct connection whose server has not been asked for a manifest.
+        // The owner paired it and nothing about it changed, so it keeps working exactly as it did,
+        // and the next refresh finds out whether its server publishes one (SEE-88).
+        dir.mkdirs()
+        File(dir, "${a.id}.json")
+            .writeText(
+                "{\"version\":1,\"id\":\"${a.id}\",\"label\":\"${a.label}\"," +
+                    "\"serverUrl\":\"${a.serverUrl}\",\"serverId\":\"${a.serverId}\"," +
+                    "\"deviceName\":\"Seeker\",\"pairedAt\":\"2026-09-11T12:00:00.123Z\"}"
+            )
+
+        val restored = checkNotNull(store.get(a.id))
+
+        assertEquals(a, restored)
+        assertEquals(ConnectionMode.Direct, restored.mode)
+        assertEquals(ServerRecord.Unknown, restored.server)
+        assertTrue(restored.usable)
+    }
+
+    @Test
+    fun keepsAValidatedManifestAndTheModeItSelects() {
+        val manifest =
+            ServerManifest(
+                serverId = a.serverId,
+                protocolVersion = SERVER_PROTOCOL,
+                settingsRevision = 7,
+                mode = ConnectionMode.Direct,
+                reference = ServerReference.Direct(a.serverUrl),
+                required = listOf(PluginRequirement(PluginId("jupiter.swap"), 1..2)),
+                environments = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
+                name = "Home server",
+            )
+        val third = "7c6b5a49-3827-4615-a0b9-c8d7e6f5a4b3"
+        store.put(a.copy(server = ServerRecord.Known(manifest)))
+        store.put(b.copy(server = ServerRecord.Legacy))
+        store.put(a.copy(id = third, server = ServerRecord.Refused(ManifestProblem.ForeignChannel)))
+
+        val reopened = ConnectionStore(dir)
+
+        assertEquals(ServerRecord.Known(manifest), reopened.get(a.id)?.server)
+        assertEquals(ServerRecord.Legacy, reopened.get(b.id)?.server)
+        assertEquals(
+            ServerRecord.Refused(ManifestProblem.ForeignChannel),
+            reopened.get(third)?.server,
+        )
+    }
+
+    @Test
+    fun keepsAFeedWithItsGatewayAndChannelAndNoCredential() {
+        val feed =
+            a.copy(
+                serverUrl = GATEWAY,
+                deviceName = "",
+                hasCredential = false,
+                mode = ConnectionMode.GatewayFeed,
+                server = ServerRecord.Known(feedManifest()),
+            )
+        store.put(feed)
+
+        val restored = checkNotNull(ConnectionStore(dir).get(a.id))
+
+        assertEquals(feed, restored)
+        // A feed is not a server this phone calls, so it is not "usable" in the sense that every
+        // sidecar path means by that word (SEE-88).
+        assertFalse(restored.usable)
+    }
+
+    @Test
+    fun dropsAManifestItCanNoLongerReadWithoutLosingAPairedConnection() {
+        // A direct connection is the owner's pairing; a cached manifest is only what its server
+        // last said. One this phone can't read any more goes back to unasked, and the connection
+        // stays exactly as it was.
+        store.put(a.copy(server = ServerRecord.Legacy))
+        val file = File(dir, "${a.id}.json")
+        file.writeText(file.readText().replace("\"legacy\"", "\"something else\""))
+
+        assertEquals(ServerRecord.Unknown, store.get(a.id)?.server)
+        assertTrue(checkNotNull(store.get(a.id)).usable)
+
+        // A feed has nothing left without its manifest — no gateway, no channel, no requirements —
+        // and it must never quietly become a direct connection, so the whole record goes.
+        store.put(
+            b.copy(
+                serverUrl = GATEWAY,
+                hasCredential = false,
+                mode = ConnectionMode.GatewayFeed,
+                server = ServerRecord.Known(feedManifest()),
+            )
+        )
+        val feedFile = File(dir, "${b.id}.json")
+        feedFile.writeText(feedFile.readText().replace("\"channel\"", "\"chanel\""))
+
+        assertNull(store.get(b.id))
+    }
+
+    private companion object {
+        /** A feed's manifest, as the phone validated one through the gateway (SEE-88). */
+        fun feedManifest() =
+            ServerManifest(
+                serverId = SERVER_B,
+                protocolVersion = SERVER_PROTOCOL,
+                settingsRevision = 1,
+                mode = ConnectionMode.GatewayFeed,
+                reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_B)),
+                required = listOf(PluginRequirement(PluginId("jupiter.prediction"), 1..1)),
+                environments = setOf(PluginEnvironment.Production),
+            )
+
+        const val GATEWAY = "https://gateway.example.com"
+        const val SERVER_B = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
     }
 }

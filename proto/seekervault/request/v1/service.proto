@@ -3,6 +3,7 @@ syntax = "proto3";
 package seekervault.request.v1;
 
 import "seekervault/request/v1/request.proto";
+import "seekervault/server/v1/manifest.proto";
 
 // PairingService connects a phone to this sidecar and disconnects it. A sidecar has one active
 // phone connection at a time. The operator shows a one-use pairing code (`pnpm pair`), a URI
@@ -15,6 +16,13 @@ service PairingService {
   // production update endpoint with its existing phone credential. Every field is scoped to the
   // authenticated connection, and connection_id must name that connection.
   rpc GetConnectionCapabilities(GetConnectionCapabilitiesRequest) returns (GetConnectionCapabilitiesResponse);
+  // GetServerManifest returns what this server says about itself (SEE-88): its identity, the
+  // contract it speaks, its settings revision, its mode, and the client plugins its operations
+  // need. Every field is scoped to the authenticated connection, and connection_id must name that
+  // connection. A sidecar from before Stage 7.1 returns UNIMPLEMENTED, which is the documented
+  // legacy-direct path: it publishes no manifest, and the phone keeps calling it exactly as it
+  // always has (docs/wiki/server-manifests.md#legacy-direct).
+  rpc GetServerManifest(GetServerManifestRequest) returns (GetServerManifestResponse);
   // SetFcmToken registers or rotates the caller's current FCM direct-send target. Clearing names
   // the target being removed so a late invalid-token or unregistration result cannot erase a newer
   // rotation. Neither the target nor the phone credential is returned or logged.
@@ -96,6 +104,18 @@ message GetConnectionCapabilitiesResponse {
   // sidecar returns UNIMPLEMENTED because it does not know this RPC at all; both cases retain
   // manual Refresh, but the phone distinguishes unavailable configuration from upgrade needed.
   UpdateCapability updates = 1;
+}
+
+message GetServerManifestRequest {
+  // Must be the connection authenticated by the bearer phone credential.
+  string connection_id = 1;
+}
+
+message GetServerManifestResponse {
+  // Always set: a server that speaks this RPC has a manifest. Its mode is always
+  // CONNECTION_MODE_DIRECT here, because this is the private sidecar the phone paired with; a
+  // publisher's manifest is resolved through the gateway and never from the publisher itself.
+  seekervault.server.v1.ServerManifest manifest = 1;
 }
 
 message SetFcmTokenRequest {

@@ -127,4 +127,11 @@
     <string name="pair_failed_response">The server\'s answer wasn\'t valid, so nothing was saved.</string>
     <string name="pair_failed_storage">This phone couldn\'t store the credential securely, so nothing was saved.</string>
     <string name="pair_failed_other">Pairing failed.</string>
+    <!-- What kind of server a connection is, and whether this build supports it (SEE-88). -->
+    <string name="connection_status_feed">A shared feed. This phone reads it through the gateway and holds no credential for it.</string>
+    <string name="connection_status_unsupported_plugin">This app doesn\'t have a client plugin this server needs, so nothing from it can be approved.</string>
+    <string name="connection_status_unsupported_version">This app has the client plugin this server needs, but not at a version it works with.</string>
+    <string name="connection_status_unsupported_protocol">This server speaks a newer version of the protocol than this app. Update the app to use it.</string>
+    <string name="connection_status_unsupported_environment">This server doesn\'t serve the environment this app is running in.</string>
+    <string name="connection_status_manifest_refused">This app refused this server\'s own description of itself, so nothing from it can be approved.</string>
 </resources>
