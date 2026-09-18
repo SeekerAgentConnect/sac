@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { chromium } from "playwright";
 import { format } from "prettier";
+import sharp from "sharp";
 
 const TOOL_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DESIGN_DIR = path.resolve(TOOL_DIR, "..");
@@ -27,8 +28,14 @@ const FONT_FILE = path.join(
 );
 const EXPORT_NAMES = ["components.html", "app.html", "flow.html"];
 const VIEWPORT = { width: 1400, height: 1000 };
-const DEFAULT_DSF = 2.625;
+const DEFAULT_DSF = 3;
+const PHONE_FRAME = { width: 390, height: 844 };
 const READY_TIMEOUT_MS = 30_000;
+const PNG_ENCODE = Object.freeze({
+  compressionLevel: 9,
+  adaptiveFiltering: false,
+  palette: false,
+});
 
 // This is the DOM order observed in flow.html. Captions make a changed export
 // fail by name instead of silently assigning a screenshot to the wrong scene.
@@ -500,16 +507,90 @@ async function serializeElement(element, metadata) {
   };
 }
 
-async function writeElementCapture(element, outputBase, metadata) {
-  await mkdir(path.dirname(outputBase), { recursive: true });
-  await element.screenshot({
-    path: `${outputBase}.png`,
+async function writeExactPng(element, outputPath) {
+  const box = await element.boundingBox();
+  if (!box) {
+    throw new Error(`No bounding box for ${outputPath}`);
+  }
+
+  const dsf = currentOptions.dsf;
+  const buf = await element.screenshot({
     animations: "disabled",
     omitBackground: false,
   });
+  const uncropped = await sharp(buf).metadata();
+  const expectedUncroppedWidth = Math.round(
+    (Math.ceil(box.x + box.width) - Math.floor(box.x)) * dsf,
+  );
+  const expectedUncroppedHeight = Math.round(
+    (Math.ceil(box.y + box.height) - Math.floor(box.y)) * dsf,
+  );
+  if (
+    uncropped.width !== expectedUncroppedWidth ||
+    uncropped.height !== expectedUncroppedHeight
+  ) {
+    throw new Error(
+      `Uncropped screenshot for ${outputPath} is ${uncropped.width}×${uncropped.height}; expected enclosing integer rect × dsf ${expectedUncroppedWidth}×${expectedUncroppedHeight} (box ${box.x},${box.y} ${box.width}×${box.height}, dsf ${dsf})`,
+    );
+  }
+
+  const left = Math.round((box.x - Math.floor(box.x)) * dsf);
+  const top = Math.round((box.y - Math.floor(box.y)) * dsf);
+  const width = Math.round(box.width * dsf);
+  const height = Math.round(box.height * dsf);
+  if (
+    left < 0 ||
+    top < 0 ||
+    left + width > uncropped.width ||
+    top + height > uncropped.height
+  ) {
+    throw new Error(
+      `Crop ${left},${top} ${width}×${height} does not fit uncropped ${uncropped.width}×${uncropped.height} for ${outputPath}`,
+    );
+  }
+
+  await sharp(buf)
+    .extract({ left, top, width, height })
+    .png(PNG_ENCODE)
+    .toFile(outputPath);
+
+  const cropped = await sharp(outputPath).metadata();
+  if (cropped.width !== width || cropped.height !== height) {
+    throw new Error(
+      `PNG size mismatch for ${outputPath}: wrote ${cropped.width}×${cropped.height}, expected round(bbox × dsf) ${width}×${height}`,
+    );
+  }
+
+  return { box, width, height };
+}
+
+function assertRoundBboxSize(label, box, pngWidth, pngHeight) {
+  const expectedWidth = Math.round(box.width * currentOptions.dsf);
+  const expectedHeight = Math.round(box.height * currentOptions.dsf);
+  if (pngWidth !== expectedWidth || pngHeight !== expectedHeight) {
+    throw new Error(
+      `${label} PNG is ${pngWidth}×${pngHeight}; expected round(bbox × ${currentOptions.dsf}) ${expectedWidth}×${expectedHeight} from ${formatDimension(box.width)} × ${formatDimension(box.height)} CSS px`,
+    );
+  }
+}
+
+function assertPhoneFramePng(label, png) {
+  const expectedWidth = Math.round(PHONE_FRAME.width * currentOptions.dsf);
+  const expectedHeight = Math.round(PHONE_FRAME.height * currentOptions.dsf);
+  if (png.width !== expectedWidth || png.height !== expectedHeight) {
+    throw new Error(
+      `Phone-frame ${label} is ${png.width}×${png.height}; expected ${expectedWidth}×${expectedHeight}`,
+    );
+  }
+}
+
+async function writeElementCapture(element, outputBase, metadata) {
+  await mkdir(path.dirname(outputBase), { recursive: true });
+  const png = await writeExactPng(element, `${outputBase}.png`);
+  assertRoundBboxSize(outputBase, png.box, png.width, png.height);
   const rendered = await serializeElement(element, metadata);
   await writeFile(`${outputBase}.html`, rendered.html);
-  return rendered;
+  return { ...rendered, png };
 }
 
 async function captureComponents(browser, outputRoot, fontCss) {
@@ -585,8 +666,20 @@ async function captureComponents(browser, outputRoot, fontCss) {
         component: record.component,
         variant: record.variant,
       });
-      record.width = rendered.width;
-      record.height = rendered.height;
+      record.width = rendered.png.box.width;
+      record.height = rendered.png.box.height;
+      record.pngWidth = rendered.png.width;
+      record.pngHeight = rendered.png.height;
+      if (
+        record.component === "button" &&
+        record.slug === "variant-filled-size-lg" &&
+        currentOptions.dsf === DEFAULT_DSF &&
+        (record.pngWidth !== 505 || record.pngHeight !== 144)
+      ) {
+        throw new Error(
+          `button/variant-filled-size-lg.png is ${record.pngWidth}×${record.pngHeight}; expected 505×144`,
+        );
+      }
     }
 
     records.sort(
@@ -599,11 +692,11 @@ async function captureComponents(browser, outputRoot, fontCss) {
       "",
       `Specimens: ${records.length}`,
       "",
-      "| Component | Original variant | Slug | Size (CSS px) | PNG | HTML |",
-      "| --- | --- | --- | --- | --- | --- |",
+      "| Component | Original variant | Slug | Size (CSS px) | PNG (px) | PNG | HTML |",
+      "| --- | --- | --- | --- | --- | --- | --- |",
       ...records.map((record) => {
         const relativeBase = `components/${record.component}/${record.slug}`;
-        return `| ${markdownCell(record.component)} | ${markdownCell(record.variant)} | ${record.slug} | ${formatDimension(record.width)} × ${formatDimension(record.height)} | [PNG](${relativeBase}.png) | [HTML](${relativeBase}.html) |`;
+        return `| ${markdownCell(record.component)} | ${markdownCell(record.variant)} | ${record.slug} | ${formatDimension(record.width)} × ${formatDimension(record.height)} | ${record.pngWidth} × ${record.pngHeight} | [PNG](${relativeBase}.png) | [HTML](${relativeBase}.html) |`;
       }),
       "",
     ].join("\n");
@@ -864,11 +957,16 @@ async function captureScreens(browser, outputRoot, fontCss) {
   try {
     for (const { scene, caption } of FLOW_SCENES) {
       const element = await flowPhone(flow.page, caption);
-      await writeElementCapture(element, path.join(outputDirectory, scene), {
-        screen: scene,
-        source: "flow.html",
-        label: caption,
-      });
+      const rendered = await writeElementCapture(
+        element,
+        path.join(outputDirectory, scene),
+        {
+          screen: scene,
+          source: "flow.html",
+          label: caption,
+        },
+      );
+      assertPhoneFramePng(scene, rendered.png);
     }
 
     const rail = await flowUnrolledRail(flow.page);
@@ -917,11 +1015,16 @@ async function captureScreens(browser, outputRoot, fontCss) {
           `app.html scene ${scene} did not render its ${heading} heading`,
         );
       }
-      await writeElementCapture(element, path.join(outputDirectory, scene), {
-        screen: scene,
-        source: "app.html",
-        interaction: `open ${tileText} from the request rail`,
-      });
+      const rendered = await writeElementCapture(
+        element,
+        path.join(outputDirectory, scene),
+        {
+          screen: scene,
+          source: "app.html",
+          interaction: `open ${tileText} from the request rail`,
+        },
+      );
+      assertPhoneFramePng(scene, rendered.png);
     } finally {
       await app.context.close();
     }
