@@ -1,0 +1,90 @@
+# One public HTTPS/HTTP2 entry point for the Stage 7.1 broadcast gateway.
+# The gateway's read and publisher APIs remain separate loopback listeners; this
+# file exposes reads plus one unidirectional stream publicly, and publications
+# only on the Docker-internal port used by compose.demos.yaml.
+{
+	admin off
+	email {$ACME_EMAIL}
+	log {
+		output stderr
+		format console
+	}
+	# Caddy redacts credential headers unless log_credentials is enabled. It is
+	# deliberately not enabled here.
+}
+
+{$BROADCAST_DOMAIN} {
+	log {
+		output stderr
+		format console
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Public, unauthenticated broadcast reads. This listener cannot write: the
+	# FeedService is served by the gateway's read-only socket.
+	@feed path /seekervault.gateway.v1.FeedService/*
+	handle @feed {
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy 127.0.0.1:8090
+	}
+
+	# The only public broker route. The TLS client negotiates HTTP/2 with Caddy;
+	# Caddy keeps gRPC as h2c to Centrifugo and never applies an idle timeout.
+	@stream path /centrifugal.centrifugo.unistream.CentrifugoUniStream/Consume
+	handle @stream {
+		reverse_proxy h2c://centrifugo:11000 {
+			flush_interval -1
+			transport http {
+				versions h2c
+				read_timeout 0
+				write_timeout 0
+			}
+		}
+	}
+
+	# No health, publisher, broker administration, or Redis route is public.
+	handle {
+		abort
+	}
+}
+
+:443 {
+	abort
+}
+
+# Publications from the two demo containers. Port 8082 is present only on the
+# publisher-ingress Docker network: compose publishes no host port for it.
+http://:8082 {
+	@publish path /seekervault.gateway.v1.PublisherService/*
+	handle @publish {
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy 127.0.0.1:8091
+	}
+
+	handle {
+		abort
+	}
+}
+
+# Container health crosses the proxy and read socket but stays on loopback in
+# the broadcast network namespace.
+http://127.0.0.1:8081 {
+	bind 127.0.0.1
+	log_skip /healthz
+
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8090
+	}
+
+	handle {
+		abort
+	}
+}

@@ -1,0 +1,164 @@
+# Optional Stage 7.1 demo publishers (SEE-106).
+#
+# Always combine this with compose.yaml. The four named runtime services can be
+# started or replaced with --no-deps, leaving the infrastructure untouched:
+#   docker compose -f compose.yaml -f compose.demos.yaml up -d --no-deps \
+#     copytrading copytrading-proxy prediction prediction-proxy
+
+name: seeker-agent-wallet-server
+
+services:
+  copytrading:
+    build:
+      context: ../..
+      dockerfile: publisher/Dockerfile
+    image: ${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}
+    restart: unless-stopped
+    env_file:
+      - ${COPYTRADING_ENV_FILE:-.env.copytrading}
+    environment:
+      # The manifest carries the public URL from the env file. Publications use
+      # this Docker-only route; `broadcast` is never leaked to a phone.
+      PUBLISHER_PUBLISH_URL: http://broadcast:8082
+      PUBLISHER_API_ADDRESS: 127.0.0.1:8092
+      PUBLISHER_DATABASE_PATH: /data/copytrading.db
+    ports:
+      # Caddy owns 8093 inside the shared namespace. Only host loopback can call
+      # the authenticated control API from outside this Compose project.
+      - "127.0.0.1:${COPYTRADING_PORT:-8092}:8093"
+    networks:
+      - publisher-ingress
+    volumes:
+      - copytrading-data:/data
+      - type: bind
+        source: ${COPYTRADING_SECRETS_DIR:-./secrets/copytrading}
+        target: /run/secrets
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    stop_grace_period: 20s
+    stop_signal: SIGTERM
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  copytrading-proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    network_mode: "service:copytrading"
+    depends_on:
+      - copytrading
+    volumes:
+      - ../../publisher/Caddyfile:/etc/caddy/Caddyfile:ro
+      - copytrading-caddy-data:/data
+      - copytrading-caddy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8093/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 15s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  copytrading-ctl:
+    profiles: ["operator"]
+    build:
+      context: ../..
+      dockerfile: publisher/Dockerfile
+    image: ${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}
+    entrypoint: ["/publishctl"]
+    network_mode: "service:copytrading"
+    environment:
+      PUBLISHER_API_URL: http://127.0.0.1:8093
+      # Pass PUBLISHER_API_TOKEN just for `docker compose run`; the runtime
+      # service itself reads it from its mounted file.
+      PUBLISHER_API_TOKEN: ${COPYTRADING_API_TOKEN:-}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  prediction:
+    build:
+      context: ../..
+      dockerfile: publisher/Dockerfile
+    image: ${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}
+    entrypoint: ["/prediction"]
+    restart: unless-stopped
+    env_file:
+      - ${PREDICTION_ENV_FILE:-.env.prediction}
+    environment:
+      PUBLISHER_PUBLISH_URL: http://broadcast:8082
+      PUBLISHER_API_ADDRESS: 127.0.0.1:8092
+      PUBLISHER_DATABASE_PATH: /data/prediction.db
+    ports:
+      - "127.0.0.1:${PREDICTION_PORT:-8094}:8095"
+    networks:
+      - publisher-ingress
+    volumes:
+      - prediction-data:/data
+      - type: bind
+        source: ${PREDICTION_SECRETS_DIR:-./secrets/prediction}
+        target: /run/secrets
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    stop_grace_period: 20s
+    stop_signal: SIGTERM
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  prediction-proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    network_mode: "service:prediction"
+    depends_on:
+      - prediction
+    volumes:
+      - ../../publisher/Caddyfile.prediction:/etc/caddy/Caddyfile:ro
+      - prediction-caddy-data:/data
+      - prediction-caddy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8095/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 15s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  prediction-ctl:
+    profiles: ["operator"]
+    build:
+      context: ../..
+      dockerfile: publisher/Dockerfile
+    image: ${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}
+    entrypoint: ["/publishctl"]
+    network_mode: "service:prediction"
+    environment:
+      PUBLISHER_API_URL: http://127.0.0.1:8095
+      PUBLISHER_API_TOKEN: ${PREDICTION_API_TOKEN:-}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  copytrading-data:
+  copytrading-caddy-data:
+  copytrading-caddy-config:
+  prediction-data:
+  prediction-caddy-data:
+  prediction-caddy-config:

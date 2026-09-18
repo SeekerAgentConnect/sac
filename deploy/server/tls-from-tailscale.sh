@@ -13,16 +13,16 @@
 # start, which is why a changed certificate ends in a restart.
 #
 # The files land in ./tls, owned by the image's account (uid 10001) and readable by
-# it alone; compose.yaml mounts that directory read-only at /run/tls.
+# it alone; compose.direct.yaml mounts that directory read-only at /run/tls.
 set -eu
 
 cd "$(dirname "$0")"
 
-# The only value read from .env; an exported SERVER_DOMAIN wins over it.
-if [ -z "${SERVER_DOMAIN:-}" ] && [ -f .env ]; then
-    SERVER_DOMAIN=$(sed -n 's/^SERVER_DOMAIN=//p' .env | tail -n 1)
+# The only value read from .env.direct; an exported SERVER_DOMAIN wins over it.
+if [ -z "${SERVER_DOMAIN:-}" ] && [ -f .env.direct ]; then
+    SERVER_DOMAIN=$(sed -n 's/^SERVER_DOMAIN=//p' .env.direct | tail -n 1)
 fi
-: "${SERVER_DOMAIN:?SERVER_DOMAIN is not set: fill in .env, or export it}"
+: "${SERVER_DOMAIN:?SERVER_DOMAIN is not set: fill in .env.direct, or export it}"
 # The account the sidecar image runs as (sidecar/Dockerfile).
 SIDECAR_UID=10001
 
@@ -38,8 +38,8 @@ chmod 0600 tls/privkey.pem
 after=$(sha256sum tls/fullchain.pem | cut -d' ' -f1)
 if [ "$before" != "$after" ]; then
     echo "certificate for $SERVER_DOMAIN written to tls/; restarting the sidecar if it runs"
-    if docker compose ps --status running --services 2>/dev/null | grep -qx sidecar; then
-        docker compose restart sidecar
+    if docker compose -f compose.direct.yaml ps --status running --services 2>/dev/null | grep -qx sidecar; then
+        docker compose -f compose.direct.yaml restart sidecar
     fi
 else
     echo "certificate for $SERVER_DOMAIN unchanged"
