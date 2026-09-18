@@ -11,6 +11,9 @@ The optional private sidecar remains a third, independent service. It still owns
 credential, request database, MCP adapter and TLS/HTTP2 update listener. Private agent traffic does
 not pass through the broadcast gateway.
 
+For the one layout of a small server that pulls published images and is reached through Tailscale
+Funnel, [`GUIDE.md`](GUIDE.md) is the same material as a start-to-finish runbook, with removal.
+
 All commands below run from a repository checkout's `deploy/server` directory. The detailed
 [server-development guide](../../docs/guides/server-development.md) remains the contract reference;
 it is not required to assemble this deployment.
@@ -67,9 +70,51 @@ git pull --ff-only
 cd deploy/server
 ```
 
-Keep the whole checkout. Compose builds the unchanged `broadcast/Dockerfile` and
-`publisher/Dockerfile`, and mounts the pinned `broadcast/centrifugo.yaml` and publisher Caddy
-allow-lists from it.
+With a checkout, Compose builds the unchanged `broadcast/Dockerfile` and `publisher/Dockerfile`.
+The pinned `broadcast/centrifugo.yaml` and the two publisher Caddy allow-lists are mounted through
+symlinks in this directory (`centrifugo.yaml`, `Caddyfile.copytrading`, `Caddyfile.prediction`), so
+there is one copy of each.
+
+### Without a checkout: published images and this folder alone
+
+A small server need not clone or build anything. Build both images for the server's architecture
+on any machine with Docker — the compiler runs natively and cross-compiles, so an Apple silicon Mac
+produces `linux/amd64` without emulation — and push them as tags of one repository:
+
+```sh
+# from the repository root
+docker buildx build --platform linux/amd64 -f broadcast/Dockerfile \
+  -t YOUR-USER/seeker-agent-connect:broadcast-v1 --load .
+docker buildx build --platform linux/amd64 -f publisher/Dockerfile \
+  -t YOUR-USER/seeker-agent-connect:publisher-v1 --load .
+docker push YOUR-USER/seeker-agent-connect:broadcast-v1
+docker push YOUR-USER/seeker-agent-connect:publisher-v1
+```
+
+Copy this directory with `-L`, which turns the three symlinks into real files; `--exclude` keeps a
+later re-sync from touching the server's own state:
+
+```sh
+rsync -avL --exclude '.env*' --exclude tls --exclude secrets --exclude backups \
+  deploy/server/ SERVER:seeker-agent-connect/
+```
+
+On the server, `docker login` if the repository is private, set the two tags in `.env`, and use
+`pull` and `--no-build` wherever this guide says `build` or `--build`:
+
+```dotenv
+BROADCAST_IMAGE=docker.io/YOUR-USER/seeker-agent-connect:broadcast-v1
+PUBLISHER_IMAGE=docker.io/YOUR-USER/seeker-agent-connect:publisher-v1
+```
+
+```sh
+docker compose -f compose.yaml pull
+docker compose -f compose.yaml up -d --no-build
+```
+
+A plain `rsync -a` or a copy that keeps symlinks leaves three dangling links, and Compose fails on
+the mount; `ls -l centrifugo.yaml` on the server must show a regular file. The `grpcurl` stream
+check in Part 2 reads protos from `third_party/`, so run it from a machine that has the checkout.
 
 No public broadcast or publisher image is assumed. The default tags are local and are built from
 the checked-out source:
@@ -79,19 +124,9 @@ docker compose build broadcast gateway-ctl
 docker compose pull gateway-proxy centrifugo redis
 ```
 
-To build elsewhere, build both existing Dockerfiles for the server's architecture, push or
-transfer them, set `BROADCAST_IMAGE` and `PUBLISHER_IMAGE` in `.env`, and use `--no-build` on the
-server. For example, from the repository root on a build host:
-
-```sh
-docker buildx build --platform linux/amd64 -f broadcast/Dockerfile \
-  -t registry.example.com/seeker-broadcast:COMMIT --push .
-docker buildx build --platform linux/amd64 -f publisher/Dockerfile \
-  -t registry.example.com/seeker-publisher:COMMIT --push .
-```
-
-For an offline server, replace `--push` with `--load`, then use `docker save`, copy the archive and
-`docker load`. Caddy, Centrifugo and Redis remain pinned in `compose.yaml` and must also be present.
+For an offline server, build as in the section above, then `docker save`, copy the archive and
+`docker load` instead of pushing. Caddy, Centrifugo and Redis remain pinned in `compose.yaml` and
+must also be present.
 
 ## 2. Configure the gateway
 

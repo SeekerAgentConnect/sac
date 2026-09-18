@@ -24,7 +24,13 @@ ARG GO_VERSION=1.27.1
 # --- build ------------------------------------------------------------------
 # Dependencies first, from go.mod and go.sum alone, so editing a source file does
 # not invalidate the module download.
-FROM golang:${GO_VERSION}-bookworm AS build
+# The compiler runs on the building machine's own platform and cross-compiles
+# for the target: CGO is off, so GOOS/GOARCH is all it takes, and `docker buildx
+# build --platform linux/amd64` from an Apple silicon Mac needs no emulation (as
+# in sidecar/Dockerfile).
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS build
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 COPY publisher/go.mod publisher/go.sum ./
 RUN go mod download
@@ -32,7 +38,7 @@ COPY publisher/ ./
 # CGO off, so the SQLite driver's pure-Go implementation is what gets compiled and
 # the binary needs no libc at run time. -trimpath keeps the build machine's paths
 # out of it.
-ENV CGO_ENABLED=0
+ENV CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH
 RUN go build -trimpath -ldflags="-s -w" -o /out/copytrading ./cmd/copytrading \
  && go build -trimpath -ldflags="-s -w" -o /out/prediction ./cmd/prediction \
  && go build -trimpath -ldflags="-s -w" -o /out/publishctl ./cmd/publishctl \

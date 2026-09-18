@@ -120,8 +120,10 @@ services:
       CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_KEY:?set CENTRIFUGO_TOKEN_KEY in deploy/server/.env}
       CENTRIFUGO_ENGINE_REDIS_ADDRESS: redis://redis:6379
     volumes:
-      # Reuse the pinned, tested broker configuration from the implementation.
-      - ../../broadcast/centrifugo.yaml:/etc/centrifugo/centrifugo.yaml:ro
+      # The pinned, tested broker configuration from the implementation, through
+      # a symlink to broadcast/centrifugo.yaml: one file in a checkout, and a real
+      # copy in a folder made with `rsync -L` for a server that only pulls images.
+      - ./centrifugo.yaml:/etc/centrifugo/centrifugo.yaml:ro
     networks:
       - broadcast-inside
     depends_on:
