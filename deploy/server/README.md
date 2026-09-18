@@ -21,6 +21,7 @@ it is not required to assemble this deployment.
 | --- | --- |
 | `-f compose.yaml` | Part 1 only: gateway, HTTPS/HTTP2 proxy, Centrifugo and Redis. |
 | `-f compose.yaml -f compose.demos.yaml` | Part 1 plus both Part 2 publishers. Start/stop only the four demo runtime services with `--no-deps`. |
+| `-f compose.yaml -f compose.tailscale.yaml` | Part 1 on a Tailscale MagicDNS name behind Funnel in TCP mode, for a server with no DNS name of its own ([section 7](#7-part-1-behind-tailscale-funnel)). Goes between `compose.yaml` and `compose.demos.yaml` in every command when the demos run. |
 | `-f compose.direct.yaml` | Optional direct sidecar only. It can run beside either combination and keeps the original Compose project and volume name. |
 
 `gateway-ctl`, `copytrading-ctl` and `prediction-ctl` are one-shot local tools under the `operator`
@@ -49,7 +50,9 @@ Use one Linux host with:
 - Docker Engine 24 or newer and Docker Compose v2;
 - Git, `curl`, `openssl`, `jq`, `uuidgen` and at least 2 GB free memory while building;
 - TCP 80 and 443 reachable from the internet;
-- a DNS A/AAAA record, such as `feeds.example.com`, already pointing at the host;
+- a DNS A/AAAA record, such as `feeds.example.com`, already pointing at the host — or, with
+  neither a name nor open ports, Tailscale Funnel: read
+  [section 7](#7-part-1-behind-tailscale-funnel) before step 2;
 - enough durable disk for Docker volumes and backups.
 
 Clone the tracked Stage 7.1 branch or deploy the reviewed commit you intend to run:
@@ -98,9 +101,13 @@ cp .env.template .env
 chmod 0600 .env
 mkdir -p secrets/broadcast backups
 chmod 0700 secrets secrets/broadcast backups
+sudo chown 10001:10001 secrets/broadcast
 openssl rand -hex 32
 openssl rand -hex 32
 ```
+
+A mounted secrets directory belongs to uid 10001, the account every image here runs as: a `0700`
+directory of the operator's own is one the container cannot enter, whatever the file inside allows.
 
 Put the two different generated values in `CENTRIFUGO_API_KEY` and `CENTRIFUGO_TOKEN_KEY`. Set
 `BROADCAST_DOMAIN` and `ACME_EMAIL`. Do not add a scheme to `BROADCAST_DOMAIN`; Compose derives the
@@ -250,8 +257,12 @@ For a new optional sidecar:
 cp direct.env.template .env.direct
 chmod 0600 .env.direct
 mkdir -p tls secrets/sidecar
-chmod 0700 tls secrets/sidecar
+chmod 0755 tls
+chmod 0700 secrets/sidecar
+sudo chown 10001:10001 secrets/sidecar
 ```
+
+`tls` stays enterable: the key's own mode protects it, and its readers are not the directory's owner.
 
 Edit `.env.direct`. Keep `SERVER_DOMAIN`, `SIDECAR_PUBLIC_URL` and `MCP_ALLOWED_HOSTS` consistent;
 make `MCP_TOKEN` and `PHONE_TOKEN` different random values. `MCP_ENABLED=false` keeps the private
@@ -306,6 +317,75 @@ project, declare a new external volume, run `down -v`, or copy a live SQLite fil
 certificate weekly with `tls-from-tailscale.sh`; it restarts only this sidecar when the certificate
 changes.
 
+## 7. Part 1 behind Tailscale Funnel
+
+For a server whose only public name is its Tailscale MagicDNS name, `<node>.<tailnet>.ts.net`.
+`compose.yaml` alone cannot serve it: Caddy's ACME challenges need a DNS name of the operator's own
+and public 80/443, and Funnel's ordinary HTTPS mode puts an HTTP/1.1 hop in front of the gRPC
+stream. `compose.tailscale.yaml` keeps every route and changes only how TLS gets there:
+
+| | |
+| --- | --- |
+| Public origin | `https://<node>.<tailnet>.ts.net`, Funnel port 443. The direct sidecar, when it runs, keeps `:10000` on the same name. |
+| In front | `tailscale funnel --tcp=443 tcp://localhost:9443`, a raw TCP pipe. TLS and HTTP/2 end in Caddy, so unary reads and the Centrifugo stream behave as they do behind a public 443. |
+| Certificate | `tailscale cert` through `tls-from-tailscale.sh`, into `./tls` — the same pair the sidecar reads, because a node has one name. Caddy here is root with no capability to override file permissions, so when `.env`'s `BROADCAST_DOMAIN` is the certificate's name the script leaves the key `0640`, uid 10001, group root. |
+| Host ports | Loopback only: `.env` moves Caddy's bindings off the public interface. Nothing listens on the server's public address. |
+
+The tailnet needs MagicDNS, HTTPS Certificates, and the `funnel` node attribute for this node, and
+Funnel's port 443 on it must be free (`tailscale funnel status`, `tailscale serve status`).
+
+In step 2's `.env`:
+
+```dotenv
+BROADCAST_DOMAIN=<node>.<tailnet>.ts.net
+# Required by compose.yaml and unused here: no ACME account is created.
+ACME_EMAIL=unused@example.com
+GATEWAY_HTTP_BIND=127.0.0.1:9080
+GATEWAY_HTTPS_BIND=127.0.0.1:9443
+```
+
+If `tailscale funnel` answers `cannot serve TCP; already serving web on 443`, the node's 443 belongs
+to an HTTPS `serve`. Either remove that (`tailscale serve status` names it; `tailscale funnel
+--https=443 off`), or keep it and add `GATEWAY_PUBLIC_PORT=8443` to `.env`, use `--tcp=8443` in the
+Funnel command below, and write the origin as `https://<node>.<tailnet>.ts.net:8443` everywhere it
+appears, `PUBLISHER_GATEWAY_URL` included.
+
+`9443` is any free loopback port that is not the sidecar's `8443`; `9080` answers nothing and is
+bound only because the base file publishes the pair. Then the certificate, the forward, and the
+stack, with the extra file in every Part 1 command of this guide:
+
+```sh
+mkdir -p tls && chmod 0755 tls
+sudo ./tls-from-tailscale.sh
+ls -ln tls                     # privkey.pem: 10001 0, -rw-r-----
+docker compose -f compose.yaml -f compose.tailscale.yaml config --quiet
+docker compose -f compose.yaml -f compose.tailscale.yaml up -d --build
+sudo tailscale funnel --bg --tcp=443 tcp://localhost:9443
+tailscale funnel status
+```
+
+With an existing sidecar on the same node, run the script once more after `.env` names the domain:
+the certificate is unchanged, nothing restarts, and the key gains its group bit. The weekly cron
+entry then renews for both and restarts `gateway-proxy` as well as the sidecar when the certificate
+changed (Caddy's administration endpoint is off, so a reload is a restart; streams reconnect).
+
+Step 4's outside checks apply unchanged with `DOMAIN=<node>.<tailnet>.ts.net`. For the demos, the
+file order is `-f compose.yaml -f compose.tailscale.yaml -f compose.demos.yaml`, and
+`PUBLISHER_GATEWAY_URL` is `https://<node>.<tailnet>.ts.net`. In step 6 of Part 2, `--add-host`
+still reaches Caddy only if the name resolves to where it listens: replace `host-gateway` and `:443`
+by running `grpcurl` from outside the server against the public name, which is the stronger test.
+
+What this layout gives up: Funnel hands Caddy every connection from one local address, so
+`BROADCAST_READ_RATE`/`BROADCAST_READ_BURST` become one bucket shared by all readers rather than one
+per caller. Raise them for more than a handful of phones, or use a DNS name. Funnel also caps
+bandwidth; it is a demonstration entry point, not a production one.
+
+To remove the public exposure and leave the stack running on loopback:
+
+```sh
+sudo tailscale funnel --tcp=443 tcp://localhost:9443 off
+```
+
 # Part 2: Deploy the demo servers
 
 Part 2 assumes Part 1 is healthy. It starts the existing two binaries from `publisher/Dockerfile`;
@@ -322,6 +402,7 @@ cp prediction.env.template .env.prediction
 chmod 0600 .env.copytrading .env.prediction
 mkdir -p secrets/copytrading secrets/prediction
 chmod 0700 secrets/copytrading secrets/prediction
+sudo chown 10001:10001 secrets/copytrading secrets/prediction
 
 COPYTRADING_ID=$(uuidgen | tr 'A-Z' 'a-z')
 PREDICTION_ID=$(uuidgen | tr 'A-Z' 'a-z')
@@ -533,7 +614,7 @@ docker run --rm -i \
   --add-host="$DOMAIN:host-gateway" \
   -v "$PWD/../../third_party/centrifugo:/protos:ro" \
   fullstorydev/grpcurl:v1.9.1 \
-  -proto /protos/centrifugal/centrifugo/unistream/unistream.proto \
+  -import-path /protos -proto centrifugal/centrifugo/unistream/unistream.proto \
   -d "{\"token\":\"$STREAM_TICKET\"}" \
   "$DOMAIN:443" \
   centrifugal.centrifugo.unistream.CentrifugoUniStream/Consume
@@ -598,6 +679,8 @@ stopped, then start that service again. The infrastructure need not stop.
 
 | Symptom | Check |
 | --- | --- |
+| A Caddy container restarts with `exec /usr/bin/caddy: operation not permitted` | Its `cap_add: NET_BIND_SERVICE` was removed. The official binary carries that file capability and cannot be executed without it. |
+| Behind Funnel: handshake fails or the certificate is refused | `ls -ln tls` must show the key as `10001 0` mode `0640` and the directory enterable; `BROADCAST_DOMAIN` must be the node's exact MagicDNS name; `tailscale funnel status` must show `tcp://…:443` forwarding to `GATEWAY_HTTPS_BIND`'s port. |
 | Caddy cannot obtain a certificate | DNS A/AAAA, inbound 80/443, `BROADCAST_DOMAIN`, and `gateway-proxy` logs. Never disable phone certificate validation. |
 | Unary works but `grpcurl` closes or never shows `subscribe` | The exact stream path in `Caddyfile`, external ALPN `h2`, Centrifugo health, ticket lifetime, and broker logs. Unary is not a substitute. |
 | Publisher logs 404 while publishing | `PUBLISHER_PUBLISH_URL` was overridden or the demo is not on `publisher-ingress`; it must use `http://broadcast:8082`. |

@@ -63,6 +63,9 @@ services:
     stop_grace_period: 15s
     cap_drop:
       - ALL
+    # Caddy's file capability; see gateway-proxy in compose.yaml.
+    cap_add:
+      - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
 
@@ -136,6 +139,9 @@ services:
     stop_grace_period: 15s
     cap_drop:
       - ALL
+    # Caddy's file capability; see gateway-proxy in compose.yaml.
+    cap_add:
+      - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
 

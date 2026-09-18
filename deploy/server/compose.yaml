@@ -20,10 +20,12 @@ services:
     restart: unless-stopped
 
     # Caddy shares this network namespace. These are Caddy's public ports; the
-    # gateway itself remains on two loopback sockets in the namespace.
+    # gateway itself remains on two loopback sockets in the namespace. The
+    # defaults are the public pair; compose.tailscale.yaml's layout moves them
+    # to host loopback in .env, because Funnel is then the public listener.
     ports:
-      - "80:80"
-      - "443:443"
+      - "${GATEWAY_HTTP_BIND:-80}:80"
+      - "${GATEWAY_HTTPS_BIND:-443}:443"
 
     environment:
       # The one origin phones learn and manifests must repeat exactly. Container
@@ -101,6 +103,11 @@ services:
     stop_grace_period: 15s
     cap_drop:
       - ALL
+    # The official Caddy binary carries the file capability cap_net_bind_service.
+    # With it outside the bounding set the kernel refuses to exec the file at all
+    # ("operation not permitted"), for root too, so it is the one capability kept.
+    cap_add:
+      - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
 

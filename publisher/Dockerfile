@@ -35,7 +35,8 @@ COPY publisher/ ./
 ENV CGO_ENABLED=0
 RUN go build -trimpath -ldflags="-s -w" -o /out/copytrading ./cmd/copytrading \
  && go build -trimpath -ldflags="-s -w" -o /out/prediction ./cmd/prediction \
- && go build -trimpath -ldflags="-s -w" -o /out/publishctl ./cmd/publishctl
+ && go build -trimpath -ldflags="-s -w" -o /out/publishctl ./cmd/publishctl \
+ && mkdir /out/data
 
 # --- runtime ----------------------------------------------------------------
 # The three binaries, a CA bundle, and nothing else. No shell and no package
@@ -62,6 +63,10 @@ ENV PUBLISHER_DATABASE_PATH=/data/publisher.db
 ENV PUBLISHER_API_ADDRESS=127.0.0.1:8092
 
 COPY --from=build /out/copytrading /out/prediction /out/publishctl /
+# /data has to exist in the image, owned by the account below: Docker gives a
+# new named volume the ownership of the directory it is mounted over, and a path
+# the image lacks becomes root's, where uid 10001 cannot create the database.
+COPY --from=build --chown=10001:10001 /out/data /data
 # A fixed, unprivileged uid/gid, the same pair the other images use, so a volume's
 # ownership is the same on every host. There is no /etc/passwd in a scratch image
 # and none is needed: the number is what the kernel checks.

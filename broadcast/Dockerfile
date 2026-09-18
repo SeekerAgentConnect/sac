@@ -25,7 +25,8 @@ COPY broadcast/ ./
 # out of it.
 ENV CGO_ENABLED=0
 RUN go build -trimpath -ldflags="-s -w" -o /out/broadcast ./cmd/broadcast \
- && go build -trimpath -ldflags="-s -w" -o /out/broadcastctl ./cmd/broadcastctl
+ && go build -trimpath -ldflags="-s -w" -o /out/broadcastctl ./cmd/broadcastctl \
+ && mkdir /out/data
 
 # --- runtime ----------------------------------------------------------------
 # The two binaries, a CA bundle, and nothing else. No shell and no package
@@ -54,6 +55,10 @@ ENV BROADCAST_READ_ADDRESS=127.0.0.1:8090
 ENV BROADCAST_PUBLISHER_ADDRESS=127.0.0.1:8091
 
 COPY --from=build /out/broadcast /out/broadcastctl /
+# /data has to exist in the image, owned by the account below: Docker gives a
+# new named volume the ownership of the directory it is mounted over, and a path
+# the image lacks becomes root's, where uid 10001 cannot create the database.
+COPY --from=build --chown=10001:10001 /out/data /data
 # A fixed, unprivileged uid/gid, the same pair the sidecar image uses, so a
 # volume's ownership is the same on every host. There is no /etc/passwd in a
 # scratch image and none is needed: the number is what the kernel checks.
