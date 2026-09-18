@@ -10,7 +10,7 @@ another.
 | | |
 | --- | --- |
 | Branch | `superset/feat/see-85`, on top of `37496bd` |
-| Tree | the working tree that this change and its documentation make up. The harness prints the commit it was run at, and for this run it printed `37496bd6…` **with uncommitted changes** — those changes being this one |
+| Tree | `1e91507`, which added `loadtest/`. The harness prints the commit it was run at, and for this run it printed `37496bd6…` **with uncommitted changes** — those changes being that commit |
 | Stage 7.1 in the tree | SEE-90 to SEE-98 |
 | Date run | 2026-09-18 |
 | Command | `SEEKERVAULT_CENTRIFUGO=… SEEKERVAULT_REDIS=… pnpm test:load -- --report see-99.json` — one run, fourteen scenarios, in the order below |
@@ -242,9 +242,11 @@ Everything above ran here. These are the questions a laptop cannot answer, and t
 | 5 | With a real Firebase project, confirm a hint wakes a backgrounded phone and how long it takes | NOT RUN |
 | 6 | Two phones on the same feed, both up to date, and neither able to tell the other is there | NOT RUN |
 
-Tested at revision: the SEE-99 change on `superset/feat/see-85`, on top of `37496bd` — the harness
-in `loadtest/`, the profiles in `loadtest/profiles.json`, and the two commands in
-[`../development/load.md`](../development/load.md).
+Tested at revision: `1e91507` on `superset/feat/see-85` — the harness in `loadtest/`, the profiles
+in `loadtest/profiles.json`, and the two commands in
+[`../development/load.md`](../development/load.md). Anything after it that touches the gateway, the
+broker configuration, the fan-out or the phone's reconnect policy needs the run made again: a load
+report is only about the revision it names.
 
 ## What is not here
 
