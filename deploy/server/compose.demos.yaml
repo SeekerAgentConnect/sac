@@ -51,7 +51,7 @@ services:
     depends_on:
       - copytrading
     volumes:
-      - ../../publisher/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.copytrading:/etc/caddy/Caddyfile:ro
       - copytrading-caddy-data:/data
       - copytrading-caddy-config:/config
     healthcheck:
@@ -127,7 +127,7 @@ services:
     depends_on:
       - prediction
     volumes:
-      - ../../publisher/Caddyfile.prediction:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.prediction:/etc/caddy/Caddyfile:ro
       - prediction-caddy-data:/data
       - prediction-caddy-config:/config
     healthcheck:
