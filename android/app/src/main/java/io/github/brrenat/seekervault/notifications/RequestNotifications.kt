@@ -27,11 +27,14 @@ import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.isConnectionId
+import io.github.brrenat.seekervault.request.v1.Action
+import io.github.brrenat.seekervault.request.v1.ActionRequest
 
 /**
- * Posts privacy-preserving request alerts after authoritative Sync. A notification carries only the
- * two opaque IDs needed to find the request locally; no request content or credential is shown or
- * handed to [MainActivity].
+ * Posts privacy-preserving request alerts after authoritative Sync. Display copy is derived from
+ * the cached request kind and the owner's local connection name, while the tap route carries only
+ * the two opaque IDs needed to find current state. No request body, note, credential, policy,
+ * answer, or prepared bytes are shown or handed to [MainActivity].
  */
 class RequestNotificationManager(
     private val context: Context,
@@ -65,6 +68,7 @@ class RequestNotificationManager(
         before: Set<RequestKey>,
         after: Set<RequestKey>,
         connections: List<Connection>,
+        requests: Collection<ActionRequest>,
     ) {
         if (!configured) return
         // Permission can change between the check and NotificationManager. Losing it is a display
@@ -77,10 +81,14 @@ class RequestNotificationManager(
         if (!notificationsGranted(context)) return
         createChannels()
         val labels = connections.filter(Connection::usable).associate { it.id to it.label }
+        val authoritative = requests.associateBy {
+            RequestKey(it.ref.connectionId, it.ref.requestId)
+        }
         (after - before).forEach { key ->
             val label = labels[key.connectionId] ?: return@forEach
+            val request = authoritative[key] ?: return@forEach
             try {
-                notify(key, label)
+                notify(key, label, request)
             } catch (_: SecurityException) {
                 // Revocation raced the post. Sync already succeeded and remains authoritative.
             }
@@ -100,18 +108,14 @@ class RequestNotificationManager(
         }
     }
 
-    private fun notify(key: RequestKey, label: String) {
+    private fun notify(key: RequestKey, label: String, request: ActionRequest) {
         val notification =
-            Notification.Builder(context, REQUESTS_CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(context.getString(R.string.notification_request_title))
-                .setContentText(context.getString(R.string.notification_request_text, label))
-                .setCategory(Notification.CATEGORY_REMINDER)
-                .setVisibility(Notification.VISIBILITY_SECRET)
-                .setAutoCancel(true)
-                .setOnlyAlertOnce(true)
-                .setContentIntent(RequestNotificationIntent.pendingIntent(context, key))
-                .build()
+            reviewNotification(
+                context = context,
+                channelId = REQUESTS_CHANNEL_ID,
+                copy = requestNotificationCopy(context, request, label),
+                contentIntent = RequestNotificationIntent.pendingIntent(context, key),
+            )
         manager.notify(tag(key), REQUEST_NOTIFICATION_ID, notification)
     }
 
@@ -126,6 +130,45 @@ class RequestNotificationManager(
         internal const val REQUEST_NOTIFICATION_ID = 1
     }
 }
+
+/** Human words for the request kind already held in the authoritative post-Sync cache. */
+private fun requestNotificationCopy(
+    context: Context,
+    request: ActionRequest,
+    source: String,
+): ReviewNotificationCopy =
+    when (request.action.kindCase) {
+        Action.KindCase.ACK ->
+            ReviewNotificationCopy(
+                title = context.getString(R.string.notification_request_ack_title),
+                source = source,
+                summary = context.getString(R.string.notification_request_ack_summary),
+            )
+        Action.KindCase.SIGN_MESSAGE ->
+            ReviewNotificationCopy(
+                title = context.getString(R.string.notification_request_signature_title),
+                source = source,
+                summary = context.getString(R.string.notification_request_signature_summary),
+            )
+        Action.KindCase.TRANSFER ->
+            ReviewNotificationCopy(
+                title = context.getString(R.string.notification_request_transfer_title),
+                source = source,
+                summary = context.getString(R.string.notification_request_transfer_summary),
+            )
+        Action.KindCase.SWAP ->
+            ReviewNotificationCopy(
+                title = context.getString(R.string.notification_request_swap_title),
+                source = source,
+                summary = context.getString(R.string.notification_request_swap_summary),
+            )
+        else ->
+            ReviewNotificationCopy(
+                title = context.getString(R.string.notification_request_unknown_title),
+                source = source,
+                summary = context.getString(R.string.notification_request_unknown_summary),
+            )
+    }
 
 /** The explicit, immutable route attached to one local request notification. */
 object RequestNotificationIntent {

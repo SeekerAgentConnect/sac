@@ -163,7 +163,7 @@ open a wallet, sign, send a transaction, or choose a screen.
   immediate delivery and limited processing, but should be reserved for time-sensitive
   user-visible notifications. Repeated high-priority traffic that does not produce user-visible
   notifications can be deprioritized. SAW-056 itself displayed nothing; SAW-058 supplies the
-  corresponding generic alert when Android permission and the channel allow presentation.
+  corresponding type-aware native alert when Android permission and the channel allow presentation.
 - **Work after delivery:** a message delivered as high priority requests expedited WorkManager
   execution immediately, with `RUN_AS_NON_EXPEDITED_WORK_REQUEST` fallback when expedited quota is
   unavailable. Normal delivery requests ordinary work. A connected network is still required, the
@@ -236,12 +236,20 @@ request, and posts no notification.
 
 The Firebase callback still displays nothing. After its worker finishes an authoritative Sync, the
 app compares the complete pending-key set from before and after that fetch. A newly discovered
-pending key gets one generic alert; a key that left PENDING has its earlier alert canceled. The
-notification says only that a request is waiting and names the owner's local connection label. It
-contains no action, request text, agent note, amount, recipient, policy, credential, authorization,
-transaction, signature, or answer, and its lock-screen content is private. Distinct requests have
-distinct immutable, explicit intents containing only the connection and request IDs needed to
-route inside this app.
+pending key gets one alert; a key that left PENDING has its earlier alert canceled. SEE-105 gives
+that native alert a dedicated monochrome SAC status icon, the lime app icon as large art where the
+OS supports it, an approved system-theme-aware accent, a human title for the cached request kind,
+the owner's local connection name, and a concise type-specific summary. Expanding it shows the
+complete source and summary through Android's native `BigTextStyle`, so Android still owns
+typography, wrapping, truncation and light/dark surfaces. Feed alerts use the same presentation.
+The manifest configures the same icon and accent as Firebase's defaults, although production hints
+remain data-only and Firebase renders no notification for them.
+
+Presentation is derived only after authoritative state is present locally. It contains no request
+text, agent or publisher note, amount, recipient, policy, credential, authorization, transaction,
+signature, answer, proposal term or technical identifier, and its lock-screen visibility remains
+secret. Distinct items retain distinct immutable, explicit intents containing only the connection
+and request/proposal IDs needed to route inside this app.
 
 The shade can still contain stale information. A status-change hint may be dropped, expire, or be
 delayed, or the periodic worker may not have run yet. Tapping therefore never trusts notification
@@ -378,9 +386,9 @@ TLS connection (`broadcast/Dockerfile` says so in a comment beside the line that
 3. The job reads every feed this phone holds that is not already live on a foreground stream,
    through the gateway's unary API, with the boundary each feed was last read at (so an unchanged
    feed costs one small answer).
-4. Proposals that are newly waiting for the owner get one generic alert on their own channel,
-   **Proposals waiting for review**, and the tap opens the feed they are on. Nothing is prepared,
-   signed or sent by a notification or by a hint.
+4. Proposals that are newly waiting for the owner get one type-aware native alert on their own
+   channel, **Proposals waiting for review**, and the tap opens the feed they are on. Nothing is
+   prepared, signed or sent by a notification or by a hint.
 
 Because the read covers every feed, two hints are one read and a hint that Firebase replaced under
 its collapse key loses nothing.

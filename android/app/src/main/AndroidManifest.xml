@@ -29,6 +29,14 @@
         <meta-data
             android:name="firebase_messaging_installation_id_enabled"
             android:value="true" />
+        <!-- Data-only invalidations never ask Firebase to render UI. These defaults keep any
+             operator-sent notification message on the same recognizable native identity. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification_sac" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_accent" />
         <service
             android:name=".push.SeekerVaultMessagingService"
             android:exported="false">

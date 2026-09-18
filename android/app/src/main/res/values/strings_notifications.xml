@@ -2,8 +2,19 @@
 <resources>
     <string name="notification_channel_requests">Requests waiting for review</string>
     <string name="notification_channel_requests_description">Alerts when a paired sidecar has a request for you to review</string>
-    <string name="notification_request_title">Request waiting for review</string>
-    <string name="notification_request_text">Open the current request from %1$s.</string>
+    <string name="notification_source">From %1$s</string>
+    <string name="notification_source_unknown">Unnamed connection</string>
+    <string name="notification_expanded_text">%1$s\n\n%2$s</string>
+    <string name="notification_request_ack_title">Acknowledgement requested</string>
+    <string name="notification_request_ack_summary">A message is ready for your review.</string>
+    <string name="notification_request_signature_title">Signature requested</string>
+    <string name="notification_request_signature_summary">Review the message before deciding whether to sign it.</string>
+    <string name="notification_request_transfer_title">Transfer requested</string>
+    <string name="notification_request_transfer_summary">Review the amount and recipient before deciding whether to send.</string>
+    <string name="notification_request_swap_title">Swap requested</string>
+    <string name="notification_request_swap_summary">Review the swap terms before deciding whether to continue.</string>
+    <string name="notification_request_unknown_title">Review requested</string>
+    <string name="notification_request_unknown_summary">An action is ready for your review.</string>
     <string name="notification_open_loading">Fetching the current request from the paired sidecar…</string>
     <string name="notification_open_gone">After checking the paired sidecar, this request is no longer pending. It may have expired, been canceled, or already been answered. Nothing was approved or signed.</string>
     <string name="notification_open_removed">This connection is no longer on this phone, so the request cannot be opened. Nothing was approved or signed.</string>
@@ -12,6 +23,10 @@
     <string name="notification_open_retry">Try again</string>
     <string name="notification_channel_feeds">Proposals waiting for review</string>
     <string name="notification_channel_feeds_description">Alerts when a feed you subscribe to has a proposal for you to review</string>
-    <string name="notification_proposal_title">Proposal waiting for review</string>
-    <string name="notification_proposal_text">Open the current proposals from %1$s.</string>
+    <string name="notification_proposal_swap_title">Swap signal</string>
+    <string name="notification_proposal_swap_summary">Review the swap terms and choose your amount.</string>
+    <string name="notification_proposal_prediction_title">Prediction signal</string>
+    <string name="notification_proposal_prediction_summary">Review the market before choosing a side and stake.</string>
+    <string name="notification_proposal_unknown_title">Signal ready for review</string>
+    <string name="notification_proposal_unknown_summary">A publisher signal is ready for your review.</string>
 </resources>

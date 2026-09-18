@@ -11,6 +11,7 @@ import io.github.brrenat.seekervault.MainActivity
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.isConnectionId
+import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.servers.ConnectionMode
 
 /**
@@ -25,8 +26,9 @@ data class ProposalRef(val connectionId: String, val proposalId: String)
  *
  * It is [RequestNotificationManager] for the other kind of server, and deliberately the same shape:
  * a notification is posted for something that is newly waiting *after* the app has read the
- * authoritative state, it carries the two opaque IDs needed to find the document locally and
- * nothing about it, and the tap route opens a screen rather than doing anything.
+ * authoritative state, its display copy uses the validated operation kind and local source name, it
+ * routes with only the two opaque IDs needed to find the document locally, and its tap opens a
+ * screen rather than doing anything.
  *
  * ## Why a second manager rather than one
  *
@@ -81,6 +83,7 @@ class ProposalNotificationManager(
         before: Set<ProposalRef>,
         after: Set<ProposalRef>,
         connections: List<Connection>,
+        proposals: Collection<ProposalRecord>,
     ) {
         if (!configured) return
         try {
@@ -99,10 +102,14 @@ class ProposalNotificationManager(
                 .associate {
                     it.id to it.label
                 }
+        val authoritative = proposals.associateBy {
+            ProposalRef(it.connectionId, it.key.proposalId)
+        }
         (after - before).forEach { ref ->
             val label = labels[ref.connectionId] ?: return@forEach
+            val proposal = authoritative[ref] ?: return@forEach
             try {
-                notify(ref, label)
+                notify(ref, label, proposal)
             } catch (_: SecurityException) {
                 // Revocation raced the post. The read already succeeded and remains authoritative.
             }
@@ -122,18 +129,14 @@ class ProposalNotificationManager(
         }
     }
 
-    private fun notify(ref: ProposalRef, label: String) {
+    private fun notify(ref: ProposalRef, label: String, proposal: ProposalRecord) {
         val notification =
-            Notification.Builder(context, FEEDS_CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(context.getString(R.string.notification_proposal_title))
-                .setContentText(context.getString(R.string.notification_proposal_text, label))
-                .setCategory(Notification.CATEGORY_REMINDER)
-                .setVisibility(Notification.VISIBILITY_SECRET)
-                .setAutoCancel(true)
-                .setOnlyAlertOnce(true)
-                .setContentIntent(ProposalNotificationIntent.pendingIntent(context, ref))
-                .build()
+            reviewNotification(
+                context = context,
+                channelId = FEEDS_CHANNEL_ID,
+                copy = proposalNotificationCopy(context, proposal, label),
+                contentIntent = ProposalNotificationIntent.pendingIntent(context, ref),
+            )
         manager.notify(tag(ref), PROPOSAL_NOTIFICATION_ID, notification)
     }
 
@@ -148,6 +151,33 @@ class ProposalNotificationManager(
         internal const val PROPOSAL_NOTIFICATION_ID = 2
     }
 }
+
+/** A provider-neutral label for the protocol operation, never its raw identifier. */
+private fun proposalNotificationCopy(
+    context: Context,
+    record: ProposalRecord,
+    source: String,
+): ReviewNotificationCopy =
+    when (record.proposal.operation.value) {
+        "swap" ->
+            ReviewNotificationCopy(
+                title = context.getString(R.string.notification_proposal_swap_title),
+                source = source,
+                summary = context.getString(R.string.notification_proposal_swap_summary),
+            )
+        "prediction" ->
+            ReviewNotificationCopy(
+                title = context.getString(R.string.notification_proposal_prediction_title),
+                source = source,
+                summary = context.getString(R.string.notification_proposal_prediction_summary),
+            )
+        else ->
+            ReviewNotificationCopy(
+                title = context.getString(R.string.notification_proposal_unknown_title),
+                source = source,
+                summary = context.getString(R.string.notification_proposal_unknown_summary),
+            )
+    }
 
 /** The explicit, immutable route attached to one proposal alert. */
 object ProposalNotificationIntent {
