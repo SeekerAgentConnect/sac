@@ -24,7 +24,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.policy.storage.UnreadableReason
 import io.github.brrenat.seekervault.request.v1.Network
 import java.time.Instant
@@ -52,7 +52,7 @@ class PolicyEditorScreenTest {
         compose.setContent {
             val current = remember { mutableStateOf(state) }
             ui = current
-            SeekerVaultTheme {
+            SeekerTheme {
                 PolicyEditorScreen(
                     label = "Home Mac",
                     state = current.value,

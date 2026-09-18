@@ -40,6 +40,13 @@ Bug fixes only need a changelog entry when significant enough for release notes.
 
 ## Workflow Orchestration
 
+### 0. Read the Ticket First
+
+- **Never do a task you cannot read the ticket for.** Read the Linear ticket (`SEE-…`) through the project's configured MCP server (the `linear` plugin in `.claude/settings.json`); if it is unavailable or unauthorized, fall back to the superset runner's ticket access.
+- If neither works, STOP: report which ticket, which tools were tried and what each returned, POST `blocked` to the superset hook when `$SEE_SUPERSET_TOKEN` is set, and change nothing.
+- **NEVER guess the task** — a branch name, a prompt summary, an old plan file or a neighbouring ticket is not the ticket. Do exactly what the Linear ticket describes.
+- Full rules: `AGENTS.md` ("The ticket") and `docs/development/tickets.md`.
+
 ### 1. Plan First
 
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)

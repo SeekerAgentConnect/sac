@@ -9,8 +9,8 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.RequestKey
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -28,7 +28,7 @@ class ActivityScreenTest {
     private var cleared = 0
 
     private fun show(state: ActivityUiState) = compose.setContent {
-        SeekerVaultTheme {
+        SeekerTheme {
             ActivityScreen(
                 state = state,
                 onOpen = { opened += it },

@@ -6,6 +6,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.LocalRippleConfiguration
+import androidx.compose.material3.LocalTonalElevationEnabled
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Text
@@ -27,10 +31,22 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.designsystem.theme.SeekerColors
+import io.github.brrenat.seekervault.designsystem.theme.SeekerDimensions
+import io.github.brrenat.seekervault.designsystem.theme.SeekerExtraTypography
+import io.github.brrenat.seekervault.designsystem.theme.SeekerRadii
+import io.github.brrenat.seekervault.designsystem.theme.SeekerSpacing
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.ui.BottomDestination
 import io.github.brrenat.seekervault.ui.SeekerBottomBar
 import io.github.brrenat.seekervault.ui.SeekerButton
@@ -43,6 +59,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalTextApi::class)
 class SeekerVaultThemeTest {
     @get:Rule val compose = createComposeRule()
 
@@ -81,10 +98,15 @@ class SeekerVaultThemeTest {
             assertEquals(Color(0xFF1B1B1B), inverseOnSurface)
             assertEquals(Color(0xFF4F5C00), inversePrimary)
             assertEquals(Color(0xFF0A0A0A), scrim)
+            assertEquals(Color.Transparent, surfaceTint)
         }
         assertEquals(Color(0xFFE7FC6E), values.extra.primaryText)
         assertEquals(Color(0xFF0A0A0A), values.extra.dim)
         assertEquals(Color(0xFFF83959), values.extra.errorText)
+        assertEquals(Color(0xFF7EC8FF), values.extra.blueChip)
+        assertEquals(Color(0xFF00243D), values.extra.onBlueChip)
+        assertEquals(Color(0xFFFF8FA8), values.extra.pinkChip)
+        assertEquals(Color(0xFF3D0014), values.extra.onPinkChip)
         assertOpaque(values)
     }
 
@@ -123,31 +145,93 @@ class SeekerVaultThemeTest {
             assertEquals(Color.White, inverseOnSurface)
             assertEquals(Color(0xFFE7FC6E), inversePrimary)
             assertEquals(Color(0xFFCFCFD2), scrim)
+            assertEquals(Color.Transparent, surfaceTint)
         }
         assertEquals(Color(0xFF4F5C00), values.extra.primaryText)
         assertEquals(Color(0xFFCFCFD2), values.extra.dim)
         assertEquals(Color(0xFFC4142F), values.extra.errorText)
+        assertEquals(Color(0xFF7EC8FF), values.extra.blueChip)
+        assertEquals(Color(0xFFFF8FA8), values.extra.pinkChip)
         assertOpaque(values)
     }
 
     @Test
-    fun typographyAndShapesMatchTheApprovedV4Scale() {
+    fun typographyShapesAndSpacingMatchTheExtractedScale() {
         val values = capture(dark = true)
         assertEquals(36.sp, values.typography.displaySmall.fontSize)
-        assertEquals(42.sp, values.typography.displaySmall.lineHeight)
+        assertEquals(43.2.sp, values.typography.displaySmall.lineHeight)
         assertEquals(28.sp, values.typography.headlineLarge.fontSize)
-        assertEquals(34.sp, values.typography.headlineLarge.lineHeight)
+        assertEquals(33.6.sp, values.typography.headlineLarge.lineHeight)
         assertEquals(22.sp, values.typography.titleLarge.fontSize)
-        assertEquals(28.sp, values.typography.titleLarge.lineHeight)
+        assertEquals(26.4.sp, values.typography.titleLarge.lineHeight)
         assertEquals(13.sp, values.typography.bodySmall.fontSize)
-        assertEquals(18.sp, values.typography.bodySmall.lineHeight)
+        assertEquals(15.6.sp, values.typography.bodySmall.lineHeight)
         assertEquals(12.sp, values.typography.labelSmall.fontSize)
-        assertEquals(16.sp, values.typography.labelSmall.lineHeight)
-        assertEquals(RoundedCornerShape(8.dp), values.shapes.extraSmall)
-        assertEquals(RoundedCornerShape(12.dp), values.shapes.small)
-        assertEquals(RoundedCornerShape(16.dp), values.shapes.medium)
-        assertEquals(RoundedCornerShape(24.dp), values.shapes.large)
+        assertEquals(14.4.sp, values.typography.labelSmall.lineHeight)
+        assertEquals(15.sp, values.extraTypography.buttonLarge.fontSize)
+        assertEquals(18.sp, values.extraTypography.amount.fontSize)
+        assertEquals(20.sp, values.extraTypography.screenTitle.fontSize)
+
+        val textStyles =
+            listOf(
+                values.typography.displaySmall,
+                values.typography.headlineLarge,
+                values.typography.titleLarge,
+                values.typography.bodyLarge,
+                values.typography.bodySmall,
+                values.typography.labelSmall,
+                values.extraTypography.buttonLarge,
+                values.extraTypography.amount,
+                values.extraTypography.screenTitle,
+                values.extraTypography.identifier,
+            )
+        textStyles.forEach(::assertCssTextMetrics)
+        assertTrue(values.typography.bodyLarge.fontFamily != FontFamily.Default)
+        assertEquals(
+            values.typography.bodyLarge.fontFamily,
+            values.extraTypography.buttonLarge.fontFamily,
+        )
+        assertTrue(
+            values.typography.bodyLarge.fontFamily != values.extraTypography.identifier.fontFamily
+        )
+
+        assertEquals(RoundedCornerShape(4.dp), values.shapes.extraSmall)
+        assertEquals(RoundedCornerShape(8.dp), values.shapes.small)
+        assertEquals(RoundedCornerShape(12.dp), values.shapes.medium)
+        assertEquals(RoundedCornerShape(16.dp), values.shapes.large)
         assertEquals(RoundedCornerShape(28.dp), values.shapes.extraLarge)
+        assertEquals(
+            listOf(4.dp, 8.dp, 12.dp, 16.dp, 20.dp, 24.dp, 28.dp),
+            with(values.radii) { listOf(xs, sm, md, lg, xl, xxl, sheet) },
+        )
+        assertEquals(
+            listOf(
+                2.dp,
+                4.dp,
+                6.dp,
+                8.dp,
+                10.dp,
+                12.dp,
+                14.dp,
+                16.dp,
+                20.dp,
+                24.dp,
+                28.dp,
+                32.dp,
+            ),
+            with(values.spacing) {
+                listOf(xxs, xs, sm, md, mdPlus, lg, lgPlus, xl, xxl, xxxl, huge, jumbo)
+            },
+        )
+    }
+
+    @Test
+    fun materialDefaultsCannotTintElevateOrEnlargeCompactControls() {
+        val values = capture(dark = true)
+        assertEquals(Color.Transparent, values.scheme.surfaceTint)
+        assertEquals(false, values.tonalElevationEnabled)
+        assertEquals(Dp.Unspecified, values.minimumInteractiveSize)
+        assertEquals(values.extra.primaryText, values.rippleColor)
     }
 
     @Test
@@ -164,7 +248,7 @@ class SeekerVaultThemeTest {
                     "android/app/src/main/java/io/github/brrenat/seekervault/MainActivity.kt",
                 )
                 .readText()
-        assertTrue(source.contains("setContent {\n            SeekerVaultTheme {"))
+        assertTrue(source.contains("setContent {\n            SeekerTheme {"))
         assertTrue(!Regex("""darkColorScheme\s*\(\s*\)""").containsMatchIn(source))
         assertTrue(!Regex("""lightColorScheme\s*\(\s*\)""").containsMatchIn(source))
     }
@@ -173,7 +257,7 @@ class SeekerVaultThemeTest {
     fun bottomBarExposesTheActiveDestinationAsSelected() {
         val selected = mutableStateOf("home")
         compose.setContent {
-            SeekerVaultTheme {
+            SeekerTheme {
                 SeekerBottomBar(
                     destinations =
                         listOf(
@@ -195,7 +279,7 @@ class SeekerVaultThemeTest {
     @Test
     fun solidDialogBodyScrollsWithoutMovingItsActions() {
         compose.setContent {
-            SeekerVaultTheme {
+            SeekerTheme {
                 SolidDialog(
                     title = "Confirm",
                     body = {
@@ -217,7 +301,7 @@ class SeekerVaultThemeTest {
     @Test
     fun criticalButtonLabelsWrapAtLargeText() {
         compose.setContent {
-            SeekerVaultTheme {
+            SeekerTheme {
                 val density = LocalDensity.current
                 CompositionLocalProvider(
                     LocalDensity provides Density(density.density, fontScale = 2f)
@@ -249,13 +333,20 @@ class SeekerVaultThemeTest {
     private fun capture(dark: Boolean): Captured {
         var captured: Captured? = null
         compose.setContent {
-            SeekerVaultTheme(darkTheme = dark) {
+            SeekerTheme(darkTheme = dark) {
                 val value =
                     Captured(
                         MaterialTheme.colorScheme,
                         SeekerTheme.colors,
                         MaterialTheme.typography,
                         MaterialTheme.shapes,
+                        SeekerTheme.spacing,
+                        SeekerTheme.radii,
+                        SeekerTheme.dimensions,
+                        SeekerTheme.typography,
+                        LocalTonalElevationEnabled.current,
+                        LocalMinimumInteractiveComponentSize.current,
+                        requireNotNull(LocalRippleConfiguration.current).color,
                     )
                 SideEffect { captured = value }
             }
@@ -283,14 +374,39 @@ class SeekerVaultThemeTest {
                 values.extra.primaryText,
                 values.extra.dim,
                 values.extra.errorText,
+                values.extra.blueChip,
+                values.extra.onBlueChip,
+                values.extra.violetChip,
+                values.extra.onVioletChip,
+                values.extra.tealChip,
+                values.extra.onTealChip,
+                values.extra.pinkChip,
+                values.extra.onPinkChip,
+                values.extra.sandChip,
+                values.extra.onSandChip,
             )
         assertEquals(colors, colors.filter { it.alpha == 1f })
     }
 
+    private fun assertCssTextMetrics(style: TextStyle) {
+        assertEquals(0.sp, style.letterSpacing)
+        assertEquals(PlatformTextStyle(includeFontPadding = false), style.platformStyle)
+        assertEquals(LineHeightStyle.Alignment.Center, style.lineHeightStyle?.alignment)
+        assertEquals(LineHeightStyle.Trim.None, style.lineHeightStyle?.trim)
+        assertEquals(LineHeightStyle.Mode.Fixed, style.lineHeightStyle?.mode)
+    }
+
     private data class Captured(
         val scheme: ColorScheme,
-        val extra: SeekerExtraColors,
+        val extra: SeekerColors,
         val typography: Typography,
         val shapes: Shapes,
+        val spacing: SeekerSpacing,
+        val radii: SeekerRadii,
+        val dimensions: SeekerDimensions,
+        val extraTypography: SeekerExtraTypography,
+        val tonalElevationEnabled: Boolean,
+        val minimumInteractiveSize: Dp,
+        val rippleColor: Color,
     )
 }

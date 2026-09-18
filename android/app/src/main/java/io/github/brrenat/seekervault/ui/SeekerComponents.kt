@@ -65,17 +65,14 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
-import io.github.brrenat.seekervault.SeekerTheme
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import kotlinx.coroutines.delay
 
 private val SheetEnterEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
@@ -119,8 +116,8 @@ fun SeekerButton(
                         Modifier.semantics(mergeDescendants = true) { testTag = automationTag }
                     }
                 )
-                .heightIn(min = 48.dp)
-                .clip(RoundedCornerShape(24.dp))
+                .heightIn(min = SeekerTheme.dimensions.dp48)
+                .clip(RoundedCornerShape(SeekerTheme.dimensions.dp24))
                 .background(container)
                 .clickable(
                     enabled = enabled,
@@ -129,18 +126,21 @@ fun SeekerButton(
                     role = Role.Button,
                     onClick = onClick,
                 )
-                .padding(horizontal = 20.dp, vertical = 6.dp),
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp20,
+                    vertical = SeekerTheme.dimensions.dp6,
+                ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
         if (leading != null) {
             Text(leading, color = content, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(SeekerTheme.dimensions.dp8))
         }
         Text(
             text,
             color = content,
-            style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
+            style = SeekerTheme.typography.buttonLarge,
             textAlign = TextAlign.Center,
             softWrap = true,
             maxLines = Int.MAX_VALUE,
@@ -152,7 +152,7 @@ fun SeekerButton(
 fun SeekerCard(
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.surfaceContainer,
-    radius: Dp = 16.dp,
+    radius: Dp = SeekerTheme.dimensions.dp16,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
@@ -171,8 +171,8 @@ fun SeekerCard(
         modifier = modifier.then(clickable),
         shape = RoundedCornerShape(radius),
         color = color,
-        shadowElevation = 0.dp,
-        tonalElevation = 0.dp,
+        shadowElevation = SeekerTheme.dimensions.dp0,
+        tonalElevation = SeekerTheme.dimensions.dp0,
         content = content,
     )
 }
@@ -189,13 +189,18 @@ fun SeekerSnackbarHost(hostState: SnackbarHostState, modifier: Modifier = Modifi
     }
     if (message != null) {
         SeekerCard(
-            modifier = modifier.padding(16.dp),
+            modifier = modifier.padding(SeekerTheme.dimensions.dp16),
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
-            radius = 16.dp,
+            radius = SeekerTheme.dimensions.dp16,
         ) {
             Text(
                 message.visuals.message,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(
+                            horizontal = SeekerTheme.dimensions.dp16,
+                            vertical = SeekerTheme.dimensions.dp14,
+                        ),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -208,22 +213,22 @@ fun NetworkChip(network: String, modifier: Modifier = Modifier) {
     Row(
         modifier =
             modifier
-                .height(32.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .height(SeekerTheme.dimensions.dp32)
+                .clip(RoundedCornerShape(SeekerTheme.dimensions.dp8))
                 .background(MaterialTheme.colorScheme.surface)
                 .border(
-                    1.dp,
+                    SeekerTheme.dimensions.dp1,
                     MaterialTheme.colorScheme.outlineVariant,
-                    RoundedCornerShape(8.dp),
+                    RoundedCornerShape(SeekerTheme.dimensions.dp8),
                 )
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = SeekerTheme.dimensions.dp12),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
     ) {
         Icon(
             Icons.Outlined.Public,
             contentDescription = null,
-            modifier = Modifier.size(16.dp),
+            modifier = Modifier.size(SeekerTheme.dimensions.dp16),
         )
         Text(network, style = MaterialTheme.typography.labelMedium)
     }
@@ -239,7 +244,7 @@ fun Identifier(
     Text(
         text,
         modifier = modifier,
-        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        style = SeekerTheme.typography.identifier,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = maxLines,
         textAlign = textAlign,
@@ -328,8 +333,11 @@ fun SeekerBottomBar(
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceContainer)
                 .navigationBarsPadding()
-                .height(80.dp)
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .height(SeekerTheme.dimensions.dp80)
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp8,
+                    vertical = SeekerTheme.dimensions.dp8,
+                ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
@@ -346,11 +354,14 @@ fun SeekerBottomBar(
                             onClick = { onSelect(destination.route) },
                         ),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp2),
             ) {
                 Box(
-                    Modifier.size(width = 64.dp, height = 32.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                    Modifier.size(
+                            width = SeekerTheme.dimensions.dp64,
+                            height = SeekerTheme.dimensions.dp32,
+                        )
+                        .clip(RoundedCornerShape(SeekerTheme.dimensions.dp16))
                         .background(
                             if (active) MaterialTheme.colorScheme.primaryContainer
                             else MaterialTheme.colorScheme.surfaceContainer
@@ -360,7 +371,7 @@ fun SeekerBottomBar(
                     Icon(
                         destination.icon,
                         contentDescription = null,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(SeekerTheme.dimensions.dp24),
                         tint =
                             if (active) MaterialTheme.colorScheme.onPrimaryContainer
                             else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -368,8 +379,11 @@ fun SeekerBottomBar(
                     if (destination.hasBadge) {
                         Box(
                             Modifier.align(Alignment.TopEnd)
-                                .padding(end = 14.dp, top = 4.dp)
-                                .size(7.dp)
+                                .padding(
+                                    end = SeekerTheme.dimensions.dp14,
+                                    top = SeekerTheme.dimensions.dp4,
+                                )
+                                .size(SeekerTheme.dimensions.dp7)
                                 .background(MaterialTheme.colorScheme.error, CircleShape)
                         )
                     }
@@ -396,7 +410,7 @@ fun SeekerSheet(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val activeTop = 100.dp
+    val activeTop = SeekerTheme.dimensions.dp100
     val transition =
         remember(motionKey) {
             MutableTransitionState(promoteFromBackplate).apply { targetState = visible }
@@ -407,13 +421,13 @@ fun SeekerSheet(
     LaunchedEffect(promoteFromBackplate) { promoted = true }
     val animatedTop by
         animateDpAsState(
-            if (promoted) activeTop else 86.dp,
+            if (promoted) activeTop else SeekerTheme.dimensions.dp86,
             tween(300, easing = SheetEnterEasing),
             label = "activeSheetTop",
         )
     val animatedBottom by
         animateDpAsState(
-            if (promoted) 0.dp else 12.dp,
+            if (promoted) SeekerTheme.dimensions.dp0 else SeekerTheme.dimensions.dp12,
             tween(300, easing = SheetEnterEasing),
             label = "activeSheetBottom",
         )
@@ -451,21 +465,28 @@ fun SeekerSheet(
                                         onClick = onBackplateClick,
                                     )
                             ),
-                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    shape =
+                        RoundedCornerShape(
+                            topStart = SeekerTheme.dimensions.dp28,
+                            topEnd = SeekerTheme.dimensions.dp28,
+                        ),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shadowElevation = 0.dp,
-                    tonalElevation = 0.dp,
+                    shadowElevation = SeekerTheme.dimensions.dp0,
+                    tonalElevation = SeekerTheme.dimensions.dp0,
                 ) {
                     Column {
                         Box(
-                            Modifier.fillMaxWidth().height(22.dp),
+                            Modifier.fillMaxWidth().height(SeekerTheme.dimensions.dp22),
                             contentAlignment = Alignment.Center,
                         ) {
                             Box(
-                                Modifier.size(width = 32.dp, height = 4.dp)
+                                Modifier.size(
+                                        width = SeekerTheme.dimensions.dp32,
+                                        height = SeekerTheme.dimensions.dp4,
+                                    )
                                     .background(
                                         MaterialTheme.colorScheme.outlineVariant,
-                                        RoundedCornerShape(2.dp),
+                                        RoundedCornerShape(SeekerTheme.dimensions.dp2),
                                     )
                             )
                         }
@@ -502,13 +523,19 @@ fun SheetBackplate(depth: Int, title: String, onClick: () -> Unit) {
     LaunchedEffect(Unit) { stacked = true }
     val top by
         animateDpAsState(
-            if (stacked) (100 - back * 14).coerceAtLeast(30).dp else 100.dp,
+            if (stacked) {
+                (SeekerTheme.dimensions.dp100 - SeekerTheme.dimensions.dp14 * back.toFloat())
+                    .coerceAtLeast(SeekerTheme.dimensions.dp30)
+            } else {
+                SeekerTheme.dimensions.dp100
+            },
             tween(300, easing = SheetEnterEasing),
             label = "sheetBackplateTop",
         )
     val bottom by
         animateDpAsState(
-            if (stacked) (back * 12).dp else 0.dp,
+            if (stacked) SeekerTheme.dimensions.dp12 * back.toFloat()
+            else SeekerTheme.dimensions.dp0,
             tween(300, easing = SheetEnterEasing),
             label = "sheetBackplateBottom",
         )
@@ -525,19 +552,29 @@ fun SheetBackplate(depth: Int, title: String, onClick: () -> Unit) {
                 ),
         color = SeekerTheme.colors.dim,
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        shadowElevation = 0.dp,
-        tonalElevation = 0.dp,
+        shape =
+            RoundedCornerShape(
+                topStart = SeekerTheme.dimensions.dp28,
+                topEnd = SeekerTheme.dimensions.dp28,
+            ),
+        shadowElevation = SeekerTheme.dimensions.dp0,
+        tonalElevation = SeekerTheme.dimensions.dp0,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Spacer(Modifier.height(9.dp))
+            Spacer(Modifier.height(SeekerTheme.dimensions.dp9))
             Box(
-                Modifier.size(width = 32.dp, height = 4.dp)
-                    .background(MaterialTheme.colorScheme.outline, RoundedCornerShape(2.dp))
+                Modifier.size(
+                        width = SeekerTheme.dimensions.dp32,
+                        height = SeekerTheme.dimensions.dp4,
+                    )
+                    .background(
+                        MaterialTheme.colorScheme.outline,
+                        RoundedCornerShape(SeekerTheme.dimensions.dp2),
+                    )
             )
             Text(
                 title,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
                 style = MaterialTheme.typography.titleLarge,
             )
         }
@@ -576,22 +613,22 @@ fun SolidDialog(
             dialogWindow.setBackgroundDrawable(ColorDrawable(dim.toArgb()))
         }
         Box(
-            modifier.fillMaxSize().background(dim).padding(24.dp),
+            modifier.fillMaxSize().background(dim).padding(SeekerTheme.dimensions.dp24),
             contentAlignment = Alignment.Center,
         ) {
             SeekerCard(
-                modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp),
+                modifier = Modifier.fillMaxWidth().widthIn(max = SeekerTheme.dimensions.dp420),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                radius = 28.dp,
+                radius = SeekerTheme.dimensions.dp28,
             ) {
                 Column(
-                    Modifier.fillMaxWidth().padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                    Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp24),
+                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp18),
                 ) {
                     Text(title, style = MaterialTheme.typography.headlineSmall)
                     Box(
                         Modifier.fillMaxWidth()
-                            .heightIn(max = 240.dp)
+                            .heightIn(max = SeekerTheme.dimensions.dp240)
                             .verticalScroll(rememberScrollState())
                     ) {
                         body()

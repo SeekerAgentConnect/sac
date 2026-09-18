@@ -31,4 +31,10 @@ has been added, with the components it is built from and the shape it copies:
 No token, palette, typeface, shape or component was added or changed for these flows; they compose the
 approved ones. Nothing in the reference HTML was edited.
 
-These files govern the v4 theme and component presentation. Read them together with `SeekerVaultTheme` and the existing screen code before changing Android UI or resolving a UI merge conflict. Keep the HTML bytes intact: an intentional design revision belongs in a new version with its source and differences documented here. Never edit the reference to make current application output appear correct.
+These files govern the v4 screen hierarchy and existing component presentation. Read them together
+with `android/designsystem/`, `SeekerTheme`, and the affected screen code before changing Android UI
+or resolving a UI merge conflict. SEE-114's token values come from the finalized Stage 7.2 export's
+rendered token specimens; its module and font provenance are documented in
+[`android/designsystem/README.md`](../../android/designsystem/README.md). Keep reference HTML bytes
+intact: an intentional design revision belongs in a new version with its source and differences
+documented here. Never edit a reference to make current application output appear correct.

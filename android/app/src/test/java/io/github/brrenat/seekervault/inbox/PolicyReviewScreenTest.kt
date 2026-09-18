@@ -14,9 +14,9 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.NOW
 import io.github.brrenat.seekervault.policy.Allowlist
@@ -72,7 +72,7 @@ class PolicyReviewScreenTest {
         acknowledged: Boolean = false,
         facts: RequestFacts = RequestFacts.movesNothing(HOME.id, PolicyAction.Acknowledgement),
     ) = compose.setContent {
-        SeekerVaultTheme {
+        SeekerTheme {
             RequestDetailsScreen(
                 request = request,
                 source = HOME,
@@ -265,7 +265,7 @@ class PolicyReviewScreenTest {
             )
         val showing = mutableStateOf(verdicts.first())
         compose.setContent {
-            SeekerVaultTheme {
+            SeekerTheme {
                 RequestDetailsScreen(
                     request = ACK,
                     source = HOME,

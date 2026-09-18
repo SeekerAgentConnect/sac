@@ -17,13 +17,13 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.SigningOutcome
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.NOW
 import io.github.brrenat.seekervault.policy.PolicyAction
@@ -72,7 +72,7 @@ class RequestDetailsScreenTest {
         assessment: RequestAssessment? = null,
         executable: Boolean = true,
     ) = compose.setContent {
-        SeekerVaultTheme {
+        SeekerTheme {
             RequestDetailsScreen(
                 request = request,
                 source = HOME,
