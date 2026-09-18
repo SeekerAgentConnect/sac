@@ -1,5 +1,13 @@
 # Building a server that publishes to Seeker Agent Connect
 
+This numbered flow builds a **public `gateway_feed`**. For a private independent server, use the
+same Server SDK and gateway registration with a temporary invitation instead: the complete flow is
+[gateway onboarding](gateway-onboarding.md). Each invitation creates one confirmed, revocable
+device binding for an opaque server-scoped user reference; the server stores the completed
+connection ID and supplies both values when routing SEE-108 common requests and their
+`RETURN_TO_ORIGIN` results. Legacy direct pairing and public feed references remain separate,
+usable paths; neither substitutes for an invitation.
+
 This guide takes you from a fresh checkout of this repository to a live feed, using one of the two Go templates it ships. At the end you will have published a manifest, published a signal, revised it, withdrawn it, seen two subscribers receive the same document, and sent the content-free hint that wakes a phone which is not looking — and you will have done it without a credential of ours for Firebase, without a line of Kotlin, and without holding anybody's wallet keys.
 
 One thing to know before you start: a feed is added from the app's existing **Add connection** screen.
@@ -9,7 +17,10 @@ app directly. [Step 5](#5-connect-the-app) describes the flow.
 
 It is written for the developer who wants their own server in this system: a trader publishing their own swaps, or somebody republishing a market listing. You do not need to know how the app works inside, and you never see the private MCP implementation, which is a different kind of server entirely ([`docs/wiki/mcp-adapter.md`](../wiki/mcp-adapter.md)).
 
-**What this is not.** It is not an SDK guide, because there is no SDK. Nothing here embeds this app's screens in another app, and the boundary that a later extraction would cut along is documented rather than built ([`docs/wiki/client-plugins.md`](../wiki/client-plugins.md#how-a-host-app-would-get-an-entry-point--documented-not-built) is the honest account; the packaging is SEE-102 and the host-app entry point is SEE-104). What you build by following this page is a **publisher**: a server that says what is proposed, to everybody subscribed, and stops there.
+**What this is not.** It is not a client-app SDK guide. The Go Server SDK does expose the common
+feed API and SEE-109 private invitation/request API, but nothing here embeds SAC screens in another
+app. What you build by following this page is a **publisher**: a server that says what is proposed,
+to everybody subscribed, and stops there.
 
 ## How the pieces fit
 
@@ -21,21 +32,23 @@ Three parties, and each one does exactly one thing:
 
 The consequence worth internalising before you write anything: **a proposal is common and a decision about it is not.** Every subscriber receives the same bytes. What each owner then does with it — the amount, the wallet, the approval, the result — happens on their phone and is not sent to you, to the gateway, or to each other ([`docs/wiki/shared-proposals.md`](../wiki/shared-proposals.md#nothing-goes-the-other-way)).
 
-### The two connection modes
+### The three connection modes
 
-A phone's connection to a server is one of two kinds, and the kind comes from the server's own validated statement about itself rather than from how it was added:
+A phone's connection mode comes from the server's validated manifest rather than from a guess:
 
-|                              | `direct`                                            | `gateway_feed`                                              |
-| ---------------------------- | --------------------------------------------------- | ----------------------------------------------------------- |
-| Whose server                 | One owner's own private sidecar                     | **Yours**, the publisher you are about to build             |
-| How the phone adds it        | A pairing code (`pnpm pair`)                        | A feed reference, through the gateway                        |
-| Credential on the phone      | It holds one, from pairing                          | **None.** There is nothing to authenticate to                |
-| Who sees a request           | Only the owner who paired                           | Every subscriber of the channel                              |
-| Who the phone calls          | The server itself                                   | The gateway. **Never your server**                           |
-| What the server learns       | That one phone is paired                            | **Nothing about any phone**                                  |
-| Where a result goes          | Back to the server that asked                       | Nowhere. It stays on the phone                               |
+| | `direct` | `gateway_feed` | `gateway_private` |
+| --- | --- | --- | --- |
+| Whose server | One owner's sidecar | A public publisher | An independent server |
+| How the phone adds it | A pairing code | A public feed reference | A temporary invitation |
+| Credential on the phone | Issued by the sidecar | **None** | Issued by the gateway after confirmation |
+| Who sees a request | The paired owner | Every subscriber | One explicitly selected server/user/device binding |
+| Who the phone calls | The server | The gateway | The gateway |
+| What the server learns | That one phone is paired | Nothing about any phone | Completion and declared request results |
+| Where a result goes | Back to the sidecar | Nowhere; it stays on the phone | Through the gateway only for `RETURN_TO_ORIGIN` |
 
-A phone holds any mixture of the two at once and neither affects the other; a private request is never converted into a broadcast one. The full account is [`docs/wiki/server-manifests.md`](../wiki/server-manifests.md#the-two-kinds-of-server).
+A phone holds any mixture of the three and none affects another. Connecting is never wallet,
+signing, or execution authorization. The full account is
+[`docs/wiki/server-manifests.md`](../wiki/server-manifests.md#the-three-connection-modes).
 
 ### What never leaves the phone
 
@@ -158,7 +171,7 @@ Then configure it. `cp .env.example .env` and fill it in; the file documents eve
 
 Those last two are different things and confusing them is the first mistake to avoid. `BROADCAST_CREDENTIAL` is how the gateway knows you; `PUBLISHER_API_TOKEN` is how your own strategy process, or your own hand at a terminal, is allowed to tell your template what to say. Either may be a file instead of a value (`BROADCAST_CREDENTIAL_FILE`, `PUBLISHER_API_TOKEN_FILE`) for a deployment that mounts secrets; setting both a value and a file is a configuration error, because then there would be two answers and no way to tell which was used.
 
-One more is worth setting deliberately: `PUBLISHER_PUBLISH_URL`. Empty means `PUBLISHER_GATEWAY_URL`, which is right when the gateway's proxy serves both of its APIs on one origin — the packaged deployment does. Set it when the gateway runs with two loopback listeners (reads on 8090, publications on 8091), or when its operator keeps publishing off the internet and you reach it over a tunnel. Getting it wrong is the one mistake the gateway cannot report: a read origin has no handler that could write anything, so a publication gets a 404. The template says so at startup and names the variable.
+One more is worth setting deliberately: `PUBLISHER_PUBLISH_URL`. Empty means `PUBLISHER_GATEWAY_URL`, which is right when the gateway's proxy serves its APIs on one origin — the packaged deployment does. Set it when the gateway runs with separate loopback listeners (feeds on 8090, publications on 8091 and invitation/device traffic on 8092), or when its operator keeps publishing off the internet and you reach it over a tunnel. Getting it wrong is the one mistake the gateway cannot report: a read origin has no handler that could write anything, so a publication gets a 404. The template says so at startup and names the variable.
 
 **Both `.env` examples ship as sandbox deployments**, so copying one and running it demonstrates the whole path without anybody's money. Promoting to production is a deliberate edit of one line ([step 11](#11-sandbox-and-production)).
 
@@ -558,7 +571,7 @@ What a **provider** learns is separate from both and is not private: a quote car
 
 **What your template keeps** is its own signals, in one SQLite file: the statement, the revision, the publication state and the idempotency keys it has seen. Plus, for the Prediction template, the markets it tracks and their source links. **Nothing about a subscriber**, because there is nothing to keep: no wallet, no amount, no decision, no outcome, and no endpoint that would accept one. A boundary test fails if anything in the module could send something about a subscriber, and another fails if a credential reaches a log line.
 
-**What the gateway keeps** is the publications, the manifests and the publisher permissions, plus the transient connection state a broker needs. It has no column for anything about a subscriber, and a test reads the database after several reads and requires every row count to be unchanged. What it does necessarily observe is that somebody read a channel, with the caller's address, for rate limiting — and it writes none of it down. This is not a claim that network infrastructure observes no metadata; Firebase learns that a topic was subscribed to, a provider learns what it was asked, and a proxy sees connections.
+**What the gateway keeps** for a public feed is the publications, manifests and publisher permissions, plus the transient connection state a broker needs. Public feed tables still have no subscriber column, and a test reads the database after several feed reads and requires every row count to be unchanged. A gateway-private server separately creates the minimal server/user/device binding and exact routed requests described in [gateway onboarding](gateway-onboarding.md); it is not a public-feed subscriber record or a central SAC account. What the gateway necessarily observes is a caller's address for rate limiting, and it writes none of that metadata down. This is not a claim that network infrastructure observes no metadata; Firebase learns that a topic was subscribed to, a provider learns what it was asked, and a proxy sees connections.
 
 **What is yours to answer for**, in practice:
 

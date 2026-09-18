@@ -213,10 +213,10 @@ func TestNoProviderIsNamedInTheGateway(t *testing.T) {
 	}
 }
 
-// What the gateway keeps, as its own schema spells it. The list is pinned so that a column for a
-// subscriber — an address, a chosen amount, a decision, a result — has to be argued for here
-// first, and the forbidden words catch the same thing under another name.
-func TestTheStoreHasNoColumnForASubscriber(t *testing.T) {
+// What the gateway keeps, as its own schema spells it. SEE-109 adds only a server-scoped opaque
+// recipient, a device binding and the common request/result route. The list is pinned so this can
+// never drift into a central account, wallet profile or financial history.
+func TestTheStoreKeepsOnlyTheGatewayPrivateAssociation(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(repo, "broadcast", "internal", "store", "store.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -238,6 +238,7 @@ func TestTheStoreHasNoColumnForASubscriber(t *testing.T) {
 	}
 	expected := []string{
 		"publisher", "publisher_credential", "manifest", "proposal", "channel_sequence", "notice",
+		"invitation", "device_binding", "private_request",
 	}
 	if fmt.Sprint(names) != fmt.Sprint(expected) {
 		t.Fatalf("the store holds %v, expected %v", names, expected)
@@ -265,13 +266,22 @@ func TestTheStoreHasNoColumnForASubscriber(t *testing.T) {
 		// notice
 		"id", "channel", "kind", "proposal_id", "revision", "sequence", "created_at_ms",
 		"attempts", "ready_at_ms",
+		// invitation
+		"invitation_id", "token_hash", "server_id", "user_ref", "created_at_ms",
+		"expires_at_ms", "revoked_at_ms", "redeemed_at_ms", "connection_id",
+		// device_binding
+		"connection_id", "server_id", "user_ref", "credential_hash", "device_name",
+		"created_at_ms", "revoked_at_ms", "sequence",
+		// private_request
+		"server_id", "request_id", "user_ref", "connection_id", "revision", "cancelled",
+		"expires_at_ms", "sequence", "document", "result", "updated_at_ms",
 	}
 	if fmt.Sprint(fields) != fmt.Sprint(pinned) {
 		t.Fatalf("the store's columns are\n%v\nexpected\n%v", fields, pinned)
 	}
 
-	forbidden := regexp.MustCompile(`(?i)\b(wallet|amount|signature|approval|approved|decision|` +
-		`dismissal|execution|outcome|balance|payout|subscriber|device|reader)\w*`)
+	forbidden := regexp.MustCompile(`(?i)\b(wallet|amount|approval|approved|decision|` +
+		`dismissal|execution|balance|payout|subscriber|central_account|email|phone)\w*`)
 	if found := forbidden.FindAllString(schema, -1); len(found) > 0 {
 		t.Fatalf("the schema grew something about a person: %v", found)
 	}
@@ -313,6 +323,18 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 		// publisher published. A field here would be a field every listener on the channel sees.
 		"event.proto": {"sequence", "manifest", "proposal", "request"},
 		"publish.proto": {
+			"user_ref", "lifetime_seconds",
+			"invitation",
+			"invitation_id",
+			"invitation",
+			"invitation_id",
+			"request", "connection_id",
+			"record", "unchanged",
+			"request_id",
+			"record",
+			"request_id", "revision",
+			"record", "unchanged",
+			"connection_id",
 			"manifest",
 			"status", "settings_revision",
 			"request",
@@ -323,6 +345,22 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			"status", "revision", "snapshot_sequence",
 			"proposal_id", "revision",
 			"status", "proposal", "snapshot_sequence",
+		},
+		"onboarding.proto": {
+			"invitation_id", "invitation_url", "app_uri", "expires_at", "status", "connection_id", "connected_at",
+			"token",
+			"invitation_id", "server_id", "display_name", "expires_at", "status", "manifest",
+			"token", "device_name",
+			"connection_id", "device_token", "server_id", "manifest",
+			"connection_id", "known_settings_revision",
+			"manifest", "unchanged", "settings_revision",
+			"connection_id", "page_size", "page_token", "known_sequence",
+			"requests", "next_page_token", "sequence", "unchanged",
+			"request_id", "request_revision", "status", "owner_inputs", "signature", "detail", "completed_at",
+			"connection_id", "result",
+			"result", "unchanged",
+			"connection_id",
+			"request", "connection_id", "result",
 		},
 		"problem.proto": {"problem", "field", "held_revision"},
 	} {
@@ -340,19 +378,20 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 		if fmt.Sprint(names) != fmt.Sprint(expected) {
 			t.Fatalf("%s carries\n%v\nexpected\n%v", file, names, expected)
 		}
-		forbidden := regexp.MustCompile(`(?i)\b(wallet|amount|signature|approval|approved|` +
-			`decision|dismissal|execution|result|outcome|balance|payout|prepared|transaction|` +
-			`credential|secret|install|script)\w*`)
+		forbiddenWords := `wallet|amount|approval|approved|decision|dismissal|execution|outcome|balance|payout|prepared|transaction|secret|install|script`
+		if file != "onboarding.proto" && file != "publish.proto" {
+			forbiddenWords += `|signature|result|credential`
+		}
+		forbidden := regexp.MustCompile(`(?i)\b(` + forbiddenWords + `)\w*`)
 		if found := forbidden.FindAllString(proto, -1); len(found) > 0 {
 			t.Fatalf("%s grew something about a person or a permission: %v", file, found)
 		}
 	}
 }
 
-// The two APIs are two listeners, and this is that statement at run time: every publisher procedure
-// answers 404 on the read handler, and every read procedure answers 404 on the publisher handler.
-// Not "is refused" — is not there at all, so no credential, mistake or routing rule in front can
-// turn one into the other.
+// The three APIs are three listeners, and this is that statement at run time: every procedure is
+// absent from the other two handlers. Not "is refused" — is not there at all, so no credential,
+// mistake or routing rule in front can turn one boundary into another.
 func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 	documents, err := store.Open(filepath.Join(t.TempDir(), "broadcast.db"))
 	if err != nil {
@@ -379,27 +418,46 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 	defer read.Close()
 	publish := httptest.NewServer(service.Publish)
 	defer publish.Close()
+	client := httptest.NewServer(service.Client)
+	defer client.Close()
+	publisherProcedures := []string{
+		gatewayv1connect.PublisherServicePublishManifestProcedure,
+		gatewayv1connect.PublisherServicePublishRequestProcedure,
+		gatewayv1connect.PublisherServiceCancelRequestProcedure,
+		gatewayv1connect.PublisherServicePublishProposalProcedure,
+		gatewayv1connect.PublisherServiceCancelProposalProcedure,
+		gatewayv1connect.PublisherServiceCreateInvitationProcedure,
+		gatewayv1connect.PublisherServiceGetInvitationProcedure,
+		gatewayv1connect.PublisherServiceRevokeInvitationProcedure,
+		gatewayv1connect.PublisherServiceCreatePrivateRequestProcedure,
+		gatewayv1connect.PublisherServiceGetPrivateRequestProcedure,
+		gatewayv1connect.PublisherServiceCancelPrivateRequestProcedure,
+	}
+	feedProcedures := []string{
+		gatewayv1connect.FeedServiceGetServerManifestProcedure,
+		gatewayv1connect.FeedServiceListRequestsProcedure,
+		gatewayv1connect.FeedServiceGetRequestProcedure,
+		gatewayv1connect.FeedServiceListProposalsProcedure,
+		gatewayv1connect.FeedServiceGetProposalProcedure,
+		gatewayv1connect.FeedServiceGetFeedTopicsProcedure,
+	}
+	clientProcedures := []string{
+		gatewayv1connect.InvitationServiceResolveInvitationProcedure,
+		gatewayv1connect.InvitationServiceRedeemInvitationProcedure,
+		gatewayv1connect.DeviceServiceGetServerManifestProcedure,
+		gatewayv1connect.DeviceServiceListRequestsProcedure,
+		gatewayv1connect.DeviceServiceSubmitResultProcedure,
+		gatewayv1connect.DeviceServiceRevokeConnectionProcedure,
+	}
 
 	for _, one := range []struct {
 		name       string
 		server     *httptest.Server
 		procedures []string
 	}{
-		{"the read listener", read, []string{
-			gatewayv1connect.PublisherServicePublishManifestProcedure,
-			gatewayv1connect.PublisherServicePublishRequestProcedure,
-			gatewayv1connect.PublisherServiceCancelRequestProcedure,
-			gatewayv1connect.PublisherServicePublishProposalProcedure,
-			gatewayv1connect.PublisherServiceCancelProposalProcedure,
-		}},
-		{"the publisher listener", publish, []string{
-			gatewayv1connect.FeedServiceGetServerManifestProcedure,
-			gatewayv1connect.FeedServiceListRequestsProcedure,
-			gatewayv1connect.FeedServiceGetRequestProcedure,
-			gatewayv1connect.FeedServiceListProposalsProcedure,
-			gatewayv1connect.FeedServiceGetProposalProcedure,
-			gatewayv1connect.FeedServiceGetFeedTopicsProcedure,
-		}},
+		{"the read listener", read, append(append([]string{}, publisherProcedures...), clientProcedures...)},
+		{"the publisher listener", publish, append(append([]string{}, feedProcedures...), clientProcedures...)},
+		{"the client listener", client, append(append([]string{}, feedProcedures...), publisherProcedures...)},
 	} {
 		for _, procedure := range one.procedures {
 			response, err := one.server.Client().Post(

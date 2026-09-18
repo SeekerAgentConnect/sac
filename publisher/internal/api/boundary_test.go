@@ -71,8 +71,12 @@ func TestNoFeedClientIsCompiledForATemplate(t *testing.T) {
 				"(buf.gen.publisher.yaml)", absent)
 		}
 	}
-	// And what is generated is the publisher API and the two documents it carries.
+	// And what is generated is the publisher API, its onboarding types, and the documents it
+	// carries. The SDK uses the publisher service for invitations; no DeviceService client is used
+	// by a template.
 	for _, present := range []string{
+		"gateway/v1/onboarding.pb.go",
+		"gateway/v1/gatewayv1connect/onboarding.connect.go",
 		"gateway/v1/publish.pb.go",
 		"gateway/v1/problem.pb.go",
 		"gateway/v1/gatewayv1connect/publish.connect.go",
@@ -85,16 +89,17 @@ func TestNoFeedClientIsCompiledForATemplate(t *testing.T) {
 	}
 }
 
-// One package reaches out of this process, and it reaches one service. Nothing else in the
-// template opens a connection to anything — no chain, no provider, no phone, no broker.
-func TestOnlyOnePackageCallsTheGateway(t *testing.T) {
+// A running template has one publication path. SEE-109's developer-facing SDK is the one other
+// package allowed to call the publisher service for private onboarding and requests. Nothing else
+// opens a connection to a chain, provider, phone, or broker.
+func TestOnlyTheTemplatePublisherAndServerSDKCallTheGateway(t *testing.T) {
 	for path, source := range shipped(t) {
 		if !strings.Contains(source, "gatewayv1connect") {
 			continue
 		}
-		if path != "internal/publish/publish.go" {
-			t.Fatalf("%s imports the gateway's generated client. Publishing is one path, in "+
-				"internal/publish, so that one place decides what a failure was", path)
+		if path != "internal/publish/publish.go" && path != "sdk/gateway.go" {
+			t.Fatalf("%s imports the gateway's generated client. Only the template publisher "+
+				"and the developer-facing Server SDK may call it", path)
 		}
 	}
 	// And the generated server handler is never mounted: a template serves none of the gateway's
@@ -119,6 +124,12 @@ func TestATemplateDeliversNothingItself(t *testing.T) {
 	} {
 		pattern := regexp.MustCompile(`(?i)` + word)
 		for path, source := range shipped(t) {
+			// Developer examples are not publisher-template runtime code. SEE-109 deliberately
+			// includes an MCP-backed server example whose tool handler calls the SDK; the example
+			// still delivers nothing and holds no broker or phone transport.
+			if strings.HasPrefix(path, "examples/") {
+				continue
+			}
 			for _, line := range strings.Split(source, "\n") {
 				trimmed := strings.TrimSpace(line)
 				// A comment may say what this template does not do; code may not do it.

@@ -1020,6 +1020,42 @@ payload. There is no fixture for it and no generated type: instead, an Android t
 relay's own Go source and fails if the two literals drift apart
 (`push/FeedHintContractTest.kt`).
 
+## Gateway-private invitations and device routing (SEE-109)
+
+An independent server uses the publisher listener and its existing bearer credential. It first
+publishes a `gateway_private` manifest, then calls `CreateInvitation(user_ref, lifetime_seconds)`.
+The gateway returns an authenticated-status ID plus two forms of one temporary capability:
+
+```text
+https://<gateway>/invite/<token>
+seekervault://invite?v=1&gateway=<encoded origin>&token=<token>
+```
+
+The hosted GET, QR GET and `ResolveInvitation` are read-only. `RedeemInvitation` is the only
+consuming operation and SAC calls it only after confirmation. Consumption and creation of the
+`(server_id, user_ref, connection_id)` device binding are atomic. The device credential returned by
+that call is scoped to the binding, stored only as a hash at the gateway, and accepted only by
+`DeviceService`. The publisher credential is accepted only by `PublisherService`; neither
+credential is ever a URL value.
+
+`GetInvitation` is the backend completion transport: `PENDING`, `CONNECTED` with its connection ID,
+or `EXPIRED`. Every additional device needs a fresh invite and creates a separate connection ID,
+even for the same server/user reference; no binding replaces another. `RevokeConnection` revokes
+only the named binding.
+
+`CreatePrivateRequest` accepts the version-1 common Request only when identity source is the
+authenticated server, scope is `private/<server_id>`, the private recipient is the server's opaque
+reference, presentation category is `REQUEST`, and result mode is `RETURN_TO_ORIGIN`. The request
+also names the completed connection ID; the gateway verifies the `(server, user_ref, connection)`
+binding and pins the request to it. `ListRequests` is device-authenticated
+and revision-idempotent. `SubmitResult` accepts one terminal result at the request's exact revision;
+an identical retry is unchanged and a different second result is a conflict. Public feed requests
+still require `DEVICE_LOCAL` and cannot use this result path.
+
+The invitation/service messages are in `seekervault/gateway/v1/onboarding.proto`; publisher creation
+and status/request methods extend `PublisherService`. The full rationale and HTTP page contract are
+in [`wiki/gateway-pairing.md`](wiki/gateway-pairing.md).
+
 ## Generated code
 
 | Runtime | Output | Generators | Runtime libraries |

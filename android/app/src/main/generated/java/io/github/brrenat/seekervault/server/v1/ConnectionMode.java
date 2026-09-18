@@ -8,8 +8,8 @@ package io.github.brrenat.seekervault.server.v1;
 /**
  * <pre>
  * Which transport a connection uses. It is stored per connection: one phone can hold a direct
- * connection to its own sidecar and several gateway feeds at the same time, and neither affects
- * the other.
+ * connection to its own sidecar, gateway feeds and gateway-private servers at the same time, and
+ * none affects another.
  * </pre>
  *
  * Protobuf enum {@code seekervault.server.v1.ConnectionMode}
@@ -45,6 +45,15 @@ public enum ConnectionMode
    * <code>CONNECTION_MODE_GATEWAY_FEED = 2;</code>
    */
   CONNECTION_MODE_GATEWAY_FEED(2),
+  /**
+   * <pre>
+   * The phone exchanges a confirmed, single-use invitation for a device credential and reads one
+   * server's private requests through the gateway. It never contacts the originating server.
+   * </pre>
+   *
+   * <code>CONNECTION_MODE_GATEWAY_PRIVATE = 3;</code>
+   */
+  CONNECTION_MODE_GATEWAY_PRIVATE(3),
   UNRECOGNIZED(-1),
   ;
 
@@ -76,6 +85,15 @@ public enum ConnectionMode
    * <code>CONNECTION_MODE_GATEWAY_FEED = 2;</code>
    */
   public static final int CONNECTION_MODE_GATEWAY_FEED_VALUE = 2;
+  /**
+   * <pre>
+   * The phone exchanges a confirmed, single-use invitation for a device credential and reads one
+   * server's private requests through the gateway. It never contacts the originating server.
+   * </pre>
+   *
+   * <code>CONNECTION_MODE_GATEWAY_PRIVATE = 3;</code>
+   */
+  public static final int CONNECTION_MODE_GATEWAY_PRIVATE_VALUE = 3;
 
 
   @java.lang.Override
@@ -101,6 +119,7 @@ public enum ConnectionMode
       case 0: return CONNECTION_MODE_UNSPECIFIED;
       case 1: return CONNECTION_MODE_DIRECT;
       case 2: return CONNECTION_MODE_GATEWAY_FEED;
+      case 3: return CONNECTION_MODE_GATEWAY_PRIVATE;
       default: return null;
     }
   }

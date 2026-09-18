@@ -30,6 +30,10 @@ type Config struct {
 	// deployment can keep it off the internet entirely and no routing mistake can expose a write
 	// through a read endpoint.
 	PublisherAddress string
+	// Where invitations, their shared web page, and authenticated device traffic are served. This
+	// is separate from the unauthenticated read-only feed socket and the backend-only publisher
+	// socket because redemption is a client write with a different credential boundary.
+	ClientAddress string
 	// This gateway's canonical origin, as a phone's feed reference spells it. A published manifest
 	// must name exactly this, because the phone compares the two character for character (SEE-88).
 	PublicURL string
@@ -103,6 +107,7 @@ type Relay struct {
 const (
 	DefaultReadAddress      = "127.0.0.1:8090"
 	DefaultPublisherAddress = "127.0.0.1:8091"
+	DefaultClientAddress    = "127.0.0.1:8092"
 	DefaultRetention        = 7 * 24 * time.Hour
 	DefaultMaxProposals     = 200
 	DefaultReadRate         = 20
@@ -161,6 +166,7 @@ func Load(lookup Lookup) (*Config, []string) {
 	config := &Config{
 		ReadAddress:      text("BROADCAST_READ_ADDRESS", DefaultReadAddress),
 		PublisherAddress: text("BROADCAST_PUBLISHER_ADDRESS", DefaultPublisherAddress),
+		ClientAddress:    text("BROADCAST_CLIENT_ADDRESS", DefaultClientAddress),
 		DatabasePath:     text("BROADCAST_DATABASE_PATH", ""),
 		Retention:        DefaultRetention,
 		MaxProposals:     DefaultMaxProposals,
@@ -188,9 +194,10 @@ func Load(lookup Lookup) (*Config, []string) {
 		note("BROADCAST_DATABASE_PATH must be set to the file the gateway keeps publications in, " +
 			"for example /data/broadcast.db")
 	}
-	if config.ReadAddress == config.PublisherAddress {
-		note("BROADCAST_READ_ADDRESS and BROADCAST_PUBLISHER_ADDRESS must be different: " +
-			"the read API and the publisher API are separate listeners on purpose")
+	if config.ReadAddress == config.PublisherAddress || config.ReadAddress == config.ClientAddress ||
+		config.PublisherAddress == config.ClientAddress {
+		note("BROADCAST_READ_ADDRESS, BROADCAST_PUBLISHER_ADDRESS and BROADCAST_CLIENT_ADDRESS " +
+			"must be different: feed reads, backend writes and device onboarding are separate listeners on purpose")
 	}
 	config.Retention = time.Duration(number("BROADCAST_RETENTION_HOURS",
 		DefaultRetention.Hours(), 1, 24*365)) * time.Hour

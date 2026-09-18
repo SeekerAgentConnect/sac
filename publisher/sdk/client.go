@@ -1,5 +1,6 @@
-// Package sdk is the small developer client for a publisher template's common request API.
-// Templates may copy it with the rest of publisher/; it knows no store, gateway or plugin.
+// Package sdk is the developer-facing Server SDK. Client writes common public-feed requests to a
+// publisher template; Gateway creates private invitations and routes common requests through the
+// shared gateway. Neither surface knows a wallet, approval, store, or plugin implementation.
 package sdk
 
 import (

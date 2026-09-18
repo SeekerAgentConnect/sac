@@ -3,15 +3,14 @@
 //
 // # What is here, and what is deliberately not
 //
-// Shared publications and publisher configuration. A manifest, the proposals a publisher currently
-// holds open, the per-channel sequence a reader uses as a snapshot boundary, the hashes of the
-// credentials a publisher authenticates with, and one pending notice per document for fan-out.
+// The public half is shared publications and publisher configuration: a manifest, proposals, the
+// per-channel sequence, publisher credential hashes, and pending fan-out notices. Those tables
+// still have no subscriber column and a public read still writes nothing.
 //
-// **Nothing about a subscriber.** There is no table, and no column, for an address, a quantity
-// someone chose, a decision they made, or anything they signed — and a Go boundary test reads this
-// schema and fails if one appears. The gateway cannot lose a user's financial history because it
-// never has one: what each owner picks and what came of it stays on the device that decided it
-// (SEE-89, docs/security.md).
+// SEE-109's explicit private half adds temporary invitation-token hashes, a minimal server-scoped
+// device binding, and common requests/results pinned to it. It is routing state, not an account or
+// financial profile: no wallet address, authorization token, policy or activity history has a
+// field here. A boundary test pins the schema whole.
 //
 // # Why SQLite
 //
@@ -48,7 +47,7 @@ import (
 // Version is the schema this build writes and reads. There is one, and a file from a later version
 // is refused rather than guessed at: an old binary reading a new file could silently ignore a
 // column that a rule depends on.
-const Version = 1
+const Version = 2
 
 // ErrNewerSchema is returned by Open when the file was written by a later version of the gateway.
 var ErrNewerSchema = errors.New("the database was written by a newer gateway")
@@ -157,11 +156,18 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("%w: found version %d, this build writes %d",
 				ErrNewerSchema, version, Version)
 		}
-		if version == Version {
-			return nil
-		}
-		if _, err := tx.tx.ExecContext(ctx, schema); err != nil {
-			return fmt.Errorf("apply schema: %w", err)
+		for version < Version {
+			var migration string
+			switch version + 1 {
+			case 1:
+				migration = schemaV1
+			case 2:
+				migration = schemaV2
+			}
+			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
+				return fmt.Errorf("apply schema version %d: %w", version+1, err)
+			}
+			version++
 		}
 		// PRAGMA user_version takes no parameter, and Version is a constant in this file.
 		if _, err := tx.tx.ExecContext(ctx,
@@ -173,9 +179,8 @@ func (s *Store) migrate(ctx context.Context) error {
 }
 
 // The schema, in one statement per table and with the reasoning where a column carries a rule.
-// There is no migration path yet because there is no earlier version; when there is, this constant
-// gets a sibling and migrate applies them in order, the way the sidecar's migrations do.
-const schema = `
+// Migrations are append-only and applied in order, the way the sidecar's migrations are.
+const schemaV1 = `
 -- A registered publisher: the developer's server, by the lasting ID its manifest and every
 -- proposal of its own must name. The label is the operator's note to themselves and is never
 -- served to anyone.
@@ -252,6 +257,59 @@ CREATE TABLE notice (
 );
 CREATE UNIQUE INDEX notice_identity ON notice(channel, kind, proposal_id);
 CREATE INDEX notice_ready ON notice(ready_at_ms);
+`
+
+// Version 2 adds gateway-private onboarding. Unlike a public feed, this is intentionally the
+// minimum association needed to route one server's requests to one device. user_ref is scoped by
+// server_id; no wallet, account, amount, decision, history, or SAC-wide identity is stored here.
+const schemaV2 = `
+CREATE TABLE invitation (
+  invitation_id  TEXT PRIMARY KEY,
+  token_hash     BLOB NOT NULL UNIQUE,
+  server_id      TEXT NOT NULL REFERENCES publisher(server_id) ON DELETE CASCADE,
+  user_ref       TEXT NOT NULL,
+  created_at_ms  INTEGER NOT NULL,
+  expires_at_ms  INTEGER NOT NULL,
+  revoked_at_ms  INTEGER,
+  redeemed_at_ms INTEGER,
+  connection_id  TEXT
+);
+CREATE INDEX invitation_by_server ON invitation(server_id, invitation_id);
+CREATE INDEX invitation_by_expiry ON invitation(expires_at_ms);
+
+CREATE TABLE device_binding (
+  connection_id  TEXT PRIMARY KEY,
+  server_id      TEXT NOT NULL REFERENCES publisher(server_id) ON DELETE CASCADE,
+  user_ref       TEXT NOT NULL,
+  credential_hash BLOB NOT NULL UNIQUE,
+  device_name    TEXT NOT NULL,
+  created_at_ms  INTEGER NOT NULL,
+  revoked_at_ms  INTEGER,
+  sequence       INTEGER NOT NULL DEFAULT 0
+);
+-- A server-scoped user may have several devices. Each is a separate binding created by a separate
+-- single-use invitation, addressed by its own connection ID, and revoked independently.
+CREATE INDEX active_binding_by_recipient
+  ON device_binding(server_id, user_ref) WHERE revoked_at_ms IS NULL;
+CREATE INDEX binding_by_server ON device_binding(server_id, connection_id);
+
+CREATE TABLE private_request (
+  server_id       TEXT NOT NULL REFERENCES publisher(server_id) ON DELETE CASCADE,
+  request_id      TEXT NOT NULL,
+  user_ref        TEXT NOT NULL,
+  connection_id   TEXT NOT NULL REFERENCES device_binding(connection_id),
+  revision        INTEGER NOT NULL,
+  cancelled       INTEGER NOT NULL,
+  expires_at_ms   INTEGER NOT NULL,
+  sequence        INTEGER NOT NULL,
+  document        BLOB NOT NULL,
+  result           BLOB,
+  updated_at_ms   INTEGER NOT NULL,
+  PRIMARY KEY (server_id, request_id)
+);
+CREATE INDEX private_request_by_device
+  ON private_request(connection_id, request_id);
+CREATE INDEX private_request_by_expiry ON private_request(expires_at_ms);
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

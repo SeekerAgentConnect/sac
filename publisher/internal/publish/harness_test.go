@@ -29,6 +29,7 @@ import (
 // deliberately not a second implementation of the gateway's rules. The authority for those is the
 // real binary, which `gateway_test.go` runs when it is available.
 type fakeGateway struct {
+	gatewayv1connect.UnimplementedPublisherServiceHandler
 	mutex sync.Mutex
 	// Every credential presented, so a test can assert that one was and that it is the right one.
 	credentials []string

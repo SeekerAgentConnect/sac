@@ -88,7 +88,7 @@ class ConnectionStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        const val VERSION = 3
+        const val VERSION = 4
         /**
          * Version 1 files predate the mode and the manifest, and are read as direct and unasked.
          */
@@ -146,6 +146,7 @@ class ConnectionStore(private val dir: File) {
                             put("gatewayUrl", reference.gatewayUrl)
                             put("channel", reference.channel)
                         }
+                        is ServerReference.GatewayPrivate -> put("gatewayUrl", reference.gatewayUrl)
                     }
                 }
                 .put(
@@ -182,13 +183,12 @@ class ConnectionStore(private val dir: File) {
             // and for a direct connection that is all it is: the server is asked again on the next
             // refresh. A feed has nothing left without it, so it is the whole record that goes.
             val server = decodeServer(json.optJSONObject("server")) ?: ServerRecord.Unknown
-            if (mode == ConnectionMode.GatewayFeed && server !is ServerRecord.Known) return null
+            if (mode != ConnectionMode.Direct && server !is ServerRecord.Known) return null
             if (server.manifest?.mode?.equals(mode) == false) return null
             // A direct connection is production whatever the file says, so nothing an edited or
-            // half-written file could hold puts one in an environment that does not sign. For a
-            // feed, an environment this build cannot read is the whole record gone, exactly as an
-            // unreadable manifest is: the alternative would be resolving it, and the only
-            // direction to resolve it in is the one with the money attached.
+            // half-written file could hold puts the legacy sidecar path in a simulated mode. Both
+            // gateway modes preserve their manifest's environment; an unreadable value makes the
+            // whole record unreadable rather than resolving it toward real money.
             val environment =
                 when {
                     mode == ConnectionMode.Direct -> PluginEnvironment.Production
@@ -218,7 +218,7 @@ class ConnectionStore(private val dir: File) {
                     },
                 // Never stored: a direct connection's credential is in the vault, which the
                 // repository reads, and a feed has none to hold (SEE-88).
-                hasCredential = mode == ConnectionMode.Direct,
+                hasCredential = mode != ConnectionMode.GatewayFeed,
                 mode = mode,
                 server = server,
                 environment = environment,
@@ -268,6 +268,11 @@ class ConnectionStore(private val dir: File) {
                         val gateway = json.optString("gatewayUrl")
                         if (gateway.isEmpty() || channel.isEmpty()) return null
                         ServerReference.Feed(gateway, channel)
+                    }
+                    ConnectionMode.GatewayPrivate -> {
+                        val gateway = json.optString("gatewayUrl")
+                        if (gateway.isEmpty()) return null
+                        ServerReference.GatewayPrivate(gateway)
                     }
                 }
             val requirements = json.optJSONArray("required") ?: JSONArray()

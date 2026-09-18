@@ -4,6 +4,7 @@ go 1.27.1
 
 require (
 	connectrpc.com/connect v1.21.0
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.59.0
 )

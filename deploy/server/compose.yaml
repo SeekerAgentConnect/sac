@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
 
     # Caddy shares this network namespace. These are Caddy's public ports; the
-    # gateway itself remains on two loopback sockets in the namespace. The
+    # gateway itself remains on three loopback sockets in the namespace. The
     # defaults are the public pair; compose.tailscale.yaml's layout moves them
     # to host loopback in .env, because Funnel is then the public listener.
     ports:
@@ -33,6 +33,7 @@ services:
       BROADCAST_PUBLIC_URL: https://${BROADCAST_DOMAIN:?set BROADCAST_DOMAIN in deploy/server/.env}
       BROADCAST_READ_ADDRESS: 127.0.0.1:8090
       BROADCAST_PUBLISHER_ADDRESS: 127.0.0.1:8091
+      BROADCAST_CLIENT_ADDRESS: 127.0.0.1:8092
       BROADCAST_DATABASE_PATH: /data/broadcast.db
       BROADCAST_RETENTION_HOURS: ${BROADCAST_RETENTION_HOURS:-}
       BROADCAST_MAX_PROPOSALS: ${BROADCAST_MAX_PROPOSALS:-}

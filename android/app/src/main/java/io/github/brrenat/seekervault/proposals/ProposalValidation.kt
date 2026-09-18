@@ -49,6 +49,8 @@ data class ProposalExpectation(
      * this publisher on its own channel is on the expected channel by construction.
      */
     val serverId: String,
+    /** Private requests use the same durable review path but a private audience/result policy. */
+    val private: Boolean = false,
     /**
      * The revision the phone already holds for this proposal, if any. A document may repeat it or
      * exceed it; one below it is refused.
@@ -122,17 +124,27 @@ fun proposalFrom(message: WireRequest, expect: ProposalExpectation): ProposalRes
     val identity = message.identity
     if (!isConnectionId(identity.sourceId)) return invalid(ProposalProblem.BadServerId)
     if (identity.sourceId != expect.serverId) return invalid(ProposalProblem.OtherServer)
-    if (
-        identity.scope != channelFor(identity.sourceId) ||
-            message.audience.audienceCase != Audience.AudienceCase.FEED ||
-            message.audience.feed.channel != identity.scope ||
-            message.resultHandling.mode != ResultMode.RESULT_MODE_DEVICE_LOCAL
-    ) {
+    val audienceMatches =
+        if (expect.private) {
+            identity.scope == "private/${identity.sourceId}" &&
+                message.audience.audienceCase == Audience.AudienceCase.PRIVATE &&
+                printableText(message.audience.private.recipientId, MAX_PRIVATE_RECIPIENT_BYTES) &&
+                message.audience.private.recipientId.isNotEmpty() &&
+                message.resultHandling.mode == ResultMode.RESULT_MODE_RETURN_TO_ORIGIN
+        } else {
+            identity.scope == channelFor(identity.sourceId) &&
+                message.audience.audienceCase == Audience.AudienceCase.FEED &&
+                message.audience.feed.channel == identity.scope &&
+                message.resultHandling.mode == ResultMode.RESULT_MODE_DEVICE_LOCAL
+        }
+    if (!audienceMatches) {
         return invalid(ProposalProblem.WrongAudience)
     }
     val presentation = message.presentation
     if (
-        presentation.category != PresentationCategory.PRESENTATION_CATEGORY_SIGNAL ||
+        presentation.category !=
+            (if (expect.private) PresentationCategory.PRESENTATION_CATEGORY_REQUEST
+            else PresentationCategory.PRESENTATION_CATEGORY_SIGNAL) ||
             presentation.title.isEmpty() ||
             !printableText(presentation.title, MAX_PRESENTATION_TITLE_BYTES) ||
             !printableText(presentation.description, MAX_PROPOSAL_NOTE_BYTES)
@@ -382,3 +394,4 @@ private const val MAX_PRESENTATION_TITLE_BYTES = 64
 private const val MAX_OWNER_INPUTS = 16
 private const val MAX_INPUT_OPTIONS = 16
 private const val MAX_COMMON_OPAQUE_TEXT_BYTES = 684 // base64 for at most 512 source bytes
+private const val MAX_PRIVATE_RECIPIENT_BYTES = 128

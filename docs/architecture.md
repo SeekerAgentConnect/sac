@@ -13,6 +13,8 @@ flowchart LR
     Sidecar -- "reads: blockhash,<br>confirmation, Jupiter" --> Solana
     Publisher["Publisher template<br>(publisher/)"] -- "PublisherService<br>(gateway credential)" --> Broadcast
     Broadcast["Broadcast gateway<br>(broadcast/)"] -- "FeedService<br>(no credential)" --> Phone
+    Independent["Independent server<br>(Server SDK)"] -- "PublisherService<br>(server credential)" --> Broadcast
+    Broadcast -- "Invitation + DeviceService<br>(temporary invite / device credential)" --> Phone
     Strategy["A trader, a script,<br>or a strategy engine"] -- "JSON over HTTP<br>(API token)" --> Publisher
 ```
 
@@ -21,7 +23,7 @@ flowchart LR
 | **Agent** | Proposing actions and reading their results | Approve, sign, or see the phone's policy |
 | **Sidecar** (`sidecar/`) | The MCP and phone endpoints. From SAW-010 and SAW-011 on, it also holds requests and their states, prepared transactions, results, idempotency records, and pairing; Stage 5.2 adds durable update revisions/cursors and bounded snapshots. | Hold keys, sign, decide for the user, or execute anything on its own after a restart |
 | **Android app** (`android/`) | Connections and their credentials, policies and their assessments, the user's decision, invoking the wallet, results the sidecar hasn't acknowledged yet, and Stage 5.2's minimal server-state cache/sync metadata | Sign without the user's approval, or trust the agent's description over the transaction's contents |
-| **Broadcast gateway** (`broadcast/`) | From SEE-90 and SEE-108: the shared publication and read API for gateway-feed servers — publisher registration and credentials, the manifests and common requests they publish, the per-channel sequence a reader pages against, and the outbox that fans a publication out. Stage 7.1 proposals adapt over the same rows | Hold anything about a subscriber — an address, a chosen amount, a decision, a result — contact a publisher or a phone, or serve any financial endpoint |
+| **Broadcast gateway** (`broadcast/`) | Public feed publication/read state; from SEE-109, temporary private invitations, minimal server-scoped device bindings, routed common requests and their `RETURN_TO_ORIGIN` results | Create a central SAC user, select a wallet, approve, sign, execute, or let a private binding alter the anonymous feed path |
 | **Publisher templates** (`publisher/`) | From SEE-95, SEE-96 and SEE-108: a developer's or a trader's own server — its feed-audience requests, the revision each is at, what the gateway has confirmed about each, the idempotency keys callers used, its own manifest's revision, and (the discovering one) the provider's markets it is tracking. `/v1/requests` and `sdk.Client.CreateRequest` are the developer surface | Hold anything about a subscriber, read the feed it publishes to (no client for one is compiled for it), deliver anything to a phone, hold a key or sign anything, or publish an opinion about which way a market will go |
 | **Seed Vault Wallet** | Keys, signing, and sending | Know anything about Seeker Agent Connect |
 
@@ -318,16 +320,17 @@ flowchart TB
   `PrepareRequest`, `SubmitResult` or sync upload — all of them already require
   `Connection.usable`, which requires the direct mode (SEE-88).
 
-### The broadcast gateway
+### The shared gateway
 
 From SEE-90 the shared gateway exists: the Go service in [`broadcast/`](../broadcast) that a
-developer's publisher publishes to and every subscribed phone reads from.
+developer's publisher publishes to and every subscribed phone reads from. SEE-109 adds a private
+invitation/request adapter to that service without changing the public broadcast path below.
 [`wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md) is the full account.
 
 ```mermaid
 flowchart TB
     Publisher["a publisher<br>PublisherService · credential"] --> Rules
-    Rules["internal/rules<br>own server · own channel · feed only · bounds"] --> Commit
+    Rules["internal/rules<br>own server · own channel · public feed · bounds"] --> Commit
     Commit["one transaction<br>document + outbox notice"] --> Store[("SQLite<br>publications + publisher configuration")]
     Commit --> Drain["internal/dispatch<br>at-least-once, replayable"]
     Drain --> Broker["Centrifugo · Redis<br>bounded recovery cache"]
@@ -341,16 +344,17 @@ flowchart TB
     Phone -- "nothing" --x Store
 ```
 
-- **Two APIs, two listeners.** The client API only reads and takes no credential; the publisher API
-  takes one scoped to a single server. A read port serves no handler that could change anything, so
-  the separation survives a routing mistake, and `publish.proto` is not generated for the phone at
-  all.
+- **Three APIs, three listeners.** The public-feed API only reads and takes no credential; the
+  publisher API takes one scoped to a single server; the client API resolves/redeems invitations
+  and accepts only a bound device credential after confirmation. A read port serves no handler that
+  could change anything, the client port cannot create a source request, and SAC has no publisher
+  service client.
 - **A credential is the whole grant.** It says which server the caller publishes as, and every
   document is checked against that rather than against what the document claims. A channel is
   `server/<server_id>`, so a publisher can only ever address its own audience.
-- **The gateway will not relay a redirection.** A published manifest must be a feed naming this
-  gateway's own origin; a direct manifest carries a URL, and holding one would let a publisher hand
-  every subscribed phone an address of its choosing.
+- **The gateway will not relay a redirection.** A published manifest must be a feed or
+  gateway-private server naming this gateway's own origin; a direct manifest carries a URL, and
+  holding one would let a publisher hand phones an address of its choosing.
 - **A revision is the idempotency key.** A retry is the same revision with the same content and
   writes nothing; the same revision with different content is a conflict; a lower one is stale; a
   withdrawal is final.
@@ -390,9 +394,24 @@ flowchart TB
   at-least-once and says so — which is exactly what the phone's idempotent apply path is for.
 - **A walk has a documented boundary, not a transaction.** Every page of one reports the sequence it
   began at; a page set from mixed moments converges because each document carries its own revision.
-- **It keeps nothing about a reader.** No session, no subscription record, no count. Reading a feed
-  writes nothing down, and there is no column anywhere for an address, an amount, a decision or a
-  result.
+- **The public path keeps nothing about a reader.** No session, no subscription record, no count.
+  Reading a feed writes nothing down, and its documents have no address, amount, decision or result.
+
+#### Private invitations and requests (SEE-109)
+
+An independent backend uses the same authenticated publisher listener to create a temporary
+invitation for its own opaque user reference. The gateway-hosted page and preview are read-only.
+Only explicit SAC confirmation atomically consumes the invitation and creates one device binding;
+another invitation creates another binding and never replaces one silently. The new client listener
+issues the device credential once, stores only its hash, and later serves requests already pinned to
+that connection. The backend observes `CONNECTED` through the Server SDK, stores that connection ID
+beside its own user reference, and supplies both when addressing a request—it never receives the
+device credential.
+
+This private adapter stores only the association needed to route a request and the result the
+source explicitly marked `RETURN_TO_ORIGIN`. Pairing selects no wallet and authorizes no approval,
+signing or execution. Revocation is per binding, and another device always needs a fresh invitation.
+The complete boundary is [`wiki/gateway-pairing.md`](wiki/gateway-pairing.md).
 
 ### The publisher templates
 
@@ -461,6 +480,22 @@ flowchart TB
   nobody.
 - **One market is one live proposal**, said as a `UNIQUE` index rather than as a convention.
 
+## Gateway-private onboarding
+
+SEE-109 adds `gateway_private` beside direct sidecars and anonymous feeds. An independent server
+creates a temporary single-use invitation through the existing Server SDK and gives its hosted URL
+or QR data to a user. Preview is read-only. SAC validates the server's private manifest and redeems
+only after confirmation; the gateway consumes the invitation and creates one device binding in the
+same transaction. The server learns completion through authenticated polling, then sends both its
+opaque server-scoped user reference and that completion's connection ID with a SEE-108 common
+request.
+
+The binding is routing, not authority. It carries no SAC account, wallet, policy or execution grant.
+The device still runs plugin compatibility, preparation, byte inspection, policy, explicit review
+and the wallet interaction. Public feed references and direct pairing retain their original
+semantics. The detailed boundaries and URL formats are in
+[`wiki/gateway-pairing.md`](wiki/gateway-pairing.md).
+
 ## Trust boundaries
 
 - **Separate credentials, separate roles.** The agent's MCP token can create, read, and cancel requests. Only the paired phone's credential can prepare them and submit results. The phone gets that credential by pairing with a one-use code (SAW-011), and the sidecar keeps only its hash. Neither works on the other's endpoints, and the Stage 1 `PHONE_TOKEN` opens only the live diagnostic. [`security.md`](security.md) has the details, and [`protocol.md`](protocol.md#roles) the role matrix.
@@ -480,12 +515,12 @@ flowchart TB
   ahead, and what came of it are written to their own phone and read by it alone; a publisher and
   the gateway learn only that someone subscribed to a channel
   ([`wiki/shared-proposals.md`](wiki/shared-proposals.md)).
-- **The shared gateway is a relay, and is trusted with nothing (SEE-90).** It holds the documents a
-  publisher published and the configuration that says who may publish to which channel, and it has
-  no table, column or endpoint for anything about a subscriber. It contacts no publisher and no
-  phone — a boundary test fails if shipped code acquires an HTTP client — and it cannot serve a
-  manifest that points a phone anywhere but at itself. What it learns from a read is which channel
-  someone asked about ([`wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md)).
+- **The gateway's public feed remains anonymous (SEE-90/109).** Its feed tables still have no
+  subscriber column and a public read still writes nothing. The new private adapter is explicit:
+  it holds only a server-scoped opaque reference, a revocable binding, requests addressed to that
+  binding and results whose contract says `RETURN_TO_ORIGIN`. It cannot serve a manifest that
+  redirects either mode away from its configured origin
+  ([`wiki/gateway-pairing.md`](wiki/gateway-pairing.md)).
 - **Policies stay on the phone.** The sidecar never receives the policy or its assessment, so an agent can't learn or change the rules through it. One global document supplies defaults and one optional override document records where each connection differs; a connection never reads another connection's overrides ([`policy.md`](policy.md)).
 - **A policy advises; it never decides.** Input validation settles what is executable, and it is judged before any policy is consulted. A policy can only add reasons for the owner to read: there is no `BLOCKED`, and no rule can make a preparation the phone couldn't read whole approvable (SAW-025). The editor offers no setting that would change that, because there is none to offer (SAW-027), and the review screen shows the two apart, in their own words, with no tick that crosses between them (SAW-028).
 - **A verdict is read, never acted on.** Nothing stores one. The rules and the records are read again at the moment the owner answers, and an answer whose assessment changed while it was on screen stops instead of going ahead on what they read (SAW-028).
@@ -507,7 +542,10 @@ flowchart TB
 | The assessment the owner read when they answered | The phone, as codes on the Activity record; never the rules themselves, and never sent anywhere | SAW-028 |
 | Assessments | Nowhere — computed on demand from the rules and the records, never stored | SAW-026 |
 | Daily counters | The phone, derived from the Activity records in `filesDir` | SAW-026 |
-| A connection's mode, and the server manifest it caches | The phone, in the connection's own JSON file in `filesDir` (version 3). Whether this build *supports* that server is never stored: it is derived from the compiled plugin registry on every read | SEE-88 |
+| A connection's mode, and the server manifest it caches | The phone, in the connection's own JSON file in `filesDir` (version 4). Whether this build *supports* that server is never stored: it is derived from the compiled plugin registry on every read | SEE-88, SEE-109 |
+| A gateway-private invitation | The gateway until its expiry/consumption; only a SHA-256 of its temporary token is stored. Its hosted URL/QR contains that temporary capability and no long-lived credential | SEE-109 |
+| A gateway-private device binding | The gateway: originating server, opaque server-scoped user reference, connection ID, device label, hashed device credential, sequence and revocation time. No wallet, SAC account or policy | SEE-109 |
+| A gateway-private request/result | The gateway, pinned to the exact server/user/connection binding the server named. Only declared owner inputs and the terminal `RETURN_TO_ORIGIN` result return; the phone keeps its full local review/activity record | SEE-109 |
 | The manifest's settings revision, and a fingerprint of the content it was computed for | The sidecar's SQLite database, on the `server` singleton | SEE-88 |
 | A publisher's common feed requests, and this device's decisions about each one — the dismissal, the review and its exact revision, the binding, and what the wallet did | The phone, one version-3 file per request under its feed in `filesDir`. Nothing of the local half is published; version-1/2 proposal records migrate in place, and the source documents go when the feed does | SEE-89, SEE-108 |
 | Whether a proposal still stands, and where it stands for this owner | Nowhere — derived on every read from the publisher's status, its absolute expiry, what this device did, and the plugins this build carries | SEE-89 |
@@ -560,5 +598,5 @@ These hold across the components, and every stage keeps them:
 | 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
-| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` and `jupiter.prediction` plugins (SEE-93/94), the two Go publisher templates (SEE-95/96), environment promises and sandbox simulation (SEE-97), joined acceptance and onboarding (SEE-98–107), and one extensible request contract, developer API, pending collection and review dispatcher over private and feed adapters (SEE-108) |
+| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` and `jupiter.prediction` plugins (SEE-93/94), the two Go publisher templates (SEE-95/96), environment promises and sandbox simulation (SEE-97), joined acceptance and onboarding (SEE-98–107), one extensible request contract and review dispatcher (SEE-108), and gateway-private SDK invitations/device routing (SEE-109) |
 | 8 | Release checks |

@@ -35,6 +35,7 @@ inputs:
       # The publisher API, the problem detail its refusals carry, and the two documents a
       # publisher writes. feed.proto and event.proto are deliberately absent.
       - proto/seekervault/gateway/v1/publish.proto
+      - proto/seekervault/gateway/v1/onboarding.proto
       - proto/seekervault/gateway/v1/problem.proto
       - proto/seekervault/proposal/v1/proposal.proto
       - proto/seekervault/request/v2/request.proto

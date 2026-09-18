@@ -335,6 +335,63 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;</code>
    */
   GATEWAY_PROBLEM_OTHER_ENVIRONMENT(34),
+  /**
+   * <pre>
+   * --- Gateway pairing and private routing (SEE-109) -----------------------
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_BAD_USER_REF = 35;</code>
+   */
+  GATEWAY_PROBLEM_BAD_USER_REF(35),
+  /**
+   * <code>GATEWAY_PROBLEM_BAD_LIFETIME = 36;</code>
+   */
+  GATEWAY_PROBLEM_BAD_LIFETIME(36),
+  /**
+   * <pre>
+   * One answer for an unknown, malformed, already-used or otherwise unusable invitation. Resolve
+   * and redeem do not disclose which temporary secret was ever valid.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_INVALID_INVITATION = 37;</code>
+   */
+  GATEWAY_PROBLEM_INVALID_INVITATION(37),
+  /**
+   * <code>GATEWAY_PROBLEM_INVITATION_EXPIRED = 38;</code>
+   */
+  GATEWAY_PROBLEM_INVITATION_EXPIRED(38),
+  /**
+   * <code>GATEWAY_PROBLEM_INVITATION_USED = 39;</code>
+   */
+  GATEWAY_PROBLEM_INVITATION_USED(39),
+  /**
+   * <code>GATEWAY_PROBLEM_NO_BINDING = 40;</code>
+   */
+  GATEWAY_PROBLEM_NO_BINDING(40),
+  /**
+   * <code>GATEWAY_PROBLEM_BINDING_EXISTS = 41;</code>
+   */
+  GATEWAY_PROBLEM_BINDING_EXISTS(41),
+  /**
+   * <code>GATEWAY_PROBLEM_WRONG_RECIPIENT = 42;</code>
+   */
+  GATEWAY_PROBLEM_WRONG_RECIPIENT(42),
+  /**
+   * <code>GATEWAY_PROBLEM_NO_SUCH_REQUEST = 43;</code>
+   */
+  GATEWAY_PROBLEM_NO_SUCH_REQUEST(43),
+  /**
+   * <code>GATEWAY_PROBLEM_RESULT_CONFLICT = 44;</code>
+   */
+  GATEWAY_PROBLEM_RESULT_CONFLICT(44),
+  /**
+   * <code>GATEWAY_PROBLEM_REQUEST_SETTLED = 45;</code>
+   */
+  GATEWAY_PROBLEM_REQUEST_SETTLED(45),
+  /**
+   * <code>GATEWAY_PROBLEM_NOT_PRIVATE = 46;</code>
+   */
+  GATEWAY_PROBLEM_NOT_PRIVATE(46),
   UNRECOGNIZED(-1),
   ;
 
@@ -657,6 +714,63 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;</code>
    */
   public static final int GATEWAY_PROBLEM_OTHER_ENVIRONMENT_VALUE = 34;
+  /**
+   * <pre>
+   * --- Gateway pairing and private routing (SEE-109) -----------------------
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_BAD_USER_REF = 35;</code>
+   */
+  public static final int GATEWAY_PROBLEM_BAD_USER_REF_VALUE = 35;
+  /**
+   * <code>GATEWAY_PROBLEM_BAD_LIFETIME = 36;</code>
+   */
+  public static final int GATEWAY_PROBLEM_BAD_LIFETIME_VALUE = 36;
+  /**
+   * <pre>
+   * One answer for an unknown, malformed, already-used or otherwise unusable invitation. Resolve
+   * and redeem do not disclose which temporary secret was ever valid.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_INVALID_INVITATION = 37;</code>
+   */
+  public static final int GATEWAY_PROBLEM_INVALID_INVITATION_VALUE = 37;
+  /**
+   * <code>GATEWAY_PROBLEM_INVITATION_EXPIRED = 38;</code>
+   */
+  public static final int GATEWAY_PROBLEM_INVITATION_EXPIRED_VALUE = 38;
+  /**
+   * <code>GATEWAY_PROBLEM_INVITATION_USED = 39;</code>
+   */
+  public static final int GATEWAY_PROBLEM_INVITATION_USED_VALUE = 39;
+  /**
+   * <code>GATEWAY_PROBLEM_NO_BINDING = 40;</code>
+   */
+  public static final int GATEWAY_PROBLEM_NO_BINDING_VALUE = 40;
+  /**
+   * <code>GATEWAY_PROBLEM_BINDING_EXISTS = 41;</code>
+   */
+  public static final int GATEWAY_PROBLEM_BINDING_EXISTS_VALUE = 41;
+  /**
+   * <code>GATEWAY_PROBLEM_WRONG_RECIPIENT = 42;</code>
+   */
+  public static final int GATEWAY_PROBLEM_WRONG_RECIPIENT_VALUE = 42;
+  /**
+   * <code>GATEWAY_PROBLEM_NO_SUCH_REQUEST = 43;</code>
+   */
+  public static final int GATEWAY_PROBLEM_NO_SUCH_REQUEST_VALUE = 43;
+  /**
+   * <code>GATEWAY_PROBLEM_RESULT_CONFLICT = 44;</code>
+   */
+  public static final int GATEWAY_PROBLEM_RESULT_CONFLICT_VALUE = 44;
+  /**
+   * <code>GATEWAY_PROBLEM_REQUEST_SETTLED = 45;</code>
+   */
+  public static final int GATEWAY_PROBLEM_REQUEST_SETTLED_VALUE = 45;
+  /**
+   * <code>GATEWAY_PROBLEM_NOT_PRIVATE = 46;</code>
+   */
+  public static final int GATEWAY_PROBLEM_NOT_PRIVATE_VALUE = 46;
 
 
   @java.lang.Override
@@ -714,6 +828,18 @@ public enum GatewayProblem
       case 32: return GATEWAY_PROBLEM_TOO_MANY_CHANNELS;
       case 33: return GATEWAY_PROBLEM_NO_PUSH;
       case 34: return GATEWAY_PROBLEM_OTHER_ENVIRONMENT;
+      case 35: return GATEWAY_PROBLEM_BAD_USER_REF;
+      case 36: return GATEWAY_PROBLEM_BAD_LIFETIME;
+      case 37: return GATEWAY_PROBLEM_INVALID_INVITATION;
+      case 38: return GATEWAY_PROBLEM_INVITATION_EXPIRED;
+      case 39: return GATEWAY_PROBLEM_INVITATION_USED;
+      case 40: return GATEWAY_PROBLEM_NO_BINDING;
+      case 41: return GATEWAY_PROBLEM_BINDING_EXISTS;
+      case 42: return GATEWAY_PROBLEM_WRONG_RECIPIENT;
+      case 43: return GATEWAY_PROBLEM_NO_SUCH_REQUEST;
+      case 44: return GATEWAY_PROBLEM_RESULT_CONFLICT;
+      case 45: return GATEWAY_PROBLEM_REQUEST_SETTLED;
+      case 46: return GATEWAY_PROBLEM_NOT_PRIVATE;
       default: return null;
     }
   }

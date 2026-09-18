@@ -19,9 +19,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// The gateway has no way to be told about a person, and these are the attempts: a field the
-// contract does not have, a field it does not understand, and an endpoint that does not exist.
-func TestNothingAboutASubscriberCanBeSubmitted(t *testing.T) {
+// The anonymous feed path still has no way to be told about a subscriber. Gateway-private routing
+// is a separate contract and listener; none of it can be smuggled into a broadcast document.
+func TestNothingAboutASubscriberCanBeSubmittedToAFeed(t *testing.T) {
 	gateway := newGateway(t)
 	credential := gateway.register(publisherA)
 	publisher := gateway.publisher(credential)
@@ -89,8 +89,8 @@ func TestNothingAboutASubscriberCanBeSubmitted(t *testing.T) {
 	})
 
 	t.Run("an endpoint for a result", func(t *testing.T) {
-		// There is no financial endpoint on either listener, and a client that assumes one gets
-		// nothing to talk to rather than an authentication challenge.
+		// There is no result endpoint on either public-feed or publisher listener. The separately
+		// authenticated DeviceService is the only path for a private RETURN_TO_ORIGIN result.
 		for _, procedure := range []string{
 			"/seekervault.gateway.v1.PublisherService/SubmitResult",
 			"/seekervault.gateway.v1.FeedService/SubmitResult",
@@ -228,13 +228,14 @@ func TestReadingAFeedWritesNothingDown(t *testing.T) {
 	if fmt.Sprint(before) != fmt.Sprint(after) {
 		t.Fatalf("reading changed the store:\n%v\n%v", before, after)
 	}
-	// And the tables themselves are only ever about publishers and their documents.
+	// The private tables may exist, but a public feed read neither creates nor changes a row in
+	// them; the before/after comparison above is the isolation claim.
 	tables := make([]string, 0, len(after))
 	for name := range after {
 		tables = append(tables, name)
 	}
 	sort.Strings(tables)
-	expected := "[channel_sequence manifest notice proposal publisher publisher_credential]"
+	expected := "[channel_sequence device_binding invitation manifest notice private_request proposal publisher publisher_credential]"
 	if fmt.Sprint(tables) != expected {
 		t.Fatalf("the store holds %v, expected %s", tables, expected)
 	}

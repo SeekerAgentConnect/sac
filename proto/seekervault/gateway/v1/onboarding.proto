@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+// Gateway-hosted pairing for an independent server (SEE-109).
+//
+// An invitation is a temporary, single-use capability created by an authenticated server. Merely
+// resolving it, opening its web page, or opening SAC changes nothing. Redeem is the one write and
+// is accepted only after the owner has confirmed in SAC. It creates a new device binding; it never
+// replaces an existing one.
+//
+// The server's user_ref is opaque and scoped to that server. It is not a SAC account, is never
+// served to the invitation page, and is not a wallet identity. The gateway stores only the
+// association needed to route that server's private requests to the bound device.
+package seekervault.gateway.v1;
+
+import "google/protobuf/timestamp.proto";
+import "seekervault/request/v2/request.proto";
+import "seekervault/server/v1/manifest.proto";
+
+// InvitationService is served on the gateway's client listener. Resolve is read-only. Redeem is
+// the explicit confirmation boundary and atomically consumes the invitation while creating one
+// new binding and one device credential.
+service InvitationService {
+  rpc ResolveInvitation(ResolveInvitationRequest) returns (ResolveInvitationResponse);
+  rpc RedeemInvitation(RedeemInvitationRequest) returns (RedeemInvitationResponse);
+}
+
+// DeviceService is the paired phone's private gateway API. Every method requires the device
+// credential returned once by RedeemInvitation. A credential is scoped to one binding and one
+// originating server; it cannot read another server's requests or a public feed's local outcomes.
+service DeviceService {
+  rpc GetServerManifest(DeviceServiceGetServerManifestRequest) returns (DeviceServiceGetServerManifestResponse);
+  rpc ListRequests(DeviceServiceListRequestsRequest) returns (DeviceServiceListRequestsResponse);
+  rpc SubmitResult(DeviceServiceSubmitResultRequest) returns (DeviceServiceSubmitResultResponse);
+  rpc RevokeConnection(DeviceServiceRevokeConnectionRequest) returns (DeviceServiceRevokeConnectionResponse);
+}
+
+enum InvitationStatus {
+  INVITATION_STATUS_UNSPECIFIED = 0;
+  INVITATION_STATUS_PENDING = 1;
+  INVITATION_STATUS_CONNECTED = 2;
+  INVITATION_STATUS_EXPIRED = 3;
+}
+
+// What a server gets when it creates or checks an invitation. invitation_url is the shared
+// gateway-hosted page. app_uri is the QR payload and Open-in-SAC target. Both carry only the
+// temporary invitation capability; neither carries a publisher or device credential.
+message Invitation {
+  string invitation_id = 1;
+  string invitation_url = 2;
+  string app_uri = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  InvitationStatus status = 5;
+  string connection_id = 6;
+  google.protobuf.Timestamp connected_at = 7;
+}
+
+message ResolveInvitationRequest {
+  string token = 1;
+}
+
+message ResolveInvitationResponse {
+  string invitation_id = 1;
+  string server_id = 2;
+  string display_name = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  InvitationStatus status = 5;
+  // The complete gateway-private manifest. SAC validates its identity, mode and origin against
+  // the invitation before showing confirmation and stores it only after redemption succeeds.
+  seekervault.server.v1.ServerManifest manifest = 6;
+}
+
+message RedeemInvitationRequest {
+  string token = 1;
+  // Optional owner-facing device label. It is bounded display text and is not an account ID.
+  string device_name = 2;
+}
+
+message RedeemInvitationResponse {
+  string connection_id = 1;
+  // Returned once, stored in platform-backed secure storage, and never put in a URL or log.
+  string device_token = 2;
+  string server_id = 3;
+  seekervault.server.v1.ServerManifest manifest = 4;
+}
+
+message DeviceServiceGetServerManifestRequest {
+  string connection_id = 1;
+  uint64 known_settings_revision = 2;
+}
+
+message DeviceServiceGetServerManifestResponse {
+  seekervault.server.v1.ServerManifest manifest = 1;
+  bool unchanged = 2;
+  uint64 settings_revision = 3;
+}
+
+message DeviceServiceListRequestsRequest {
+  string connection_id = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+  uint64 known_sequence = 4;
+}
+
+message DeviceServiceListRequestsResponse {
+  repeated seekervault.request.v2.Request requests = 1;
+  string next_page_token = 2;
+  uint64 sequence = 3;
+  bool unchanged = 4;
+}
+
+enum DeviceResultStatus {
+  DEVICE_RESULT_STATUS_UNSPECIFIED = 0;
+  DEVICE_RESULT_STATUS_REJECTED = 1;
+  DEVICE_RESULT_STATUS_SUBMITTED = 2;
+  DEVICE_RESULT_STATUS_SIMULATED = 3;
+  DEVICE_RESULT_STATUS_FAILED = 4;
+  DEVICE_RESULT_STATUS_UNKNOWN = 5;
+}
+
+// One owner-initiated outcome for one private request. This is kept separate from the common
+// source-authored Request: a result is accepted only for RETURN_TO_ORIGIN, and a feed can never
+// submit one. No wallet address or history is collected. owner_inputs are only the values this
+// request declared; signature is the transaction signature when the wallet returned one.
+message DeviceResult {
+  string request_id = 1;
+  uint64 request_revision = 2;
+  DeviceResultStatus status = 3;
+  repeated seekervault.request.v2.Value owner_inputs = 4;
+  bytes signature = 5;
+  string detail = 6;
+  google.protobuf.Timestamp completed_at = 7;
+}
+
+message DeviceServiceSubmitResultRequest {
+  string connection_id = 1;
+  DeviceResult result = 2;
+}
+
+message DeviceServiceSubmitResultResponse {
+  DeviceResult result = 1;
+  bool unchanged = 2;
+}
+
+message DeviceServiceRevokeConnectionRequest {
+  string connection_id = 1;
+}
+
+message DeviceServiceRevokeConnectionResponse {}
+
+// The authenticated server's view of one routed request. connection_id is the binding chosen
+// when the request was accepted; it never changes if another device is later paired or revoked.
+message PrivateRequestRecord {
+  seekervault.request.v2.Request request = 1;
+  string connection_id = 2;
+  DeviceResult result = 3;
+}

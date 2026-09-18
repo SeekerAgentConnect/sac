@@ -58,6 +58,23 @@ sealed interface AddConnectionState {
     /** The entered or scanned text is a feed reference, but this app can't use it. */
     data class FeedInvalid(val problem: FeedReferenceProblem) : AddConnectionState
 
+    data class InvitationInvalid(val problem: InvitationProblem) : AddConnectionState
+
+    data class ResolvingInvitation(val reference: InvitationReference) : AddConnectionState
+
+    data class ConfirmInvitation(val confirmation: InvitationConfirmation) : AddConnectionState
+
+    data class RedeemingInvitation(val confirmation: InvitationConfirmation) : AddConnectionState
+
+    data class InvitationFailed(
+        val confirmation: InvitationConfirmation,
+        val problem: InvitationProblem,
+    ) : AddConnectionState
+
+    data class InvitationConnected(val connection: Connection) : AddConnectionState
+
+    data class InvitationAlready(val connection: Connection) : AddConnectionState
+
     /** Waiting for the owner to confirm the server. */
     data class ConfirmPairing(val confirmation: Confirmation) : AddConnectionState
 
@@ -202,7 +219,8 @@ class ConnectionsViewModel(
             adding =
                 when (state.adding) {
                     is AddConnectionState.PairingInvalid,
-                    is AddConnectionState.FeedInvalid -> AddConnectionState.Idle
+                    is AddConnectionState.FeedInvalid,
+                    is AddConnectionState.InvitationInvalid -> AddConnectionState.Idle
                     else -> state.adding
                 },
         )
@@ -214,7 +232,8 @@ class ConnectionsViewModel(
             if (
                 state.adding !is AddConnectionState.Idle &&
                     state.adding !is AddConnectionState.PairingInvalid &&
-                    state.adding !is AddConnectionState.FeedInvalid
+                    state.adding !is AddConnectionState.FeedInvalid &&
+                    state.adding !is AddConnectionState.InvitationInvalid
             ) {
                 return@update state
             }
@@ -227,6 +246,56 @@ class ConnectionsViewModel(
                         )
                 }
             state.copy(adding = adding)
+        }
+        val resolving = _state.value.adding as? AddConnectionState.ResolvingInvitation
+        if (resolving != null) resolveInvitation(resolving)
+    }
+
+    private fun resolveInvitation(working: AddConnectionState.ResolvingInvitation) {
+        viewModelScope.launch {
+            val next =
+                when (val outcome = repository.resolveInvitation(working.reference)) {
+                    is InvitationOutcome.Ready ->
+                        AddConnectionState.ConfirmInvitation(outcome.confirmation)
+                    is InvitationOutcome.Already ->
+                        AddConnectionState.InvitationAlready(outcome.connection)
+                    is InvitationOutcome.Refused ->
+                        AddConnectionState.InvitationInvalid(InvitationProblem.Invalid)
+                    is InvitationOutcome.Invalid ->
+                        AddConnectionState.InvitationInvalid(outcome.problem)
+                }
+            _state.update { if (it.adding == working) it.copy(adding = next) else it }
+        }
+    }
+
+    fun confirmInvitation() {
+        val confirmation =
+            when (val adding = _state.value.adding) {
+                is AddConnectionState.ConfirmInvitation -> adding.confirmation
+                is AddConnectionState.InvitationFailed -> adding.confirmation
+                else -> null
+            } ?: return
+        val working = AddConnectionState.RedeemingInvitation(confirmation)
+        _state.update { it.copy(adding = working) }
+        viewModelScope.launch {
+            val next =
+                try {
+                    AddConnectionState.InvitationConnected(
+                        repository.redeemInvitation(confirmation)
+                    )
+                } catch (e: StorageException) {
+                    AddConnectionState.InvitationFailed(confirmation, InvitationProblem.Failed)
+                } catch (e: GatewayException) {
+                    AddConnectionState.InvitationFailed(
+                        confirmation,
+                        when (e.kind) {
+                            GatewayException.Kind.NotFound -> InvitationProblem.Invalid
+                            GatewayException.Kind.InvalidState -> InvitationProblem.Expired
+                            else -> InvitationProblem.Failed
+                        },
+                    )
+                }
+            _state.update { if (it.adding == working) it.copy(adding = next) else it }
         }
     }
 
@@ -331,7 +400,7 @@ class ConnectionsViewModel(
     }
 
     /**
-     * Moves a feed between the environments its publisher serves (SEE-97,
+     * Moves a gateway connection between the environments its server serves (SEE-97,
      * docs/wiki/environments.md).
      *
      * The answers that say no cannot be reached from the screen — it offers only what the publisher
@@ -345,7 +414,7 @@ class ConnectionsViewModel(
     fun askToDisconnect(id: String) {
         val connection = repository.connection(id) ?: return
         val dialog =
-            if (connection.usable) DisconnectState.Confirm(id)
+            if (connection.usable || connection.gatewayUsable) DisconnectState.Confirm(id)
             else DisconnectState.ConfirmRemove(id)
         _state.update { it.copy(disconnect = dialog) }
     }
@@ -411,9 +480,18 @@ class ConnectionsViewModel(
         when (problem) {
             PairingCodeProblem.NotACode,
             PairingCodeProblem.NotSeekerVault ->
-                when (val feed = FeedReferences.parse(text, cleartextPermitted)) {
-                    is FeedReferenceResult.Valid -> AddConnectionState.ConfirmFeed(feed.reference)
-                    is FeedReferenceResult.Invalid -> AddConnectionState.FeedInvalid(feed.problem)
+                when (val invitation = InvitationReferences.parse(text, cleartextPermitted)) {
+                    is InvitationReferenceResult.Valid ->
+                        AddConnectionState.ResolvingInvitation(invitation.reference)
+                    is InvitationReferenceResult.Invalid ->
+                        when (val feed = FeedReferences.parse(text, cleartextPermitted)) {
+                            is FeedReferenceResult.Valid ->
+                                AddConnectionState.ConfirmFeed(feed.reference)
+                            is FeedReferenceResult.Invalid ->
+                                if (invitation.problem != InvitationProblem.NotAnInvitation) {
+                                    AddConnectionState.InvitationInvalid(invitation.problem)
+                                } else AddConnectionState.FeedInvalid(feed.problem)
+                        }
                 }
             else -> AddConnectionState.PairingInvalid(problem)
         }

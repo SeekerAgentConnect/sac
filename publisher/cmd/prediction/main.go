@@ -183,7 +183,7 @@ func run(log *slog.Logger) error {
 			"advice", "PUBLISHER_PUBLISH_URL must reach the gateway's publisher API, and "+
 				"PUBLISHER_GATEWAY_URL must be the origin phones read from (its own "+
 				"BROADCAST_PUBLIC_URL). They are the same address when the gateway's proxy "+
-				"serves both, and different when it is run with two loopback listeners")
+				"serves both, and different when it uses separate read and publisher listeners")
 	}
 
 	service := &http.Server{

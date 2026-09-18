@@ -25,7 +25,7 @@
 # operator has registered it with `ctl`, which is a deliberate local act and has
 # no network surface at all.
 #
-# Only two ports are ever published: the proxy's. The gateway's two listeners,
+# Only the proxy's port is ever published. The gateway's three listeners,
 # the broker's API and Redis are on an internal network with no route out of the
 # deployment (SEE-91).
 
@@ -42,7 +42,7 @@ services:
     restart: unless-stopped
 
     # The one published port is the proxy's listener, which lives in this
-    # namespace. The gateway's own two ports bind 127.0.0.1 inside the namespace
+    # namespace. The gateway's own three ports bind 127.0.0.1 inside the namespace
     # and are unreachable from the host and from every other container.
     ports:
       - "${BROADCAST_BIND:-127.0.0.1}:${BROADCAST_PORT:-8080}:8081"
@@ -56,6 +56,7 @@ services:
       BROADCAST_PUBLIC_URL: ${BROADCAST_PUBLIC_URL:-http://127.0.0.1:${BROADCAST_PORT:-8080}}
       BROADCAST_READ_ADDRESS: 127.0.0.1:8090
       BROADCAST_PUBLISHER_ADDRESS: 127.0.0.1:8091
+      BROADCAST_CLIENT_ADDRESS: 127.0.0.1:8092
       BROADCAST_DATABASE_PATH: /data/broadcast.db
       # How long past its own expiry a proposal is still served. Empty means a
       # week (docs/wiki/broadcast-gateway.md#retention).

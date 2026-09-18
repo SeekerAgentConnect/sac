@@ -92,6 +92,7 @@ fun SeekerVaultApp(
     live: LiveCommandViewModel,
     notificationTaps: StateFlow<MainActivity.NotificationTap?>,
     feedTaps: StateFlow<MainActivity.FeedTap?> = MutableStateFlow(null),
+    invitationTaps: StateFlow<MainActivity.InvitationTap?> = MutableStateFlow(null),
     /** A publisher's proposals, and the one path from one of them to the wallet (SEE-93). */
     operations: OperationViewModel? = null,
 ) {
@@ -127,6 +128,7 @@ fun SeekerVaultApp(
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
     val notificationTap by notificationTaps.collectAsStateWithLifecycle()
     val feedTap by feedTaps.collectAsStateWithLifecycle()
+    val invitationTap by invitationTaps.collectAsStateWithLifecycle()
     val operationsState by
         (operations?.state ?: MutableStateFlow(OperationsUiState())).collectAsStateWithLifecycle()
     val openOperation by
@@ -161,6 +163,15 @@ fun SeekerVaultApp(
                 Routes.INBOX_FOR + ref.connectionId,
                 signalRoute(ref.connectionId, ref.proposalId),
             )
+    }
+    LaunchedEffect(invitationTap?.sequence) {
+        val tap = invitationTap ?: return@LaunchedEffect
+        closingSheet = false
+        promotedRoute = null
+        backplateTargetSize = null
+        requestedPolicyClose = null
+        stack = listOf(Routes.CONNECTIONS, Routes.ADD)
+        connections.onCode(tap.uri)
     }
     BackHandler(enabled = stack.size > 1 || root != Routes.CONNECTIONS) {
         if (stack.size > 1) pop() else stack = listOf(Routes.CONNECTIONS)
@@ -295,6 +306,7 @@ fun SeekerVaultApp(
                     viewModel = connections,
                     onBack = { stack = listOf(Routes.CONNECTIONS) },
                     onAdded = {
+                        if (it.mode == ConnectionMode.GatewayPrivate) operations?.refresh(it.id)
                         stack = listOf(Routes.CONNECTIONS, Routes.DETAILS + it.id)
                     },
                     modifier = rootModifier,
@@ -351,7 +363,8 @@ fun SeekerVaultApp(
                             onBack = pop,
                             onPendingRequests = { push(Routes.INBOX_FOR + id) },
                             onRules = { push(Routes.POLICY + id) },
-                            // A feed's Signals affordance is a filter over the shared inbox.
+                            // Gateway operations share one review dispatcher; audience/result
+                            // policy still decides whether an outcome remains local or is returned.
                             onSignals =
                                 if (operations == null) null else ({ push(Routes.INBOX_FOR + id) }),
                             signals =
@@ -360,6 +373,8 @@ fun SeekerVaultApp(
                                         operations?.standing(it) is
                                             io.github.brrenat.seekervault.proposals.ProposalStanding.Open
                                 },
+                            operationRefreshing = id in operationsState.refreshing,
+                            onOperationRefresh = { operations?.refresh(id) },
                         )
                     }
                     route.startsWith(Routes.POLICY) -> {
@@ -496,6 +511,9 @@ fun SeekerVaultApp(
                                 onRules = { push(Routes.POLICY + connectionId) },
                                 // Links are constructed at display time and opened outside the app.
                                 onOpenLink = { openLink(linkContext, it) },
+                                returnsResult =
+                                    state.connections.firstOrNull { it.id == connectionId }?.mode ==
+                                        ConnectionMode.GatewayPrivate,
                             )
                         }
                     }
@@ -665,6 +683,8 @@ private fun ConnectionDetailsRoute(
     onRules: () -> Unit,
     onSignals: (() -> Unit)? = null,
     signals: Int = 0,
+    operationRefreshing: Boolean = false,
+    onOperationRefresh: () -> Unit = {},
 ) {
     val connection = state.connections.firstOrNull { it.id == id }
     if (connection == null) {
@@ -673,14 +693,20 @@ private fun ConnectionDetailsRoute(
         return
     }
     // The phone fetches when the owner selects a connection (docs/protocol.md).
-    LaunchedEffect(id) { viewModel.refresh(id) }
+    LaunchedEffect(id) {
+        viewModel.refresh(id)
+        if (connection.mode == ConnectionMode.GatewayPrivate) onOperationRefresh()
+    }
     ConnectionDetailsScreen(
         connection = connection,
-        refreshing = id in state.refreshing,
+        refreshing = id in state.refreshing || operationRefreshing,
         disconnect = state.disconnect?.takeIf { it.id == id },
         message = state.message,
         onBack = onBack,
-        onRefresh = { viewModel.refresh(id) },
+        onRefresh = {
+            viewModel.refresh(id)
+            if (connection.mode == ConnectionMode.GatewayPrivate) onOperationRefresh()
+        },
         onRename = { viewModel.rename(id, it) },
         onDisconnect = { viewModel.askToDisconnect(id) },
         onConfirmDisconnect = viewModel::confirmDisconnect,
@@ -691,12 +717,12 @@ private fun ConnectionDetailsRoute(
         onRules = onRules,
         // A feed has no requests addressed to it and no pending queue; what it has is signals,
         // which is the entry the same place would otherwise hold (SEE-93).
-        onSignals = onSignals?.takeIf { connection.mode == ConnectionMode.GatewayFeed },
+        onSignals = onSignals?.takeIf { connection.mode != ConnectionMode.Direct },
         signals = signals,
         live = state.updates.connections[id],
         support = state.support[id],
-        // Which promise this feed keeps, where its publisher serves more than one (SEE-97). The
-        // screen shows the switch only for a feed, and only between what the publisher serves.
+        // Which promise this gateway connection keeps, where its server serves more than one
+        // (SEE-97). The screen shows only environments in the validated manifest.
         onEnvironment = { viewModel.setEnvironment(id, it) },
     )
 }

@@ -68,11 +68,12 @@ go run ./cmd/copytrading
 ```
 
 `PUBLISHER_PUBLISH_URL` is needed **only** in this shape, and it is the one setting worth
-understanding before the first start. Run natively, the gateway has two loopback listeners — reads
-on 8090, publications on 8091 — so the origin a phone reads from is not the address a publication
-goes to. Run through the gateway's own compose stack, one proxy serves both on one origin and this
-setting can be left empty. Get it wrong and the publication gets a 404 from a listener that has no
-handler which could write anything; the template says so at startup, because nothing else would.
+understanding before the first start. Run natively, the gateway has separate loopback listeners —
+feeds on 8090, publications on 8091 and invitation/device traffic on 8092 — so the origin a phone
+reads from is not the address a publication goes to. Run through the gateway's own compose stack,
+one proxy serves them on one origin and this setting can be left empty. Get it wrong and the
+publication gets a 404 from a listener that has no handler which could write anything; the template
+says so at startup, because nothing else would.
 
 A publication then looks like this, and the template prints the feed reference on stdout at startup:
 
@@ -289,7 +290,7 @@ cd broadcast && go build -o /tmp/broadcast ./cmd/broadcast \
 cd ../publisher && SEEKERVAULT_BROADCAST=/tmp/broadcast go test ./internal/publish/ -run Gateway -v
 ```
 
-It registers a publisher with the real `broadcastctl`, starts the real gateway on two loopback
+It registers a publisher with the real `broadcastctl`, starts the real gateway on isolated loopback
 ports, publishes a manifest and a signal, **reads the feed back twice with two independent clients
 and compares the bytes**, republishes the identical document and requires `UNCHANGED`, then
 withdraws and reads the withdrawal. `pnpm check:publisher` does all of that for you.

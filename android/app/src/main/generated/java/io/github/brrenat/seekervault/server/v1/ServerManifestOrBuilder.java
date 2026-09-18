@@ -38,10 +38,10 @@ public interface ServerManifestOrBuilder extends
 
   /**
    * <pre>
-   * Which phone-server contract this server speaks. Version 1 is Stage 7.1: seekervault.request.v1
-   * for a direct server, and the gateway's feed contract for a publisher. Zero is never
-   * published, and a version the phone doesn't speak is reported as unsupported rather than
-   * treated as the nearest one it knows.
+   * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
+   * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+   * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
+   * knows.
    * </pre>
    *
    * <code>uint32 protocol_version = 2 [json_name = "protocolVersion"];</code>
@@ -65,8 +65,8 @@ public interface ServerManifestOrBuilder extends
   /**
    * <pre>
    * How the phone reaches this server. It selects the reference at the end of this message, and
-   * the two must agree: a manifest whose mode and reference disagree says nothing the phone can
-   * act on.
+   * the mode and reference must agree: a manifest whose mode and reference disagree says nothing
+   * the phone can act on.
    * </pre>
    *
    * <code>.seekervault.server.v1.ConnectionMode mode = 4 [json_name = "mode"];</code>
@@ -76,8 +76,8 @@ public interface ServerManifestOrBuilder extends
   /**
    * <pre>
    * How the phone reaches this server. It selects the reference at the end of this message, and
-   * the two must agree: a manifest whose mode and reference disagree says nothing the phone can
-   * act on.
+   * the mode and reference must agree: a manifest whose mode and reference disagree says nothing
+   * the phone can act on.
    * </pre>
    *
    * <code>.seekervault.server.v1.ConnectionMode mode = 4 [json_name = "mode"];</code>
@@ -243,6 +243,27 @@ public interface ServerManifestOrBuilder extends
    * @return The feed.
    */
   io.github.brrenat.seekervault.server.v1.GatewayFeed getFeed();
+
+  /**
+   * <pre>
+   * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
+   * no endpoint chosen by the originating server is introduced by pairing.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
+   * @return Whether the gatewayPrivate field is set.
+   */
+  boolean hasGatewayPrivate();
+  /**
+   * <pre>
+   * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
+   * no endpoint chosen by the originating server is introduced by pairing.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
+   * @return The gatewayPrivate.
+   */
+  io.github.brrenat.seekervault.server.v1.GatewayPrivate getGatewayPrivate();
 
   public io.github.brrenat.seekervault.server.v1.ServerManifest.ReferenceCase getReferenceCase();
 }

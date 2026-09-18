@@ -161,7 +161,9 @@ type harness struct {
 	logs       *captured
 	read       *httptest.Server
 	publish    *httptest.Server
+	client     *httptest.Server
 	feed       gatewayv1connect.FeedServiceClient
+	invitation gatewayv1connect.InvitationServiceClient
 	drainer    *dispatch.Drainer
 	path       string
 
@@ -209,6 +211,7 @@ func built(
 	settings := &config.Config{
 		ReadAddress:      "127.0.0.1:0",
 		PublisherAddress: "127.0.0.1:0",
+		ClientAddress:    "127.0.0.1:0",
 		PublicURL:        gatewayURL,
 		DatabasePath:     path,
 		Retention:        config.DefaultRetention,
@@ -247,10 +250,13 @@ func built(
 	one.drainer = service.Drainer
 	one.read = httptest.NewServer(service.Read)
 	one.publish = httptest.NewServer(service.Publish)
+	one.client = httptest.NewServer(service.Client)
 	one.feed = gatewayv1connect.NewFeedServiceClient(one.read.Client(), one.read.URL)
+	one.invitation = gatewayv1connect.NewInvitationServiceClient(one.client.Client(), one.client.URL)
 	t.Cleanup(func() {
 		one.read.Close()
 		one.publish.Close()
+		one.client.Close()
 		_ = documents.Close()
 	})
 	return one

@@ -133,7 +133,7 @@ class OperationViewModel(
                     OperationsUiState(
                         loaded = true,
                         records = held,
-                        feeds = live.filter { it.mode == ConnectionMode.GatewayFeed },
+                        feeds = live.filter { it.mode != ConnectionMode.Direct },
                     )
                 }
                 .collect { fresh ->

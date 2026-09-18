@@ -147,6 +147,21 @@ const (
 	// with its own server ID, credential and database — which is what the publisher's own database
 	// stamp already enforces at its end.
 	GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT GatewayProblem = 34
+	// --- Gateway pairing and private routing (SEE-109) -----------------------
+	GatewayProblem_GATEWAY_PROBLEM_BAD_USER_REF GatewayProblem = 35
+	GatewayProblem_GATEWAY_PROBLEM_BAD_LIFETIME GatewayProblem = 36
+	// One answer for an unknown, malformed, already-used or otherwise unusable invitation. Resolve
+	// and redeem do not disclose which temporary secret was ever valid.
+	GatewayProblem_GATEWAY_PROBLEM_INVALID_INVITATION GatewayProblem = 37
+	GatewayProblem_GATEWAY_PROBLEM_INVITATION_EXPIRED GatewayProblem = 38
+	GatewayProblem_GATEWAY_PROBLEM_INVITATION_USED    GatewayProblem = 39
+	GatewayProblem_GATEWAY_PROBLEM_NO_BINDING         GatewayProblem = 40
+	GatewayProblem_GATEWAY_PROBLEM_BINDING_EXISTS     GatewayProblem = 41
+	GatewayProblem_GATEWAY_PROBLEM_WRONG_RECIPIENT    GatewayProblem = 42
+	GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_REQUEST    GatewayProblem = 43
+	GatewayProblem_GATEWAY_PROBLEM_RESULT_CONFLICT    GatewayProblem = 44
+	GatewayProblem_GATEWAY_PROBLEM_REQUEST_SETTLED    GatewayProblem = 45
+	GatewayProblem_GATEWAY_PROBLEM_NOT_PRIVATE        GatewayProblem = 46
 )
 
 // Enum value maps for GatewayProblem.
@@ -187,6 +202,18 @@ var (
 		32: "GATEWAY_PROBLEM_TOO_MANY_CHANNELS",
 		33: "GATEWAY_PROBLEM_NO_PUSH",
 		34: "GATEWAY_PROBLEM_OTHER_ENVIRONMENT",
+		35: "GATEWAY_PROBLEM_BAD_USER_REF",
+		36: "GATEWAY_PROBLEM_BAD_LIFETIME",
+		37: "GATEWAY_PROBLEM_INVALID_INVITATION",
+		38: "GATEWAY_PROBLEM_INVITATION_EXPIRED",
+		39: "GATEWAY_PROBLEM_INVITATION_USED",
+		40: "GATEWAY_PROBLEM_NO_BINDING",
+		41: "GATEWAY_PROBLEM_BINDING_EXISTS",
+		42: "GATEWAY_PROBLEM_WRONG_RECIPIENT",
+		43: "GATEWAY_PROBLEM_NO_SUCH_REQUEST",
+		44: "GATEWAY_PROBLEM_RESULT_CONFLICT",
+		45: "GATEWAY_PROBLEM_REQUEST_SETTLED",
+		46: "GATEWAY_PROBLEM_NOT_PRIVATE",
 	}
 	GatewayProblem_value = map[string]int32{
 		"GATEWAY_PROBLEM_UNSPECIFIED":        0,
@@ -224,6 +251,18 @@ var (
 		"GATEWAY_PROBLEM_TOO_MANY_CHANNELS":  32,
 		"GATEWAY_PROBLEM_NO_PUSH":            33,
 		"GATEWAY_PROBLEM_OTHER_ENVIRONMENT":  34,
+		"GATEWAY_PROBLEM_BAD_USER_REF":       35,
+		"GATEWAY_PROBLEM_BAD_LIFETIME":       36,
+		"GATEWAY_PROBLEM_INVALID_INVITATION": 37,
+		"GATEWAY_PROBLEM_INVITATION_EXPIRED": 38,
+		"GATEWAY_PROBLEM_INVITATION_USED":    39,
+		"GATEWAY_PROBLEM_NO_BINDING":         40,
+		"GATEWAY_PROBLEM_BINDING_EXISTS":     41,
+		"GATEWAY_PROBLEM_WRONG_RECIPIENT":    42,
+		"GATEWAY_PROBLEM_NO_SUCH_REQUEST":    43,
+		"GATEWAY_PROBLEM_RESULT_CONFLICT":    44,
+		"GATEWAY_PROBLEM_REQUEST_SETTLED":    45,
+		"GATEWAY_PROBLEM_NOT_PRIVATE":        46,
 	}
 )
 
@@ -328,7 +367,7 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x12GatewayErrorDetail\x12@\n" +
 	"\aproblem\x18\x01 \x01(\x0e2&.seekervault.gateway.v1.GatewayProblemR\aproblem\x12\x14\n" +
 	"\x05field\x18\x02 \x01(\tR\x05field\x12#\n" +
-	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\xd0\t\n" +
+	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\x82\r\n" +
 	"\x0eGatewayProblem\x12\x1f\n" +
 	"\x1bGATEWAY_PROBLEM_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fGATEWAY_PROBLEM_UNAUTHENTICATED\x10\x01\x12 \n" +
@@ -365,7 +404,19 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x19GATEWAY_PROBLEM_NO_STREAM\x10\x1f\x12%\n" +
 	"!GATEWAY_PROBLEM_TOO_MANY_CHANNELS\x10 \x12\x1b\n" +
 	"\x17GATEWAY_PROBLEM_NO_PUSH\x10!\x12%\n" +
-	"!GATEWAY_PROBLEM_OTHER_ENVIRONMENT\x10\"B\x81\x02\n" +
+	"!GATEWAY_PROBLEM_OTHER_ENVIRONMENT\x10\"\x12 \n" +
+	"\x1cGATEWAY_PROBLEM_BAD_USER_REF\x10#\x12 \n" +
+	"\x1cGATEWAY_PROBLEM_BAD_LIFETIME\x10$\x12&\n" +
+	"\"GATEWAY_PROBLEM_INVALID_INVITATION\x10%\x12&\n" +
+	"\"GATEWAY_PROBLEM_INVITATION_EXPIRED\x10&\x12#\n" +
+	"\x1fGATEWAY_PROBLEM_INVITATION_USED\x10'\x12\x1e\n" +
+	"\x1aGATEWAY_PROBLEM_NO_BINDING\x10(\x12\"\n" +
+	"\x1eGATEWAY_PROBLEM_BINDING_EXISTS\x10)\x12#\n" +
+	"\x1fGATEWAY_PROBLEM_WRONG_RECIPIENT\x10*\x12#\n" +
+	"\x1fGATEWAY_PROBLEM_NO_SUCH_REQUEST\x10+\x12#\n" +
+	"\x1fGATEWAY_PROBLEM_RESULT_CONFLICT\x10,\x12#\n" +
+	"\x1fGATEWAY_PROBLEM_REQUEST_SETTLED\x10-\x12\x1f\n" +
+	"\x1bGATEWAY_PROBLEM_NOT_PRIVATE\x10.B\x81\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\fProblemProtoP\x01Z[github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (
