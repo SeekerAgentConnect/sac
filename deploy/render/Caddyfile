@@ -1,0 +1,30 @@
+{
+    admin off
+    auto_https off
+    persist_config off
+    grace_period 20s
+}
+
+:{$PORT} {
+    # Render's health probes need no public Host header. Contains no app data.
+    handle /healthz {
+        reverse_proxy 127.0.0.1:8080
+    }
+
+    @public host {$RENDER_PUBLIC_HOST}
+    handle @public {
+        request_body {
+            max_size 64KiB
+        }
+        @allowed path /mcp /mcp/* /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /seekervault.request.v1.PairingService/* /seekervault.request.v1.RequestService/* /seekervault.update.v1.UpdateService/*
+        handle @allowed {
+            # Preserve Host and Authorization. No access logs containing URLs/tokens.
+            reverse_proxy 127.0.0.1:8080 {
+                flush_interval -1
+            }
+        }
+        respond "Not found" 404
+    }
+    # Stage 1 LiveCommandService and every unlisted route stay private.
+    respond "Not found" 404
+}
