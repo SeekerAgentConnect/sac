@@ -13,3 +13,7 @@ fixtures/transactions/
 publisher/internal/jupiter/testdata/
 # Approved Linear design attachments; docs/design/README.md records their exact hashes.
 docs/design/*.html
+# Claude Design exports and their generated, byte-compared reference output (SEE-113).
+design/export/*.html
+design/components/
+design/screens/

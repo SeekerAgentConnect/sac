@@ -1,0 +1,13 @@
+{
+  "name": "@seeker-agent-connect/design-capture",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "capture": "node capture.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.63.0",
+    "prettier": "3.9.6"
+  }
+}
