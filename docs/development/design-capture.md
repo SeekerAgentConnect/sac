@@ -4,14 +4,15 @@ SEE-113 turns the three checked-in Claude Design offline bundles under `design/e
 
 ## Set up the capture tool
 
-The tool is an independent npm package so Android/component work can use the committed output without installing Node or a browser. To regenerate it:
+The tool is an independent npm package so Android/component work can use the committed output without installing Node or a browser. From a clean checkout, install it once:
 
 ```bash
-npm --prefix design/tools install
-npm --prefix design/tools exec playwright install chromium
+cd design/tools && npm install
 ```
 
-Playwright is pinned in `design/tools/package-lock.json`. Roboto Mono is also pinned locally at `design/tools/fonts/RobotoMono-Latin-400-700.woff2`; the bundled exports already contain Roboto and Material Symbols Outlined.
+`postinstall` downloads the pinned Chromium. Playwright and sharp are pinned in `design/tools/package-lock.json`. Roboto Mono is also pinned locally at `design/tools/fonts/RobotoMono-Latin-400-700.woff2`; the bundled exports already contain Roboto and Material Symbols Outlined.
+
+See `design/README.md` for the First run commands.
 
 ## Capture and check
 
@@ -22,13 +23,13 @@ npm --prefix design/tools run capture
 npm run design:capture
 ```
 
-The capture runs with networking disabled, forces the dark theme and reduced motion, waits for the unpacker/runtime and all three fonts, and defaults to device scale factor 2.625. Options are passed after `--`:
+The capture runs with networking disabled, forces the dark theme and reduced motion, waits for the unpacker/runtime and all three fonts, and defaults to device scale factor 3. Playwright's element screenshot is cropped in device pixels from the fractional bounding box so the PNG is `round(bbox × dsf)` rather than the enclosing integer CSS rect. Options are passed after `--`:
 
 ```bash
 npm run design:capture -- --only components
 npm run design:capture -- --only screens
 npm run design:capture -- --only tokens
-npm run design:capture -- --dsf 2.625
+npm run design:capture -- --dsf 3
 npm run design:capture -- --check
 ```
 
@@ -39,7 +40,7 @@ npm run design:capture -- --check
 - `design/components/<component>/<variant>.png` and `.html` contain every tagged specimen. The HTML is a stable rendered DOM extract: CSS variables are resolved from the specimen, event/React bookkeeping attributes are removed, and inline declarations are one per line.
 - `design/screens/` contains all 16 documented scenes, the complete unrolled request rail, and five unrolled review sheets. The 12 fixed flow scenes are selected by their exact captions. The four other review states are opened from the interactive `app.html` request rail.
 - `design/tokens.json` is read from the rendered token and component specimens and self-checks the current type/button/icon geometry.
-- `design/inventory.md` is the sorted 176-specimen index with original labels, slugs, CSS-pixel bounds and links.
+- `design/inventory.md` is the sorted 176-specimen index with original labels, slugs, CSS-pixel bounds, final PNG pixel size and links.
 - `design/manifest.json` records every input hash/size, Chromium, viewport, density, injected font and capture-tool version.
 
 The command fails on an unpacker error, a missing required font, an unstable or empty render, a component slug collision, a missing required component, an unexpected scene mapping, or stale committed output.
