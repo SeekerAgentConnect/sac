@@ -667,13 +667,11 @@ Give the owner the two `seekervault://feed` references. A capable app build vali
 reads its snapshot from the gateway, opens the gateway stream in foreground, and subscribes to the
 topic returned by `GetFeedTopics`. It never calls ports 8092/8094 or learns `broadcast:8082`.
 
-The current SEE-106 baseline has the feed repository, transport and screens but no production UI or
-deep link that invokes `ConnectionRepository.addFeed`. Therefore a physical phone cannot add these
-references in this build. Record phone onboarding, proposal display, push delivery and notification
-navigation as **NOT RUN — feed onboarding UI absent**; do not call automated transport tests a
-device pass and do not invent a server-side workaround.
+The Add connection screen accepts each reference as scanned, typed or pasted text. It shows the
+gateway, server ID and public/no-credential boundary before it stores anything. There is no Android
+intent filter for the URI, so tapping it outside the app is not a substitute for this flow.
 
-When an app build with feed onboarding is available, perform these separately on a physical device:
+Perform these separately on a physical device:
 
 1. Add both references and confirm the shown source, sandbox environment and proposals.
 2. Keep the app foregrounded, publish once, and confirm stream delivery without Refresh.
@@ -684,6 +682,28 @@ When an app build with feed onboarding is available, perform these separately on
 
 With Firebase disabled, `GetFeedTopics` returns `no_push`; the foreground stream and manual read
 remain the expected behavior.
+
+### SEE-107 device record — 2026-09-18
+
+A physical Seeker (`SM02G4061936191`) was attached and the public gateway was reachable. The two
+deployed CopyTrading and Prediction feed references/server IDs were not available in this checkout
+or the SEE-106 evidence, and this environment had no server SSH or publisher control-plane access
+from which to obtain them. The debug APK also could not replace the differently signed app already
+on the phone (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), and its existing app/data was not uninstalled.
+Because the references and a safely installable build are required by every line, the deployed-demo
+run is recorded rather than inferred:
+
+| Checklist line | Result |
+| --- | --- |
+| Add both references; confirm source, Sandbox and proposals | **NOT RUN** — deployed feed references/server IDs unavailable; debug APK signing did not match the installed app. |
+| Foreground publish arrives without Refresh | **NOT RUN** — no deployed feed could be added. |
+| Background/process-absent publish produces one generic notification | **NOT RUN** — no deployed feed could be added; no Firebase credential/deployment was available. |
+| Notification tap performs an authoritative read and opens the feed | **NOT RUN** — no notification could be produced. |
+| Notification denial preserves synchronization and opens no wallet | **NOT RUN** — no deployed feed could be added. |
+| Process-death and reboot repeat | **NOT RUN** — no deployed feed could be added. |
+
+This is no longer blocked by absent onboarding UI. Full evidence and the expected `no_push` case are
+in [`docs/testing/see-107.md`](../../docs/testing/see-107.md).
 
 ## 8. Stop, update or back up only the demos
 

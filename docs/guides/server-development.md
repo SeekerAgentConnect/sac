@@ -2,7 +2,10 @@
 
 This guide takes you from a fresh checkout of this repository to a live feed, using one of the two Go templates it ships. At the end you will have published a manifest, published a signal, revised it, withdrawn it, seen two subscribers receive the same document, and sent the content-free hint that wakes a phone which is not looking — and you will have done it without a credential of ours for Firebase, without a line of Kotlin, and without holding anybody's wallet keys.
 
-One thing to know before you start, because it decides whether you can finish: **this build of the app has no screen for adding a feed.** Everything on the phone's side of a feed is implemented and tested, and the way in is not there yet. [Step 5](#5-connect-the-app) says exactly what that means, and every step before it works today.
+One thing to know before you start: a feed is added from the app's existing **Add connection** screen.
+The owner scans or pastes the public reference and confirms the gateway and server identity before
+anything is stored. There is no `seekervault://feed` intent filter yet, so a link does not open the
+app directly. [Step 5](#5-connect-the-app) describes the flow.
 
 It is written for the developer who wants their own server in this system: a trader publishing their own swaps, or somebody republishing a market listing. You do not need to know how the app works inside, and you never see the private MCP implementation, which is a different kind of server entirely ([`docs/wiki/mcp-adapter.md`](../wiki/mcp-adapter.md)).
 
@@ -197,15 +200,26 @@ If it was refused, nobody can subscribe to you at all, and the template says so 
 seekervault://feed?v=1&gateway=<the gateway's origin, percent-encoded>&server=<your server ID>
 ```
 
-Ask for it again at any time with `publishctl reference`, or read it out of `GET /v1/manifest`. **It carries no secret**, because there is nothing to authenticate to: holding one grants the ability to read a public broadcast, which is what a broadcast is. You can print it in a README, put it on a web page, or turn it into a QR code — but read [step 5](#5-connect-the-app) before you do, because this build of the app has no screen that takes one yet.
+Ask for it again at any time with `publishctl reference`, or read it out of `GET /v1/manifest`. **It carries no secret**, because there is nothing to authenticate to: holding one grants the ability to read a public broadcast, which is what a broadcast is. You can print it in a README, put it on a web page, or turn it into a QR code. The app accepts the QR or pasted text in [step 5](#5-connect-the-app).
 
 ## 5. Connect the app
 
-**Read this before you plan a launch around it.** The app carries the whole of a feed's machinery — it resolves a manifest, validates it, reads a snapshot, listens on the stream, shows the signals, reviews one, executes it and records it — and what this build does **not** have is a screen for adding one. `ConnectionRepository.addFeed` is implemented and wired to a live gateway, and it is exercised by the app's own suites and by `pnpm test:integration`'s phone cases; nothing in the Add-connection flow calls it, and there is no deep link for `seekervault://feed`. So a reference is what a screen will take, and today a feed gets onto a phone only in a test. That is an app-side gap rather than a gateway or template one, it is not something you can work around from your server, and every device step in [`docs/testing/see-100.md`](../testing/see-100.md) waits on it.
+On the phone, open **Add connection** and scan the reference's QR code or paste its text. A pairing
+code and a feed reference are routed separately: neither can fall into the other's network path. The
+confirmation shows the gateway origin, server ID and the fact that this is a public broadcast with
+no credential. **Add feed** then resolves and validates the manifest; **Cancel** stores nothing.
+There is no deep link or Android intent filter in this release, so tapping the URI outside the app is
+not an onboarding path.
+
+An added feed opens with the publisher's manifest name, Sandbox or Production, and its required
+client plugins visible. A reference that is already present writes nothing. A refused manifest, a
+gateway check failure and a build with no gateway adapter are distinct results, and only a transient
+gateway failure offers Retry. The exact owner flow is in
+[`docs/wiki/feed-onboarding.md`](../wiki/feed-onboarding.md).
 
 Nothing else about the app changes to accommodate you: nothing is installed, no code of yours runs on the phone, and the phone holds no credential for you.
 
-What happens when a feed is added, in this order:
+What happens after the owner confirms, in this order:
 
 1. The phone reads your **manifest** from the gateway and validates it — that it is a feed, that the server ID matches the one it is adding, that the gateway origin is the one it is adding it from, that the channel is `server/<that ID>`, and that everything inside is within bounds. A manifest that fails is `Refused` and nothing from you is executable; the connection is not revoked by it.
 2. It resolves **support**: whether this build carries the plugin your manifest requires, at a contract inside the range you published, for the environment the connection keeps. This is never cached — it is derived from the compiled plugin registry on every read.
@@ -629,7 +643,7 @@ The evidence behind the claims on this page, rather than the claims: [`docs/test
 
 ## What is not here
 
-- **A way for an owner to add your feed.** The app resolves, reads, streams, reviews and executes one, and has no screen that takes a `seekervault://feed` reference. [Step 5](#5-connect-the-app) says what that means for you.
+- **A feed deep link.** The owner can scan or paste a `seekervault://feed` reference in **Add connection**, but Android does not yet route a URI tapped outside the app into that screen. [Step 5](#5-connect-the-app) shows the supported path.
 - **An SDK, or any way to embed these screens in another app.** The boundary a later extraction would cut along is documented and unbuilt; the packaging is SEE-102 and a host-app entry point is SEE-104. Nothing on this page ships either.
 - **A third template.** Two exist, on purpose.
 - **A plugin you can deploy.** A new execution platform is a new bundled client plugin in a release of the app.

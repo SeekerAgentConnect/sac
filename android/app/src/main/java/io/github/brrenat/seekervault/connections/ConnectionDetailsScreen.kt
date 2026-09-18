@@ -202,6 +202,18 @@ fun ConnectionDetailsScreen(
                 Field(R.string.field_device_name, connection.deviceName, "deviceName")
                 if (connection.mode == ConnectionMode.GatewayFeed) {
                     EnvironmentCard(connection, onEnvironment)
+                    val required = connection.server.manifest?.required.orEmpty()
+                    val requiredText =
+                        if (required.isEmpty()) {
+                            stringResource(R.string.feed_required_plugins_none)
+                        } else {
+                            required.joinToString("\n") { it.id.value }
+                        }
+                    Field(
+                        R.string.feed_required_plugins,
+                        requiredText,
+                        "plugins",
+                    )
                 }
                 if (onRules != null) {
                     SeekerCard(

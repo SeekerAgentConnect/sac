@@ -4,9 +4,23 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.PluginId
+import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.FeedReference
+import io.github.brrenat.seekervault.servers.FeedReferenceProblem
+import io.github.brrenat.seekervault.servers.GATEWAY
+import io.github.brrenat.seekervault.servers.ManifestProblem
+import io.github.brrenat.seekervault.servers.PluginRequirement
+import io.github.brrenat.seekervault.servers.SERVER_B
+import io.github.brrenat.seekervault.servers.ServerManifest
+import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.ServerReference
+import io.github.brrenat.seekervault.servers.channelFor
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
 import java.io.File
+import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,6 +70,40 @@ class ConnectionsViewModelTest {
         "seekervault://pair?v=1&url=${java.net.URLEncoder.encode(code.serverUrl, Charsets.UTF_8)}" +
             "&server=${code.serverId}&token=${code.token}"
 
+    private fun feedText(
+        gateway: String = GATEWAY,
+        serverId: String = SERVER_B,
+        version: String = "1",
+    ) =
+        "seekervault://feed?v=$version&gateway=" +
+            java.net.URLEncoder.encode(gateway, Charsets.UTF_8) +
+            "&server=$serverId"
+
+    private fun feedConnection() =
+        Connection(
+            id = "00000000-0000-4000-8000-000000000107",
+            label = "Copy trading",
+            serverUrl = GATEWAY,
+            serverId = SERVER_B,
+            deviceName = "",
+            pairedAt = Instant.parse("2026-09-18T12:00:00Z"),
+            hasCredential = false,
+            mode = ConnectionMode.GatewayFeed,
+            server =
+                ServerRecord.Known(
+                    ServerManifest(
+                        serverId = SERVER_B,
+                        protocolVersion = 1,
+                        settingsRevision = 1,
+                        mode = ConnectionMode.GatewayFeed,
+                        reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_B)),
+                        required = listOf(PluginRequirement(PluginId("jupiter.swap"), 1..1)),
+                        environments = setOf(PluginEnvironment.Production),
+                        name = "Copy trading",
+                    )
+                ),
+        )
+
     @Test
     fun fetchesAgainWhenTheAppComesBackToTheForegroundButNotOnARotation() {
         val connection = runBlocking { repository.pair(server.issue(URL)) }
@@ -90,11 +138,157 @@ class ConnectionsViewModelTest {
         viewModel.onCodeDraftChange("seekervault://pair?v=2")
         viewModel.onCode("seekervault://pair?v=2")
         assertEquals(
-            PairingState.Invalid(PairingCodeProblem.OtherVersion),
-            viewModel.state.value.pairing,
+            AddConnectionState.PairingInvalid(PairingCodeProblem.OtherVersion),
+            viewModel.state.value.adding,
         )
         viewModel.onCodeDraftChange("seekervault://pair?v=1")
-        assertEquals(PairingState.Idle, viewModel.state.value.pairing)
+        assertEquals(AddConnectionState.Idle, viewModel.state.value.adding)
+    }
+
+    @Test
+    fun routesPairingCodesFeedsAndNeitherWithoutCrossingActions() {
+        var feedCalls = 0
+        val feed = feedConnection()
+        val viewModel =
+            ConnectionsViewModel(
+                repository,
+                addFeed = {
+                    feedCalls++
+                    FeedOutcome.Added(feed)
+                },
+                cleartextPermitted = { it == "127.0.0.1" },
+            )
+
+        val code = server.issue(URL)
+        viewModel.onCode(text(code))
+        assertTrue(viewModel.state.value.adding is AddConnectionState.ConfirmPairing)
+        viewModel.confirmFeed()
+        assertEquals(0, feedCalls)
+
+        viewModel.resetAdding()
+        viewModel.onCode(feedText())
+        assertEquals(
+            AddConnectionState.ConfirmFeed(FeedReference(GATEWAY, SERVER_B)),
+            viewModel.state.value.adding,
+        )
+        viewModel.confirmPairing()
+        assertEquals(0, feedCalls)
+        viewModel.confirmFeed()
+        assertEquals(1, feedCalls)
+        assertEquals(AddConnectionState.FeedAdded(feed), viewModel.state.value.adding)
+
+        viewModel.resetAdding()
+        viewModel.onCode("not a URI at all")
+        assertEquals(
+            AddConnectionState.FeedInvalid(FeedReferenceProblem.NotAReference),
+            viewModel.state.value.adding,
+        )
+    }
+
+    @Test
+    fun mapsEveryFeedReferenceProblemToItsOwnState() {
+        val cases =
+            mapOf(
+                "not a URI at all" to FeedReferenceProblem.NotAReference,
+                "https://example.com/feed" to FeedReferenceProblem.NotSeekerVault,
+                feedText(version = "2") to FeedReferenceProblem.OtherVersion,
+                feedText(gateway = "$GATEWAY/path") to FeedReferenceProblem.BadGatewayUrl,
+                feedText(gateway = "http://gateway.example.com") to
+                    FeedReferenceProblem.InsecureGatewayUrl,
+                feedText(serverId = "publisher") to FeedReferenceProblem.BadServerId,
+            )
+        val viewModel = viewModel()
+
+        cases.forEach { (text, problem) ->
+            viewModel.onCode(text)
+            assertEquals(
+                AddConnectionState.FeedInvalid(problem),
+                viewModel.state.value.adding,
+            )
+        }
+    }
+
+    @Test
+    fun mapsEveryFeedOutcomeAndRetriesOnlyTransientFailures() {
+        val feed = feedConnection()
+        val outcomes =
+            listOf<FeedOutcome>(
+                FeedOutcome.Added(feed),
+                FeedOutcome.Already(feed),
+                FeedOutcome.Refused(ManifestProblem.ForeignChannel),
+                *CheckOutcome.entries.map(FeedOutcome::Failed).toTypedArray(),
+                FeedOutcome.NoGateway,
+            )
+
+        outcomes.forEach { outcome ->
+            var calls = 0
+            val viewModel =
+                ConnectionsViewModel(
+                    repository,
+                    addFeed = {
+                        calls++
+                        outcome
+                    },
+                    cleartextPermitted = { false },
+                )
+            viewModel.onCode(feedText())
+            viewModel.confirmFeed()
+
+            val expected =
+                when (outcome) {
+                    is FeedOutcome.Added -> AddConnectionState.FeedAdded(feed)
+                    is FeedOutcome.Already -> AddConnectionState.FeedAlready(feed)
+                    is FeedOutcome.Refused ->
+                        AddConnectionState.FeedFailed(
+                            FeedReference(GATEWAY, SERVER_B),
+                            FeedAddFailure.Refused(outcome.problem),
+                        )
+                    is FeedOutcome.Failed ->
+                        AddConnectionState.FeedFailed(
+                            FeedReference(GATEWAY, SERVER_B),
+                            FeedAddFailure.Check(outcome.outcome),
+                        )
+                    FeedOutcome.NoGateway ->
+                        AddConnectionState.FeedFailed(
+                            FeedReference(GATEWAY, SERVER_B),
+                            FeedAddFailure.NoGateway,
+                        )
+                }
+            assertEquals(expected, viewModel.state.value.adding)
+            viewModel.confirmFeed()
+            val retryable =
+                outcome is FeedOutcome.Failed &&
+                    outcome.outcome in setOf(CheckOutcome.Unreachable, CheckOutcome.Failed)
+            assertEquals(if (retryable) 2 else 1, calls)
+        }
+    }
+
+    @Test
+    fun confirmationAddsOnceAndCancelAddsNothing() {
+        var calls = 0
+        val feed = feedConnection()
+        val viewModel =
+            ConnectionsViewModel(
+                repository,
+                addFeed = {
+                    calls++
+                    FeedOutcome.Added(feed)
+                },
+                cleartextPermitted = { false },
+            )
+
+        viewModel.onCode(feedText())
+        assertEquals(0, calls)
+        viewModel.confirmFeed()
+        viewModel.confirmFeed()
+        assertEquals(1, calls)
+
+        viewModel.resetAdding()
+        viewModel.onCode(feedText(serverId = "00000000-0000-4000-8000-000000000108"))
+        viewModel.resetAdding()
+        viewModel.confirmFeed()
+        assertEquals(1, calls)
+        assertEquals(AddConnectionState.Idle, viewModel.state.value.adding)
     }
 
     @Test
@@ -102,18 +296,18 @@ class ConnectionsViewModelTest {
         val viewModel = viewModel()
         val code = server.issue(URL)
         viewModel.onCode(text(code))
-        val confirm = viewModel.state.value.pairing as PairingState.Confirm
+        val confirm = viewModel.state.value.adding as AddConnectionState.ConfirmPairing
         assertEquals(code, confirm.confirmation.code)
         // A second scan while confirming changes nothing.
         viewModel.onCode(text(server.issue(URL)))
-        assertEquals(confirm, viewModel.state.value.pairing)
+        assertEquals(confirm, viewModel.state.value.adding)
 
         viewModel.confirmPairing()
-        val paired = viewModel.state.value.pairing as PairingState.Paired
+        val paired = viewModel.state.value.adding as AddConnectionState.Paired
         assertEquals(listOf(paired.connection.id), viewModel.state.value.connections.map { it.id })
         assertEquals(ConnectionMessage.Paired("vault.example.com"), viewModel.state.value.message)
-        viewModel.resetPairing()
-        assertEquals(PairingState.Idle, viewModel.state.value.pairing)
+        viewModel.resetAdding()
+        assertEquals(AddConnectionState.Idle, viewModel.state.value.adding)
         assertEquals("", viewModel.state.value.codeDraft)
     }
 
@@ -122,7 +316,7 @@ class ConnectionsViewModelTest {
         val viewModel = viewModel()
         val old = runBlocking { repository.pair(server.issue(URL)) }
         viewModel.onCode(text(server.issue(URL)))
-        val confirm = viewModel.state.value.pairing as PairingState.Confirm
+        val confirm = viewModel.state.value.adding as AddConnectionState.ConfirmPairing
         assertEquals(listOf(old.id), confirm.confirmation.sameServer.map { it.id })
         viewModel.confirmPairing()
         assertNotNull(repository.connection(old.id)?.revokedAt)
@@ -133,10 +327,10 @@ class ConnectionsViewModelTest {
         val viewModel = viewModel()
         viewModel.onCode(text(PairingCode(URL, server.serverId, newSecret())))
         viewModel.confirmPairing()
-        val failed = viewModel.state.value.pairing as PairingState.Failed
+        val failed = viewModel.state.value.adding as AddConnectionState.PairingFailed
         assertEquals(PairingFailure.CodeRefused, failed.failure)
         viewModel.confirmPairing()
-        assertEquals(failed, viewModel.state.value.pairing)
+        assertEquals(failed, viewModel.state.value.adding)
         assertTrue(viewModel.state.value.connections.isEmpty())
     }
 
@@ -148,11 +342,11 @@ class ConnectionsViewModelTest {
         viewModel.confirmPairing()
         assertEquals(
             PairingFailure.Unreachable,
-            (viewModel.state.value.pairing as PairingState.Failed).failure,
+            (viewModel.state.value.adding as AddConnectionState.PairingFailed).failure,
         )
         server.failure = null
         viewModel.confirmPairing()
-        assertTrue(viewModel.state.value.pairing is PairingState.Paired)
+        assertTrue(viewModel.state.value.adding is AddConnectionState.Paired)
     }
 
     @Test
@@ -162,8 +356,8 @@ class ConnectionsViewModelTest {
             text(PairingCode("http://192.168.1.20:8080", server.serverId, newSecret()))
         )
         assertEquals(
-            PairingState.Invalid(PairingCodeProblem.InsecureServerUrl),
-            viewModel.state.value.pairing,
+            AddConnectionState.PairingInvalid(PairingCodeProblem.InsecureServerUrl),
+            viewModel.state.value.adding,
         )
     }
 

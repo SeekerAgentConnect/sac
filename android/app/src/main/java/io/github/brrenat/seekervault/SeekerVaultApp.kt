@@ -272,7 +272,7 @@ fun SeekerVaultApp(
                 AddConnectionRoute(
                     viewModel = connections,
                     onBack = { stack = listOf(Routes.CONNECTIONS) },
-                    onPaired = {
+                    onAdded = {
                         stack = listOf(Routes.CONNECTIONS, Routes.DETAILS + it.id)
                     },
                     modifier = rootModifier,
