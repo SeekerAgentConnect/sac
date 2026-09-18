@@ -123,6 +123,19 @@ All session metadata lives in the `.claude/` folder and should be tracked in Git
 - If blocked or unsure, say so immediately — don't guess and break things
 - When a task is done, summarize: what changed, what was tested, any caveats
 
+## Superset Hook
+
+When session runned in superset.sh and status changes (stuck, blocked, finished, failed — and optionally started), and `$SEE_SUPERSET_TOKEN` env exist: POST JSON to `$SEE_SUPERSET_HOOK` with header `Authorization: Bearer $SEE_SUPERSET_TOKEN`. Body:
+{
+  "ticket": "SEE-100",
+  "repo": "SeekerAgentWallet",
+  "branch": "superset/feat/see-100",
+  "status": "finished" | "stuck" | "blocked" | "failed" | "working",
+  "message": "short human summary",
+  "pr": "https://github.com/..." // if any
+}
+
+
 ## PR Code Review
 
 Use `/review <PR#>` to run a self-review on any pull request. It auto-detects languages and applies the right rulesets (Node.js, Frontend, iOS).
