@@ -12,8 +12,8 @@ Workspace HEAD `c2484f7` equals `origin/master`. SEE-113 is already on master vi
 - [x] For every specimen: PNG size = round(bounding box × 3). Checked by the script itself, non-zero exit on mismatch.
 - [x] Phone-frame screen captures are exactly 1170 × 2532 px.
 - [x] `grep -rl --include='*.html' 'var(--\|{{' design/components design/screens` prints nothing.
-- [ ] Running capture twice leaves `git status --short design/` empty.
-- [ ] Clean checkout → `npm install` in `design/tools` → capture succeeds with no extra manual step.
+- [x] Running capture twice leaves `git status --short design/` empty.
+- [x] Clean checkout → `npm install` in `design/tools` → capture succeeds with no extra manual step.
 
 ## Work
 
@@ -24,7 +24,13 @@ Workspace HEAD `c2484f7` equals `origin/master`. SEE-113 is already on master vi
 - [x] `design/tools/package.json`: `postinstall` already installs Chromium; add `sharp`; commit lockfile.
 - [x] `design/README.md` First run section.
 - [x] Regenerate and commit `design/components`, `design/screens`, `tokens.json`, `inventory.md`, `manifest.json` at scale 3.
-- [ ] Re-read Linear comments before the PR.
+- [x] Re-read Linear comments before the PR.
+
+## Review
+
+Linear `list_comments` on SEE-125 was empty before implementation and again before the PR. SEE-113's newest comment (scale 3.0) stands.
+
+SHA `3ed9cf4`. Evidence in `docs/testing/see-125.md`.
 
 ## Out of scope
 
