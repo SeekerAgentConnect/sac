@@ -2,7 +2,7 @@ version: v2
 clean: true
 # Go for the broadcast gateway (SEE-90, docs/wiki/broadcast-gateway.md). A separate template from
 # buf.gen.yaml because the two sides speak different parts of the protocol: the gateway publishes
-# and serves manifests and proposals, and has never heard of a durable request, a live command, or
+# and serves manifests and common requests, and has never heard of a durable private lifecycle, a live command, or
 # a production update. Generating those for it would be dead code in a service whose whole point is
 # that it holds nothing personal.
 managed:
@@ -28,4 +28,5 @@ inputs:
     paths:
       - proto/seekervault/gateway/v1
       - proto/seekervault/proposal/v1
+      - proto/seekervault/request/v2
       - proto/seekervault/server/v1

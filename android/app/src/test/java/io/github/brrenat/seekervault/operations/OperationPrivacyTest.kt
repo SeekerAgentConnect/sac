@@ -14,9 +14,9 @@ import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.feeds.ConnectFeedGateway
-import io.github.brrenat.seekervault.gateway.v1.ListProposalsRequest
-import io.github.brrenat.seekervault.gateway.v1.listProposalsRequest
-import io.github.brrenat.seekervault.gateway.v1.listProposalsResponse
+import io.github.brrenat.seekervault.gateway.v1.ListRequestsRequest
+import io.github.brrenat.seekervault.gateway.v1.listRequestsRequest
+import io.github.brrenat.seekervault.gateway.v1.listRequestsResponse
 import io.github.brrenat.seekervault.jupiter.HttpJupiterProvider
 import io.github.brrenat.seekervault.jupiter.JUPITER_SWAP
 import io.github.brrenat.seekervault.jupiter.JupiterSwapPlugin
@@ -29,6 +29,8 @@ import io.github.brrenat.seekervault.plugins.PluginRegistry
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
+import io.github.brrenat.seekervault.proposals.proposal
+import io.github.brrenat.seekervault.requests.commonEnvelope
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.PluginRequirement
 import io.github.brrenat.seekervault.servers.SERVER_B
@@ -151,9 +153,9 @@ class OperationPrivacyTest {
                 .body(
                     Buffer()
                         .write(
-                            listProposalsResponse {
+                            listRequestsResponse {
                                 snapshotSequence = 1
-                                this.proposals += swapProposal()
+                                requests += proposal(swapProposal()).commonEnvelope()
                             }
                                 .toByteArray()
                         )
@@ -258,9 +260,9 @@ class OperationPrivacyTest {
         // page it will take. Asserted as the decoded message rather than only as a text search,
         // because a number this app never wrote could still turn up in a protobuf body by
         // coincidence — and because this way a field *added* later has to be looked at here.
-        val asked = ListProposalsRequest.parseFrom(checkNotNull(gatewayRequest).toByteArray())
+        val asked = ListRequestsRequest.parseFrom(checkNotNull(gatewayRequest).toByteArray())
         assertEquals(
-            listProposalsRequest {
+            listRequestsRequest {
                 this.channel = channelFor(SERVER_B)
                 pageSize = asked.pageSize
             },
@@ -268,7 +270,7 @@ class OperationPrivacyTest {
         )
         val toGateway =
             listOf(
-                "POST /seekervault.gateway.v1.FeedService/ListProposals? " +
+                "POST /seekervault.gateway.v1.FeedService/ListRequests? " +
                     (gatewayRequest?.utf8() ?: "")
             )
         val secrets =

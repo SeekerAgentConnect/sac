@@ -10,7 +10,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/proposal/v1"
+	requestv2 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/server/v1"
+	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/rules"
 )
 
 // StoredManifest is what a publisher says about itself, as the gateway holds it.
@@ -25,6 +27,16 @@ type StoredProposal struct {
 	Document  *proposalv1.Proposal
 	Sequence  uint64
 	UpdatedAt time.Time
+	Legacy    bool
+}
+
+// StoredRequest is the common view of a row. Legacy says the row was written as a protocol-1
+// Proposal; reads expose it through the common adapter without rewriting the database in place.
+type StoredRequest struct {
+	Document  *requestv2.Request
+	Sequence  uint64
+	UpdatedAt time.Time
+	Legacy    bool
 }
 
 // NoticeKind says which document a pending notice is about. It is a string in the table so a log
@@ -111,6 +123,29 @@ func (t *Tx) Proposal(ctx context.Context, channel, proposalID string) (*StoredP
 	return readProposal(ctx, t.tx, channel, proposalID)
 }
 
+func (s *Store) Request(ctx context.Context, channel, requestID string) (*StoredRequest, error) {
+	return readRequest(ctx, s.reader, channel, requestID)
+}
+
+func (t *Tx) Request(ctx context.Context, channel, requestID string) (*StoredRequest, error) {
+	return readRequest(ctx, t.tx, channel, requestID)
+}
+
+func readRequest(ctx context.Context, from querier, channel, requestID string) (*StoredRequest, error) {
+	var document []byte
+	var sequence, updated int64
+	err := from.QueryRowContext(ctx,
+		`SELECT document, sequence, updated_at_ms FROM proposal WHERE channel = ? AND proposal_id = ?`,
+		channel, requestID).Scan(&document, &sequence, &updated)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, nil
+	case err != nil:
+		return nil, fmt.Errorf("read request: %w", err)
+	}
+	return storedRequest(document, sequence, updated, channel, requestID)
+}
+
 func readProposal(ctx context.Context, from querier, channel, proposalID string) (*StoredProposal, error) {
 	var (
 		document []byte
@@ -131,6 +166,10 @@ func readProposal(ctx context.Context, from querier, channel, proposalID string)
 }
 
 func storedProposal(document []byte, sequence, updated int64, channel, proposalID string) (*StoredProposal, error) {
+	common := &requestv2.Request{}
+	if err := proto.Unmarshal(document, common); err == nil && common.GetContractVersion() > 0 && common.GetIdentity() != nil {
+		return &StoredProposal{Document: rules.ProposalFromRequest(common), Sequence: uint64(sequence), UpdatedAt: instant(updated)}, nil
+	}
 	proposal := &proposalv1.Proposal{}
 	if err := proto.Unmarshal(document, proposal); err != nil {
 		return nil, fmt.Errorf("read proposal %s/%s: %w", channel, proposalID, err)
@@ -139,7 +178,23 @@ func storedProposal(document []byte, sequence, updated int64, channel, proposalI
 		Document:  proposal,
 		Sequence:  uint64(sequence),
 		UpdatedAt: instant(updated),
+		Legacy:    true,
 	}, nil
+}
+
+func storedRequest(document []byte, sequence, updated int64, channel, requestID string) (*StoredRequest, error) {
+	common := &requestv2.Request{}
+	if err := proto.Unmarshal(document, common); err == nil && common.GetContractVersion() > 0 && common.GetIdentity() != nil {
+		return &StoredRequest{Document: common, Sequence: uint64(sequence), UpdatedAt: instant(updated)}, nil
+	}
+	proposal := &proposalv1.Proposal{}
+	if err := proto.Unmarshal(document, proposal); err != nil {
+		return nil, fmt.Errorf("read request %s/%s: %w", channel, requestID, err)
+	}
+	if proposal.GetProposalId() == "" {
+		return nil, fmt.Errorf("read request %s/%s: unknown document encoding", channel, requestID)
+	}
+	return &StoredRequest{Document: rules.RequestFromProposal(proposal), Sequence: uint64(sequence), UpdatedAt: instant(updated), Legacy: true}, nil
 }
 
 // Page reads up to limit proposals of a channel, ordered by proposal ID and starting after the one
@@ -172,6 +227,31 @@ func (s *Store) Page(ctx context.Context, channel, after string, limit int) ([]*
 			return nil, fmt.Errorf("read page: %w", err)
 		}
 		stored, err := storedProposal(document, sequence, updated, channel, proposalID)
+		if err != nil {
+			return nil, err
+		}
+		page = append(page, stored)
+	}
+	return page, rows.Err()
+}
+
+func (s *Store) RequestPage(ctx context.Context, channel, after string, limit int) ([]*StoredRequest, error) {
+	rows, err := s.reader.QueryContext(ctx,
+		`SELECT proposal_id, document, sequence, updated_at_ms FROM proposal
+		  WHERE channel = ? AND proposal_id > ? ORDER BY proposal_id LIMIT ?`, channel, after, limit)
+	if err != nil {
+		return nil, fmt.Errorf("read request page: %w", err)
+	}
+	defer rows.Close()
+	var page []*StoredRequest
+	for rows.Next() {
+		var requestID string
+		var document []byte
+		var sequence, updated int64
+		if err := rows.Scan(&requestID, &document, &sequence, &updated); err != nil {
+			return nil, fmt.Errorf("read request page: %w", err)
+		}
+		stored, err := storedRequest(document, sequence, updated, channel, requestID)
 		if err != nil {
 			return nil, err
 		}
@@ -226,6 +306,43 @@ func (t *Tx) PutProposal(ctx context.Context, proposal *proposalv1.Proposal, at 
 	}
 	if err := t.notice(ctx, channel, ProposalNotice, proposal.GetProposalId(),
 		proposal.GetRevision(), sequence, at); err != nil {
+		return 0, err
+	}
+	return sequence, nil
+}
+
+// PutRequest stores a common request in the existing proposal table. Keeping the physical schema
+// preserves every deployed database; the row identity and retention columns already name exactly
+// the common envelope's feed scope, request identity, revision, status and expiry.
+func (t *Tx) PutRequest(ctx context.Context, request *requestv2.Request, at time.Time) (uint64, error) {
+	document, err := proto.Marshal(request)
+	if err != nil {
+		return 0, fmt.Errorf("write request: %w", err)
+	}
+	channel := request.GetAudience().GetFeed().GetChannel()
+	sequence, err := t.bump(ctx, channel)
+	if err != nil {
+		return 0, err
+	}
+	cancelled := 0
+	if request.GetLifecycle().GetStatus() == requestv2.RequestStatus_REQUEST_STATUS_CANCELLED {
+		cancelled = 1
+	}
+	identity := request.GetIdentity()
+	lifecycle := request.GetLifecycle()
+	if _, err := t.tx.ExecContext(ctx,
+		`INSERT INTO proposal
+		   (channel, proposal_id, server_id, revision, cancelled, expires_at_ms, sequence, document, updated_at_ms)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (channel, proposal_id) DO UPDATE SET
+		   revision = excluded.revision, cancelled = excluded.cancelled,
+		   expires_at_ms = excluded.expires_at_ms, sequence = excluded.sequence,
+		   document = excluded.document, updated_at_ms = excluded.updated_at_ms`,
+		channel, identity.GetRequestId(), identity.GetSourceId(), int64(lifecycle.GetRevision()), cancelled,
+		lifecycle.GetExpiresAt().AsTime().UnixMilli(), int64(sequence), document, milliseconds(at)); err != nil {
+		return 0, fmt.Errorf("write request: %w", err)
+	}
+	if err := t.notice(ctx, channel, ProposalNotice, identity.GetRequestId(), lifecycle.GetRevision(), sequence, at); err != nil {
 		return 0, err
 	}
 	return sequence, nil

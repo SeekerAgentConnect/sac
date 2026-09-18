@@ -26,6 +26,7 @@ package gatewayv1
 
 import (
 	v11 "github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen/seekervault/proposal/v1"
+	v2 "github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen/seekervault/request/v2"
 	v1 "github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen/seekervault/server/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -65,6 +66,7 @@ type FeedEvent struct {
 	//
 	//	*FeedEvent_Manifest
 	//	*FeedEvent_Proposal
+	//	*FeedEvent_Request
 	Document      isFeedEvent_Document `protobuf_oneof:"document"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -132,6 +134,15 @@ func (x *FeedEvent) GetProposal() *v11.Proposal {
 	return nil
 }
 
+func (x *FeedEvent) GetRequest() *v2.Request {
+	if x != nil {
+		if x, ok := x.Document.(*FeedEvent_Request); ok {
+			return x.Request
+		}
+	}
+	return nil
+}
+
 type isFeedEvent_Document interface {
 	isFeedEvent_Document()
 }
@@ -148,19 +159,28 @@ type FeedEvent_Proposal struct {
 	Proposal *v11.Proposal `protobuf:"bytes,3,opt,name=proposal,proto3,oneof"`
 }
 
+type FeedEvent_Request struct {
+	// The common document. Protocol-1 proposal events remain readable during migration; a
+	// protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+	Request *v2.Request `protobuf:"bytes,4,opt,name=request,proto3,oneof"`
+}
+
 func (*FeedEvent_Manifest) isFeedEvent_Document() {}
 
 func (*FeedEvent_Proposal) isFeedEvent_Document() {}
+
+func (*FeedEvent_Request) isFeedEvent_Document() {}
 
 var File_seekervault_gateway_v1_event_proto protoreflect.FileDescriptor
 
 const file_seekervault_gateway_v1_event_proto_rawDesc = "" +
 	"\n" +
-	"\"seekervault/gateway/v1/event.proto\x12\x16seekervault.gateway.v1\x1a&seekervault/proposal/v1/proposal.proto\x1a$seekervault/server/v1/manifest.proto\"\xb9\x01\n" +
+	"\"seekervault/gateway/v1/event.proto\x12\x16seekervault.gateway.v1\x1a&seekervault/proposal/v1/proposal.proto\x1a$seekervault/request/v2/request.proto\x1a$seekervault/server/v1/manifest.proto\"\xf6\x01\n" +
 	"\tFeedEvent\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12C\n" +
 	"\bmanifest\x18\x02 \x01(\v2%.seekervault.server.v1.ServerManifestH\x00R\bmanifest\x12?\n" +
-	"\bproposal\x18\x03 \x01(\v2!.seekervault.proposal.v1.ProposalH\x00R\bproposalB\n" +
+	"\bproposal\x18\x03 \x01(\v2!.seekervault.proposal.v1.ProposalH\x00R\bproposal\x12;\n" +
+	"\arequest\x18\x04 \x01(\v2\x1f.seekervault.request.v2.RequestH\x00R\arequestB\n" +
 	"\n" +
 	"\bdocumentB\xff\x01\n" +
 	"\x1acom.seekervault.gateway.v1B\n" +
@@ -183,15 +203,17 @@ var file_seekervault_gateway_v1_event_proto_goTypes = []any{
 	(*FeedEvent)(nil),         // 0: seekervault.gateway.v1.FeedEvent
 	(*v1.ServerManifest)(nil), // 1: seekervault.server.v1.ServerManifest
 	(*v11.Proposal)(nil),      // 2: seekervault.proposal.v1.Proposal
+	(*v2.Request)(nil),        // 3: seekervault.request.v2.Request
 }
 var file_seekervault_gateway_v1_event_proto_depIdxs = []int32{
 	1, // 0: seekervault.gateway.v1.FeedEvent.manifest:type_name -> seekervault.server.v1.ServerManifest
 	2, // 1: seekervault.gateway.v1.FeedEvent.proposal:type_name -> seekervault.proposal.v1.Proposal
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 2: seekervault.gateway.v1.FeedEvent.request:type_name -> seekervault.request.v2.Request
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_gateway_v1_event_proto_init() }
@@ -202,6 +224,7 @@ func file_seekervault_gateway_v1_event_proto_init() {
 	file_seekervault_gateway_v1_event_proto_msgTypes[0].OneofWrappers = []any{
 		(*FeedEvent_Manifest)(nil),
 		(*FeedEvent_Proposal)(nil),
+		(*FeedEvent_Request)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

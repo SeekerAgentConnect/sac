@@ -12,6 +12,7 @@ import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalProblem
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalReview
+import io.github.brrenat.seekervault.proposals.SWAP
 import io.github.brrenat.seekervault.proposals.binding
 import io.github.brrenat.seekervault.proposals.choice
 import io.github.brrenat.seekervault.proposals.hash
@@ -19,6 +20,7 @@ import io.github.brrenat.seekervault.proposals.proposal
 import io.github.brrenat.seekervault.proposals.wireProposal
 import java.io.File
 import java.time.Instant
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -98,6 +100,31 @@ class ProposalStoreTest {
         store.put(record)
 
         assertEquals(record, store.get(CONNECTION, PROPOSAL_A))
+    }
+
+    @Test
+    fun aVersionTwoProposalMigratesWithoutLosingItsLocalDecision() {
+        val record =
+            ProposalRecord(
+                connectionId = CONNECTION,
+                proposal = proposal(wireProposal(revision = 3)),
+                dismissed = ProposalDismissal(revision = 3, at = AT),
+            )
+        store.put(record)
+        val file = File(dir, "$CONNECTION/$PROPOSAL_A.json")
+        val old = JSONObject(file.readText())
+        old.put("version", 2)
+        old.getJSONObject("proposal").apply {
+            remove("contractVersion")
+            remove("title")
+            remove("ownerInputs")
+        }
+        file.writeText(old.toString())
+
+        val migrated = checkNotNull(store.get(CONNECTION, PROPOSAL_A))
+        assertEquals(SWAP, migrated.proposal.title)
+        assertEquals(emptyList<Any>(), migrated.proposal.ownerInputs)
+        assertEquals(record.dismissed, migrated.dismissed)
     }
 
     @Test

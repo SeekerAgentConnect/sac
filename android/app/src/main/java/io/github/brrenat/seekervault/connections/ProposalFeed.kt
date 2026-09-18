@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.connections
 
 import io.github.brrenat.seekervault.proposal.v1.Proposal
+import io.github.brrenat.seekervault.request.v2.Request
 import io.github.brrenat.seekervault.servers.FeedReference
 
 /**
@@ -47,7 +48,11 @@ interface ProposalFeed {
 /** What a gateway said about a channel's current proposals. */
 sealed interface FeedSnapshot {
     /** The proposals, and the sequence the walk began at. */
-    data class Read(val sequence: Long, val proposals: List<Proposal>) : FeedSnapshot
+    data class Read(
+        val sequence: Long,
+        val proposals: List<Proposal> = emptyList(),
+        val requests: List<Request> = emptyList(),
+    ) : FeedSnapshot
 
     /** The sequence asked with is the current one, so no documents were sent. */
     data class Unchanged(val sequence: Long) : FeedSnapshot

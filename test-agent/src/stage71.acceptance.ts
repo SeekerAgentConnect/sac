@@ -615,15 +615,23 @@ describe("the transport", () => {
         "a signal with seconds to live",
         ...terms(SOL, "9", USDC, "6", "50"),
       ]),
-    ) as { signal: { proposal_id: string; expires_at: string } };
+    ) as {
+      request: {
+        identity: { request_id: string };
+        lifecycle: { expires_at: string };
+      };
+    };
     await until(
-      () => Promise.resolve(Date.parse(answer.signal.expires_at) < Date.now()),
+      () =>
+        Promise.resolve(
+          Date.parse(answer.request.lifecycle.expires_at) < Date.now(),
+        ),
       "the signal to expire",
       15_000,
     );
     const read = await alice.proposal(
       channelFor(copytrading.id),
-      answer.signal.proposal_id,
+      answer.request.identity.request_id,
     );
     assert.equal(read.value.proposal?.status, "PROPOSAL_STATUS_OPEN");
     assert.ok(
@@ -1097,10 +1105,11 @@ async function poll(): Promise<void> {
   }, "a reconciliation cycle this suite asked for");
 }
 
-/** The proposal ID in what `publishctl create` printed. */
+/** The durable identity in the common request that `publishctl create` printed. */
 function created(printed: string): string {
-  return (JSON.parse(printed) as { signal: { proposal_id: string } }).signal
-    .proposal_id;
+  return (
+    JSON.parse(printed) as { request: { identity: { request_id: string } } }
+  ).request.identity.request_id;
 }
 
 function sha256(text: string): Uint8Array {

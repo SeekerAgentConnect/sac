@@ -21,8 +21,8 @@ flowchart LR
 | **Agent** | Proposing actions and reading their results | Approve, sign, or see the phone's policy |
 | **Sidecar** (`sidecar/`) | The MCP and phone endpoints. From SAW-010 and SAW-011 on, it also holds requests and their states, prepared transactions, results, idempotency records, and pairing; Stage 5.2 adds durable update revisions/cursors and bounded snapshots. | Hold keys, sign, decide for the user, or execute anything on its own after a restart |
 | **Android app** (`android/`) | Connections and their credentials, policies and their assessments, the user's decision, invoking the wallet, results the sidecar hasn't acknowledged yet, and Stage 5.2's minimal server-state cache/sync metadata | Sign without the user's approval, or trust the agent's description over the transaction's contents |
-| **Broadcast gateway** (`broadcast/`) | From SEE-90: the shared publication and read API for gateway-feed servers — publisher registration and credentials, the manifests and proposals they publish, the per-channel sequence a reader pages against, and the outbox that fans a publication out | Hold anything about a subscriber — an address, a chosen amount, a decision, a result — contact a publisher or a phone, or serve any financial endpoint |
-| **Publisher templates** (`publisher/`) | From SEE-95 and SEE-96: a developer's or a trader's own server — its signals, the revision each is at, what the gateway has confirmed about each, the idempotency keys callers used, its own manifest's revision, and (the discovering one) the provider's markets it is tracking | Hold anything about a subscriber, read the feed it publishes to (no client for one is compiled for it), deliver anything to a phone, hold a key or sign anything, or publish an opinion about which way a market will go |
+| **Broadcast gateway** (`broadcast/`) | From SEE-90 and SEE-108: the shared publication and read API for gateway-feed servers — publisher registration and credentials, the manifests and common requests they publish, the per-channel sequence a reader pages against, and the outbox that fans a publication out. Stage 7.1 proposals adapt over the same rows | Hold anything about a subscriber — an address, a chosen amount, a decision, a result — contact a publisher or a phone, or serve any financial endpoint |
+| **Publisher templates** (`publisher/`) | From SEE-95, SEE-96 and SEE-108: a developer's or a trader's own server — its feed-audience requests, the revision each is at, what the gateway has confirmed about each, the idempotency keys callers used, its own manifest's revision, and (the discovering one) the provider's markets it is tracking. `/v1/requests` and `sdk.Client.CreateRequest` are the developer surface | Hold anything about a subscriber, read the feed it publishes to (no client for one is compiled for it), deliver anything to a phone, hold a key or sign anything, or publish an opinion about which way a market will go |
 | **Seed Vault Wallet** | Keys, signing, and sending | Know anything about Seeker Agent Connect |
 
 ### The wallet adapter boundary
@@ -255,6 +255,20 @@ flowchart LR
 - **A direct connection is always production.** A rehearsal is possible only where nobody is waiting
   for the answer: an agent that asked for a signature can be told no, but it cannot be handed a
   simulation.
+
+### One request envelope, two adapters (SEE-108)
+
+`seekervault.request.v2.Request` is the source-authored data both workflows share. Identity and
+lifecycle, bounded presentation, a versioned action capability, owner-input declarations, audience
+and result handling are explicit. What an owner chose, which wallet they selected, what bytes they
+reviewed, their decision and the outcome are intentionally absent.
+
+The adapters do not share authority. A direct adapter authenticates one paired phone, stores its
+durable lifecycle and returns a result only to the originating server. A feed adapter authenticates
+the publisher on a write-only listener, exposes a public read listener and requires all subscriber
+state to remain device-local. Both normalize into the same Android pending collection and review
+route, while their specialized execution owners remain unchanged. See
+[`wiki/common-requests.md`](wiki/common-requests.md).
 
 ### Shared proposals and device-local decisions
 
@@ -495,7 +509,7 @@ flowchart TB
 | Daily counters | The phone, derived from the Activity records in `filesDir` | SAW-026 |
 | A connection's mode, and the server manifest it caches | The phone, in the connection's own JSON file in `filesDir` (version 3). Whether this build *supports* that server is never stored: it is derived from the compiled plugin registry on every read | SEE-88 |
 | The manifest's settings revision, and a fingerprint of the content it was computed for | The sidecar's SQLite database, on the `server` singleton | SEE-88 |
-| A publisher's proposals, and this device's decisions about each one — the dismissal, the review and its exact revision, the binding, and what the wallet did | The phone, one file per proposal under its feed in `filesDir`. Nothing of it is published, and the proposals go when the feed does | SEE-89 |
+| A publisher's common feed requests, and this device's decisions about each one — the dismissal, the review and its exact revision, the binding, and what the wallet did | The phone, one version-3 file per request under its feed in `filesDir`. Nothing of the local half is published; version-1/2 proposal records migrate in place, and the source documents go when the feed does | SEE-89, SEE-108 |
 | Whether a proposal still stands, and where it stands for this owner | Nowhere — derived on every read from the publisher's status, its absolute expiry, what this device did, and the plugins this build carries | SEE-89 |
 | Update revisions, cursors, retained replay, and frozen snapshots | The sidecar's SQLite database, through `src/storage/` | SAW-048 contract; SAW-049 implementation |
 | One private current FCM target per active connection | The sidecar's SQLite database, through `src/storage/`; no phone copy and no read API | SAW-055 |
@@ -509,7 +523,7 @@ flowchart TB
 | Minimal request/status cache and sync metadata | The phone in `filesDir`, through `sync/storage/`; never backed up | SAW-048 contract; SAW-050 implementation |
 | Keys | Seed Vault Wallet | Stage 3 |
 
-## Two workflows, three transports
+## Two adapters, one request model, three transports
 
 - **The live diagnostic (Stage 1)** proves the transport. An agent's call waits while the text shows on the open live-test screen, and the user's OK comes back as the tool's result. It's in memory and foreground-only, and it stays as a diagnostic.
 - **The durable workflow (Stage 2 on)** carries the product. The sidecar stores an agent's request and answers with its ID at once. The phone fetches it later, and the agent reads the result when it's ready.
@@ -546,5 +560,5 @@ These hold across the components, and every stage keeps them:
 | 5.3 | Optional FCM wake-up and request notifications over the same authoritative Sync path; SAW-054 adds deployment plumbing, SAW-055 per-connection registration/rotation, SAW-056 content-free invalidations, SAW-057 bounded service handoff plus cross-source sync coalescing, and SAW-058 a private notification channel, isolated runtime permission, and read-only tap-to-current-state route |
 | 6 | Jupiter swaps |
 | 7 | Docker, TLS, and the OAuth gateway |
-| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` plugin and the path from a signal to a signature (SEE-93), the `jupiter.prediction` plugin with a read-only chain endpoint for lookup tables and a truthful handoff (SEE-94), the Go CopyTrading publisher template with a CLI and an authenticated API (SEE-95), and the Go Prediction template, which discovers markets through operator filters and keeps each proposal in step with its source (SEE-96) |
+| 7.1 | A client-plugin boundary in the existing core (SEE-86), MCP as an optional server adapter (SEE-87), server manifests with per-connection modes and plugin compatibility checks (SEE-88), shared proposals with device-local parameters, decisions and results (SEE-89), the Go broadcast gateway (SEE-90) with streaming delivery and reconnection recovery (SEE-91) and a push relay with per-feed topics (SEE-92), the `jupiter.swap` and `jupiter.prediction` plugins (SEE-93/94), the two Go publisher templates (SEE-95/96), environment promises and sandbox simulation (SEE-97), joined acceptance and onboarding (SEE-98–107), and one extensible request contract, developer API, pending collection and review dispatcher over private and feed adapters (SEE-108) |
 | 8 | Release checks |

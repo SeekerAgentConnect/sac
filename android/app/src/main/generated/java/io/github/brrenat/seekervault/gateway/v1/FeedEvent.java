@@ -33,6 +33,7 @@ public  final class FeedEvent extends
       implements com.google.protobuf.AbstractMessageLite.InternalOneOfEnum {
     MANIFEST(2),
     PROPOSAL(3),
+    REQUEST(4),
     DOCUMENT_NOT_SET(0);
     private final int value;
     private DocumentCase(int value) {
@@ -50,6 +51,7 @@ public  final class FeedEvent extends
       switch (value) {
         case 2: return MANIFEST;
         case 3: return PROPOSAL;
+        case 4: return REQUEST;
         case 0: return DOCUMENT_NOT_SET;
         default: return null;
       }
@@ -266,6 +268,81 @@ public  final class FeedEvent extends
    */
   private void clearProposal() {
     if (documentCase_ == 3) {
+      documentCase_ = 0;
+      document_ = null;
+    }
+  }
+
+  public static final int REQUEST_FIELD_NUMBER = 4;
+  /**
+   * <pre>
+   * The common document. Protocol-1 proposal events remain readable during migration; a
+   * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+   * </pre>
+   *
+   * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+   */
+  @java.lang.Override
+  public boolean hasRequest() {
+    return documentCase_ == 4;
+  }
+  /**
+   * <pre>
+   * The common document. Protocol-1 proposal events remain readable during migration; a
+   * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+   * </pre>
+   *
+   * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+   */
+  @java.lang.Override
+  public io.github.brrenat.seekervault.request.v2.Request getRequest() {
+    if (documentCase_ == 4) {
+       return (io.github.brrenat.seekervault.request.v2.Request) document_;
+    }
+    return io.github.brrenat.seekervault.request.v2.Request.getDefaultInstance();
+  }
+  /**
+   * <pre>
+   * The common document. Protocol-1 proposal events remain readable during migration; a
+   * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+   * </pre>
+   *
+   * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+   */
+  private void setRequest(io.github.brrenat.seekervault.request.v2.Request value) {
+    java.util.Objects.requireNonNull(value);
+    document_ = value;
+    documentCase_ = 4;
+  }
+  /**
+   * <pre>
+   * The common document. Protocol-1 proposal events remain readable during migration; a
+   * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+   * </pre>
+   *
+   * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+   */
+  private void mergeRequest(io.github.brrenat.seekervault.request.v2.Request value) {
+    java.util.Objects.requireNonNull(value);
+    if (documentCase_ == 4 &&
+        document_ != io.github.brrenat.seekervault.request.v2.Request.getDefaultInstance()) {
+      document_ = io.github.brrenat.seekervault.request.v2.Request.newBuilder((io.github.brrenat.seekervault.request.v2.Request) document_)
+          .mergeFrom(value).buildPartial();
+    } else {
+      document_ = value;
+    }
+    documentCase_ = 4;
+  }
+  /**
+   * <pre>
+   * The common document. Protocol-1 proposal events remain readable during migration; a
+   * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+   * </pre>
+   *
+   * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+   */
+  private void clearRequest() {
+    if (documentCase_ == 4) {
       documentCase_ = 0;
       document_ = null;
     }
@@ -599,6 +676,84 @@ public  final class FeedEvent extends
       return this;
     }
 
+    /**
+     * <pre>
+     * The common document. Protocol-1 proposal events remain readable during migration; a
+     * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+     * </pre>
+     *
+     * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+     */
+    @java.lang.Override
+    public boolean hasRequest() {
+      return instance.hasRequest();
+    }
+    /**
+     * <pre>
+     * The common document. Protocol-1 proposal events remain readable during migration; a
+     * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+     * </pre>
+     *
+     * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+     */
+    @java.lang.Override
+    public io.github.brrenat.seekervault.request.v2.Request getRequest() {
+      return instance.getRequest();
+    }
+    /**
+     * <pre>
+     * The common document. Protocol-1 proposal events remain readable during migration; a
+     * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+     * </pre>
+     *
+     * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+     */
+    public Builder setRequest(io.github.brrenat.seekervault.request.v2.Request value) {
+      copyOnWrite();
+      instance.setRequest(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The common document. Protocol-1 proposal events remain readable during migration; a
+     * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+     * </pre>
+     *
+     * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+     */
+    public Builder setRequest(
+        io.github.brrenat.seekervault.request.v2.Request.Builder builderForValue) {
+      copyOnWrite();
+      instance.setRequest(builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * The common document. Protocol-1 proposal events remain readable during migration; a
+     * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+     * </pre>
+     *
+     * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+     */
+    public Builder mergeRequest(io.github.brrenat.seekervault.request.v2.Request value) {
+      copyOnWrite();
+      instance.mergeRequest(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The common document. Protocol-1 proposal events remain readable during migration; a
+     * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+     * </pre>
+     *
+     * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+     */
+    public Builder clearRequest() {
+      copyOnWrite();
+      instance.clearRequest();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.gateway.v1.FeedEvent)
   }
   @java.lang.Override
@@ -620,10 +775,11 @@ public  final class FeedEvent extends
             "sequence_",
             io.github.brrenat.seekervault.server.v1.ServerManifest.class,
             io.github.brrenat.seekervault.proposal.v1.Proposal.class,
+            io.github.brrenat.seekervault.request.v2.Request.class,
           };
           java.lang.String info =
-              "\u0000\u0003\u0001\u0000\u0001\u0003\u0003\u0000\u0000\u0000\u0001\u0003\u0002<\u0000" +
-              "\u0003<\u0000";
+              "\u0000\u0004\u0001\u0000\u0001\u0004\u0004\u0000\u0000\u0000\u0001\u0003\u0002<\u0000" +
+              "\u0003<\u0000\u0004<\u0000";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

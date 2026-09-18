@@ -8,6 +8,7 @@ import (
 
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/proposal/v1"
+	requestv2 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/store"
@@ -31,6 +32,137 @@ type Publisher struct {
 	// hint: the notice is already durable, so a wake-up that is lost costs a delay and never a
 	// delivery (internal/dispatch).
 	wake func()
+}
+
+// PublishRequest is the primary developer publication operation. The older proposal RPC below is
+// a compatibility adapter over the same row, revision gate and outbox.
+func (p *Publisher) PublishRequest(
+	ctx context.Context,
+	request *connect.Request[gatewayv1.PublishRequestRequest],
+) (*connect.Response[gatewayv1.PublishRequestResponse], error) {
+	document, fault := rules.Request(request.Msg.GetRequest(), p.expectation(ctx))
+	if fault != nil {
+		return nil, refuse(fault)
+	}
+	identity, lifecycle := document.GetIdentity(), document.GetLifecycle()
+	answer := &gatewayv1.PublishRequestResponse{Revision: lifecycle.GetRevision()}
+	var refused *rules.Fault
+	err := p.store.Write(ctx, func(tx *store.Tx) error {
+		held, err := tx.Request(ctx, identity.GetScope(), identity.GetRequestId())
+		if err != nil {
+			return err
+		}
+		var current *requestv2.Request
+		if held != nil {
+			current = held.Document
+			answer.SnapshotSequence = held.Sequence
+		}
+		var decision rules.Decision
+		var fault *rules.Fault
+		if held != nil && held.Legacy &&
+			document.GetLifecycle().GetRevision() == current.GetLifecycle().GetRevision() {
+			// A publisher upgraded while the gateway still holds its protocol-1 row. The common
+			// title and owner-input declarations did not exist in that contract, so compare the
+			// common document's legacy projection. Equal means the old row already represents this
+			// revision; it is left in place until a real higher revision upgrades it.
+			decision, fault = rules.AdvanceProposal(
+				rules.ProposalFromRequest(current), rules.ProposalFromRequest(document))
+		} else {
+			decision, fault = rules.AdvanceRequest(current, document)
+		}
+		if fault != nil {
+			refused = fault
+			return nil
+		}
+		if decision == rules.Unchanged {
+			answer.Status = gatewayv1.PublishStatus_PUBLISH_STATUS_UNCHANGED
+			return nil
+		}
+		if held == nil {
+			count, err := tx.Count(ctx, identity.GetScope())
+			if err != nil {
+				return err
+			}
+			if count >= p.most {
+				refused = &rules.Fault{Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_PROPOSALS, Field: "identity.request_id"}
+				return nil
+			}
+		}
+		sequence, err := tx.PutRequest(ctx, document, p.now())
+		if err != nil {
+			return err
+		}
+		answer.Status = gatewayv1.PublishStatus_PUBLISH_STATUS_STORED
+		answer.SnapshotSequence = sequence
+		return nil
+	})
+	if err != nil {
+		return nil, internal(err)
+	}
+	if refused != nil {
+		return nil, refuse(refused)
+	}
+	if answer.GetStatus() == gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
+		p.wake()
+	}
+	return connect.NewResponse(answer), nil
+}
+
+func (p *Publisher) CancelRequest(
+	ctx context.Context,
+	request *connect.Request[gatewayv1.CancelRequestRequest],
+) (*connect.Response[gatewayv1.CancelRequestResponse], error) {
+	requestID := request.Msg.GetRequestId()
+	if !rules.IsID(requestID) {
+		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ID, "request_id")
+	}
+	channel := rules.ChannelFor(publisherOf(ctx))
+	revision := request.Msg.GetRevision()
+	answer := &gatewayv1.CancelRequestResponse{}
+	var refused *rules.Fault
+	err := p.store.Write(ctx, func(tx *store.Tx) error {
+		held, err := tx.Request(ctx, channel, requestID)
+		if err != nil {
+			return err
+		}
+		if held == nil {
+			refused = &rules.Fault{Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL, Field: "request_id"}
+			return nil
+		}
+		current := held.Document
+		if current.GetLifecycle().GetStatus() == requestv2.RequestStatus_REQUEST_STATUS_CANCELLED {
+			switch {
+			case revision == current.GetLifecycle().GetRevision():
+				answer.Status, answer.Request, answer.SnapshotSequence = gatewayv1.PublishStatus_PUBLISH_STATUS_UNCHANGED, current, held.Sequence
+			case revision < current.GetLifecycle().GetRevision():
+				refused = &rules.Fault{Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_STALE_REVISION, Field: "revision", Held: current.GetLifecycle().GetRevision()}
+			default:
+				refused = &rules.Fault{Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_CANCELLED, Field: "request_id", Held: current.GetLifecycle().GetRevision()}
+			}
+			return nil
+		}
+		withdrawn, fault := rules.CancelledRequest(current, revision, p.now())
+		if fault != nil {
+			refused = fault
+			return nil
+		}
+		sequence, err := tx.PutRequest(ctx, withdrawn, p.now())
+		if err != nil {
+			return err
+		}
+		answer.Status, answer.Request, answer.SnapshotSequence = gatewayv1.PublishStatus_PUBLISH_STATUS_STORED, withdrawn, sequence
+		return nil
+	})
+	if err != nil {
+		return nil, internal(err)
+	}
+	if refused != nil {
+		return nil, refuse(refused)
+	}
+	if answer.GetStatus() == gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
+		p.wake()
+	}
+	return connect.NewResponse(answer), nil
 }
 
 func NewPublisher(
@@ -120,6 +252,16 @@ func (p *Publisher) PublishProposal(
 		if held != nil {
 			current = held.Document
 			answer.SnapshotSequence = held.Sequence
+			if !held.Legacy && proposal.GetRevision() > current.GetRevision() {
+				// Once an identity has moved to the common contract, an old publisher cannot
+				// erase its presentation and local-input declarations with a higher revision.
+				refused = &rules.Fault{
+					Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_PROTOCOL,
+					Field:   "proposal",
+					Held:    current.GetRevision(),
+				}
+				return nil
+			}
 		}
 		decision, fault := rules.AdvanceProposal(current, proposal)
 		if fault != nil {

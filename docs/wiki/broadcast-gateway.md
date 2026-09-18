@@ -418,12 +418,13 @@ wants is unsubscribed from, so a stale subscription removes itself the first tim
 
 ## Reading a feed
 
-Three unary reads, and all of them derive their answer from the store at the moment they are asked.
+The unary reads all derive their answer from the store at the moment they are asked.
 No session, no subscription record, no count of who read what — a test reads the database after
 several reads and requires every row count to be unchanged.
 
 **Version-aware.** `GetServerManifest` takes the revision the caller holds and answers `unchanged`
-rather than re-sending the document; `ListProposals` takes the snapshot sequence the caller holds
+rather than re-sending the document; primary `ListRequests` (and compatibility `ListProposals`)
+takes the snapshot sequence the caller holds
 and answers `unchanged` when the channel has not moved. Both are in the contract rather than in an
 HTTP header, because a proxy deciding how long a feed stays current would be a second opinion about
 what a publisher is proposing, and the phone would have no way to tell it was reading one. Read

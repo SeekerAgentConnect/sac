@@ -8,6 +8,7 @@ import (
 
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/proposal/v1"
+	requestv2 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/request/v2"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/store"
 )
@@ -37,6 +38,89 @@ type Feed struct {
 	// same kind of reason: a deployment without a push credential relays nothing and says so once.
 	// The two are independent — either, both or neither may be configured.
 	topics Topics
+}
+
+// ListRequests is the common-contract snapshot read. It deliberately shares the cursor, sequence
+// and physical rows with ListProposals: the latter is only a protocol-1 representation adapter.
+func (f *Feed) ListRequests(
+	ctx context.Context,
+	request *connect.Request[gatewayv1.ListRequestsRequest],
+) (*connect.Response[gatewayv1.ListRequestsResponse], error) {
+	channel := request.Msg.GetChannel()
+	serverID := rules.ServerOf(channel)
+	if serverID == "" {
+		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ID, "channel")
+	}
+	size := int(request.Msg.GetPageSize())
+	switch {
+	case size == 0:
+		size = DefaultPageSize
+	case size < 0 || size > MostPerPage:
+		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_PAGE_SIZE, "page_size")
+	}
+	known, err := f.store.PublisherExists(ctx, serverID)
+	if err != nil {
+		return nil, internal(err)
+	}
+	if !known {
+		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_SERVER, "channel")
+	}
+	var snapshot uint64
+	var after string
+	if token := request.Msg.GetPageToken(); token != "" {
+		var fault *rules.Fault
+		snapshot, after, fault = decodeCursor(token, channel)
+		if fault != nil {
+			return nil, refuse(fault)
+		}
+	} else {
+		snapshot, err = f.store.Sequence(ctx, channel)
+		if err != nil {
+			return nil, internal(err)
+		}
+		if snapshot > 0 && request.Msg.GetKnownSnapshotSequence() == snapshot {
+			return uncached(connect.NewResponse(&gatewayv1.ListRequestsResponse{SnapshotSequence: snapshot, Unchanged: true})), nil
+		}
+	}
+	page, err := f.store.RequestPage(ctx, channel, after, size+1)
+	if err != nil {
+		return nil, internal(err)
+	}
+	answer := &gatewayv1.ListRequestsResponse{SnapshotSequence: snapshot}
+	more := len(page) > size
+	if more {
+		page = page[:size]
+	}
+	answer.Requests = make([]*requestv2.Request, 0, len(page))
+	for _, stored := range page {
+		answer.Requests = append(answer.Requests, stored.Document)
+	}
+	if more && len(page) > 0 {
+		answer.NextPageToken = encodeCursor(channel, snapshot, page[len(page)-1].Document.GetIdentity().GetRequestId())
+	}
+	return uncached(connect.NewResponse(answer)), nil
+}
+
+func (f *Feed) GetRequest(
+	ctx context.Context,
+	request *connect.Request[gatewayv1.GetRequestRequest],
+) (*connect.Response[gatewayv1.GetRequestResponse], error) {
+	channel := request.Msg.GetChannel()
+	if rules.ServerOf(channel) == "" {
+		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ID, "channel")
+	}
+	requestID := request.Msg.GetRequestId()
+	if !rules.IsID(requestID) {
+		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ID, "request_id")
+	}
+	document, err := f.store.Request(ctx, channel, requestID)
+	if err != nil {
+		return nil, internal(err)
+	}
+	if document == nil {
+		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL, "request_id")
+	}
+	return uncached(connect.NewResponse(&gatewayv1.GetRequestResponse{Request: document.Document})), nil
 }
 
 func NewFeed(from *store.Store, now func() time.Time, grants Grants, topics Topics) *Feed {

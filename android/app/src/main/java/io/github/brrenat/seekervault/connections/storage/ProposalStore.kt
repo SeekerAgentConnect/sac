@@ -10,6 +10,9 @@ import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.proposals.ExecutionBinding
+import io.github.brrenat.seekervault.proposals.OwnerInputDeclaration
+import io.github.brrenat.seekervault.proposals.OwnerInputKind
+import io.github.brrenat.seekervault.proposals.OwnerInputOption
 import io.github.brrenat.seekervault.proposals.Proposal
 import io.github.brrenat.seekervault.proposals.ProposalDismissal
 import io.github.brrenat.seekervault.proposals.ProposalExecution
@@ -20,6 +23,7 @@ import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalReview
 import io.github.brrenat.seekervault.proposals.ProposalStatus
 import io.github.brrenat.seekervault.proposals.ProposalValue
+import io.github.brrenat.seekervault.proposals.ProposalValueKind
 import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
 import java.io.IOException
@@ -124,9 +128,9 @@ class ProposalStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        // Version 2 added the environment an execution was bound in, and the simulated outcome
-        // (SEE-97). A version 1 record is read as what it is: every execution then was a real one.
-        const val VERSION = 2
+        // Version 3 preserves the common envelope's presentation and owner-input declarations.
+        // Versions 1 and 2 adapt to contract 1 with an operation title and no declarations.
+        const val VERSION = 3
         const val OLDEST_VERSION = 1
 
         fun encode(record: ProposalRecord): String =
@@ -149,6 +153,8 @@ class ProposalStore(private val dir: File) {
                 .put("channel", proposal.key.channel)
                 .put("proposalId", proposal.key.proposalId)
                 .put("revision", proposal.revision)
+                .put("contractVersion", proposal.contractVersion)
+                .put("title", proposal.title)
                 .put("operation", proposal.operation.value)
                 .put("plugin", proposal.plugin.value)
                 .put("status", proposal.status.name)
@@ -160,7 +166,41 @@ class ProposalStore(private val dir: File) {
                     "values",
                     JSONArray().apply {
                         proposal.values.forEach {
-                            put(JSONObject().put("key", it.key).put("text", it.text))
+                            put(
+                                JSONObject()
+                                    .put("key", it.key)
+                                    .put("text", it.text)
+                                    .put("kind", it.kind.name)
+                            )
+                        }
+                    },
+                )
+                .put(
+                    "ownerInputs",
+                    JSONArray().apply {
+                        proposal.ownerInputs.forEach { input ->
+                            put(
+                                JSONObject()
+                                    .put("key", input.key)
+                                    .put("label", input.label)
+                                    .put("kind", input.kind.name)
+                                    .put("required", input.required)
+                                    .put("minimum", input.minimum)
+                                    .put("maximum", input.maximum)
+                                    .put("help", input.help)
+                                    .put(
+                                        "options",
+                                        JSONArray().apply {
+                                            input.options.forEach { option ->
+                                                put(
+                                                    JSONObject()
+                                                        .put("value", option.value)
+                                                        .put("label", option.label)
+                                                )
+                                            }
+                                        },
+                                    )
+                            )
                         }
                     },
                 )
@@ -174,6 +214,8 @@ class ProposalStore(private val dir: File) {
                         proposalId = json.getString("proposalId"),
                     ),
                 revision = json.getLong("revision"),
+                contractVersion = json.optInt("contractVersion", 1),
+                title = json.optString("title", json.getString("operation")),
                 operation = OperationId(json.getString("operation")),
                 plugin = PluginId(json.getString("plugin")),
                 status = ProposalStatus.valueOf(json.getString("status")),
@@ -185,7 +227,38 @@ class ProposalStore(private val dir: File) {
                     json.optJSONArray("values").let { array ->
                         (0 until (array?.length() ?: 0)).map {
                             val value = checkNotNull(array).getJSONObject(it)
-                            ProposalValue(value.getString("key"), value.getString("text"))
+                            ProposalValue(
+                                value.getString("key"),
+                                value.getString("text"),
+                                ProposalValueKind.valueOf(
+                                    value.optString("kind", ProposalValueKind.Text.name)
+                                ),
+                            )
+                        }
+                    },
+                ownerInputs =
+                    json.optJSONArray("ownerInputs").let { array ->
+                        (0 until (array?.length() ?: 0)).map {
+                            val input = checkNotNull(array).getJSONObject(it)
+                            OwnerInputDeclaration(
+                                key = input.getString("key"),
+                                label = input.getString("label"),
+                                kind = OwnerInputKind.valueOf(input.getString("kind")),
+                                required = input.getBoolean("required"),
+                                minimum = input.optString("minimum"),
+                                maximum = input.optString("maximum"),
+                                help = input.optString("help"),
+                                options =
+                                    input.optJSONArray("options").let { options ->
+                                        (0 until (options?.length() ?: 0)).map { index ->
+                                            val option = checkNotNull(options).getJSONObject(index)
+                                            OwnerInputOption(
+                                                option.getString("value"),
+                                                option.getString("label"),
+                                            )
+                                        }
+                                    },
+                            )
                         }
                     },
             )

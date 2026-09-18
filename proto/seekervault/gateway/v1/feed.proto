@@ -11,7 +11,7 @@ syntax = "proto3";
 // (docs/security.md).
 //
 // The publisher API is a separate service on a separate listener (publish.proto). That separation
-// is deployed, not just declared: a read port serves these five methods and no handler that could
+// is deployed, not just declared: a read port serves only these methods and no handler that could
 // change anything, so no routing mistake can turn a read endpoint into a write one.
 //
 // **Nothing about a subscriber may ever appear in this file.** There is no field for a wallet, a
@@ -21,6 +21,7 @@ syntax = "proto3";
 package seekervault.gateway.v1;
 
 import "seekervault/proposal/v1/proposal.proto";
+import "seekervault/request/v2/request.proto";
 import "seekervault/server/v1/manifest.proto";
 
 // FeedService is the read-only client API. It is unauthenticated on purpose: a feed is a
@@ -33,6 +34,10 @@ service FeedService {
   // validates all of it against the reference it added the feed from before storing any of it
   // (SEE-88), so this method is asked, never believed.
   rpc GetServerManifest(GetServerManifestRequest) returns (GetServerManifestResponse);
+  // The common request reads. The proposal methods below remain compatibility adapters for
+  // protocol-1 clients; both views are backed by the same document and snapshot sequence.
+  rpc ListRequests(ListRequestsRequest) returns (ListRequestsResponse);
+  rpc GetRequest(GetRequestRequest) returns (GetRequestResponse);
   // A page of the channel's current proposals. Every proposal the publisher has open, and the ones
   // it has cancelled or let expire while the gateway still keeps them, are here: expiry and
   // cancellation are facts inside a document rather than reasons to hide it.
@@ -89,6 +94,29 @@ message GetServerManifestResponse {
   // The revision the gateway holds, set either way, so a caller that asked with the wrong number
   // still learns which one is current.
   uint64 settings_revision = 3;
+}
+
+message ListRequestsRequest {
+  string channel = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+  uint64 known_snapshot_sequence = 4;
+}
+
+message ListRequestsResponse {
+  repeated seekervault.request.v2.Request requests = 1;
+  string next_page_token = 2;
+  uint64 snapshot_sequence = 3;
+  bool unchanged = 4;
+}
+
+message GetRequestRequest {
+  string channel = 1;
+  string request_id = 2;
+}
+
+message GetRequestResponse {
+  seekervault.request.v2.Request request = 1;
 }
 
 message ListProposalsRequest {

@@ -34,6 +34,7 @@ import {
   messageBytes,
 } from "./action.ts";
 import type { AgentRequests, AgentTransfers } from "./agent-api.ts";
+import { privateRequest } from "./developer-api.ts";
 import { isTerminal } from "./lifecycle.ts";
 import {
   MAX_EXPIRES_IN_SECONDS,
@@ -512,12 +513,14 @@ function registerSignMessageTool(
     },
     ({ wallet, message, idempotency_key, note, expires_in_seconds }) =>
       answer(() => {
-        const { request, created } = core.create({
-          action: signMessageAction(wallet, message),
-          agentNote: note ?? "",
-          idempotencyKey: idempotency_key,
-          expiresInSeconds: expires_in_seconds,
-        });
+        const { request, created } = core.createRequest(
+          privateRequest(
+            signMessageAction(wallet, message),
+            note ?? "",
+            idempotency_key,
+            expires_in_seconds,
+          ),
+        );
         log(
           created
             ? `request ${idOf(request)} stored (sign_message for ${wallet})`
@@ -641,12 +644,14 @@ function registerTransferTool(
           return requestView(replay);
         }
         await transfers.checkAsset(asset);
-        const { request, created } = core.create({
-          action,
-          agentNote: note ?? "",
-          idempotencyKey: idempotency_key,
-          expiresInSeconds: expires_in_seconds,
-        });
+        const { request, created } = core.createRequest(
+          privateRequest(
+            action,
+            note ?? "",
+            idempotency_key,
+            expires_in_seconds,
+          ),
+        );
         log(
           created
             ? `request ${idOf(request)} stored (transfer on ${network})`
@@ -717,14 +722,17 @@ function registerAckTool(
     },
     ({ text, idempotency_key, note, expires_in_seconds }) =>
       answer(() => {
-        const { request, created } = core.create({
-          action: create(ActionSchema, {
-            kind: { case: "ack", value: { text } },
-          }),
-          agentNote: note ?? "",
-          idempotencyKey: idempotency_key,
-          expiresInSeconds: expires_in_seconds,
+        const action = create(ActionSchema, {
+          kind: { case: "ack", value: { text } },
         });
+        const { request, created } = core.createRequest(
+          privateRequest(
+            action,
+            note ?? "",
+            idempotency_key,
+            expires_in_seconds,
+          ),
+        );
         log(
           created
             ? `request ${idOf(request)} stored (ack)`

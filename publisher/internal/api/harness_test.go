@@ -22,6 +22,7 @@ import (
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/gateway/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/gateway/v1/gatewayv1connect"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/proposal/v1"
+	requestv2 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/manifest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/publish"
@@ -48,6 +49,44 @@ type fakeGateway struct {
 	proposals []*proposalv1.Proposal
 	held      map[string]*proposalv1.Proposal
 	refuse    func(procedure string) error
+}
+
+func (f *fakeGateway) PublishRequest(
+	ctx context.Context,
+	request *connect.Request[gatewayv1.PublishRequestRequest],
+) (*connect.Response[gatewayv1.PublishRequestResponse], error) {
+	legacy := connect.NewRequest(&gatewayv1.PublishProposalRequest{Proposal: apiProposalFromRequest(request.Msg.GetRequest())})
+	answer, err := f.PublishProposal(ctx, legacy)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&gatewayv1.PublishRequestResponse{Status: answer.Msg.GetStatus(), Revision: answer.Msg.GetRevision()}), nil
+}
+
+func (f *fakeGateway) CancelRequest(
+	ctx context.Context,
+	request *connect.Request[gatewayv1.CancelRequestRequest],
+) (*connect.Response[gatewayv1.CancelRequestResponse], error) {
+	answer, err := f.CancelProposal(ctx, connect.NewRequest(&gatewayv1.CancelProposalRequest{
+		ProposalId: request.Msg.GetRequestId(), Revision: request.Msg.GetRevision(),
+	}))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&gatewayv1.CancelRequestResponse{Status: answer.Msg.GetStatus()}), nil
+}
+
+func apiProposalFromRequest(request *requestv2.Request) *proposalv1.Proposal {
+	values := make([]*proposalv1.ProposalValue, 0, len(request.GetAction().GetParameters()))
+	for _, value := range request.GetAction().GetParameters() {
+		values = append(values, &proposalv1.ProposalValue{Key: value.GetKey(), Text: value.GetText()})
+	}
+	return &proposalv1.Proposal{
+		ServerId: request.GetIdentity().GetSourceId(), Channel: request.GetIdentity().GetScope(), ProposalId: request.GetIdentity().GetRequestId(),
+		Revision: request.GetLifecycle().GetRevision(), Operation: request.GetAction().GetCapabilityId(), PluginId: request.GetAction().GetPluginId(),
+		Status: proposalv1.ProposalStatus_PROPOSAL_STATUS_OPEN, CreatedAt: request.GetLifecycle().GetCreatedAt(), UpdatedAt: request.GetLifecycle().GetUpdatedAt(),
+		ExpiresAt: request.GetLifecycle().GetExpiresAt(), PublisherNote: request.GetPresentation().GetDescription(), Values: values,
+	}
 }
 
 func (f *fakeGateway) PublishManifest(

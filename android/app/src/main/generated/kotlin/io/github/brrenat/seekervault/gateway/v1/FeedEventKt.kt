@@ -150,6 +150,45 @@ public object FeedEventKt {
     public fun hasProposal(): kotlin.Boolean {
       return _builder.hasProposal()
     }
+
+    /**
+     * ```
+     * The common document. Protocol-1 proposal events remain readable during migration; a
+     * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+     * ```
+     *
+     * `.seekervault.request.v2.Request request = 4 [json_name = "request"];`
+     */
+    public var request: io.github.brrenat.seekervault.request.v2.Request
+      @kotlin.jvm.JvmName("getRequest")
+        get() = _builder.request
+      @kotlin.jvm.JvmName("setRequest")
+        set(value) {
+        _builder.request = value
+      }
+    /**
+     * ```
+     * The common document. Protocol-1 proposal events remain readable during migration; a
+     * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+     * ```
+     *
+     * `.seekervault.request.v2.Request request = 4 [json_name = "request"];`
+     */
+    public fun clearRequest() {
+      _builder.clearRequest()
+    }
+    /**
+     * ```
+     * The common document. Protocol-1 proposal events remain readable during migration; a
+     * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+     * ```
+     *
+     * `.seekervault.request.v2.Request request = 4 [json_name = "request"];`
+     * @return Whether the request field is set.
+     */
+    public fun hasRequest(): kotlin.Boolean {
+      return _builder.hasRequest()
+    }
     public val documentCase: io.github.brrenat.seekervault.gateway.v1.FeedEvent.DocumentCase
     @kotlin.jvm.JvmName("getDocumentCase")
       get() = _builder.documentCase
@@ -167,4 +206,7 @@ public val io.github.brrenat.seekervault.gateway.v1.FeedEventOrBuilder.manifestO
 
 public val io.github.brrenat.seekervault.gateway.v1.FeedEventOrBuilder.proposalOrNull: io.github.brrenat.seekervault.proposal.v1.Proposal?
   get() = if (hasProposal()) getProposal() else null
+
+public val io.github.brrenat.seekervault.gateway.v1.FeedEventOrBuilder.requestOrNull: io.github.brrenat.seekervault.request.v2.Request?
+  get() = if (hasRequest()) getRequest() else null
 

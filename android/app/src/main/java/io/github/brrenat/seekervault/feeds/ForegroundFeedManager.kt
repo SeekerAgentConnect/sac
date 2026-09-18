@@ -333,6 +333,7 @@ class ForegroundFeedManager(
     private suspend fun apply(connection: Connection, event: FeedEvent) {
         when (event.documentCase) {
             FeedEvent.DocumentCase.PROPOSAL -> host.applyProposal(connection.id, event.proposal)
+            FeedEvent.DocumentCase.REQUEST -> host.applyRequest(connection.id, event.request)
             FeedEvent.DocumentCase.MANIFEST -> host.applySettings(connection.id, event.manifest)
             // An envelope from a later protocol. It is not read as an empty document: something
             // changed, and the snapshot is how this version finds out what.

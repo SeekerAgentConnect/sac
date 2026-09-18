@@ -29,6 +29,10 @@ import type {
   NewRequest,
   RequestStore,
 } from "../storage/request-store.ts";
+import {
+  legacyPrivateRequest,
+  type PrivateRequestDraft,
+} from "./developer-api.ts";
 
 /**
  * Preparing a transfer, when the sidecar has a chain endpoint to prepare one against. Absent
@@ -60,6 +64,8 @@ export interface AgentConfirmations {
 
 /** The core operations an adapter may use, and the whole of them. */
 export interface AgentRequests {
+  /** Stores a common private request through the ActionRequest compatibility adapter. */
+  createRequest(request: PrivateRequestDraft): Created;
   /**
    * Stores a new request for the paired connection, or answers a retry with the original. Storing
    * is not approval: the owner decides later, on their phone.
@@ -115,6 +121,7 @@ export function agentRequests(
 ): AgentRequests {
   const { preparer, tracker } = options;
   return {
+    createRequest: (request) => store.create(legacyPrivateRequest(request)),
     create: (request) => store.create(request),
     get: (requestId) => store.get(requestId),
     cancel: (requestId) => store.cancel(requestId),

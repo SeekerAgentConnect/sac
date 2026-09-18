@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -68,6 +69,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.SeekerTheme
+import io.github.brrenat.seekervault.inbox.PendingItem
 import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.inbox.actionText
 import io.github.brrenat.seekervault.inbox.key
@@ -111,6 +113,8 @@ fun ConnectionsScreen(
     requests: List<ActionRequest> = emptyList(),
     requestAssessments: Map<RequestKey, RequestAssessment> = emptyMap(),
     onOpenRequest: (RequestKey) -> Unit = {},
+    pendingItems: List<PendingItem>? = null,
+    onOpenPending: (PendingItem) -> Unit = {},
 ) {
     val snackbar = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
@@ -124,13 +128,20 @@ fun ConnectionsScreen(
             modifier = Modifier.fillMaxSize().testTag(ConnectionsTags.LIST),
         ) {
             item(key = "wallet") { WalletCard(wallet, onWallet) }
-            if (inbox != null || requests.isNotEmpty()) {
+            val commonItems = pendingItems ?: requests.map(PendingItem::Private)
+            if (inbox != null || commonItems.isNotEmpty()) {
                 item(key = "requests") {
                     RequestCarousel(
-                        requests = requests,
+                        requests = commonItems,
                         connections = state.connections,
                         requestAssessments = requestAssessments,
-                        onOpen = onOpenRequest,
+                        onOpen = { item ->
+                            if (pendingItems == null && item is PendingItem.Private) {
+                                onOpenRequest(item.request.key)
+                            } else {
+                                onOpenPending(item)
+                            }
+                        },
                         inbox = inbox,
                         onInbox = onInbox,
                     )
@@ -325,10 +336,10 @@ private fun WalletCard(wallet: SelectedWallet?, onClick: () -> Unit) {
 
 @Composable
 private fun RequestCarousel(
-    requests: List<ActionRequest>,
+    requests: List<PendingItem>,
     connections: List<Connection>,
     requestAssessments: Map<RequestKey, RequestAssessment>,
-    onOpen: (RequestKey) -> Unit,
+    onOpen: (PendingItem) -> Unit,
     inbox: InboxSummary?,
     onInbox: () -> Unit,
 ) {
@@ -398,17 +409,27 @@ private fun RequestCarousel(
                     itemsIndexed(
                         requests,
                         key = { _, request ->
-                            "${request.ref.connectionId}/${request.ref.requestId}"
+                            "${request.namespace}/${request.connectionId}/${request.requestId}"
                         },
                     ) { index, request ->
-                        val source = connections.firstOrNull { it.id == request.ref.connectionId }
-                        RequestTile(
-                            request = request,
-                            source = source,
-                            assessment = requestAssessments[request.key],
-                            active = index == activeIndex,
-                            onOpen = { onOpen(request.key) },
-                        )
+                        val source = connections.firstOrNull { it.id == request.connectionId }
+                        when (request) {
+                            is PendingItem.Private ->
+                                RequestTile(
+                                    request = request.request,
+                                    source = source,
+                                    assessment = requestAssessments[request.request.key],
+                                    active = index == activeIndex,
+                                    onOpen = { onOpen(request) },
+                                )
+                            is PendingItem.Signal ->
+                                SignalTile(
+                                    item = request,
+                                    source = source,
+                                    active = index == activeIndex,
+                                    onOpen = { onOpen(request) },
+                                )
+                        }
                     }
                 }
             }
@@ -432,6 +453,65 @@ private fun RequestCarousel(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SignalTile(
+    item: PendingItem.Signal,
+    source: Connection?,
+    active: Boolean,
+    onOpen: () -> Unit,
+) {
+    val container =
+        if (active) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceContainer
+    val ink =
+        if (active) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurface
+    SeekerCard(
+        modifier = Modifier.size(width = 204.dp, height = 192.dp).semantics { selected = active },
+        color = container,
+        radius = 20.dp,
+        onClick = onOpen,
+    ) {
+        Column(
+            Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.SwapHoriz, contentDescription = null, tint = ink)
+                Text(
+                    stringResource(R.string.request_category_signal),
+                    modifier =
+                        Modifier.padding(start = 10.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceContainerHighest,
+                                RoundedCornerShape(8.dp),
+                            )
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ink,
+                )
+            }
+            Text(
+                item.envelope.presentation.title,
+                style = MaterialTheme.typography.headlineSmall,
+                color = ink,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                stringResource(
+                    R.string.request_from_feed,
+                    source?.label ?: item.record.proposal.key.serverId,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

@@ -766,11 +766,40 @@ The sidecar portion covers the secure TLS/ALPN HTTP/2 listener and loopback h2c 
 
 The suite deliberately does not simulate a push wake-up, wallet action, or transaction send. Periodic WorkManager runs are eligible no more often than Android's 15-minute minimum and can be deferred by the OS; Force stop suppresses them until the owner reopens the app. Stage 5.2 therefore has no immediate background-delivery guarantee. Push-triggered reconciliation is the separate follow-up [SEE-73](https://linear.app/seekeragentwallet/issue/SEE-73).
 
-## Shared proposals (SEE-89)
+## The common request envelope (SEE-108)
+
+[`seekervault.request.v2.Request`](../proto/seekervault/request/v2/request.proto) is the
+source-authored contract for a private request and a feed signal. It contains:
+
+| Part | Rule |
+| --- | --- |
+| `identity` | The source, source-owned scope and stable request ID form the identity. A private and feed ID cannot collide because their scopes and audiences differ |
+| `lifecycle` | Positive ordered revision, explicit status, creation/update times and an absolute expiry. A legacy direct request adapts its immutable content as revision 1 and exposes its durable direct status |
+| `presentation` | Bounded unverified title and description plus `REQUEST` or `SIGNAL`. Signal is presentation, not an action |
+| `action` | Capability ID and version, a bundled-plugin compatibility name, and bounded typed parameters |
+| `owner_inputs` | The shapes and bounds of values chosen locally. An owner's answer is never source-authored |
+| `audience` | One private recipient or one publisher-owned feed channel |
+| `result_handling` | `RETURN_TO_ORIGIN` for the authenticated direct adapter or `DEVICE_LOCAL` for a feed |
+
+There is no field for a selected wallet, owner answer, decision, prepared bytes, signature,
+execution outcome, subscriber or credential. There is no code or URL field: a plugin name is
+resolved only against code compiled into the client. The Android boundary test pins this complete
+field set, and the gateway rebuilds accepted messages so unknown protobuf fields are not relayed.
+
+The direct sidecar adapter assigns identity and lifecycle through its existing `RequestStore`; MCP
+tool contracts, `PrepareRequest`, `SubmitResult` and result retry do not change. The feed adapter
+requires a feed audience, `SIGNAL`, and `DEVICE_LOCAL`. The publisher write listener and subscriber
+read listener remain different services. See
+[`docs/wiki/common-requests.md`](wiki/common-requests.md).
+
+## Shared proposals (SEE-89; v1 compatibility)
 
 A publisher broadcasts an operation once and everyone subscribed receives the same document. That is
 a different contract from the durable request above, and it is a separate package:
-[`seekervault.proposal.v1.Proposal`](../proto/seekervault/proposal/v1/proposal.proto).
+Stage 7.1 first shipped
+[`seekervault.proposal.v1.Proposal`](../proto/seekervault/proposal/v1/proposal.proto). SEE-108
+retains it as a compatibility representation of a feed-audience common request; the revision,
+identity, terms, cancellation and retention rules below are unchanged.
 [`docs/wiki/shared-proposals.md`](wiki/shared-proposals.md) is the architecture page; this section is
 the contract.
 
@@ -884,6 +913,8 @@ it, and an opt-in test in that module runs the real gateway to keep the two hone
 | --- | --- | --- |
 | `PublishManifest` | Registers or replaces what the server says about itself | Must be a `CONNECTION_MODE_GATEWAY_FEED` manifest naming this gateway's own origin and the caller's own channel, at `protocol_version` 1. A direct manifest is refused: relaying one would let a publisher point a phone at an address of its choosing. |
 | `PublishProposal` | Creates or updates one proposal | The whole current document, `PROPOSAL_STATUS_OPEN`, by the same bounds the phone applies (`## Shared proposals`). A cancelled status is refused — withdrawing is a transition, and `CancelProposal` is where it happens. |
+| `PublishRequest` | Primary create/update operation | A v2 feed-audience request with `SIGNAL` presentation and `DEVICE_LOCAL` result handling. It is validated, rebuilt, revision-checked and committed with its notice exactly like the compatibility operation |
+| `CancelRequest` | Primary final withdrawal operation | Request ID and a higher revision; the stored v2 request is returned cancelled |
 | `CancelProposal` | Withdraws one | Takes an ID and a revision, so a publisher that no longer holds the document can still withdraw it. The gateway keeps every other field and writes the status and the update time. |
 
 **The revision is the idempotency key.** It is already the publisher's promise about its content, so
@@ -906,6 +937,8 @@ document got wrong.
 | `GetServerManifest` | The manifest the publisher registered, by server ID | `known_settings_revision` answers `unchanged` with no document |
 | `ListProposals` | A page of the channel's current proposals, at most 200, ordered by proposal ID | `known_snapshot_sequence` answers `unchanged` with no proposals, on a first page |
 | `GetProposal` | One proposal, by channel and ID | — |
+| `ListRequests` | Primary page of common requests over the same rows, order, sequence and cursor rules | A legacy proposal row is adapted on read; no data migration can lose it |
+| `GetRequest` | One common request, by channel and request ID | — |
 | `GetStreamTicket` | Permission to listen to channels this gateway hosts (SEE-91) | — |
 | `GetFeedTopics` | Where hints about those channels arrive (SEE-92) | — |
 

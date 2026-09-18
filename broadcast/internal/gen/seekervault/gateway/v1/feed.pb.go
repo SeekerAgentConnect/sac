@@ -15,7 +15,7 @@
 // (docs/security.md).
 //
 // The publisher API is a separate service on a separate listener (publish.proto). That separation
-// is deployed, not just declared: a read port serves these five methods and no handler that could
+// is deployed, not just declared: a read port serves only these methods and no handler that could
 // change anything, so no routing mistake can turn a read endpoint into a write one.
 //
 // **Nothing about a subscriber may ever appear in this file.** There is no field for a wallet, a
@@ -27,6 +27,7 @@ package gatewayv1
 
 import (
 	v11 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/proposal/v1"
+	v2 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/request/v2"
 	v1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/server/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -164,6 +165,238 @@ func (x *GetServerManifestResponse) GetSettingsRevision() uint64 {
 	return 0
 }
 
+type ListRequestsRequest struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Channel               string                 `protobuf:"bytes,1,opt,name=channel,proto3" json:"channel,omitempty"`
+	PageSize              uint32                 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken             string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	KnownSnapshotSequence uint64                 `protobuf:"varint,4,opt,name=known_snapshot_sequence,json=knownSnapshotSequence,proto3" json:"known_snapshot_sequence,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *ListRequestsRequest) Reset() {
+	*x = ListRequestsRequest{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRequestsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRequestsRequest) ProtoMessage() {}
+
+func (x *ListRequestsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRequestsRequest.ProtoReflect.Descriptor instead.
+func (*ListRequestsRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ListRequestsRequest) GetChannel() string {
+	if x != nil {
+		return x.Channel
+	}
+	return ""
+}
+
+func (x *ListRequestsRequest) GetPageSize() uint32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListRequestsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+func (x *ListRequestsRequest) GetKnownSnapshotSequence() uint64 {
+	if x != nil {
+		return x.KnownSnapshotSequence
+	}
+	return 0
+}
+
+type ListRequestsResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Requests         []*v2.Request          `protobuf:"bytes,1,rep,name=requests,proto3" json:"requests,omitempty"`
+	NextPageToken    string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	SnapshotSequence uint64                 `protobuf:"varint,3,opt,name=snapshot_sequence,json=snapshotSequence,proto3" json:"snapshot_sequence,omitempty"`
+	Unchanged        bool                   `protobuf:"varint,4,opt,name=unchanged,proto3" json:"unchanged,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ListRequestsResponse) Reset() {
+	*x = ListRequestsResponse{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRequestsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRequestsResponse) ProtoMessage() {}
+
+func (x *ListRequestsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRequestsResponse.ProtoReflect.Descriptor instead.
+func (*ListRequestsResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ListRequestsResponse) GetRequests() []*v2.Request {
+	if x != nil {
+		return x.Requests
+	}
+	return nil
+}
+
+func (x *ListRequestsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+func (x *ListRequestsResponse) GetSnapshotSequence() uint64 {
+	if x != nil {
+		return x.SnapshotSequence
+	}
+	return 0
+}
+
+func (x *ListRequestsResponse) GetUnchanged() bool {
+	if x != nil {
+		return x.Unchanged
+	}
+	return false
+}
+
+type GetRequestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Channel       string                 `protobuf:"bytes,1,opt,name=channel,proto3" json:"channel,omitempty"`
+	RequestId     string                 `protobuf:"bytes,2,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRequestRequest) Reset() {
+	*x = GetRequestRequest{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRequestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRequestRequest) ProtoMessage() {}
+
+func (x *GetRequestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRequestRequest.ProtoReflect.Descriptor instead.
+func (*GetRequestRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetRequestRequest) GetChannel() string {
+	if x != nil {
+		return x.Channel
+	}
+	return ""
+}
+
+func (x *GetRequestRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+type GetRequestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Request       *v2.Request            `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRequestResponse) Reset() {
+	*x = GetRequestResponse{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRequestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRequestResponse) ProtoMessage() {}
+
+func (x *GetRequestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRequestResponse.ProtoReflect.Descriptor instead.
+func (*GetRequestResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetRequestResponse) GetRequest() *v2.Request {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
 type ListProposalsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The channel to read, which is "server/<server_id>" and the only channel that publisher owns.
@@ -186,7 +419,7 @@ type ListProposalsRequest struct {
 
 func (x *ListProposalsRequest) Reset() {
 	*x = ListProposalsRequest{}
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[2]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -198,7 +431,7 @@ func (x *ListProposalsRequest) String() string {
 func (*ListProposalsRequest) ProtoMessage() {}
 
 func (x *ListProposalsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[2]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -211,7 +444,7 @@ func (x *ListProposalsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProposalsRequest.ProtoReflect.Descriptor instead.
 func (*ListProposalsRequest) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{2}
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListProposalsRequest) GetChannel() string {
@@ -266,7 +499,7 @@ type ListProposalsResponse struct {
 
 func (x *ListProposalsResponse) Reset() {
 	*x = ListProposalsResponse{}
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[3]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -278,7 +511,7 @@ func (x *ListProposalsResponse) String() string {
 func (*ListProposalsResponse) ProtoMessage() {}
 
 func (x *ListProposalsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[3]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -291,7 +524,7 @@ func (x *ListProposalsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProposalsResponse.ProtoReflect.Descriptor instead.
 func (*ListProposalsResponse) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{3}
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListProposalsResponse) GetProposals() []*v11.Proposal {
@@ -332,7 +565,7 @@ type GetProposalRequest struct {
 
 func (x *GetProposalRequest) Reset() {
 	*x = GetProposalRequest{}
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[4]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -344,7 +577,7 @@ func (x *GetProposalRequest) String() string {
 func (*GetProposalRequest) ProtoMessage() {}
 
 func (x *GetProposalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[4]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -357,7 +590,7 @@ func (x *GetProposalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProposalRequest.ProtoReflect.Descriptor instead.
 func (*GetProposalRequest) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{4}
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetProposalRequest) GetChannel() string {
@@ -383,7 +616,7 @@ type GetProposalResponse struct {
 
 func (x *GetProposalResponse) Reset() {
 	*x = GetProposalResponse{}
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[5]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -395,7 +628,7 @@ func (x *GetProposalResponse) String() string {
 func (*GetProposalResponse) ProtoMessage() {}
 
 func (x *GetProposalResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[5]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -408,7 +641,7 @@ func (x *GetProposalResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProposalResponse.ProtoReflect.Descriptor instead.
 func (*GetProposalResponse) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{5}
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetProposalResponse) GetProposal() *v11.Proposal {
@@ -430,7 +663,7 @@ type GetStreamTicketRequest struct {
 
 func (x *GetStreamTicketRequest) Reset() {
 	*x = GetStreamTicketRequest{}
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[6]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -442,7 +675,7 @@ func (x *GetStreamTicketRequest) String() string {
 func (*GetStreamTicketRequest) ProtoMessage() {}
 
 func (x *GetStreamTicketRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[6]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -455,7 +688,7 @@ func (x *GetStreamTicketRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStreamTicketRequest.ProtoReflect.Descriptor instead.
 func (*GetStreamTicketRequest) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{6}
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetStreamTicketRequest) GetChannels() []string {
@@ -487,7 +720,7 @@ type GetStreamTicketResponse struct {
 
 func (x *GetStreamTicketResponse) Reset() {
 	*x = GetStreamTicketResponse{}
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[7]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -499,7 +732,7 @@ func (x *GetStreamTicketResponse) String() string {
 func (*GetStreamTicketResponse) ProtoMessage() {}
 
 func (x *GetStreamTicketResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[7]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -512,7 +745,7 @@ func (x *GetStreamTicketResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStreamTicketResponse.ProtoReflect.Descriptor instead.
 func (*GetStreamTicketResponse) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{7}
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetStreamTicketResponse) GetTicket() string {
@@ -554,7 +787,7 @@ type StreamChannel struct {
 
 func (x *StreamChannel) Reset() {
 	*x = StreamChannel{}
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[8]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -566,7 +799,7 @@ func (x *StreamChannel) String() string {
 func (*StreamChannel) ProtoMessage() {}
 
 func (x *StreamChannel) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[8]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -579,7 +812,7 @@ func (x *StreamChannel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamChannel.ProtoReflect.Descriptor instead.
 func (*StreamChannel) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{8}
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *StreamChannel) GetChannel() string {
@@ -608,7 +841,7 @@ type GetFeedTopicsRequest struct {
 
 func (x *GetFeedTopicsRequest) Reset() {
 	*x = GetFeedTopicsRequest{}
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[9]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -620,7 +853,7 @@ func (x *GetFeedTopicsRequest) String() string {
 func (*GetFeedTopicsRequest) ProtoMessage() {}
 
 func (x *GetFeedTopicsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[9]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -633,7 +866,7 @@ func (x *GetFeedTopicsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedTopicsRequest.ProtoReflect.Descriptor instead.
 func (*GetFeedTopicsRequest) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{9}
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetFeedTopicsRequest) GetChannels() []string {
@@ -655,7 +888,7 @@ type GetFeedTopicsResponse struct {
 
 func (x *GetFeedTopicsResponse) Reset() {
 	*x = GetFeedTopicsResponse{}
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[10]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -667,7 +900,7 @@ func (x *GetFeedTopicsResponse) String() string {
 func (*GetFeedTopicsResponse) ProtoMessage() {}
 
 func (x *GetFeedTopicsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[10]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -680,7 +913,7 @@ func (x *GetFeedTopicsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFeedTopicsResponse.ProtoReflect.Descriptor instead.
 func (*GetFeedTopicsResponse) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{10}
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetFeedTopicsResponse) GetTopics() []*FeedTopic {
@@ -707,7 +940,7 @@ type FeedTopic struct {
 
 func (x *FeedTopic) Reset() {
 	*x = FeedTopic{}
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[11]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -719,7 +952,7 @@ func (x *FeedTopic) String() string {
 func (*FeedTopic) ProtoMessage() {}
 
 func (x *FeedTopic) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[11]
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -732,7 +965,7 @@ func (x *FeedTopic) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedTopic.ProtoReflect.Descriptor instead.
 func (*FeedTopic) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{11}
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *FeedTopic) GetChannel() string {
@@ -753,14 +986,31 @@ var File_seekervault_gateway_v1_feed_proto protoreflect.FileDescriptor
 
 const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
 	"\n" +
-	"!seekervault/gateway/v1/feed.proto\x12\x16seekervault.gateway.v1\x1a&seekervault/proposal/v1/proposal.proto\x1a$seekervault/server/v1/manifest.proto\"o\n" +
+	"!seekervault/gateway/v1/feed.proto\x12\x16seekervault.gateway.v1\x1a&seekervault/proposal/v1/proposal.proto\x1a$seekervault/request/v2/request.proto\x1a$seekervault/server/v1/manifest.proto\"o\n" +
 	"\x18GetServerManifestRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x126\n" +
 	"\x17known_settings_revision\x18\x02 \x01(\x04R\x15knownSettingsRevision\"\xa9\x01\n" +
 	"\x19GetServerManifestResponse\x12A\n" +
 	"\bmanifest\x18\x01 \x01(\v2%.seekervault.server.v1.ServerManifestR\bmanifest\x12\x1c\n" +
 	"\tunchanged\x18\x02 \x01(\bR\tunchanged\x12+\n" +
-	"\x11settings_revision\x18\x03 \x01(\x04R\x10settingsRevision\"\xa4\x01\n" +
+	"\x11settings_revision\x18\x03 \x01(\x04R\x10settingsRevision\"\xa3\x01\n" +
+	"\x13ListRequestsRequest\x12\x18\n" +
+	"\achannel\x18\x01 \x01(\tR\achannel\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x126\n" +
+	"\x17known_snapshot_sequence\x18\x04 \x01(\x04R\x15knownSnapshotSequence\"\xc6\x01\n" +
+	"\x14ListRequestsResponse\x12;\n" +
+	"\brequests\x18\x01 \x03(\v2\x1f.seekervault.request.v2.RequestR\brequests\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12+\n" +
+	"\x11snapshot_sequence\x18\x03 \x01(\x04R\x10snapshotSequence\x12\x1c\n" +
+	"\tunchanged\x18\x04 \x01(\bR\tunchanged\"L\n" +
+	"\x11GetRequestRequest\x12\x18\n" +
+	"\achannel\x18\x01 \x01(\tR\achannel\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x02 \x01(\tR\trequestId\"O\n" +
+	"\x12GetRequestResponse\x129\n" +
+	"\arequest\x18\x01 \x01(\v2\x1f.seekervault.request.v2.RequestR\arequest\"\xa4\x01\n" +
 	"\x14ListProposalsRequest\x12\x18\n" +
 	"\achannel\x18\x01 \x01(\tR\achannel\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12\x1d\n" +
@@ -793,9 +1043,12 @@ const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
 	"\x06topics\x18\x01 \x03(\v2!.seekervault.gateway.v1.FeedTopicR\x06topics\";\n" +
 	"\tFeedTopic\x12\x18\n" +
 	"\achannel\x18\x01 \x01(\tR\achannel\x12\x14\n" +
-	"\x05topic\x18\x02 \x01(\tR\x05topic2\xbf\x04\n" +
+	"\x05topic\x18\x02 \x01(\tR\x05topic2\x8f\x06\n" +
 	"\vFeedService\x12x\n" +
-	"\x11GetServerManifest\x120.seekervault.gateway.v1.GetServerManifestRequest\x1a1.seekervault.gateway.v1.GetServerManifestResponse\x12l\n" +
+	"\x11GetServerManifest\x120.seekervault.gateway.v1.GetServerManifestRequest\x1a1.seekervault.gateway.v1.GetServerManifestResponse\x12i\n" +
+	"\fListRequests\x12+.seekervault.gateway.v1.ListRequestsRequest\x1a,.seekervault.gateway.v1.ListRequestsResponse\x12c\n" +
+	"\n" +
+	"GetRequest\x12).seekervault.gateway.v1.GetRequestRequest\x1a*.seekervault.gateway.v1.GetRequestResponse\x12l\n" +
 	"\rListProposals\x12,.seekervault.gateway.v1.ListProposalsRequest\x1a-.seekervault.gateway.v1.ListProposalsResponse\x12f\n" +
 	"\vGetProposal\x12*.seekervault.gateway.v1.GetProposalRequest\x1a+.seekervault.gateway.v1.GetProposalResponse\x12r\n" +
 	"\x0fGetStreamTicket\x12..seekervault.gateway.v1.GetStreamTicketRequest\x1a/.seekervault.gateway.v1.GetStreamTicketResponse\x12l\n" +
@@ -814,44 +1067,55 @@ func file_seekervault_gateway_v1_feed_proto_rawDescGZIP() []byte {
 	return file_seekervault_gateway_v1_feed_proto_rawDescData
 }
 
-var file_seekervault_gateway_v1_feed_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_seekervault_gateway_v1_feed_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_seekervault_gateway_v1_feed_proto_goTypes = []any{
 	(*GetServerManifestRequest)(nil),  // 0: seekervault.gateway.v1.GetServerManifestRequest
 	(*GetServerManifestResponse)(nil), // 1: seekervault.gateway.v1.GetServerManifestResponse
-	(*ListProposalsRequest)(nil),      // 2: seekervault.gateway.v1.ListProposalsRequest
-	(*ListProposalsResponse)(nil),     // 3: seekervault.gateway.v1.ListProposalsResponse
-	(*GetProposalRequest)(nil),        // 4: seekervault.gateway.v1.GetProposalRequest
-	(*GetProposalResponse)(nil),       // 5: seekervault.gateway.v1.GetProposalResponse
-	(*GetStreamTicketRequest)(nil),    // 6: seekervault.gateway.v1.GetStreamTicketRequest
-	(*GetStreamTicketResponse)(nil),   // 7: seekervault.gateway.v1.GetStreamTicketResponse
-	(*StreamChannel)(nil),             // 8: seekervault.gateway.v1.StreamChannel
-	(*GetFeedTopicsRequest)(nil),      // 9: seekervault.gateway.v1.GetFeedTopicsRequest
-	(*GetFeedTopicsResponse)(nil),     // 10: seekervault.gateway.v1.GetFeedTopicsResponse
-	(*FeedTopic)(nil),                 // 11: seekervault.gateway.v1.FeedTopic
-	(*v1.ServerManifest)(nil),         // 12: seekervault.server.v1.ServerManifest
-	(*v11.Proposal)(nil),              // 13: seekervault.proposal.v1.Proposal
+	(*ListRequestsRequest)(nil),       // 2: seekervault.gateway.v1.ListRequestsRequest
+	(*ListRequestsResponse)(nil),      // 3: seekervault.gateway.v1.ListRequestsResponse
+	(*GetRequestRequest)(nil),         // 4: seekervault.gateway.v1.GetRequestRequest
+	(*GetRequestResponse)(nil),        // 5: seekervault.gateway.v1.GetRequestResponse
+	(*ListProposalsRequest)(nil),      // 6: seekervault.gateway.v1.ListProposalsRequest
+	(*ListProposalsResponse)(nil),     // 7: seekervault.gateway.v1.ListProposalsResponse
+	(*GetProposalRequest)(nil),        // 8: seekervault.gateway.v1.GetProposalRequest
+	(*GetProposalResponse)(nil),       // 9: seekervault.gateway.v1.GetProposalResponse
+	(*GetStreamTicketRequest)(nil),    // 10: seekervault.gateway.v1.GetStreamTicketRequest
+	(*GetStreamTicketResponse)(nil),   // 11: seekervault.gateway.v1.GetStreamTicketResponse
+	(*StreamChannel)(nil),             // 12: seekervault.gateway.v1.StreamChannel
+	(*GetFeedTopicsRequest)(nil),      // 13: seekervault.gateway.v1.GetFeedTopicsRequest
+	(*GetFeedTopicsResponse)(nil),     // 14: seekervault.gateway.v1.GetFeedTopicsResponse
+	(*FeedTopic)(nil),                 // 15: seekervault.gateway.v1.FeedTopic
+	(*v1.ServerManifest)(nil),         // 16: seekervault.server.v1.ServerManifest
+	(*v2.Request)(nil),                // 17: seekervault.request.v2.Request
+	(*v11.Proposal)(nil),              // 18: seekervault.proposal.v1.Proposal
 }
 var file_seekervault_gateway_v1_feed_proto_depIdxs = []int32{
-	12, // 0: seekervault.gateway.v1.GetServerManifestResponse.manifest:type_name -> seekervault.server.v1.ServerManifest
-	13, // 1: seekervault.gateway.v1.ListProposalsResponse.proposals:type_name -> seekervault.proposal.v1.Proposal
-	13, // 2: seekervault.gateway.v1.GetProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
-	8,  // 3: seekervault.gateway.v1.GetStreamTicketResponse.channels:type_name -> seekervault.gateway.v1.StreamChannel
-	11, // 4: seekervault.gateway.v1.GetFeedTopicsResponse.topics:type_name -> seekervault.gateway.v1.FeedTopic
-	0,  // 5: seekervault.gateway.v1.FeedService.GetServerManifest:input_type -> seekervault.gateway.v1.GetServerManifestRequest
-	2,  // 6: seekervault.gateway.v1.FeedService.ListProposals:input_type -> seekervault.gateway.v1.ListProposalsRequest
-	4,  // 7: seekervault.gateway.v1.FeedService.GetProposal:input_type -> seekervault.gateway.v1.GetProposalRequest
-	6,  // 8: seekervault.gateway.v1.FeedService.GetStreamTicket:input_type -> seekervault.gateway.v1.GetStreamTicketRequest
-	9,  // 9: seekervault.gateway.v1.FeedService.GetFeedTopics:input_type -> seekervault.gateway.v1.GetFeedTopicsRequest
-	1,  // 10: seekervault.gateway.v1.FeedService.GetServerManifest:output_type -> seekervault.gateway.v1.GetServerManifestResponse
-	3,  // 11: seekervault.gateway.v1.FeedService.ListProposals:output_type -> seekervault.gateway.v1.ListProposalsResponse
-	5,  // 12: seekervault.gateway.v1.FeedService.GetProposal:output_type -> seekervault.gateway.v1.GetProposalResponse
-	7,  // 13: seekervault.gateway.v1.FeedService.GetStreamTicket:output_type -> seekervault.gateway.v1.GetStreamTicketResponse
-	10, // 14: seekervault.gateway.v1.FeedService.GetFeedTopics:output_type -> seekervault.gateway.v1.GetFeedTopicsResponse
-	10, // [10:15] is the sub-list for method output_type
-	5,  // [5:10] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	16, // 0: seekervault.gateway.v1.GetServerManifestResponse.manifest:type_name -> seekervault.server.v1.ServerManifest
+	17, // 1: seekervault.gateway.v1.ListRequestsResponse.requests:type_name -> seekervault.request.v2.Request
+	17, // 2: seekervault.gateway.v1.GetRequestResponse.request:type_name -> seekervault.request.v2.Request
+	18, // 3: seekervault.gateway.v1.ListProposalsResponse.proposals:type_name -> seekervault.proposal.v1.Proposal
+	18, // 4: seekervault.gateway.v1.GetProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
+	12, // 5: seekervault.gateway.v1.GetStreamTicketResponse.channels:type_name -> seekervault.gateway.v1.StreamChannel
+	15, // 6: seekervault.gateway.v1.GetFeedTopicsResponse.topics:type_name -> seekervault.gateway.v1.FeedTopic
+	0,  // 7: seekervault.gateway.v1.FeedService.GetServerManifest:input_type -> seekervault.gateway.v1.GetServerManifestRequest
+	2,  // 8: seekervault.gateway.v1.FeedService.ListRequests:input_type -> seekervault.gateway.v1.ListRequestsRequest
+	4,  // 9: seekervault.gateway.v1.FeedService.GetRequest:input_type -> seekervault.gateway.v1.GetRequestRequest
+	6,  // 10: seekervault.gateway.v1.FeedService.ListProposals:input_type -> seekervault.gateway.v1.ListProposalsRequest
+	8,  // 11: seekervault.gateway.v1.FeedService.GetProposal:input_type -> seekervault.gateway.v1.GetProposalRequest
+	10, // 12: seekervault.gateway.v1.FeedService.GetStreamTicket:input_type -> seekervault.gateway.v1.GetStreamTicketRequest
+	13, // 13: seekervault.gateway.v1.FeedService.GetFeedTopics:input_type -> seekervault.gateway.v1.GetFeedTopicsRequest
+	1,  // 14: seekervault.gateway.v1.FeedService.GetServerManifest:output_type -> seekervault.gateway.v1.GetServerManifestResponse
+	3,  // 15: seekervault.gateway.v1.FeedService.ListRequests:output_type -> seekervault.gateway.v1.ListRequestsResponse
+	5,  // 16: seekervault.gateway.v1.FeedService.GetRequest:output_type -> seekervault.gateway.v1.GetRequestResponse
+	7,  // 17: seekervault.gateway.v1.FeedService.ListProposals:output_type -> seekervault.gateway.v1.ListProposalsResponse
+	9,  // 18: seekervault.gateway.v1.FeedService.GetProposal:output_type -> seekervault.gateway.v1.GetProposalResponse
+	11, // 19: seekervault.gateway.v1.FeedService.GetStreamTicket:output_type -> seekervault.gateway.v1.GetStreamTicketResponse
+	14, // 20: seekervault.gateway.v1.FeedService.GetFeedTopics:output_type -> seekervault.gateway.v1.GetFeedTopicsResponse
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_gateway_v1_feed_proto_init() }
@@ -865,7 +1129,7 @@ func file_seekervault_gateway_v1_feed_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_gateway_v1_feed_proto_rawDesc), len(file_seekervault_gateway_v1_feed_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

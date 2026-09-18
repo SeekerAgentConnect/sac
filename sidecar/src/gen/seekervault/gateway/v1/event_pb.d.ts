@@ -24,6 +24,7 @@ import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { ServerManifest } from "../../server/v1/manifest_pb.js";
 import type { Proposal } from "../../proposal/v1/proposal_pb.js";
+import type { Request } from "../../request/v2/request_pb.js";
 
 /**
  * Describes the file seekervault/gateway/v1/event.proto.
@@ -79,6 +80,15 @@ export declare type FeedEvent = Message<"seekervault.gateway.v1.FeedEvent"> & {
      */
     value: Proposal;
     case: "proposal";
+  } | {
+    /**
+     * The common document. Protocol-1 proposal events remain readable during migration; a
+     * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+     *
+     * @generated from field: seekervault.request.v2.Request request = 4;
+     */
+    value: Request;
+    case: "request";
   } | { case: undefined; value?: undefined };
 };
 

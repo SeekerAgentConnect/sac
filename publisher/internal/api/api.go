@@ -45,6 +45,8 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/discovery"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/ids"
@@ -172,6 +174,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /v1/status", s.authorized(s.status))
 	mux.HandleFunc("GET /v1/manifest", s.authorized(s.manifest))
+	// The common request API is the documented surface. The signal routes remain compatibility
+	// adapters for Stage 7.1 clients and call the same handlers, store and drainer.
+	mux.HandleFunc("GET /v1/requests", s.authorized(s.list))
+	mux.HandleFunc("GET /v1/requests/{id}", s.authorized(s.show))
+	mux.HandleFunc("POST /v1/requests/{id}/retry", s.authorized(s.retry))
 	mux.HandleFunc("GET /v1/signals", s.authorized(s.list))
 	mux.HandleFunc("GET /v1/signals/{id}", s.authorized(s.show))
 	// Retrying a refused publication is an operator's, not an author's: it is about the gateway
@@ -179,9 +186,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/signals/{id}/retry", s.authorized(s.retry))
 
 	writing := map[string]http.HandlerFunc{
-		"POST /v1/signals":             s.create,
-		"PUT /v1/signals/{id}":         s.update,
-		"POST /v1/signals/{id}/cancel": s.cancel,
+		"POST /v1/requests":             s.create,
+		"PUT /v1/requests/{id}":         s.update,
+		"POST /v1/requests/{id}/cancel": s.cancel,
+		"POST /v1/signals":              s.create,
+		"PUT /v1/signals/{id}":          s.update,
+		"POST /v1/signals/{id}/cancel":  s.cancel,
 	}
 	if s.authorship == ByDiscovery {
 		// Routed, and refused: a caller that posts a signal to this template is told that its
@@ -614,8 +624,9 @@ func (s *Server) show(writer http.ResponseWriter, request *http.Request) {
 		s.fail(writer, err)
 		return
 	}
+	name, document := s.documentView(request, record.Signal)
 	send(writer, http.StatusOK, map[string]any{
-		"signal":      s.view(record.Signal),
+		name:          document,
 		"publication": publicationOf(record.Publication, record.Signal.Revision),
 	})
 }
@@ -628,12 +639,17 @@ func (s *Server) list(writer http.ResponseWriter, request *http.Request) {
 	}
 	held := make([]map[string]any, 0, len(records))
 	for _, record := range records {
+		name, document := s.documentView(request, record.Signal)
 		held = append(held, map[string]any{
-			"signal":      s.view(record.Signal),
+			name:          document,
 			"publication": publicationOf(record.Publication, record.Signal.Revision),
 		})
 	}
-	send(writer, http.StatusOK, map[string]any{"signals": held})
+	collection := "signals"
+	if isRequestPath(request) {
+		collection = "requests"
+	}
+	send(writer, http.StatusOK, map[string]any{collection: held})
 }
 
 // statement reads what a caller said into the parts of a signal that are theirs, or answers with
@@ -703,7 +719,8 @@ func (s *Server) answer(
 		record = updated
 	}
 	state := publicationOf(record.Publication, record.Signal.Revision)
-	body := map[string]any{"signal": s.view(record.Signal), "publication": state}
+	name, document := s.documentView(request, record.Signal)
+	body := map[string]any{name: document, "publication": state}
 	for name, value := range extra {
 		body[name] = value
 	}
@@ -741,6 +758,25 @@ func (s *Server) view(signal signals.Signal) map[string]any {
 		"terms":       terms,
 		"environment": s.settings.Environment,
 	}
+}
+
+func isRequestPath(request *http.Request) bool {
+	return strings.HasPrefix(request.URL.Path, "/v1/requests")
+}
+
+func (s *Server) documentView(request *http.Request, signal signals.Signal) (string, any) {
+	if !isRequestPath(request) {
+		return "signal", s.view(signal)
+	}
+	encoded, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(signals.Request(s.settings.ServerID, signal))
+	if err != nil {
+		panic("api: a request built from a stored signal did not marshal: " + err.Error())
+	}
+	var common map[string]any
+	if err := json.Unmarshal(encoded, &common); err != nil {
+		panic("api: a marshalled request was not JSON: " + err.Error())
+	}
+	return "request", common
 }
 
 // read decodes a request body strictly: the declared content type, a bounded size, exactly one

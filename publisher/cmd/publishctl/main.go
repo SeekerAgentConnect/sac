@@ -151,7 +151,7 @@ func run(arguments []string, out, messages io.Writer) error {
 			if err != nil {
 				return err
 			}
-			return client.call(http.MethodPut, "/v1/signals/"+id, "", statement)
+			return client.call(http.MethodPut, "/v1/requests/"+id, "", statement)
 		}
 		created := *key
 		if created == "" {
@@ -161,17 +161,17 @@ func run(arguments []string, out, messages io.Writer) error {
 			fmt.Fprintf(messages, "idempotency key %s (pass --key %s to retry this exact create)\n",
 				created, created)
 		}
-		return client.call(http.MethodPost, "/v1/signals", created, statement)
+		return client.call(http.MethodPost, "/v1/requests", created, statement)
 
 	case "cancel", "retry":
 		id, err := identity()
 		if err != nil {
 			return err
 		}
-		return client.call(http.MethodPost, "/v1/signals/"+id+"/"+command, "", nil)
+		return client.call(http.MethodPost, "/v1/requests/"+id+"/"+command, "", nil)
 
 	case "list":
-		return client.call(http.MethodGet, "/v1/signals", "", nil)
+		return client.call(http.MethodGet, "/v1/requests", "", nil)
 
 	case "discovery":
 		// Only a template that discovers its own signals has this; the other answers 404 with
@@ -187,7 +187,7 @@ func run(arguments []string, out, messages io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return client.call(http.MethodGet, "/v1/signals/"+id, "", nil)
+		return client.call(http.MethodGet, "/v1/requests/"+id, "", nil)
 
 	default:
 		fmt.Fprint(messages, usage)

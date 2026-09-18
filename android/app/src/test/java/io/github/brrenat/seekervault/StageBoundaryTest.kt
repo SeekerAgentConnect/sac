@@ -770,7 +770,15 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.plugins.isPluginId",
                 "io.github.brrenat.seekervault.proposal.v1.Proposal",
                 "io.github.brrenat.seekervault.proposal.v1.ProposalStatus",
+                "io.github.brrenat.seekervault.proposal.v1.ProposalValue",
                 "io.github.brrenat.seekervault.request.v1.Network",
+                "io.github.brrenat.seekervault.request.v2.Audience",
+                "io.github.brrenat.seekervault.request.v2.OwnerInputKind",
+                "io.github.brrenat.seekervault.request.v2.PresentationCategory",
+                "io.github.brrenat.seekervault.request.v2.Request",
+                "io.github.brrenat.seekervault.request.v2.RequestStatus",
+                "io.github.brrenat.seekervault.request.v2.ResultMode",
+                "io.github.brrenat.seekervault.request.v2.Value",
                 "io.github.brrenat.seekervault.servers.ServerSupport",
                 "io.github.brrenat.seekervault.servers.channelFor",
                 "io.github.brrenat.seekervault.servers.executable",
@@ -833,6 +841,94 @@ class StageBoundaryTest {
             Regex(
                     """(?i)\b(permission|policy|wallet|credential|token|secret|install|script|""" +
                         """amount|signature|approval|transaction|prepared)\b"""
+                )
+                .findAll(proto)
+                .map { it.value }
+                .toList(),
+        )
+    }
+
+    @Test
+    fun theCommonRequestEnvelopeIsBoundedDataWithNoOwnerOutcome() {
+        // SEE-108 normalizes the two durable legacy models into one source-authored envelope.
+        // This package may adapt data, but cannot store, transport, approve or execute it.
+        val requests = File(main, "java/io/github/brrenat/seekervault/requests")
+        assertTrue(requests.isDirectory)
+        val sources = requests.walk().filter { it.extension == "kt" }.toList()
+        val authority =
+            Regex(
+                """\b(WalletAdapter|WalletRepository|WalletStore|authToken|signAndSend|""" +
+                    """withWallet|ConnectionGateway|FeedGateway|OkHttp|HttpClient|""" +
+                    """CredentialVault|ConnectionStore|ResultStore|ProposalStore|approve|suspend)\b"""
+            )
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { authority.containsMatchIn(withoutComments(it)) }.map { it.name },
+        )
+
+        val proto =
+            File(repoRoot, "proto/seekervault/request/v2/request.proto")
+                .readLines()
+                .filterNot { it.trim().startsWith("//") }
+                .joinToString("\n")
+        val fields =
+            Regex("""^\s*(?:repeated\s+)?[\w.]+\s+(\w+)\s*=\s*\d+;""", RegexOption.MULTILINE)
+                .findAll(proto)
+                .map { it.groupValues[1] }
+                .toList()
+        assertEquals(
+            listOf(
+                "contract_version",
+                "identity",
+                "lifecycle",
+                "presentation",
+                "action",
+                "owner_inputs",
+                "audience",
+                "result_handling",
+                "source_id",
+                "scope",
+                "request_id",
+                "revision",
+                "status",
+                "created_at",
+                "updated_at",
+                "expires_at",
+                "title",
+                "description",
+                "category",
+                "capability_id",
+                "capability_version",
+                "plugin_id",
+                "parameters",
+                "key",
+                "text",
+                "integer",
+                "flag",
+                "opaque",
+                "key",
+                "label",
+                "kind",
+                "required",
+                "minimum",
+                "maximum",
+                "options",
+                "help",
+                "value",
+                "label",
+                "private",
+                "feed",
+                "recipient_id",
+                "channel",
+                "mode",
+            ),
+            fields,
+        )
+        assertEquals(
+            emptyList<String>(),
+            Regex(
+                    """(?i)\b(wallet_binding|selected_wallet|owner_value|subscriber|credential|""" +
+                        """decision|signature|approval|prepared|transaction|execution|outcome|url|code)\b"""
                 )
                 .findAll(proto)
                 .map { it.value }

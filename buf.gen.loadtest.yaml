@@ -37,6 +37,7 @@ inputs:
     paths:
       - proto/seekervault/gateway/v1
       - proto/seekervault/proposal/v1
+      - proto/seekervault/request/v2
       - proto/seekervault/server/v1
   # The broker's own client schema, pinned and checksummed in third_party/centrifugo. The harness
   # listens on the transport a phone listens on, which means speaking this; `pnpm generate` checks

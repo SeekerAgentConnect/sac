@@ -42,7 +42,7 @@ This is the whole shape of the stage in one path, and the line in the middle of 
 ```mermaid
 flowchart TB
     subgraph publisher["the publisher — publisher/ (SEE-95)"]
-        Strategy["a trader, a script,<br>or a strategy engine"] -- "POST /v1/signals" --> Template["the template"]
+        Strategy["a trader, a script,<br>or a strategy engine"] -- "POST /v1/requests" --> Template["the template"]
         Template -- "PublishProposal, once" --> Gateway
     end
     Gateway["the broadcast gateway (SEE-90)"]
@@ -167,7 +167,7 @@ A signal is stored before it is submitted, so an unreachable gateway is not a fa
 | --- | --- | --- |
 | The gateway holds it | 201 (or 200 for a replay) | Nothing to do |
 | The gateway cannot be reached, is restarting, or is rate-limiting | **202**, `"publication":"pending"`, with the next attempt's time | The drainer keeps trying, doubling from a second to a minute |
-| The gateway refused it in a way retrying cannot change | **502**, `"publication":"refused"`, with the gateway's own problem code | An operator fixes the cause and asks: `POST /v1/signals/<id>/retry` |
+| The gateway refused it in a way retrying cannot change | **502**, `"publication":"refused"`, with the gateway's own problem code | An operator fixes the cause and asks: `POST /v1/requests/<id>/retry` |
 
 The split is the gateway's own grouping, read from this side: `unavailable`, `internal` and a rate
 limit will accept the same document later; `unauthenticated`, `permission_denied`,

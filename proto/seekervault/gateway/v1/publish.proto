@@ -23,6 +23,7 @@ syntax = "proto3";
 package seekervault.gateway.v1;
 
 import "seekervault/proposal/v1/proposal.proto";
+import "seekervault/request/v2/request.proto";
 import "seekervault/server/v1/manifest.proto";
 
 // PublisherService is the write API, served on its own listener with its own credential. A
@@ -33,6 +34,11 @@ service PublisherService {
   // naming this gateway's own origin and the caller's own channel: a direct manifest carries a
   // URL, and the gateway refuses to relay one.
   rpc PublishManifest(PublishManifestRequest) returns (PublishManifestResponse);
+  // Create or update one request through the common developer contract. A feed request must use
+  // the caller's own channel and device-local result handling. PublishProposal remains below as a
+  // wire-compatible adapter for publishers built before the common contract.
+  rpc PublishRequest(PublishRequestRequest) returns (PublishRequestResponse);
+  rpc CancelRequest(CancelRequestRequest) returns (CancelRequestResponse);
   // Create or update one proposal. The document is the publisher's whole current statement about
   // it — the gateway stores what it validated and never merges a partial one.
   rpc PublishProposal(PublishProposalRequest) returns (PublishProposalResponse);
@@ -61,6 +67,27 @@ message PublishManifestResponse {
   PublishStatus status = 1;
   // The revision the gateway now holds, which is the one that was sent.
   uint64 settings_revision = 2;
+}
+
+message PublishRequestRequest {
+  seekervault.request.v2.Request request = 1;
+}
+
+message PublishRequestResponse {
+  PublishStatus status = 1;
+  uint64 revision = 2;
+  uint64 snapshot_sequence = 3;
+}
+
+message CancelRequestRequest {
+  string request_id = 1;
+  uint64 revision = 2;
+}
+
+message CancelRequestResponse {
+  PublishStatus status = 1;
+  seekervault.request.v2.Request request = 2;
+  uint64 snapshot_sequence = 3;
 }
 
 message PublishProposalRequest {

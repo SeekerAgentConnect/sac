@@ -43,6 +43,7 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.inbox.NotificationOpenStatus
 import io.github.brrenat.seekervault.inbox.NotificationRequestStateScreen
+import io.github.brrenat.seekervault.inbox.PendingItem
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreen
 import io.github.brrenat.seekervault.inbox.Preparation
 import io.github.brrenat.seekervault.inbox.RequestDetailsScreen
@@ -50,13 +51,13 @@ import io.github.brrenat.seekervault.inbox.RequestGoneScreen
 import io.github.brrenat.seekervault.inbox.inboxCounts
 import io.github.brrenat.seekervault.inbox.inboxItems
 import io.github.brrenat.seekervault.inbox.key
+import io.github.brrenat.seekervault.inbox.pendingItems
 import io.github.brrenat.seekervault.live.LiveCommandRoute
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
 import io.github.brrenat.seekervault.notifications.RequestNotificationPermission
 import io.github.brrenat.seekervault.operations.OperationViewModel
 import io.github.brrenat.seekervault.operations.OperationsUiState
 import io.github.brrenat.seekervault.operations.ProposalReviewScreen
-import io.github.brrenat.seekervault.operations.ProposalsScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -145,9 +146,7 @@ fun SeekerVaultApp(
         stack = listOf(Routes.CONNECTIONS, requestRoute(key))
         inbox.openFromNotification(key)
     }
-    // A proposal alert opens the proposal it is about (SEE-92 routed it, SEE-93 gave it somewhere
-    // to land). Both IDs travelled with the notification and were validated before they got here,
-    // and the screen underneath is the feed's own list, so Back goes where it would have anyway.
+    // A signal alert opens the same filtered inbox and review dispatcher as an ordinary tap.
     // Arriving prepares nothing, signs nothing and sends nothing: it opens a review.
     LaunchedEffect(feedTap?.sequence) {
         val ref = feedTap?.ref ?: return@LaunchedEffect
@@ -159,8 +158,8 @@ fun SeekerVaultApp(
             listOf(
                 Routes.CONNECTIONS,
                 Routes.DETAILS + ref.connectionId,
-                Routes.OPERATIONS + ref.connectionId,
-                operationRoute(ref.connectionId, ref.proposalId),
+                Routes.INBOX_FOR + ref.connectionId,
+                signalRoute(ref.connectionId, ref.proposalId),
             )
     }
     BackHandler(enabled = stack.size > 1 || root != Routes.CONNECTIONS) {
@@ -173,6 +172,15 @@ fun SeekerVaultApp(
         }
     }
     val pendingKeys = inboxItems(inboxState.inbox, null).pending.map { it.key }
+    val commonPending =
+        pendingItems(
+            inboxState.inbox,
+            operationsState.records,
+            { record ->
+                operations?.standing(record)
+                    ?: io.github.brrenat.seekervault.proposals.ProposalStanding.Expired
+            },
+        )
     val rootModifier =
         Modifier.navigationBarsPadding()
             .padding(bottom = 80.dp)
@@ -203,8 +211,7 @@ fun SeekerVaultApp(
     Box(Modifier.fillMaxSize()) {
         when (root) {
             Routes.CONNECTIONS -> {
-                val (waitingForYou, toSend) = inboxCounts(inboxState)
-                val pending = inboxItems(inboxState.inbox, null).pending
+                val (_, toSend) = inboxCounts(inboxState)
                 ConnectionsScreen(
                     // A detail sheet owns transient connection messages while it is open.
                     // Keeping
@@ -216,15 +223,19 @@ fun SeekerVaultApp(
                     onAdd = { stack = listOf(Routes.ADD) },
                     onLiveTest = { push(Routes.LIVE) },
                     onMessageShown = connections::messageShown,
-                    inbox = InboxSummary(waitingForYou, toSend),
+                    inbox = InboxSummary(commonPending.size, toSend),
                     onInbox = { stack = listOf(Routes.INBOX) },
                     wallet = walletState.wallet,
                     onWallet = { stack = listOf(Routes.WALLET) },
                     onGlobalRules = { push(Routes.GLOBAL_POLICY) },
-                    requests = pending,
                     requestAssessments = inboxState.assessments,
-                    onOpenRequest = {
-                        push("${Routes.REQUEST}${it.connectionId}/${it.requestId}")
+                    pendingItems = commonPending,
+                    onOpenPending = {
+                        when (it) {
+                            is PendingItem.Private -> push(requestRoute(it.request.key))
+                            is PendingItem.Signal ->
+                                push(signalRoute(it.connectionId, it.requestId))
+                        }
                     },
                     modifier = rootModifier,
                 )
@@ -257,8 +268,11 @@ fun SeekerVaultApp(
                     state = inboxState,
                     connectionId = null,
                     now = Instant.now(),
-                    onOpen = { push("${Routes.REQUEST}${it.connectionId}/${it.requestId}") },
-                    onRefresh = { inbox.refresh(null) },
+                    onOpen = { push(requestRoute(it)) },
+                    onRefresh = {
+                        inbox.refresh(null)
+                        operationsState.feeds.forEach { operations?.refresh(it.id) }
+                    },
                     onBack = { stack = listOf(Routes.CONNECTIONS) },
                     modifier = rootModifier,
                     onReject = {
@@ -266,6 +280,14 @@ fun SeekerVaultApp(
                             it,
                             io.github.brrenat.seekervault.connections.Answer.Reject,
                         )
+                    },
+                    feedRecords = operationsState.records,
+                    feedStanding = { record ->
+                        operations?.standing(record)
+                            ?: io.github.brrenat.seekervault.proposals.ProposalStanding.Expired
+                    },
+                    onOpenSignal = {
+                        push(signalRoute(it.connectionId, it.key.proposalId))
                     },
                 )
             Routes.ADD ->
@@ -329,73 +351,16 @@ fun SeekerVaultApp(
                             onBack = pop,
                             onPendingRequests = { push(Routes.INBOX_FOR + id) },
                             onRules = { push(Routes.POLICY + id) },
-                            // A feed proposes rather than requests, so its signals are where its
-                            // pending requests would be (SEE-93).
+                            // A feed's Signals affordance is a filter over the shared inbox.
                             onSignals =
-                                if (operations == null) null
-                                else ({ push(Routes.OPERATIONS + id) }),
-                            signals = operationsState.records.count { it.connectionId == id },
-                        )
-                    }
-                    route.startsWith(Routes.OPERATIONS) && operations != null -> {
-                        val id = route.removePrefix(Routes.OPERATIONS)
-                        ProposalsScreen(
-                            label = state.connections.firstOrNull { it.id == id }?.label.orEmpty(),
-                            records = operationsState.records.filter { it.connectionId == id },
-                            standings = operations::standing,
-                            refreshing = id in operationsState.refreshing,
-                            now = Instant.now(),
-                            onOpen = { push(operationRoute(id, it.key.proposalId)) },
-                            onRefresh = { operations.refresh(id) },
-                            onBack = pop,
-                        )
-                        // The feed is read when the owner opens it, exactly as a connection's
-                        // requests are (docs/protocol.md). It publishes nothing.
-                        LaunchedEffect(id) { operations.refresh(id) }
-                    }
-                    route.startsWith(Routes.OPERATION) && operations != null -> {
-                        val (id, proposalId) =
-                            route.removePrefix(Routes.OPERATION).split('/', limit = 2).let {
-                                (it.firstOrNull() ?: "") to (it.getOrNull(1) ?: "")
-                            }
-                        val open = openOperation?.takeIf { it.proposalId == proposalId }
-                        if (open == null) {
-                            // Removed, expired out of the feed, or opened before the store was
-                            // read: back to the list rather than an empty review.
-                            LaunchedEffect(proposalId, operationsState.loaded) {
-                                operations.open(id, proposalId)
-                                if (
-                                    operationsState.loaded &&
-                                        operationsState.records.none {
-                                            it.connectionId == id && it.key.proposalId == proposalId
-                                        }
-                                ) {
-                                    pop()
-                                }
-                            }
-                        } else {
-                            val linkContext = LocalContext.current
-                            ProposalReviewScreen(
-                                review = open,
-                                label =
-                                    state.connections.firstOrNull { it.id == id }?.label.orEmpty(),
-                                wallet = walletState.wallet,
-                                now = Instant.now(),
-                                onChoose = operations::choose,
-                                onPrepare = operations::prepare,
-                                onApprove = { operations.approve(walletState.wallet) },
-                                onDismiss = { operations.dismiss(id, proposalId) },
-                                onAcknowledge = operations::acknowledge,
-                                onBack = {
-                                    operations.close()
-                                    pop()
+                                if (operations == null) null else ({ push(Routes.INBOX_FOR + id) }),
+                            signals =
+                                operationsState.records.count {
+                                    it.connectionId == id &&
+                                        operations?.standing(it) is
+                                            io.github.brrenat.seekervault.proposals.ProposalStanding.Open
                                 },
-                                onRules = { push(Routes.POLICY + id) },
-                                // Handed to whatever opens links, exactly as a transfer's explorer
-                                // link is. This app fetches nothing from any of them.
-                                onOpenLink = { openLink(linkContext, it) },
-                            )
-                        }
+                        )
                     }
                     route.startsWith(Routes.POLICY) -> {
                         val id = route.removePrefix(Routes.POLICY)
@@ -459,21 +424,16 @@ fun SeekerVaultApp(
                         )
                         LaunchedEffect(Unit) { globalPolicy.openGlobal() }
                     }
-                    route.startsWith(Routes.INBOX_FOR) ->
+                    route.startsWith(Routes.INBOX_FOR) -> {
+                        val id = route.removePrefix(Routes.INBOX_FOR).ifEmpty { null }
                         PendingRequestsScreen(
                             state = inboxState,
-                            connectionId =
-                                route.removePrefix(Routes.INBOX).removePrefix("/").ifEmpty { null },
+                            connectionId = id,
                             now = Instant.now(),
-                            onOpen = {
-                                push("${Routes.REQUEST}${it.connectionId}/${it.requestId}")
-                            },
+                            onOpen = { push(requestRoute(it)) },
                             onRefresh = {
-                                inbox.refresh(
-                                    route.removePrefix(Routes.INBOX).removePrefix("/").ifEmpty {
-                                        null
-                                    }
-                                )
+                                inbox.refresh(id)
+                                if (id != null) operations?.refresh(id)
                             },
                             onBack = pop,
                             onReject = {
@@ -483,10 +443,71 @@ fun SeekerVaultApp(
                                 )
                             },
                             inSheet = true,
+                            feedRecords = operationsState.records,
+                            feedStanding = { record ->
+                                operations?.standing(record)
+                                    ?: io.github.brrenat.seekervault.proposals.ProposalStanding
+                                        .Expired
+                            },
+                            onOpenSignal = {
+                                push(signalRoute(it.connectionId, it.key.proposalId))
+                            },
                         )
+                        // A per-feed page is only a filtered view of the shared pending collection.
+                        LaunchedEffect(id) { if (id != null) operations?.refresh(id) }
+                    }
+                    route.startsWith("${Routes.REQUEST}feed/") && operations != null -> {
+                        val (_, connectionId, requestId) =
+                            route.removePrefix(Routes.REQUEST).split('/', limit = 3)
+                        val open = openOperation?.takeIf { it.proposalId == requestId }
+                        if (open == null) {
+                            LaunchedEffect(requestId, operationsState.loaded) {
+                                operations.open(connectionId, requestId)
+                                if (
+                                    operationsState.loaded &&
+                                        operationsState.records.none {
+                                            it.connectionId == connectionId &&
+                                                it.key.proposalId == requestId
+                                        }
+                                ) {
+                                    pop()
+                                }
+                            }
+                        } else {
+                            val linkContext = LocalContext.current
+                            ProposalReviewScreen(
+                                review = open,
+                                label =
+                                    state.connections
+                                        .firstOrNull { it.id == connectionId }
+                                        ?.label
+                                        .orEmpty(),
+                                wallet = walletState.wallet,
+                                now = Instant.now(),
+                                onChoose = operations::choose,
+                                onPrepare = operations::prepare,
+                                onApprove = { operations.approve(walletState.wallet) },
+                                onDismiss = { operations.dismiss(connectionId, requestId) },
+                                onAcknowledge = operations::acknowledge,
+                                onBack = {
+                                    operations.close()
+                                    pop()
+                                },
+                                onRules = { push(Routes.POLICY + connectionId) },
+                                // Links are constructed at display time and opened outside the app.
+                                onOpenLink = { openLink(linkContext, it) },
+                            )
+                        }
+                    }
                     route.startsWith(Routes.REQUEST) -> {
+                        val parts = route.removePrefix(Routes.REQUEST).split('/', limit = 3)
                         val (connectionId, requestId) =
-                            route.removePrefix(Routes.REQUEST).split('/', limit = 2)
+                            if (parts.firstOrNull() == "private") {
+                                parts.getOrNull(1).orEmpty() to parts.getOrNull(2).orEmpty()
+                            } else {
+                                // Keep process-restored routes from the previous build readable.
+                                parts.firstOrNull().orEmpty() to parts.getOrNull(1).orEmpty()
+                            }
                         val key = RequestKey(connectionId, requestId)
                         val result = inboxState.inbox.result(key)
                         val request = result?.request ?: inboxState.inbox.pendingRequest(key)
@@ -577,7 +598,7 @@ fun SeekerVaultApp(
                         Routes.INBOX,
                         Icons.Outlined.Draw,
                         stringResource(R.string.nav_requests),
-                        inboxCounts(inboxState).first > 0,
+                        commonPending.isNotEmpty(),
                     ),
                     BottomDestination(
                         Routes.WALLET,
@@ -626,14 +647,13 @@ private object Routes {
     const val INBOX = "inbox"
     const val INBOX_FOR = "inbox/"
     const val REQUEST = "request/"
-    const val OPERATIONS = "operations/"
-    const val OPERATION = "operation/"
 }
 
-private fun operationRoute(connectionId: String, proposalId: String) =
-    "${Routes.OPERATION}$connectionId/$proposalId"
+private fun requestRoute(key: RequestKey) =
+    "${Routes.REQUEST}private/${key.connectionId}/${key.requestId}"
 
-private fun requestRoute(key: RequestKey) = "${Routes.REQUEST}${key.connectionId}/${key.requestId}"
+private fun signalRoute(connectionId: String, requestId: String) =
+    "${Routes.REQUEST}feed/$connectionId/$requestId"
 
 @Composable
 private fun ConnectionDetailsRoute(

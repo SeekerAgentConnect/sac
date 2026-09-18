@@ -13,7 +13,7 @@
 // (docs/security.md).
 //
 // The publisher API is a separate service on a separate listener (publish.proto). That separation
-// is deployed, not just declared: a read port serves these five methods and no handler that could
+// is deployed, not just declared: a read port serves only these methods and no handler that could
 // change anything, so no routing mistake can turn a read endpoint into a write one.
 //
 // **Nothing about a subscriber may ever appear in this file.** There is no field for a wallet, a
@@ -24,6 +24,7 @@
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { ServerManifest } from "../../server/v1/manifest_pb.js";
+import type { Request } from "../../request/v2/request_pb.js";
 import type { Proposal } from "../../proposal/v1/proposal_pb.js";
 
 /**
@@ -92,6 +93,105 @@ export declare type GetServerManifestResponse = Message<"seekervault.gateway.v1.
  * Use `create(GetServerManifestResponseSchema)` to create a new message.
  */
 export declare const GetServerManifestResponseSchema: GenMessage<GetServerManifestResponse>;
+
+/**
+ * @generated from message seekervault.gateway.v1.ListRequestsRequest
+ */
+export declare type ListRequestsRequest = Message<"seekervault.gateway.v1.ListRequestsRequest"> & {
+  /**
+   * @generated from field: string channel = 1;
+   */
+  channel: string;
+
+  /**
+   * @generated from field: uint32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * @generated from field: uint64 known_snapshot_sequence = 4;
+   */
+  knownSnapshotSequence: bigint;
+};
+
+/**
+ * Describes the message seekervault.gateway.v1.ListRequestsRequest.
+ * Use `create(ListRequestsRequestSchema)` to create a new message.
+ */
+export declare const ListRequestsRequestSchema: GenMessage<ListRequestsRequest>;
+
+/**
+ * @generated from message seekervault.gateway.v1.ListRequestsResponse
+ */
+export declare type ListRequestsResponse = Message<"seekervault.gateway.v1.ListRequestsResponse"> & {
+  /**
+   * @generated from field: repeated seekervault.request.v2.Request requests = 1;
+   */
+  requests: Request[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+
+  /**
+   * @generated from field: uint64 snapshot_sequence = 3;
+   */
+  snapshotSequence: bigint;
+
+  /**
+   * @generated from field: bool unchanged = 4;
+   */
+  unchanged: boolean;
+};
+
+/**
+ * Describes the message seekervault.gateway.v1.ListRequestsResponse.
+ * Use `create(ListRequestsResponseSchema)` to create a new message.
+ */
+export declare const ListRequestsResponseSchema: GenMessage<ListRequestsResponse>;
+
+/**
+ * @generated from message seekervault.gateway.v1.GetRequestRequest
+ */
+export declare type GetRequestRequest = Message<"seekervault.gateway.v1.GetRequestRequest"> & {
+  /**
+   * @generated from field: string channel = 1;
+   */
+  channel: string;
+
+  /**
+   * @generated from field: string request_id = 2;
+   */
+  requestId: string;
+};
+
+/**
+ * Describes the message seekervault.gateway.v1.GetRequestRequest.
+ * Use `create(GetRequestRequestSchema)` to create a new message.
+ */
+export declare const GetRequestRequestSchema: GenMessage<GetRequestRequest>;
+
+/**
+ * @generated from message seekervault.gateway.v1.GetRequestResponse
+ */
+export declare type GetRequestResponse = Message<"seekervault.gateway.v1.GetRequestResponse"> & {
+  /**
+   * @generated from field: seekervault.request.v2.Request request = 1;
+   */
+  request?: Request | undefined;
+};
+
+/**
+ * Describes the message seekervault.gateway.v1.GetRequestResponse.
+ * Use `create(GetRequestResponseSchema)` to create a new message.
+ */
+export declare const GetRequestResponseSchema: GenMessage<GetRequestResponse>;
 
 /**
  * @generated from message seekervault.gateway.v1.ListProposalsRequest
@@ -402,6 +502,25 @@ export declare const FeedService: GenService<{
     methodKind: "unary";
     input: typeof GetServerManifestRequestSchema;
     output: typeof GetServerManifestResponseSchema;
+  },
+  /**
+   * The common request reads. The proposal methods below remain compatibility adapters for
+   * protocol-1 clients; both views are backed by the same document and snapshot sequence.
+   *
+   * @generated from rpc seekervault.gateway.v1.FeedService.ListRequests
+   */
+  listRequests: {
+    methodKind: "unary";
+    input: typeof ListRequestsRequestSchema;
+    output: typeof ListRequestsResponseSchema;
+  },
+  /**
+   * @generated from rpc seekervault.gateway.v1.FeedService.GetRequest
+   */
+  getRequest: {
+    methodKind: "unary";
+    input: typeof GetRequestRequestSchema;
+    output: typeof GetRequestResponseSchema;
   },
   /**
    * A page of the channel's current proposals. Every proposal the publisher has open, and the ones
