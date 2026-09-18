@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The approved dark-scheme accent is readable against Android's dark notification surface. -->
+    <color name="notification_accent">#E7FC6E</color>
+</resources>

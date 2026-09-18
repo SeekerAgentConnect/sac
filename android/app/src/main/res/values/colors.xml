@@ -2,4 +2,7 @@
 <resources>
     <!-- The supplied SEE-65 launcher artwork's lime ground; not part of the app theme. -->
     <color name="brand_lime">#C2E60F</color>
+    <!-- Android's notification shade owns its background; this approved deep olive stays legible
+         on the light system surface while the full-colour large icon carries the lime ground. -->
+    <color name="notification_accent">#4F5C00</color>
 </resources>

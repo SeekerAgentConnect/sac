@@ -162,6 +162,7 @@ class PushSyncWorker : CoroutineWorker {
                         before,
                         after,
                         repository.connections.value,
+                        repository.inbox.value.pending.values.flatten(),
                     )
                 },
             )

@@ -19,17 +19,18 @@ import org.w3c.dom.Element
  * that service accept exactly one content-free invalidation and enqueue a unique WorkManager Sync
  * under `sync/`. SAW-057 keeps the callback to validation and this durable handoff; network fetches
  * stay in the bounded worker and coalesce with foreground/periodic synchronization. SAW-058 adds
- * one private request channel, an isolated runtime permission prompt, generic notifications after
- * authoritative Sync, and a validated read-only tap route. SAW-059 closes the stage with joined
- * acceptance while keeping Firebase optional and every Stage 5.2 path independent. Other
- * app-defined services, jobs, alarms, receivers, and wallet automation remain excluded. SEE-92
- * extends that same push pipeline to a publisher's public feed and lifts nothing: one more
- * content-free invalidation on the existing service, one topic client beside the registration
- * client, one WorkManager job under `sync/`, and one notification channel with a read-only tap
- * route. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter client, on
- * purpose: the app drives the wallet the owner already has. It still holds no wallet key of its
- * own, and Seed Vault's own SDK stays out. These checks fail when a limit is crossed early; the
- * stage that lifts one changes them.
+ * one private request channel, an isolated runtime permission prompt, notifications after
+ * authoritative Sync, and a validated read-only tap route. SEE-105 lets presentation read only the
+ * cached request/proposal kind and local source name while adding no authority. SAW-059 closes the
+ * stage with joined acceptance while keeping Firebase optional and every Stage 5.2 path
+ * independent. Other app-defined services, jobs, alarms, receivers, and wallet automation remain
+ * excluded. SEE-92 extends that same push pipeline to a publisher's public feed and lifts nothing:
+ * one more content-free invalidation on the existing service, one topic client beside the
+ * registration client, one WorkManager job under `sync/`, and one notification channel with a
+ * read-only tap route. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter
+ * client, on purpose: the app drives the wallet the owner already has. It still holds no wallet key
+ * of its own, and Seed Vault's own SDK stays out. These checks fail when a limit is crossed early;
+ * the stage that lifts one changes them.
  */
 class StageBoundaryTest {
     private val repoRoot =
@@ -79,6 +80,8 @@ class StageBoundaryTest {
             listOf(
                 "meta-data firebase_messaging_auto_init_enabled",
                 "meta-data firebase_messaging_installation_id_enabled",
+                "meta-data com.google.firebase.messaging.default_notification_icon",
+                "meta-data com.google.firebase.messaging.default_notification_color",
                 "service .push.SeekerVaultMessagingService",
                 "activity .MainActivity",
             ),
@@ -101,6 +104,26 @@ class StageBoundaryTest {
                     it.getAttribute("android:name") == "firebase_messaging_installation_id_enabled"
                 }
                 .getAttribute("android:value"),
+        )
+        assertEquals(
+            "@drawable/ic_notification_sac",
+            application
+                .children("meta-data")
+                .single {
+                    it.getAttribute("android:name") ==
+                        "com.google.firebase.messaging.default_notification_icon"
+                }
+                .getAttribute("android:resource"),
+        )
+        assertEquals(
+            "@color/notification_accent",
+            application
+                .children("meta-data")
+                .single {
+                    it.getAttribute("android:name") ==
+                        "com.google.firebase.messaging.default_notification_color"
+                }
+                .getAttribute("android:resource"),
         )
         val messaging = application.children("service").single()
         assertEquals("false", messaging.getAttribute("android:exported"))
@@ -1013,13 +1036,37 @@ class StageBoundaryTest {
         assertTrue("PendingIntent.FLAG_IMMUTABLE" in notification)
         assertTrue("MainActivity" in notification)
         assertTrue("RequestKey" in notification)
-        assertTrue("ActionRequest" !in notification)
+        // SEE-105 derives words from the authoritative post-Sync kind; it does not render the
+        // request's free text, note, bytes, or identifiers into the notification.
+        assertTrue("ActionRequest" in notification)
+        assertTrue("request.action.ack" !in notification)
+        assertTrue("request.action.signMessage" !in notification)
+        assertTrue("request.action.transfer" !in notification)
+        assertTrue("request.action.swap" !in notification)
+        assertTrue("request.ref.requestId" !in notification)
         assertTrue("wallet" !in notification.lowercase())
         assertTrue("approve" !in notification.lowercase())
         assertTrue("signAndSendTransactions" !in notification)
         assertTrue("WorkManager" !in notification)
         assertTrue("ForegroundUpdateManager" !in notification)
         assertTrue("BackgroundSyncScheduler" !in notification)
+
+        val appearance =
+            withoutComments(
+                File(
+                    main,
+                    "java/io/github/brrenat/seekervault/notifications/NotificationAppearance.kt",
+                )
+            )
+        assertTrue("setSmallIcon(R.drawable.ic_notification_sac)" in appearance)
+        assertTrue(
+            "setLargeIcon(Icon.createWithResource(context, R.mipmap.ic_launcher))" in appearance
+        )
+        assertTrue("Notification.BigTextStyle" in appearance)
+        assertTrue("Notification.VISIBILITY_SECRET" in appearance)
+        assertTrue("wallet" !in appearance.lowercase())
+        assertTrue("approve" !in appearance.lowercase())
+        assertTrue("WorkManager" !in appearance)
 
         val push =
             withoutComments(
@@ -1052,9 +1099,13 @@ class StageBoundaryTest {
         assertTrue("PendingIntent.FLAG_IMMUTABLE" in proposals)
         assertTrue("MainActivity" in proposals)
         assertTrue("isConnectionId" in proposals)
-        // The same limits the request alert is held to: it shows what it was told, routes to a
-        // screen, and has no means of acting on anything.
-        assertTrue("ProposalRecord" !in proposals)
+        // The same limits the request alert is held to: it reads only the validated operation kind
+        // and local source name, routes to a screen, and has no means of acting on anything.
+        assertTrue("ProposalRecord" in proposals)
+        assertTrue("record.proposal.note" !in proposals)
+        assertTrue("record.proposal.terms" !in proposals)
+        assertTrue("record.proposal.pluginId" !in proposals)
+        assertTrue("record.key.proposalId" !in proposals)
         assertTrue("ProposalRepository" !in proposals)
         assertTrue("wallet" !in proposals.lowercase())
         assertTrue("approve" !in proposals.lowercase())
