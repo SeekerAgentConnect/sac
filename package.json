@@ -16,6 +16,7 @@
     "check:broadcast": "node scripts/check-broadcast.mjs",
     "check:loadtest": "node scripts/check-loadtest.mjs",
     "check:publisher": "node scripts/check-publisher.mjs",
+    "design:capture": "npm --prefix design/tools run capture --",
     "check:android": "android/gradlew -p android spotlessCheck :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest",
     "check:format": "prettier --check . && buf format --diff --exit-code",
     "check:generated": "node scripts/generate.mjs --check",
