@@ -16,8 +16,10 @@ Both forwards are raw TCP, so TLS and HTTP/2 end in our containers and both stre
 `tailscale cert` pair in `./tls` serves both. The server holds this folder and pulls images; it has
 no checkout and builds nothing.
 
-Status of this runbook: steps 1–7 were carried out on the droplet. Step 8 (the demos) was run
-locally in Docker only, not yet on the droplet.
+Status of this runbook: steps 1–8 were carried out on the droplet on 2026-09-18, by its owner.
+Both demos run there and publish to the gateway; the notes in step 8 are the three things that went
+wrong on the way. No result of the `grpcurl` stream check through Funnel was recorded, and nothing
+was checked on a phone: the app cannot add a feed yet (SEE-107).
 
 ## 0. Once per tailnet and server
 
@@ -197,7 +199,13 @@ README Part 2, with three differences: every command carries
 PUBLISHER_GATEWAY_URL=https://hermes.tail5e20a8.ts.net:8443
 ```
 
-exactly as the gateway prints its origin, port included. Create `secrets/copytrading` and
+exactly as the gateway prints its origin, port included — check with
+`docker inspect seeker-agent-wallet-server-broadcast-1 | grep BROADCAST_PUBLIC_URL` before starting
+them; a mismatch is refused as `other_gateway` and retried only when the publisher restarts. Restart
+a publisher together with its proxy (`restart copytrading copytrading-proxy`), never alone: the
+proxy lives in the publisher's network namespace and is stranded by a lone restart. Compose's
+`Found orphan containers (…-sidecar-1)` warning is expected; never answer it with
+`--remove-orphans`. Create `secrets/copytrading` and
 `secrets/prediction` owned by `10001:10001`. Run the `grpcurl` stream check from the Mac (it needs
 `third_party/` from the checkout) against `$D:8443`, without `--add-host`.
 
