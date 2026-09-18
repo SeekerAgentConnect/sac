@@ -22,11 +22,13 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.NorthEast
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -56,8 +58,12 @@ import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.hasProblem
 import io.github.brrenat.seekervault.connections.statusText as connectionStatusText
+import io.github.brrenat.seekervault.operations.standingText
+import io.github.brrenat.seekervault.proposals.ProposalRecord
+import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.requests.commonEnvelope
 import io.github.brrenat.seekervault.transactions.transfer
 import io.github.brrenat.seekervault.ui.NetworkChip
 import io.github.brrenat.seekervault.ui.SeekerButton
@@ -80,6 +86,9 @@ fun PendingRequestsScreen(
     modifier: Modifier = Modifier,
     onReject: (RequestKey) -> Unit = {},
     inSheet: Boolean = false,
+    feedRecords: List<ProposalRecord> = emptyList(),
+    feedStanding: (ProposalRecord) -> ProposalStanding = { ProposalStanding.Expired },
+    onOpenSignal: (ProposalRecord) -> Unit = {},
 ) {
     val containerColor =
         if (inSheet) MaterialTheme.colorScheme.surfaceContainerHigh
@@ -87,8 +96,25 @@ fun PendingRequestsScreen(
     val labels = state.connections.associate { it.id to it.label }
     val shown = state.connections.filter { connectionId == null || it.id == connectionId }
     val inbox = inboxItems(state.inbox, connectionId)
+    val pending = pendingItems(state.inbox, feedRecords, feedStanding, connectionId)
+    val relevantSignals = feedRecords.filter {
+        connectionId == null || it.connectionId == connectionId
+    }
+    val settledSignals =
+        relevantSignals
+            .filter { feedStanding(it) !is ProposalStanding.Open }
+            .sortedWith(
+                compareByDescending<ProposalRecord> { it.proposal.updatedAt }
+                    .thenBy { it.connectionId }
+                    .thenBy { it.key.proposalId }
+            )
     val startTab =
-        if (inbox.pending.isEmpty() && inbox.toSend.isEmpty() && inbox.answered.isNotEmpty()) 1
+        if (
+            pending.isEmpty() &&
+                inbox.toSend.isEmpty() &&
+                (inbox.answered.isNotEmpty() || settledSignals.isNotEmpty())
+        )
+            1
         else 0
     var selected by rememberSaveable(startTab) { mutableIntStateOf(startTab) }
     Column(
@@ -143,7 +169,7 @@ fun PendingRequestsScreen(
                 text =
                     stringResource(
                         R.string.inbox_tab_pending,
-                        inbox.pending.size + inbox.toSend.size,
+                        pending.size + inbox.toSend.size,
                     ),
                 selected = selected == 0,
                 onClick = { selected = 0 },
@@ -151,7 +177,11 @@ fun PendingRequestsScreen(
                 modifier = Modifier.weight(1f),
             )
             RequestTab(
-                text = stringResource(R.string.inbox_tab_answered, inbox.answered.size),
+                text =
+                    stringResource(
+                        R.string.inbox_tab_answered,
+                        inbox.answered.size + settledSignals.size,
+                    ),
                 selected = selected == 1,
                 onClick = { selected = 1 },
                 containerColor = containerColor,
@@ -188,21 +218,46 @@ fun PendingRequestsScreen(
             when {
                 state.connections.isEmpty() ->
                     item { Message(R.string.inbox_no_connections, InboxTags.NO_CONNECTIONS) }
-                inbox.isEmpty() -> item { Message(R.string.inbox_empty, InboxTags.EMPTY) }
+                inbox.isEmpty() && relevantSignals.isEmpty() ->
+                    item { Message(R.string.inbox_empty, InboxTags.EMPTY) }
             }
             if (selected == 0) {
                 section(R.string.inbox_section_to_send, InboxTags.SECTION_TO_SEND, inbox.toSend) {
                     ResultItem(it, labels[it.connectionId], onOpen)
                 }
-                section(R.string.inbox_section_pending, InboxTags.SECTION_PENDING, inbox.pending) {
-                    RequestItem(
-                        request = it,
-                        source = labels[it.ref.connectionId],
-                        now = now,
-                        assessment = state.assessments[it.key],
-                        onOpen = onOpen,
-                        onReject = onReject,
-                    )
+                if (pending.isNotEmpty()) {
+                    item(key = InboxTags.SECTION_PENDING) {
+                        Text(
+                            stringResource(R.string.inbox_section_pending),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier =
+                                Modifier.padding(top = 4.dp).testTag(InboxTags.SECTION_PENDING),
+                        )
+                    }
+                }
+                items(
+                    pending,
+                    key = { "${it.namespace}/${it.connectionId}/${it.requestId}" },
+                ) { item ->
+                    when (item) {
+                        is PendingItem.Private ->
+                            RequestItem(
+                                request = item.request,
+                                source = labels[item.connectionId],
+                                now = now,
+                                assessment = state.assessments[item.request.key],
+                                onOpen = onOpen,
+                                onReject = onReject,
+                            )
+                        is PendingItem.Signal ->
+                            SignalItem(
+                                item.record,
+                                labels[item.connectionId],
+                                feedStanding(item.record),
+                                onOpenSignal,
+                            )
+                    }
                 }
             } else {
                 section(
@@ -212,7 +267,69 @@ fun PendingRequestsScreen(
                 ) {
                     ResultItem(it, labels[it.connectionId], onOpen)
                 }
+                items(
+                    settledSignals,
+                    key = { "feed/${it.connectionId}/${it.key.proposalId}" },
+                ) {
+                    SignalItem(it, labels[it.connectionId], feedStanding(it), onOpenSignal)
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun SignalItem(
+    record: ProposalRecord,
+    source: String?,
+    standing: ProposalStanding,
+    onOpen: (ProposalRecord) -> Unit,
+) {
+    SeekerCard(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        onClick = { onOpen(record) },
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Rounded.SwapHoriz,
+                contentDescription = null,
+                tint = SeekerTheme.colors.primaryText,
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(R.string.request_category_signal),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SeekerTheme.colors.primaryText,
+                    modifier =
+                        Modifier.background(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                RoundedCornerShape(8.dp),
+                            )
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                )
+                Text(
+                    record.proposal.commonEnvelope().presentation.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    stringResource(R.string.request_from_feed, source ?: record.key.serverId),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    stringResource(standingText(standing)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.Rounded.ChevronRight, contentDescription = null)
         }
     }
 }

@@ -29,6 +29,7 @@ import io.github.brrenat.seekervault.proposals.proposalFrom
 import io.github.brrenat.seekervault.proposals.proposalPlugin
 import io.github.brrenat.seekervault.proposals.proposalStanding
 import io.github.brrenat.seekervault.proposals.settled
+import io.github.brrenat.seekervault.request.v2.Request as WireRequest
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.ServerSupport
@@ -206,6 +207,14 @@ class ProposalRepository(
                 is ProposalApplied.NotAFeed -> return FeedRefresh.NotAFeed
             }
         }
+        for (message in (answer as? FeedSnapshot.Read)?.requests.orEmpty()) {
+            when (val outcome = apply(id, message)) {
+                is ProposalApplied.Stored -> applied++
+                is ProposalApplied.Unchanged -> Unit
+                is ProposalApplied.Refused -> refused += outcome.problem
+                is ProposalApplied.NotAFeed -> return FeedRefresh.NotAFeed
+            }
+        }
         return FeedRefresh.Read(applied, refused.toList(), sequence)
     }
 
@@ -252,6 +261,39 @@ class ProposalRepository(
         }
         // A refusal belongs to the revision it happened at: a higher revision is the publisher
         // saying something new, and it is judged on its own.
+        val record =
+            held?.copy(proposal = proposal, refused = null)
+                ?: ProposalRecord(connectionId = connectionId, proposal = proposal)
+        write(record, connection)
+        publish()
+        ProposalApplied.Stored(record)
+    }
+
+    /** The common envelope follows the identical revision and device-local state path. */
+    suspend fun apply(connectionId: String, message: WireRequest): ProposalApplied = locked {
+        val connection = feedConnection(connectionId) ?: return@locked ProposalApplied.NotAFeed
+        val held = stored(connection, message.identity.requestId)
+        val result =
+            proposalFrom(
+                message,
+                ProposalExpectation(
+                    serverId = connection.serverId,
+                    heldRevision = held?.proposal?.revision,
+                ),
+            )
+        val proposal =
+            when (result) {
+                is ProposalResult.Invalid -> return@locked ProposalApplied.Refused(result.problem)
+                is ProposalResult.Valid -> result.proposal
+            }
+        val known = held?.proposal
+        if (known != null && proposal.revision == known.revision) {
+            if (proposal == known) return@locked ProposalApplied.Unchanged(held)
+            val contradiction = ProposalProblem.ChangedWithoutRevision
+            write(held.copy(refused = contradiction), connection)
+            publish()
+            return@locked ProposalApplied.Refused(contradiction)
+        }
         val record =
             held?.copy(proposal = proposal, refused = null)
                 ?: ProposalRecord(connectionId = connectionId, proposal = proposal)

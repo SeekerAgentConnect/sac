@@ -172,9 +172,12 @@ func TestTheRulesReachForNothing(t *testing.T) {
 	}
 	slices.Sort(reaches)
 	expected := []string{
+		// Encoding typed common parameters for the protocol-1 proposal adapter.
+		"encoding/base64",
 		// The contract, and the two documents the rules are about.
 		"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1",
 		"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/proposal/v1",
+		"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/request/v2",
 		"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/server/v1",
 		// Comparing documents, and reading a timestamp as an instant.
 		"google.golang.org/protobuf/proto",
@@ -183,6 +186,7 @@ func TestTheRulesReachForNothing(t *testing.T) {
 		"regexp",
 		// Comparing two manifests' environments as sets (SEE-97).
 		"slices",
+		"strconv",
 		"strings",
 		"time",
 		"unicode",
@@ -282,6 +286,12 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 		"feed.proto": {
 			"server_id", "known_settings_revision",
 			"manifest", "unchanged", "settings_revision",
+			// The common snapshot and point read. They deliberately repeat the proposal methods'
+			// cursor shape while clients migrate; both are read-only views of the same rows.
+			"channel", "page_size", "page_token", "known_snapshot_sequence",
+			"requests", "next_page_token", "snapshot_sequence", "unchanged",
+			"channel", "request_id",
+			"request",
 			"channel", "page_size", "page_token", "known_snapshot_sequence",
 			"proposals", "next_page_token", "snapshot_sequence", "unchanged",
 			"channel", "proposal_id",
@@ -301,10 +311,14 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 		},
 		// What a subscriber receives (SEE-91): a sequence the gateway counted and a document a
 		// publisher published. A field here would be a field every listener on the channel sees.
-		"event.proto": {"sequence", "manifest", "proposal"},
+		"event.proto": {"sequence", "manifest", "proposal", "request"},
 		"publish.proto": {
 			"manifest",
 			"status", "settings_revision",
+			"request",
+			"status", "revision", "snapshot_sequence",
+			"request_id", "revision",
+			"status", "request", "snapshot_sequence",
 			"proposal",
 			"status", "revision", "snapshot_sequence",
 			"proposal_id", "revision",
@@ -373,11 +387,15 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 	}{
 		{"the read listener", read, []string{
 			gatewayv1connect.PublisherServicePublishManifestProcedure,
+			gatewayv1connect.PublisherServicePublishRequestProcedure,
+			gatewayv1connect.PublisherServiceCancelRequestProcedure,
 			gatewayv1connect.PublisherServicePublishProposalProcedure,
 			gatewayv1connect.PublisherServiceCancelProposalProcedure,
 		}},
 		{"the publisher listener", publish, []string{
 			gatewayv1connect.FeedServiceGetServerManifestProcedure,
+			gatewayv1connect.FeedServiceListRequestsProcedure,
+			gatewayv1connect.FeedServiceGetRequestProcedure,
 			gatewayv1connect.FeedServiceListProposalsProcedure,
 			gatewayv1connect.FeedServiceGetProposalProcedure,
 			gatewayv1connect.FeedServiceGetFeedTopicsProcedure,

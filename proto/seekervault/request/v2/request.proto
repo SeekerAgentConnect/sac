@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+// The common developer request contract (SEE-108).
+//
+// A Request is the immutable, source-authored half of work shown to an owner. The same envelope
+// is used for a request addressed to one paired phone and for a signal broadcast to a feed. The
+// audience and result policy say which adapter carries it; they do not change what the action
+// means or how the app reviews it.
+//
+// Owner-entered values, a selected wallet, a decision, prepared bytes and execution results are
+// deliberately not fields of this message. For a private audience those values may be returned to
+// the authenticated originating server by its request lifecycle. For a feed they stay on the
+// device forever: a broadcast document is identical for every subscriber.
+package seekervault.request.v2;
+
+import "google/protobuf/timestamp.proto";
+
+// Version 1 is the first common envelope contract. It is explicit on every document so a client
+// can keep an unknown request readable and dismissible without trying to execute it.
+message Request {
+  uint32 contract_version = 1;
+  RequestIdentity identity = 2;
+  RequestLifecycle lifecycle = 3;
+  Presentation presentation = 4;
+  ActionCapability action = 5;
+  repeated OwnerInput owner_inputs = 6;
+  Audience audience = 7;
+  ResultHandling result_handling = 8;
+}
+
+// Identity is scoped to the source that created it. request_id is stable across revisions; source
+// and scope prevent two servers, or a private queue and a feed, from colliding on the phone.
+message RequestIdentity {
+  string source_id = 1;
+  string scope = 2;
+  string request_id = 3;
+}
+
+message RequestLifecycle {
+  uint64 revision = 1;
+  RequestStatus status = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+// This is the source-authored lifecycle only. A feed request never becomes completed because one
+// subscriber acted: each subscriber's dismissal, execution and outcome are device-local state.
+enum RequestStatus {
+  REQUEST_STATUS_UNSPECIFIED = 0;
+  REQUEST_STATUS_OPEN = 1;
+  REQUEST_STATUS_CANCELLED = 2;
+  // Direct adapters expose their existing durable lifecycle through the same envelope. Feed
+  // adapters refuse these states: subscriber-local execution never changes a broadcast document.
+  REQUEST_STATUS_PROCESSING = 3;
+  REQUEST_STATUS_SUBMITTED = 4;
+  REQUEST_STATUS_CONFIRMED = 5;
+  REQUEST_STATUS_COMPLETED = 6;
+  REQUEST_STATUS_REJECTED = 7;
+  REQUEST_STATUS_EXPIRED = 8;
+  REQUEST_STATUS_FAILED = 9;
+  REQUEST_STATUS_UNKNOWN = 10;
+}
+
+// Presentation is unverified source text. Signal is a small category label, not an action kind.
+message Presentation {
+  string title = 1;
+  string description = 2;
+  PresentationCategory category = 3;
+}
+
+enum PresentationCategory {
+  PRESENTATION_CATEGORY_UNSPECIFIED = 0;
+  PRESENTATION_CATEGORY_REQUEST = 1;
+  PRESENTATION_CATEGORY_SIGNAL = 2;
+}
+
+// A capability is versioned independently of the envelope. Core carries its bounded parameters;
+// code compiled into the client interprets and verifies them. plugin_id is a compatibility claim,
+// never a way to download or select code.
+message ActionCapability {
+  string capability_id = 1;
+  uint32 capability_version = 2;
+  string plugin_id = 3;
+  repeated Value parameters = 4;
+}
+
+// A bounded typed value. Integer quantities are decimal strings so the full unsigned 64-bit range
+// survives JSON and Kotlin. Values are source-authored claims until verified from prepared bytes.
+message Value {
+  string key = 1;
+  oneof value {
+    string text = 2;
+    string integer = 3;
+    bool flag = 4;
+    bytes opaque = 5;
+  }
+}
+
+// A declarative value the owner may choose locally using controls already compiled into the app.
+// It contains the field's shape and bounds, never the owner's answer.
+message OwnerInput {
+  string key = 1;
+  string label = 2;
+  OwnerInputKind kind = 3;
+  bool required = 4;
+  string minimum = 5;
+  string maximum = 6;
+  repeated InputOption options = 7;
+  string help = 8;
+}
+
+enum OwnerInputKind {
+  OWNER_INPUT_KIND_UNSPECIFIED = 0;
+  OWNER_INPUT_KIND_AMOUNT = 1;
+  OWNER_INPUT_KIND_COUNT = 2;
+  OWNER_INPUT_KIND_CHOICE = 3;
+}
+
+message InputOption {
+  string value = 1;
+  string label = 2;
+}
+
+message Audience {
+  oneof audience {
+    PrivateAudience private = 1;
+    FeedAudience feed = 2;
+  }
+}
+
+// The authenticated direct adapter resolves this opaque recipient to its paired connection. It is
+// never valid in a broadcast document.
+message PrivateAudience {
+  string recipient_id = 1;
+}
+
+message FeedAudience {
+  string channel = 1;
+}
+
+message ResultHandling {
+  ResultMode mode = 1;
+}
+
+enum ResultMode {
+  RESULT_MODE_UNSPECIFIED = 0;
+  // The owner's decision and outcome remain on their device. Required for a feed audience.
+  RESULT_MODE_DEVICE_LOCAL = 1;
+  // The private adapter returns decisions/outcomes only to the authenticated originating server.
+  RESULT_MODE_RETURN_TO_ORIGIN = 2;
+}

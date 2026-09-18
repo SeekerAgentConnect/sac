@@ -76,7 +76,7 @@ func TestCreateSendsTheStatementAndAnIdempotencyKey(t *testing.T) {
 	if err := run(arguments, stdout, messages); err != nil {
 		t.Fatal(err)
 	}
-	if held.method != http.MethodPost || held.path != "/v1/signals" {
+	if held.method != http.MethodPost || held.path != "/v1/requests" {
 		t.Fatalf("%s %s", held.method, held.path)
 	}
 	if held.token != "Bearer "+token {
@@ -176,12 +176,12 @@ func TestEveryCommandIsOneCall(t *testing.T) {
 		path      string
 	}{
 		{[]string{"status"}, http.MethodGet, "/v1/status"},
-		{[]string{"list"}, http.MethodGet, "/v1/signals"},
-		{[]string{"show", id}, http.MethodGet, "/v1/signals/" + id},
-		{[]string{"cancel", id}, http.MethodPost, "/v1/signals/" + id + "/cancel"},
-		{[]string{"retry", id}, http.MethodPost, "/v1/signals/" + id + "/retry"},
+		{[]string{"list"}, http.MethodGet, "/v1/requests"},
+		{[]string{"show", id}, http.MethodGet, "/v1/requests/" + id},
+		{[]string{"cancel", id}, http.MethodPost, "/v1/requests/" + id + "/cancel"},
+		{[]string{"retry", id}, http.MethodPost, "/v1/requests/" + id + "/retry"},
 		{append([]string{"update", "--in", "1h"}, append(swapTerms, id)...), http.MethodPut,
-			"/v1/signals/" + id},
+			"/v1/requests/" + id},
 		// The two a template that discovers its own signals has (SEE-96). They are the same kind
 		// of thing as the rest: one call, no privileged path.
 		{[]string{"discovery"}, http.MethodGet, "/v1/discovery"},

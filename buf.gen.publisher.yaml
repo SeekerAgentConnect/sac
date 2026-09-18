@@ -2,8 +2,8 @@ version: v2
 clean: true
 # Go for the publisher templates (SEE-95, SEE-96, docs/wiki/copytrading-template.md). A third
 # template, beside buf.gen.yaml and buf.gen.go.yaml, because a publisher speaks a third subset of
-# the protocol: it writes manifests and proposals through the gateway's publisher API, and it never
-# reads a feed, never serves one, and has never heard of a durable request or a live command.
+# the protocol: it writes manifests and common requests through the gateway's publisher API, and it never
+# reads a feed, never serves one, and has never heard of a durable private lifecycle or a live command.
 #
 # **No feed client is generated here**, and that is the boundary rather than a note about it: the
 # template cannot read a feed because no feed client is compiled for it, which is the same argument
@@ -37,4 +37,5 @@ inputs:
       - proto/seekervault/gateway/v1/publish.proto
       - proto/seekervault/gateway/v1/problem.proto
       - proto/seekervault/proposal/v1/proposal.proto
+      - proto/seekervault/request/v2/request.proto
       - proto/seekervault/server/v1/manifest.proto

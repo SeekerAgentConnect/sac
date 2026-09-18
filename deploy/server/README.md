@@ -582,7 +582,7 @@ COPY_JSON=$(COPYTRADING_API_TOKEN=$(sudo cat secrets/copytrading/api-token) \
   --term output_decimals=9 --term output_symbol=SOL \
   --term max_slippage_bps=50)
 printf '%s\n' "$COPY_JSON" | jq .
-PROPOSAL_ID=$(printf '%s\n' "$COPY_JSON" | jq -r .signal.proposal_id)
+PROPOSAL_ID=$(printf '%s\n' "$COPY_JSON" | jq -r .request.identity.request_id)
 ```
 
 The expected publication state is `published`. The programmatic path is the host-loopback API and
@@ -597,7 +597,7 @@ EXPIRES_AT=$(date -u -d '+2 hours' '+%Y-%m-%dT%H:%M:%SZ')
 IDEMPOTENCY_KEY="deployment-check-$(date -u '+%Y%m%dT%H%M%SZ')"
 API_RESPONSE=$(mktemp)
 curl -sS -o "$API_RESPONSE" -w 'API HTTP %{http_code}\n' \
-  http://127.0.0.1:8092/v1/signals \
+  http://127.0.0.1:8092/v1/requests \
   -H "Authorization: Bearer $COPYTRADING_TOKEN" \
   -H 'Content-Type: application/json' \
   -H "Idempotency-Key: $IDEMPOTENCY_KEY" \
@@ -608,7 +608,7 @@ rm -f "$API_RESPONSE"
 ```
 
 Expect HTTP 201 when it was stored and published (202 means stored locally and pending gateway
-delivery). Retrying the identical body with the identical key returns the same signal; reusing the
+delivery). Retrying the identical body with the identical key returns the same request; reusing the
 key for different terms is refused.
 
 Read through the public gateway, not through the demo:

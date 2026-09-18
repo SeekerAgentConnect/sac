@@ -13,7 +13,7 @@
 // (docs/security.md).
 //
 // The publisher API is a separate service on a separate listener (publish.proto). That separation
-// is deployed, not just declared: a read port serves these five methods and no handler that could
+// is deployed, not just declared: a read port serves only these methods and no handler that could
 // change anything, so no routing mistake can turn a read endpoint into a write one.
 //
 // **Nothing about a subscriber may ever appear in this file.** There is no field for a wallet, a
@@ -54,6 +54,11 @@ const (
 	// FeedServiceGetServerManifestProcedure is the fully-qualified name of the FeedService's
 	// GetServerManifest RPC.
 	FeedServiceGetServerManifestProcedure = "/seekervault.gateway.v1.FeedService/GetServerManifest"
+	// FeedServiceListRequestsProcedure is the fully-qualified name of the FeedService's ListRequests
+	// RPC.
+	FeedServiceListRequestsProcedure = "/seekervault.gateway.v1.FeedService/ListRequests"
+	// FeedServiceGetRequestProcedure is the fully-qualified name of the FeedService's GetRequest RPC.
+	FeedServiceGetRequestProcedure = "/seekervault.gateway.v1.FeedService/GetRequest"
 	// FeedServiceListProposalsProcedure is the fully-qualified name of the FeedService's ListProposals
 	// RPC.
 	FeedServiceListProposalsProcedure = "/seekervault.gateway.v1.FeedService/ListProposals"
@@ -74,6 +79,10 @@ type FeedServiceClient interface {
 	// validates all of it against the reference it added the feed from before storing any of it
 	// (SEE-88), so this method is asked, never believed.
 	GetServerManifest(context.Context, *connect.Request[v1.GetServerManifestRequest]) (*connect.Response[v1.GetServerManifestResponse], error)
+	// The common request reads. The proposal methods below remain compatibility adapters for
+	// protocol-1 clients; both views are backed by the same document and snapshot sequence.
+	ListRequests(context.Context, *connect.Request[v1.ListRequestsRequest]) (*connect.Response[v1.ListRequestsResponse], error)
+	GetRequest(context.Context, *connect.Request[v1.GetRequestRequest]) (*connect.Response[v1.GetRequestResponse], error)
 	// A page of the channel's current proposals. Every proposal the publisher has open, and the ones
 	// it has cancelled or let expire while the gateway still keeps them, are here: expiry and
 	// cancellation are facts inside a document rather than reasons to hide it.
@@ -128,6 +137,18 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("GetServerManifest")),
 			connect.WithClientOptions(opts...),
 		),
+		listRequests: connect.NewClient[v1.ListRequestsRequest, v1.ListRequestsResponse](
+			httpClient,
+			baseURL+FeedServiceListRequestsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("ListRequests")),
+			connect.WithClientOptions(opts...),
+		),
+		getRequest: connect.NewClient[v1.GetRequestRequest, v1.GetRequestResponse](
+			httpClient,
+			baseURL+FeedServiceGetRequestProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("GetRequest")),
+			connect.WithClientOptions(opts...),
+		),
 		listProposals: connect.NewClient[v1.ListProposalsRequest, v1.ListProposalsResponse](
 			httpClient,
 			baseURL+FeedServiceListProposalsProcedure,
@@ -158,6 +179,8 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 // feedServiceClient implements FeedServiceClient.
 type feedServiceClient struct {
 	getServerManifest *connect.Client[v1.GetServerManifestRequest, v1.GetServerManifestResponse]
+	listRequests      *connect.Client[v1.ListRequestsRequest, v1.ListRequestsResponse]
+	getRequest        *connect.Client[v1.GetRequestRequest, v1.GetRequestResponse]
 	listProposals     *connect.Client[v1.ListProposalsRequest, v1.ListProposalsResponse]
 	getProposal       *connect.Client[v1.GetProposalRequest, v1.GetProposalResponse]
 	getStreamTicket   *connect.Client[v1.GetStreamTicketRequest, v1.GetStreamTicketResponse]
@@ -167,6 +190,16 @@ type feedServiceClient struct {
 // GetServerManifest calls seekervault.gateway.v1.FeedService.GetServerManifest.
 func (c *feedServiceClient) GetServerManifest(ctx context.Context, req *connect.Request[v1.GetServerManifestRequest]) (*connect.Response[v1.GetServerManifestResponse], error) {
 	return c.getServerManifest.CallUnary(ctx, req)
+}
+
+// ListRequests calls seekervault.gateway.v1.FeedService.ListRequests.
+func (c *feedServiceClient) ListRequests(ctx context.Context, req *connect.Request[v1.ListRequestsRequest]) (*connect.Response[v1.ListRequestsResponse], error) {
+	return c.listRequests.CallUnary(ctx, req)
+}
+
+// GetRequest calls seekervault.gateway.v1.FeedService.GetRequest.
+func (c *feedServiceClient) GetRequest(ctx context.Context, req *connect.Request[v1.GetRequestRequest]) (*connect.Response[v1.GetRequestResponse], error) {
+	return c.getRequest.CallUnary(ctx, req)
 }
 
 // ListProposals calls seekervault.gateway.v1.FeedService.ListProposals.
@@ -196,6 +229,10 @@ type FeedServiceHandler interface {
 	// validates all of it against the reference it added the feed from before storing any of it
 	// (SEE-88), so this method is asked, never believed.
 	GetServerManifest(context.Context, *connect.Request[v1.GetServerManifestRequest]) (*connect.Response[v1.GetServerManifestResponse], error)
+	// The common request reads. The proposal methods below remain compatibility adapters for
+	// protocol-1 clients; both views are backed by the same document and snapshot sequence.
+	ListRequests(context.Context, *connect.Request[v1.ListRequestsRequest]) (*connect.Response[v1.ListRequestsResponse], error)
+	GetRequest(context.Context, *connect.Request[v1.GetRequestRequest]) (*connect.Response[v1.GetRequestResponse], error)
 	// A page of the channel's current proposals. Every proposal the publisher has open, and the ones
 	// it has cancelled or let expire while the gateway still keeps them, are here: expiry and
 	// cancellation are facts inside a document rather than reasons to hide it.
@@ -246,6 +283,18 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("GetServerManifest")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceListRequestsHandler := connect.NewUnaryHandler(
+		FeedServiceListRequestsProcedure,
+		svc.ListRequests,
+		connect.WithSchema(feedServiceMethods.ByName("ListRequests")),
+		connect.WithHandlerOptions(opts...),
+	)
+	feedServiceGetRequestHandler := connect.NewUnaryHandler(
+		FeedServiceGetRequestProcedure,
+		svc.GetRequest,
+		connect.WithSchema(feedServiceMethods.ByName("GetRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
 	feedServiceListProposalsHandler := connect.NewUnaryHandler(
 		FeedServiceListProposalsProcedure,
 		svc.ListProposals,
@@ -274,6 +323,10 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		switch r.URL.Path {
 		case FeedServiceGetServerManifestProcedure:
 			feedServiceGetServerManifestHandler.ServeHTTP(w, r)
+		case FeedServiceListRequestsProcedure:
+			feedServiceListRequestsHandler.ServeHTTP(w, r)
+		case FeedServiceGetRequestProcedure:
+			feedServiceGetRequestHandler.ServeHTTP(w, r)
 		case FeedServiceListProposalsProcedure:
 			feedServiceListProposalsHandler.ServeHTTP(w, r)
 		case FeedServiceGetProposalProcedure:
@@ -293,6 +346,14 @@ type UnimplementedFeedServiceHandler struct{}
 
 func (UnimplementedFeedServiceHandler) GetServerManifest(context.Context, *connect.Request[v1.GetServerManifestRequest]) (*connect.Response[v1.GetServerManifestResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.GetServerManifest is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) ListRequests(context.Context, *connect.Request[v1.ListRequestsRequest]) (*connect.Response[v1.ListRequestsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.ListRequests is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) GetRequest(context.Context, *connect.Request[v1.GetRequestRequest]) (*connect.Response[v1.GetRequestResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.GetRequest is not implemented"))
 }
 
 func (UnimplementedFeedServiceHandler) ListProposals(context.Context, *connect.Request[v1.ListProposalsRequest]) (*connect.Response[v1.ListProposalsResponse], error) {

@@ -56,6 +56,12 @@ const (
 	// PublisherServicePublishManifestProcedure is the fully-qualified name of the PublisherService's
 	// PublishManifest RPC.
 	PublisherServicePublishManifestProcedure = "/seekervault.gateway.v1.PublisherService/PublishManifest"
+	// PublisherServicePublishRequestProcedure is the fully-qualified name of the PublisherService's
+	// PublishRequest RPC.
+	PublisherServicePublishRequestProcedure = "/seekervault.gateway.v1.PublisherService/PublishRequest"
+	// PublisherServiceCancelRequestProcedure is the fully-qualified name of the PublisherService's
+	// CancelRequest RPC.
+	PublisherServiceCancelRequestProcedure = "/seekervault.gateway.v1.PublisherService/CancelRequest"
 	// PublisherServicePublishProposalProcedure is the fully-qualified name of the PublisherService's
 	// PublishProposal RPC.
 	PublisherServicePublishProposalProcedure = "/seekervault.gateway.v1.PublisherService/PublishProposal"
@@ -70,6 +76,11 @@ type PublisherServiceClient interface {
 	// naming this gateway's own origin and the caller's own channel: a direct manifest carries a
 	// URL, and the gateway refuses to relay one.
 	PublishManifest(context.Context, *connect.Request[v1.PublishManifestRequest]) (*connect.Response[v1.PublishManifestResponse], error)
+	// Create or update one request through the common developer contract. A feed request must use
+	// the caller's own channel and device-local result handling. PublishProposal remains below as a
+	// wire-compatible adapter for publishers built before the common contract.
+	PublishRequest(context.Context, *connect.Request[v1.PublishRequestRequest]) (*connect.Response[v1.PublishRequestResponse], error)
+	CancelRequest(context.Context, *connect.Request[v1.CancelRequestRequest]) (*connect.Response[v1.CancelRequestResponse], error)
 	// Create or update one proposal. The document is the publisher's whole current statement about
 	// it — the gateway stores what it validated and never merges a partial one.
 	PublishProposal(context.Context, *connect.Request[v1.PublishProposalRequest]) (*connect.Response[v1.PublishProposalResponse], error)
@@ -96,6 +107,18 @@ func NewPublisherServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(publisherServiceMethods.ByName("PublishManifest")),
 			connect.WithClientOptions(opts...),
 		),
+		publishRequest: connect.NewClient[v1.PublishRequestRequest, v1.PublishRequestResponse](
+			httpClient,
+			baseURL+PublisherServicePublishRequestProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("PublishRequest")),
+			connect.WithClientOptions(opts...),
+		),
+		cancelRequest: connect.NewClient[v1.CancelRequestRequest, v1.CancelRequestResponse](
+			httpClient,
+			baseURL+PublisherServiceCancelRequestProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("CancelRequest")),
+			connect.WithClientOptions(opts...),
+		),
 		publishProposal: connect.NewClient[v1.PublishProposalRequest, v1.PublishProposalResponse](
 			httpClient,
 			baseURL+PublisherServicePublishProposalProcedure,
@@ -114,6 +137,8 @@ func NewPublisherServiceClient(httpClient connect.HTTPClient, baseURL string, op
 // publisherServiceClient implements PublisherServiceClient.
 type publisherServiceClient struct {
 	publishManifest *connect.Client[v1.PublishManifestRequest, v1.PublishManifestResponse]
+	publishRequest  *connect.Client[v1.PublishRequestRequest, v1.PublishRequestResponse]
+	cancelRequest   *connect.Client[v1.CancelRequestRequest, v1.CancelRequestResponse]
 	publishProposal *connect.Client[v1.PublishProposalRequest, v1.PublishProposalResponse]
 	cancelProposal  *connect.Client[v1.CancelProposalRequest, v1.CancelProposalResponse]
 }
@@ -121,6 +146,16 @@ type publisherServiceClient struct {
 // PublishManifest calls seekervault.gateway.v1.PublisherService.PublishManifest.
 func (c *publisherServiceClient) PublishManifest(ctx context.Context, req *connect.Request[v1.PublishManifestRequest]) (*connect.Response[v1.PublishManifestResponse], error) {
 	return c.publishManifest.CallUnary(ctx, req)
+}
+
+// PublishRequest calls seekervault.gateway.v1.PublisherService.PublishRequest.
+func (c *publisherServiceClient) PublishRequest(ctx context.Context, req *connect.Request[v1.PublishRequestRequest]) (*connect.Response[v1.PublishRequestResponse], error) {
+	return c.publishRequest.CallUnary(ctx, req)
+}
+
+// CancelRequest calls seekervault.gateway.v1.PublisherService.CancelRequest.
+func (c *publisherServiceClient) CancelRequest(ctx context.Context, req *connect.Request[v1.CancelRequestRequest]) (*connect.Response[v1.CancelRequestResponse], error) {
+	return c.cancelRequest.CallUnary(ctx, req)
 }
 
 // PublishProposal calls seekervault.gateway.v1.PublisherService.PublishProposal.
@@ -140,6 +175,11 @@ type PublisherServiceHandler interface {
 	// naming this gateway's own origin and the caller's own channel: a direct manifest carries a
 	// URL, and the gateway refuses to relay one.
 	PublishManifest(context.Context, *connect.Request[v1.PublishManifestRequest]) (*connect.Response[v1.PublishManifestResponse], error)
+	// Create or update one request through the common developer contract. A feed request must use
+	// the caller's own channel and device-local result handling. PublishProposal remains below as a
+	// wire-compatible adapter for publishers built before the common contract.
+	PublishRequest(context.Context, *connect.Request[v1.PublishRequestRequest]) (*connect.Response[v1.PublishRequestResponse], error)
+	CancelRequest(context.Context, *connect.Request[v1.CancelRequestRequest]) (*connect.Response[v1.CancelRequestResponse], error)
 	// Create or update one proposal. The document is the publisher's whole current statement about
 	// it — the gateway stores what it validated and never merges a partial one.
 	PublishProposal(context.Context, *connect.Request[v1.PublishProposalRequest]) (*connect.Response[v1.PublishProposalResponse], error)
@@ -162,6 +202,18 @@ func NewPublisherServiceHandler(svc PublisherServiceHandler, opts ...connect.Han
 		connect.WithSchema(publisherServiceMethods.ByName("PublishManifest")),
 		connect.WithHandlerOptions(opts...),
 	)
+	publisherServicePublishRequestHandler := connect.NewUnaryHandler(
+		PublisherServicePublishRequestProcedure,
+		svc.PublishRequest,
+		connect.WithSchema(publisherServiceMethods.ByName("PublishRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	publisherServiceCancelRequestHandler := connect.NewUnaryHandler(
+		PublisherServiceCancelRequestProcedure,
+		svc.CancelRequest,
+		connect.WithSchema(publisherServiceMethods.ByName("CancelRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
 	publisherServicePublishProposalHandler := connect.NewUnaryHandler(
 		PublisherServicePublishProposalProcedure,
 		svc.PublishProposal,
@@ -178,6 +230,10 @@ func NewPublisherServiceHandler(svc PublisherServiceHandler, opts ...connect.Han
 		switch r.URL.Path {
 		case PublisherServicePublishManifestProcedure:
 			publisherServicePublishManifestHandler.ServeHTTP(w, r)
+		case PublisherServicePublishRequestProcedure:
+			publisherServicePublishRequestHandler.ServeHTTP(w, r)
+		case PublisherServiceCancelRequestProcedure:
+			publisherServiceCancelRequestHandler.ServeHTTP(w, r)
 		case PublisherServicePublishProposalProcedure:
 			publisherServicePublishProposalHandler.ServeHTTP(w, r)
 		case PublisherServiceCancelProposalProcedure:
@@ -193,6 +249,14 @@ type UnimplementedPublisherServiceHandler struct{}
 
 func (UnimplementedPublisherServiceHandler) PublishManifest(context.Context, *connect.Request[v1.PublishManifestRequest]) (*connect.Response[v1.PublishManifestResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.PublishManifest is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) PublishRequest(context.Context, *connect.Request[v1.PublishRequestRequest]) (*connect.Response[v1.PublishRequestResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.PublishRequest is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) CancelRequest(context.Context, *connect.Request[v1.CancelRequestRequest]) (*connect.Response[v1.CancelRequestResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.CancelRequest is not implemented"))
 }
 
 func (UnimplementedPublisherServiceHandler) PublishProposal(context.Context, *connect.Request[v1.PublishProposalRequest]) (*connect.Response[v1.PublishProposalResponse], error) {

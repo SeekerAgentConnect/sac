@@ -38,6 +38,34 @@ public class FeedServiceClient(
 
 
   /**
+   *  The common request reads. The proposal methods below remain compatibility adapters for
+   *  protocol-1 clients; both views are backed by the same document and snapshot sequence.
+   */
+  override suspend fun listRequests(request: ListRequestsRequest, headers: Headers): ResponseMessage<ListRequestsResponse> = client.unary(
+    request,
+    headers,
+    MethodSpec(
+    "seekervault.gateway.v1.FeedService/ListRequests",
+      io.github.brrenat.seekervault.gateway.v1.ListRequestsRequest::class,
+      io.github.brrenat.seekervault.gateway.v1.ListRequestsResponse::class,
+      StreamType.UNARY,
+    ),
+  )
+
+
+  override suspend fun getRequest(request: GetRequestRequest, headers: Headers): ResponseMessage<GetRequestResponse> = client.unary(
+    request,
+    headers,
+    MethodSpec(
+    "seekervault.gateway.v1.FeedService/GetRequest",
+      io.github.brrenat.seekervault.gateway.v1.GetRequestRequest::class,
+      io.github.brrenat.seekervault.gateway.v1.GetRequestResponse::class,
+      StreamType.UNARY,
+    ),
+  )
+
+
+  /**
    *  A page of the channel's current proposals. Every proposal the publisher has open, and the ones
    *  it has cancelled or let expire while the gateway still keeps them, are here: expiry and
    *  cancellation are facts inside a document rather than reasons to hide it.

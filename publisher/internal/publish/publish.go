@@ -30,6 +30,7 @@ import (
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/gateway/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/gateway/v1/gatewayv1connect"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/proposal/v1"
+	requestv2 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/server/v1"
 )
 
@@ -133,6 +134,34 @@ func (g *Gateway) Manifest(ctx context.Context, document *serverv1.ServerManifes
 		carrying(g.credential, &gatewayv1.PublishManifestRequest{Manifest: document}))
 	if err != nil {
 		return "", classify(err)
+	}
+	return statusOf(answer.Msg.GetStatus()), nil
+}
+
+// Request publishes through the common contract. Proposal remains as a compatibility method for
+// callers built against the Stage 7.1 template, but the shipped drainer uses this operation.
+func (g *Gateway) Request(ctx context.Context, document *requestv2.Request) (Status, error) {
+	ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	defer cancel()
+	answer, err := g.client.PublishRequest(ctx,
+		carrying(g.credential, &gatewayv1.PublishRequestRequest{Request: document}))
+	if err != nil {
+		return "", classify(err)
+	}
+	return statusOf(answer.Msg.GetStatus()), nil
+}
+
+func (g *Gateway) WithdrawRequest(ctx context.Context, requestID string, revision uint64) (Status, error) {
+	ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	defer cancel()
+	answer, err := g.client.CancelRequest(ctx,
+		carrying(g.credential, &gatewayv1.CancelRequestRequest{RequestId: requestID, Revision: revision}))
+	if err != nil {
+		refusal := classify(err)
+		if refusal.Problem == "no_such_proposal" {
+			return Absent, nil
+		}
+		return "", refusal
 	}
 	return statusOf(answer.Msg.GetStatus()), nil
 }

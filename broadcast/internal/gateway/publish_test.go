@@ -12,9 +12,56 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/config"
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/proposal/v1"
+	requestv2 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/rules"
 )
+
+func TestAProtocolOneRowMigratesForwardWithoutARevisionConflictOrDowngrade(t *testing.T) {
+	gateway := newGateway(t)
+	publisher := gateway.publisher(gateway.register(publisherA))
+	legacy := proposalOf(publisherA, proposalA, 1)
+	gateway.publishProposal(publisher, legacy)
+
+	common := rules.RequestFromProposal(legacy)
+	common.Presentation.Title = "Swap SOL for USDC"
+	common.OwnerInputs = []*requestv2.OwnerInput{{
+		Key: "input_amount", Label: "Amount",
+		Kind: requestv2.OwnerInputKind_OWNER_INPUT_KIND_AMOUNT, Required: true, Minimum: "1",
+	}}
+	answer, err := publisher.PublishRequest(context.Background(),
+		connect.NewRequest(&gatewayv1.PublishRequestRequest{Request: common}))
+	if err != nil || answer.Msg.GetStatus() != gatewayv1.PublishStatus_PUBLISH_STATUS_UNCHANGED {
+		t.Fatalf("same legacy revision did not migrate compatibly: answer=%v err=%v", answer, err)
+	}
+	// The old row stays byte-stable at the same revision, so a phone cannot see changed terms under
+	// one revision. Its common read is the documented protocol-1 adapter.
+	held, err := gateway.feed.GetRequest(context.Background(), connect.NewRequest(
+		&gatewayv1.GetRequestRequest{Channel: rules.ChannelFor(publisherA), RequestId: proposalA}))
+	if err != nil || held.Msg.GetRequest().GetPresentation().GetTitle() != "swap" ||
+		len(held.Msg.GetRequest().GetOwnerInputs()) != 0 {
+		t.Fatalf("legacy row changed under revision one: held=%v err=%v", held, err)
+	}
+
+	common.Lifecycle.Revision = 2
+	common.Lifecycle.UpdatedAt = timestamppb.New(published.Add(time.Hour))
+	answer, err = publisher.PublishRequest(context.Background(),
+		connect.NewRequest(&gatewayv1.PublishRequestRequest{Request: common}))
+	if err != nil || answer.Msg.GetStatus() != gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
+		t.Fatalf("higher common revision was not stored: answer=%v err=%v", answer, err)
+	}
+	held, err = gateway.feed.GetRequest(context.Background(), connect.NewRequest(
+		&gatewayv1.GetRequestRequest{Channel: rules.ChannelFor(publisherA), RequestId: proposalA}))
+	if err != nil || held.Msg.GetRequest().GetPresentation().GetTitle() != "Swap SOL for USDC" ||
+		len(held.Msg.GetRequest().GetOwnerInputs()) != 1 {
+		t.Fatalf("common revision was not preserved: held=%v err=%v", held, err)
+	}
+
+	_, err = publisher.PublishProposal(context.Background(), connect.NewRequest(
+		&gatewayv1.PublishProposalRequest{Proposal: proposalOf(publisherA, proposalA, 3)}))
+	refused(t, err, connect.CodeInvalidArgument,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_PROTOCOL)
+}
 
 // The acceptance this whole service is for: two publishers publish to their own channels, and
 // neither can touch the other's settings or proposals. Nothing about it depends on them behaving —

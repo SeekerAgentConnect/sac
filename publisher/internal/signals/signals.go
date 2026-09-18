@@ -36,6 +36,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/proposal/v1"
+	requestv2 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/request/v2"
 )
 
 // Status is whether the publisher still stands behind a signal. It is the document's own
@@ -301,6 +302,95 @@ func Proposal(serverID string, signal Signal) *proposalv1.Proposal {
 	}
 }
 
+// Request is the common developer document a signal becomes. Signal is presentation — the small
+// label in Presentation.category — while the action, inputs, audience and result policy are the
+// same extensible contract a private adapter consumes. No owner's answer is represented here.
+func Request(serverID string, signal Signal) *requestv2.Request {
+	keys := make([]string, 0, len(signal.Terms))
+	for key := range signal.Terms {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parameters := make([]*requestv2.Value, 0, len(keys))
+	for _, key := range keys {
+		parameters = append(parameters, &requestv2.Value{
+			Key: key, Value: &requestv2.Value_Text{Text: signal.Terms[key]},
+		})
+	}
+	status := requestv2.RequestStatus_REQUEST_STATUS_OPEN
+	if signal.Status == Cancelled {
+		status = requestv2.RequestStatus_REQUEST_STATUS_CANCELLED
+	}
+	return &requestv2.Request{
+		ContractVersion: 1,
+		Identity: &requestv2.RequestIdentity{
+			SourceId: serverID, Scope: ChannelFor(serverID), RequestId: signal.ProposalID,
+		},
+		Lifecycle: &requestv2.RequestLifecycle{
+			Revision: signal.Revision, Status: status,
+			CreatedAt: timestamppb.New(signal.CreatedAt.UTC().Truncate(time.Second)),
+			UpdatedAt: timestamppb.New(signal.UpdatedAt.UTC().Truncate(time.Second)),
+			ExpiresAt: timestamppb.New(signal.ExpiresAt.UTC().Truncate(time.Second)),
+		},
+		Presentation: &requestv2.Presentation{
+			Title: title(signal.Operation), Description: signal.Note,
+			Category: requestv2.PresentationCategory_PRESENTATION_CATEGORY_SIGNAL,
+		},
+		Action: &requestv2.ActionCapability{
+			CapabilityId: signal.Operation, CapabilityVersion: 1,
+			PluginId: signal.PluginID, Parameters: parameters,
+		},
+		OwnerInputs: ownerInputs(signal),
+		Audience: &requestv2.Audience{Audience: &requestv2.Audience_Feed{
+			Feed: &requestv2.FeedAudience{Channel: ChannelFor(serverID)},
+		}},
+		ResultHandling: &requestv2.ResultHandling{Mode: requestv2.ResultMode_RESULT_MODE_DEVICE_LOCAL},
+	}
+}
+
+func title(operation string) string {
+	switch operation {
+	case "swap":
+		return "Swap"
+	case "prediction":
+		return "Prediction market"
+	default:
+		return operation
+	}
+}
+
+func ownerInputs(signal Signal) []*requestv2.OwnerInput {
+	switch signal.Operation {
+	case "swap":
+		return []*requestv2.OwnerInput{
+			{Key: "input_amount", Label: "Amount", Kind: requestv2.OwnerInputKind_OWNER_INPUT_KIND_AMOUNT,
+				Required: true, Minimum: lower(signal.Terms[LeastInput], "1"), Maximum: signal.Terms[MostInput],
+				Help: "Base units of the input mint. Kept on this device."},
+			{Key: "slippage_bps", Label: "Slippage", Kind: requestv2.OwnerInputKind_OWNER_INPUT_KIND_COUNT,
+				Required: true, Minimum: "1", Maximum: signal.Terms[MaxSlippageBps],
+				Help: "Whole basis points. Kept on this device."},
+		}
+	case "prediction":
+		return []*requestv2.OwnerInput{
+			{Key: "side", Label: "Side", Kind: requestv2.OwnerInputKind_OWNER_INPUT_KIND_CHOICE,
+				Required: true, Options: []*requestv2.InputOption{{Value: "yes", Label: "Yes"}, {Value: "no", Label: "No"}},
+				Help: "Your choice is never published."},
+			{Key: "deposit_amount", Label: "Stake", Kind: requestv2.OwnerInputKind_OWNER_INPUT_KIND_AMOUNT,
+				Required: true, Minimum: lower(signal.Terms[LeastDeposit], "1"), Maximum: signal.Terms[MostDeposit],
+				Help: "Base units of the deposit mint. Kept on this device."},
+		}
+	default:
+		return nil
+	}
+}
+
+func lower(value, fallback string) string {
+	if value == "" || value == "0" {
+		return fallback
+	}
+	return value
+}
+
 // Statement is what an idempotency key is checked against: the signal a caller asked for, with the
 // parts a template mints left out.
 //
@@ -331,9 +421,9 @@ func Statement(signal Signal) string {
 // re-post its whole state every minute without waking a single phone (SEE-92's hints go out on a
 // stored publication, and there is no stored publication).
 func Fingerprint(serverID string, signal Signal) string {
-	document := Proposal(serverID, signal)
-	document.Revision = 0
-	document.UpdatedAt = nil
+	document := Request(serverID, signal)
+	document.Lifecycle.Revision = 0
+	document.Lifecycle.UpdatedAt = nil
 	// Deterministic marshalling, because this is compared with itself across restarts and Go's
 	// default field ordering is documented as unstable.
 	bytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(document)

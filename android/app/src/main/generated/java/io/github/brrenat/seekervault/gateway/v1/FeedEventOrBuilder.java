@@ -66,5 +66,26 @@ public interface FeedEventOrBuilder extends
    */
   io.github.brrenat.seekervault.proposal.v1.Proposal getProposal();
 
+  /**
+   * <pre>
+   * The common document. Protocol-1 proposal events remain readable during migration; a
+   * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+   * </pre>
+   *
+   * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+   * @return Whether the request field is set.
+   */
+  boolean hasRequest();
+  /**
+   * <pre>
+   * The common document. Protocol-1 proposal events remain readable during migration; a
+   * protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+   * </pre>
+   *
+   * <code>.seekervault.request.v2.Request request = 4 [json_name = "request"];</code>
+   * @return The request.
+   */
+  io.github.brrenat.seekervault.request.v2.Request getRequest();
+
   public io.github.brrenat.seekervault.gateway.v1.FeedEvent.DocumentCase getDocumentCase();
 }

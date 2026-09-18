@@ -20,6 +20,7 @@ syntax = "proto3";
 package seekervault.gateway.v1;
 
 import "seekervault/proposal/v1/proposal.proto";
+import "seekervault/request/v2/request.proto";
 import "seekervault/server/v1/manifest.proto";
 
 // FeedEvent is one publication on a channel: a document the gateway accepted, as it stood when the
@@ -48,5 +49,8 @@ message FeedEvent {
     // the document with its status closed, not an absence — a phone that acted on a proposal keeps
     // its record of it for ever and has to be told what happened, not left to infer it (SEE-89).
     seekervault.proposal.v1.Proposal proposal = 3;
+    // The common document. Protocol-1 proposal events remain readable during migration; a
+    // protocol-2 publisher emits this form and all clients apply it through the same revision gate.
+    seekervault.request.v2.Request request = 4;
   }
 }

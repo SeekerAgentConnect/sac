@@ -276,13 +276,15 @@ func (d *Drainer) event(ctx context.Context, notice store.Notice) ([]byte, bool,
 			Document: &gatewayv1.FeedEvent_Manifest{Manifest: manifest.Document},
 		}
 	case store.ProposalNotice:
-		proposal, err := d.store.Proposal(ctx, notice.Channel, notice.ProposalID)
-		if err != nil || proposal == nil {
+		request, err := d.store.Request(ctx, notice.Channel, notice.ProposalID)
+		if err != nil || request == nil {
 			return nil, false, err
 		}
-		wrapper = &gatewayv1.FeedEvent{
-			Sequence: proposal.Sequence,
-			Document: &gatewayv1.FeedEvent_Proposal{Proposal: proposal.Document},
+		wrapper = &gatewayv1.FeedEvent{Sequence: request.Sequence}
+		if request.Legacy {
+			wrapper.Document = &gatewayv1.FeedEvent_Proposal{Proposal: rules.ProposalFromRequest(request.Document)}
+		} else {
+			wrapper.Document = &gatewayv1.FeedEvent_Request{Request: request.Document}
 		}
 	default:
 		return nil, false, fmt.Errorf("dispatch: unknown notice kind %q", notice.Kind)

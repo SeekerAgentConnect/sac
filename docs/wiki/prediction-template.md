@@ -187,8 +187,8 @@ in the document would add nothing it could believe.
 
 ## The API is read-only, and says so
 
-This template's signals are its own, so `POST /v1/signals`, `PUT /v1/signals/{id}` and
-`POST /v1/signals/{id}/cancel` answer **403 `written_by_discovery`** with a sentence pointing at the
+This template's signals are its own, so `POST /v1/requests`, `PUT /v1/requests/{id}` and
+`POST /v1/requests/{id}/cancel` answer **403 `written_by_discovery`** with a sentence pointing at the
 filters. A caller's signal would be undone by the next cycle, and "my signal disappeared three days
 later" is a worse answer than "no".
 
@@ -198,10 +198,10 @@ What it does serve:
 | --- | --- |
 | `GET /v1/status` | who this publisher is, whether anything is unpublished, and the last cycle |
 | `GET /v1/manifest` | the manifest and the feed reference, as published |
-| `GET /v1/signals`, `GET /v1/signals/{id}` | the proposals, and what the gateway confirmed |
+| `GET /v1/requests`, `GET /v1/requests/{id}` | the common requests, and what the gateway confirmed |
 | `GET /v1/discovery` | the filters in force, the last cycle, and every market tracked with its source link |
 | `POST /v1/discovery/poll` | run a cycle **now** rather than at the next interval |
-| `POST /v1/signals/{id}/retry` | try a refused publication again — an operator's, not an author's |
+| `POST /v1/requests/{id}/retry` | try a refused publication again — an operator's, not an author's |
 
 `publishctl` is the same client it always was: `status`, `list`, `show`, `retry`, plus `discovery`
 and `poll`. Its `create`, `update` and `cancel` get the 403, which is the honest answer.

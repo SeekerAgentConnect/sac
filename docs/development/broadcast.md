@@ -49,10 +49,13 @@ curl -sS http://127.0.0.1:8091/seekervault.gateway.v1.PublisherService/PublishMa
 and a read needs no credential at all:
 
 ```sh
-curl -sS http://127.0.0.1:8090/seekervault.gateway.v1.FeedService/ListProposals \
+curl -sS http://127.0.0.1:8090/seekervault.gateway.v1.FeedService/ListRequests \
   -H 'Content-Type: application/json' \
   -d '{"channel":"server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"}'
 ```
+
+`PublishRequest`/`CancelRequest` and `ListRequests`/`GetRequest` are the primary SEE-108
+operations. The proposal operations remain compatibility adapters over the same rows and sequence.
 
 In Docker, from `broadcast/`: `cp .env.example .env && docker compose up -d --build`, then
 `docker compose run --rm ctl register --server <uuid>`. The internet-facing overlay is a separate

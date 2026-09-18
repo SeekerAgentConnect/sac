@@ -1,13 +1,14 @@
-# A publisher template's signal API (SEE-95, SEE-96)
+# A publisher template's request API (SEE-95, SEE-96, SEE-108)
 
-How an external system publishes signals through a publisher template: a trader's script, a cron
-job, or a strategy engine that decides what to propose. It is plain JSON over HTTP, so it can be
-called with `curl` in one line and from any language without generating anything.
+How an external system creates feed-audience requests through a publisher template: a trader's
+script, a cron job, or a strategy engine that decides what to propose. It is plain JSON over HTTP,
+so it can be called with `curl` in one line, through the bundled Go SDK, or from any language.
 
-This is **not** the phone–server protocol. What a phone reads is the proposal document, through the
-shared gateway, in protobuf over Connect ([`docs/protocol.md`](../protocol.md)). What you send here
-is the template's own affair, and it is deliberately simpler: this API is one server's control
-surface, not a contract between runtimes.
+This is **not** the phone–server transport. The template turns the strict JSON statement into
+`seekervault.request.v2.Request` and publishes it through the shared gateway in protobuf over
+Connect ([`docs/protocol.md`](../protocol.md)). What you send here is deliberately simpler: the
+template supplies its registered capability, feed audience, Signal presentation and local-input
+declarations.
 
 The tool in [`publisher/cmd/publishctl`](../../publisher/cmd/publishctl) is a client of exactly
 these endpoints and has no privileged path of its own, so anything it does, your program can do.
@@ -56,12 +57,16 @@ caller learns that it may not publish and never whether what it presented used t
 | `GET /healthz` | Says the process is up, and nothing else. No credential |
 | `GET /v1/status` | Which publisher this is, which gateway it publishes through, what it promises, and how many signals are waiting to be published |
 | `GET /v1/manifest` | The manifest this template publishes about itself, and the `seekervault://feed` reference a phone adds it from |
-| `POST /v1/signals` | Publish a new signal. **Requires `Idempotency-Key`** |
-| `GET /v1/signals` | Every signal this template holds, newest first |
-| `GET /v1/signals/{id}` | One signal, and what the gateway has confirmed about it |
-| `PUT /v1/signals/{id}` | Replace a signal's whole statement |
-| `POST /v1/signals/{id}/cancel` | Withdraw one |
-| `POST /v1/signals/{id}/retry` | Try a refused publication again |
+| `POST /v1/requests` | Create and publish a feed request. **Requires `Idempotency-Key`** |
+| `GET /v1/requests` | Every request this template holds, newest first |
+| `GET /v1/requests/{id}` | One common request, and what the gateway has confirmed about it |
+| `PUT /v1/requests/{id}` | Replace a request's whole source-authored statement |
+| `POST /v1/requests/{id}/cancel` | Withdraw one |
+| `POST /v1/requests/{id}/retry` | Try a refused publication again |
+
+`/v1/signals` remains a Stage 7.1 compatibility alias over the same handlers, store and outbox. It
+returns the old proposal-shaped view. New integrations use `/v1/requests`; there is no second
+creation workflow.
 
 Every answer is JSON, including the router's own refusals, and every answer carries
 `Cache-Control: no-store`: what a publisher currently proposes is the answer, and a proxy deciding
@@ -76,7 +81,7 @@ listing, so on that one the three writing endpoints answer **403** and two of it
 
 | Method and path | What it does |
 | --- | --- |
-| `POST /v1/signals`, `PUT /v1/signals/{id}`, `POST /v1/signals/{id}/cancel` | `403 written_by_discovery` — nothing is stored |
+| `POST /v1/requests`, `PUT /v1/requests/{id}`, `POST /v1/requests/{id}/cancel` | `403 written_by_discovery` — nothing is stored |
 | `GET /v1/discovery` | The filters in force, the last cycle, and every market it is tracking |
 | `POST /v1/discovery/poll` | Run a discovery cycle now, rather than at the next interval. `409 busy` while one is running |
 
@@ -102,14 +107,14 @@ publishes is to change what it looks for:
 }
 ```
 
-Reading is identical on both, and so is `POST /v1/signals/{id}/retry`: a retry is about the gateway
+Reading is identical on both, and so is `POST /v1/requests/{id}/retry`: a retry is about the gateway
 rather than about the statement, so it belongs to whoever operates the template rather than to
 whoever wrote the signal.
 
-## Publishing a signal
+## Creating a request
 
 ```sh
-curl -sS https://signals.example.com/v1/signals \
+curl -sS https://signals.example.com/v1/requests \
   -H "Authorization: Bearer $PUBLISHER_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: desk-1-sol-usdc-2026-09-17T19:00Z' \
@@ -127,6 +132,18 @@ curl -sS https://signals.example.com/v1/signals \
       "output_symbol": "USDC"
     }
   }'
+```
+
+The Go client in `publisher/sdk` calls that same endpoint:
+
+```go
+client, _ := sdk.New(sdk.Options{URL: apiURL, Token: token})
+created, err := client.CreateRequest(ctx, sdk.CreateRequest{
+    IdempotencyKey: "desk-1-sol-usdc-2026-09-17T19:00Z",
+    ExpiresAt:      time.Date(2026, 9, 17, 21, 0, 0, 0, time.UTC),
+    Description:    "trimming SOL into USDC on the bounce",
+    Parameters:     terms,
+})
 ```
 
 The whole of the request body:
@@ -151,20 +168,34 @@ Numbers are published canonically, so `"09"` and `"9"` are the same signal.
 
 ```json
 {
-  "signal": {
-    "server_id": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-    "channel": "server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-    "proposal_id": "c0179bbb-e11a-4dd0-8ca0-e3168a1b163b",
-    "revision": "1",
-    "status": "open",
-    "operation": "swap",
-    "plugin_id": "jupiter.swap",
-    "created_at": "2026-09-17T19:00:00Z",
-    "updated_at": "2026-09-17T19:00:00Z",
-    "expires_at": "2026-09-17T21:00:00Z",
-    "note": "trimming SOL into USDC on the bounce",
-    "terms": { "input_mint": "So11111111111111111111111111111111111111112", "…": "…" },
-    "environment": "production"
+  "request": {
+    "contract_version": 1,
+    "identity": {
+      "source_id": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "scope": "server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "request_id": "c0179bbb-e11a-4dd0-8ca0-e3168a1b163b"
+    },
+    "lifecycle": {
+      "revision": "1",
+      "status": "REQUEST_STATUS_OPEN",
+      "created_at": "2026-09-17T19:00:00Z",
+      "updated_at": "2026-09-17T19:00:00Z",
+      "expires_at": "2026-09-17T21:00:00Z"
+    },
+    "presentation": {
+      "title": "Swap",
+      "description": "trimming SOL into USDC on the bounce",
+      "category": "PRESENTATION_CATEGORY_SIGNAL"
+    },
+    "action": {
+      "capability_id": "swap",
+      "capability_version": 1,
+      "plugin_id": "jupiter.swap",
+      "parameters": [{ "key": "input_mint", "text": "So11111111111111111111111111111111111111112" }]
+    },
+    "owner_inputs": [{ "key": "input_amount", "label": "Amount", "kind": "OWNER_INPUT_KIND_AMOUNT", "required": true, "minimum": "1" }],
+    "audience": { "feed": { "channel": "server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d" } },
+    "result_handling": { "mode": "RESULT_MODE_DEVICE_LOCAL" }
   },
   "publication": { "state": "published", "confirmed_revision": "1", "attempts": 0 },
   "idempotent": false
@@ -181,14 +212,14 @@ reason protojson writes a 64-bit integer as a string. Compare revisions as integ
 | **202** | The signal exists here and its publication is **pending** — the gateway could not be reached, or is rate-limiting. It will be retried; `publication.next_attempt_at` says when |
 | **400** | The statement broke a rule. `error` is a stable code, `term` names the term when one is at fault, `detail` is a sentence |
 | **401** | No token, or the wrong one |
-| **404** | No signal of that ID, or no such endpoint |
+| **404** | No request of that ID, or no such endpoint |
 | **405** | That endpoint does not take this method; the `Allow` header says which |
 | **409** | `key_reused` — that key belongs to a different statement — or `cancelled`: a withdrawal is final |
 | **415** | The body was not declared `application/json` |
 | **502** | The gateway **refused** the publication in a way retrying cannot change. `publication.problem` is the gateway's own problem code |
 
-A 202 is a success: the signal is durably stored, and the answer a caller was given outlives the
-process that gave it. Treat it as "accepted, not yet public" — `GET /v1/signals/{id}` tells you when
+A 202 is a success: the request is durably stored, and the answer a caller was given outlives the
+process that gave it. Treat it as "accepted, not yet public" — `GET /v1/requests/{id}` tells you when
 that changes.
 
 ## Idempotency
@@ -214,7 +245,7 @@ the content actually changed; a withdrawal and a retry are idempotent by what th
 An update is the **whole statement**, not the parts that changed:
 
 ```sh
-curl -sS -X PUT https://signals.example.com/v1/signals/$ID \
+curl -sS -X PUT https://signals.example.com/v1/requests/$ID \
   -H "Authorization: Bearer $PUBLISHER_API_TOKEN" -H 'Content-Type: application/json' \
   -d '{"expires_at":"2026-09-17T22:00:00Z","note":"widening the slippage",
        "terms":{ "…": "…", "max_slippage_bps":"90" }}'
@@ -229,7 +260,7 @@ the revision did not move, nothing was published, and no phone was woken. That m
 current view safe and cheap.
 
 ```sh
-curl -sS -X POST https://signals.example.com/v1/signals/$ID/cancel \
+curl -sS -X POST https://signals.example.com/v1/requests/$ID/cancel \
   -H "Authorization: Bearer $PUBLISHER_API_TOKEN"
 ```
 
@@ -242,7 +273,7 @@ signal, which is another identity.
 
 ```json
 {
-  "signal": { "…": "…" },
+  "request": { "…": "…" },
   "publication": {
     "state": "refused",
     "confirmed_revision": "0",
@@ -268,7 +299,7 @@ The problem is the gateway's own code. The ones worth knowing:
 Nothing retries a refusal on its own. When the cause is fixed:
 
 ```sh
-curl -sS -X POST https://signals.example.com/v1/signals/$ID/retry \
+curl -sS -X POST https://signals.example.com/v1/requests/$ID/retry \
   -H "Authorization: Bearer $PUBLISHER_API_TOKEN"
 ```
 
@@ -288,13 +319,13 @@ headers = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json
 def publish(decision) -> str:
     # A key your own system can reproduce: the same decision retried must carry the same key.
     key = f"{decision.desk}-{decision.pair}-{decision.at.isoformat()}"
-    answer = requests.post(f"{API}/v1/signals", headers={**headers, "Idempotency-Key": key},
+    answer = requests.post(f"{API}/v1/requests", headers={**headers, "Idempotency-Key": key},
                            json={"expires_at": decision.expires.isoformat(),
                                  "note": decision.reasoning,
                                  "terms": decision.terms})
     if answer.status_code in (200, 201, 202):
         # 202 means stored here and not public yet. It is not a reason to publish again.
-        return answer.json()["signal"]["proposal_id"]
+        return answer.json()["request"]["identity"]["request_id"]
     if answer.status_code == 409:
         raise Duplicate(answer.json())   # this key already belongs to a different statement
     raise Refused(answer.status_code, answer.json())

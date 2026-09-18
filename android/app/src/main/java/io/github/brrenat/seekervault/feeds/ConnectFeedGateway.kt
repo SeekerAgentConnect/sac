@@ -20,7 +20,9 @@ import io.github.brrenat.seekervault.gateway.v1.getProposalRequest
 import io.github.brrenat.seekervault.gateway.v1.getServerManifestRequest
 import io.github.brrenat.seekervault.gateway.v1.getStreamTicketRequest
 import io.github.brrenat.seekervault.gateway.v1.listProposalsRequest
+import io.github.brrenat.seekervault.gateway.v1.listRequestsRequest
 import io.github.brrenat.seekervault.proposal.v1.Proposal
+import io.github.brrenat.seekervault.request.v2.Request
 import io.github.brrenat.seekervault.servers.FeedReference
 import java.io.IOException
 import java.net.UnknownServiceException
@@ -89,7 +91,54 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
      * means the walk is not a walk any more; it is refused rather than stitched together, because a
      * phone that silently accepted it could not say what its snapshot was a snapshot of.
      */
-    override suspend fun snapshot(reference: FeedReference, knownSequence: Long): FeedSnapshot {
+    override suspend fun snapshot(reference: FeedReference, knownSequence: Long): FeedSnapshot =
+        try {
+            commonSnapshot(reference, knownSequence)
+        } catch (failure: GatewayException) {
+            if (failure.kind != GatewayException.Kind.Unimplemented) throw failure
+            legacySnapshot(reference, knownSequence)
+        }
+
+    private suspend fun commonSnapshot(
+        reference: FeedReference,
+        knownSequence: Long,
+    ): FeedSnapshot {
+        val requests = mutableListOf<Request>()
+        var token = ""
+        var sequence = 0L
+        for (page in 0 until MAX_PAGES) {
+            val answer =
+                call(reference.gatewayUrl) {
+                    it.listRequests(
+                        listRequestsRequest {
+                            channel = reference.channel
+                            pageSize = PAGE_SIZE
+                            pageToken = token
+                            if (page == 0) knownSnapshotSequence = knownSequence
+                        }
+                    )
+                }
+            if (page == 0) {
+                if (answer.unchanged) return FeedSnapshot.Unchanged(answer.snapshotSequence)
+                sequence = answer.snapshotSequence
+            } else if (answer.snapshotSequence != sequence) {
+                throw GatewayException(
+                    GatewayException.Kind.BadResponse,
+                    "the walk changed its boundary",
+                )
+            }
+            requests += answer.requestsList
+            token = answer.nextPageToken
+            if (token.isEmpty()) return FeedSnapshot.Read(sequence, requests = requests.toList())
+            if (requests.size > MAX_PROPOSALS) break
+        }
+        throw GatewayException(GatewayException.Kind.BadResponse, "a feed that does not end")
+    }
+
+    private suspend fun legacySnapshot(
+        reference: FeedReference,
+        knownSequence: Long,
+    ): FeedSnapshot {
         val proposals = mutableListOf<Proposal>()
         var token = ""
         var sequence = 0L

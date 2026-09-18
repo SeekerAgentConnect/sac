@@ -11,11 +11,11 @@
 
 ## 1. Product and MVP Scope
 
-An Android app for Seeker that serves as a control center for requests from external AI agents. The user connects multiple self-hosted MCP servers, configures rules for each one, and manually approves operations through Seed Vault Wallet and Mobile Wallet Adapter (MWA).
+An Android app for Seeker that serves as a control center for private requests from external AI agents and public feed signals. The user connects self-hosted MCP servers and broadcast feeds, configures rules, and manually approves production operations through Seed Vault Wallet and Mobile Wallet Adapter (MWA).
 
 We provide the app and self-hosted server software. The user deploys the server alongside their agent or on a separate gateway. No cloud service or account with us is required; the user's own infrastructure, Solana RPC, and external APIs remain part of the system.
 
-**Included in the first version:** connections, a request queue, manual approval, transfers, Jupiter swaps, a policy builder, activity history, authenticated foreground updates, eventual WorkManager synchronization, optional FCM wake-up and request notifications, Docker packaging, and a test agent.
+**Included in the first version:** connections, one common request envelope and pending collection, private queues and public feeds, manual approval, sandbox simulation, transfers, Jupiter swaps and predictions, a policy builder, activity history, authenticated foreground updates, eventual WorkManager synchronization, optional FCM wake-up and request notifications, Docker packaging, publisher templates, and a test agent.
 
 **Outside the first version:** a separate agent key, automatic signing, a separate biometric authentication flow in our app, a mandatory foreground service, an always-on/background stream, and SKR staking. Stage 5.2's bidirectional stream exists only while the app is foreground; background observation is a constrained periodic unary sync and has no exact-delivery promise. Stage 5.3 may add optional best-effort FCM invalidations and notifications, while the stream, unary Sync, and periodic worker remain authoritative when Firebase is absent, delayed, dropped, or unavailable.
 
@@ -29,6 +29,7 @@ sidecar/       TypeScript/Node: MCP, Connect API, queue, transaction building
 android/       Kotlin/Compose: connections, policies, requests, MWA, history
 gateway/       Docker Compose, TLS, OAuth/MCP gateway configuration
 broadcast/     The shared broadcast gateway (Go): the publication and feed-read API
+publisher/     Go publisher templates and the common create-request SDK
 test-agent/    Minimal MCP client for testing and demos
 docs/          Architecture, protocol, policies, setup, and integrations
 ```
@@ -38,6 +39,12 @@ docs/          Architecture, protocol, policies, setup, and integrations
 **Sidecar:** TypeScript, Node.js, `@connectrpc/connect-node`, `@modelcontextprotocol/sdk`, a Solana SDK, Jupiter API, and a persistent local queue. The sidecar does not store wallet private keys or sign transactions.
 
 **Communication:** the agent uses MCP; the phone uses a separate authenticated API. Stage 2 begins with unary Connect RPCs. Stage 5.2 adds a production bidirectional gRPC stream over HTTP/2 while the app process is foreground and a unary gRPC Sync shared by recovery, Refresh, and WorkManager. The phone retains one connected-network-constrained periodic job with Android's 15-minute minimum interval while it has usable connections; WorkManager may defer it and Force stop suppresses it until the owner reopens the app. Stage 5.3 adds optional FCM only as a wake-up/invalidation hint: the app still fetches authoritative state from its paired sidecar, and a notification tap never approves or signs. SAW-054 configures the optional client and sender, SAW-055 binds one rotating Firebase target to each authenticated paired connection, and SAW-056 sends a fixed two-field invalidation after committed request events. Android accepts only that payload and schedules the existing bounded authenticated Sync path with empty WorkManager input. Delivery is best-effort and collapsible; Firebase never becomes authority. All transports observe the same durable request store and stay scoped per phone connection. Stage 1's diagnostic server stream remains separate, screen-scoped, and unnecessary to the durable workflow.
+
+From SEE-108, `seekervault.request.v2.Request` is the source-authored contract shared by the
+private and feed adapters. The private adapter keeps its authenticated request store and result
+path. The feed adapter keeps publisher writes separate from subscriber reads and has no subscriber
+or result store at all. Both reach one Android pending and review flow without merging their trust
+or lifecycle ownership.
 
 ## 3. Core Workflow
 
@@ -55,6 +62,20 @@ Seeker: inspect the contents, apply rules, display the request card
 User: Reject or Approve → MWA → Seed Vault Wallet
              ↓
 Wallet: sign and send → transaction status → result returned to the agent
+```
+
+A feed publisher uses the same developer concept through another adapter:
+
+```text
+Strategy → POST /v1/requests (or sdk.Client.CreateRequest)
+             ↓
+Publisher → authenticated PublishRequest → shared gateway
+             ↓
+Seeker → shared pending collection → local choices, review and binding
+             ↓
+Sandbox: simulate only        Production: manual MWA approval
+             ↓
+Decision and result remain on this device; no subscriber result is uploaded
 ```
 
 MWA is invoked from an Activity through `ActivityResultSender`; a dedicated Activity is not an architectural requirement. For transactions, we use `signAndSendTransactions`: the wallet handles both signing and sending. The first wallet end-to-end test uses message signing (Stage 3). Before that, Stage 1 exercises the same agent → phone → agent path with display-only text and no wallet. [MWA documentation][mwa]
@@ -83,6 +104,7 @@ Pairing uses a QR code containing the server address and a one-time token, and r
 | `PrepareRequest` | Prepare a transaction for the current review |
 | `SubmitResult` | Submit the user's decision, a message signature, or the transaction submission result |
 | `ActionRequest` | ID, action type, parameters, target wallet address, network, expiration, and state |
+| `request.v2.Request` | Common source-authored identity/lifecycle, presentation, versioned action capability, owner-input declarations, audience and result handling; no owner answer or execution result |
 | `RequestState` | The execution state, from PENDING to CONFIRMED, COMPLETED, REJECTED, CANCELLED, EXPIRED, FAILED, or UNKNOWN |
 | `PreparedTransaction` | A specific version of an unsigned transaction and its validity parameters |
 | `PolicyEvaluation` | A local assessment and warning reasons; not an execution state |
@@ -122,7 +144,7 @@ The MVP does not introduce `BLOCKED` as a separate policy result. Technically in
 
 **`ALLOWED` does not mean that a transaction is guaranteed to be safe.** The assessment is based on the actual transaction data, not the agent's description. Unrecognized contents are explicitly marked as unverified and are not classified as `ALLOWED`. The agent's explanation is displayed separately from the verified parameters.
 
-Main screens: **Connections → Connection details → Policy builder → Pending requests → Request details → Activity**. The request card shows the source, network, wallet, action, amounts, recipient, fees, assessment result, and warning reasons.
+Main screens: **Connections → Connection details → Policy builder → Pending → shared request review → Activity**. Home and Pending merge private requests and feed signals chronologically. A signal has a small **Signal** label and the feed's local name; a per-feed screen is only a filter. Specialized review content still shows the source, network, wallet, action, amounts, recipient, fees, assessment result, and warning reasons.
 
 ## 6. Implementation Stages
 
@@ -146,6 +168,7 @@ This table was revised on September 11, 2026:
 | **5.3 Optional FCM wake-up and notifications** | Optional Android Firebase configuration and sidecar Admin sender; authenticated per-connection token lifecycle; minimal invalidations; bounded message-to-Sync handling; notification permission/channels; current-request routing; cross-component and physical-device acceptance | A push can wake reconciliation and present an honest request notification without carrying request contents or causing a wallet action. Missing Firebase or a missing/delayed push loses no durable request and leaves every Stage 5.2 path working. |
 | **6. Jupiter** | `/build`; swap parameter checks; output amount and slippage display; refreshing expired transactions | Swaps use the same review and approval workflow |
 | **7. Packaging and integrations** | Docker Compose; a TLS gateway; an OAuth gateway for hosted MCP clients; the test-agent CLI; real Hermes integration; a self-hosting guide | The project can be deployed and connected by following the instructions |
+| **7.1 Public feeds and common requests** | Client plugins, manifests, shared gateway delivery, publisher templates, device-local feed execution, environments, feed onboarding, and one extensible request contract/API/inbox/review dispatcher | A developer creates one request through the private or feed adapter; the owner sees one pending flow, while private results return only to their origin and feed results remain only on that device |
 | **8. Release and submission** | Cross-component reliability and security regression checks; a signed release APK; verified guides; the demo and presentation | Retries don't cause duplicate execution; uncertain outcomes are clearly reported; the release can be installed and reproduced |
 
 A successful submission response from MWA is not a substitute for on-chain confirmation. After a timeout, first determine the outcome of the previous operation instead of automatically building and sending a new one. [Solana documentation][confirmation]

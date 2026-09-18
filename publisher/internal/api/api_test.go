@@ -15,6 +15,39 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/signals"
 )
 
+func TestTheCommonRequestAPIIsThePrimaryViewOfTheSameDurablePublication(t *testing.T) {
+	held := start(t, &fakeGateway{})
+	held.forceIDs = []string{proposal}
+	created := held.call(http.MethodPost, "/v1/requests", swapStatement(), "Idempotency-Key", "common-1")
+	if created.status != http.StatusCreated {
+		t.Fatalf("create answered %d: %s", created.status, created.raw)
+	}
+	request, ok := created.body["request"].(map[string]any)
+	if !ok || created.body["signal"] != nil {
+		t.Fatalf("common route answered the wrong document: %s", created.raw)
+	}
+	identity, _ := request["identity"].(map[string]any)
+	presentation, _ := request["presentation"].(map[string]any)
+	audience, _ := request["audience"].(map[string]any)
+	result, _ := request["result_handling"].(map[string]any)
+	if request["contract_version"] != float64(1) ||
+		identity["request_id"] != proposal ||
+		presentation["category"] != "PRESENTATION_CATEGORY_SIGNAL" ||
+		audience["feed"] == nil || result["mode"] != "RESULT_MODE_DEVICE_LOCAL" {
+		t.Fatalf("common request is incomplete: %s", created.raw)
+	}
+	for _, private := range []string{"wallet", "decision", "signature", "result", "subscriber"} {
+		if strings.Contains(created.raw, `"`+private+`"`) {
+			t.Fatalf("common answer exposes private field %q: %s", private, created.raw)
+		}
+	}
+
+	legacy := held.call(http.MethodGet, "/v1/signals/"+proposal, nil)
+	if legacy.status != http.StatusOK || legacy.signal()["proposal_id"] != proposal {
+		t.Fatalf("compatibility view did not read the same row: %s", legacy.raw)
+	}
+}
+
 // A signal published through the API, end to end: the API, the store, the drainer, the Connect
 // client, and a gateway that holds what arrives.
 func TestASignalIsPublishedOnce(t *testing.T) {

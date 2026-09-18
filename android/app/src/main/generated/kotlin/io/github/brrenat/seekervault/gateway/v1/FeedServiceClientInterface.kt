@@ -23,6 +23,14 @@ public interface FeedServiceClientInterface {
   public suspend fun getServerManifest(request: GetServerManifestRequest, headers: Headers = emptyMap()): ResponseMessage<GetServerManifestResponse>
 
   /**
+   *  The common request reads. The proposal methods below remain compatibility adapters for
+   *  protocol-1 clients; both views are backed by the same document and snapshot sequence.
+   */
+  public suspend fun listRequests(request: ListRequestsRequest, headers: Headers = emptyMap()): ResponseMessage<ListRequestsResponse>
+
+  public suspend fun getRequest(request: GetRequestRequest, headers: Headers = emptyMap()): ResponseMessage<GetRequestResponse>
+
+  /**
    *  A page of the channel's current proposals. Every proposal the publisher has open, and the ones
    *  it has cancelled or let expire while the gateway still keeps them, are here: expiry and
    *  cancellation are facts inside a document rather than reasons to hide it.

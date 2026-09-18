@@ -30,6 +30,10 @@ data class Proposal(
      * device decided about the older terms no longer describes these ([ProposalReview]).
      */
     val revision: Long,
+    /** The common envelope version. Legacy Proposal rows adapt to version 1 on read. */
+    val contractVersion: Int = 1,
+    /** Source-authored title; Signal is presentation, not an operation type. */
+    val title: String = "",
     /**
      * What is proposed, at the protocol's own level (`swap`). Which plugin serves it is this
      * build's business ([proposalPlugin]), not the document's.
@@ -62,10 +66,31 @@ data class Proposal(
      * core carries them and interprets none of them.
      */
     val values: List<ProposalValue> = emptyList(),
+    /** Shapes the source declared for values chosen locally; never the owner's answers. */
+    val ownerInputs: List<OwnerInputDeclaration> = emptyList(),
 ) {
     /** The term named [name], or null when the publisher gave none. */
     fun value(name: String): String? = values.firstOrNull { it.key == name }?.text
 }
+
+data class OwnerInputDeclaration(
+    val key: String,
+    val label: String,
+    val kind: OwnerInputKind,
+    val required: Boolean,
+    val minimum: String = "",
+    val maximum: String = "",
+    val options: List<OwnerInputOption> = emptyList(),
+    val help: String = "",
+)
+
+enum class OwnerInputKind {
+    Amount,
+    Count,
+    Choice,
+}
+
+data class OwnerInputOption(val value: String, val label: String)
 
 /**
  * What makes a proposal the one it is: the publisher, the channel it was published on, and the
@@ -99,7 +124,20 @@ enum class ProposalStatus(val code: String) {
 }
 
 /** One of the operation's common terms, as the publisher wrote it. */
-data class ProposalValue(val key: String, val text: String)
+data class ProposalValue(
+    val key: String,
+    /** Canonical display/plugin value; opaque values use standard padded base64. */
+    val text: String,
+    /** Preserves the common envelope's typed value across the device-local store. */
+    val kind: ProposalValueKind = ProposalValueKind.Text,
+)
+
+enum class ProposalValueKind {
+    Text,
+    Integer,
+    Flag,
+    Opaque,
+}
 
 /** A proposal is bounded data: this much of it, and no more. */
 const val MAX_PROPOSAL_VALUES: Int = 32

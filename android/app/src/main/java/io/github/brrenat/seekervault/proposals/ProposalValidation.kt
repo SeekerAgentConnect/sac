@@ -8,8 +8,18 @@ import io.github.brrenat.seekervault.plugins.isOperationId
 import io.github.brrenat.seekervault.plugins.isPluginId
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
+import io.github.brrenat.seekervault.proposal.v1.ProposalValue as WireProposalValue
+import io.github.brrenat.seekervault.request.v2.Audience
+import io.github.brrenat.seekervault.request.v2.OwnerInputKind as WireInputKind
+import io.github.brrenat.seekervault.request.v2.PresentationCategory
+import io.github.brrenat.seekervault.request.v2.Request as WireRequest
+import io.github.brrenat.seekervault.request.v2.RequestStatus
+import io.github.brrenat.seekervault.request.v2.ResultMode
+import io.github.brrenat.seekervault.request.v2.Value
+import io.github.brrenat.seekervault.servers.channelFor
 import java.time.DateTimeException
 import java.time.Instant
+import java.util.Base64
 
 /**
  * Reading a proposal a publisher broadcast (SEE-89, docs/wiki/shared-proposals.md).
@@ -54,6 +64,10 @@ sealed interface ProposalResult {
 
 /** Which rule a proposal broke. Each is a separate fact, and none of them is a guess. */
 enum class ProposalProblem(val code: String) {
+    UnsupportedContract("unsupported_contract"),
+    WrongAudience("wrong_audience"),
+    BadPresentation("bad_presentation"),
+    BadOwnerInput("bad_owner_input"),
     /** The publisher's identity isn't a lowercase UUID. */
     BadServerId("bad_server_id"),
     /** A well-formed identity, but not the publisher whose feed this is. */
@@ -90,6 +104,171 @@ enum class ProposalProblem(val code: String) {
     TooManyValues("too_many_values"),
     /** A note too long, or one that isn't printable text. */
     BadNote("bad_note"),
+}
+
+/** Validates the common feed envelope, then adapts it into the device's durable proposal record. */
+fun proposalFrom(message: WireRequest, expect: ProposalExpectation): ProposalResult {
+    if (message.contractVersion != 1) return invalid(ProposalProblem.UnsupportedContract)
+    if (
+        !message.hasIdentity() ||
+            !message.hasLifecycle() ||
+            !message.hasPresentation() ||
+            !message.hasAction() ||
+            !message.hasAudience() ||
+            !message.hasResultHandling()
+    ) {
+        return invalid(ProposalProblem.BadValue)
+    }
+    val identity = message.identity
+    if (!isConnectionId(identity.sourceId)) return invalid(ProposalProblem.BadServerId)
+    if (identity.sourceId != expect.serverId) return invalid(ProposalProblem.OtherServer)
+    if (
+        identity.scope != channelFor(identity.sourceId) ||
+            message.audience.audienceCase != Audience.AudienceCase.FEED ||
+            message.audience.feed.channel != identity.scope ||
+            message.resultHandling.mode != ResultMode.RESULT_MODE_DEVICE_LOCAL
+    ) {
+        return invalid(ProposalProblem.WrongAudience)
+    }
+    val presentation = message.presentation
+    if (
+        presentation.category != PresentationCategory.PRESENTATION_CATEGORY_SIGNAL ||
+            presentation.title.isEmpty() ||
+            !printableText(presentation.title, MAX_PRESENTATION_TITLE_BYTES) ||
+            !printableText(presentation.description, MAX_PROPOSAL_NOTE_BYTES)
+    ) {
+        return invalid(ProposalProblem.BadPresentation)
+    }
+    val lifecycle = message.lifecycle
+    val status =
+        when (lifecycle.status) {
+            RequestStatus.REQUEST_STATUS_OPEN -> ProposalStatus.Open
+            RequestStatus.REQUEST_STATUS_CANCELLED -> ProposalStatus.Cancelled
+            else -> return invalid(ProposalProblem.NoStatus)
+        }
+    if (lifecycle.revision <= 0L) return invalid(ProposalProblem.NoRevision)
+    if (expect.heldRevision != null && lifecycle.revision < expect.heldRevision) {
+        return invalid(ProposalProblem.StaleRevision)
+    }
+    if (!lifecycle.hasCreatedAt() || !lifecycle.hasUpdatedAt() || !lifecycle.hasExpiresAt()) {
+        return invalid(ProposalProblem.NoTimes)
+    }
+    val createdAt = lifecycle.createdAt.instant() ?: return invalid(ProposalProblem.BadTimes)
+    val updatedAt = lifecycle.updatedAt.instant() ?: return invalid(ProposalProblem.BadTimes)
+    val expiresAt = lifecycle.expiresAt.instant() ?: return invalid(ProposalProblem.BadTimes)
+    if (updatedAt < createdAt || !expiresAt.isAfter(createdAt)) {
+        return invalid(ProposalProblem.BadTimes)
+    }
+    val action = message.action
+    if (action.capabilityVersion <= 0 || !isOperationId(action.capabilityId)) {
+        return invalid(ProposalProblem.BadOperation)
+    }
+    if (!isPluginId(action.pluginId)) return invalid(ProposalProblem.BadPlugin)
+    if (action.parametersCount > MAX_PROPOSAL_VALUES) return invalid(ProposalProblem.TooManyValues)
+    val values = mutableListOf<Pair<WireProposalValue, ProposalValueKind>>()
+    val names = mutableSetOf<String>()
+    for (parameter in action.parametersList) {
+        if (!isOperationId(parameter.key)) return invalid(ProposalProblem.BadValue)
+        if (!names.add(parameter.key)) return invalid(ProposalProblem.DuplicateValue)
+        val (text, kind) =
+            when (parameter.valueCase) {
+                Value.ValueCase.TEXT -> parameter.text to ProposalValueKind.Text
+                Value.ValueCase.INTEGER ->
+                    parameter.integer
+                        .takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
+                        ?.let { it to ProposalValueKind.Integer }
+                        ?: return invalid(ProposalProblem.BadValue)
+                Value.ValueCase.FLAG -> parameter.flag.toString() to ProposalValueKind.Flag
+                Value.ValueCase.OPAQUE ->
+                    Base64.getEncoder().encodeToString(parameter.opaque.toByteArray()) to
+                        ProposalValueKind.Opaque
+                else -> return invalid(ProposalProblem.BadValue)
+            }
+        val mostBytes =
+            if (parameter.valueCase == Value.ValueCase.OPAQUE) MAX_COMMON_OPAQUE_TEXT_BYTES
+            else MAX_PROPOSAL_TEXT_BYTES
+        if (!printableText(text, mostBytes)) {
+            return invalid(ProposalProblem.BadValue)
+        }
+        values += WireProposalValue.newBuilder().setKey(parameter.key).setText(text).build() to kind
+    }
+    if (message.ownerInputsCount > MAX_OWNER_INPUTS) return invalid(ProposalProblem.BadOwnerInput)
+    val inputNames = mutableSetOf<String>()
+    val inputs = mutableListOf<OwnerInputDeclaration>()
+    for (input in message.ownerInputsList) {
+        val kind =
+            when (input.kind) {
+                WireInputKind.OWNER_INPUT_KIND_AMOUNT -> OwnerInputKind.Amount
+                WireInputKind.OWNER_INPUT_KIND_COUNT -> OwnerInputKind.Count
+                WireInputKind.OWNER_INPUT_KIND_CHOICE -> OwnerInputKind.Choice
+                else -> return invalid(ProposalProblem.BadOwnerInput)
+            }
+        if (
+            !isOperationId(input.key) ||
+                !inputNames.add(input.key) ||
+                input.label.isEmpty() ||
+                !printableText(input.label, MAX_PRESENTATION_TITLE_BYTES) ||
+                !printableText(input.help, MAX_PROPOSAL_TEXT_BYTES) ||
+                (input.minimum.isNotEmpty() && !input.minimum.all(Char::isDigit)) ||
+                (input.maximum.isNotEmpty() && !input.maximum.all(Char::isDigit)) ||
+                input.optionsCount > MAX_INPUT_OPTIONS
+        ) {
+            return invalid(ProposalProblem.BadOwnerInput)
+        }
+        val optionNames = mutableSetOf<String>()
+        val options =
+            input.optionsList.map { option ->
+                if (
+                    !isOperationId(option.value) ||
+                        !optionNames.add(option.value) ||
+                        option.label.isEmpty() ||
+                        !printableText(option.label, MAX_PRESENTATION_TITLE_BYTES)
+                ) {
+                    return invalid(ProposalProblem.BadOwnerInput)
+                }
+                OwnerInputOption(option.value, option.label)
+            }
+        if (kind == OwnerInputKind.Choice && options.isEmpty()) {
+            return invalid(ProposalProblem.BadOwnerInput)
+        }
+        inputs +=
+            OwnerInputDeclaration(
+                key = input.key,
+                label = input.label,
+                kind = kind,
+                required = input.required,
+                minimum = input.minimum,
+                maximum = input.maximum,
+                options = options,
+                help = input.help,
+            )
+    }
+    val key =
+        try {
+            ProposalKey(identity.sourceId, identity.scope, identity.requestId)
+        } catch (e: IllegalArgumentException) {
+            return invalid(
+                if (!isConnectionId(identity.requestId)) ProposalProblem.BadProposalId
+                else ProposalProblem.ForeignChannel
+            )
+        }
+    return ProposalResult.Valid(
+        Proposal(
+            key = key,
+            revision = lifecycle.revision,
+            contractVersion = message.contractVersion,
+            title = presentation.title,
+            operation = OperationId(action.capabilityId),
+            plugin = PluginId(action.pluginId),
+            status = status,
+            createdAt = createdAt,
+            updatedAt = updatedAt,
+            expiresAt = expiresAt,
+            note = presentation.description,
+            values = values.map { ProposalValue(it.first.key, it.first.text, it.second) },
+            ownerInputs = inputs,
+        )
+    )
 }
 
 /**
@@ -158,6 +337,7 @@ fun proposalFrom(message: WireProposal, expect: ProposalExpectation): ProposalRe
         Proposal(
             key = key,
             revision = message.revision,
+            title = message.operation,
             operation = OperationId(message.operation),
             plugin = PluginId(message.pluginId),
             status = status,
@@ -196,3 +376,8 @@ private fun Timestamp.instant(): Instant? =
     }
 
 private fun invalid(problem: ProposalProblem) = ProposalResult.Invalid(problem)
+
+private const val MAX_PRESENTATION_TITLE_BYTES = 64
+private const val MAX_OWNER_INPUTS = 16
+private const val MAX_INPUT_OPTIONS = 16
+private const val MAX_COMMON_OPAQUE_TEXT_BYTES = 684 // base64 for at most 512 source bytes

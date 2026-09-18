@@ -4,6 +4,7 @@ import io.github.brrenat.seekervault.connections.ConnectionRepository
 import io.github.brrenat.seekervault.connections.FeedRefresh
 import io.github.brrenat.seekervault.connections.ProposalRepository
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
+import io.github.brrenat.seekervault.request.v2.Request as WireRequest
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
 
 /**
@@ -19,6 +20,9 @@ import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
 interface FeedHost {
     /** Applies one published proposal. */
     suspend fun applyProposal(connectionId: String, message: WireProposal)
+
+    /** Applies one common request through the same local proposal lifecycle. */
+    suspend fun applyRequest(connectionId: String, message: WireRequest) {}
 
     /** Applies a publisher's settings. */
     suspend fun applySettings(connectionId: String, message: WireManifest)
@@ -45,6 +49,10 @@ class RepositoryFeedHost(
     private val proposals: ProposalRepository,
 ) : FeedHost {
     override suspend fun applyProposal(connectionId: String, message: WireProposal) {
+        proposals.apply(connectionId, message)
+    }
+
+    override suspend fun applyRequest(connectionId: String, message: WireRequest) {
         proposals.apply(connectionId, message)
     }
 

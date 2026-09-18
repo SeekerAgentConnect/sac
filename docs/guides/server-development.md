@@ -231,7 +231,7 @@ Two phones with the same reference hold the same documents at the same revisions
 
 The owner-facing half of this — what the screens say, and what "not checked yet" means — is [`docs/wiki/server-manifests.md#what-the-owner-is-told`](../wiki/server-manifests.md#what-the-owner-is-told).
 
-## 6. Publish a signal
+## 6. Create a feed request
 
 Two ways in, and they are the same way: the CLI is an HTTP client for the template's own API, which is the one path in. There is no side door — no file to drop a signal in, no queue to write to, nothing that publishes without the API token.
 
@@ -283,7 +283,7 @@ It also prints, on stderr, the idempotency key it minted for you and the one-lin
 ### From a program
 
 ```sh
-curl -sS http://127.0.0.1:8092/v1/signals \
+curl -sS http://127.0.0.1:8092/v1/requests \
   -H "Authorization: Bearer $PUBLISHER_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: strategy-2026-09-18-0001' \
@@ -296,7 +296,7 @@ curl -sS http://127.0.0.1:8092/v1/signals \
                 "max_slippage_bps":"75","least_input":"5000000"}}'
 ```
 
-The same answer shape. The status code carries the publication's fate: **201** created and published, **202** created and not yet published (stored here, and it will go when the gateway answers), **502** created and refused by the gateway, **200** nothing changed. The complete request, answer and status-code contract, with a working Python strategy loop, is [`docs/integrations/signal-api.md`](../integrations/signal-api.md#publishing-a-signal).
+The same answer shape. The status code carries the publication's fate: **201** created and published, **202** created and not yet published (stored here, and it will go when the gateway answers), **502** created and refused by the gateway, **200** nothing changed. The answer's `request` is the common envelope; the CLI and `publisher/sdk.Client.CreateRequest` call this same endpoint. The complete request, answer and status-code contract, with a working Python strategy loop, is [`docs/integrations/signal-api.md`](../integrations/signal-api.md#creating-a-request).
 
 ### What a signal may say, and what it may not
 

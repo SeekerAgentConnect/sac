@@ -7,6 +7,7 @@ import (
 	"time"
 
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/proposal/v1"
+	requestv2 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/signals"
 )
@@ -202,9 +203,9 @@ func (d *Drainer) One(ctx context.Context, record signals.Record) (*Refusal, err
 		err    error
 	)
 	if signal.Status == signals.Cancelled {
-		status, err = d.gateway.Withdraw(ctx, signal.ProposalID, signal.Revision)
+		status, err = d.gateway.WithdrawRequest(ctx, signal.ProposalID, signal.Revision)
 	} else {
-		status, err = d.gateway.Proposal(ctx, d.Document(signal))
+		status, err = d.gateway.Request(ctx, d.RequestDocument(signal))
 	}
 	if err != nil {
 		var refusal *Refusal
@@ -240,4 +241,10 @@ func (d *Drainer) One(ctx context.Context, record signals.Record) (*Refusal, err
 // same revision.
 func (d *Drainer) Document(signal signals.Signal) *proposalv1.Proposal {
 	return signals.Proposal(d.serverID, signal)
+}
+
+// RequestDocument is the primary document. Document above remains a compatibility helper for
+// code and fixtures written against Stage 7.1's Proposal name.
+func (d *Drainer) RequestDocument(signal signals.Signal) *requestv2.Request {
+	return signals.Request(d.serverID, signal)
 }

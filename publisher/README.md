@@ -1,7 +1,7 @@
 # publisher
 
-The Go publisher templates (SEE-95, SEE-96): a developer's — or a trader's — own server. It publishes
-one signal to the [shared broadcast gateway](../broadcast), every phone subscribed to its channel
+The Go publisher templates (SEE-95, SEE-96, SEE-108): a developer's — or a trader's — own server. It publishes
+one feed request to the [shared broadcast gateway](../broadcast), every phone subscribed to its channel
 reads the same document, and each owner then chooses their own amount on their own device and
 approves it there.
 
@@ -25,6 +25,7 @@ accept it, and no endpoint that would answer about it.
 | [`internal/store`](internal/store) | The only place that speaks SQL: the signals, and what the gateway has confirmed about each |
 | [`internal/publish`](internal/publish) | The one thing that reaches out of the process: the gateway client, the retry judgment, the drainer |
 | [`internal/api`](internal/api) | The JSON API a person, a script or a strategy engine calls, and the boundary tests |
+| [`sdk`](sdk) | The small Go client for the common `CreateRequest` developer API |
 | [`compose.yaml`](compose.yaml) | The stack: the template and a proxy on loopback. `ctl` sits behind a profile and does not start |
 | [`compose.public.yaml`](compose.public.yaml) | The internet-facing overlay — read the warning in it first |
 | [`compose.prediction.yaml`](compose.prediction.yaml) | The Prediction template's own stack: its own database, its own port, its own everything |
@@ -76,7 +77,7 @@ grants nothing.
 
 `pnpm check:publisher` from the repository root runs the formatting check, `go vet` and the tests.
 
-## Publishing a signal
+## Creating a feed request
 
 Through the CLI:
 
@@ -93,7 +94,7 @@ publishctl create --in 2h --note "trimming SOL into USDC on the bounce" \
 or through the API, which is the same thing — the CLI has no privileged path of its own:
 
 ```sh
-curl -sS http://127.0.0.1:8092/v1/signals \
+curl -sS http://127.0.0.1:8092/v1/requests \
   -H "Authorization: Bearer $PUBLISHER_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: desk-1-sol-usdc-2026-09-17T19:00Z' \
@@ -108,6 +109,10 @@ curl -sS http://127.0.0.1:8092/v1/signals \
 strategy system, and [`docs/wiki/copytrading-template.md`](../docs/wiki/copytrading-template.md) is
 why the template is shaped like this — including a complete worked example of where publication ends
 and each owner's own execution begins.
+
+The CLI calls `/v1/requests`, and a Go integration may call `sdk.Client.CreateRequest`. The old
+`/v1/signals` routes remain compatibility aliases over the same store and publisher; new code has
+one documented create method.
 
 ## Publishing markets you did not write
 
