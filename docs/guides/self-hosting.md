@@ -334,24 +334,10 @@ Two things that are worth doing on a VPS and are nobody else's job: keep the hos
 a backup of the database somewhere that is not the same disk ([Backing up and
 restoring](#backing-up-and-restoring)).
 
-## Deploy it on Render
-
-Without a VPS, the same sidecar runs as one [Render](https://render.com) web service:
-[`deploy/render/`](../../deploy/render/README.md) packs the sidecar and a Caddy gateway into a
-single image, Render terminates HTTPS on the service's `onrender.com` name, and a persistent disk
-at `/data` holds the database. The Blueprint at the repository root, [`render.yaml`](../../render.yaml),
-builds it from the repository and generates both tokens; a prebuilt `linux/amd64` image, built on
-your own machine and pushed to Docker Hub or built by the manual
-[`.github/workflows/build-render.yml`](../../.github/workflows/build-render.yml), is the
-alternative. What is public and what is not is the same as behind the Compose gateway, the live
-update stream is not carried there either, and pairing is `render-pair` in the service's Shell
-tab. The README has the steps, the environment, and what was and was not verified. A service with
-a disk runs one instance, and each deploy is a few seconds of downtime rather than zero.
-
 ## Deploy it with the live update stream
 
-The stack above and the Render image both terminate TLS in front of the sidecar, so neither carries
-the phone's update stream. [`deploy/server/`](../../deploy/server/README.md) is the layout that
+The stack above terminates TLS in front of the sidecar, so it does not carry the phone's update
+stream. [`deploy/server/`](../../deploy/server/README.md) is the layout that
 does: the sidecar alone, with a certificate of its own, bound to the server's loopback and reached
 through a raw TCP forward — Tailscale Funnel's `--tcp` mode, with `tailscale cert` providing the
 certificate for the node's name. The README is the numbered guide, including push (FCM) on the
@@ -645,11 +631,11 @@ Both images are multi-stage, and both build from the repository root, because th
 
 ## Architectures
 
-The images are built for the architecture of the machine that builds them, from the same Dockerfiles, with no cross-building involved:
+The images are built for the architecture of the machine that builds them, from the same Dockerfiles:
 
 - **Apple silicon Mac** (`linux/arm64` under Docker Desktop)
 - **Linux VPS** (`linux/amd64`, the common case; `linux/arm64` on an Ampere or Graviton host)
-- **Render** (`linux/amd64` only). Its Dockerfile is the one cross-build in the repository: dependencies and the compile run on the building machine's own platform, and only the runtime stage is assembled for amd64, so an Apple silicon Mac builds it too — see [`deploy/render/README.md`](../../deploy/render/README.md).
+- **A server that only pulls images** (`linux/amd64` built elsewhere). `sidecar/Dockerfile`, `broadcast/Dockerfile` and `publisher/Dockerfile` run their install and compile stages on the building machine's own platform and assemble only the runtime stage for the target, so an Apple silicon Mac builds them with `docker buildx build --platform linux/amd64` — see [`deploy/server/GUIDE.md`](../../deploy/server/GUIDE.md).
 
 A successful `docker buildx` for a platform is not evidence that the container runs there. [`docs/testing/stage-7.md`](../testing/stage-7.md) records which runtime checks were actually performed on which machine, and which are still outstanding.
 
