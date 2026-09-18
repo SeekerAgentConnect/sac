@@ -327,7 +327,7 @@ usable. Denial has no input into FCM registration, foreground streams, manual or
 work, or periodic recovery; a Firebase-off APK creates no channel, prompt, or notification.
 
 Presentation happens after the push worker's authoritative Sync. The worker compares complete
-pending-key sets before and after that fetch, posts generic alerts only for newly discovered keys,
+pending-key sets before and after that fetch, posts type-aware alerts only for newly discovered keys,
 and cancels alerts for departed keys. Removing or revoking a connection also cancels all of its
 posted alerts directly, without waiting for another push worker; an unusable connection cannot get
 a new alert. The notification component accepts no request body or credential. Each alert's
@@ -534,9 +534,9 @@ agent, record the durable request ID only in the private test record, and never 
 1. **Active:** leave the app visible with both streams Live; create on A and then B. Each request
    appears once without Refresh, no stream is duplicated, and no wallet opens. A push hint may be
    coalesced with the already-current stream state; do not require an extra notification or fetch.
-2. **Background:** press Home, create on A, and record send, shade, and tap times. One generic alert
-   may appear; its text/lock-screen preview contains no request content. Tapping opens A's exact
-   current request only after a fetch and performs no answer or wallet operation.
+2. **Background:** press Home, create on A, and record send, shade, and tap times. One type-aware
+   native alert may appear; its text/lock-screen preview contains no request content. Tapping opens
+   A's exact current request only after a fetch and performs no answer or wallet operation.
 3. **Process absent:** background the app, then use `adb shell am kill
    io.github.brrenat.seekervault` while it is eligible for background execution. Create on B. Record
    whether FCM/WorkManager starts reconciliation and whether the request survives even if no alert

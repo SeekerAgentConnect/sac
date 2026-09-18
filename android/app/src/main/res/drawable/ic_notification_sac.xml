@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome SAC mark for Android's small-icon mask. The background is transparent and Android
+     supplies the shade/status-bar tint; the path carries only the recognizable silhouette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4,3.5L17.4,9.1C18.9,9.7 20,11.2 20,12.8L20,16.9L16.7,13.6L4,8.3ZM4,9.7L13.5,13.7L20,19.8L15.7,19.8L11.6,16L4,12.8ZM4,14.2L10.8,17.2L10.8,21.6L4,17.6Z" />
+</vector>

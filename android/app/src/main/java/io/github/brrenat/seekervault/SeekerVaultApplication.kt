@@ -328,6 +328,7 @@ class SeekerVaultApplication : Application() {
                     before,
                     after,
                     connectionRepository.connections.value,
+                    proposalRepository.proposals.value,
                 )
             },
         )
