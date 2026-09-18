@@ -4,6 +4,8 @@ Until Stage 7.1 a connection was one thing: a paired Node sidecar the phone hold
 
 That statement is a **server manifest**. It says who the server is, which phone–server contract it speaks, what revision its settings are at, which transport it uses, where it is reached, and which bundled client plugins its operations need. The phone validates it, caches it, matches its requirements against the plugins compiled into the build it is running, and says plainly whether it supports the server — before anything from that server can be executed.
 
+A publisher does not write one by hand: the templates build and publish it from their configuration, which [`docs/guides/server-development.md`](../guides/server-development.md) walks through.
+
 ## The document
 
 [`proto/seekervault/server/v1/manifest.proto`](../../proto/seekervault/server/v1/manifest.proto). It is a separate package from `seekervault.request.v1` because every kind of server publishes one, including the Go gateway (SEE-90) and the publisher templates (SEE-95, SEE-96), which serve no `RequestService` and speak no MCP.
@@ -100,11 +102,11 @@ seekervault://feed?v=1&gateway=https://gateway.example.com&server=<server ID>
 
 It is read by the same rules a pairing code is (`FeedReferences`, which shares the pairing code's own query parser), and unlike a pairing code it **carries no secret** — a feed is a broadcast, so a reference can be printed in a README and holding one grants nothing. The publisher's own address is deliberately absent: the phone resolves the manifest through the gateway, and there is nothing in a reference to contact.
 
-**This build resolves no feed.** [`FeedGateway`](../../android/app/src/main/java/io/github/brrenat/seekervault/connections/FeedGateway.kt) is the one seam a feed's manifest comes through, and the gateway that answers it is SEE-90. `ConnectionRepository.addFeed` reports `NoGateway` rather than pretending a feed resolved, and there is no owner-facing screen for adding one yet, because there is nothing for it to resolve against. What the data path does is already held by tests against a fake gateway: the identity, the origin and the channel are checked before anything is written, no call reaches a publisher, no credential is created, and the feed survives a restart as the feed it is.
+**The data path resolves a feed; there is no screen that starts one.** [`FeedGateway`](../../android/app/src/main/java/io/github/brrenat/seekervault/connections/FeedGateway.kt) is the one seam a feed's manifest comes through, and SEE-91 wired [`ConnectFeedGateway`](../../android/app/src/main/java/io/github/brrenat/seekervault/feeds/ConnectFeedGateway.kt) behind it, so `ConnectionRepository.addFeed` now resolves a real manifest from a real gateway and answers `NoGateway` only where no gateway is wired at all. What is still absent is the owner's way in: nothing in the Add-connection flow calls `addFeed`, and the manifest declares no deep link for `seekervault://feed`, so in a shipped build a feed reaches a phone only from a test. What the data path does is held by tests: the identity, the origin and the channel are checked before anything is written, no call reaches a publisher, no credential is created, and the feed survives a restart as the feed it is. A publisher's side of that boundary is [`docs/guides/server-development.md#5-connect-the-app`](../guides/server-development.md#5-connect-the-app).
 
 ## Where the mode lives
 
-`Connection.mode` is stored, and one invariant holds the record together: a feed always has a validated manifest, and a manifest a connection holds always agrees with its mode. `ConnectionStore` is at version 2; a version 1 file is still read.
+`Connection.mode` is stored, and one invariant holds the record together: a feed always has a validated manifest, and a manifest a connection holds always agrees with its mode. `ConnectionStore` is at version 3 — SEE-97 added the environment a connection keeps — and a version 1 or 2 file is still read, with a connection written before that version treated as production.
 
 `Connection.usable` — which already meant "the phone can still call this connection's sidecar" — now also requires the direct mode. That one condition is the gate on refresh, synchronization, push registration, wallet publication and every approval path, so a feed is excluded from all of them at once instead of in thirty places that could each be forgotten. What a feed's own reachability means is the gateway's question, and SEE-90 answers it.
 

@@ -6,7 +6,9 @@ publisher's manifest arrives through. SEE-89 added the document a publisher broa
 
 This is it: a Go service in [`broadcast/`](../../broadcast), with a publisher API a developer's
 server calls once per thing it wants to say, and a read-only client API every subscribed phone reads
-from.
+from. This page is why it is shaped the way it is;
+[`docs/guides/server-development.md`](../guides/server-development.md) is what a developer does with
+it, in order.
 
 **It is not `gateway/`.** That directory is one owner's private deployment — Caddy in front of their
 own sidecar (SAW-035), run by the owner, serving one paired phone. This is a shared service, run by

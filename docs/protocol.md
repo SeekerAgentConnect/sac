@@ -862,9 +862,10 @@ A publisher publishes to the shared gateway and every subscribed phone reads fro
 different relationship from the durable request above — nobody is addressed, and nothing comes back
 — so it is a separate package with two services in it:
 [`seekervault.gateway.v1`](../proto/seekervault/gateway/v1).
-[`docs/wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md) is the architecture page and
-[`docs/development/broadcast.md`](development/broadcast.md) is how to run one; this section is the
-contract.
+[`docs/wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md) is the architecture page,
+[`docs/development/broadcast.md`](development/broadcast.md) is how to run one, and
+[`docs/guides/server-development.md`](guides/server-development.md) is the numbered walkthrough for
+a developer publishing to one; this section is the contract.
 
 **The two services are separate on purpose, and separately deployed.** `FeedService` is read-only
 and unauthenticated; `PublisherService` takes a credential scoped to one server. They listen on

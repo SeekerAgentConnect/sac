@@ -128,6 +128,12 @@ To run the server half properly — in containers, on your own machine or a VPS 
 
 Everything builds from this checkout, and nothing in the path is ours. It does need things from other people — a domain and a certificate authority to go public, somebody's Solana RPC endpoint for transfers, an authorization server for a hosted client — and [What this needs from outside](docs/guides/self-hosting.md#what-this-needs-from-outside) is the full list. Connecting an agent is [Hermes](docs/integrations/hermes.md) by default, or [Claude over OAuth](docs/integrations/claude.md) as an option.
 
+## Building a server of your own
+
+To publish to the app from a server you run — a copy-trading feed, or a republished market listing — follow [`docs/guides/server-development.md`](docs/guides/server-development.md). It is numbered from a fresh checkout to a feed two phones are reading: [get a gateway](docs/guides/server-development.md#1-get-a-gateway-to-publish-to), [be registered as a publisher](docs/guides/server-development.md#2-be-registered-as-a-publisher), [copy a template out](docs/guides/server-development.md#3-copy-a-template-out), publish a signal [from a terminal or from a program](docs/guides/server-development.md#6-publish-a-signal), and then [revise, withdraw, expire and retry](docs/guides/server-development.md#8-the-lifecycle-revisions-expiry-withdrawal-retries-and-outages) one.
+
+You never receive a Firebase credential and never write any Android code: [topic push](docs/guides/server-development.md#9-topic-push) is a side effect of publishing, and [a build that lacks the plugin your feed needs](docs/guides/server-development.md#10-a-build-that-does-not-have-your-plugin) reads your feed and says which part is missing. The guide walked command by command, with what each one answered, is [`docs/testing/see-100.md`](docs/testing/see-100.md). This is not an SDK, and there is not one yet.
+
 ## Prerequisites
 
 Tested on a MacBook with macOS 26.5.2 on Apple silicon. Exact versions and setup details are in [`docs/development/toolchain.md`](docs/development/toolchain.md).

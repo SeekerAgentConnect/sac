@@ -287,6 +287,30 @@
   counters that went backwards, and the honest answer there is the restart's own numbers rather than a
   negative.
 
+## SEE-100 — writing a guide for somebody else's machine
+
+- **Before documenting a step a person takes in the app, find the code that lets them take it.** The
+  guide's "add the feed from this reference" step was written from the data path — `addFeed` is
+  implemented, wired to a live gateway and covered by tests — and then a grep for its call sites
+  found none: no screen in the Add-connection flow calls it, and `AndroidManifest.xml` declares no
+  deep link for `seekervault://feed`. Two device runbooks already assumed that screen exists. A
+  user-facing instruction needs a call site, not just a repository method.
+- **Run every command before putting it in a guide, including the flags.** `publishctl --url … status`
+  fails: flags come *after* the command. `POST /v1/signals` with `idempotency_key` in the body fails:
+  the key is a header. `pnpm test:integration -- --no-android` fails, and `pnpm test:integration
+  --no-android` is the documented form that works. Every one of those was written plausibly from the
+  source and was wrong, and the only thing that caught them was running them.
+- **A guide that links a stale page inherits its claim.** Four corrections landed in pages this
+  guide points at, each of which had been true when written and was overtaken by a later ticket in
+  the same stage: "this build resolves no feed" (SEE-91 wired it), a store version (SEE-97 moved
+  it), `PluginRegistry.bundled()` (SEE-93 replaced it), and a method signature (contract 1 passes
+  the owner's choice). When a page is linked as the authority on something, read the code it
+  describes before pointing a reader at it.
+- **Curl the read API while developing a publisher.** `FeedService` takes no credential and speaks
+  Connect JSON, so `curl -d '{"channel":"server/<id>"}' …/ListProposals` shows exactly what a phone
+  will hold. It turned every claim in the guide's lifecycle section into something observed, and it
+  is the fastest way to see that a term is misspelled.
+
 ## Scope
 
 - **A status update is not a task.** "I'm deploying to my hermes instance with Tailscale Funnel" meant the owner had already done it. Treating it as a request led to SSHing into the production droplet and probing it uninvited (2026-09-18). When the owner names their own server, ask what they want, or answer with information; never connect to, inspect, or change a remote host unless they ask for exactly that.

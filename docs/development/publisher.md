@@ -4,7 +4,9 @@ The Go module in [`publisher/`](../../publisher) (SEE-95, SEE-96): a developer's
 server, which publishes signals to the shared broadcast gateway and stops there.
 [`docs/wiki/copytrading-template.md`](../wiki/copytrading-template.md) is why it is shaped the way
 it is and [`docs/integrations/signal-api.md`](../integrations/signal-api.md) is its API; this page
-is how to run it, what its settings do, and where its code and tests are.
+is how to run it, what its settings do, and where its code and tests are. For a first deployment,
+[`docs/guides/server-development.md`](../guides/server-development.md) walks the whole path in order
+— a gateway, a credential, a copied template, a published signal and a woken phone.
 
 **One module, two templates**, and the difference is who writes the signals:
 

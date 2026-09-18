@@ -5,7 +5,8 @@ the gateway that carries one. SEE-93 gave the phone a plugin that can execute on
 them named the thing that would write the documents: the publisher templates.
 
 This is the first of them: a Go service in [`publisher/`](../../publisher), run by a developer or a
-trader, which publishes trader-authored spot-swap signals and stops there.
+trader, which publishes trader-authored spot-swap signals and stops there. To deploy one rather than
+understand it, follow [`docs/guides/server-development.md`](../guides/server-development.md).
 
 **"CopyTrading" here means user-approved trader signals.** There is no wallet monitoring in it, no
 copy detection, no unattended execution, no exchange account and no leverage. A signal is a
