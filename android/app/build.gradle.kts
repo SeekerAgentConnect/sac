@@ -1,6 +1,25 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.roborazzi)
+}
+
+// SEE-121 turns this on when full-screen previews move into :app. Keeping the identical scanner,
+// device, naming tester, and dependencies here makes that change an enable flip plus @DesignRef
+// annotations instead of a second screenshot-testing setup.
+@OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+roborazzi {
+    outputDir.set(layout.buildDirectory.dir("outputs/roborazzi"))
+    generateComposePreviewRobolectricTests {
+        enable = false
+        packages = listOf("io.github.brrenat.seekervault")
+        includePrivatePreviews = true
+        testerQualifiedClassName =
+            "io.github.brrenat.seekervault.designsystem.previewtesting.DesignPreviewTester"
+        useScanOptionParametersInTester = true
+        generatedTestClassCount = 1
+        robolectricConfig = mapOf("qualifiers" to "\"w390dp-h844dp-xxhdpi\"")
+    }
 }
 
 // Firebase is an optional deployment integration. A normal checkout has no project-specific file,
@@ -68,6 +87,7 @@ android {
         getByName("test") {
             resources.srcDir("../../proto/fixtures")
             resources.srcDir("../../fixtures")
+            kotlin.directories.add(rootProject.file("preview-testing/src/main/kotlin").absolutePath)
         }
     }
 
@@ -115,6 +135,8 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.okhttp.tls)
     testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi.compose.preview.scanner)
+    testImplementation(libs.composable.preview.scanner)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.core)

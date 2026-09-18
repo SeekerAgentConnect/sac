@@ -22,6 +22,25 @@ matching variable TrueType fonts from the official Google Fonts repositories und
 
 The license texts are checked in under `licenses/`.
 
+The variable-font entries in `Type.kt` set the `wght` variation axis explicitly for Roboto
+400/500/700 and Roboto Mono 400/500. `FontWeightProbe` exercises those exact resources under
+Robolectric's native graphics renderer. The three Roboto weights render differently, the bundled
+face differs from the platform default, and the Mono `i`/`M` samples keep equal advance, so no
+static-TTF fallback is needed.
+
+## JVM preview captures
+
+Roborazzi and ComposablePreviewScanner render every `@Preview` in this module on the JVM. Captures
+use the dark `SeekerTheme`, native Robolectric graphics, and
+`w390dp-h844dp-xxhdpi` (390×844 dp at 3×). No emulator is involved. Each preview also has a
+`@DesignRef`; its component and variant map to the same `<component>/<variant-slug>.png` path as
+the design export. See [`design/README.md`](../../design/README.md) for the commands and comparison
+contract.
+
+`:app` carries the same scanner dependencies and tester configuration with generation disabled.
+SEE-121 only needs to add its design references and enable that scanner when full-screen previews
+move there.
+
 ## Guardrail
 
 `checkDesignSystemLiterals` rejects `Color(0x...)`, raw `.dp`, and raw `.sp` literals in production
