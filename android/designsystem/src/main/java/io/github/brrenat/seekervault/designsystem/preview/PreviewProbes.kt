@@ -42,22 +42,27 @@ private fun DesignSurface(content: @Composable () -> Unit) {
 @Composable
 internal fun ThemeSwatchPreview() {
     DesignSurface {
+        // The sole legacy-dimension exception in :designsystem: this diagnostic must reproduce the
+        // HTML specimen's 1dp border, but tokens.json has no matching named spacing or size token.
+        // Keep the exception local and visible instead of inventing a reusable 1dp token.
+        @Suppress("DEPRECATION") val diagnosticBorderWidth = SeekerTheme.dimensions.dp1
         // The HTML specimen uses CSS content-box sizing: 64×48 plus a 1px border on every side.
         Box(
             Modifier.size(
                     width =
-                        SeekerTheme.dimensions.dp64 +
-                            SeekerTheme.dimensions.dp1 +
-                            SeekerTheme.dimensions.dp1,
+                        SeekerTheme.spacing.jumbo +
+                            SeekerTheme.spacing.jumbo +
+                            diagnosticBorderWidth +
+                            diagnosticBorderWidth,
                     height =
-                        SeekerTheme.dimensions.dp48 +
-                            SeekerTheme.dimensions.dp1 +
-                            SeekerTheme.dimensions.dp1,
+                        SeekerTheme.sizes.button.large.height +
+                            diagnosticBorderWidth +
+                            diagnosticBorderWidth,
                 )
                 .clip(MaterialTheme.shapes.medium)
                 .background(SeekerTheme.colors.surface0)
                 .border(
-                    width = SeekerTheme.dimensions.dp1,
+                    width = diagnosticBorderWidth,
                     color = MaterialTheme.colorScheme.outlineVariant,
                     shape = MaterialTheme.shapes.medium,
                 )
@@ -72,7 +77,7 @@ internal fun ThemeSwatchPreview() {
 internal fun SizeProbePreview() {
     DesignSurface {
         Box(
-            Modifier.size(SeekerTheme.dimensions.dp48)
+            Modifier.size(SeekerTheme.sizes.button.large.height)
                 .background(SeekerTheme.colors.lime)
                 .testTag("size-probe")
         )
@@ -125,7 +130,7 @@ internal fun FontWeightProbe() {
 @Composable
 internal fun IconProbePreview() {
     DesignSurface {
-        val iconModifier = Modifier.size(SeekerTheme.dimensions.dp24)
+        val iconModifier = Modifier.size(SeekerTheme.sizes.iconButton.large.glyph)
         val tint = MaterialTheme.colorScheme.onSurface
         Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md)) {
             Icon(

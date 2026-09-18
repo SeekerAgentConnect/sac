@@ -207,6 +207,30 @@ async function pathExists(target) {
   }
 }
 
+function isGeneratedComponentArtifact(relative) {
+  const [component] = relative.split(path.sep);
+  return (
+    component !== "_template" &&
+    (relative.endsWith(".html") || relative.endsWith(".png"))
+  );
+}
+
+async function removeGeneratedComponentArtifacts(root, relative = "") {
+  const absolute = path.join(root, relative);
+  if (!(await pathExists(absolute))) return;
+
+  const entries = await readdir(absolute, { withFileTypes: true });
+  for (const entry of entries) {
+    const child = path.join(relative, entry.name);
+    if (entry.isDirectory()) {
+      if (relative === "" && entry.name === "_template") continue;
+      await removeGeneratedComponentArtifacts(root, child);
+    } else if (entry.isFile() && isGeneratedComponentArtifact(child)) {
+      await rm(path.join(root, child));
+    }
+  }
+}
+
 async function loadCapturePage(browser, exportName, kind, fontCss, initial) {
   const context = await browser.newContext({
     viewport: VIEWPORT,
@@ -595,7 +619,7 @@ async function writeElementCapture(element, outputBase, metadata) {
 
 async function captureComponents(browser, outputRoot, fontCss) {
   const outputDirectory = path.join(outputRoot, "components");
-  await rm(outputDirectory, { recursive: true, force: true });
+  await removeGeneratedComponentArtifacts(outputDirectory);
   await mkdir(outputDirectory, { recursive: true });
 
   const loaded = await loadCapturePage(
@@ -1109,6 +1133,26 @@ async function listFiles(root, relative = "") {
   return files;
 }
 
+async function listGeneratedComponentArtifacts(root) {
+  const componentRoot = path.join(root, "components");
+  if (!(await pathExists(componentRoot))) return [];
+  return (await listFiles(componentRoot))
+    .filter(isGeneratedComponentArtifact)
+    .map((relative) => path.join("components", relative));
+}
+
+async function listComparisonFiles(root, target) {
+  if (target === "components") {
+    return listGeneratedComponentArtifacts(root);
+  }
+
+  const absolute = path.join(root, target);
+  if (!(await pathExists(absolute))) return [];
+  return (await stat(absolute)).isDirectory()
+    ? listFiles(root, target)
+    : [target];
+}
+
 async function compareGenerated(expectedRoot, actualRoot, only) {
   const targets = ["manifest.json"];
   if (!only || only === "components")
@@ -1118,16 +1162,8 @@ async function compareGenerated(expectedRoot, actualRoot, only) {
 
   const differences = [];
   for (const target of targets) {
-    const expectedFiles = (await pathExists(path.join(expectedRoot, target)))
-      ? (await stat(path.join(expectedRoot, target))).isDirectory()
-        ? await listFiles(expectedRoot, target)
-        : [target]
-      : [];
-    const actualFiles = (await pathExists(path.join(actualRoot, target)))
-      ? (await stat(path.join(actualRoot, target))).isDirectory()
-        ? await listFiles(actualRoot, target)
-        : [target]
-      : [];
+    const expectedFiles = await listComparisonFiles(expectedRoot, target);
+    const actualFiles = await listComparisonFiles(actualRoot, target);
     const allFiles = [...new Set([...expectedFiles, ...actualFiles])].sort();
     for (const relative of allFiles) {
       const expectedPath = path.join(expectedRoot, relative);

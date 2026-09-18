@@ -2,6 +2,9 @@
 
 - Before exploring the filesystem, read `CODEBASE.md` first.
 - Follow `AGENTS.md` for stage boundaries, stock UI, testing, and documentation rules.
+- Before any Android UI task, read `design/README.md` and then the target component's `spec.md`.
+- Before changing the design guide or generated design references, read `design/UPDATING.md` and
+  follow its refresh procedure as a separate design-only change.
 - Only explore files directly if `CODEBASE.md` doesn't cover what you need.
 - If you explored files not covered by `CODEBASE.md` during a task, append them to the relevant section.
 - After completing any task that adds, removes, or moves files or changes architecture, update `CODEBASE.md` to reflect the changes.
