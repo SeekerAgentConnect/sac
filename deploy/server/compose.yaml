@@ -1,0 +1,110 @@
+# The sidecar on its own TLS listener, for the live update stream (deploy/server/README.md).
+#
+# Run it from this directory, on a Linux server:
+#   cp .env.template .env        # fill in SERVER_DOMAIN and the two tokens
+#   ./tls-from-tailscale.sh      # or put your own fullchain.pem / privkey.pem in ./tls
+#   docker compose up -d
+#
+# What this is: the sidecar alone, with a publicly trusted certificate of its own, and no
+# gateway in front of it. That is the one layout in which the phone's update stream
+# (UpdateService.Subscribe, gRPC over HTTP/2) reaches the sidecar end to end — every
+# HTTP/1.1 hop, Caddy's or a platform's, breaks it (docs/development/sidecar.md,
+# "Production update listener"). TLS terminates in the sidecar, so whatever sits in front
+# must pass TCP through untouched: Tailscale Funnel's --tcp mode, or nothing.
+#
+# What is different from gateway/compose.yaml, and why:
+# - network_mode: host. The sidecar binds a loopback address by rule, and here that
+#   loopback is the host's: only processes on the server itself — tailscaled, an agent
+#   running there, the operator — can reach the port. Nothing is published to another
+#   interface, and Docker's own port mapping is not used at all. Linux only.
+# - No gateway means no route filter. Everything the sidecar serves is on this origin,
+#   each behind its own credential: /mcp behind MCP_TOKEN, pairing behind a one-use code,
+#   the phone's services behind the paired credential, the Stage 1 diagnostic behind
+#   PHONE_TOKEN, and /healthz, which carries no data. Everything else answers 404.
+#
+# Starting this creates no wallet request, moves no funds, and launches no LLM.
+
+name: seeker-agent-wallet-server
+
+services:
+  sidecar:
+    # A prebuilt image, or one you build from a checkout with
+    #   docker build -f sidecar/Dockerfile -t <name> .
+    # A build needs more memory than a small server has, which is why the default
+    # is a published tag. The image ships no credential; everything arrives below.
+    image: ${SIDECAR_IMAGE:-docker.io/brenat/seeker-agent-connect:sidecar-v1}
+    restart: unless-stopped
+    network_mode: host
+
+    environment:
+      # The listener: TLS, HTTP/2 and HTTP/1.1 on one port, on the host's loopback.
+      SIDECAR_HOST: 127.0.0.1
+      SIDECAR_PORT: ${SIDECAR_PORT:-8443}
+      SIDECAR_TLS_CERT_PATH: /run/tls/fullchain.pem
+      SIDECAR_TLS_KEY_PATH: /run/tls/privkey.pem
+      # The origin the world uses. Pairing codes carry it, and it is where the phone
+      # opens the update stream — so it must be the name on the certificate, and the
+      # port that is forwarded to SIDECAR_PORT.
+      SIDECAR_PUBLIC_URL: https://${SERVER_DOMAIN:?set SERVER_DOMAIN in deploy/server/.env - the name on the certificate, for example hermes.tail5e20a8.ts.net}:${PUBLIC_PORT:-10000}
+      # /mcp refuses any other Host or Origin, as a DNS-rebinding defence. Port ignored.
+      MCP_ALLOWED_HOSTS: ${SERVER_DOMAIN}
+      MCP_TOKEN: ${MCP_TOKEN:?set MCP_TOKEN in deploy/server/.env - see .env.template}
+      PHONE_TOKEN: ${PHONE_TOKEN:?set PHONE_TOKEN in deploy/server/.env - see .env.template}
+      LIVE_COMMAND_TIMEOUT_SECONDS: ${LIVE_COMMAND_TIMEOUT_SECONDS:-60}
+      MCP_DEMO_TOOLS: ${MCP_DEMO_TOOLS:-false}
+      DATABASE_PATH: /data/sidecar.db
+      REQUEST_TTL_SECONDS: ${REQUEST_TTL_SECONDS:-}
+      REQUEST_PENDING_LIMIT: ${REQUEST_PENDING_LIMIT:-}
+      PAIRING_TOKEN_TTL_SECONDS: ${PAIRING_TOKEN_TTL_SECONDS:-}
+      # Empty means the sidecar serves no transfer tool and prepares nothing.
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL:-}
+      SOLANA_RPC_TIMEOUT_MS: ${SOLANA_RPC_TIMEOUT_MS:-}
+      # Push invalidation (docs/guides/firebase.md). Empty keeps the sender off. With a
+      # project ID set, the Admin SDK reads the service-account file mounted below
+      # through Application Default Credentials; the path is fixed here so the
+      # credential's location never enters .env.
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      GOOGLE_APPLICATION_CREDENTIALS: ${FCM_PROJECT_ID:+/run/secrets/fcm-service-account.json}
+
+    volumes:
+      # Durable requests, pairing credentials, and the server ID: the only state that
+      # must outlive a container, and the only writable path in the image.
+      - sidecar-data:/data
+      # The certificate and key, readable by the image's account (uid 10001).
+      # tls-from-tailscale.sh writes them; any publicly trusted PEM pair works.
+      - ./tls:/run/tls:ro
+      # The Firebase service-account key, when FCM is on. The file must exist even
+      # when it is not — an empty directory is fine — because a bind mount cannot be
+      # conditional. The README says how to obtain and protect it.
+      - ./secrets:/run/secrets:ro
+
+    healthcheck:
+      # GET /healthz on the TLS listener itself. The certificate names the public
+      # host, not 127.0.0.1, so this probe does not verify it: it asks whether the
+      # sidecar is up, which is all a liveness check may claim.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "process.env.NODE_TLS_REJECT_UNAUTHORIZED='0';fetch('https://127.0.0.1:'+(process.env.SIDECAR_PORT||'8443')+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    # main.ts handles SIGTERM: it cancels the in-flight live command, ends every update
+    # stream, stops listening, and closes SQLite. Node is PID 1 in the image.
+    stop_grace_period: 30s
+    stop_signal: SIGTERM
+
+    # The sidecar holds no key and signs nothing; it needs no capability either. Its
+    # port is above 1024, so host networking adds none.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  sidecar-data:

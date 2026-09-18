@@ -11,6 +11,8 @@ build/
 .env
 .env.*
 !.env.example
+# deploy/server ships its settings template under this name.
+!.env.template
 local.properties
 *.jks
 *.keystore

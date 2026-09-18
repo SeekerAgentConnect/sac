@@ -14,7 +14,15 @@ ARG PNPM_VERSION=12.3.4
 # --- dependencies -----------------------------------------------------------
 # Installed from the lockfile alone, before any source is copied, so editing a
 # source file does not invalidate this layer.
-FROM node:${NODE_VERSION}-bookworm-slim AS deps
+#
+# This stage and the two built on it run on the building machine's own platform
+# ($BUILDPLATFORM) even when the image is for another one, so `docker buildx build
+# --platform linux/amd64` works from an Apple silicon Mac: installing and
+# compiling need no emulation (pnpm's binary aborts under QEMU there), and what
+# they produce is platform-independent — the compiled JavaScript, and a dependency
+# tree whose two native addons (bufferutil, utf-8-validate) ship prebuilt binaries
+# for every platform. Only the runtime stage is built for the target.
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS deps
 ARG PNPM_VERSION
 ENV CI=true
 RUN npm install --global --no-fund --no-audit pnpm@${PNPM_VERSION}

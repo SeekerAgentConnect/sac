@@ -58,3 +58,7 @@
 - **A classification by hand-written ranges is a list of what came to mind.** `isHidden` listed the invisible characters someone thought of, and U+061C and every tag character walked straight past it. Ask the platform's own tables (`Character.getType`) and iterate code points, not chars, so a surrogate pair stays one character and a supplementary one can't slip through as two halves.
 - **Anything a remote side validates, bound before storing it.** A wallet's own error message went into a result detail with no limit, and a detail over the protocol's 1024 bytes would have been refused for ever, since a stored signing outcome is never replaced. Clamp text you didn't write to the contract's limit at the point it enters your own state.
 - **Publish on the event, not on the next lifecycle callback.** The Wallet screen told a newly paired sidecar about the wallet only after the app was hidden and shown again, although pairing happens in the foreground. When state has "who has been told" bookkeeping, drive it from the change itself.
+
+## Scope
+
+- **A status update is not a task.** "I'm deploying to my hermes instance with Tailscale Funnel" meant the owner had already done it. Treating it as a request led to SSHing into the production droplet and probing it uninvited (2026-09-18). When the owner names their own server, ask what they want, or answer with information; never connect to, inspect, or change a remote host unless they ask for exactly that.
