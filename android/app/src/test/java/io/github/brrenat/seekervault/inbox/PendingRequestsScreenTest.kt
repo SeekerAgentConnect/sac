@@ -19,7 +19,6 @@ import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
@@ -28,6 +27,7 @@ import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.Inbox
 import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.RequestKey
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.request.v1.RequestState
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -48,7 +48,7 @@ class PendingRequestsScreenTest {
     private var refreshes = 0
 
     private fun show(state: InboxUiState, connectionId: String? = null) = compose.setContent {
-        SeekerVaultTheme {
+        SeekerTheme {
             PendingRequestsScreen(
                 state = state,
                 connectionId = connectionId,

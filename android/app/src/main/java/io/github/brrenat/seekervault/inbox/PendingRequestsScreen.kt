@@ -48,9 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerTheme
 import io.github.brrenat.seekervault.connections.BackButton
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.Connection
@@ -58,6 +56,7 @@ import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.hasProblem
 import io.github.brrenat.seekervault.connections.statusText as connectionStatusText
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.operations.standingText
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -126,12 +125,12 @@ fun PendingRequestsScreen(
     ) {
         Row(
             Modifier.fillMaxWidth()
-                .height(if (inSheet) 56.dp else 64.dp)
-                .padding(horizontal = 8.dp),
+                .height(if (inSheet) SeekerTheme.dimensions.dp56 else SeekerTheme.dimensions.dp64)
+                .padding(horizontal = SeekerTheme.dimensions.dp8),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (connectionId == null) BackButton(onBack)
-            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+            Column(Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp8)) {
                 Text(
                     stringResource(R.string.inbox_title),
                     style = MaterialTheme.typography.titleLarge,
@@ -148,7 +147,7 @@ fun PendingRequestsScreen(
             }
             state.wallet?.let { NetworkChip(networkText(it.network)) }
             Box(
-                Modifier.size(48.dp)
+                Modifier.size(SeekerTheme.dimensions.dp48)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .clickable(
@@ -164,7 +163,7 @@ fun PendingRequestsScreen(
             }
             if (connectionId != null) CloseButton(onBack, containerColor)
         }
-        Row(Modifier.fillMaxWidth().height(48.dp)) {
+        Row(Modifier.fillMaxWidth().height(SeekerTheme.dimensions.dp48)) {
             RequestTab(
                 text =
                     stringResource(
@@ -189,8 +188,14 @@ fun PendingRequestsScreen(
             )
         }
         LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding =
+                PaddingValues(
+                    start = SeekerTheme.dimensions.dp16,
+                    top = SeekerTheme.dimensions.dp12,
+                    end = SeekerTheme.dimensions.dp16,
+                    bottom = SeekerTheme.dimensions.dp24,
+                ),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
             modifier = Modifier.weight(1f).testTag(InboxTags.LIST),
         ) {
             if (state.refreshing) {
@@ -211,7 +216,7 @@ fun PendingRequestsScreen(
                     Text(
                         stringResource(R.string.inbox_problem, it.label, connectionStatusText(it)),
                         color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
                     )
                 }
             }
@@ -232,7 +237,8 @@ fun PendingRequestsScreen(
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier =
-                                Modifier.padding(top = 4.dp).testTag(InboxTags.SECTION_PENDING),
+                                Modifier.padding(top = SeekerTheme.dimensions.dp4)
+                                    .testTag(InboxTags.SECTION_PENDING),
                         )
                     }
                 }
@@ -291,8 +297,8 @@ private fun SignalItem(
         onClick = { onOpen(record) },
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -300,7 +306,10 @@ private fun SignalItem(
                 contentDescription = null,
                 tint = SeekerTheme.colors.primaryText,
             )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
+            ) {
                 Text(
                     stringResource(R.string.request_category_signal),
                     style = MaterialTheme.typography.labelSmall,
@@ -308,9 +317,12 @@ private fun SignalItem(
                     modifier =
                         Modifier.background(
                                 MaterialTheme.colorScheme.primaryContainer,
-                                RoundedCornerShape(8.dp),
+                                RoundedCornerShape(SeekerTheme.dimensions.dp8),
                             )
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                            .padding(
+                                horizontal = SeekerTheme.dimensions.dp8,
+                                vertical = SeekerTheme.dimensions.dp3,
+                            ),
                 )
                 Text(
                     record.proposal.commonEnvelope().presentation.title,
@@ -344,7 +356,7 @@ private fun RequestTab(
 ) {
     Box(
         modifier
-            .height(48.dp)
+            .height(SeekerTheme.dimensions.dp48)
             .background(containerColor)
             .selectable(
                 selected = selected,
@@ -365,7 +377,7 @@ private fun RequestTab(
         Box(
             Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(3.dp)
+                .height(SeekerTheme.dimensions.dp3)
                 .background(if (selected) SeekerTheme.colors.primaryText else containerColor)
         )
     }
@@ -383,7 +395,7 @@ private fun <T> LazyListScope.section(
             stringResource(title),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp).testTag(tag),
+            modifier = Modifier.padding(top = SeekerTheme.dimensions.dp4).testTag(tag),
         )
     }
     items(entries) { content(it) }
@@ -394,7 +406,7 @@ private fun Message(@StringRes text: Int, tag: String) {
     SeekerCard(Modifier.fillMaxWidth()) {
         Text(
             stringResource(text),
-            modifier = Modifier.padding(18.dp).testTag(tag),
+            modifier = Modifier.padding(SeekerTheme.dimensions.dp18).testTag(tag),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -443,7 +455,10 @@ private fun RequestItem(
         modifier = Modifier.fillMaxWidth().testTag(InboxTags.item(request.key)),
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier.padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
+        ) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -451,7 +466,7 @@ private fun RequestItem(
             ) {
                 Row(
                     modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
@@ -462,7 +477,7 @@ private fun RequestItem(
                         },
                         contentDescription = null,
                         tint = SeekerTheme.colors.primaryText,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(SeekerTheme.dimensions.dp22),
                     )
                     Text(
                         action,
@@ -499,9 +514,12 @@ private fun RequestItem(
                                     allowed -> MaterialTheme.colorScheme.primaryContainer
                                     else -> MaterialTheme.colorScheme.surfaceContainerHighest
                                 },
-                                RoundedCornerShape(8.dp),
+                                RoundedCornerShape(SeekerTheme.dimensions.dp8),
                             )
-                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                            .padding(
+                                horizontal = SeekerTheme.dimensions.dp10,
+                                vertical = SeekerTheme.dimensions.dp5,
+                            ),
                 )
             }
             Text(
@@ -511,12 +529,12 @@ private fun RequestItem(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
                 SeekerButton(
                     text = stringResource(R.string.review),
                     onClick = { onOpen(request.key) },
                     role = SeekerButtonRole.Tonal,
-                    modifier = Modifier.weight(1f).height(40.dp),
+                    modifier = Modifier.weight(1f).height(SeekerTheme.dimensions.dp40),
                 )
                 // This is a shortcut into the mandatory review, never an answer from the list.
                 // Transfers still have to be decoded here and signatures still go to the wallet.
@@ -530,11 +548,11 @@ private fun RequestItem(
                             }
                         ),
                     onClick = { onOpen(request.key) },
-                    modifier = Modifier.weight(1f).height(40.dp),
+                    modifier = Modifier.weight(1f).height(SeekerTheme.dimensions.dp40),
                     automationTag = InboxTags.QUICK_APPROVE,
                 )
                 Box(
-                    Modifier.size(40.dp)
+                    Modifier.size(SeekerTheme.dimensions.dp40)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                         .clickable(
@@ -560,7 +578,10 @@ private fun ResultItem(result: LocalResult, source: String?, onOpen: (RequestKey
         modifier = Modifier.fillMaxWidth().testTag(InboxTags.item(result.key)),
         onClick = { onOpen(result.key) },
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Column(
+            Modifier.padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp5),
+        ) {
             Text(source ?: result.connectionId, style = MaterialTheme.typography.labelMedium)
             Text(
                 result.request.text() ?: actionText(result.request),

@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.activity.ActivityDetailsScreen
@@ -40,6 +39,7 @@ import io.github.brrenat.seekervault.connections.ConnectionsUiState
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.connections.InboxSummary
 import io.github.brrenat.seekervault.connections.RequestKey
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.inbox.NotificationOpenStatus
 import io.github.brrenat.seekervault.inbox.NotificationRequestStateScreen
@@ -183,7 +183,7 @@ fun SeekerVaultApp(
         )
     val rootModifier =
         Modifier.navigationBarsPadding()
-            .padding(bottom = 80.dp)
+            .padding(bottom = SeekerTheme.dimensions.dp80)
             .then(if (stack.size > 1) Modifier.clearAndSetSemantics {} else Modifier)
     // Badges and any open review follow successful rule writes immediately. The stored drafts
     // change only after disk writes succeed, so in-flight edits never affect an assessment.

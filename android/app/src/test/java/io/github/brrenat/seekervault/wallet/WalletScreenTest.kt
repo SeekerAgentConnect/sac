@@ -12,9 +12,9 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -30,7 +30,7 @@ class WalletScreenTest {
     private val actions = mutableListOf<String>()
 
     private fun show(state: WalletUiState) = compose.setContent {
-        SeekerVaultTheme {
+        SeekerTheme {
             WalletScreen(
                 state = state,
                 onChooseNetwork = { actions += "network:${it.name}" },

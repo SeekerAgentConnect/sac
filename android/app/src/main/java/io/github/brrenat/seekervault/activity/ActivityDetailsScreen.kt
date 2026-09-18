@@ -22,11 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.environmentText
 import io.github.brrenat.seekervault.connections.formatInstant
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.ui.Identifier
 import io.github.brrenat.seekervault.ui.SeekerButton
 import io.github.brrenat.seekervault.ui.SeekerButtonRole
@@ -68,7 +68,7 @@ fun ActivityDetailsScreen(
                 actions = {
                     CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
                 },
-                expandedHeight = 56.dp,
+                expandedHeight = SeekerTheme.dimensions.dp56,
                 windowInsets = WindowInsets(0, 0, 0, 0),
                 colors =
                     TopAppBarDefaults.topAppBarColors(
@@ -84,19 +84,25 @@ fun ActivityDetailsScreen(
                 stringResource(outcomeText(record.outcome)),
                 style = MaterialTheme.typography.bodyLarge,
                 modifier =
-                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    Modifier.padding(
+                            horizontal = SeekerTheme.dimensions.dp16,
+                            vertical = SeekerTheme.dimensions.dp8,
+                        )
                         .testTag(ActivityTags.OUTCOME),
             )
             Text(
                 operationText(record),
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 16.dp).testTag(ActivityTags.OPERATION),
+                modifier =
+                    Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                        .testTag(ActivityTags.OPERATION),
             )
             record.detail?.let {
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(16.dp).testTag(ActivityTags.DETAIL),
+                    modifier =
+                        Modifier.padding(SeekerTheme.dimensions.dp16).testTag(ActivityTags.DETAIL),
                 )
             }
             Field(R.string.activity_field_source, record.source, ActivityTags.SOURCE)
@@ -160,7 +166,10 @@ fun ActivityDetailsScreen(
                     stringResource(R.string.activity_checked_with, it),
                     style = MaterialTheme.typography.bodySmall,
                     modifier =
-                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        Modifier.padding(
+                                horizontal = SeekerTheme.dimensions.dp16,
+                                vertical = SeekerTheme.dimensions.dp8,
+                            )
                             .testTag(ActivityTags.CHECKED_WITH),
                 )
             }
@@ -170,7 +179,9 @@ fun ActivityDetailsScreen(
                 Text(
                     stringResource(R.string.activity_not_a_payment),
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(16.dp).testTag(ActivityTags.NOT_A_PAYMENT),
+                    modifier =
+                        Modifier.padding(SeekerTheme.dimensions.dp16)
+                            .testTag(ActivityTags.NOT_A_PAYMENT),
                 )
             }
             explorerUrl(record)?.let { url ->
@@ -178,12 +189,14 @@ fun ActivityDetailsScreen(
                     text = stringResource(R.string.activity_explorer),
                     onClick = { onOpenExplorer(url) },
                     role = SeekerButtonRole.Neutral,
-                    modifier = Modifier.padding(16.dp).testTag(ActivityTags.EXPLORER),
+                    modifier =
+                        Modifier.padding(SeekerTheme.dimensions.dp16)
+                            .testTag(ActivityTags.EXPLORER),
                 )
                 Text(
                     stringResource(R.string.activity_explorer_note),
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
                 )
             }
         }
@@ -201,18 +214,21 @@ private fun Field(
     SeekerCard(
         modifier =
             Modifier.fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 5.dp)
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp5,
+                )
                 .testTag(tag ?: ActivityTags.field(name))
                 .semantics(mergeDescendants = true) {}
     ) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.padding(SeekerTheme.dimensions.dp14)) {
             Text(
                 name,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (monospace) {
-                Identifier(value, Modifier.padding(top = 3.dp), maxLines = 8)
+                Identifier(value, Modifier.padding(top = SeekerTheme.dimensions.dp3), maxLines = 8)
             } else {
                 Text(value, style = MaterialTheme.typography.bodyMedium)
             }

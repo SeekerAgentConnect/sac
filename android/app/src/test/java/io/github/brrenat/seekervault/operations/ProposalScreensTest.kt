@@ -15,7 +15,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.jupiter.SOL_MINT
 import io.github.brrenat.seekervault.jupiter.SwapParameterNames
 import io.github.brrenat.seekervault.jupiter.SwapTermNames
@@ -143,7 +143,7 @@ class ProposalScreensTest {
     }
 
     private fun showReview(review: OperationReview) = compose.setContent {
-        SeekerVaultTheme {
+        SeekerTheme {
             ProposalReviewScreen(
                 review = review,
                 label = "A trader",
@@ -168,7 +168,7 @@ class ProposalScreensTest {
     fun theListShowsWhatWasProposedAndWhereItStands() {
         val opened = mutableListOf<String>()
         compose.setContent {
-            SeekerVaultTheme {
+            SeekerTheme {
                 ProposalsScreen(
                     label = "A trader",
                     records = listOf(record()),
@@ -197,7 +197,7 @@ class ProposalScreensTest {
     @Test
     fun anEmptyFeedSaysSoRatherThanLookingRead() {
         compose.setContent {
-            SeekerVaultTheme {
+            SeekerTheme {
                 ProposalsScreen(
                     label = "A trader",
                     records = emptyList(),

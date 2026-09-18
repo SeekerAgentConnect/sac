@@ -21,10 +21,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.ui.SeekerButton
 import io.github.brrenat.seekervault.ui.SeekerButtonRole
 import io.github.brrenat.seekervault.ui.seekerTextFieldColors
@@ -74,8 +73,10 @@ fun LiveCommandScreen(
     ) { innerPadding ->
         Column(
             modifier =
-                Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                Modifier.padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
         ) {
             Text(
                 stringResource(R.string.live_title),
@@ -106,7 +107,7 @@ fun LiveCommandScreen(
                 colors = seekerTextFieldColors(),
                 modifier = Modifier.fillMaxWidth().testTag(LiveCommandTags.PHONE_TOKEN),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
                 SeekerButton(
                     text = stringResource(R.string.connect),
                     onClick = onConnect,
@@ -220,7 +221,7 @@ private fun commandStatusText(status: CommandStatus): String =
 @Preview(showBackground = true)
 @Composable
 private fun LiveCommandScreenPreview() {
-    SeekerVaultTheme {
+    SeekerTheme {
         LiveCommandScreen(
             state =
                 LiveCommandUiState(

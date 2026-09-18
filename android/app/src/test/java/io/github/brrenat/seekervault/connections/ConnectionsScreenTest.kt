@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.inbox.key
 import io.github.brrenat.seekervault.policy.PolicyAction
@@ -49,7 +49,7 @@ class ConnectionsScreenTest {
         requests: List<io.github.brrenat.seekervault.request.v1.ActionRequest> = emptyList(),
         assessments: Map<RequestKey, RequestAssessment> = emptyMap(),
     ) = compose.setContent {
-        SeekerVaultTheme {
+        SeekerTheme {
             ConnectionsScreen(
                 state = state,
                 onOpen = { opened += it },

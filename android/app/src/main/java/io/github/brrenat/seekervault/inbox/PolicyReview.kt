@@ -36,11 +36,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.activity.ReviewedDailyCheck
 import io.github.brrenat.seekervault.activity.ReviewedPolicy
 import io.github.brrenat.seekervault.activity.ReviewedRuleSource
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.policy.DailyCheckScope
 import io.github.brrenat.seekervault.policy.DailyPolicyCheck
 import io.github.brrenat.seekervault.policy.PolicyCheck
@@ -121,14 +121,16 @@ fun PolicyReview(
         // rather than leaving a gap that could be read as "nothing to say".
         SeekerCard(
             modifier =
-                modifier.fillMaxWidth().padding(16.dp).testTag(InboxTags.POLICY_PENDING).semantics(
-                    mergeDescendants = true
-                ) {}
+                modifier
+                    .fillMaxWidth()
+                    .padding(SeekerTheme.dimensions.dp16)
+                    .testTag(InboxTags.POLICY_PENDING)
+                    .semantics(mergeDescendants = true) {}
         ) {
             Text(
                 stringResource(R.string.policy_review_pending),
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
             )
         }
         return
@@ -160,29 +162,29 @@ fun PolicyReview(
             .map { it.check }
 
     Column(
-        modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
+        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
     ) {
         SeekerCard(
             modifier = Modifier.fillMaxWidth(),
             color =
                 if (allowed) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.tertiaryContainer,
-            radius = 16.dp,
+            radius = SeekerTheme.dimensions.dp16,
         ) {
             Column(
-                Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
                 ) {
                     Icon(
                         if (allowed) Icons.Outlined.Verified else Icons.Outlined.WarningAmber,
                         contentDescription = null,
                         tint = verdictInk,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(SeekerTheme.dimensions.dp22),
                     )
                     Text(
                         stringResource(
@@ -235,7 +237,7 @@ fun PolicyReview(
                         Modifier.testTag(InboxTags.POLICY_UNCOVERED).semantics(
                             mergeDescendants = true
                         ) {},
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
                     ) {
                         if (deliberatelyOff.isNotEmpty()) {
                             Text(
@@ -261,7 +263,7 @@ fun PolicyReview(
                 }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                 ) {
                     if (!transactionWithoutRules) {
                         Text(
@@ -303,16 +305,19 @@ private fun ConfiguredCheck(result: PolicyCheckResult, ink: androidx.compose.ui.
             Modifier.fillMaxWidth().testTag(InboxTags.policyCheck(result.check)).semantics(
                 mergeDescendants = true
             ) {},
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
         verticalAlignment = Alignment.Top,
     ) {
         Icon(
             if (warns) Icons.Outlined.ErrorOutline else Icons.Outlined.CheckCircle,
             contentDescription = null,
             tint = ink,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(SeekerTheme.dimensions.dp18),
         )
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(
+            Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
+        ) {
             Text(
                 stringResource(checkText(result.check)),
                 style = MaterialTheme.typography.labelMedium,
@@ -340,11 +345,11 @@ private fun DailySpend(checks: List<DailyPolicyCheck>, decimals: Int) {
     SeekerCard(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceContainer,
-        radius = 16.dp,
+        radius = SeekerTheme.dimensions.dp16,
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
         ) {
             Text(
                 stringResource(R.string.policy_daily_title),
@@ -374,14 +379,14 @@ private fun DailyRow(check: DailyPolicyCheck, decimals: Int) {
         Modifier.fillMaxWidth().testTag(InboxTags.policyDaily(check.scope.code)).semantics(
             mergeDescendants = true
         ) {},
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             if (warns) Icons.Outlined.WarningAmber else Icons.Outlined.CheckCircle,
             contentDescription = null,
             tint = ink,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(SeekerTheme.dimensions.dp20),
         )
         Column(Modifier.weight(1f)) {
             Text(statusText(check.result), style = MaterialTheme.typography.bodyMedium, color = ink)
@@ -416,9 +421,9 @@ private fun RulesButton(allowed: Boolean, onClick: () -> Unit, @StringRes label:
     val ink =
         if (allowed) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary
     Box(
-        Modifier.height(32.dp)
+        Modifier.height(SeekerTheme.dimensions.dp32)
             .testTag(InboxTags.RULES_BUTTON)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(SeekerTheme.dimensions.dp16))
             .background(container)
             .clickable(
                 indication = null,
@@ -426,7 +431,7 @@ private fun RulesButton(allowed: Boolean, onClick: () -> Unit, @StringRes label:
                 role = Role.Button,
                 onClick = onClick,
             )
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = SeekerTheme.dimensions.dp14),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -452,11 +457,11 @@ private fun SourceChip(source: RuleSource) {
             MaterialTheme.colorScheme.onSurface
         }
     Row(
-        Modifier.height(24.dp)
-            .clip(RoundedCornerShape(8.dp))
+        Modifier.height(SeekerTheme.dimensions.dp24)
+            .clip(RoundedCornerShape(SeekerTheme.dimensions.dp8))
             .background(container)
-            .padding(horizontal = 9.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+            .padding(horizontal = SeekerTheme.dimensions.dp9),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp5),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -467,7 +472,7 @@ private fun SourceChip(source: RuleSource) {
             },
             contentDescription = null,
             tint = ink,
-            modifier = Modifier.size(13.dp),
+            modifier = Modifier.size(SeekerTheme.dimensions.dp13),
         )
         Text(sourceName(source), style = MaterialTheme.typography.labelSmall, color = ink)
     }
@@ -539,7 +544,7 @@ fun ApproveAnyway(
                     role = Role.Checkbox,
                     onValueChange = onAcknowledge,
                 )
-                .padding(16.dp),
+                .padding(SeekerTheme.dimensions.dp16),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -552,7 +557,7 @@ fun ApproveAnyway(
         Text(
             stringResource(R.string.policy_acknowledge),
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(start = 8.dp),
+            modifier = Modifier.padding(start = SeekerTheme.dimensions.dp8),
         )
     }
 }

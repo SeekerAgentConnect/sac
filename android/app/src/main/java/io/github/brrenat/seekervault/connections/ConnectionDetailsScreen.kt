@@ -41,8 +41,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -99,21 +99,26 @@ fun ConnectionDetailsScreen(
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+                Modifier.fillMaxWidth()
+                    .height(SeekerTheme.dimensions.dp56)
+                    .padding(horizontal = SeekerTheme.dimensions.dp8),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     connection.label,
                     style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                    modifier = Modifier.weight(1f).padding(start = SeekerTheme.dimensions.dp8),
                 )
                 CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
             }
             Column(
                 Modifier.fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(
+                        horizontal = SeekerTheme.dimensions.dp16,
+                        vertical = SeekerTheme.dimensions.dp8,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
             ) {
                 SeekerCard(
                     Modifier.fillMaxWidth(),
@@ -122,14 +127,14 @@ fun ConnectionDetailsScreen(
                         else MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Row(
-                        Modifier.fillMaxWidth().padding(16.dp),
+                        Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
                     ) {
                         Icon(
                             if (problem) Icons.Rounded.ErrorOutline else Icons.Rounded.CheckCircle,
                             contentDescription = null,
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(SeekerTheme.dimensions.dp22),
                             tint =
                                 if (problem) {
                                     MaterialTheme.colorScheme.onErrorContainer
@@ -163,7 +168,7 @@ fun ConnectionDetailsScreen(
                             }
                         }
                         Box(
-                            Modifier.size(40.dp)
+                            Modifier.size(SeekerTheme.dimensions.dp40)
                                 .background(
                                     if (problem) {
                                         MaterialTheme.colorScheme.errorContainer
@@ -227,12 +232,14 @@ fun ConnectionDetailsScreen(
                                 .testTag(PolicyTags.RULES)
                     ) {
                         Row(
-                            Modifier.fillMaxWidth().padding(14.dp, 14.dp),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            Modifier.fillMaxWidth()
+                                .padding(SeekerTheme.dimensions.dp14, SeekerTheme.dimensions.dp14),
+                            horizontalArrangement =
+                                Arrangement.spacedBy(SeekerTheme.dimensions.dp14),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(
-                                Modifier.size(40.dp)
+                                Modifier.size(SeekerTheme.dimensions.dp40)
                                     .background(
                                         MaterialTheme.colorScheme.primaryContainer,
                                         CircleShape,
@@ -272,12 +279,14 @@ fun ConnectionDetailsScreen(
                                 .testTag(ConnectionsTags.SIGNALS)
                     ) {
                         Row(
-                            Modifier.fillMaxWidth().padding(14.dp, 14.dp),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            Modifier.fillMaxWidth()
+                                .padding(SeekerTheme.dimensions.dp14, SeekerTheme.dimensions.dp14),
+                            horizontalArrangement =
+                                Arrangement.spacedBy(SeekerTheme.dimensions.dp14),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(
-                                Modifier.size(40.dp)
+                                Modifier.size(SeekerTheme.dimensions.dp40)
                                     .background(
                                         MaterialTheme.colorScheme.primaryContainer,
                                         CircleShape,
@@ -317,9 +326,9 @@ fun ConnectionDetailsScreen(
                     stringResource(R.string.connection_rules_advisory),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp),
+                    modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp4),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
                     SeekerButton(
                         text = stringResource(R.string.rename),
                         onClick = { renaming = true },
@@ -340,8 +349,8 @@ fun ConnectionDetailsScreen(
                     color = MaterialTheme.colorScheme.errorContainer,
                 ) {
                     Column(
-                        Modifier.fillMaxWidth().padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
                     ) {
                         Text(
                             stringResource(
@@ -402,8 +411,12 @@ private fun EnvironmentCard(connection: Connection, onEnvironment: ((PluginEnvir
     val served = connection.server.manifest?.environments.orEmpty()
     SeekerCard(Modifier.fillMaxWidth().testTag(ConnectionsTags.ENVIRONMENT)) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp14,
+                ),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
         ) {
             Text(
                 stringResource(R.string.field_environment),
@@ -424,7 +437,7 @@ private fun EnvironmentCard(connection: Connection, onEnvironment: ((PluginEnvir
             if (onEnvironment != null && served.size > 1) {
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                 ) {
                     PluginEnvironment.entries
                         .filter { it in served }
@@ -460,13 +473,19 @@ private fun Field(@StringRes label: Int, value: String, name: String) {
             mergeDescendants = true
         ) {}
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+        Column(
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp14,
+                )
+        ) {
             Text(
                 stringResource(label),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Identifier(value, Modifier.padding(top = 3.dp), maxLines = 3)
+            Identifier(value, Modifier.padding(top = SeekerTheme.dimensions.dp3), maxLines = 3)
         }
     }
 }
@@ -499,7 +518,7 @@ private fun RenameDialog(
         actions = {
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
             ) {
                 SeekerButton(
                     text = stringResource(R.string.cancel),
@@ -562,7 +581,7 @@ private fun DisconnectDialog(
             if (confirm != null) {
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                 ) {
                     SeekerButton(
                         text = stringResource(R.string.cancel),

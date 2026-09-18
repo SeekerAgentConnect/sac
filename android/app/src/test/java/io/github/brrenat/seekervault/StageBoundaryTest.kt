@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault
 
 import java.io.File
+import java.security.MessageDigest
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -29,8 +30,9 @@ import org.w3c.dom.Element
  * registration client, one WorkManager job under `sync/`, and one notification channel with a
  * read-only tap route. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter
  * client, on purpose: the app drives the wallet the owner already has. It still holds no wallet key
- * of its own, and Seed Vault's own SDK stays out. These checks fail when a limit is crossed early;
- * the stage that lifts one changes them.
+ * of its own, and Seed Vault's own SDK stays out. SEE-114 moves visual authority into a separate
+ * design-system module with no dependency back into app behavior. These checks fail when a limit is
+ * crossed early; the stage that lifts one changes them.
  */
 class StageBoundaryTest {
     private val repoRoot =
@@ -254,13 +256,13 @@ class StageBoundaryTest {
         assertEquals(
             listOf(
                 "io.github.brrenat.seekervault.R",
-                "io.github.brrenat.seekervault.SeekerTheme",
                 "io.github.brrenat.seekervault.activity.ActivityKind",
                 "io.github.brrenat.seekervault.activity.ActivityOutcome",
                 "io.github.brrenat.seekervault.activity.ActivityRecord",
                 "io.github.brrenat.seekervault.connections.CloseButton",
                 "io.github.brrenat.seekervault.connections.formatInstant",
                 "io.github.brrenat.seekervault.connections.isConnectionId",
+                "io.github.brrenat.seekervault.designsystem.theme.SeekerTheme",
                 "io.github.brrenat.seekervault.request.v1.Action",
                 "io.github.brrenat.seekervault.request.v1.ActionRequest",
                 "io.github.brrenat.seekervault.request.v1.Network",
@@ -1307,6 +1309,59 @@ class StageBoundaryTest {
     }
 
     @Test
+    fun theDesignSystemOwnsOnlyVisualCodeAndTheAppDependsOnIt() {
+        val designSystem = File(repoRoot, "android/designsystem")
+        val build = File(designSystem, "build.gradle.kts").readText()
+        val settings = File(repoRoot, "android/settings.gradle.kts").readText()
+        val appBuild = File(repoRoot, "android/app/build.gradle.kts").readText()
+        val rootBuild = File(repoRoot, "android/build.gradle.kts").readText()
+        val packageJson = File(repoRoot, "package.json").readText()
+        val sources =
+            File(designSystem, "src/main/java").walk().filter { it.extension == "kt" }.toList()
+
+        assertTrue(designSystem.isDirectory)
+        assertTrue(settings.contains("include(\":designsystem\")"))
+        assertTrue(appBuild.contains("implementation(project(\":designsystem\"))"))
+        assertTrue(!build.contains("project("))
+        assertTrue(
+            listOf("lifecycle", "ViewModel", "okhttp", "retrofit", "grpc", "firebase").none {
+                build.contains(it, ignoreCase = true)
+            }
+        )
+
+        val appImports =
+            sources
+                .flatMap { it.readLines() }
+                .map { it.trim() }
+                .filter { it.startsWith("import io.github.brrenat.seekervault.") }
+                .filterNot {
+                    it.startsWith("import io.github.brrenat.seekervault.designsystem.")
+                }
+        assertEquals(emptyList<String>(), appImports)
+        assertTrue(
+            sources.none {
+                Regex("""\bViewModel\b|okhttp|retrofit|grpc|firebase|java\.net|android\.net""")
+                    .containsMatchIn(withoutComments(it))
+            }
+        )
+
+        assertTrue(rootBuild.contains("checkDesignSystemLiterals"))
+        assertTrue(rootBuild.contains("tasks.named(\"check\")"))
+        assertTrue(packageJson.contains("checkDesignSystemLiterals"))
+
+        assertEquals(
+            "d7598e12c5dbef095ff8272cfc55da0250bd07fbdecbac8a530b9b277872a134",
+            sha256(File(designSystem, "src/main/res/font/roboto_variable.ttf")),
+        )
+        assertEquals(
+            "66a80e79d17e4c7cabd162e2916578a4cc08fd19eef6e2a643305eae9c567b2b",
+            sha256(File(designSystem, "src/main/res/font/roboto_mono_variable.ttf")),
+        )
+        assertTrue(File(designSystem, "licenses/ROBOTO_OFL.txt").isFile)
+        assertTrue(File(designSystem, "licenses/ROBOTO_MONO_OFL.txt").isFile)
+    }
+
+    @Test
     fun theV4PresentationUsesOnlySolidOpaqueLayers() {
         val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         val forbidden =
@@ -1336,15 +1391,23 @@ class StageBoundaryTest {
         }
         assertEquals(emptyList<String>(), translucentTokens)
 
-        val theme = File(main, "java/io/github/brrenat/seekervault/MainActivity.kt").readText()
+        val theme =
+            File(
+                    repoRoot,
+                    "android/designsystem/src/main/java/io/github/brrenat/seekervault/designsystem/theme",
+                )
+                .walk()
+                .filter { it.extension == "kt" }
+                .joinToString("\n") { it.readText() }
         assertTrue(
             "Raw app bars must inherit the approved scheme's surface ink in both themes",
-            theme.contains("LocalContentColor provides colors.onSurface"),
+            theme.contains("LocalContentColor provides scheme.onSurface"),
         )
         assertTrue(
             "The production theme must retain the approved lime dark roles",
-            theme.contains("primary = Color(0xFFE7FC6E)") &&
-                theme.contains("primaryContainer = Color(0xFFC2E60F)"),
+            theme.contains("lime = Color(0xFFE7FC6E)") &&
+                theme.contains("limeContainer = Color(0xFFC2E60F)") &&
+                theme.contains("primary = DarkSeekerColors.lime"),
         )
         assertTrue(
             "Parameterless Material defaults would replace the approved v4 design",
@@ -1431,4 +1494,9 @@ class StageBoundaryTest {
                 .toList(),
         )
     }
+
+    private fun sha256(file: File): String =
+        MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") {
+            "%02x".format(it)
+        }
 }

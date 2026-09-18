@@ -31,10 +31,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.formatInstant
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.ui.SeekerCard
@@ -70,10 +70,12 @@ fun ProposalsScreen(
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+                Modifier.fillMaxWidth()
+                    .height(SeekerTheme.dimensions.dp56)
+                    .padding(horizontal = SeekerTheme.dimensions.dp8),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                Column(Modifier.weight(1f).padding(start = SeekerTheme.dimensions.dp8)) {
                     Text(
                         stringResource(R.string.operations_title),
                         style = MaterialTheme.typography.titleLarge,
@@ -85,7 +87,7 @@ fun ProposalsScreen(
                     )
                 }
                 Box(
-                    Modifier.size(40.dp)
+                    Modifier.size(SeekerTheme.dimensions.dp40)
                         .clickable(
                             enabled = !refreshing,
                             indication = null,
@@ -114,14 +116,15 @@ fun ProposalsScreen(
                     stringResource(R.string.operations_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp).testTag(OperationTags.EMPTY),
+                    modifier =
+                        Modifier.padding(SeekerTheme.dimensions.dp16).testTag(OperationTags.EMPTY),
                 )
                 return@Column
             }
             LazyColumn(
                 Modifier.fillMaxSize().testTag(OperationTags.LIST),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(SeekerTheme.dimensions.dp16),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
             ) {
                 items(open, key = { it.key.proposalId }) {
                     ProposalRow(it, standings(it), now, onOpen)
@@ -132,7 +135,7 @@ fun ProposalsScreen(
                             stringResource(R.string.operations_settled),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp),
+                            modifier = Modifier.padding(top = SeekerTheme.dimensions.dp8),
                         )
                     }
                 }
@@ -162,12 +165,12 @@ private fun ProposalRow(
                 .testTag(OperationTags.row(record.key.proposalId))
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp14),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp14),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(40.dp)
+                Modifier.size(SeekerTheme.dimensions.dp40)
                     .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
