@@ -214,6 +214,13 @@ to do.
   feed client is compiled for the module at all ([`buf.gen.publisher.yaml`](../buf.gen.publisher.yaml)
   generates the publisher API and the two documents, and nothing else), so there is no code in it
   that could ask who is subscribed even if somebody wanted to.
+- **And it was checked by looking, not only by arguing.** SEE-98's integration run publishes from
+  both templates, reads both feeds from two subscribers, answers an agent's private request on the
+  same phone, and then searches every file the gateway and both publishers wrote — the databases and
+  every write-ahead log beside them — plus every log line and every request the subscribers sent, for
+  the owner's address, the message and the signature. Nothing is found, and the same search over the
+  owner's own sidecar finds all three, which is what makes the first result evidence rather than a
+  search that does not work ([`docs/testing/see-98.md`](testing/see-98.md)).
 - **It delivers nothing.** No Firebase credential, no broker, no per-phone rows, no streams:
   delivery is the gateway's, and a boundary test reads this module's source and fails if any of
   those names appears in code.

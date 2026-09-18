@@ -246,6 +246,12 @@ phone's generation. A boundary test checks both halves of that: what is absent, 
 `go test ./...`, and they are the whole acceptance for this task apart from the device run: there is
 no phone behaviour in a publisher, and nothing here is mocked that the binary does not also use.
 
+Beside them, `pnpm test:integration` runs both **binaries** — with `PREDICTION_PROVIDER_URL` aimed
+at this module's own captured answers, served back over loopback — against the real gateway, two
+subscribers and a privacy sweep (SEE-98, [`integration.md`](integration.md)). That is where a
+deployment's settings, its API, its CLI and its database stamp are exercised as a process rather
+than as a package.
+
 | File | What it holds |
 | --- | --- |
 | `internal/config/config_test.go` | The six settings with no default, every problem at once, the two canonical address forms, a secret as a file, and that a credential must be one word an HTTP header can carry |

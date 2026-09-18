@@ -423,5 +423,8 @@ signatures — as `docs/testing/stage-5-3.md` does for the direct path.
 ## Not covered here
 
 - Load, isolation and failover at size: SEE-99.
-- The direct-mode and gateway-mode comparison, and MCP compatibility: SEE-98.
+- The direct-mode and gateway-mode comparison, the privacy sweep and MCP compatibility: they are
+  SEE-98's, and they are done — `pnpm test:integration` runs them in one command and
+  [`see-98.md`](see-98.md) is the report, including its own device checklist for the mixed-mode and
+  notification-tap steps.
 - The server development guide the steps above will eventually live in: SEE-100.

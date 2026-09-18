@@ -134,6 +134,12 @@ while the gateway is up.
 `go test ./...`, and they are the whole acceptance for this task: there is no device behaviour in a
 service, and nothing here is mocked that the binary does not also use.
 
+Beside them, `pnpm test:integration` runs this **binary** against both publisher templates and two
+subscribers, with a privacy sweep of everything the run wrote (SEE-98,
+[`integration.md`](integration.md)). It is where the two listeners' separation, a forgotten
+publisher, a revoked credential and a restart on the same database are checked as a deployment
+rather than as a handler.
+
 | File | What it holds |
 | --- | --- |
 | `internal/rules/rules_test.go` | Every document rule with its own answer, what a revision means, that a document is rebuilt rather than relayed, and that the environments a server ID published cannot move while the order they were written in does not matter (SEE-97) |

@@ -338,4 +338,46 @@ class PredictionOperationTest {
         assertTrue(phone.markets.asked.any { it.contains("7000000") && it.contains(owner) })
         assertTrue(phone.markets.asked.none { it.contains(PREDICTION_PROPOSAL) })
     }
+
+    /**
+     * The rule the whole prediction plugin is shaped around (SEE-94, SEE-98): once the wallet has
+     * answered, this app asks nothing further. No fill, no position, no settlement, no payout —
+     * continuing happens in Jupiter, and a phone that polled for an outcome would be showing the
+     * owner a claim it has no evidence for.
+     */
+    @Test
+    fun nothingFollowsTheOrderAfterTheWalletHasSentIt() = runBlocking {
+        val phone = phone()
+        val model = opened(phone)
+        phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        choose(model, yes = true, stake = 5_000_000UL)
+        model.prepare()
+        // Everything the order needed was read before it was offered to sign, so these are the
+        // counts that must not move again — from before the wallet is asked, not after it, or an
+        // extra read during the approval itself would be snapshotted rather than caught.
+        val provider = phone.markets.asked.toList()
+        val chain = phone.chain.asked.size
+        val feed = phone.feed.asked.size
+
+        model.approve(phone.wallet.wallet.value)
+        assertEquals(provider, phone.markets.asked)
+        assertEquals(chain, phone.chain.asked.size)
+        assertEquals(feed, phone.feed.asked.size)
+
+        // And then ten minutes of the app being open with nobody touching it.
+        scheduler.advanceTimeBy(600_000L)
+        scheduler.runCurrent()
+        assertEquals(provider, phone.markets.asked)
+        assertEquals(chain, phone.chain.asked.size)
+        assertEquals(feed, phone.feed.asked.size)
+        // And what the record says is still only what this phone witnessed: sent, with the
+        // signature the wallet returned, and no outcome beyond it.
+        val execution =
+            checkNotNull(phone.proposals.proposal(CONNECTION, PREDICTION_PROPOSAL)?.execution)
+        assertEquals(
+            ProposalOutcome.Submitted(ByteString.copyFrom(ByteArray(64) { 9 })),
+            execution.outcome,
+        )
+        assertEquals(ActivityOutcome.Sent, phone.history.records.value.single().outcome)
+    }
 }
