@@ -136,11 +136,11 @@ service, and nothing here is mocked that the binary does not also use.
 
 | File | What it holds |
 | --- | --- |
-| `internal/rules/rules_test.go` | Every document rule with its own answer, what a revision means, and that a document is rebuilt rather than relayed |
+| `internal/rules/rules_test.go` | Every document rule with its own answer, what a revision means, that a document is rebuilt rather than relayed, and that the environments a server ID published cannot move while the order they were written in does not matter (SEE-97) |
 | `internal/store/store_test.go` | The schema, credentials and rotation, a publication and its notice committing together, a notice surviving a stop, paging order, retention, and forgetting a publisher |
 | `internal/config/config_test.go` | The two settings with no default, the ranges, and what cannot be an origin |
 | `internal/dispatch/dispatch_test.go` | Delivery, failure and retry, a publication landing mid-flight, a document swept while its notice waited, and backoff |
-| `internal/gateway/publish_test.go` | Two publishers that cannot reach each other, credentials and rotation, refusing a redirection, retries and conflicts, withdrawal, the channel bound, rate limits, and a restart that still owes a fan-out |
+| `internal/gateway/publish_test.go` | Two publishers that cannot reach each other, credentials and rotation, refusing a redirection, refusing a promotion to production (SEE-97) while what a subscriber reads stays as it was, retries and conflicts, withdrawal, the channel bound, rate limits, and a restart that still owes a fan-out |
 | `internal/gateway/read_test.go` | A phone reading a feed with no credential, a walk that stays stable while the feed moves, the caching answers, what a reader cannot ask for, and expiry and retention |
 | `internal/gateway/privacy_test.go` | The three ways to try to submit something about a person, the read listener's lack of any write, that no credential reaches a log line, and that reading writes nothing down |
 | `internal/gateway/boundary_test.go` | No HTTP client in shipped code, SQL only in the store, pure rules, no provider named, the schema's columns, the contract's fields, and neither listener serving the other's procedures |

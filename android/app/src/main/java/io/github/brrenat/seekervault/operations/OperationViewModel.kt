@@ -104,8 +104,6 @@ class OperationViewModel(
     private val policies: PolicyEvaluator,
     private val history: ActivityLog,
     private val plugins: PluginRegistry,
-    /** SEE-97 makes this the owner's choice; until then core asks for production, as always. */
-    private val environment: PluginEnvironment = PluginEnvironment.Production,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
@@ -184,6 +182,7 @@ class OperationViewModel(
                 proposalId = proposalId,
                 record = record,
                 standing = proposals.standing(record),
+                environment = environmentOf(connectionId),
                 form = form,
                 // Where the owner may carry on outside the app, if the operation's provider has
                 // anywhere truthful to send them (SEE-94). It comes from the terms alone, so it
@@ -338,6 +337,12 @@ class OperationViewModel(
         val binding =
             ExecutionBinding(
                 revision = record.proposal.revision,
+                // Read here, from the connection, at the moment of acting — not taken from the
+                // screen, which the owner may have been looking at since before they switched it.
+                // The gate checks it again against the connection on the far side of the wait
+                // (`bindingProblem`), so a switch that lands in between refuses rather than slips
+                // through (SEE-97).
+                environment = environmentOf(open.connectionId),
                 choice = open.choice,
                 wallet = selected.address,
                 network = selected.network.network,
@@ -357,6 +362,32 @@ class OperationViewModel(
             ?.let { references ->
                 history.referenced(key, references.map { ReviewedValue(it.key, it.value) })
             }
+        // A sandbox connection rehearses, and this is where it stops (SEE-97,
+        // docs/wiki/environments.md).
+        //
+        // Everything above happened for real: the plugin read the provider and built the bytes,
+        // this phone read them back, the owner's rules were applied, and the binding was bound.
+        // What does not happen is the wallet — and it does not happen because there is no session
+        // in scope here to ask, rather than because a flag was checked next to one. The gate is
+        // the same gate: `beginExecution` applies every rule a production approval passes,
+        // including this binding's own promise, so a rehearsal is refused by exactly the things
+        // that would refuse the real operation.
+        if (binding.environment != PluginEnvironment.Production) {
+            when (
+                val begun =
+                    proposals.beginExecution(open.connectionId, open.proposalId, binding, selected)
+            ) {
+                is ExecutionOutcome.Refused -> stop(OperationProblem.Binding(begun.problem))
+                is ExecutionOutcome.Gone -> stop(OperationProblem.Gone)
+                is ExecutionOutcome.Begun ->
+                    proposals.recordOutcome(
+                        open.connectionId,
+                        open.proposalId,
+                        ProposalOutcome.Simulated,
+                    )
+            }
+            return
+        }
         // One wallet interaction at a time, for the whole process (SEE-84). Everything that has to
         // be true is checked inside the lock, because the wait for it is exactly where the world
         // changes underneath an approval.
@@ -407,7 +438,11 @@ class OperationViewModel(
                 proposalId = open.proposalId,
                 operation = record.proposal.operation,
                 network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED,
-                resolution = plugins.resolve(record.proposal.operation, environment),
+                resolution =
+                    plugins.resolve(
+                        record.proposal.operation,
+                        environmentOf(open.connectionId),
+                    ),
                 inspection = open.inspection,
             )
         val evaluated = policies.evaluateCurrent(facts)
@@ -451,6 +486,7 @@ class OperationViewModel(
     }
 
     private fun plugin(record: ProposalRecord): ActionPlugin? {
+        val environment = environmentOf(record.connectionId)
         // The publisher's plugin name is checked against what this build resolves, and never used
         // to select anything: a document cannot choose code (SEE-89).
         proposalPlugin(record.proposal, plugins, environment).let {
@@ -461,11 +497,23 @@ class OperationViewModel(
             ?.plugin
     }
 
+    /**
+     * Which promise the feed this proposal arrived on keeps (SEE-97, docs/wiki/environments.md).
+     *
+     * It is the connection's own, read fresh: the owner sets it, one phone holds feeds in both
+     * environments at once, and no manifest a publisher republishes can change it. A connection
+     * that is gone answers sandbox, which is the direction a missing answer has to fall — and a
+     * proposal whose feed is gone is not executable anyway.
+     */
+    private fun environmentOf(connectionId: String): PluginEnvironment =
+        connections.value.firstOrNull { it.id == connectionId }?.environment
+            ?: PluginEnvironment.Sandbox
+
     private fun subjectFor(record: ProposalRecord) =
         ActionSubject(
             connectionId = record.connectionId,
             operation = record.proposal.operation,
-            environment = environment,
+            environment = environmentOf(record.connectionId),
             request = null,
             wallet = wallet.wallet.value,
             terms = record.proposal.values.associate { it.key to it.text },
@@ -476,10 +524,19 @@ class OperationViewModel(
             state.records.firstOrNull {
                 it.connectionId == open.connectionId && it.key.proposalId == open.proposalId
             } ?: return null
-        val moved = record.proposal.revision != open.record.proposal.revision
+        val environment = environmentOf(open.connectionId)
+        // Two ways what is on screen stops being what the owner is looking at: the publisher moved
+        // the terms, or the owner moved the promise. Either one makes the preparation the wrong
+        // one to approve — new terms were never reviewed, and bytes prepared for a rehearsal are
+        // not bytes anybody reviewed as a purchase (SEE-97) — so both drop it and both are named
+        // here rather than left to the gate that would refuse it later.
+        val moved =
+            record.proposal.revision != open.record.proposal.revision ||
+                environment != open.environment
         return open.copy(
             record = record,
             standing = proposals.standing(record),
+            environment = environment,
             // Terms that moved are terms nobody reviewed. What was prepared was for the old ones.
             prepared = if (moved) null else open.prepared,
             inspection = if (moved) null else open.inspection,
@@ -557,6 +614,14 @@ data class OperationReview(
     val proposalId: String,
     val record: ProposalRecord,
     val standing: ProposalStanding,
+    /**
+     * Which promise this feed keeps, which is what the Approve button is about to do (SEE-97).
+     *
+     * The screen shows it, because a rehearsal and a purchase must not look the same, and the
+     * review is kept in step with it: if the owner switches the connection while this is open, what
+     * was prepared for the other promise is dropped and they prepare again.
+     */
+    val environment: PluginEnvironment,
     /** What the plugin says has to be chosen, or why it cannot read this signal at all. */
     val form: ParameterForm,
     val choice: ParameterChoice,

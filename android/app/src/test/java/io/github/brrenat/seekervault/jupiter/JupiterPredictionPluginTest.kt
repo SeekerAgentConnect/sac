@@ -223,11 +223,21 @@ class JupiterPredictionPluginTest {
     }
 
     @Test
-    fun sandboxAsksTheProviderNothingAtAll() {
-        val failed = failure { plugin().prepare(subject(PluginEnvironment.Sandbox), chose()) }
+    fun preparingDoesNotReadTheEnvironment() {
+        // The same work in both, as on the swap side and for the same reason: what a sandbox owner
+        // reviews is the order this plugin built from the live market, and core is what stops
+        // before the wallet (SEE-97).
+        honest()
+        val production = runBlocking { plugin().prepare(subject(), chose()) }
+        val asked = provider.asked.toList()
+        provider.asked.clear()
 
-        assertEquals("sandbox_no_execution", failed.code)
-        assertEquals(emptyList<String>(), provider.asked)
+        val sandbox = runBlocking {
+            plugin().prepare(subject(PluginEnvironment.Sandbox), chose())
+        }
+
+        assertEquals(production.transaction, sandbox.transaction)
+        assertEquals(asked, provider.asked)
     }
 
     @Test

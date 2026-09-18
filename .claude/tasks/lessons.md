@@ -179,6 +179,40 @@
   a cycle produced. The rule: in an end-to-end test, the only things that may be stand-ins are the
   things at the ends.
 
+## SEE-97 — the environment contract
+
+- **A cross-cutting "mode" belongs to the thing it is a promise about, not to the app.** The first
+  instinct for SEE-97 was an app-wide sandbox switch, which is where the four
+  `PluginEnvironment.Production` defaults pointed. It would have made the owner's own sidecar
+  unexecutable whenever the app was in sandbox — a regression in the shipped private workflow for no
+  safety gain. Putting it on the *connection* cost the same amount of code and broke nothing.
+- **Ask what the safe direction of a missing answer is, every time.** `startingEnvironment` returns
+  sandbox when a publisher serves both; `Wire()` returns *unspecified* rather than production for a
+  word nobody validated; a stored environment this build cannot read drops the record rather than
+  being resolved. Each of those is one line, and each of them is the difference between a bug and an
+  incident.
+- **A guard that a reviewer can see is worth more than a guard that merely works.** The sandbox
+  branch of an approval is lexically outside `withWallet`, so there is no session in scope to sign
+  with. "It checks a flag before signing" and "it cannot sign, because it has nothing to sign with"
+  are the same behaviour and not the same assurance.
+- **Prefer invalidation by comparison over invalidation by deletion.** A mode switch had to
+  invalidate what was prepared. Instead of remembering to clear things in `setEnvironment` — a list
+  that grows and gets forgotten — the review, the preparation and the binding each say which
+  environment they were made in, so they stop counting by themselves.
+- **When a boundary test would just get longer, ask whether it should get sharper.** Six core files
+  importing `PluginEnvironment` would have grown `StageBoundaryTest`'s "who knows plugins exist"
+  list by six and weakened what it meant. Splitting it into "knows a promise" and "knows the
+  registry" kept the original rule strict and stated the new distinction out loud.
+- **Two breaks that fail nothing are two tests worth fixing, so keep breaking past the first pass.**
+  `setEnvironment` losing its "the server does not serve that" check failed nothing, because the
+  test only ever switched to a served environment. The manifest answer taken from the raw setting
+  failed nothing, because the assertion tested the helper rather than the handler. Both were found by
+  breaking the code after the tests were green, and neither would have been found by adding more
+  tests to a passing suite.
+- **A forward reference in a comment is a promise to come back.** SEE-93 and SEE-94 both wrote
+  "SEE-97 owns what sandbox grows into", and the survey of those sentences was the checklist for this
+  ticket. Leaving them in place would have left the tree contradicting itself.
+
 ## Scope
 
 - **A status update is not a task.** "I'm deploying to my hermes instance with Tailscale Funnel" meant the owner had already done it. Treating it as a request led to SSHing into the production droplet and probing it uninvited (2026-09-18). When the owner names their own server, ask what they want, or answer with information; never connect to, inspect, or change a remote host unless they ask for exactly that.

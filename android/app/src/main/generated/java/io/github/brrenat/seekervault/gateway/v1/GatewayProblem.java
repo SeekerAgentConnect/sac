@@ -318,6 +318,23 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_NO_PUSH = 33;</code>
    */
   GATEWAY_PROBLEM_NO_PUSH(33),
+  /**
+   * <pre>
+   * --- What is already here, continued (SEE-97) -----------------------------
+   * A manifest whose environments are not the ones this server published before. It belongs with
+   * the "what is already here" codes above and is numbered here instead because a number is the
+   * wire and only the last one is free.
+   *
+   * An environment is what a server promises when the owner approves, and a promise that can be
+   * raised by publishing a higher revision is not one: every subscribed phone would be moved from
+   * a demonstration to real money by a document. A second environment is a second deployment,
+   * with its own server ID, credential and database — which is what the publisher's own database
+   * stamp already enforces at its end.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;</code>
+   */
+  GATEWAY_PROBLEM_OTHER_ENVIRONMENT(34),
   UNRECOGNIZED(-1),
   ;
 
@@ -623,6 +640,23 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_NO_PUSH = 33;</code>
    */
   public static final int GATEWAY_PROBLEM_NO_PUSH_VALUE = 33;
+  /**
+   * <pre>
+   * --- What is already here, continued (SEE-97) -----------------------------
+   * A manifest whose environments are not the ones this server published before. It belongs with
+   * the "what is already here" codes above and is numbered here instead because a number is the
+   * wire and only the last one is free.
+   *
+   * An environment is what a server promises when the owner approves, and a promise that can be
+   * raised by publishing a higher revision is not one: every subscribed phone would be moved from
+   * a demonstration to real money by a document. A second environment is a second deployment,
+   * with its own server ID, credential and database — which is what the publisher's own database
+   * stamp already enforces at its end.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;</code>
+   */
+  public static final int GATEWAY_PROBLEM_OTHER_ENVIRONMENT_VALUE = 34;
 
 
   @java.lang.Override
@@ -679,6 +713,7 @@ public enum GatewayProblem
       case 31: return GATEWAY_PROBLEM_NO_STREAM;
       case 32: return GATEWAY_PROBLEM_TOO_MANY_CHANNELS;
       case 33: return GATEWAY_PROBLEM_NO_PUSH;
+      case 34: return GATEWAY_PROBLEM_OTHER_ENVIRONMENT;
       default: return null;
     }
   }

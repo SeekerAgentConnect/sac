@@ -136,6 +136,17 @@ const (
 	// of its own. A client gets this once and keeps to the foreground stream and its own recovery,
 	// which is again the whole feature working at a smaller size rather than a failure.
 	GatewayProblem_GATEWAY_PROBLEM_NO_PUSH GatewayProblem = 33
+	// --- What is already here, continued (SEE-97) -----------------------------
+	// A manifest whose environments are not the ones this server published before. It belongs with
+	// the "what is already here" codes above and is numbered here instead because a number is the
+	// wire and only the last one is free.
+	//
+	// An environment is what a server promises when the owner approves, and a promise that can be
+	// raised by publishing a higher revision is not one: every subscribed phone would be moved from
+	// a demonstration to real money by a document. A second environment is a second deployment,
+	// with its own server ID, credential and database — which is what the publisher's own database
+	// stamp already enforces at its end.
+	GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT GatewayProblem = 34
 )
 
 // Enum value maps for GatewayProblem.
@@ -175,6 +186,7 @@ var (
 		31: "GATEWAY_PROBLEM_NO_STREAM",
 		32: "GATEWAY_PROBLEM_TOO_MANY_CHANNELS",
 		33: "GATEWAY_PROBLEM_NO_PUSH",
+		34: "GATEWAY_PROBLEM_OTHER_ENVIRONMENT",
 	}
 	GatewayProblem_value = map[string]int32{
 		"GATEWAY_PROBLEM_UNSPECIFIED":        0,
@@ -211,6 +223,7 @@ var (
 		"GATEWAY_PROBLEM_NO_STREAM":          31,
 		"GATEWAY_PROBLEM_TOO_MANY_CHANNELS":  32,
 		"GATEWAY_PROBLEM_NO_PUSH":            33,
+		"GATEWAY_PROBLEM_OTHER_ENVIRONMENT":  34,
 	}
 )
 
@@ -315,7 +328,7 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x12GatewayErrorDetail\x12@\n" +
 	"\aproblem\x18\x01 \x01(\x0e2&.seekervault.gateway.v1.GatewayProblemR\aproblem\x12\x14\n" +
 	"\x05field\x18\x02 \x01(\tR\x05field\x12#\n" +
-	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\xa9\t\n" +
+	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\xd0\t\n" +
 	"\x0eGatewayProblem\x12\x1f\n" +
 	"\x1bGATEWAY_PROBLEM_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fGATEWAY_PROBLEM_UNAUTHENTICATED\x10\x01\x12 \n" +
@@ -351,7 +364,8 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"!GATEWAY_PROBLEM_TOO_MANY_REQUESTS\x10\x1e\x12\x1d\n" +
 	"\x19GATEWAY_PROBLEM_NO_STREAM\x10\x1f\x12%\n" +
 	"!GATEWAY_PROBLEM_TOO_MANY_CHANNELS\x10 \x12\x1b\n" +
-	"\x17GATEWAY_PROBLEM_NO_PUSH\x10!B\x82\x02\n" +
+	"\x17GATEWAY_PROBLEM_NO_PUSH\x10!\x12%\n" +
+	"!GATEWAY_PROBLEM_OTHER_ENVIRONMENT\x10\"B\x82\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\fProblemProtoP\x01Z\\github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (

@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.connections
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -23,6 +24,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.executable
@@ -71,13 +73,33 @@ object ConnectionsTags {
     const val CAROUSEL = "requestCarousel"
     const val GLOBAL_RULES = "globalRules"
     const val LIST = "connectionsList"
+    /** Which promise a feed keeps, and the owner's switch between them (SEE-97). */
+    const val ENVIRONMENT = "connectionEnvironment"
 
     fun item(id: String) = "connection:$id"
+
+    fun environment(code: String) = "environment:$code"
 
     fun request(key: RequestKey) = "request:${key.connectionId}/${key.requestId}"
 
     fun field(name: String) = "field:$name"
 }
+
+/** Which promise a connection keeps, in a word (SEE-97, docs/wiki/environments.md). */
+@StringRes
+fun environmentText(environment: PluginEnvironment): Int =
+    when (environment) {
+        PluginEnvironment.Production -> R.string.connection_environment_production
+        PluginEnvironment.Sandbox -> R.string.connection_environment_sandbox
+    }
+
+/** And what it means, in one sentence, because the word alone is not a promise anybody can read. */
+@StringRes
+fun environmentNote(environment: PluginEnvironment): Int =
+    when (environment) {
+        PluginEnvironment.Production -> R.string.connection_environment_production_note
+        PluginEnvironment.Sandbox -> R.string.connection_environment_sandbox_note
+    }
 
 /** What the phone knows about the connection, in one sentence. */
 @Composable

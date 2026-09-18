@@ -35,6 +35,7 @@ import io.github.brrenat.seekervault.plugins.ParameterField
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.policy.AmountEntry
 import io.github.brrenat.seekervault.policy.readAmount
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
@@ -108,6 +109,12 @@ fun ProposalReviewScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Banner(stringResource(standingText(review.standing)), OperationTags.STANDING)
+                // Said before anything else about this proposal, because it is what the Approve
+                // button at the bottom will do (SEE-97). A rehearsal and a purchase must never
+                // look the same.
+                if (review.environment == PluginEnvironment.Sandbox) {
+                    Banner(stringResource(R.string.operation_sandbox), OperationTags.SANDBOX)
+                }
                 if (executed != null) {
                     Banner(stringResource(outcomeText(executed.outcome)), OperationTags.OUTCOME)
                     // What the owner has afterwards, and the app's own limit stated beside it: it
@@ -334,15 +341,23 @@ fun ProposalReviewScreen(
                             )
                         }
                     }
+                    val sandbox = review.environment == PluginEnvironment.Sandbox
                     SeekerButton(
-                        text = stringResource(R.string.operation_approve),
+                        text =
+                            stringResource(
+                                if (sandbox) R.string.operation_simulate
+                                else R.string.operation_approve
+                            ),
                         onClick = onApprove,
                         role = SeekerButtonRole.Primary,
                         enabled = !review.sending && (!warns || review.acknowledged),
                         modifier = Modifier.fillMaxWidth().testTag(OperationTags.APPROVE),
                     )
                     Text(
-                        stringResource(R.string.operation_approve_note),
+                        stringResource(
+                            if (sandbox) R.string.operation_simulate_note
+                            else R.string.operation_approve_note
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

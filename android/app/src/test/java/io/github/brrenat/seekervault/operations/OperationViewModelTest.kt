@@ -17,6 +17,7 @@ import io.github.brrenat.seekervault.jupiter.swapTransaction
 import io.github.brrenat.seekervault.jupiter.usdcTerms
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -326,6 +327,7 @@ class OperationViewModelTest {
             checkNotNull(model.review.value).let {
                 io.github.brrenat.seekervault.proposals.ExecutionBinding(
                     revision = it.record.proposal.revision,
+                    environment = it.environment,
                     choice = it.choice,
                     wallet = owner,
                     network = io.github.brrenat.seekervault.request.v1.Network.NETWORK_MAINNET,
@@ -456,6 +458,124 @@ class OperationViewModelTest {
         assertTrue(
             phone.proposals.standing(checkNotNull(phone.proposals.proposal(CONNECTION, PROPOSAL)))
                 is ProposalStanding.Dismissed
+        )
+    }
+
+    @Test
+    fun aSandboxFeedRehearsesEverythingAndOpensNoWallet() = runBlocking {
+        // SEE-97's first acceptance, on this side: live data, a real review, a simulated execution
+        // and a result nobody could mistake for a purchase.
+        val phone = phone()
+        phone.keeps(PluginEnvironment.Sandbox)
+        val model = opened(phone)
+        // The wallet is connected and would answer if it were asked. It is not asked.
+        phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 7 }))
+
+        choose(model, 1_000_000UL)
+        model.prepare()
+
+        // Everything up to the signature happened, and happened for real: the provider was asked
+        // for this owner's own amount, the bytes came back, and this phone read them.
+        val review = checkNotNull(model.review.value)
+        assertEquals(PluginEnvironment.Sandbox, review.environment)
+        assertNotNull(review.prepared)
+        assertEquals(Verdict.Verified, review.inspection?.verdict)
+        assertTrue(review.inspection?.approvable == true)
+        assertTrue(phone.provider.asked.any { it.contains("1000000") })
+
+        model.approve(phone.wallet.wallet.value)
+
+        // And then nothing was signed and nothing was sent. Not a refusal — there is no problem on
+        // the screen — but the whole operation, carried out as far as this environment goes.
+        assertNull(checkNotNull(model.review.value).problem)
+        assertEquals(
+            emptyList<Triple<ByteString, SelectedWallet, String>>(),
+            phone.adapter.sendings,
+        )
+        assertEquals(
+            emptyList<Triple<ByteString, SelectedWallet, String>>(),
+            phone.adapter.signings,
+        )
+
+        // The record says what it was: simulated, with no signature to look up, and the binding
+        // written all the same — the gate a rehearsal passes is the gate a purchase passes.
+        val record = checkNotNull(phone.proposals.proposal(CONNECTION, PROPOSAL))
+        val execution = checkNotNull(record.execution)
+        assertEquals(ProposalOutcome.Simulated, execution.outcome)
+        assertEquals(PluginEnvironment.Sandbox, execution.binding.environment)
+        assertEquals(
+            1_000_000UL,
+            (execution.binding.choice[SwapParameterNames.INPUT_AMOUNT] as ParameterValue.Amount)
+                .baseUnits,
+        )
+        assertTrue(phone.proposals.standing(record) is ProposalStanding.Executed)
+
+        // And so does the owner's own history, which is where they look afterwards.
+        val written = phone.history.records.value.single { it.kind == ActivityKind.Operation }
+        assertEquals(ActivityOutcome.Simulated, written.outcome)
+        assertEquals(PluginEnvironment.Sandbox, written.operation?.environment)
+        // No signature, and so no explorer link: a rehearsal has nothing to look up, and this app
+        // invents neither.
+        assertNull(written.signature)
+    }
+
+    @Test
+    fun switchingTheEnvironmentUnderAnOpenReviewThrowsAwayWhatWasPrepared() = runBlocking {
+        // SEE-97: a preparation, a quote and an approval all belong to the environment they were
+        // made in. The owner switched while reading, so they review again.
+        val phone = phone()
+        phone.keeps(
+            PluginEnvironment.Production,
+            served = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
+        )
+        val model = opened(phone)
+        phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 8 }))
+        choose(model, 1_000_000UL)
+        model.prepare()
+        val prepared = checkNotNull(checkNotNull(model.review.value).prepared)
+
+        phone.keeps(
+            PluginEnvironment.Sandbox,
+            served = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
+        )
+
+        val review = checkNotNull(model.review.value)
+        assertEquals(PluginEnvironment.Sandbox, review.environment)
+        assertNull(review.prepared)
+        assertNull(review.inspection)
+        assertFalse(review.acknowledged)
+        // Approving now does nothing at all: there is nothing prepared to approve.
+        model.approve(phone.wallet.wallet.value)
+        assertEquals(
+            emptyList<Triple<ByteString, SelectedWallet, String>>(),
+            phone.adapter.sendings,
+        )
+        assertNull(phone.proposals.proposal(CONNECTION, PROPOSAL)?.execution)
+
+        // And the bytes that were prepared under the other promise are refused by the gate itself,
+        // which is what stops a switch that lands while an approval is in flight.
+        val stale =
+            io.github.brrenat.seekervault.proposals.ExecutionBinding(
+                revision = 1,
+                environment = PluginEnvironment.Production,
+                choice = checkNotNull(model.review.value).choice,
+                wallet = owner,
+                network = io.github.brrenat.seekervault.request.v1.Network.NETWORK_MAINNET,
+                plugin = JUPITER_SWAP,
+                contract = 1,
+                preparedVersion = prepared.version,
+                contentHash =
+                    ByteString.copyFrom(
+                        java.security.MessageDigest.getInstance("SHA-256")
+                            .digest(prepared.transaction.toByteArray())
+                    ),
+                expiresAtEpochSeconds = prepared.expiresAtEpochSeconds,
+            )
+        assertEquals(
+            io.github.brrenat.seekervault.connections.ExecutionOutcome.Refused(
+                BindingProblem.OtherEnvironment
+            ),
+            phone.proposals.beginExecution(CONNECTION, PROPOSAL, stale, phone.wallet.wallet.value),
         )
     }
 

@@ -170,6 +170,65 @@ class ConnectionStoreTest {
     }
 
     @Test
+    fun keepsWhichPromiseAFeedIsKeepingAndNeverResolvesOneItCannotRead() {
+        // SEE-97. The environment is the owner's choice, so it is stored — and an older file, or
+        // one whose word this build does not know, must not become the promise with the money
+        // attached to it.
+        val sandbox =
+            a.copy(
+                serverUrl = GATEWAY,
+                deviceName = "",
+                hasCredential = false,
+                mode = ConnectionMode.GatewayFeed,
+                server =
+                    ServerRecord.Known(
+                        feedManifest()
+                            .copy(
+                                environments =
+                                    setOf(
+                                        PluginEnvironment.Production,
+                                        PluginEnvironment.Sandbox,
+                                    )
+                            )
+                    ),
+                environment = PluginEnvironment.Sandbox,
+            )
+        store.put(sandbox)
+        assertEquals(sandbox, ConnectionStore(dir).get(a.id))
+
+        // A file from before the field existed is read as production, which is exactly what every
+        // connection was then: nothing a phone already holds changes meaning on an update.
+        val file = File(dir, "${a.id}.json")
+        file.writeText(
+            file
+                .readText()
+                .replace("\"version\":3", "\"version\":2")
+                .replace(
+                    ",\"environment\":\"sandbox\"",
+                    "",
+                )
+        )
+        assertEquals(PluginEnvironment.Production, store.get(a.id)?.environment)
+
+        // A word this build does not know is the whole record gone, as an unreadable manifest is.
+        store.put(sandbox)
+        file.writeText(file.readText().replace("\"sandbox\"", "\"staging\""))
+        assertNull(store.get(a.id))
+    }
+
+    @Test
+    fun aDirectConnectionIsProductionWhateverTheFileSays() {
+        // The invariant `Connection` states, applied to what came off the disk: a paired sidecar's
+        // requests are answered with a signature or with a refusal, never with a rehearsal, so an
+        // edited file cannot put one in an environment that signs nothing (SEE-97).
+        store.put(a)
+        val file = File(dir, "${a.id}.json")
+        file.writeText(file.readText().replace("\"production\"", "\"sandbox\""))
+
+        assertEquals(PluginEnvironment.Production, store.get(a.id)?.environment)
+    }
+
+    @Test
     fun dropsAManifestItCanNoLongerReadWithoutLosingAPairedConnection() {
         // A direct connection is the owner's pairing; a cached manifest is only what its server
         // last said. One this phone can't read any more goes back to unasked, and the connection

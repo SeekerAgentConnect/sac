@@ -675,6 +675,9 @@ private fun ConnectionDetailsRoute(
         signals = signals,
         live = state.updates.connections[id],
         support = state.support[id],
+        // Which promise this feed keeps, where its publisher serves more than one (SEE-97). The
+        // screen shows the switch only for a feed, and only between what the publisher serves.
+        onEnvironment = { viewModel.setEnvironment(id, it) },
     )
 }
 

@@ -197,22 +197,27 @@ class JupiterSwapPluginTest {
     }
 
     @Test
-    fun sandboxAsksTheProviderNothingAtAll() {
-        // An environment that says it performs no purchase must not be able to make one, so this
-        // is refused before the first network call rather than after a careful one.
-        val provider = Provider()
+    fun preparingDoesNotReadTheEnvironment() {
+        // Sandbox gets the same work as production: the same quote, the same build, the same bytes
+        // (SEE-97). What differs is what happens afterwards, and afterwards is not this plugin's —
+        // core holds the wallet, so core is what signs or rehearses. A plugin that decided for
+        // itself would be a second place for the answer to be wrong, and a sandbox owner would be
+        // reviewing something other than the thing production does.
+        val provider = honest()
+        val plugin = plugin(provider)
 
-        val failed = runBlocking {
-            try {
-                plugin(provider).prepare(subject(PluginEnvironment.Sandbox), chose(5UL))
-                throw AssertionError("it prepared something")
-            } catch (e: PluginFailure) {
-                e
-            }
-        }
+        val production = runBlocking { plugin.prepare(subject(), chose(5UL)) }
+        val asked = provider.asked.toList()
+        val sandbox = runBlocking { plugin.prepare(subject(PluginEnvironment.Sandbox), chose(5UL)) }
 
-        assertEquals("sandbox_no_execution", failed.code)
-        assertEquals(emptyList<String>(), provider.asked)
+        assertEquals(production.transaction, sandbox.transaction)
+        // The same two calls again, in the same order, for the same amount and the same wallet.
+        assertEquals(asked + asked, provider.asked)
+        // And the inspection a sandbox owner reads is the production one, not a summary of it.
+        assertEquals(
+            plugin.inspect(subject(), chose(5UL), production).findings,
+            plugin.inspect(subject(PluginEnvironment.Sandbox), chose(5UL), sandbox).findings,
+        )
     }
 
     @Test

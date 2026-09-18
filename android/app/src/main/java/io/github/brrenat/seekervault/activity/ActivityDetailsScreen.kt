@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.CloseButton
+import io.github.brrenat.seekervault.connections.environmentText
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.ui.Identifier
 import io.github.brrenat.seekervault.ui.SeekerButton
@@ -120,6 +121,15 @@ fun ActivityDetailsScreen(
             // owner chose, by the plugin's own field names. The proposal was common to everyone
             // who received it; these parameters were this owner's, and they never left the phone.
             record.operation?.let { operation ->
+                // Beside the cluster above, and for the same reason: the cluster says which chain
+                // this belonged to, and this says whether anything reached it at all (SEE-97). A
+                // simulated record has no signature and so no explorer link, and neither is
+                // invented for it.
+                Field(
+                    R.string.activity_field_environment,
+                    stringResource(environmentText(operation.environment)),
+                    ActivityTags.ENVIRONMENT,
+                )
                 Field(R.string.activity_field_wallet, operation.wallet)
                 if (operation.values.isNotEmpty()) {
                     Field(

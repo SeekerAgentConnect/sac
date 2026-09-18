@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.activity
 
 import io.github.brrenat.seekervault.connections.RequestKey
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.request.v1.Network
 import java.time.Instant
 
@@ -45,6 +46,12 @@ enum class ActivityOutcome {
     ChainFailed,
     /** The wallet couldn't sign or send, and said so. Nothing happened. */
     NotSigned,
+    /**
+     * Nothing was signed and nothing was sent, because the connection is a sandbox: the operation
+     * was rehearsed (SEE-97, docs/wiki/environments.md). There is no signature on a record in this
+     * outcome and so no explorer link, and neither is invented.
+     */
+    Simulated,
     /** Nobody knows: the wallet's answer never reached this phone, or the chain settled nothing. */
     Unknown,
     /** The answer never reached the server, and can't. */
@@ -102,6 +109,15 @@ data class ReviewedOperation(
     val wallet: String,
     /** The cluster it was bound to. A signature belongs to this cluster and to no other. */
     val network: Network,
+    /**
+     * Which promise the connection was keeping when this was bound (SEE-97), beside the cluster
+     * because the two are different questions and both are worth a durable answer: the cluster is
+     * which chain, and this is whether anything reached it at all.
+     *
+     * It is read out of the binding rather than out of the connection as it is now, because a
+     * record is about what happened and the owner may have switched the connection since.
+     */
+    val environment: PluginEnvironment,
     /** Which preparation the owner reviewed, as the plugin counted it. */
     val preparedVersion: Int,
     /** What the owner chose, by the plugin's own field names. Base units, as they were chosen. */

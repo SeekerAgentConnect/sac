@@ -176,6 +176,11 @@ private fun statusOf(record: ActivityRecord): SpendStatus =
         ActivityOutcome.NotSigned,
         ActivityOutcome.Acknowledged,
         ActivityOutcome.MessageSigned -> SpendStatus.NotSpent
+        // A rehearsal in a sandbox connection: nothing was signed, so nothing moved and there is
+        // no exposure to carry either (SEE-97). It must not count against a threshold the owner
+        // set on real money, for the same reason devnet play money never does
+        // (docs/policy.md#counters).
+        ActivityOutcome.Simulated -> SpendStatus.NotSpent
         // The answer never reached the server, or the request had moved on. Neither says anything
         // about the wallet, so a signature does: the wallet made one, so it sent something.
         ActivityOutcome.NotDelivered,

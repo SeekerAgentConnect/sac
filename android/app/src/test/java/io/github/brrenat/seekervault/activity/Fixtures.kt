@@ -8,6 +8,7 @@ import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.SigningOutcome
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
 import io.github.brrenat.seekervault.request.v1.Network
@@ -164,6 +165,7 @@ fun operationRecord(
                 revision = 6,
                 wallet = wallet,
                 network = network,
+                environment = PluginEnvironment.Production,
                 preparedVersion = 1,
                 values =
                     listOf(

@@ -19,6 +19,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/environment"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/signals"
 )
@@ -35,10 +36,10 @@ type Settings struct {
 	// The gateway's own canonical origin. It must be the origin that gateway publishes as
 	// (BROADCAST_PUBLIC_URL), because the phone compares the two character for character.
 	GatewayURL string
-	// "production" or "sandbox", exactly one. A phone refuses to treat a server as supported in an
-	// environment the server does not name, because the two are different promises about what
-	// happens when the owner approves (SEE-97).
-	Environment string
+	// Exactly one promise, and a phone refuses to treat a server as supported in an environment
+	// the server does not name: the two are different promises about what happens when the owner
+	// approves (SEE-97).
+	Environment environment.Environment
 	// The bundled plugin the template's operation needs, from the kind it registered.
 	Requirement signals.Requirement
 	// The name the server calls itself, for the connection's default label. The owner can rename
@@ -48,10 +49,6 @@ type Settings struct {
 
 // Document is the manifest as it will be published, at the revision the store holds for it.
 func Document(settings Settings, revision uint64) *serverv1.ServerManifest {
-	environment := serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION
-	if settings.Environment == "sandbox" {
-		environment = serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX
-	}
 	return &serverv1.ServerManifest{
 		ServerId:         settings.ServerID,
 		ProtocolVersion:  Protocol,
@@ -63,8 +60,10 @@ func Document(settings Settings, revision uint64) *serverv1.ServerManifest {
 			MaxContract: settings.Requirement.MostContract,
 		}},
 		// Exactly one, always. A deployment serves one environment, and a second one is a second
-		// deployment with its own server ID and its own database (internal/store).
-		Environments: []serverv1.ServerEnvironment{environment},
+		// deployment with its own server ID and its own database (internal/store). An environment
+		// that came from nowhere is published as unspecified rather than as production, and the
+		// gateway refuses it (internal/environment).
+		Environments: []serverv1.ServerEnvironment{settings.Environment.Wire()},
 		DisplayName:  settings.DisplayName,
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: settings.GatewayURL,

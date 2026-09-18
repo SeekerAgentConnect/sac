@@ -560,7 +560,7 @@ is the contract.
 | `settings_revision` | The revision of everything else here | A positive `uint64` that changes whenever the content does and never goes backwards. |
 | `mode` | `CONNECTION_MODE_DIRECT` or `CONNECTION_MODE_GATEWAY_FEED` | Never unspecified. The phone does not guess a mode, and never reads a missing one as a feed. |
 | `required_plugins` | The bundled client plugins its operations need | At most 16, each a well-formed plugin ID (`jupiter.swap`) with `1 <= min_contract <= max_contract`, no duplicates. |
-| `environments` | `production`, `sandbox`, or both | At least one, never unspecified, no repeats. |
+| `environments` | `production`, `sandbox`, or both | At least one, never unspecified, no repeats. It says which the server *serves*; the phone records which one each connection *keeps*, and the shared gateway refuses a manifest that changes the set a server ID already published (SEE-97, [`docs/wiki/environments.md`](wiki/environments.md)). |
 | `display_name` | What the server calls itself | Optional; at most 64 UTF-8 bytes of printable, trimmed text. Never verified, and only ever a default label. |
 | `direct.url` | Where a direct server is reached | The connection's own server URL, character for character, in the pairing code's normalized form. |
 | `feed.gateway_url` | The shared gateway's origin | The origin the feed was added through, with no path, query, user info, or fragment. |

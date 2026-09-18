@@ -108,8 +108,6 @@ class ConnectionsViewModel(
     private val foregroundUpdates: StateFlow<ForegroundUpdatesState>? = null,
     /** The bundled client plugins this build carries, which is what a manifest is matched to. */
     private val plugins: PluginRegistry = PluginRegistry.of(),
-    /** The environment the app asks for; SEE-97 makes it the owner's choice. */
-    private val environment: PluginEnvironment = PluginEnvironment.Production,
     private val cleartextPermitted: (host: String) -> Boolean,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConnectionsUiState())
@@ -121,8 +119,12 @@ class ConnectionsViewModel(
     init {
         viewModelScope.launch {
             repository.connections.collect { list ->
+                // Each connection against its own promise (SEE-97): one phone holds a sandbox
+                // feed and a production one at the same time, and support is a question about one
+                // connection rather than about the app.
                 val support = list.associate { connection ->
-                    connection.id to serverSupport(connection.server, plugins, environment)
+                    connection.id to
+                        serverSupport(connection.server, plugins, connection.environment)
                 }
                 _state.update { it.copy(connections = list, support = support) }
             }
@@ -233,6 +235,18 @@ class ConnectionsViewModel(
             _state.update { it.copy(message = ConnectionMessage.Renamed(label.trim())) }
         }
         return null
+    }
+
+    /**
+     * Moves a feed between the environments its publisher serves (SEE-97,
+     * docs/wiki/environments.md).
+     *
+     * The answers that say no cannot be reached from the screen — it offers only what the publisher
+     * serves, and only for a feed — so there is nothing to report here: what the owner sees is the
+     * card itself, showing the promise that is now being kept.
+     */
+    fun setEnvironment(id: String, environment: PluginEnvironment) {
+        viewModelScope.launch { repository.setEnvironment(id, environment) }
     }
 
     fun askToDisconnect(id: String) {

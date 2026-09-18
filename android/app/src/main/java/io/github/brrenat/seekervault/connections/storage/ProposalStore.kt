@@ -7,6 +7,7 @@ import io.github.brrenat.seekervault.plugins.OperationId
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.proposals.ExecutionBinding
 import io.github.brrenat.seekervault.proposals.Proposal
@@ -123,7 +124,9 @@ class ProposalStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        const val VERSION = 1
+        // Version 2 added the environment an execution was bound in, and the simulated outcome
+        // (SEE-97). A version 1 record is read as what it is: every execution then was a real one.
+        const val VERSION = 2
         const val OLDEST_VERSION = 1
 
         fun encode(record: ProposalRecord): String =
@@ -269,6 +272,7 @@ class ProposalStore(private val dir: File) {
         fun encodeBinding(binding: ExecutionBinding): JSONObject =
             JSONObject()
                 .put("revision", binding.revision)
+                .put("environment", binding.environment.code)
                 .put("choice", encodeChoice(binding.choice))
                 .put("wallet", binding.wallet)
                 .put("network", binding.network.name)
@@ -284,6 +288,16 @@ class ProposalStore(private val dir: File) {
         fun decodeBinding(json: JSONObject): ExecutionBinding =
             ExecutionBinding(
                 revision = json.getLong("revision"),
+                // A record written before the environment was part of a binding is a production
+                // one: that is what every execution was then, and a simulated one could not exist
+                // (SEE-97). An unreadable value is not resolved into either, because the two are
+                // the whole difference between a rehearsal and money.
+                environment =
+                    if (!json.has("environment")) PluginEnvironment.Production
+                    else
+                        PluginEnvironment.entries.firstOrNull {
+                            it.code == json.getString("environment")
+                        } ?: throw IllegalArgumentException("not an environment"),
                 choice = decodeChoice(json.getJSONObject("choice")),
                 wallet = json.getString("wallet"),
                 network = Network.valueOf(json.getString("network")),
@@ -308,6 +322,9 @@ class ProposalStore(private val dir: File) {
                             Base64.getEncoder().encodeToString(outcome.signature.toByteArray()),
                         )
                 ProposalOutcome.Declined -> JSONObject().put("outcome", "Declined")
+                // No signature and no detail, because there is nothing to say: the operation was
+                // rehearsed and the record's own environment says under which promise.
+                ProposalOutcome.Simulated -> JSONObject().put("outcome", "Simulated")
                 is ProposalOutcome.Failed ->
                     JSONObject().put("outcome", "Failed").put("detail", outcome.detail)
                 is ProposalOutcome.Unresolved ->
@@ -322,6 +339,7 @@ class ProposalStore(private val dir: File) {
                         ByteString.copyFrom(Base64.getDecoder().decode(json.getString("signature")))
                     )
                 "Declined" -> ProposalOutcome.Declined
+                "Simulated" -> ProposalOutcome.Simulated
                 "Failed" -> ProposalOutcome.Failed(json.getString("detail"))
                 "Unresolved" -> ProposalOutcome.Unresolved(json.getString("detail"))
                 else -> throw IllegalArgumentException("not an outcome: $outcome")

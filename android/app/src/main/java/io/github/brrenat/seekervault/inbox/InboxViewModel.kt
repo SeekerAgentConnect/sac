@@ -252,11 +252,6 @@ class InboxViewModel(
      */
     private val plugins: PluginRegistry = PluginRegistry.of(),
     /**
-     * Which promise an approval would keep. SEE-97 makes it the owner's own choice; until then the
-     * app asks for the one it has always kept.
-     */
-    private val environment: PluginEnvironment = PluginEnvironment.Production,
-    /**
      * How long the app waits for the wallet before it gives up on an approval. It is the owner's
      * own time in the wallet app, so it is generous; a wallet that never answers at all must still
      * not hold a request open for the rest of the session.
@@ -542,7 +537,7 @@ class InboxViewModel(
                 connectionId = key.connectionId,
                 request = request,
                 network = network,
-                resolution = plugins.resolve(owner.operation, environment),
+                resolution = plugins.resolve(owner.operation, environmentOf(key.connectionId)),
             )
         }
         return policyFacts(
@@ -565,8 +560,20 @@ class InboxViewModel(
         serverSupport(
             repository.connection(connectionId)?.server ?: ServerRecord.Unknown,
             plugins,
-            environment,
+            environmentOf(connectionId),
         )
+
+    /**
+     * Which promise this connection keeps (SEE-97). For everything this screen is about it is
+     * always [PluginEnvironment.Production], and the reason is a rule rather than a default: a
+     * direct connection cannot be anything else, because the agent that asked for a signature is
+     * waiting for one and cannot be handed a rehearsal (`Connection.environment`).
+     *
+     * It is read rather than assumed all the same, so that the one place this app decides what an
+     * approval means is the connection it is for.
+     */
+    private fun environmentOf(connectionId: String): PluginEnvironment =
+        repository.connection(connectionId)?.environment ?: PluginEnvironment.Production
 
     private fun preparedFor(key: RequestKey): PreparedTransaction? =
         (activity.value.preparations[key] as? Preparation.Ready)?.prepared

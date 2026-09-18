@@ -179,6 +179,45 @@ class ProposalBindingTest {
     }
 
     @Test
+    fun thePromiseBoundHasToBeTheOneTheConnectionKeepsNow() {
+        // SEE-97. The owner switched the connection while this was in hand, so what they reviewed
+        // was a rehearsal and what they would be doing is real, or the other way round. Either way
+        // it is refused on the far side of the wait for the wallet, where the expiry and the wallet
+        // selection are also checked.
+        assertEquals(
+            BindingProblem.OtherEnvironment,
+            problem(
+                reviewed(),
+                binding(proposal, chose, environment = PluginEnvironment.Sandbox),
+            ),
+        )
+        assertEquals(
+            BindingProblem.OtherEnvironment,
+            problem(
+                reviewed(),
+                binding(proposal, chose),
+                environment = PluginEnvironment.Sandbox,
+            ),
+        )
+        // And it is asked before anything about the terms: which of the two things the owner is
+        // doing is not a question about what they chose.
+        assertEquals(
+            BindingProblem.OtherEnvironment,
+            problem(
+                record(),
+                binding(proposal, chose, environment = PluginEnvironment.Sandbox),
+            ),
+        )
+        assertNull(
+            problem(
+                reviewed(),
+                binding(proposal, chose, environment = PluginEnvironment.Sandbox),
+                environment = PluginEnvironment.Sandbox,
+            )
+        )
+    }
+
+    @Test
     fun aPreparationIsCheckedForFreshnessOnTheFarSideOfTheWait() {
         val deadline = NOW.plusSeconds(30)
         val bound = binding(proposal, chose, expiresAtEpochSeconds = deadline.epochSecond)
@@ -240,8 +279,9 @@ class ProposalBindingTest {
         binding: ExecutionBinding,
         wallet: SelectedWallet? = selected,
         support: ServerSupport = ServerSupport.Supported,
+        environment: PluginEnvironment = PluginEnvironment.Production,
         at: Instant = NOW,
-    ) = bindingProblem(record, binding, wallet, support, at)
+    ) = bindingProblem(record, binding, wallet, support, environment, at)
 
     private val selected =
         SelectedWallet(address = WALLET, network = WalletNetwork.Mainnet, selectedAt = PUBLISHED)

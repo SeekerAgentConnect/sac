@@ -6,6 +6,7 @@ import io.github.brrenat.seekervault.plugins.PLUGIN_CONTRACT
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
@@ -97,6 +98,7 @@ fun choice(baseUnits: ULong): ParameterChoice =
 fun binding(
     proposal: Proposal,
     choice: ParameterChoice,
+    environment: PluginEnvironment = PluginEnvironment.Production,
     wallet: String = WALLET,
     network: Network = Network.NETWORK_MAINNET,
     plugin: String = proposal.plugin.value,
@@ -107,6 +109,7 @@ fun binding(
 ): ExecutionBinding =
     ExecutionBinding(
         revision = proposal.revision,
+        environment = environment,
         choice = choice,
         wallet = wallet,
         network = network,

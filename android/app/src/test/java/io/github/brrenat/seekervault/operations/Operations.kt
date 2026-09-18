@@ -49,6 +49,7 @@ import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
+import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
@@ -117,12 +118,32 @@ class Phone(root: File, private val clock: () -> Instant) {
     val connections = MutableStateFlow(listOf(connection))
     val loaded = MutableStateFlow(true)
 
+    /**
+     * Puts this phone's feed in [environment], the way the app gets there (SEE-97): the publisher
+     * serves it, and the owner keeps it.
+     *
+     * Both halves on purpose. A connection in an environment its server does not serve is
+     * unsupported and executes nothing, which is a different thing from a sandbox — so a test that
+     * wants a rehearsal has to say both, exactly as a real deployment does.
+     */
+    fun keeps(
+        environment: PluginEnvironment,
+        served: Set<PluginEnvironment> = setOf(environment),
+    ) {
+        val manifest = checkNotNull(connection.server.manifest)
+        connection =
+            connection.copy(
+                environment = environment,
+                server = ServerRecord.Known(manifest.copy(environments = served)),
+            )
+        connections.value = listOf(connection)
+    }
+
     val proposals =
         ProposalRepository(
             store = ProposalStore(File(root, "proposals")),
             connections = { connections.value },
             plugins = plugins,
-            environment = PluginEnvironment.Production,
             feed = feed,
             history = history,
             now = clock,

@@ -187,9 +187,15 @@ get mixed up is not a typo in an argument, it is a copied compose file pointed a
 already exists.
 
 What sandbox means for a *publisher* is a declaration rather than a behaviour: this template signs
-nothing and executes nothing, so what changes is what the phone is told to expect when its owner
-approves (SEE-97). One deployment serves one environment; two environments are two deployments, with
-their own server IDs, credentials and databases.
+nothing and executes nothing, so what changes is what every subscribed phone does when its owner
+approves — the same live signal, the same review, the same bytes, and then no wallet and no
+signature (SEE-97, [environments.md](environments.md)). One deployment serves one environment; two
+environments are two deployments, with their own server IDs, credentials and databases, and the
+gateway refuses a manifest that tries to change the environments a server ID already published.
+
+The shipped `.env.example` is a sandbox, so that copying it and running it demonstrates the whole
+path without anybody's money. Production is a deliberate edit of that line; the code itself still
+has no default, so a deployment that says nothing does not start.
 
 ## The API is the one path in
 

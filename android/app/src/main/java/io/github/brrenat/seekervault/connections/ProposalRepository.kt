@@ -137,11 +137,6 @@ class ProposalRepository(
     /** The plugins compiled into this build, for deciding what it supports (SEE-86, SEE-88). */
     private val plugins: PluginRegistry,
     /**
-     * SEE-97 makes this the owner's choice; until then core asks for production, as it does
-     * everywhere else a plugin is resolved.
-     */
-    private val environment: PluginEnvironment = PluginEnvironment.Production,
-    /**
      * How a publisher's proposals are read, when this build has a gateway to read them through.
      * Optional because the gateway is SEE-90: without one, [refresh] says so and reads nothing.
      */
@@ -326,9 +321,17 @@ class ProposalRepository(
     ): ExecutionOutcome = locked {
         val connection = feedConnection(connectionId) ?: return@locked ExecutionOutcome.Gone
         val record = stored(connection, proposalId) ?: return@locked ExecutionOutcome.Gone
-        bindingProblem(record, binding, wallet, support(connection), now())?.let {
-            return@locked ExecutionOutcome.Refused(it)
-        }
+        bindingProblem(
+                record,
+                binding,
+                wallet,
+                support(connection),
+                connection.environment,
+                now(),
+            )
+            ?.let {
+                return@locked ExecutionOutcome.Refused(it)
+            }
         record
             .copy(execution = ProposalExecution(binding = binding, startedAt = now()))
             .also {
@@ -361,7 +364,7 @@ class ProposalRepository(
 
     /** Which plugin this build would use for a proposal, or why none would ([proposalPlugin]). */
     fun plugin(record: ProposalRecord): ProposalPlugin =
-        proposalPlugin(record.proposal, plugins, environment)
+        proposalPlugin(record.proposal, plugins, environmentOf(record.connectionId))
 
     /** Everything held for one feed, oldest first. */
     fun proposalsFor(connectionId: String): List<ProposalRecord> =
@@ -413,7 +416,20 @@ class ProposalRepository(
         store.get(connection.id, proposalId)?.takeIf { it.key.serverId == connection.serverId }
 
     private fun support(connection: Connection): ServerSupport =
-        serverSupport(connection.server, plugins, environment)
+        serverSupport(connection.server, plugins, connection.environment)
+
+    /**
+     * Which promise the feed this proposal arrived on keeps (SEE-97). It is the connection's, read
+     * fresh every time, because the owner can change it and a copy of it here would be the stale
+     * one.
+     *
+     * A connection that is gone answers sandbox, which is the direction a missing answer has to
+     * fall: nothing about a feed the phone no longer holds is executable anyway (the standing is
+     * [io.github.brrenat.seekervault.proposals.ProposalStanding.Executed] or the record is gone),
+     * and the value is then only read to describe something.
+     */
+    private fun environmentOf(connectionId: String): PluginEnvironment =
+        feedConnection(connectionId)?.environment ?: PluginEnvironment.Sandbox
 
     private fun supportOf(connectionId: String): ServerSupport =
         feedConnection(connectionId)?.let(::support) ?: ServerSupport.Unknown
@@ -461,6 +477,9 @@ class ProposalRepository(
                         revision = binding.revision,
                         wallet = binding.wallet,
                         network = binding.network,
+                        // The promise as it was bound, not as the connection stands now: a record
+                        // is about what happened (SEE-97).
+                        environment = binding.environment,
                         preparedVersion = binding.preparedVersion,
                         values =
                             binding.choice.values
@@ -490,6 +509,8 @@ class ProposalRepository(
                 is ProposalOutcome.Pending -> ActivityOutcome.Waiting
                 is ProposalOutcome.Submitted -> ActivityOutcome.Sent
                 is ProposalOutcome.Declined -> ActivityOutcome.DeclinedInWallet
+                // Nothing reached a wallet, and the record says which promise that was under.
+                is ProposalOutcome.Simulated -> ActivityOutcome.Simulated
                 is ProposalOutcome.Failed -> ActivityOutcome.NotSigned
                 is ProposalOutcome.Unresolved -> ActivityOutcome.Unknown
             }

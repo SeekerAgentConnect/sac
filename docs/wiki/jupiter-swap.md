@@ -81,11 +81,11 @@ Reading those four numbers from the end of the instruction's data is exact rathe
 
 Changing any parameter throws away what was prepared for the old one, because bytes for an old number sitting on screen beside a new one is how somebody comes to approve a transaction they are not looking at. A preparation stands for **one minute** — a quote is a price from a moment ago and a legacy blockhash lasts about that long — and past it the owner prepares again and reviews again.
 
-## Sandbox, and which network
+## Which promise, and which network
 
-**Sandbox asks the provider nothing.** An environment that says it performs no purchase must not be able to make one, so it is refused before the first network call rather than after a careful one: no quote, no build, nothing prepared, nothing to sign. Its signals are still read and reviewed, which is what makes a sandbox deployment a supported deployment. [SEE-97](../../AGENTS.md#stage-boundaries) owns what sandbox grows into.
+**This plugin does not read the environment, and that is the point (SEE-97).** Sandbox and production get the same work: the same quote, the same build, the same bytes, the same inspection. What differs is what happens afterwards, and afterwards is not the plugin's — core holds the wallet, so core is what signs or rehearses, exactly as core and never a plugin decides which cluster a transaction is for. So what a sandbox owner reviews is the route this plugin actually built at a live price, and the one thing that does not happen is the signature ([`docs/wiki/environments.md`](environments.md)).
 
-**It is mainnet or nothing.** Jupiter routes liquidity that exists on one network; there is no devnet Jupiter to point at, and pretending otherwise would be worse than saying so. A wallet selected for another network is refused before anything is asked, and the app's existing devnet transfer and message tests are unaffected because they are about a different thing.
+**It is mainnet or nothing, in both environments.** Jupiter routes liquidity that exists on one network; there is no devnet Jupiter to point at, and pretending otherwise would be worse than saying so. A wallet selected for another network is refused before anything is asked — a rehearsal does not relax that, because the bytes being built are mainnet bytes either way — and the app's existing devnet transfer and message tests are unaffected because they are about a different thing.
 
 ## Limits, honestly
 

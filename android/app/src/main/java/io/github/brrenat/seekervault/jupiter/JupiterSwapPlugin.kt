@@ -38,13 +38,18 @@ import java.util.concurrent.atomic.AtomicInteger
  * - **Reads the bytes back.** Independently, out of the transaction, against the owner's choice
  *   ([inspectSwap]).
  *
- * ## Sandbox asks the provider nothing
+ * ## It does not read the environment, and that is the point
  *
- * An environment that says it performs no purchase must not be able to make one, so sandbox is
- * refused before any network call rather than after a careful one: no quote, no build, nothing
- * prepared, nothing to sign (SEE-97 owns what sandbox grows into).
+ * Sandbox and production get the same work: the same quote, the same build, the same bytes, the
+ * same inspection. What differs is what happens afterwards, and afterwards is not this plugin's —
+ * core holds the wallet, so core is what signs or rehearses (SEE-97, docs/wiki/environments.md). A
+ * plugin that decided for itself would be a second place for the answer to be wrong, exactly as a
+ * plugin deciding which cluster its bytes are for would be.
  *
- * ## And it is mainnet or nothing
+ * What that means for a sandbox owner is that the demonstration is the real thing up to the
+ * signature: a live route at a live price, and a review with nothing simulated in it.
+ *
+ * ## And it is mainnet or nothing, in both environments
  *
  * Jupiter routes liquidity that exists on one network. There is no devnet Jupiter to point at, and
  * pretending otherwise would be the one thing worse than saying so: the plugin refuses a wallet
@@ -61,8 +66,8 @@ class JupiterSwapPlugin(
             id = JUPITER_SWAP,
             contract = PLUGIN_CONTRACT,
             operations = setOf(SWAP_OPERATION),
-            // Both, because a sandbox deployment is a supported deployment: its signals are read
-            // and reviewed, and preparing is what it declines to do.
+            // Both, and it does the same work in each: a sandbox owner reviews the route this
+            // plugin actually built, and core is what stops before the wallet (SEE-97).
             environments = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
         )
 
@@ -84,12 +89,6 @@ class JupiterSwapPlugin(
         subject: ActionSubject,
         choice: ParameterChoice,
     ): PluginPreparation {
-        // In this order on purpose. The environment is checked before anything is read and long
-        // before anything is asked of the network, so "sandbox performs no purchase" is a property
-        // of the first line rather than a promise made by the last one.
-        if (subject.environment != PluginEnvironment.Production) {
-            throw PluginFailure(SANDBOX, R.string.jupiter_failure_sandbox)
-        }
         val terms =
             when (val read = swapTermsFrom(subject.terms)) {
                 is SwapTermsResult.Valid -> read.terms
@@ -176,7 +175,6 @@ class JupiterSwapPlugin(
         ActionInspection.nothingEstablished(version, listOf(finding))
 
     private companion object {
-        const val SANDBOX = "sandbox_no_execution"
         const val NO_WALLET = "no_wallet"
         const val OTHER_NETWORK = "other_network"
         const val NO_OFFER = "no_offer"

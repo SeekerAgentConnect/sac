@@ -236,11 +236,16 @@ test reads the live provider to notice when they change
 
 The environment is the publisher's half of the configuration and works exactly as it does for the
 other template: one deployment serves one environment, and the database is stamped with it, so a
-copied compose file pointed at an existing volume is refused at startup.
+copied compose file pointed at an existing volume is refused at startup. A sandbox deployment
+discovers the same live markets from the same provider — nothing about a publisher is simulated,
+because nothing about a publisher executes anything. What changes is what a phone does with what it
+publishes (SEE-97, [environments.md](environments.md)), and `.env.prediction.example` is a sandbox
+for that reason.
 
 One filter has a rule about it attached: **`PREDICTION_STATE=any` is refused in production.**
-Publishing markets the provider will not take an order for is a deliberate sandbox exercise — every
-phone refuses the order anyway — and the way it reaches production is a copied `.env`.
+Publishing markets the provider will not take an order for is a deliberate sandbox exercise — the
+phone reads the market itself and refuses a closed one, whichever environment it is in — and the way
+it reaches production is a copied `.env`.
 
 ## A complete example
 

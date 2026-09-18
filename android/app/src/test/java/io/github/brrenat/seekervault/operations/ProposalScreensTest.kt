@@ -27,6 +27,7 @@ import io.github.brrenat.seekervault.plugins.InspectedAction
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFinding
 import io.github.brrenat.seekervault.plugins.PluginPreparation
@@ -83,12 +84,14 @@ class ProposalScreensTest {
         served: Boolean = true,
         failure: OperationFailure? = null,
         problem: OperationProblem? = null,
+        environment: PluginEnvironment = PluginEnvironment.Production,
     ): OperationReview =
         OperationReview(
             connectionId = CONNECTION,
             proposalId = PROPOSAL,
             record = record(),
             standing = standing,
+            environment = environment,
             form =
                 if (served) swapParameters(terms)
                 else io.github.brrenat.seekervault.plugins.ParameterForm(),
@@ -347,6 +350,29 @@ class ProposalScreensTest {
         compose
             .onNodeWithText(context.getString(R.string.operation_binding_preparation_expired))
             .assertIsDisplayed()
+    }
+
+    @Test
+    fun aSandboxReviewSaysSoAndDoesNotOfferToApproveAnything() {
+        // SEE-97's "unmistakable", on the one screen where it matters: the owner is about to press
+        // a button, and a rehearsal and a purchase must not look the same.
+        showReview(review(prepared = true, environment = PluginEnvironment.Sandbox))
+
+        shown(OperationTags.SANDBOX)
+        compose.onNodeWithText(context.getString(R.string.operation_sandbox)).assertIsDisplayed()
+        shown(OperationTags.APPROVE)
+        compose.onNodeWithText(context.getString(R.string.operation_simulate)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.operation_approve)).assertDoesNotExist()
+    }
+
+    @Test
+    fun aProductionReviewSaysNothingAboutSandboxAndOffersToApprove() {
+        showReview(review(prepared = true))
+
+        compose.onNodeWithTag(OperationTags.SANDBOX).assertDoesNotExist()
+        shown(OperationTags.APPROVE)
+        compose.onNodeWithText(context.getString(R.string.operation_approve)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.operation_simulate)).assertDoesNotExist()
     }
 
     @Test

@@ -38,6 +38,9 @@ object ActivityTags {
 
     fun item(record: ActivityRecord) = "activity:${record.connectionId}/${record.requestId}"
 
+    /** Which promise an operation was bound under (SEE-97). */
+    const val ENVIRONMENT = "activityEnvironment"
+
     fun field(name: String) = "activityField:$name"
 }
 
@@ -65,6 +68,7 @@ fun outcomeText(outcome: ActivityOutcome): Int =
         ActivityOutcome.Confirmed -> R.string.activity_outcome_confirmed
         ActivityOutcome.ChainFailed -> R.string.activity_outcome_chain_failed
         ActivityOutcome.NotSigned -> R.string.activity_outcome_not_signed
+        ActivityOutcome.Simulated -> R.string.activity_outcome_simulated
         ActivityOutcome.Unknown -> R.string.activity_outcome_unknown
         ActivityOutcome.NotDelivered -> R.string.activity_outcome_not_delivered
         ActivityOutcome.Superseded -> R.string.activity_outcome_superseded

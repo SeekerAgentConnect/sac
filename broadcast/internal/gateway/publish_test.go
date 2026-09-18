@@ -143,6 +143,65 @@ func TestACredentialIsTheWholeOfTheGrant(t *testing.T) {
 	})
 }
 
+// The other rule that is the gateway's own: a document read from here can never change what a
+// server promises when the owner approves (SEE-97). A phone caches a manifest by revision, so a
+// publisher that could raise its own environment could move every subscriber from a demonstration
+// to real money with a document nobody looked at.
+func TestTheGatewayWillNotRelayAPromotionToProduction(t *testing.T) {
+	gateway := newGateway(t)
+	publisher := gateway.publisher(gateway.register(publisherA))
+	ctx := context.Background()
+	sandbox := func(m *serverv1.ServerManifest) {
+		m.Environments = []serverv1.ServerEnvironment{
+			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
+		}
+	}
+	if answer := gateway.publishManifest(publisher,
+		manifestOf(publisherA, 1, sandbox)); answer.GetStatus() !=
+		gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
+		t.Fatalf("a sandbox manifest answered %v", answer.GetStatus())
+	}
+
+	// Everything else about the document may move with a revision, and does here: the name
+	// changes too, so what is refused is the environment and not the settings.
+	_, err := publisher.PublishManifest(ctx, connect.NewRequest(&gatewayv1.PublishManifestRequest{
+		Manifest: manifestOf(publisherA, 2, func(m *serverv1.ServerManifest) {
+			m.DisplayName = "Copy trading (live)"
+		}),
+	}))
+	detail := refused(t, err, connect.CodeFailedPrecondition,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT)
+	// The held revision, as for the other refusals about what the gateway already holds: a
+	// publisher that lost its own state gets one number to catch up with.
+	if detail.GetHeldRevision() != 1 {
+		t.Fatalf("the refusal held %d, expected 1", detail.GetHeldRevision())
+	}
+
+	// And nothing was written: what a subscriber reads is still the sandbox document at revision 1.
+	answer, err := gateway.feed.GetServerManifest(ctx,
+		connect.NewRequest(&gatewayv1.GetServerManifestRequest{ServerId: publisherA}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := answer.Msg.GetManifest()
+	if held.GetSettingsRevision() != 1 || held.GetDisplayName() != "Copy trading" {
+		t.Fatalf("the refused publication was stored: %v", held)
+	}
+	if len(held.GetEnvironments()) != 1 || held.GetEnvironments()[0] !=
+		serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX {
+		t.Fatalf("a subscriber would read %v", held.GetEnvironments())
+	}
+
+	// The way it is actually done: the same environment at a higher revision is an ordinary
+	// change, and a second environment is a second deployment with its own server ID.
+	if answer := gateway.publishManifest(publisher,
+		manifestOf(publisherA, 2, sandbox, func(m *serverv1.ServerManifest) {
+			m.DisplayName = "Copy trading (demo)"
+		})); answer.GetStatus() != gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
+		t.Fatalf("a sandbox manifest at a higher revision answered %v", answer.GetStatus())
+	}
+}
+
 // The rule that is the gateway's own: a document read from here can never point a phone somewhere
 // else.
 func TestTheGatewayWillNotRelayARedirection(t *testing.T) {

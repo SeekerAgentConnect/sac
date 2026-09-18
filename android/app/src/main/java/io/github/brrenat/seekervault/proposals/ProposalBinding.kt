@@ -29,6 +29,16 @@ import java.time.Instant
 data class ExecutionBinding(
     /** The exact proposal revision the terms came from. */
     val revision: Long,
+    /**
+     * Which promise was being kept when this was bound (SEE-97, docs/wiki/environments.md).
+     *
+     * It is core's own fact rather than the plugin's: the plugin prepared the same bytes either
+     * way, and what the connection promised at the moment of acting is what decides whether they
+     * are signed. Pinning it here is what makes a mode switch safe — the check happens on the far
+     * side of the wait for the wallet, exactly as the expiry and the wallet selection do, so a
+     * binding made under one promise cannot be carried out under the other.
+     */
+    val environment: PluginEnvironment,
     /** The parameters the owner chose, which must be the ones they reviewed. */
     val choice: ParameterChoice,
     /** The selected wallet's public address. Never a token: that stays in the wallet store. */
@@ -93,6 +103,12 @@ enum class BindingProblem(val code: String) {
     OtherWallet("other_wallet"),
     /** The wallet is selected for another network than the one the binding names. */
     OtherNetwork("other_network"),
+    /**
+     * The binding was made for the other promise (SEE-97). The owner switched the connection's
+     * environment while this was in hand, so what they reviewed was a rehearsal and what they would
+     * be doing is real, or the other way round. They review again; nothing is carried over.
+     */
+    OtherEnvironment("other_environment"),
 }
 
 /**
@@ -101,14 +117,16 @@ enum class BindingProblem(val code: String) {
  * Every rule is here rather than spread between a repository and a screen, because a rule in two
  * places is a rule that gets forgotten in one of them. The checks run from the most fundamental to
  * the most specific: what this device has already done, then whether the proposal still stands,
- * then whether the owner reviewed these terms, then whether the plugin and the wallet are the ones
- * bound, and last whether the bytes are still includable.
+ * then which promise is being kept, then whether the owner reviewed these terms, then whether the
+ * plugin and the wallet are the ones bound, and last whether the bytes are still includable.
  */
 fun bindingProblem(
     record: ProposalRecord,
     binding: ExecutionBinding,
     wallet: SelectedWallet?,
     support: ServerSupport,
+    /** The promise the connection keeps *now*, which the binding's own must still be (SEE-97). */
+    environment: PluginEnvironment,
     now: Instant,
 ): BindingProblem? {
     // The standing is consulted rather than re-derived, so what the owner is shown and what the
@@ -123,6 +141,9 @@ fun bindingProblem(
         is ProposalStanding.Expired -> return BindingProblem.ProposalExpired
         is ProposalStanding.Unsupported -> return BindingProblem.ServerUnsupported
     }
+    // Before anything about the terms, because it is not a question about them: it is which of the
+    // two things the owner is about to do.
+    if (binding.environment != environment) return BindingProblem.OtherEnvironment
     val review = record.review ?: return BindingProblem.NotReviewed
     val revision = record.proposal.revision
     if (binding.revision != revision || review.revision != revision) {

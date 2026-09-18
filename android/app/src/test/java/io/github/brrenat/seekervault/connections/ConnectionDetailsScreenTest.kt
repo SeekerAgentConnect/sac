@@ -49,6 +49,7 @@ class ConnectionDetailsScreenTest {
         refreshing: Boolean = false,
         live: ForegroundConnectionState? = null,
         support: ServerSupport? = null,
+        onEnvironment: ((PluginEnvironment) -> Unit)? = null,
     ) = compose.setContent {
         SeekerVaultTheme {
             ConnectionDetailsScreen(
@@ -69,6 +70,7 @@ class ConnectionDetailsScreenTest {
                 onRules = { calls += "rules" },
                 live = live,
                 support = support,
+                onEnvironment = onEnvironment,
             )
         }
     }
@@ -100,6 +102,79 @@ class ConnectionDetailsScreenTest {
         compose
             .onNodeWithTag(ConnectionsTags.STATUS)
             .assertTextEquals(context.getString(R.string.connection_status_feed))
+    }
+
+    /** A feed of HOME's, whose publisher serves [served] (SEE-97). */
+    private fun feed(served: Set<PluginEnvironment>) =
+        HOME.copy(
+            hasCredential = false,
+            lastCheck = null,
+            mode = ConnectionMode.GatewayFeed,
+            server =
+                ServerRecord.Known(
+                    ServerManifest(
+                        serverId = HOME.serverId,
+                        protocolVersion = SERVER_PROTOCOL,
+                        settingsRevision = 1,
+                        mode = ConnectionMode.GatewayFeed,
+                        reference =
+                            ServerReference.Feed(
+                                "https://gateway.example.com",
+                                channelFor(HOME.serverId),
+                            ),
+                        environments = served,
+                    )
+                ),
+            environment =
+                if (PluginEnvironment.Sandbox in served) PluginEnvironment.Sandbox
+                else PluginEnvironment.Production,
+        )
+
+    @Test
+    fun aFeedSaysWhichPromiseItKeepsAndOffersTheSwitchOnlyWhereThereIsAChoice() {
+        // SEE-97. "This feed spends money" and "this feed is a demonstration" are the two things
+        // an owner most needs to know about a feed, so the word is on the screen either way, and
+        // the switch appears only where its publisher serves both.
+        show(feed(setOf(PluginEnvironment.Sandbox)), support = ServerSupport.Supported)
+
+        compose.onNodeWithTag(ConnectionsTags.ENVIRONMENT).assertExists()
+        compose
+            .onNodeWithText(context.getString(R.string.connection_environment_sandbox))
+            .assertExists()
+        compose
+            .onNodeWithTag(ConnectionsTags.environment(PluginEnvironment.Production.code))
+            .assertDoesNotExist()
+    }
+
+    @Test
+    fun aFeedThatServesBothLetsTheOwnerSwitchAndNobodyElse() {
+        val both = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox)
+        val chosen = mutableListOf<PluginEnvironment>()
+        show(
+            feed(both).copy(environment = PluginEnvironment.Sandbox),
+            support = ServerSupport.Supported,
+            onEnvironment = { chosen += it },
+        )
+
+        compose
+            .onNodeWithTag(ConnectionsTags.environment(PluginEnvironment.Production.code))
+            .performScrollTo()
+            .performClick()
+
+        assertEquals(listOf(PluginEnvironment.Production), chosen)
+        // The one it already keeps is not a button that does anything.
+        compose
+            .onNodeWithTag(ConnectionsTags.environment(PluginEnvironment.Sandbox.code))
+            .assertIsNotEnabled()
+    }
+
+    @Test
+    fun aDirectConnectionSaysNothingAboutEnvironmentsAtAll() {
+        // It is always production, and a row that could only ever say one thing is noise on the
+        // screen the private workflow uses (SEE-97).
+        show(HOME)
+
+        compose.onNodeWithTag(ConnectionsTags.ENVIRONMENT).assertDoesNotExist()
     }
 
     @Test

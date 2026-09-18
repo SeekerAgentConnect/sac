@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.connections
 
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.manifest
@@ -49,6 +50,24 @@ data class Connection(
      * server from before Stage 7.1, behaving exactly as it always has.
      */
     val server: ServerRecord = ServerRecord.Unknown,
+    /**
+     * Which promise this connection keeps when the owner approves (SEE-97,
+     * docs/wiki/environments.md).
+     *
+     * It is the connection's rather than the app's, and the owner's rather than the server's. A
+     * manifest says which environments a server *serves*; this says which one is being kept, it is
+     * set when the connection is created and changed only by the owner, and a manifest that stops
+     * naming it makes the server unsupported rather than moving it
+     * ([io.github.brrenat.seekervault.servers.ServerSupport.EnvironmentUnsupported]). That is what
+     * makes a promotion to production something a person did, and never something a publisher
+     * republished.
+     *
+     * A [ConnectionMode.Direct] connection is always [PluginEnvironment.Production], and the
+     * invariant below is the whole of it: a sandbox rehearsal is possible only where nobody is
+     * waiting for the answer. A paired sidecar's agent asked for a signature and can be told no,
+     * but it cannot be handed a simulation, and this app will not invent one for it.
+     */
+    val environment: PluginEnvironment = PluginEnvironment.Production,
 ) {
     init {
         // A feed exists only because a manifest was read for it: the gateway, the channel and the
@@ -60,6 +79,11 @@ data class Connection(
         // which manifestFrom is what guarantees.
         require(server.manifest?.mode?.equals(mode) != false) {
             "a $mode connection cannot hold a ${server.manifest?.mode} manifest"
+        }
+        // Stated here rather than in the four places a connection is built, so that a connection
+        // which could ask a wallet to sign something for an agent is production by construction.
+        require(mode == ConnectionMode.GatewayFeed || environment == PluginEnvironment.Production) {
+            "a direct connection is always production"
         }
     }
 
@@ -110,4 +134,21 @@ fun labelProblem(label: String): LabelProblem? {
         trimmed.codePointCount(0, trimmed.length) > MAX_LABEL_LENGTH -> LabelProblem.TooLong
         else -> null
     }
+}
+
+/**
+ * Which environment a new connection starts in, given what its server says it serves (SEE-97).
+ *
+ * Sandbox whenever the server offers one, which is the safe direction and the deliberate one: a
+ * publisher that serves both is offering a demonstration as well as the real thing, and the
+ * demonstration is what a phone takes until its owner says otherwise. Production is then an act by
+ * a person, which is what the ticket's "only after explicit user review" means at this end.
+ *
+ * A server that has published nothing, and a direct server from before manifests existed, are
+ * production: they are the private workflow, which has always been real.
+ */
+fun startingEnvironment(server: ServerRecord): PluginEnvironment {
+    val environments = server.manifest?.environments ?: return PluginEnvironment.Production
+    return if (PluginEnvironment.Sandbox in environments) PluginEnvironment.Sandbox
+    else PluginEnvironment.Production
 }
