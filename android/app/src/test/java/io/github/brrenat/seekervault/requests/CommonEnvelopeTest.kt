@@ -105,6 +105,28 @@ class CommonEnvelopeTest {
     }
 
     @Test
+    fun anUnknownCapabilityVersionStaysReadable() {
+        val newer =
+            commonFeedRequest()
+                .toBuilder()
+                .setAction(commonFeedRequest().action.toBuilder().setCapabilityVersion(2))
+                .build()
+        val missing =
+            commonFeedRequest()
+                .toBuilder()
+                .setAction(commonFeedRequest().action.toBuilder().setCapabilityVersion(0))
+                .build()
+
+        val result = proposalFrom(newer, ProposalExpectation(SERVER_B)) as ProposalResult.Valid
+        assertEquals(2, result.proposal.capabilityVersion)
+        assertEquals(
+            ProposalProblem.BadOperation,
+            (proposalFrom(missing, ProposalExpectation(SERVER_B)) as ProposalResult.Invalid)
+                .problem,
+        )
+    }
+
+    @Test
     fun aFeedCannotUseAPrivateAudienceOrReturnAResult() {
         val privateAudience =
             commonFeedRequest()

@@ -32,6 +32,12 @@ data class Proposal(
     val revision: Long,
     /** The common envelope version. Legacy Proposal rows adapt to version 1 on read. */
     val contractVersion: Int = 1,
+    /**
+     * The action capability's own version, independent of [contractVersion]. This release
+     * interprets [SUPPORTED_CAPABILITY_VERSION] only; a higher one stays readable and is not
+     * executed ([proposalPlugin]).
+     */
+    val capabilityVersion: Int = SUPPORTED_CAPABILITY_VERSION,
     /** Source-authored title; Signal is presentation, not an operation type. */
     val title: String = "",
     /**
@@ -72,6 +78,9 @@ data class Proposal(
     /** The term named [name], or null when the publisher gave none. */
     fun value(name: String): String? = values.firstOrNull { it.key == name }?.text
 }
+
+/** This release interprets capability version 1. A higher version stays readable. */
+const val SUPPORTED_CAPABILITY_VERSION: Int = 1
 
 data class OwnerInputDeclaration(
     val key: String,

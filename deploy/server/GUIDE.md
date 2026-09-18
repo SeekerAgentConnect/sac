@@ -211,16 +211,29 @@ proxy lives in the publisher's network namespace and is stranded by a lone resta
 
 ## Updating later
 
+The three parts are independent compose files. A command that does not name a file does not pull
+or recreate the containers in it: `compose.yaml` plus `compose.tailscale.yaml` is the gateway,
+`compose.direct.yaml` is the sidecar, and the demos are only in `compose.demos.yaml`.
+
 ```sh
-# Mac: rebuild and push the tag (step 1), re-sync the folder if compose files changed (step 2)
+# Mac: rebuild and push the tags (step 1), re-sync the folder if compose files changed (step 2)
 # Server:
 docker compose -f compose.yaml -f compose.tailscale.yaml pull
 docker compose -f compose.yaml -f compose.tailscale.yaml up -d --no-build
 docker compose -f compose.direct.yaml pull && docker compose -f compose.direct.yaml up -d sidecar
+# Demos, if they run (same three -f files as step 8). --no-deps leaves Part 1 alone:
+docker compose -f compose.yaml -f compose.tailscale.yaml -f compose.demos.yaml pull
+docker compose -f compose.yaml -f compose.tailscale.yaml -f compose.demos.yaml \
+  up -d --no-build --no-deps \
+  copytrading copytrading-proxy prediction prediction-proxy
 ```
 
-Volumes are kept; the services migrate their own schemas forward. Never add `-v` to a `down` during
-an update.
+`centrifugo` and `redis` staying at their previous age is expected: their tags are pinned and this
+update does not rebuild them. `gateway-proxy` is recreated with `broadcast` because it shares that
+container's network namespace. Recreate each publisher with its proxy, never alone (step 8).
+Without the demo lines, `copytrading` and `prediction` keep the image they started with even when
+`publisher-v1` was rebuilt and pushed. Volumes are kept; the services migrate their own schemas
+forward. Never add `-v` to a `down` during an update.
 
 ## Removing everything from the server
 

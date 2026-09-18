@@ -154,6 +154,7 @@ class ProposalStore(private val dir: File) {
                 .put("proposalId", proposal.key.proposalId)
                 .put("revision", proposal.revision)
                 .put("contractVersion", proposal.contractVersion)
+                .put("capabilityVersion", proposal.capabilityVersion)
                 .put("title", proposal.title)
                 .put("operation", proposal.operation.value)
                 .put("plugin", proposal.plugin.value)
@@ -215,6 +216,7 @@ class ProposalStore(private val dir: File) {
                     ),
                 revision = json.getLong("revision"),
                 contractVersion = json.optInt("contractVersion", 1),
+                capabilityVersion = json.optInt("capabilityVersion", 1),
                 title = json.optString("title", json.getString("operation")),
                 operation = OperationId(json.getString("operation")),
                 plugin = PluginId(json.getString("plugin")),

@@ -116,6 +116,7 @@ class ProposalStoreTest {
         old.put("version", 2)
         old.getJSONObject("proposal").apply {
             remove("contractVersion")
+            remove("capabilityVersion")
             remove("title")
             remove("ownerInputs")
         }
@@ -123,6 +124,7 @@ class ProposalStoreTest {
 
         val migrated = checkNotNull(store.get(CONNECTION, PROPOSAL_A))
         assertEquals(SWAP, migrated.proposal.title)
+        assertEquals(1, migrated.proposal.capabilityVersion)
         assertEquals(emptyList<Any>(), migrated.proposal.ownerInputs)
         assertEquals(record.dismissed, migrated.dismissed)
     }

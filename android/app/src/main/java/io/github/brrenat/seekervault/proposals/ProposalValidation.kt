@@ -257,6 +257,7 @@ fun proposalFrom(message: WireRequest, expect: ProposalExpectation): ProposalRes
             key = key,
             revision = lifecycle.revision,
             contractVersion = message.contractVersion,
+            capabilityVersion = action.capabilityVersion,
             title = presentation.title,
             operation = OperationId(action.capabilityId),
             plugin = PluginId(action.pluginId),

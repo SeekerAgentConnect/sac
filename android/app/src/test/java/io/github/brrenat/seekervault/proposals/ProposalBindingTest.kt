@@ -244,6 +244,20 @@ class ProposalBindingTest {
     }
 
     @Test
+    fun anUnknownCapabilityVersionIsNotServedAndCannotBeBound() {
+        val newer = proposal.copy(capabilityVersion = 2)
+
+        assertEquals(
+            ProposalPlugin.Unserved(UnsupportedReason.ContractUnsupported),
+            proposalPlugin(newer, registry(TestPlugin(id = SWAP_PLUGIN)), PRODUCTION),
+        )
+        assertEquals(
+            BindingProblem.OtherContract,
+            problem(reviewed().copy(proposal = newer), binding(newer, chose)),
+        )
+    }
+
+    @Test
     fun anOperationNothingInThisBuildServesIsReportedAsItself() {
         assertEquals(
             ProposalPlugin.Unserved(UnsupportedReason.NoPlugin),

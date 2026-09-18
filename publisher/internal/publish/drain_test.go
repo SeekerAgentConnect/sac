@@ -2,6 +2,7 @@ package publish
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -249,14 +250,14 @@ func TestARefusalThatCannotBeFixedByRetryingStops(t *testing.T) {
 	if record.Publication.State(record.Signal) != "refused" {
 		t.Fatalf("publication %s", record.Publication.State(record.Signal))
 	}
-	if attempts := fake.tried("PublishProposal"); attempts != 1 {
+	if attempts := fake.tried("PublishRequest"); attempts != 1 {
 		t.Fatalf("%d publications were attempted", attempts)
 	}
 	// Later passes leave it alone.
 	if _, err := drain.Pass(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if attempts := fake.tried("PublishProposal"); attempts != 1 {
+	if attempts := fake.tried("PublishRequest"); attempts != 1 {
 		t.Fatalf("a refused signal was published again: %d attempts", attempts)
 	}
 }
@@ -350,10 +351,10 @@ func TestAWithdrawalIsPublishedAsATransition(t *testing.T) {
 
 	// It went through CancelProposal and not through a second publication: a withdrawal is a
 	// transition the gateway writes, and the gateway refuses a cancelled document anyway.
-	if withdrawals := fake.tried("CancelProposal"); withdrawals != 1 {
+	if withdrawals := fake.tried("CancelRequest"); withdrawals != 1 {
 		t.Fatalf("%d withdrawals were sent", withdrawals)
 	}
-	if publications := fake.tried("PublishProposal"); publications != 1 {
+	if publications := fake.tried("PublishRequest"); publications != 1 {
 		t.Fatalf("%d publications were sent; the withdrawal was published as a document",
 			publications)
 	}
@@ -372,6 +373,49 @@ func TestAWithdrawalIsPublishedAsATransition(t *testing.T) {
 	record, _ := documents.Signal(ctx, created.Signal.ProposalID)
 	if record.Publication.State(record.Signal) != "published" {
 		t.Fatalf("publication %s", record.Publication.State(record.Signal))
+	}
+}
+
+// A publisher upgraded before the independently deployed gateway still publishes: the new RPCs
+// answer unimplemented, and the Stage 7.1 proposal methods carry the same signal.
+func TestAnOlderGatewayReceivesTheCompatibilityProposalRpcs(t *testing.T) {
+	fake := &fakeGateway{refuse: func(procedure string) error {
+		if procedure == "PublishRequest" || procedure == "CancelRequest" {
+			return connect.NewError(connect.CodeUnimplemented, errors.New("unknown procedure"))
+		}
+		return nil
+	}}
+	drain, documents := drainer(t, fake, fixed(now))
+	ctx := context.Background()
+	created, _, err := documents.Create(ctx, "key-1", "request-1", signalOf(swap()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if refusal, err := drain.One(ctx, created); err != nil || refusal != nil {
+		t.Fatalf("%+v (%v)", refusal, err)
+	}
+	if fake.tried("PublishRequest") != 1 || fake.tried("PublishProposal") != 1 {
+		t.Fatalf("request %d proposal %d", fake.tried("PublishRequest"), fake.tried("PublishProposal"))
+	}
+	record, err := documents.Signal(ctx, created.Signal.ProposalID)
+	if err != nil || record.Publication.State(record.Signal) != "published" {
+		t.Fatalf("publication %+v (%v)", record.Publication, err)
+	}
+
+	withdrawn, _, err := documents.Cancel(ctx, created.Signal.ProposalID, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refusal, err := drain.One(ctx, withdrawn); err != nil || refusal != nil {
+		t.Fatalf("%+v (%v)", refusal, err)
+	}
+	if fake.tried("CancelRequest") != 1 || fake.tried("CancelProposal") != 1 {
+		t.Fatalf("cancel-request %d cancel-proposal %d",
+			fake.tried("CancelRequest"), fake.tried("CancelProposal"))
+	}
+	if held := fake.held(created.Signal.ProposalID); held.GetStatus().String() != "PROPOSAL_STATUS_CANCELLED" {
+		t.Fatalf("status %s", held.GetStatus())
 	}
 }
 

@@ -344,6 +344,58 @@ func (p *Publisher) CancelProposal(
 			}
 			return nil
 		}
+		if !held.Legacy {
+			// A row written by PublishRequest must be withdrawn as a request. Projecting it
+			// through Cancelled and PutProposal would replace the common bytes with a
+			// protocol-1 proposal and drop the title, typed parameters and owner-input
+			// declarations.
+			current, err := tx.Request(ctx, channel, proposalID)
+			if err != nil {
+				return err
+			}
+			if current == nil || current.Document == nil {
+				refused = &rules.Fault{
+					Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL,
+					Field:   "proposal_id",
+				}
+				return nil
+			}
+			document := current.Document
+			if document.GetLifecycle().GetStatus() == requestv2.RequestStatus_REQUEST_STATUS_CANCELLED {
+				switch {
+				case revision == document.GetLifecycle().GetRevision():
+					answer.Status = gatewayv1.PublishStatus_PUBLISH_STATUS_UNCHANGED
+					answer.Proposal = held.Document
+					answer.SnapshotSequence = held.Sequence
+				case revision < document.GetLifecycle().GetRevision():
+					refused = &rules.Fault{
+						Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_STALE_REVISION,
+						Field:   "revision",
+						Held:    document.GetLifecycle().GetRevision(),
+					}
+				default:
+					refused = &rules.Fault{
+						Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_CANCELLED,
+						Field:   "proposal_id",
+						Held:    document.GetLifecycle().GetRevision(),
+					}
+				}
+				return nil
+			}
+			withdrawn, fault := rules.CancelledRequest(document, revision, p.now())
+			if fault != nil {
+				refused = fault
+				return nil
+			}
+			sequence, err := tx.PutRequest(ctx, withdrawn, p.now())
+			if err != nil {
+				return err
+			}
+			answer.Status = gatewayv1.PublishStatus_PUBLISH_STATUS_STORED
+			answer.Proposal = rules.ProposalFromRequest(withdrawn)
+			answer.SnapshotSequence = sequence
+			return nil
+		}
 		if held.Document.GetStatus() == proposalv1.ProposalStatus_PROPOSAL_STATUS_CANCELLED {
 			switch {
 			case revision == held.Document.GetRevision():

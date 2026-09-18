@@ -99,7 +99,7 @@ fun Proposal.commonEnvelope(): Request =
         .setAction(
             ActionCapability.newBuilder()
                 .setCapabilityId(operation.value)
-                .setCapabilityVersion(contractVersion)
+                .setCapabilityVersion(capabilityVersion)
                 .setPluginId(plugin.value)
                 .addAllParameters(
                     values.map {
