@@ -21,7 +21,7 @@
     "width": 1400,
     "height": 1000
   },
-  "deviceScaleFactor": 2.625,
+  "deviceScaleFactor": 3,
   "fontsInjected": [
     {
       "family": "Roboto Mono",
@@ -30,5 +30,5 @@
     }
   ],
   "captureToolVersion": "1.0.0",
-  "capturedAt": "2026-09-18T20:12:48.187Z"
+  "capturedAt": "2026-09-18T22:04:34.697Z"
 }

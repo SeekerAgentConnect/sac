@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "playwright install chromium",
     "capture": "node capture.mjs"
   },
   "dependencies": {
