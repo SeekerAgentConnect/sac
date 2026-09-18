@@ -314,3 +314,11 @@
 ## Scope
 
 - **A status update is not a task.** "I'm deploying to my hermes instance with Tailscale Funnel" meant the owner had already done it. Treating it as a request led to SSHing into the production droplet and probing it uninvited (2026-09-18). When the owner names their own server, ask what they want, or answer with information; never connect to, inspect, or change a remote host unless they ask for exactly that.
+
+## SEE-116 — parallel ticket ownership can move
+
+- **Re-check a parallel owner's boundary before finalizing shared tooling.** SEE-116 found that the
+  old capture deleted hand-written specs and implemented a local guard. SEE-111 briefly reported
+  overlapping capture work, then its newest coordination comment returned that guard wholly to
+  SEE-116. Treat the newest explicit ownership message as authoritative, record the superseding
+  boundary, and align both code and documentation with it before opening either PR.

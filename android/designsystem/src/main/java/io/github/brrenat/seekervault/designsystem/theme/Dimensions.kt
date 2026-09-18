@@ -2,11 +2,12 @@ package io.github.brrenat.seekervault.designsystem.theme
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @Immutable
 data class SeekerSpacing(
-    val none: Dp,
     val xxs: Dp,
     val xs: Dp,
     val sm: Dp,
@@ -23,7 +24,6 @@ data class SeekerSpacing(
 
 internal val SeekerSpacingTokens =
     SeekerSpacing(
-        none = 0.dp,
         xxs = 2.dp,
         xs = 4.dp,
         sm = 6.dp,
@@ -38,11 +38,8 @@ internal val SeekerSpacingTokens =
         jumbo = 32.dp,
     )
 
-/**
- * Exact layout dimensions already present in the approved export. Numeric names are intentional:
- * they keep a screen from inventing a new value while later component tickets give each dimension
- * its component-level semantic name.
- */
+/** Legacy values retained while existing `:app` screens migrate to named design tokens. */
+@Deprecated("Legacy screen values, not design tokens. Do not use in :designsystem.")
 @Immutable
 data class SeekerDimensions(
     val dp0: Dp,
@@ -82,6 +79,8 @@ data class SeekerDimensions(
     val dp420: Dp,
 )
 
+@Deprecated("Legacy screen values, not design tokens. Do not use in :designsystem.")
+@Suppress("DEPRECATION")
 internal val SeekerDimensionTokens =
     SeekerDimensions(
         dp0 = 0.dp,
@@ -119,4 +118,74 @@ internal val SeekerDimensionTokens =
         dp204 = 204.dp,
         dp240 = 240.dp,
         dp420 = 420.dp,
+    )
+
+@Immutable data class SeekerIconSizes(val standard: Dp)
+
+@Immutable
+data class SeekerButtonSize(
+    val height: Dp,
+    val radius: Dp,
+    val fontSize: TextUnit,
+    val horizontalPadding: Dp,
+)
+
+@Immutable
+data class SeekerButtonSizes(
+    val small: SeekerButtonSize,
+    val medium: SeekerButtonSize,
+    val large: SeekerButtonSize,
+)
+
+@Immutable
+data class SeekerIconButtonSize(
+    val box: Dp,
+    val glyph: Dp,
+)
+
+@Immutable
+data class SeekerIconButtonSizes(
+    val medium: SeekerIconButtonSize,
+    val large: SeekerIconButtonSize,
+)
+
+@Immutable
+data class SeekerSizes(
+    val icon: SeekerIconSizes,
+    val button: SeekerButtonSizes,
+    val iconButton: SeekerIconButtonSizes,
+)
+
+internal val SeekerSizeTokens =
+    SeekerSizes(
+        icon = SeekerIconSizes(standard = 28.dp),
+        button =
+            SeekerButtonSizes(
+                small =
+                    SeekerButtonSize(
+                        height = 32.dp,
+                        radius = 16.dp,
+                        fontSize = 13.sp,
+                        horizontalPadding = 12.dp,
+                    ),
+                medium =
+                    SeekerButtonSize(
+                        height = 40.dp,
+                        radius = 20.dp,
+                        fontSize = 14.sp,
+                        horizontalPadding = 24.dp,
+                    ),
+                large =
+                    SeekerButtonSize(
+                        height = 48.dp,
+                        radius = 24.dp,
+                        fontSize = 15.sp,
+                        horizontalPadding = 24.dp,
+                    ),
+            ),
+        iconButton =
+            SeekerIconButtonSizes(
+                medium = SeekerIconButtonSize(box = 40.dp, glyph = 20.dp),
+                large = SeekerIconButtonSize(box = 48.dp, glyph = 24.dp),
+            ),
     )

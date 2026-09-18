@@ -1,46 +1,140 @@
 # Design guide
 
-The PNGs under `components/` are generated references from the Stage 7.2 Claude Design export. How
-agents use this directory and how to refresh it is SEE-116. The Android `:designsystem` module
-renders its Compose previews independently with Roborazzi and ComposablePreviewScanner, then
-`designCompare` pairs files whose relative paths match.
+This directory is the implementation contract for Android UI work. Its generated references come
+from the Stage 7.2 Claude Design export; the hand-written component specs describe how those
+references become Compose APIs. Read [UPDATING.md](UPDATING.md) before changing the guide itself.
 
-## First run
+## Dependency on SEE-111
 
-From a clean checkout, install the capture tool once:
+SEE-111 owns `design/navigation.md`, `design/CHANGELOG.md`, and the hand-written `spec.md` in each
+component directory. That work can land after SEE-116. While those files are absent, the intended
+component-spec layout is the one in [`components/_template/spec.md`](components/_template/spec.md).
+A component task whose `spec.md` is missing is blocked on SEE-111: report the missing spec instead
+of inferring its API from the generated references alone.
+
+## Read this for every UI task
+
+For a component, read these sources in order:
+
+1. `design/components/<component>/spec.md` — purpose, tier, Compose API, allowed child components,
+   builder notes, and open questions.
+2. The target `<variant>.html` — the exact rendered structure and numeric CSS-pixel measurements.
+3. The matching `<variant>.png` — the visual reference and a check on the complete rendered bounds.
+4. `design/tokens.json` — the only scales from which named design-system tokens are defined.
+
+The HTML's CSS pixels map one-to-one to Android units: a layout `px` is a `dp`, and a font `px` is
+an `sp`. Both generated PNGs and Compose captures use scale 3, so 48 CSS px / 48 dp is 144 image
+pixels. Never derive Android dimensions from the PNG pixel count, and do not use the obsolete
+2.625 scale.
+
+Heights, paddings, radii, and fixed widths are exact targets. Widths of hug-content components
+(buttons and chips) come from Chrome's text shaping and can differ from Compose by about a pixel;
+treat those widths as approximate and keep the specified padding, type, and height exact.
+
+## Compose component contract
+
+- Components are stateless. Data goes in and event lambdas come out; repositories, ViewModels,
+  navigation, and business effects stay outside `:designsystem`.
+- Every public component accepts `modifier: Modifier = Modifier` and applies it to its outermost
+  node. Do not use a modifier to hide a different component API.
+- Model each axis named by `data-variant` as a typed enum named in the component spec. Do not pass
+  variant names as strings or replace a multi-state design axis with unrelated booleans.
+- Component APIs accept content and state, not styling escape hatches. Do not expose `Color`, `Dp`,
+  or `TextStyle` parameters.
+- A screen composes its visible UI only from `:designsystem`. If the guide has no required piece,
+  update the design and this guide first, then implement the missing design-system component; do
+  not invent a screen-local substitute.
+
+### Tokens
+
+The pass-through `dpN` properties in `Dimensions.kt` are deprecated and unusable for production
+components in `:designsystem`. Components use named semantic tokens. Each named spacing, radius,
+type, button, and icon token must correspond to a value in `design/tokens.json`, and the token
+contract unit test must continue to compare the Kotlin declarations with that file.
+
+If a component needs a value that `tokens.json` does not contain, report the missing token in the
+issue or pull request and refresh the design guide first. Never invent another `dpN` property, a raw
+literal, or a style parameter to get around the scale.
+
+### Known Compose traps
+
+- Disable platform font padding and carry the reference line height explicitly; otherwise text
+  changes the measured component height.
+- Material enforces a 48dp minimum touch target by default. Preserve the guide's explicit compact
+  control size while providing an appropriate touch target at the call site where required.
+- Material 3 supplies tonal elevation and default shapes implicitly. Set the design-system surface,
+  elevation, and shape explicitly so those defaults cannot alter the reference.
+- Variable-font weights require `FontVariation.Settings`; a numeric `FontWeight` alone does not
+  select the intended bundled Roboto variation.
+
+## Verification loop
+
+1. Add or update a `:designsystem` preview for every implemented variant. Every `@Preview` has a
+   matching `@DesignRef(component, variant)`.
+2. From `android/`, run `./gradlew :designsystem:recordRoborazziDebug`.
+3. Run `./gradlew designCompare`.
+4. Read `android/build/design-compare/report.txt`, inspect every labelled `reference | actual`
+   image, and write a difference list for padding, radius, font weight, line height, height, and
+   color. Use the variant HTML to resolve each numeric difference.
+5. Adjust the component and repeat record + compare until every intended variant is paired and the
+   difference list is empty. Once a baseline is approved, run
+   `compareRoborazziDebug` and `verifyRoborazziDebug` as regression checks.
+
+`designCompare` is a review aid, not a pixel-equality gate. Roborazzi compare/verify checks approved
+Android baselines; it does not compare Compose with the HTML export.
+
+## Capture contract
+
+- The design capture defaults to device scale factor 3. Compose uses
+  `w390dp-h844dp-xxhdpi`: 390×844 dp at 480 dpi.
+- Android captures are dark-only and each preview is wrapped in `SeekerTheme(darkTheme = true)`.
+- A component preview owns its complete canvas. The design surface adds no padding, so the PNG is
+  the composable's own bounds. Width-dependent components declare `@Preview(widthDp = 358)`.
+- `@DesignRef` output is `<component>/<variant-slug>.png`, where the slug is lowercase, `=` and
+  whitespace become `-`, non-`[a-z0-9-]` characters are removed, repeated hyphens collapse, and
+  edge hyphens are removed.
+- Robolectric uses native graphics. Recording and comparison run entirely on the JVM with no
+  emulator or device.
+
+The following files are generated and must never be hand-edited:
+
+- `components/**/*.html` and `components/**/*.png`
+- `screens/**/*.html` and `screens/**/*.png`
+- `tokens.json`, `inventory.md`, and `manifest.json`
+
+The three `export/*.html` files are inputs replaced by a complete re-export, never edited in place.
+The hand-maintained, non-capture-generated files are component `spec.md` files,
+`components/_template/spec.md`, `navigation.md`, this `README.md`, `UPDATING.md`, `CHANGELOG.md`,
+and `tools/` (with its package lock changed through npm, not by hand). Refresh the exports and
+generated files only with [the fixed procedure](UPDATING.md).
+
+## Capture tool first run
+
+From a clean checkout, install the isolated capture tool once:
 
 ```bash
 cd design/tools && npm install
 ```
 
-That installs Playwright, sharp, and the pinned Chromium (the `postinstall` script runs `playwright install chromium`). Then from the repository root:
+That installs Playwright, sharp, and the pinned Chromium. Then run the repository command from the
+root:
 
 ```bash
-npm run design:capture
+pnpm run design:capture
 ```
 
-No other manual step is required. `--dsf` still overrides the default scale of 3.
+No other manual setup is required. `--dsf` still overrides the default scale of 3.
 
-Heights, paddings, radii, and fixed widths are exact targets. Widths of hug-content components
-(buttons, chips) come from Chrome's text shaping and will differ from Compose by a pixel or so;
-treat them as approximate.
+## Capture and comparison commands
 
-## Capture contract
+From the repository root:
 
-- Both sides use device scale factor 3. The Compose qualifier is
-  `w390dp-h844dp-xxhdpi`: 390×844 dp at 480 dpi. Do not use 2.625.
-- Android captures are dark-only and each preview is wrapped in `SeekerTheme(darkTheme = true)`.
-- A component preview owns its complete canvas. The design surface adds no padding, so the PNG is
-  the composable's own bounds. Width-dependent components declare `@Preview(widthDp = 358)`.
-- Every `@Preview` in `:designsystem` must have `@DesignRef(component, variant)`. The output is
-  `<component>/<variant-slug>.png`, where the slug is lowercase, `=` and whitespace become `-`,
-  non-`[a-z0-9-]` characters are removed, repeated hyphens collapse, and edge hyphens are removed.
-- Robolectric uses native graphics. Recording and comparison run entirely on the JVM with no
-  emulator or device.
+```bash
+pnpm run design:capture
+pnpm run design:capture --check
+```
 
-## Commands
-
-Run these from `android/`:
+From `android/`:
 
 ```bash
 ./gradlew :designsystem:recordRoborazziDebug
@@ -51,28 +145,21 @@ Run these from `android/`:
 
 `recordRoborazziDebug` writes Android PNGs to
 `designsystem/build/outputs/roborazzi/<component>/<variant-slug>.png`. The repository's
-`pnpm check:android` runs that task too, so every design-system preview must render in CI without an
+`pnpm check:android` also records the complete preview set, so previews render in CI without an
 emulator.
 
-`compareRoborazziDebug` and `verifyRoborazziDebug` compare against recorded Roborazzi baselines.
-They are regression guards for components whose Android output has already been approved. They do
-not compare Compose with the HTML design export and must never become an HTML pixel-match gate.
-SEE-124 owns committing the approved baselines and enabling that regression guard in CI.
-
-Run `designCompare` after recording. It reads the design references from `design/components`,
-writes `android/build/design-compare/<component>/<variant-slug>.png` with
-`reference | actual` and both pixel dimensions, and writes `report.txt` listing paired files,
-missing references, and missing Android captures. A matching path is paired even when its pixel
-dimensions differ, so the labels make a scale or crop mismatch visible instead of hiding it.
+`designCompare` reads `design/components`, writes labelled pairs to
+`android/build/design-compare/<component>/<variant-slug>.png`, and writes `report.txt` with paired
+files and missing files in either direction. A matching path is paired even when its pixel
+dimensions differ, which keeps scale and crop mistakes visible.
 
 ## Font and icon probes
 
 `FontWeightProbe` shows bundled Roboto at 400/500/700, Roboto Mono, and the platform default. The
-font entries in `Type.kt` already set `FontVariation.weight(...)` explicitly for every declared
-weight. Native-renderer tests confirm the Roboto weights are distinct, bundled Roboto differs from
-the platform fallback, and equal-length `iiii`/`MMMM` Mono samples have equal advance. The
-variable fonts therefore remain in place; no static-TTF fallback was needed.
+font entries in `Type.kt` set `FontVariation.weight(...)` explicitly for every declared weight.
+Native-renderer tests confirm that the Roboto weights are distinct, bundled Roboto differs from the
+platform fallback, and equal-length `iiii`/`MMMM` Mono samples have equal advance.
 
 The icon probe renders `close`, `content_copy`, `toll`, `refresh`, and `delete` from the same
-Material Icons Outlined set used by the app. It is a diagnostic capture, not permission to replace
+Material Icons Outlined set used by the app. It is diagnostic only and is not permission to replace
 the icon set when a glyph renders incorrectly.

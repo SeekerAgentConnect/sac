@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
+kotlin { compilerOptions { allWarningsAsErrors = true } }
+
 @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
 roborazzi {
     outputDir.set(layout.buildDirectory.dir("outputs/roborazzi"))
@@ -68,4 +70,13 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi.compose.preview.scanner)
     testImplementation(libs.composable.preview.scanner)
+}
+
+tasks.withType<Test>().configureEach {
+    val designTokens = rootProject.layout.projectDirectory.file("../design/tokens.json")
+    systemProperty("seekervault.designTokens", designTokens.asFile.absolutePath)
+    inputs
+        .file(designTokens)
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("designTokens")
 }

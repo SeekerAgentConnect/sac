@@ -18,7 +18,9 @@ import androidx.compose.ui.unit.Dp
 
 private val LocalSeekerColors = staticCompositionLocalOf { DarkSeekerColors }
 private val LocalSeekerSpacing = staticCompositionLocalOf { SeekerSpacingTokens }
+@Suppress("DEPRECATION")
 private val LocalSeekerDimensions = staticCompositionLocalOf { SeekerDimensionTokens }
+private val LocalSeekerSizes = staticCompositionLocalOf { SeekerSizeTokens }
 private val LocalSeekerRadii = staticCompositionLocalOf { SeekerRadiusTokens }
 private val LocalSeekerTypography = staticCompositionLocalOf { SeekerExtraTypographyTokens }
 
@@ -29,8 +31,13 @@ object SeekerTheme {
     val spacing: SeekerSpacing
         @Composable get() = LocalSeekerSpacing.current
 
+    @Deprecated("Legacy screen values, not design tokens. Do not use in :designsystem.")
+    @Suppress("DEPRECATION")
     val dimensions: SeekerDimensions
         @Composable get() = LocalSeekerDimensions.current
+
+    val sizes: SeekerSizes
+        @Composable get() = LocalSeekerSizes.current
 
     val radii: SeekerRadii
         @Composable get() = LocalSeekerRadii.current
@@ -50,10 +57,12 @@ object SeekerTheme {
     ) {
         val colors = if (darkTheme) DarkSeekerColors else LightSeekerColors
         val scheme = if (darkTheme) DarkColorScheme else LightColorScheme
+        @Suppress("DEPRECATION") val legacyDimensions = SeekerDimensionTokens
         CompositionLocalProvider(
             LocalSeekerColors provides colors,
             LocalSeekerSpacing provides SeekerSpacingTokens,
-            LocalSeekerDimensions provides SeekerDimensionTokens,
+            LocalSeekerDimensions provides legacyDimensions,
+            LocalSeekerSizes provides SeekerSizeTokens,
             LocalSeekerRadii provides SeekerRadiusTokens,
             LocalSeekerTypography provides SeekerExtraTypographyTokens,
         ) {

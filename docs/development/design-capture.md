@@ -12,25 +12,27 @@ cd design/tools && npm install
 
 `postinstall` downloads the pinned Chromium. Playwright and sharp are pinned in `design/tools/package-lock.json`. Roboto Mono is also pinned locally at `design/tools/fonts/RobotoMono-Latin-400-700.woff2`; the bundled exports already contain Roboto and Material Symbols Outlined.
 
-See `design/README.md` for the First run commands.
+See `design/README.md` for the first-run commands and `design/UPDATING.md` for the fixed design
+refresh procedure.
 
 ## Capture and check
 
-From the repository root, either command performs the complete capture:
+From the repository root, either command performs the complete capture. Use the root pnpm command
+for normal repository work; the npm prefix form is the isolated tool's equivalent:
 
 ```bash
 npm --prefix design/tools run capture
-npm run design:capture
+pnpm run design:capture
 ```
 
-The capture runs with networking disabled, forces the dark theme and reduced motion, waits for the unpacker/runtime and all three fonts, and defaults to device scale factor 3. Playwright's element screenshot is cropped in device pixels from the fractional bounding box so the PNG is `round(bbox × dsf)` rather than the enclosing integer CSS rect. Options are passed after `--`:
+The capture runs with networking disabled, forces the dark theme and reduced motion, waits for the unpacker/runtime and all three fonts, and defaults to device scale factor 3. Playwright's element screenshot is cropped in device pixels from the fractional bounding box so the PNG is `round(bbox × dsf)` rather than the enclosing integer CSS rect. The root script already supplies npm's separator, so pass capture options directly:
 
 ```bash
-npm run design:capture -- --only components
-npm run design:capture -- --only screens
-npm run design:capture -- --only tokens
-npm run design:capture -- --dsf 3
-npm run design:capture -- --check
+pnpm run design:capture --only components
+pnpm run design:capture --only screens
+pnpm run design:capture --only tokens
+pnpm run design:capture --dsf 3
+pnpm run design:capture --check
 ```
 
 `--check` writes a fresh capture to a temporary directory and byte-compares it with the committed output. It compares PNGs as well as text and ignores only `manifest.json`'s `capturedAt`. A normal unchanged capture preserves the existing `capturedAt`, so a second run leaves the worktree clean.
