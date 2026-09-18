@@ -242,6 +242,51 @@
   stand-in moves every timestamp forward by the age of the capture, which keeps the spacing the
   filters actually judge and leaves the shapes alone.
 
+## SEE-99 — the load harness
+
+- **A profile's own padding has to pass the gateway's rules, and a test can say so without a
+  gateway.** Term keys are operation names (`rules.IsOperation`), and a segment cannot begin with a
+  digit — so `loadtest.publish.0` is not one. The run that found that out had **every single
+  document refused** with `bad_value` and looked like a broken deployment. The keys are `…pad0`
+  now, and `TestSyntheticFitsTheRules` checks the padding against the rule itself.
+- **Anything a scenario does mid-window has to be scheduled inside the window.** The slow-consumer
+  scenario stalled its listeners on their first connection, which happens during the warm-up — so
+  the measured window contained no stall at all, and the counter that would have proved it had been
+  reset with everything else. A run's interruptions are an explicit list with an offset into the
+  window now.
+- **A background load that is started per stage must be cancelled per stage.** A ramp started a new
+  set of snapshot readers at every stage and overwrote the cancel for the previous set, so the run's
+  own `Stop` waited on goroutines whose context nothing would ever cancel. A two-minute ramp hung
+  for twenty. The readers are started once; only the publishers restart, because only they have to
+  stop for the settle.
+- **A generator whose state lives in the goroutine restarts with the goroutine.** The same ramp's
+  publishers began their tick count again at every stage and republished revision 1 of proposals the
+  gateway already held — `revision_conflict` for a whole stage, which the report faithfully recorded
+  as "published 0". A publisher is one publisher for the run, so its progress is on the run.
+- **A long run cannot publish a bounded amount of work.** Eight identities times three revisions is
+  sixteen seconds of a hundred-second climb. A profile now either revises its proposals for ever or
+  publishes generations of them and withdraws each one — and the second accumulates documents, which
+  a channel bounds at 200.
+- **A load report's health rule belongs to the scenario, not to the workload.** A window with a node
+  failure in it has no steady-state p99: the publications a listener missed arrive when it comes
+  back, so the number measures recovery and is bounded by the client's backoff ceiling. Judging it by
+  the steady profile's two seconds reported the design as a fault. Completeness does not move — every
+  delivery is still expected to arrive.
+- **"Delivered" has to be counted where the delivery happens.** Counting it where the document was
+  *applied* under-counted every arrival a listener already held from a snapshot, and would have made
+  a healthy stage look lossy. Arrivals and applications are two counters now, and the difference is
+  the at-least-once contract working.
+- **A convergence check is about the end state, and a break has to aim at the end.** Throwing away
+  every third revision of a proposal changed nothing: a later revision covered it, which is correct
+  — what converged is what a phone would hold. The break that found the check works threw away every
+  *withdrawal*, because a withdrawal is the last thing an identity ever hears. Per-publication
+  delivery is a different measurement (the delivered share), and conflating the two would have left
+  a check that only looks strict.
+- **A broker's counters are the process's, not the window's.** Every per-node number in a stage is a
+  difference against a reading taken when the window opened; a node that was restarted mid-window has
+  counters that went backwards, and the honest answer there is the restart's own numbers rather than a
+  negative.
+
 ## Scope
 
 - **A status update is not a task.** "I'm deploying to my hermes instance with Tailscale Funnel" meant the owner had already done it. Treating it as a request led to SSHing into the production droplet and probing it uninvited (2026-09-18). When the owner names their own server, ask what they want, or answer with information; never connect to, inspect, or change a remote host unless they ask for exactly that.

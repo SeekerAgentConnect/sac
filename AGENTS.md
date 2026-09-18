@@ -79,6 +79,8 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
   - `pnpm check:broadcast`: the broadcast gateway's formatting, `go vet`, and its tests (SEE-90). It needs Go; nothing else does
   - `pnpm check:publisher`: the publisher templates' formatting, `go vet`, and their tests, including the ones that run the real gateway (SEE-95, SEE-96). It needs Go
   - `pnpm test:integration`: Stage 7.1's cross-component acceptance (SEE-98) — the real gateway, both real templates, two subscribers, the sidecar and an agent, then the direct-mode suites and the phone's cross-component cases. It needs Go, and it reports every leg as PASS, FAIL or NOT RUN
+  - `pnpm check:loadtest`: the load harness's own tests (SEE-99) — its quantiles, the client policy ported from the phone's, its profiles and its boundaries. It needs Go and nothing else
+  - `pnpm test:load`: SEE-99's load, isolation and failover measurement — fourteen scenarios over five workload profiles, each PASS, FAIL or NOT RUN. It needs Go, and `SEEKERVAULT_CENTRIFUGO` and `SEEKERVAULT_REDIS` for anything that streams; without them those scenarios are NOT RUN rather than passing. Run it when the gateway, the broker configuration, the fan-out or the phone's reconnect policy changes — a load report is only about the revision it names
 
   CI runs the same commands, plus `pnpm test:hello --device` on an emulator, and never commits.
 - **Test every behavior change.** A deliberately broken test must make the relevant check fail.
@@ -96,4 +98,4 @@ Rules for coding agents working in this repository. The product plan is in `RFC.
   - `docs/wiki/`: one page per feature or boundary, such as `docs/wiki/client-plugins.md`
   - `RFC.md`: when the scope changes
 - **Record what actually ran:** the commands and their results, with the tool versions tested.
-- **Keep version pins consistent** across `.nvmrc`, `package.json`, `pnpm-workspace.yaml`, `android/gradle/libs.versions.toml`, `buf.gen.yaml`, `buf.gen.go.yaml`, `broadcast/go.mod`, and `docs/development/toolchain.md`.
+- **Keep version pins consistent** across `.nvmrc`, `package.json`, `pnpm-workspace.yaml`, `android/gradle/libs.versions.toml`, `buf.gen.yaml`, `buf.gen.go.yaml`, `buf.gen.loadtest.yaml`, `broadcast/go.mod`, `loadtest/go.mod`, and `docs/development/toolchain.md`.

@@ -1,6 +1,6 @@
 // Generates the protocol code (buf.gen.yaml for the phone and the sidecar, buf.gen.go.yaml for
-// the broadcast gateway, buf.gen.centrifugo.yaml for the phone's vendored broker schema) and the
-// binary protobuf fixtures:
+// the broadcast gateway, buf.gen.centrifugo.yaml for the phone's vendored broker schema,
+// buf.gen.loadtest.yaml for the load harness) and the binary protobuf fixtures:
 // proto/fixtures/<package path>/<Message>/<case>.json → <case>.binpb, via `buf convert`.
 //
 //   pnpm generate           write the output into the repository
@@ -28,18 +28,23 @@ const generatedDirs = [
   "android/app/src/main/generated",
   "broadcast/internal/gen",
   "publisher/internal/gen",
+  "loadtest/internal/gen",
 ];
 // One template per runtime pair. buf.gen.yaml writes the phone's Kotlin and the sidecar's
 // TypeScript; buf.gen.go.yaml writes the broadcast gateway's Go, which is a different subset of
 // the protocol (SEE-90); buf.gen.publisher.yaml writes the publisher templates' Go, which is a
 // third subset — it publishes and never reads a feed (SEE-95); buf.gen.centrifugo.yaml writes the
-// phone's client for the vendored broker schema, which none of the others speaks (SEE-91). Each
-// template cleans only its own output directories, so the order is not load-bearing.
+// phone's client for the vendored broker schema, which none of the others speaks (SEE-91); and
+// buf.gen.loadtest.yaml writes the load harness's Go, which is the only place both sides of a feed
+// and that broker schema are compiled together, because measuring a publication's journey means
+// holding all three ends of it (SEE-99). Each template cleans only its own output directories, so
+// the order is not load-bearing.
 const templates = [
   "buf.gen.yaml",
   "buf.gen.go.yaml",
   "buf.gen.publisher.yaml",
   "buf.gen.centrifugo.yaml",
+  "buf.gen.loadtest.yaml",
 ];
 
 // Schemas we did not write, with the digest of the release they were copied from
