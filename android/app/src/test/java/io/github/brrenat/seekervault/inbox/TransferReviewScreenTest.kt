@@ -14,8 +14,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import com.google.protobuf.timestamp
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.CheckOutcome
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.inbox.PendingRequestsScreenTest.Companion.NOW
 import io.github.brrenat.seekervault.policy.PolicyAction
@@ -134,7 +134,7 @@ class TransferReviewScreenTest {
         acknowledged: Boolean = false,
         sending: Boolean = false,
     ) = compose.setContent {
-        SeekerVaultTheme {
+        SeekerTheme {
             RequestDetailsScreen(
                 request = requestOf(case),
                 source = HOME,

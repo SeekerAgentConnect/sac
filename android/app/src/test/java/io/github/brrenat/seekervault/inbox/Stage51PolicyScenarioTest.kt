@@ -14,7 +14,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import com.google.protobuf.timestamp
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.ActivityOutcome
@@ -23,6 +22,7 @@ import io.github.brrenat.seekervault.activity.ReviewedTransfer
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.policy.Allowlist
 import io.github.brrenat.seekervault.policy.AssetLimits
 import io.github.brrenat.seekervault.policy.ConnectionAssetLimits
@@ -765,7 +765,7 @@ class Stage51PolicyScenarioTest {
                 lastCheck = Connection.Check(NOW, CheckOutcome.Ok, pending = 1),
             )
         compose.setContent {
-            SeekerVaultTheme {
+            SeekerTheme {
                 RequestDetailsScreen(
                     request = review.request,
                     source = source,

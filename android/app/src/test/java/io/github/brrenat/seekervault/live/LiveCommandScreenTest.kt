@@ -15,7 +15,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -33,7 +33,7 @@ class LiveCommandScreenTest {
     private fun show(initial: LiveCommandUiState, onOk: () -> Unit = { okTaps++ }) {
         state = initial
         compose.setContent {
-            SeekerVaultTheme {
+            SeekerTheme {
                 LiveCommandScreen(
                     state = state,
                     onServerUrlChange = {},

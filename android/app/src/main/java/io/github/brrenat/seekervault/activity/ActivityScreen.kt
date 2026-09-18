@@ -34,11 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.BackButton
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.formatInstant
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.ui.NetworkChip
 import io.github.brrenat.seekervault.ui.SeekerButton
 import io.github.brrenat.seekervault.ui.SeekerButtonRole
@@ -60,9 +60,11 @@ fun ActivityScreen(
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding()) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp),
+                Modifier.fillMaxWidth()
+                    .height(SeekerTheme.dimensions.dp64)
+                    .padding(horizontal = SeekerTheme.dimensions.dp8),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
             ) {
                 BackButton(onBack)
                 Text(
@@ -72,7 +74,7 @@ fun ActivityScreen(
                 )
                 network?.let { NetworkChip(it) }
                 Box(
-                    Modifier.size(48.dp)
+                    Modifier.size(SeekerTheme.dimensions.dp48)
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
                         .clickable(
                             indication = null,
@@ -89,8 +91,12 @@ fun ActivityScreen(
                 }
             }
             LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding =
+                    PaddingValues(
+                        horizontal = SeekerTheme.dimensions.dp16,
+                        vertical = SeekerTheme.dimensions.dp8,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
                 modifier = Modifier.weight(1f).testTag(ActivityTags.LIST),
             ) {
                 if (state.unreadable) {
@@ -102,7 +108,7 @@ fun ActivityScreen(
                             Text(
                                 stringResource(R.string.activity_unreadable),
                                 color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.padding(16.dp),
+                                modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
                             )
                         }
                     }
@@ -112,7 +118,9 @@ fun ActivityScreen(
                         SeekerCard(Modifier.fillMaxWidth()) {
                             Text(
                                 stringResource(R.string.activity_empty),
-                                modifier = Modifier.padding(18.dp).testTag(ActivityTags.EMPTY),
+                                modifier =
+                                    Modifier.padding(SeekerTheme.dimensions.dp18)
+                                        .testTag(ActivityTags.EMPTY),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -145,7 +153,7 @@ fun ActivityScreen(
                 actions = {
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                     ) {
                         SeekerButton(
                             text = stringResource(R.string.cancel),
@@ -175,9 +183,12 @@ private fun RecordItem(record: ActivityRecord, onOpen: (RequestKey) -> Unit) {
         modifier = Modifier.fillMaxWidth().testTag(ActivityTags.item(record)),
         onClick = { onOpen(record.key) },
     ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(SeekerTheme.dimensions.dp16),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(
-                Modifier.size(10.dp)
+                Modifier.size(SeekerTheme.dimensions.dp10)
                     .background(
                         if (record.outcome == ActivityOutcome.Confirmed)
                             MaterialTheme.colorScheme.primary
@@ -185,7 +196,7 @@ private fun RecordItem(record: ActivityRecord, onOpen: (RequestKey) -> Unit) {
                         CircleShape,
                     )
             )
-            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+            Column(Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp14)) {
                 Text(
                     record.source,
                     style = MaterialTheme.typography.labelMedium,

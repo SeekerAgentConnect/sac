@@ -6,7 +6,7 @@ The app opens on **Home**, with the connected wallet, requests waiting for the o
 
 SEE-64 changes presentation and navigation structure only. Request preparation and answering, transaction inspection, policy evaluation and storage, wallet hand-off, connection pairing, Activity storage, and all of their security boundaries are unchanged.
 
-- `SeekerVaultTheme` follows the system light/dark setting and installs the exact opaque v4 colour, type, and shape tokens. Dark primary is `#E7FC6E`, dark primary container is `#C2E60F`, light accent text uses the readable `#4F5C00` role, and orange remains advisory rather than destructive. Dynamic/wallpaper colour and parameterless Material schemes are not used.
+- `SeekerTheme` follows the system light/dark setting and installs the exact opaque colour, type, radius, and spacing tokens from the finalized design export. Dark primary is `#E7FC6E`, dark primary container is `#C2E60F`, light accent text uses the readable `#4F5C00` role, and orange remains advisory rather than destructive. Dynamic/wallpaper colour and parameterless Material schemes are not used.
 - `SeekerComponents.kt` owns the shared solid Material surfaces: buttons, cards, network chips, bottom navigation, sheets, dialogs, and transient messages. Every colour is fully opaque. Elevation shadows, translucent scrims, alpha fades, gradients, and blur-behind are deliberately absent.
 - Home keeps its 64 dp app bar outside the scrolling body. After 48 dp of body scroll it replaces the product title with the shortened wallet address and network chip. Waiting requests are whole-card actions in a horizontally snapping 204 by 192 dp carousel. Its fixed content inset and index-aware snap position put the first card on the left content edge, each interior active card at the viewport centre, and the last card on the right content edge. The active treatment follows the card closest to its own snap position. Answers remain on Request details.
 - The selected root remains mounted beneath a detail sheet; the active sheet covers the bottom bar, as in the reference. Each deeper detail adds an opaque 12 dp recessed backplate and becomes the active sheet. Close removes only that layer. Sheet entry is 260 ms and exit is 240 ms.
@@ -16,6 +16,31 @@ SEE-64 changes presentation and navigation structure only. Request preparation a
 - Global rules uses the reference sheet's complete, expandable short explanation; a separate defaults caption; Global provenance chips; section icons; smoothly animated solid switches; concise on/off/empty status copy; and individual action, asset, recipient, and program cards. An empty document has an explicit warning and empty rows instead of orphaned prose. Clear all remains an unsaved, reversible edit, while a failed write remains visible in the pinned footer until the owner edits or retries. The footer uses tonal Discard plus filled Save, and the rules model and persistence path are unchanged (SEE-74). The policy UI uses Material roles plus the v4 `primaryText` semantic token where the pale light primary would not be readable on the ground.
 
 The checked-in [design and flow references](../design/README.md) govern this presentation. The original implementation record is in [`docs/testing/see-64.md`](../testing/see-64.md), and the regression repair is in [`docs/testing/see-82.md`](../testing/see-82.md).
+
+## Design-system module (SEE-114)
+
+Android is now a two-module build. `:app` owns behavior and depends on `:designsystem`;
+`:designsystem` owns only visual tokens and Compose theme code and has no dependency in the other
+direction. Its only library dependency is Compose Material 3, so it cannot import app models,
+ViewModels, storage, transports, network clients, or wallet code. The module layout and the exact
+font provenance are documented in [`android/designsystem/README.md`](../../android/designsystem/README.md).
+
+`SeekerTheme` supplies the light/dark colour roles, the source-chip palette, the full extracted
+spacing and radius scales, and the styles that do not fit Material's standard slots. Roboto and
+Roboto Mono are bundled under `res/font`, so Chrome references and Android use the same typefaces.
+Every text style has an explicit CSS-derived line height and zero letter spacing, disables Android
+font padding, and uses a fixed, centred, untrimmed line box.
+
+The wrapper also closes Material escape hatches: `surfaceTint` is transparent, tonal elevation is
+disabled, every Material shape is supplied from the extracted radius scale, ripple colour is the
+theme's readable accent, and `LocalMinimumInteractiveComponentSize` is unspecified so the design's
+32 dp chips and compact buttons do not silently grow. Components remain responsible for their
+explicit hit targets and accessibility semantics.
+
+The `checkDesignSystemLiterals` Gradle task scans production Kotlin in both modules, excluding only
+the design-system theme package. A raw `Color(0x…)`, `.dp`, or `.sp` literal fails with its file and
+line. `./gradlew check`, `spotlessCheck`, and `pnpm check:android` all run it; this is the permanent
+SEE-82 regression guard, not a one-time migration script.
 
 ## Shared synchronization and cache (SAW-050)
 

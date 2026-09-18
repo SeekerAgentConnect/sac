@@ -25,11 +25,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.activity.explorerUrl
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.formatInstant
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.PolicyReview
 import io.github.brrenat.seekervault.plugins.ParameterField
 import io.github.brrenat.seekervault.plugins.ParameterKey
@@ -86,10 +86,12 @@ fun ProposalReviewScreen(
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+                Modifier.fillMaxWidth()
+                    .height(SeekerTheme.dimensions.dp56)
+                    .padding(horizontal = SeekerTheme.dimensions.dp8),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                Column(Modifier.weight(1f).padding(start = SeekerTheme.dimensions.dp8)) {
                     Text(
                         proposal.operation.value,
                         style = MaterialTheme.typography.titleLarge,
@@ -105,8 +107,11 @@ fun ProposalReviewScreen(
             Column(
                 Modifier.fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(
+                        horizontal = SeekerTheme.dimensions.dp16,
+                        vertical = SeekerTheme.dimensions.dp8,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
             ) {
                 Banner(stringResource(standingText(review.standing)), OperationTags.STANDING)
                 // Said before anything else about this proposal, because it is what the Approve
@@ -124,7 +129,7 @@ fun ProposalReviewScreen(
                     Section(R.string.operation_afterwards) {
                         Column(
                             Modifier.fillMaxWidth().testTag(OperationTags.AFTERWARDS),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
                         ) {
                             val signature =
                                 (executed.outcome as? ProposalOutcome.Submitted)?.signature
@@ -178,7 +183,7 @@ fun ProposalReviewScreen(
                 Section(R.string.operation_terms) {
                     Column(
                         Modifier.fillMaxWidth().testTag(OperationTags.TERMS),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
                     ) {
                         // Carried and not interpreted: which key means what is the plugin's, and
                         // this shows the publisher's own names and values as they were written.
@@ -200,7 +205,7 @@ fun ProposalReviewScreen(
                     Section(R.string.operation_your_part) {
                         Column(
                             Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
                         ) {
                             review.form.fields.forEach { field ->
                                 Field(field, review.choice.values[field.key], onChoose)
@@ -235,7 +240,7 @@ fun ProposalReviewScreen(
                     Section(R.string.operation_not_prepared) {
                         Column(
                             Modifier.fillMaxWidth().testTag(OperationTags.FAILURE),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
                         ) {
                             Text(
                                 failure.explanation?.let { stringResource(it) }
@@ -260,7 +265,8 @@ fun ProposalReviewScreen(
                         Section(R.string.operation_identifiers) {
                             Column(
                                 Modifier.fillMaxWidth().testTag(OperationTags.REFERENCES),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement =
+                                    Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
                             ) {
                                 // The provider's own names for what is being submitted, read out of
                                 // the bytes. They are what the owner's record keeps.
@@ -272,7 +278,7 @@ fun ProposalReviewScreen(
                     Section(R.string.operation_what_this_phone_read) {
                         Column(
                             Modifier.fillMaxWidth().testTag(OperationTags.FACTS),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
                         ) {
                             inspection.facts?.let { facts ->
                                 Pair(
@@ -297,7 +303,8 @@ fun ProposalReviewScreen(
                             if (inspection.findings.isNotEmpty()) {
                                 Column(
                                     Modifier.fillMaxWidth().testTag(OperationTags.FINDINGS),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement =
+                                        Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
                                 ) {
                                     inspection.findings.forEach {
                                         Text(
@@ -328,7 +335,8 @@ fun ProposalReviewScreen(
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement =
+                                Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                         ) {
                             Checkbox(
                                 checked = review.acknowledged,
@@ -469,7 +477,10 @@ private fun Field(
         is ParameterKind.Choice -> {
             // No operation bundled in this build asks for one yet; the prediction plugin (SEE-94)
             // is what brings an outcome to pick, and it will be shown here rather than elsewhere.
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
+            ) {
                 Text(stringResource(field.label), style = MaterialTheme.typography.titleSmall)
                 kind.options.forEach { option ->
                     SeekerButton(
@@ -491,8 +502,8 @@ private fun Field(
 private fun Section(labelRes: Int, content: @Composable () -> Unit) {
     SeekerCard(Modifier.fillMaxWidth()) {
         Column(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
         ) {
             Text(
                 stringResource(labelRes),
@@ -510,7 +521,7 @@ private fun Banner(text: String, tag: String) {
         Text(
             text,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.fillMaxWidth().padding(14.dp).testTag(tag),
+            modifier = Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp14).testTag(tag),
         )
     }
 }
@@ -529,7 +540,10 @@ private fun Link(name: String, url: String, onOpenLink: (String) -> Unit) {
 /** A labelled address or identifier, in the monospaced style the rest of the app uses for one. */
 @Composable
 private fun Address(name: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
+    ) {
         Text(
             name,
             style = MaterialTheme.typography.bodyMedium,
@@ -542,7 +556,10 @@ private fun Address(name: String, value: String) {
 
 @Composable
 private fun Pair(name: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
+    ) {
         Text(
             name,
             style = MaterialTheme.typography.bodyMedium,

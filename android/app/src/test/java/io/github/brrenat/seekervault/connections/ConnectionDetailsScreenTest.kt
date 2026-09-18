@@ -16,9 +16,9 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.VPS
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.policy.PolicyTags
@@ -52,7 +52,7 @@ class ConnectionDetailsScreenTest {
         support: ServerSupport? = null,
         onEnvironment: ((PluginEnvironment) -> Unit)? = null,
     ) = compose.setContent {
-        SeekerVaultTheme {
+        SeekerTheme {
             ConnectionDetailsScreen(
                 connection = connection,
                 refreshing = refreshing,

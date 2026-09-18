@@ -28,3 +28,5 @@ dependencyResolutionManagement {
 rootProject.name = "seeker-vault"
 
 include(":app")
+
+include(":designsystem")

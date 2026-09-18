@@ -79,13 +79,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerTheme
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.formatInstant
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.policy.storage.UnreadableReason
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.ui.SeekerCard
@@ -170,7 +169,7 @@ fun PolicyEditorScreen(
                     actions = {
                         CloseButton(leave, MaterialTheme.colorScheme.surfaceContainerHigh)
                     },
-                    expandedHeight = 56.dp,
+                    expandedHeight = SeekerTheme.dimensions.dp56,
                     windowInsets = WindowInsets(0, 0, 0, 0),
                     colors =
                         TopAppBarDefaults.topAppBarColors(
@@ -212,7 +211,9 @@ fun PolicyEditorScreen(
                                     R.string.policy_loading
                                 }
                             ),
-                            modifier = Modifier.padding(16.dp).testTag(PolicyTags.LOADING),
+                            modifier =
+                                Modifier.padding(SeekerTheme.dimensions.dp16)
+                                    .testTag(PolicyTags.LOADING),
                         )
                     unreadable != null -> Unreadable(unreadable, state.scope, onStartOver, leave)
                     state.scope == PolicyEditorScope.Global -> GlobalEditor(state, onEdit)
@@ -235,7 +236,7 @@ fun PolicyEditorScreen(
                 actions = {
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                     ) {
                         NeutralPolicyButton(
                             onClick = {
@@ -266,7 +267,7 @@ fun PolicyEditorScreen(
                 actions = {
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                     ) {
                         NeutralPolicyButton(
                             onClick = { confirmGlobalSave = false },
@@ -305,9 +306,12 @@ private fun Unreadable(
     Text(
         stringResource(R.string.policy_unreadable_title),
         style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(16.dp).testTag(PolicyTags.UNREADABLE),
+        modifier = Modifier.padding(SeekerTheme.dimensions.dp16).testTag(PolicyTags.UNREADABLE),
     )
-    Text(unreadableText(why, scope), modifier = Modifier.padding(horizontal = 16.dp))
+    Text(
+        unreadableText(why, scope),
+        modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
+    )
     Text(
         stringResource(
             if (scope == PolicyEditorScope.Global) {
@@ -317,11 +321,15 @@ private fun Unreadable(
             }
         ),
         style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(16.dp),
+        modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
     )
     Row(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier =
+            Modifier.padding(
+                horizontal = SeekerTheme.dimensions.dp16,
+                vertical = SeekerTheme.dimensions.dp8,
+            ),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
     ) {
         PrimaryPolicyButton(
             onClick = onStartOver,
@@ -346,8 +354,13 @@ private fun GlobalEditor(
     val empty = review is DraftReview.NoRules
     val edit = { next: PolicyDraft -> onEdit(PolicyEditorDraft.Global(next)) }
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp4,
+                ),
+        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
     ) {
         GlobalRulesHelp()
         if (empty) GlobalEmptyWarning()
@@ -357,7 +370,7 @@ private fun GlobalEditor(
             ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
+            modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp4),
         )
         Actions(draft, edit, global = true)
         Assets(draft, review, edit, global = true)
@@ -403,7 +416,7 @@ private fun GlobalEditor(
             stringResource(R.string.policy_global_daily_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
+            modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp4),
         )
     }
 }
@@ -420,27 +433,33 @@ private fun GlobalPolicyFooter(
         modifier =
             Modifier.fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp12,
+                ),
+        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
     ) {
         if (saveFailed) {
             SeekerCard(
                 modifier = Modifier.fillMaxWidth().testTag(PolicyTags.SAVE_ERROR),
                 color = MaterialTheme.colorScheme.errorContainer,
-                radius = 16.dp,
+                radius = SeekerTheme.dimensions.dp16,
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp14),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
                     verticalAlignment = Alignment.Top,
                 ) {
                     Icon(
                         Icons.Outlined.Error,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(SeekerTheme.dimensions.dp20),
                     )
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
+                    ) {
                         Text(
                             stringResource(R.string.policy_save_error_title),
                             style = MaterialTheme.typography.labelLarge,
@@ -458,7 +477,7 @@ private fun GlobalPolicyFooter(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
         ) {
             Text(
                 stringResource(
@@ -498,16 +517,19 @@ private fun GlobalEmptyWarning() {
         color = MaterialTheme.colorScheme.tertiaryContainer,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
         ) {
             Icon(
                 Icons.Outlined.Warning,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(SeekerTheme.dimensions.dp20),
             )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
+            ) {
                 Text(
                     stringResource(R.string.policy_global_empty_title),
                     style = MaterialTheme.typography.labelLarge,
@@ -532,9 +554,14 @@ private fun GlobalRulesHelp() {
         onClick = { expanded = !expanded },
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(
+                        horizontal = SeekerTheme.dimensions.dp16,
+                        vertical = SeekerTheme.dimensions.dp14,
+                    ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
         ) {
             Text(
                 stringResource(R.string.policy_global_intro),
@@ -545,7 +572,7 @@ private fun GlobalRulesHelp() {
                 if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(SeekerTheme.dimensions.dp20),
             )
         }
     }
@@ -555,8 +582,8 @@ private fun GlobalRulesHelp() {
             color = MaterialTheme.colorScheme.surfaceContainer,
         ) {
             Column(
-                Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
             ) {
                 HelpLine(Icons.Outlined.Block, R.string.policy_help_rule)
                 HelpLine(Icons.Outlined.Public, R.string.policy_help_global)
@@ -569,12 +596,12 @@ private fun GlobalRulesHelp() {
 
 @Composable
 private fun HelpLine(icon: ImageVector, @StringRes text: Int) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10)) {
         Icon(
             icon,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(SeekerTheme.dimensions.dp18),
         )
         Text(
             stringResource(text),
@@ -600,27 +627,31 @@ private fun ConnectionEditor(
     Text(
         stringResource(R.string.policy_connection_intro),
         style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(16.dp),
+        modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
     )
     Text(
         state.storedAt?.let { stringResource(R.string.policy_override_saved_at, formatInstant(it)) }
             ?: stringResource(R.string.policy_override_never_saved),
         style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.padding(horizontal = 16.dp).testTag(PolicyTags.SAVED_AT),
+        modifier =
+            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16).testTag(PolicyTags.SAVED_AT),
     )
     if (state.globalUnreadable != null) {
         Text(
             stringResource(R.string.policy_global_context_unreadable),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(16.dp).testTag(PolicyTags.GLOBAL_UNREADABLE),
+            modifier =
+                Modifier.padding(SeekerTheme.dimensions.dp16).testTag(PolicyTags.GLOBAL_UNREADABLE),
         )
     } else {
         EffectiveSummary(draft, state.global, review)
     }
     NeutralPolicyButton(
         onClick = onOpenGlobal,
-        modifier = Modifier.padding(horizontal = 8.dp).testTag(PolicyTags.OPEN_GLOBAL),
+        modifier =
+            Modifier.padding(horizontal = SeekerTheme.dimensions.dp8)
+                .testTag(PolicyTags.OPEN_GLOBAL),
     ) {
         Text(stringResource(R.string.policy_open_global))
     }
@@ -736,22 +767,24 @@ private fun ConnectionEditor(
         )
     }
 
-    SectionGap(Modifier.padding(top = 16.dp))
+    SectionGap(Modifier.padding(top = SeekerTheme.dimensions.dp16))
     NeutralPolicyButton(
         onClick = onReset,
         enabled = review !is ConnectionDraftReview.InheritAll && !state.saving,
-        modifier = Modifier.padding(horizontal = 8.dp).testTag(PolicyTags.RESET_OVERRIDES),
+        modifier =
+            Modifier.padding(horizontal = SeekerTheme.dimensions.dp8)
+                .testTag(PolicyTags.RESET_OVERRIDES),
     ) {
         Text(stringResource(R.string.policy_reset_overrides))
     }
     Text(
         stringResource(R.string.policy_reset_overrides_note),
         style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.padding(horizontal = 16.dp),
+        modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
     )
     Row(
-        modifier = Modifier.padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
     ) {
         PrimaryPolicyButton(
             onClick = onSave,
@@ -776,11 +809,11 @@ private fun EffectiveSummary(
     global: GlobalPolicy?,
     review: ConnectionDraftReview,
 ) {
-    SectionGap(Modifier.padding(vertical = 8.dp))
+    SectionGap(Modifier.padding(vertical = SeekerTheme.dimensions.dp8))
     Text(
         stringResource(R.string.policy_effective_title),
         style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(horizontal = 16.dp),
+        modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
     )
     val overrides =
         when (review) {
@@ -792,7 +825,7 @@ private fun EffectiveSummary(
     if (overrides == null) {
         Text(
             stringResource(R.string.policy_effective_fix_errors),
-            modifier = Modifier.padding(16.dp).testTag(PolicyTags.SUMMARY),
+            modifier = Modifier.padding(SeekerTheme.dimensions.dp16).testTag(PolicyTags.SUMMARY),
         )
         return
     }
@@ -833,7 +866,11 @@ private fun EffectiveSummary(
         }
         Text(
             stringResource(R.string.policy_summary_manual),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            modifier =
+                Modifier.padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp2,
+                ),
         )
     }
 }
@@ -853,7 +890,11 @@ private fun <T : Any> EffectiveLine(
             rendered,
             sourceText(rule.source),
         ),
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+        modifier =
+            Modifier.padding(
+                horizontal = SeekerTheme.dimensions.dp16,
+                vertical = SeekerTheme.dimensions.dp2,
+            ),
     )
 }
 
@@ -864,11 +905,11 @@ private fun OverrideSelector(
     overrides: Boolean,
     onChange: (Boolean) -> Unit,
 ) {
-    SectionGap(Modifier.padding(vertical = 8.dp))
+    SectionGap(Modifier.padding(vertical = SeekerTheme.dimensions.dp8))
     Text(
         stringResource(title),
         style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(horizontal = 16.dp),
+        modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
     )
     Choice(
         R.string.policy_use_global,
@@ -962,7 +1003,7 @@ private fun AddPolicyAssetButton(
     var adding by rememberSaveable { mutableStateOf(false) }
     NeutralPolicyButton(
         onClick = { adding = true },
-        modifier = Modifier.padding(16.dp).testTag(tag),
+        modifier = Modifier.padding(SeekerTheme.dimensions.dp16).testTag(tag),
     ) {
         Text(stringResource(R.string.policy_add_asset))
     }
@@ -989,12 +1030,16 @@ private fun ConnectionThresholds(
     Text(
         stringResource(R.string.policy_connection_thresholds),
         style = MaterialTheme.typography.titleSmall,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier =
+            Modifier.padding(
+                horizontal = SeekerTheme.dimensions.dp16,
+                vertical = SeekerTheme.dimensions.dp8,
+            ),
     )
     Text(
         stringResource(R.string.policy_connection_thresholds_note),
         style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.padding(horizontal = 16.dp),
+        modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
     )
     val assets = linkedSetOf<PolicyAsset>()
     assets += global?.assets?.values.orEmpty()
@@ -1007,12 +1052,13 @@ private fun ConnectionThresholds(
         val local = draft.limits.getOrNull(index) ?: ConnectionAssetDraft(asset.network, asset.mint)
         val rowProblem = problems[index] ?: AssetProblems()
         val asAsset = local.asAssetDraft()
-        SectionGap(Modifier.padding(vertical = 8.dp))
+        SectionGap(Modifier.padding(vertical = SeekerTheme.dimensions.dp8))
         Text(
             assetLabel(asset),
             style = MaterialTheme.typography.titleSmall,
             modifier =
-                Modifier.padding(horizontal = 16.dp).testTag(PolicyTags.connectionAsset(asset)),
+                Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                    .testTag(PolicyTags.connectionAsset(asset)),
         )
         val inherited = global?.limitsFor(asset)?.perOperation
         val localPerOperation =
@@ -1032,7 +1078,11 @@ private fun ConnectionThresholds(
                         ?: stringResource(R.string.policy_effective_not_checked),
                     sourceText(effectivePerOperationSource),
                 ),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                modifier =
+                    Modifier.padding(
+                        horizontal = SeekerTheme.dimensions.dp16,
+                        vertical = SeekerTheme.dimensions.dp4,
+                    ),
             )
         }
         Choice(
@@ -1080,7 +1130,10 @@ private fun ConnectionThresholds(
                     ),
                 ),
                 modifier =
-                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    Modifier.padding(
+                            horizontal = SeekerTheme.dimensions.dp16,
+                            vertical = SeekerTheme.dimensions.dp4,
+                        )
                         .testTag(PolicyTags.globalDaily(asset)),
             )
         }
@@ -1107,7 +1160,10 @@ private fun ConnectionThresholds(
             ),
             style = MaterialTheme.typography.bodySmall,
             modifier =
-                Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                Modifier.padding(
+                        horizontal = SeekerTheme.dimensions.dp16,
+                        vertical = SeekerTheme.dimensions.dp4,
+                    )
                     .testTag(PolicyTags.connectionDailySource(asset)),
         )
         if (rowProblem.dailyBelowPerOperation) Note(R.string.policy_daily_below)
@@ -1121,7 +1177,7 @@ private fun ConnectionThresholds(
         Text(
             stringResource(R.string.policy_limit_unlisted),
             color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
         )
     }
     AddPolicyAssetButton(
@@ -1156,19 +1212,19 @@ private fun GlobalSectionCard(
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
             ) {
                 Icon(
                     icon,
                     contentDescription = null,
                     tint = SeekerTheme.colors.primaryText,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(SeekerTheme.dimensions.dp20),
                 )
                 Text(
                     stringResource(title),
@@ -1186,14 +1242,21 @@ private fun GlobalSectionCard(
 private fun GlobalChip() {
     Row(
         modifier =
-            Modifier.heightIn(min = 24.dp)
-                .clip(RoundedCornerShape(8.dp))
+            Modifier.heightIn(min = SeekerTheme.dimensions.dp24)
+                .clip(RoundedCornerShape(SeekerTheme.dimensions.dp8))
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                .padding(horizontal = 9.dp, vertical = 2.dp),
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp9,
+                    vertical = SeekerTheme.dimensions.dp2,
+                ),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp5),
     ) {
-        Icon(Icons.Outlined.Public, contentDescription = null, modifier = Modifier.size(13.dp))
+        Icon(
+            Icons.Outlined.Public,
+            contentDescription = null,
+            modifier = Modifier.size(SeekerTheme.dimensions.dp13),
+        )
         Text(
             stringResource(R.string.policy_source_global),
             style = MaterialTheme.typography.labelSmall,
@@ -1204,15 +1267,22 @@ private fun GlobalChip() {
 /** The whole draft read back in plain language, and what it still doesn't cover. */
 @Composable
 private fun Summary(draft: PolicyDraft, removes: Boolean, global: Boolean = false) {
-    SectionGap(Modifier.padding(vertical = 8.dp))
+    SectionGap(Modifier.padding(vertical = SeekerTheme.dimensions.dp8))
     Text(
         stringResource(R.string.policy_summary_title),
         style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(horizontal = 16.dp),
+        modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
     )
     Column(Modifier.testTag(PolicyTags.SUMMARY)) {
         for (line in summaryLines(draft, global)) {
-            Text(line, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
+            Text(
+                line,
+                modifier =
+                    Modifier.padding(
+                        horizontal = SeekerTheme.dimensions.dp16,
+                        vertical = SeekerTheme.dimensions.dp2,
+                    ),
+            )
         }
         if (removes) {
             Text(
@@ -1220,7 +1290,11 @@ private fun Summary(draft: PolicyDraft, removes: Boolean, global: Boolean = fals
                     if (global) R.string.policy_global_summary_removes
                     else R.string.policy_summary_removes
                 ),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                modifier =
+                    Modifier.padding(
+                        horizontal = SeekerTheme.dimensions.dp16,
+                        vertical = SeekerTheme.dimensions.dp2,
+                    ),
             )
         }
     }
@@ -1275,7 +1349,7 @@ private fun ActionsContent(
                     .testTag(PolicyTags.action(action))
                     .then(
                         if (global) {
-                            Modifier.clip(RoundedCornerShape(12.dp))
+                            Modifier.clip(RoundedCornerShape(SeekerTheme.dimensions.dp12))
                                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                         } else {
                             Modifier
@@ -1290,7 +1364,12 @@ private fun ActionsContent(
                         val actions = if (on) draft.actions + action else draft.actions - action
                         onEdit(draft.copy(actions = actions))
                     }
-                    .padding(horizontal = if (global) 12.dp else 16.dp, vertical = 12.dp),
+                    .padding(
+                        horizontal =
+                            if (global) SeekerTheme.dimensions.dp12
+                            else SeekerTheme.dimensions.dp16,
+                        vertical = SeekerTheme.dimensions.dp12,
+                    ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -1300,7 +1379,7 @@ private fun ActionsContent(
                     if (ticked) SeekerTheme.colors.primaryText
                     else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Column(Modifier.padding(start = 12.dp)) {
+            Column(Modifier.padding(start = SeekerTheme.dimensions.dp12)) {
                 Text(actionText(action), style = MaterialTheme.typography.bodyMedium)
                 if (global) {
                     Text(
@@ -1388,14 +1467,22 @@ private fun AssetsContent(
         } else {
             NeutralPolicyButton(
                 onClick = { adding = true },
-                modifier = Modifier.padding(16.dp).testTag(PolicyTags.ADD_ASSET),
+                modifier =
+                    Modifier.padding(SeekerTheme.dimensions.dp16).testTag(PolicyTags.ADD_ASSET),
                 content = content,
             )
         }
     }
     addButton {
-        Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(20.dp))
-        Text(stringResource(R.string.policy_add_asset), modifier = Modifier.padding(start = 8.dp))
+        Icon(
+            Icons.Outlined.Add,
+            contentDescription = null,
+            modifier = Modifier.size(SeekerTheme.dimensions.dp20),
+        )
+        Text(
+            stringResource(R.string.policy_add_asset),
+            modifier = Modifier.padding(start = SeekerTheme.dimensions.dp8),
+        )
     }
     if (adding) {
         AddAsset(
@@ -1427,7 +1514,7 @@ private fun Asset(
         SeekerCard(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
-            radius = 12.dp,
+            radius = SeekerTheme.dimensions.dp12,
         ) {
             Column(Modifier.fillMaxWidth()) {
                 Row(
@@ -1439,15 +1526,15 @@ private fun Asset(
                                 role = Role.Button,
                                 onClick = onToggle,
                             )
-                            .padding(12.dp),
+                            .padding(SeekerTheme.dimensions.dp12),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
                 ) {
                     Icon(
                         Icons.Outlined.Toll,
                         contentDescription = null,
                         tint = SeekerTheme.colors.primaryText,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(SeekerTheme.dimensions.dp20),
                     )
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -1480,8 +1567,8 @@ private fun Asset(
                     }
                     Box(
                         modifier =
-                            Modifier.size(40.dp)
-                                .clip(RoundedCornerShape(20.dp))
+                            Modifier.size(SeekerTheme.dimensions.dp40)
+                                .clip(RoundedCornerShape(SeekerTheme.dimensions.dp20))
                                 .background(MaterialTheme.colorScheme.surfaceContainer)
                                 .clickable(
                                     indication = null,
@@ -1503,16 +1590,20 @@ private fun Asset(
         }
         return
     }
-    SectionGap(Modifier.padding(vertical = 8.dp))
+    SectionGap(Modifier.padding(vertical = SeekerTheme.dimensions.dp8))
     Text(
         name,
         style = MaterialTheme.typography.titleSmall,
-        modifier = Modifier.padding(horizontal = 16.dp).testTag(PolicyTags.asset(index)),
+        modifier =
+            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                .testTag(PolicyTags.asset(index)),
     )
     AssetFields(index, asset, problems, onChange)
     NeutralPolicyButton(
         onClick = onRemove,
-        modifier = Modifier.padding(horizontal = 8.dp).testTag(PolicyTags.removeAsset(index)),
+        modifier =
+            Modifier.padding(horizontal = SeekerTheme.dimensions.dp8)
+                .testTag(PolicyTags.removeAsset(index)),
     ) {
         Text(stringResource(R.string.policy_asset_remove, name))
     }
@@ -1598,7 +1689,12 @@ private fun Amount(
             )
         },
         modifier =
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag(tag),
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp4,
+                )
+                .testTag(tag),
     )
 }
 
@@ -1620,17 +1716,17 @@ private fun AddAsset(
         Box(
             Modifier.fillMaxSize()
                 .background(MaterialTheme.colorScheme.surfaceDim)
-                .padding(top = 80.dp),
+                .padding(top = SeekerTheme.dimensions.dp80),
             contentAlignment = Alignment.BottomCenter,
         ) {
             SeekerCard(
                 modifier = Modifier.fillMaxWidth().fillMaxHeight(),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                radius = 28.dp,
+                radius = SeekerTheme.dimensions.dp28,
             ) {
                 Column(
-                    Modifier.fillMaxSize().padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    Modifier.fillMaxSize().padding(SeekerTheme.dimensions.dp20),
+                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
                 ) {
                     Text(
                         stringResource(R.string.policy_asset_dialog_title),
@@ -1638,7 +1734,7 @@ private fun AddAsset(
                     )
                     Column(
                         Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
                     ) {
                         Choice(R.string.policy_asset_sol, !token, PolicyTags.ASSET_SOL) {
                             token = false
@@ -1665,7 +1761,9 @@ private fun AddAsset(
                             stringResource(R.string.policy_network_field),
                             style = MaterialTheme.typography.labelLarge,
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)
+                        ) {
                             for (option in POLICY_NETWORKS) {
                                 FilterChip(
                                     selected = network == option,
@@ -1681,7 +1779,7 @@ private fun AddAsset(
                     }
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                     ) {
                         NeutralPolicyButton(
                             onClick = onDismiss,
@@ -1726,7 +1824,7 @@ private fun Choice(@StringRes label: Int, selected: Boolean, tag: String, onSele
                     role = Role.RadioButton,
                     onClick = onSelect,
                 )
-                .padding(vertical = 8.dp),
+                .padding(vertical = SeekerTheme.dimensions.dp8),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -1736,7 +1834,10 @@ private fun Choice(@StringRes label: Int, selected: Boolean, tag: String, onSele
                 if (selected) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(stringResource(label), modifier = Modifier.padding(start = 16.dp))
+        Text(
+            stringResource(label),
+            modifier = Modifier.padding(start = SeekerTheme.dimensions.dp16),
+        )
     }
 }
 
@@ -1881,7 +1982,10 @@ private fun AddressesContent(
         supportingText = problem?.let { { Text(stringResource(it)) } },
         modifier =
             Modifier.fillMaxWidth()
-                .then(if (global) Modifier else Modifier.padding(horizontal = 16.dp))
+                .then(
+                    if (global) Modifier
+                    else Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                )
                 .testTag(PolicyTags.entryField(list)),
     )
     val addAddress = {
@@ -1898,14 +2002,18 @@ private fun AddressesContent(
         }
     }
     val addContent: @Composable RowScope.() -> Unit = {
-        Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+        Icon(
+            Icons.Outlined.Add,
+            contentDescription = null,
+            modifier = Modifier.size(SeekerTheme.dimensions.dp20),
+        )
         Text(
             stringResource(
                 if (!global) R.string.policy_add
                 else if (list == RECIPIENTS) R.string.policy_add_recipient
                 else R.string.policy_add_program
             ),
-            modifier = Modifier.padding(start = 8.dp),
+            modifier = Modifier.padding(start = SeekerTheme.dimensions.dp8),
         )
     }
     if (global) {
@@ -1917,7 +2025,7 @@ private fun AddressesContent(
     } else {
         NeutralPolicyButton(
             onClick = addAddress,
-            modifier = Modifier.padding(16.dp).testTag(PolicyTags.add(list)),
+            modifier = Modifier.padding(SeekerTheme.dimensions.dp16).testTag(PolicyTags.add(list)),
             content = addContent,
         )
     }
@@ -1928,13 +2036,13 @@ private fun GlobalEmptyListRow(list: String) {
     Row(
         modifier = Modifier.fillMaxWidth().testTag(PolicyTags.empty(list)),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
     ) {
         Icon(
             Icons.Outlined.DoNotDisturbOn,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(SeekerTheme.dimensions.dp20),
         )
         Text(
             stringResource(R.string.policy_nothing_listed),
@@ -1954,18 +2062,18 @@ private fun GlobalAddressRow(
     SeekerCard(
         modifier = Modifier.fillMaxWidth().testTag(PolicyTags.entry(list, value)),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        radius = 12.dp,
+        radius = SeekerTheme.dimensions.dp12,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp12),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
         ) {
             Icon(
                 if (recipient) Icons.Outlined.AccountBalanceWallet else Icons.Outlined.Code,
                 contentDescription = null,
                 tint = SeekerTheme.colors.primaryText,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(SeekerTheme.dimensions.dp20),
             )
             Column(Modifier.weight(1f)) {
                 Text(
@@ -1981,8 +2089,8 @@ private fun GlobalAddressRow(
             }
             Box(
                 modifier =
-                    Modifier.size(40.dp)
-                        .clip(RoundedCornerShape(20.dp))
+                    Modifier.size(SeekerTheme.dimensions.dp40)
+                        .clip(RoundedCornerShape(SeekerTheme.dimensions.dp20))
                         .background(MaterialTheme.colorScheme.surfaceContainer)
                         .clickable(
                             indication = null,
@@ -2038,11 +2146,11 @@ private fun Restrict(
     empty: Boolean = false,
 ) {
     if (showHeader) {
-        SectionGap(Modifier.padding(vertical = 8.dp))
+        SectionGap(Modifier.padding(vertical = SeekerTheme.dimensions.dp8))
         Text(
             stringResource(title),
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp),
+            modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
         )
     }
     Row(
@@ -2056,7 +2164,10 @@ private fun Restrict(
                     role = Role.Switch,
                     onValueChange = onCheckedChange,
                 )
-                .padding(vertical = if (global) 0.dp else 16.dp),
+                .padding(
+                    vertical =
+                        if (global) SeekerTheme.dimensions.dp0 else SeekerTheme.dimensions.dp16
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(stringResource(switchLabel), modifier = Modifier.weight(1f))
@@ -2085,7 +2196,11 @@ private fun Note(@StringRes text: Int) {
         stringResource(text),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier =
+            Modifier.padding(
+                horizontal = SeekerTheme.dimensions.dp16,
+                vertical = SeekerTheme.dimensions.dp4,
+            ),
     )
 }
 
@@ -2164,8 +2279,8 @@ private fun SolidPolicyButton(
         Row(
             modifier =
                 modifier
-                    .heightIn(min = 40.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .heightIn(min = SeekerTheme.dimensions.dp40)
+                    .clip(RoundedCornerShape(SeekerTheme.dimensions.dp20))
                     .background(container)
                     .clickable(
                         enabled = enabled,
@@ -2174,7 +2289,7 @@ private fun SolidPolicyButton(
                         role = Role.Button,
                         onClick = onClick,
                     )
-                    .padding(horizontal = 18.dp),
+                    .padding(horizontal = SeekerTheme.dimensions.dp18),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
             content = content,
@@ -2184,7 +2299,7 @@ private fun SolidPolicyButton(
 
 @Composable
 private fun SectionGap(modifier: Modifier = Modifier) {
-    Spacer(modifier.height(12.dp))
+    Spacer(modifier.height(SeekerTheme.dimensions.dp12))
 }
 
 @Composable
@@ -2226,8 +2341,8 @@ private fun FilterChip(
         Row(
             modifier =
                 modifier
-                    .heightIn(min = 40.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .heightIn(min = SeekerTheme.dimensions.dp40)
+                    .clip(RoundedCornerShape(SeekerTheme.dimensions.dp20))
                     .background(
                         if (selected) MaterialTheme.colorScheme.primaryContainer
                         else MaterialTheme.colorScheme.surfaceContainerHighest
@@ -2239,7 +2354,7 @@ private fun FilterChip(
                         role = Role.RadioButton,
                         onClick = onClick,
                     )
-                    .padding(horizontal = 14.dp),
+                    .padding(horizontal = SeekerTheme.dimensions.dp14),
             verticalAlignment = Alignment.CenterVertically,
             content = { label() },
         )
@@ -2248,21 +2363,21 @@ private fun FilterChip(
 
 @Composable
 private fun SolidSwitch(checked: Boolean) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(SeekerTheme.dimensions.dp16)
     val knobSize by
         animateDpAsState(
-            targetValue = if (checked) 24.dp else 16.dp,
+            targetValue = if (checked) SeekerTheme.dimensions.dp24 else SeekerTheme.dimensions.dp16,
             animationSpec = tween(220),
             label = "policySwitchKnobSize",
         )
     val knobOffset by
         animateDpAsState(
-            targetValue = if (checked) 24.dp else 8.dp,
+            targetValue = if (checked) SeekerTheme.dimensions.dp24 else SeekerTheme.dimensions.dp8,
             animationSpec = tween(220),
             label = "policySwitchKnobOffset",
         )
     Box(
-        Modifier.size(width = 52.dp, height = 32.dp)
+        Modifier.size(width = SeekerTheme.dimensions.dp52, height = SeekerTheme.dimensions.dp32)
             .clip(shape)
             .background(
                 if (checked) MaterialTheme.colorScheme.primary
@@ -2270,7 +2385,12 @@ private fun SolidSwitch(checked: Boolean) {
             )
             .then(
                 if (checked) Modifier
-                else Modifier.border(2.dp, MaterialTheme.colorScheme.outline, shape)
+                else
+                    Modifier.border(
+                        SeekerTheme.dimensions.dp2,
+                        MaterialTheme.colorScheme.outline,
+                        shape,
+                    )
             )
     ) {
         Box(

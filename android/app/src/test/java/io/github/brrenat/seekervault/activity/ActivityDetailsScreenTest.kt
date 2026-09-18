@@ -10,7 +10,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerVaultTheme
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.request.v1.Network
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -29,7 +29,7 @@ class ActivityDetailsScreenTest {
     private val opened = mutableListOf<String>()
 
     private fun show(record: ActivityRecord, linkFailed: Boolean = false) = compose.setContent {
-        SeekerVaultTheme {
+        SeekerTheme {
             ActivityDetailsScreen(
                 record = record,
                 onOpenExplorer = { opened += it },

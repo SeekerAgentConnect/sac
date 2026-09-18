@@ -82,6 +82,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":designsystem"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(platform(libs.firebase.bom))
     implementation(libs.androidx.activity.compose)

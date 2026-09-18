@@ -28,10 +28,10 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.BackButton
 import io.github.brrenat.seekervault.connections.formatInstant
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.ui.Identifier
 import io.github.brrenat.seekervault.ui.NetworkChip
 import io.github.brrenat.seekervault.ui.SeekerButton
@@ -54,22 +54,27 @@ fun WalletScreen(
         modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding()
     ) {
         Row(
-            Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp),
+            Modifier.fillMaxWidth()
+                .height(SeekerTheme.dimensions.dp64)
+                .padding(horizontal = SeekerTheme.dimensions.dp8),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BackButton(onBack)
             Text(
                 stringResource(R.string.wallet_title),
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                modifier = Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp8),
             )
             NetworkChip(networkText(wallet?.network ?: state.network))
         }
         Column(
             Modifier.fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp8,
+                ),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
         ) {
             SeekerCard(
                 Modifier.fillMaxWidth().testTag(WalletTags.STATUS).semantics(
@@ -79,7 +84,10 @@ fun WalletScreen(
                     if (wallet != null) MaterialTheme.colorScheme.primaryContainer
                     else MaterialTheme.colorScheme.surfaceContainer,
             ) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Column(
+                    Modifier.padding(SeekerTheme.dimensions.dp18),
+                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp7),
+                ) {
                     Text(
                         when {
                             state.connecting -> stringResource(R.string.wallet_connecting)
@@ -121,7 +129,7 @@ fun WalletScreen(
                     Text(
                         problemText(problem, state.detail),
                         color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
                     )
                 }
             }
@@ -135,7 +143,7 @@ fun WalletScreen(
                 )
             } else {
                 SeekerCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(vertical = 4.dp)) {
+                    Column(Modifier.padding(vertical = SeekerTheme.dimensions.dp4)) {
                         Field(R.string.wallet_field_address, wallet.address, "address")
                         Field(R.string.wallet_field_network, networkText(wallet.network), "network")
                         wallet.label?.let { Field(R.string.wallet_field_label, it, "label") }
@@ -156,7 +164,7 @@ fun WalletScreen(
                         Text(
                             stringResource(R.string.wallet_network_unconfirmed),
                             color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(16.dp),
+                            modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
                         )
                     }
                 }
@@ -176,17 +184,20 @@ fun WalletScreen(
 @Composable
 private fun NetworkChoice(state: WalletUiState, onChoose: (WalletNetwork) -> Unit) {
     SeekerCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier.padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
+        ) {
             Text(
                 stringResource(R.string.wallet_network_label),
                 style = MaterialTheme.typography.titleMedium,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
                 for (network in WalletNetwork.entries) {
                     val selected = state.network == network
                     Row(
-                        Modifier.height(40.dp)
-                            .clip(RoundedCornerShape(20.dp))
+                        Modifier.height(SeekerTheme.dimensions.dp40)
+                            .clip(RoundedCornerShape(SeekerTheme.dimensions.dp20))
                             .background(
                                 if (selected) MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.surfaceContainerHighest
@@ -199,7 +210,7 @@ private fun NetworkChoice(state: WalletUiState, onChoose: (WalletNetwork) -> Uni
                                 role = Role.RadioButton,
                                 onClick = { onChoose(network) },
                             )
-                            .padding(horizontal = 14.dp)
+                            .padding(horizontal = SeekerTheme.dimensions.dp14)
                             .testTag(WalletTags.network(network)),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -216,7 +227,10 @@ private fun Published(state: WalletUiState, onPublishAgain: () -> Unit) {
     val failed = state.unpublished
     val reachable = state.connections.count { it.usable }
     SeekerCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier.padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
+        ) {
             Text(
                 when {
                     reachable == 0 -> stringResource(R.string.wallet_published_none)
@@ -253,7 +267,10 @@ private fun Published(state: WalletUiState, onPublishAgain: () -> Unit) {
 private fun Field(@StringRes label: Int, value: String, tag: String) {
     Column(
         Modifier.fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(
+                horizontal = SeekerTheme.dimensions.dp16,
+                vertical = SeekerTheme.dimensions.dp10,
+            )
             .testTag(WalletTags.field(tag))
             .semantics(mergeDescendants = true) {}
     ) {
@@ -262,6 +279,6 @@ private fun Field(@StringRes label: Int, value: String, tag: String) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Identifier(value, Modifier.padding(top = 3.dp), maxLines = 3)
+        Identifier(value, Modifier.padding(top = SeekerTheme.dimensions.dp3), maxLines = 3)
     }
 }

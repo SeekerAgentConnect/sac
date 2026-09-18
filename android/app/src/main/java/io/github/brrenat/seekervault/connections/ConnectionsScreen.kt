@@ -64,11 +64,9 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerTheme
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.PendingItem
 import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.inbox.actionText
@@ -123,8 +121,12 @@ fun ConnectionsScreen(
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding()) {
         LazyColumn(
             state = listState,
-            contentPadding = PaddingValues(top = 68.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding =
+                PaddingValues(
+                    top = SeekerTheme.dimensions.dp68,
+                    bottom = SeekerTheme.dimensions.dp24,
+                ),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
             modifier = Modifier.fillMaxSize().testTag(ConnectionsTags.LIST),
         ) {
             item(key = "wallet") { WalletCard(wallet, onWallet) }
@@ -164,10 +166,15 @@ fun ConnectionsScreen(
             }
             if (state.loaded && state.connections.isEmpty()) {
                 item(key = "empty") {
-                    SeekerCard(Modifier.padding(horizontal = 16.dp), radius = 16.dp) {
+                    SeekerCard(
+                        Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
+                        radius = SeekerTheme.dimensions.dp16,
+                    ) {
                         Text(
                             stringResource(R.string.connections_empty),
-                            modifier = Modifier.padding(16.dp).testTag(ConnectionsTags.EMPTY),
+                            modifier =
+                                Modifier.padding(SeekerTheme.dimensions.dp16)
+                                    .testTag(ConnectionsTags.EMPTY),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -187,7 +194,7 @@ fun ConnectionsScreen(
         )
         SeekerSnackbarHost(
             snackbar,
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+            Modifier.align(Alignment.BottomCenter).padding(bottom = SeekerTheme.dimensions.dp8),
         )
     }
 }
@@ -202,9 +209,9 @@ private fun HomeAppBar(
     Row(
         modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(SeekerTheme.dimensions.dp64)
             .background(MaterialTheme.colorScheme.surface)
-            .padding(start = 16.dp, end = 8.dp),
+            .padding(start = SeekerTheme.dimensions.dp16, end = SeekerTheme.dimensions.dp8),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -219,10 +226,10 @@ private fun HomeAppBar(
             NetworkChip(
                 wallet?.let { networkText(it.network) } ?: stringResource(R.string.network_none)
             )
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(SeekerTheme.dimensions.dp4))
         }
         Box(
-            Modifier.size(40.dp)
+            Modifier.size(SeekerTheme.dimensions.dp40)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surface)
                 .clickable(
@@ -252,23 +259,28 @@ private fun WalletCard(wallet: SelectedWallet?, onClick: () -> Unit) {
     val scope = rememberCoroutineScope()
     var copied by remember(wallet?.address) { mutableStateOf(false) }
     SeekerCard(
-        modifier = Modifier.padding(horizontal = 16.dp).testTag(ConnectionsTags.WALLET),
+        modifier =
+            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                .testTag(ConnectionsTags.WALLET),
         color = MaterialTheme.colorScheme.primaryContainer,
-        radius = 16.dp,
+        radius = SeekerTheme.dimensions.dp16,
         onClick = onClick,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 Icons.Outlined.AccountBalanceWallet,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(SeekerTheme.dimensions.dp24),
             )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp2),
+            ) {
                 Text(
                     wallet?.let(::walletSlug) ?: stringResource(R.string.wallet_row),
                     style = MaterialTheme.typography.bodyLarge,
@@ -282,8 +294,7 @@ private fun WalletCard(wallet: SelectedWallet?, onClick: () -> Unit) {
                         wallet == null -> stringResource(R.string.wallet_row_none)
                         else -> shortAddress(wallet.address)
                     },
-                    style =
-                        MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    style = SeekerTheme.typography.identifier,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -297,7 +308,7 @@ private fun WalletCard(wallet: SelectedWallet?, onClick: () -> Unit) {
                 )
             } else {
                 Box(
-                    Modifier.size(40.dp)
+                    Modifier.size(SeekerTheme.dimensions.dp40)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primaryContainer)
                         .clickable(
@@ -326,7 +337,7 @@ private fun WalletCard(wallet: SelectedWallet?, onClick: () -> Unit) {
                         if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
                         contentDescription = stringResource(R.string.copy_wallet_address),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(SeekerTheme.dimensions.dp22),
                     )
                 }
             }
@@ -344,9 +355,9 @@ private fun RequestCarousel(
     onInbox: () -> Unit,
 ) {
     val waiting = inbox?.waitingForYou ?: requests.size
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp20),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -356,15 +367,15 @@ private fun RequestCarousel(
                 modifier = Modifier.weight(1f),
             )
             Row(
-                Modifier.height(32.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                Modifier.height(SeekerTheme.dimensions.dp32)
+                    .clip(RoundedCornerShape(SeekerTheme.dimensions.dp16))
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                     .clickable(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() },
                         onClick = onInbox,
                     )
-                    .padding(horizontal = 12.dp)
+                    .padding(horizontal = SeekerTheme.dimensions.dp12)
                     .testTag(ConnectionsTags.INBOX),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -402,8 +413,8 @@ private fun RequestCarousel(
                     state = carouselState,
                     flingBehavior =
                         rememberSnapFlingBehavior(carouselState, RequestCarouselSnapPosition),
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(horizontal = SeekerTheme.dimensions.dp20),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
                     modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.CAROUSEL),
                 ) {
                     itemsIndexed(
@@ -435,13 +446,19 @@ private fun RequestCarousel(
             }
             Text(
                 stringResource(R.string.carousel_hint),
-                modifier = Modifier.padding(horizontal = 20.dp),
+                modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp20),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            SeekerCard(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), radius = 16.dp) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SeekerCard(
+                Modifier.padding(horizontal = SeekerTheme.dimensions.dp16).fillMaxWidth(),
+                radius = SeekerTheme.dimensions.dp16,
+            ) {
+                Column(
+                    Modifier.padding(SeekerTheme.dimensions.dp16),
+                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
+                ) {
                     Text(
                         stringResource(R.string.requests_none),
                         style = MaterialTheme.typography.bodyLarge,
@@ -471,13 +488,18 @@ private fun SignalTile(
         if (active) MaterialTheme.colorScheme.onPrimaryContainer
         else MaterialTheme.colorScheme.onSurface
     SeekerCard(
-        modifier = Modifier.size(width = 204.dp, height = 192.dp).semantics { selected = active },
+        modifier =
+            Modifier.size(
+                    width = SeekerTheme.dimensions.dp204,
+                    height = SeekerTheme.dimensions.dp192,
+                )
+                .semantics { selected = active },
         color = container,
-        radius = 20.dp,
+        radius = SeekerTheme.dimensions.dp20,
         onClick = onOpen,
     ) {
         Column(
-            Modifier.fillMaxSize().padding(16.dp),
+            Modifier.fillMaxSize().padding(SeekerTheme.dimensions.dp16),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -485,12 +507,15 @@ private fun SignalTile(
                 Text(
                     stringResource(R.string.request_category_signal),
                     modifier =
-                        Modifier.padding(start = 10.dp)
+                        Modifier.padding(start = SeekerTheme.dimensions.dp10)
                             .background(
                                 MaterialTheme.colorScheme.surfaceContainerHighest,
-                                RoundedCornerShape(8.dp),
+                                RoundedCornerShape(SeekerTheme.dimensions.dp8),
                             )
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                            .padding(
+                                horizontal = SeekerTheme.dimensions.dp8,
+                                vertical = SeekerTheme.dimensions.dp3,
+                            ),
                     style = MaterialTheme.typography.labelSmall,
                     color = ink,
                 )
@@ -634,15 +659,18 @@ private fun RequestTile(
         )
     SeekerCard(
         modifier =
-            Modifier.size(width = 204.dp, height = 192.dp)
+            Modifier.size(
+                    width = SeekerTheme.dimensions.dp204,
+                    height = SeekerTheme.dimensions.dp192,
+                )
                 .testTag(ConnectionsTags.request(request.key))
                 .semantics { selected = active },
         color = container,
-        radius = 20.dp,
+        radius = SeekerTheme.dimensions.dp20,
         onClick = onOpen,
     ) {
         Column(
-            Modifier.fillMaxSize().padding(16.dp),
+            Modifier.fillMaxSize().padding(SeekerTheme.dimensions.dp16),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -650,16 +678,16 @@ private fun RequestTile(
                     copy.icon,
                     contentDescription = null,
                     tint = ink,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(SeekerTheme.dimensions.dp22),
                 )
                 Text(
                     copy.kind,
-                    modifier = Modifier.padding(start = 10.dp),
+                    modifier = Modifier.padding(start = SeekerTheme.dimensions.dp10),
                     style = MaterialTheme.typography.bodyMedium,
                     color = ink,
                 )
             }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4)) {
                 Text(
                     copy.headline,
                     style = MaterialTheme.typography.headlineLarge,
@@ -669,8 +697,7 @@ private fun RequestTile(
                 )
                 Text(
                     copy.detail,
-                    style =
-                        MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    style = SeekerTheme.typography.identifier,
                     color = secondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -714,10 +741,10 @@ private fun RequestPill(assessment: RequestAssessment?, active: Boolean) {
     val foreground by
         animateColorAsState(targetForeground, transition, label = "request status ink")
     Box(
-        Modifier.height(24.dp)
-            .clip(RoundedCornerShape(8.dp))
+        Modifier.height(SeekerTheme.dimensions.dp24)
+            .clip(RoundedCornerShape(SeekerTheme.dimensions.dp8))
             .background(background)
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = SeekerTheme.dimensions.dp10),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -741,7 +768,12 @@ private fun RequestPill(assessment: RequestAssessment?, active: Boolean) {
 private fun SectionHeading(text: String) {
     Text(
         text,
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp),
+        modifier =
+            Modifier.padding(
+                start = SeekerTheme.dimensions.dp20,
+                end = SeekerTheme.dimensions.dp20,
+                top = SeekerTheme.dimensions.dp8,
+            ),
         style = MaterialTheme.typography.labelLarge,
         color = SeekerTheme.colors.primaryText,
     )
@@ -750,16 +782,22 @@ private fun SectionHeading(text: String) {
 @Composable
 private fun GlobalRulesItem(onClick: () -> Unit) {
     SeekerCard(
-        modifier = Modifier.padding(horizontal = 16.dp).testTag(ConnectionsTags.GLOBAL_RULES),
-        radius = 16.dp,
+        modifier =
+            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                .testTag(ConnectionsTags.GLOBAL_RULES),
+        radius = SeekerTheme.dimensions.dp16,
         onClick = onClick,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp14,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RoundIcon(Icons.Outlined.Public, MaterialTheme.colorScheme.primaryContainer)
-            Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            Column(Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp16)) {
                 Text(
                     stringResource(R.string.global_rules_row),
                     style = MaterialTheme.typography.bodyLarge,
@@ -782,16 +820,22 @@ private fun GlobalRulesItem(onClick: () -> Unit) {
 @Composable
 private fun ActivityItem(recorded: Int, onClick: () -> Unit) {
     SeekerCard(
-        modifier = Modifier.padding(horizontal = 16.dp).testTag(ConnectionsTags.ACTIVITY),
-        radius = 16.dp,
+        modifier =
+            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                .testTag(ConnectionsTags.ACTIVITY),
+        radius = SeekerTheme.dimensions.dp16,
         onClick = onClick,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp14,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RoundIcon(Icons.Outlined.History, MaterialTheme.colorScheme.surfaceContainerHighest)
-            Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            Column(Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp16)) {
                 Text(
                     stringResource(R.string.activity_row),
                     style = MaterialTheme.typography.bodyLarge,
@@ -822,16 +866,21 @@ private fun ConnectionItem(
     val problem = hasProblem(connection, live, support)
     SeekerCard(
         modifier =
-            Modifier.padding(horizontal = 16.dp).testTag(ConnectionsTags.item(connection.id)),
-        radius = 16.dp,
+            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                .testTag(ConnectionsTags.item(connection.id)),
+        radius = SeekerTheme.dimensions.dp16,
         onClick = onClick,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp14,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(40.dp)
+                Modifier.size(SeekerTheme.dimensions.dp40)
                     .clip(CircleShape)
                     .background(
                         if (problem) MaterialTheme.colorScheme.surfaceContainerHighest
@@ -847,7 +896,7 @@ private fun ConnectionItem(
                         else MaterialTheme.colorScheme.onTertiaryContainer,
                 )
             }
-            Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            Column(Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp16)) {
                 Text(connection.label, style = MaterialTheme.typography.bodyLarge)
                 Text(
                     statusText(connection, live, support),
@@ -879,29 +928,29 @@ private fun initials(label: String): String =
 @Composable
 private fun RoundIcon(icon: ImageVector, color: Color) {
     Box(
-        Modifier.size(40.dp).clip(CircleShape).background(color),
+        Modifier.size(SeekerTheme.dimensions.dp40).clip(CircleShape).background(color),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = null, modifier = Modifier.size(SeekerTheme.dimensions.dp22))
     }
 }
 
 @Composable
 private fun AddConnectionAction(onClick: () -> Unit) {
     Row(
-        Modifier.padding(horizontal = 16.dp)
-            .height(56.dp)
-            .clip(RoundedCornerShape(16.dp))
+        Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+            .height(SeekerTheme.dimensions.dp56)
+            .clip(RoundedCornerShape(SeekerTheme.dimensions.dp16))
             .background(MaterialTheme.colorScheme.primary)
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
                 onClick = onClick,
             )
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = SeekerTheme.dimensions.dp20)
             .testTag(ConnectionsTags.ADD),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
     ) {
         Icon(
             Icons.Outlined.Add,

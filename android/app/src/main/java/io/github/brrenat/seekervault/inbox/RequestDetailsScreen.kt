@@ -56,9 +56,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.SeekerTheme
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.Connection
@@ -69,6 +67,7 @@ import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.connections.outcomeText
 import io.github.brrenat.seekervault.connections.signMessage
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
@@ -217,7 +216,7 @@ fun RequestDetailsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.request_title)) },
                 actions = { CloseButton(onBack) },
-                expandedHeight = 56.dp,
+                expandedHeight = SeekerTheme.dimensions.dp56,
                 windowInsets = WindowInsets(0, 0, 0, 0),
                 colors =
                     TopAppBarDefaults.topAppBarColors(
@@ -238,18 +237,22 @@ fun RequestDetailsScreen(
                 color =
                     if (problem) MaterialTheme.colorScheme.error
                     else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 16.dp).testTag(InboxTags.STATUS),
+                modifier =
+                    Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.STATUS),
             )
             if (result?.delivery == Delivery.Waiting && result.lastFailure != null && !sending) {
                 Text(
                     stringResource(R.string.status_last_failure, outcomeText(result.lastFailure)),
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
                 )
             }
             if (sending || checking) {
                 LinearProgressIndicator(
-                    Modifier.fillMaxWidth().padding(16.dp).testTag(InboxTags.SENDING),
+                    Modifier.fillMaxWidth()
+                        .padding(SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.SENDING),
                     color = MaterialTheme.colorScheme.primary,
                     trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 )
@@ -261,7 +264,8 @@ fun RequestDetailsScreen(
                         "$checked ${stringResource(R.string.confirmation_trust)}",
                         style = MaterialTheme.typography.bodySmall,
                         modifier =
-                            Modifier.padding(horizontal = 16.dp).testTag(InboxTags.CONFIRMATION),
+                            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                                .testTag(InboxTags.CONFIRMATION),
                     )
                 }
             }
@@ -306,7 +310,9 @@ fun RequestDetailsScreen(
                     Text(
                         stringResource(R.string.message_hidden_characters),
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 16.dp).testTag(InboxTags.HIDDEN),
+                        modifier =
+                            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                                .testTag(InboxTags.HIDDEN),
                     )
                 }
                 Field(
@@ -324,14 +330,17 @@ fun RequestDetailsScreen(
                     stringResource(R.string.message_not_a_payment),
                     style = MaterialTheme.typography.bodySmall,
                     modifier =
-                        Modifier.padding(horizontal = 16.dp).testTag(InboxTags.NOT_A_PAYMENT),
+                        Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                            .testTag(InboxTags.NOT_A_PAYMENT),
                 )
                 if (wallet == null && result == null) {
                     Text(
                         stringResource(R.string.message_no_wallet),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                        modifier =
+                            Modifier.padding(SeekerTheme.dimensions.dp16)
+                                .testTag(InboxTags.SIGNING_PROBLEM),
                     )
                 }
                 if (signingProblem != null) {
@@ -339,7 +348,9 @@ fun RequestDetailsScreen(
                         stringResource(problemText(signingProblem)),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                        modifier =
+                            Modifier.padding(SeekerTheme.dimensions.dp16)
+                                .testTag(InboxTags.SIGNING_PROBLEM),
                     )
                 }
             }
@@ -395,8 +406,8 @@ fun RequestDetailsScreen(
                     ApproveAnyway(acknowledged, onAcknowledge)
                 }
                 Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                 ) {
                     if (transfer == null && message == null) {
                         SeekerButton(
@@ -442,7 +453,8 @@ fun RequestDetailsScreen(
                     onClick = onSendAgain,
                     enabled = !sending,
                     role = SeekerButtonRole.Neutral,
-                    modifier = Modifier.padding(16.dp).testTag(InboxTags.SEND_AGAIN),
+                    modifier =
+                        Modifier.padding(SeekerTheme.dimensions.dp16).testTag(InboxTags.SEND_AGAIN),
                 )
             }
             // Only while the chain could still settle it. It asks the server and nothing else: no
@@ -456,7 +468,8 @@ fun RequestDetailsScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                         modifier =
-                            Modifier.padding(horizontal = 16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                                .testTag(InboxTags.SIGNING_PROBLEM),
                     )
                 }
                 SeekerButton(
@@ -464,7 +477,9 @@ fun RequestDetailsScreen(
                     onClick = onCheckStatus,
                     enabled = !checking,
                     role = SeekerButtonRole.Neutral,
-                    modifier = Modifier.padding(16.dp).testTag(InboxTags.CHECK_STATUS),
+                    modifier =
+                        Modifier.padding(SeekerTheme.dimensions.dp16)
+                            .testTag(InboxTags.CHECK_STATUS),
                 )
             }
         }
@@ -500,7 +515,9 @@ private fun SimpleRequestReview(
     val waiting = result == null && !sending && canAnswer(request, result, now)
     Column(modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().height(56.dp).padding(start = 16.dp, end = 8.dp),
+            Modifier.fillMaxWidth()
+                .height(SeekerTheme.dimensions.dp56)
+                .padding(start = SeekerTheme.dimensions.dp16, end = SeekerTheme.dimensions.dp8),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
             Text(
@@ -515,11 +532,16 @@ private fun SimpleRequestReview(
         }
         Column(
             Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
         ) {
             Column(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                Modifier.fillMaxWidth()
+                    .padding(
+                        start = SeekerTheme.dimensions.dp16,
+                        end = SeekerTheme.dimensions.dp16,
+                        top = SeekerTheme.dimensions.dp4,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
             ) {
                 if (acknowledgement) {
                     Text(
@@ -546,13 +568,13 @@ private fun SimpleRequestReview(
             }
             if (!waiting) {
                 SeekerCard(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
                     color = MaterialTheme.colorScheme.surfaceContainer,
-                    radius = 16.dp,
+                    radius = SeekerTheme.dimensions.dp16,
                 ) {
                     Column(
-                        Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        Modifier.padding(SeekerTheme.dimensions.dp16),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
                     ) {
                         Text(
                             statusText(request, result, sending, now),
@@ -578,7 +600,9 @@ private fun SimpleRequestReview(
             }
             if (sending) {
                 LinearProgressIndicator(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag(InboxTags.SENDING),
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.SENDING),
                     color = MaterialTheme.colorScheme.primary,
                     trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 )
@@ -595,15 +619,15 @@ private fun SimpleRequestReview(
             if (request.agentNote.isNotEmpty()) {
                 SeekerCard(
                     Modifier.fillMaxWidth()
-                        .padding(horizontal = 16.dp)
+                        .padding(horizontal = SeekerTheme.dimensions.dp16)
                         .testTag(InboxTags.NOTE)
                         .semantics(mergeDescendants = true) {},
                     color = MaterialTheme.colorScheme.surfaceContainer,
-                    radius = 16.dp,
+                    radius = SeekerTheme.dimensions.dp16,
                 ) {
                     Column(
-                        Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        Modifier.padding(SeekerTheme.dimensions.dp16),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
                     ) {
                         Text(
                             stringResource(R.string.request_field_note_v4),
@@ -616,28 +640,32 @@ private fun SimpleRequestReview(
             }
             if (signingProblem != null) {
                 SeekerCard(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
                     color = MaterialTheme.colorScheme.errorContainer,
-                    radius = 16.dp,
+                    radius = SeekerTheme.dimensions.dp16,
                 ) {
                     Text(
                         stringResource(problemText(signingProblem)),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                        modifier =
+                            Modifier.padding(SeekerTheme.dimensions.dp16)
+                                .testTag(InboxTags.SIGNING_PROBLEM),
                     )
                 }
             } else if (!acknowledgement && wallet == null && result == null) {
                 SeekerCard(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
                     color = MaterialTheme.colorScheme.errorContainer,
-                    radius = 16.dp,
+                    radius = SeekerTheme.dimensions.dp16,
                 ) {
                     Text(
                         stringResource(R.string.message_no_wallet),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                        modifier =
+                            Modifier.padding(SeekerTheme.dimensions.dp16)
+                                .testTag(InboxTags.SIGNING_PROBLEM),
                     )
                 }
             }
@@ -648,21 +676,26 @@ private fun SimpleRequestReview(
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp),
+                modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp20),
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(SeekerTheme.dimensions.dp12))
         }
         if (canAnswer(request, result, now)) {
             Column(
                 Modifier.fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .padding(
+                        start = SeekerTheme.dimensions.dp16,
+                        end = SeekerTheme.dimensions.dp16,
+                        top = SeekerTheme.dimensions.dp12,
+                        bottom = SeekerTheme.dimensions.dp20,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
             ) {
                 if (!executable) UnsupportedServer()
                 if (warns && executable) ApproveAnyway(acknowledged, onAcknowledge)
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                 ) {
                     SeekerButton(
                         text =
@@ -707,7 +740,12 @@ private fun SimpleRequestReview(
                 role = SeekerButtonRole.Neutral,
                 modifier =
                     Modifier.fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
+                        .padding(
+                            start = SeekerTheme.dimensions.dp16,
+                            end = SeekerTheme.dimensions.dp16,
+                            top = SeekerTheme.dimensions.dp12,
+                            bottom = SeekerTheme.dimensions.dp20,
+                        )
                         .testTag(InboxTags.SEND_AGAIN),
             )
         }
@@ -725,9 +763,9 @@ private fun SimpleRequestFacts(
 ) {
     val acknowledgement = request.action.kindCase == Action.KindCase.ACK
     SeekerCard(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
         color = MaterialTheme.colorScheme.surfaceContainer,
-        radius = 16.dp,
+        radius = SeekerTheme.dimensions.dp16,
     ) {
         Text(
             stringResource(
@@ -737,7 +775,7 @@ private fun SimpleRequestFacts(
             style = MaterialTheme.typography.bodyMedium,
             modifier =
                 Modifier.fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(SeekerTheme.dimensions.dp16)
                     .then(
                         if (acknowledgement) Modifier else Modifier.testTag(InboxTags.NOT_A_PAYMENT)
                     ),
@@ -783,7 +821,9 @@ private fun SimpleRequestFacts(
             stringResource(R.string.message_hidden_characters),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 20.dp).testTag(InboxTags.HIDDEN),
+            modifier =
+                Modifier.padding(horizontal = SeekerTheme.dimensions.dp20)
+                    .testTag(InboxTags.HIDDEN),
         )
     }
 }
@@ -798,15 +838,19 @@ private fun RequestFact(
 ) {
     SeekerCard(
         Modifier.fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = SeekerTheme.dimensions.dp16)
             .testTag(InboxTags.field(name))
             .semantics(mergeDescendants = true) {},
         color = MaterialTheme.colorScheme.surfaceContainer,
-        radius = 16.dp,
+        radius = SeekerTheme.dimensions.dp16,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp13,
+                ),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp16),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
             Text(
@@ -941,18 +985,23 @@ private fun TransferStatusBlock(
             else -> MaterialTheme.colorScheme.onSurface
         }
     SeekerCard(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
         color = container,
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
             ) {
-                Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = ink,
+                    modifier = Modifier.size(SeekerTheme.dimensions.dp22),
+                )
                 Text(
                     title,
                     style = MaterialTheme.typography.titleMedium,
@@ -994,7 +1043,7 @@ private fun TransactionId(id: String, ink: androidx.compose.ui.graphics.Color) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     var copied by remember { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp3)) {
         Text(
             stringResource(R.string.transfer_transaction_id),
             style = MaterialTheme.typography.labelSmall,
@@ -1003,14 +1052,14 @@ private fun TransactionId(id: String, ink: androidx.compose.ui.graphics.Color) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
         ) {
             Identifier(
                 shortIdentifier(id),
                 modifier = Modifier.weight(1f).testTag(InboxTags.TRANSACTION_ID),
             )
             Box(
-                Modifier.size(40.dp)
+                Modifier.size(SeekerTheme.dimensions.dp40)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceContainer)
                     .clickable(
@@ -1039,7 +1088,7 @@ private fun TransactionId(id: String, ink: androidx.compose.ui.graphics.Color) {
                             else R.string.transfer_copy_transaction_id
                         ),
                     tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(SeekerTheme.dimensions.dp20),
                 )
             }
         }
@@ -1056,12 +1105,12 @@ private fun TransactionSummary(
     prepared: PreparedTransaction?,
 ) {
     SeekerCard(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
         ) {
             Text(
                 stringResource(
@@ -1073,7 +1122,7 @@ private fun TransactionSummary(
             )
             Column(
                 Modifier.testTag(InboxTags.field("sends")).semantics(mergeDescendants = true) {},
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp2),
             ) {
                 Text(
                     stringResource(R.string.request_field_sends),
@@ -1110,7 +1159,7 @@ private fun SummaryRow(label: String, value: String, name: String, mono: Boolean
         Modifier.fillMaxWidth().testTag(InboxTags.field(name)).semantics(
             mergeDescendants = true
         ) {},
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp16),
         verticalAlignment = Alignment.Top,
     ) {
         Text(
@@ -1145,21 +1194,24 @@ private fun DeviceVerification(verdict: Verdict) {
         if (verified) MaterialTheme.colorScheme.onSurface
         else MaterialTheme.colorScheme.onErrorContainer
     SeekerCard(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
         color = container,
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
             verticalAlignment = Alignment.Top,
         ) {
             Icon(
                 if (verified) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
                 contentDescription = null,
                 tint = if (verified) SeekerTheme.colors.primaryText else ink,
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(SeekerTheme.dimensions.dp22),
             )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
+            ) {
                 Text(
                     stringResource(
                         when (verdict) {
@@ -1227,16 +1279,16 @@ private fun programInfo(program: String): ProgramInfo =
 private fun ProgramSummary(programs: List<String>) {
     Column(
         Modifier.fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = SeekerTheme.dimensions.dp16)
             .testTag(InboxTags.field("programs"))
             .semantics(mergeDescendants = true) {},
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
     ) {
         Text(
             pluralStringResource(R.plurals.transfer_programs_used, programs.size),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
+            modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp4),
         )
         programs.forEach { program ->
             val info = programInfo(program)
@@ -1245,8 +1297,8 @@ private fun ProgramSummary(programs: List<String>) {
                 color = MaterialTheme.colorScheme.surfaceContainer,
             ) {
                 Column(
-                    Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp3),
                 ) {
                     Text(stringResource(info.name), style = MaterialTheme.typography.titleMedium)
                     Text(
@@ -1274,16 +1326,16 @@ private fun TransferTechnicalDetails(
     SeekerCard(
         modifier =
             Modifier.fillMaxWidth()
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = SeekerTheme.dimensions.dp16)
                 .testTag(InboxTags.TECHNICAL_DETAILS),
         color = MaterialTheme.colorScheme.surfaceContainer,
         onClick = { expanded = !expanded },
     ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+        Column(Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16)) {
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
             ) {
                 Text(
                     stringResource(R.string.transfer_technical_details),
@@ -1303,9 +1355,9 @@ private fun TransferTechnicalDetails(
             if (expanded) {
                 Column(
                     Modifier.fillMaxWidth()
-                        .padding(top = 14.dp)
+                        .padding(top = SeekerTheme.dimensions.dp14)
                         .testTag(InboxTags.TECHNICAL_DETAILS_CONTENT),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
                 ) {
                     TechnicalValue(
                         stringResource(R.string.transfer_technical_sender),
@@ -1415,7 +1467,7 @@ private fun TransferTechnicalDetails(
 
 @Composable
 private fun TechnicalValue(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp3)) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
@@ -1457,7 +1509,9 @@ private fun TransferRequestReview(
     val canAnswer = canAnswer(request, result, now)
     Column(modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().height(56.dp).padding(start = 16.dp, end = 8.dp),
+            Modifier.fillMaxWidth()
+                .height(SeekerTheme.dimensions.dp56)
+                .padding(start = SeekerTheme.dimensions.dp16, end = SeekerTheme.dimensions.dp8),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
             Text(
@@ -1469,7 +1523,7 @@ private fun TransferRequestReview(
         }
         Column(
             Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
         ) {
             val amount = transferPrimaryAmount(facts, transfer)
             TransferStatusBlock(
@@ -1483,7 +1537,9 @@ private fun TransferRequestReview(
             )
             if (sending || checking) {
                 LinearProgressIndicator(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag(InboxTags.SENDING),
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.SENDING),
                     color = MaterialTheme.colorScheme.primary,
                     trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 )
@@ -1508,7 +1564,8 @@ private fun TransferRequestReview(
                     Preparation.Running -> {
                         if (result == null) {
                             SeekerCard(
-                                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                Modifier.fillMaxWidth()
+                                    .padding(horizontal = SeekerTheme.dimensions.dp16),
                                 color = MaterialTheme.colorScheme.surfaceContainer,
                             ) {
                                 Text(
@@ -1516,7 +1573,7 @@ private fun TransferRequestReview(
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier =
                                         Modifier.fillMaxWidth()
-                                            .padding(16.dp)
+                                            .padding(SeekerTheme.dimensions.dp16)
                                             .testTag(InboxTags.TRANSFER_CHECKING),
                                 )
                             }
@@ -1526,7 +1583,8 @@ private fun TransferRequestReview(
                     }
                     is Preparation.Failed -> {
                         SeekerCard(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            Modifier.fillMaxWidth()
+                                .padding(horizontal = SeekerTheme.dimensions.dp16),
                             color = MaterialTheme.colorScheme.errorContainer,
                         ) {
                             Text(
@@ -1538,7 +1596,7 @@ private fun TransferRequestReview(
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                 modifier =
                                     Modifier.fillMaxWidth()
-                                        .padding(16.dp)
+                                        .padding(SeekerTheme.dimensions.dp16)
                                         .testTag(InboxTags.TRANSFER_FAILED),
                             )
                         }
@@ -1548,7 +1606,7 @@ private fun TransferRequestReview(
                             role = SeekerButtonRole.Neutral,
                             modifier =
                                 Modifier.fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
+                                    .padding(horizontal = SeekerTheme.dimensions.dp16)
                                     .testTag(InboxTags.TRANSFER_AGAIN),
                         )
                     }
@@ -1558,14 +1616,15 @@ private fun TransferRequestReview(
                         if (inspection.findings.isNotEmpty()) {
                             SeekerCard(
                                 Modifier.fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
+                                    .padding(horizontal = SeekerTheme.dimensions.dp16)
                                     .testTag(InboxTags.TRANSFER_FINDINGS)
                                     .semantics(mergeDescendants = true) {},
                                 color = MaterialTheme.colorScheme.errorContainer,
                             ) {
                                 Column(
-                                    Modifier.fillMaxWidth().padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+                                    verticalArrangement =
+                                        Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                                 ) {
                                     inspection.findings.forEach {
                                         Text(
@@ -1597,12 +1656,12 @@ private fun TransferRequestReview(
                     role = SeekerButtonRole.Neutral,
                     modifier =
                         Modifier.fillMaxWidth()
-                            .padding(horizontal = 16.dp)
+                            .padding(horizontal = SeekerTheme.dimensions.dp16)
                             .testTag(InboxTags.TRANSFER_AGAIN),
                 )
                 if (!ready.inspection.approvable && result == null) {
                     SeekerCard(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
                         color = MaterialTheme.colorScheme.errorContainer,
                     ) {
                         Text(
@@ -1611,7 +1670,7 @@ private fun TransferRequestReview(
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier =
                                 Modifier.fillMaxWidth()
-                                    .padding(16.dp)
+                                    .padding(SeekerTheme.dimensions.dp16)
                                     .testTag(InboxTags.TRANSFER_NOT_APPROVABLE),
                         )
                     }
@@ -1620,14 +1679,14 @@ private fun TransferRequestReview(
             if (request.agentNote.isNotEmpty()) {
                 SeekerCard(
                     Modifier.fillMaxWidth()
-                        .padding(horizontal = 16.dp)
+                        .padding(horizontal = SeekerTheme.dimensions.dp16)
                         .testTag(InboxTags.NOTE)
                         .semantics(mergeDescendants = true) {},
                     color = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
                     Column(
-                        Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        Modifier.padding(SeekerTheme.dimensions.dp16),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
                     ) {
                         Text(
                             stringResource(R.string.request_field_note_v4),
@@ -1640,7 +1699,7 @@ private fun TransferRequestReview(
             }
             if (signingProblem != null) {
                 SeekerCard(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
                     color = MaterialTheme.colorScheme.errorContainer,
                 ) {
                     Text(
@@ -1649,13 +1708,13 @@ private fun TransferRequestReview(
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         modifier =
                             Modifier.fillMaxWidth()
-                                .padding(16.dp)
+                                .padding(SeekerTheme.dimensions.dp16)
                                 .testTag(InboxTags.SIGNING_PROBLEM),
                     )
                 }
             } else if (ready?.inspection?.approvable == true && wallet == null && result == null) {
                 SeekerCard(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
                     color = MaterialTheme.colorScheme.errorContainer,
                 ) {
                     Text(
@@ -1664,7 +1723,7 @@ private fun TransferRequestReview(
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         modifier =
                             Modifier.fillMaxWidth()
-                                .padding(16.dp)
+                                .padding(SeekerTheme.dimensions.dp16)
                                 .testTag(InboxTags.SIGNING_PROBLEM),
                     )
                 }
@@ -1676,15 +1735,20 @@ private fun TransferRequestReview(
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp),
+                modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp20),
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(SeekerTheme.dimensions.dp12))
         }
         if (canAnswer) {
             Column(
                 Modifier.fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .padding(
+                        start = SeekerTheme.dimensions.dp16,
+                        end = SeekerTheme.dimensions.dp16,
+                        top = SeekerTheme.dimensions.dp12,
+                        bottom = SeekerTheme.dimensions.dp20,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
             ) {
                 // A preparation read before the server's manifest changed under it is not a
                 // way past the gate either: both have to hold for an Approve button to exist.
@@ -1692,7 +1756,7 @@ private fun TransferRequestReview(
                 if (warns && approvable) ApproveAnyway(acknowledged, onAcknowledge)
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
                 ) {
                     if (approvable) {
                         SeekerButton(
@@ -1725,7 +1789,12 @@ private fun TransferRequestReview(
                 role = SeekerButtonRole.Neutral,
                 modifier =
                     Modifier.fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
+                        .padding(
+                            start = SeekerTheme.dimensions.dp16,
+                            end = SeekerTheme.dimensions.dp16,
+                            top = SeekerTheme.dimensions.dp12,
+                            bottom = SeekerTheme.dimensions.dp20,
+                        )
                         .testTag(InboxTags.SEND_AGAIN),
             )
         } else if (result?.awaitingChain == true) {
@@ -1736,7 +1805,12 @@ private fun TransferRequestReview(
                 role = SeekerButtonRole.Neutral,
                 modifier =
                     Modifier.fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
+                        .padding(
+                            start = SeekerTheme.dimensions.dp16,
+                            end = SeekerTheme.dimensions.dp16,
+                            top = SeekerTheme.dimensions.dp12,
+                            bottom = SeekerTheme.dimensions.dp20,
+                        )
                         .testTag(InboxTags.CHECK_STATUS),
             )
         }
@@ -1769,7 +1843,8 @@ private fun UnsupportedServer() {
         stringResource(R.string.server_unsupported),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(16.dp).testTag(InboxTags.SERVER_UNSUPPORTED),
+        modifier =
+            Modifier.padding(SeekerTheme.dimensions.dp16).testTag(InboxTags.SERVER_UNSUPPORTED),
     )
 }
 
@@ -1802,20 +1877,26 @@ private fun TransferReview(
             Text(
                 stringResource(R.string.transfer_checking),
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_CHECKING),
+                modifier =
+                    Modifier.padding(SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.TRANSFER_CHECKING),
             )
         is Preparation.Failed -> {
             Text(
                 stringResource(R.string.transfer_failed, outcomeText(preparation.outcome)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_FAILED),
+                modifier =
+                    Modifier.padding(SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.TRANSFER_FAILED),
             )
             SeekerButton(
                 text = stringResource(R.string.transfer_prepare_again),
                 onClick = onPrepareAgain,
                 role = SeekerButtonRole.Neutral,
-                modifier = Modifier.padding(horizontal = 16.dp).testTag(InboxTags.TRANSFER_AGAIN),
+                modifier =
+                    Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.TRANSFER_AGAIN),
             )
         }
         is Preparation.Ready -> {
@@ -1826,7 +1907,9 @@ private fun TransferReview(
                 color =
                     if (inspection.verdict == Verdict.Verified) MaterialTheme.colorScheme.onSurface
                     else MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_VERDICT),
+                modifier =
+                    Modifier.padding(SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.TRANSFER_VERDICT),
             )
             inspection.facts?.let { facts ->
                 Field(R.string.request_field_sends, amountText(facts), "sends")
@@ -1879,11 +1962,15 @@ private fun TransferReview(
                     stringResource(R.string.transfer_derived_here),
                     style = MaterialTheme.typography.bodySmall,
                     modifier =
-                        Modifier.padding(horizontal = 16.dp).testTag(InboxTags.TRANSFER_DERIVED),
+                        Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                            .testTag(InboxTags.TRANSFER_DERIVED),
                 )
             }
             if (inspection.findings.isNotEmpty()) {
-                Column(Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_FINDINGS)) {
+                Column(
+                    Modifier.padding(SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.TRANSFER_FINDINGS)
+                ) {
                     inspection.findings.forEach { finding ->
                         Text(
                             stringResource(findingText(finding)),
@@ -1918,7 +2005,9 @@ private fun TransferReview(
                 onClick = onPrepareAgain,
                 enabled = !sending,
                 role = SeekerButtonRole.Neutral,
-                modifier = Modifier.padding(horizontal = 16.dp).testTag(InboxTags.TRANSFER_AGAIN),
+                modifier =
+                    Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.TRANSFER_AGAIN),
             )
             if (!answered) {
                 if (inspection.approvable) {
@@ -1935,7 +2024,9 @@ private fun TransferReview(
                             ),
                         onClick = onApprove,
                         enabled = !sending && wallet != null && (!warns || acknowledged),
-                        modifier = Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_APPROVE),
+                        modifier =
+                            Modifier.padding(SeekerTheme.dimensions.dp16)
+                                .testTag(InboxTags.TRANSFER_APPROVE),
                     )
                     if (wallet == null) {
                         Text(
@@ -1943,7 +2034,7 @@ private fun TransferReview(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error,
                             modifier =
-                                Modifier.padding(horizontal = 16.dp)
+                                Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
                                     .testTag(InboxTags.SIGNING_PROBLEM),
                         )
                     }
@@ -1956,7 +2047,8 @@ private fun TransferReview(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                         modifier =
-                            Modifier.padding(16.dp).testTag(InboxTags.TRANSFER_NOT_APPROVABLE),
+                            Modifier.padding(SeekerTheme.dimensions.dp16)
+                                .testTag(InboxTags.TRANSFER_NOT_APPROVABLE),
                     )
                 }
             }
@@ -1965,7 +2057,9 @@ private fun TransferReview(
                     stringResource(problemText(signingProblem)),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(16.dp).testTag(InboxTags.SIGNING_PROBLEM),
+                    modifier =
+                        Modifier.padding(SeekerTheme.dimensions.dp16)
+                            .testTag(InboxTags.SIGNING_PROBLEM),
                 )
             }
         }
@@ -1984,7 +2078,7 @@ fun RequestGoneScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             TopAppBar(
                 title = { Text(stringResource(R.string.request_title)) },
                 actions = { CloseButton(onBack) },
-                expandedHeight = 56.dp,
+                expandedHeight = SeekerTheme.dimensions.dp56,
                 windowInsets = WindowInsets(0, 0, 0, 0),
                 colors =
                     TopAppBarDefaults.topAppBarColors(
@@ -1996,7 +2090,10 @@ fun RequestGoneScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     ) { innerPadding ->
         Text(
             stringResource(R.string.status_gone),
-            modifier = Modifier.padding(innerPadding).padding(16.dp).testTag(InboxTags.GONE),
+            modifier =
+                Modifier.padding(innerPadding)
+                    .padding(SeekerTheme.dimensions.dp16)
+                    .testTag(InboxTags.GONE),
         )
     }
 }
@@ -2031,7 +2128,7 @@ fun NotificationRequestStateScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.request_title)) },
                 actions = { CloseButton(onBack) },
-                expandedHeight = 56.dp,
+                expandedHeight = SeekerTheme.dimensions.dp56,
                 windowInsets = WindowInsets(0, 0, 0, 0),
                 colors =
                     TopAppBarDefaults.topAppBarColors(
@@ -2042,8 +2139,8 @@ fun NotificationRequestStateScreen(
         },
     ) { innerPadding ->
         Column(
-            Modifier.padding(innerPadding).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            Modifier.padding(innerPadding).padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp16),
         ) {
             if (status == NotificationOpenStatus.Loading) {
                 LinearProgressIndicator(
@@ -2072,17 +2169,20 @@ private fun Field(@StringRes label: Int, value: String, name: String) {
     SeekerCard(
         modifier =
             Modifier.fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 5.dp)
+                .padding(
+                    horizontal = SeekerTheme.dimensions.dp16,
+                    vertical = SeekerTheme.dimensions.dp5,
+                )
                 .testTag(InboxTags.field(name))
                 .semantics(mergeDescendants = true) {}
     ) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.padding(SeekerTheme.dimensions.dp14)) {
             Text(
                 stringResource(label),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Identifier(value, Modifier.padding(top = 3.dp), maxLines = 6)
+            Identifier(value, Modifier.padding(top = SeekerTheme.dimensions.dp3), maxLines = 6)
         }
     }
 }

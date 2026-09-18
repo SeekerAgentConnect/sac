@@ -22,8 +22,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReferenceProblem
@@ -319,7 +319,7 @@ fun MessageEffect(message: ConnectionMessage?, host: SnackbarHostState, onShown:
 fun BackButton(onBack: () -> Unit) {
     Box(
         modifier =
-            Modifier.size(48.dp)
+            Modifier.size(SeekerTheme.dimensions.dp48)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surface)
                 .clickable(
@@ -345,7 +345,7 @@ fun CloseButton(
 ) {
     Box(
         modifier =
-            Modifier.size(48.dp)
+            Modifier.size(SeekerTheme.dimensions.dp48)
                 .clip(CircleShape)
                 .background(containerColor)
                 .clickable(

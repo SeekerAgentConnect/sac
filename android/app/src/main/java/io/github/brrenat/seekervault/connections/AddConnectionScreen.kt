@@ -41,10 +41,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.FeedReferenceProblem
 import io.github.brrenat.seekervault.servers.manifest
@@ -178,8 +178,10 @@ fun AddConnectionScreen(
     ) { innerPadding ->
         Column(
             modifier =
-                Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                Modifier.padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
         ) {
             when (adding) {
                 is AddConnectionState.ConfirmPairing ->
@@ -273,7 +275,7 @@ private fun EnterCode(
                 stringResource(R.string.camera_denied),
                 modifier = Modifier.testTag(ConnectionsTags.CAMERA_DENIED),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
                 SeekerButton(
                     text = stringResource(R.string.scan_qr),
                     onClick = onScan,
@@ -309,7 +311,7 @@ private fun EnterCode(
             modifier = Modifier.testTag(ConnectionsTags.CODE_PROBLEM),
         )
     }
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(SeekerTheme.dimensions.dp12))
     TextField(
         value = codeDraft,
         onValueChange = onCodeDraftChange,
@@ -360,7 +362,7 @@ private fun ConfirmFeed(
             modifier = Modifier.testTag(ConnectionsTags.FEED_FAILURE),
         )
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
         val retry =
             failure is FeedAddFailure.Check &&
                 (failure.outcome == CheckOutcome.Unreachable ||
@@ -409,7 +411,7 @@ private fun FeedResult(
         )
     )
     FeedSummary(connection)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
         SeekerButton(
             text = stringResource(R.string.feed_open),
             onClick = { onOpen(connection) },
@@ -496,7 +498,7 @@ private fun ConfirmServer(
             modifier = Modifier.testTag(ConnectionsTags.PAIRING_FAILURE),
         )
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
         val retry = failure == PairingFailure.Unreachable || failure == PairingFailure.Other
         if (failure == null || retry) {
             SeekerButton(
