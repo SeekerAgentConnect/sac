@@ -305,6 +305,26 @@ class ForegroundFeedManagerTest {
     // ------------------------------------------------------- what the owner does
 
     @Test
+    fun aFeedAddedWhileForegroundOpensItsStreamAndReadsItsFirstSnapshot() = runTest {
+        feeds.value = emptyList()
+        val listener = manager(backgroundScope)
+        listener.onForeground()
+        runCurrent()
+
+        // This is the repository flow changing after onboarding. No app restart or foreground
+        // transition gives the manager another nudge.
+        feeds.value = listOf(feed(SERVER_A))
+        advanceTimeBy(2_000)
+        runCurrent()
+        stream.open(recovered = false)
+        runCurrent()
+
+        assertEquals(listOf(FEED_A to 0L), host.read)
+        assertEquals(listOf(GATEWAY to listOf(channelFor(SERVER_A))), tickets.asked)
+        assertEquals(FeedListenerState.Live(1), listener.state.value.gateways[GATEWAY])
+    }
+
+    @Test
     fun addingAFeedReopensTheStreamOnceWithBothChannels() = runTest {
         manager(backgroundScope).onForeground()
         runCurrent()

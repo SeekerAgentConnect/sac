@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.FeedReferenceProblem
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
@@ -62,10 +63,14 @@ object ConnectionsTags {
     const val NO_CAMERA = "noCamera"
     const val OPEN_SETTINGS = "openSettings"
     const val CONFIRM_SERVER = "confirmServer"
+    const val CONFIRM_FEED = "confirmFeed"
     const val CONFIRM_NOTE = "confirmNote"
     const val PAIR = "pair"
     const val CANCEL_PAIRING = "cancelPairing"
     const val PAIRING_FAILURE = "pairingFailure"
+    const val ADD_FEED = "addFeed"
+    const val FEED_FAILURE = "feedFailure"
+    const val OPEN_FEED = "openFeed"
     const val INBOX = "inbox"
     const val WALLET = "walletRow"
     const val WALLET_COPY = "walletCopy"
@@ -222,6 +227,41 @@ fun problemText(problem: PairingCodeProblem): String =
         }
     )
 
+/** Feed references have their own vocabulary: a public subscription is never called a pairing. */
+@Composable
+fun feedReferenceProblemText(problem: FeedReferenceProblem): String =
+    stringResource(
+        when (problem) {
+            FeedReferenceProblem.NotAReference -> R.string.feed_reference_not_a_reference
+            FeedReferenceProblem.NotSeekerVault -> R.string.feed_reference_not_seeker_vault
+            FeedReferenceProblem.OtherVersion -> R.string.feed_reference_other_version
+            FeedReferenceProblem.BadGatewayUrl -> R.string.feed_reference_bad_gateway
+            FeedReferenceProblem.InsecureGatewayUrl -> R.string.feed_reference_insecure_gateway
+            FeedReferenceProblem.BadServerId -> R.string.feed_reference_bad_server_id
+        }
+    )
+
+@Composable
+fun feedFailureText(failure: FeedAddFailure, gatewayUrl: String): String =
+    when (failure) {
+        is FeedAddFailure.Refused ->
+            stringResource(R.string.feed_failed_manifest, failure.problem.code)
+        is FeedAddFailure.Check ->
+            stringResource(
+                when (failure.outcome) {
+                    CheckOutcome.CertificateRejected -> R.string.feed_failed_certificate
+                    CheckOutcome.CleartextBlocked -> R.string.feed_failed_cleartext
+                    CheckOutcome.Unreachable -> R.string.feed_failed_unreachable
+                    CheckOutcome.Failed -> R.string.feed_failed_response
+                    CheckOutcome.Ok -> R.string.feed_failed_other
+                },
+                *if (failure.outcome == CheckOutcome.Unreachable) arrayOf(gatewayUrl)
+                else emptyArray(),
+            )
+        FeedAddFailure.NoGateway -> stringResource(R.string.feed_failed_no_gateway)
+        FeedAddFailure.Storage -> stringResource(R.string.feed_failed_storage)
+    }
+
 @Composable
 fun failureText(failure: PairingFailure, serverUrl: String): String =
     when (failure) {
@@ -248,6 +288,7 @@ fun labelProblemText(problem: LabelProblem): String =
 fun messageText(message: ConnectionMessage): String =
     when (message) {
         is ConnectionMessage.Paired -> stringResource(R.string.message_paired, message.label)
+        is ConnectionMessage.FeedAdded -> stringResource(R.string.message_feed_added, message.label)
         is ConnectionMessage.Disconnected ->
             stringResource(R.string.message_disconnected, message.label)
         is ConnectionMessage.Removed -> stringResource(R.string.message_removed, message.label)

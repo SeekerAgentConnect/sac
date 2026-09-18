@@ -23,6 +23,7 @@ import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.PluginRequirement
 import io.github.brrenat.seekervault.servers.SERVER_PROTOCOL
 import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
@@ -87,6 +88,7 @@ class ConnectionDetailsScreenTest {
                 mode = ConnectionMode.GatewayFeed,
                 reference =
                     ServerReference.Feed("https://gateway.example.com", channelFor(HOME.serverId)),
+                required = listOf(PluginRequirement(PluginId("jupiter.prediction"), 1..1)),
                 environments = setOf(PluginEnvironment.Production),
             )
         val feed =
@@ -102,6 +104,9 @@ class ConnectionDetailsScreenTest {
         compose
             .onNodeWithTag(ConnectionsTags.STATUS)
             .assertTextEquals(context.getString(R.string.connection_status_feed))
+        compose
+            .onNodeWithTag(ConnectionsTags.field("plugins"))
+            .assertTextContains("jupiter.prediction")
     }
 
     /** A feed of HOME's, whose publisher serves [served] (SEE-97). */

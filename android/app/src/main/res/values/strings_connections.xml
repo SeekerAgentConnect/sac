@@ -13,7 +13,7 @@
     <string name="carousel_hint">Swipe to browse, tap to review. The carousel only browses — nothing is answered here.</string>
     <string name="requests_none_note">Requests arrive when the app opens, when you open a connection, or when you pull to refresh.</string>
     <string name="rules_heading">Rules</string>
-    <string name="paired_servers_heading">Paired servers</string>
+    <string name="paired_servers_heading">Connections</string>
     <string name="copy_wallet_address">Copy address</string>
     <string name="request_funds_move">Funds move</string>
     <string name="request_no_funds_move">No funds move</string>
@@ -32,7 +32,7 @@
     </plurals>
     <string name="live_test">Live test</string>
     <string name="add_connection">Add connection</string>
-    <string name="connections_empty">No connections yet. To add one, run pnpm pair on the computer that runs the sidecar, then tap Add connection.</string>
+    <string name="connections_empty">No connections yet. Add a pairing code from your sidecar or a public feed reference from a publisher.</string>
     <string name="global_rules_row">Global rules</string>
     <string name="global_rules_row_note">Defaults used by connections unless their Rules screen overrides a section.</string>
     <string name="back">Back</string>
@@ -92,20 +92,21 @@
     <string name="remove">Remove</string>
 
     <string name="message_paired">Paired with %1$s.</string>
+    <string name="message_feed_added">Added %1$s.</string>
     <string name="message_disconnected">Disconnected from %1$s.</string>
     <string name="message_removed">Removed %1$s from this phone.</string>
     <string name="message_renamed">Renamed to %1$s.</string>
 
     <string name="add_title">Add connection</string>
-    <string name="add_instructions">On the computer that runs the sidecar, run pnpm pair. Then scan the QR code it shows, or enter the code printed under it.</string>
+    <string name="add_instructions">Scan or enter a pairing code from a sidecar you run, or a public seekervault://feed reference from a publisher you want to follow.</string>
     <string name="scan_qr">Scan QR code</string>
     <string name="scan_hint">Point the camera at the QR code.</string>
     <string name="stop_scanning">Stop scanning</string>
     <string name="camera_denied">Camera access is off, so the app can\'t scan. Enter the code instead, or allow camera access in the app\'s settings.</string>
     <string name="open_settings">Open settings</string>
     <string name="no_camera">This phone has no camera the app can use. Enter the code instead.</string>
-    <string name="code_label">Pairing code</string>
-    <string name="code_placeholder">seekervault://pair?…</string>
+    <string name="code_label">Pairing code or feed reference</string>
+    <string name="code_placeholder">seekervault://pair?… or seekervault://feed?…</string>
     <string name="continue_pairing">Continue</string>
 
     <string name="code_not_a_code">That isn\'t a pairing code. Enter the whole line that starts with seekervault://pair.</string>
@@ -115,6 +116,13 @@
     <string name="code_insecure_server_url">The code\'s server URL doesn\'t use HTTPS. Only a debug build accepts plain HTTP, and only to 127.0.0.1 over adb reverse.</string>
     <string name="code_bad_server_id">The server ID in the code isn\'t valid.</string>
     <string name="code_bad_token">The pairing token in the code is incomplete or damaged. Copy the whole line again.</string>
+
+    <string name="feed_reference_not_a_reference">That isn\'t a feed reference. Enter the whole line that starts with seekervault://feed.</string>
+    <string name="feed_reference_not_seeker_vault">That isn\'t a Seeker Agent Connect feed reference. Feed references start with seekervault://feed.</string>
+    <string name="feed_reference_other_version">This feed reference is for another version of Seeker Agent Connect. Update the app or ask the publisher for a current reference.</string>
+    <string name="feed_reference_bad_gateway">The gateway address in the feed reference isn\'t valid.</string>
+    <string name="feed_reference_insecure_gateway">The feed\'s gateway doesn\'t use HTTPS. Only a debug build accepts plain HTTP, and only to 127.0.0.1 over adb reverse.</string>
+    <string name="feed_reference_bad_server_id">The publisher\'s server ID in the feed reference isn\'t valid.</string>
 
     <string name="confirm_title">Pair with this server?</string>
     <string name="confirm_trust">Pair only with a server you run. Whoever controls it can send this phone requests to review.</string>
@@ -133,6 +141,28 @@
     <string name="pair_failed_response">The server\'s answer wasn\'t valid, so nothing was saved.</string>
     <string name="pair_failed_storage">This phone couldn\'t store the credential securely, so nothing was saved.</string>
     <string name="pair_failed_other">Pairing failed.</string>
+
+    <string name="field_gateway">Gateway</string>
+    <string name="feed_confirm_title">Add this public feed?</string>
+    <string name="feed_confirm_public">This is a public broadcast feed. The phone creates no credential, never contacts the publisher, and reads its manifest and proposals through the gateway shown above.</string>
+    <string name="feed_add">Add feed</string>
+    <string name="feed_adding">Adding…</string>
+    <string name="feed_added_title">Feed added</string>
+    <string name="feed_added_text">%1$s is ready. Open it to review its environment and required client plugins.</string>
+    <string name="feed_already_title">Feed already added</string>
+    <string name="feed_already_text">This phone already follows %1$s. Nothing new was stored.</string>
+    <string name="feed_open">Open feed</string>
+    <string name="feed_display_name">Display name</string>
+    <string name="feed_required_plugins">Required client plugins</string>
+    <string name="feed_required_plugins_none">None</string>
+    <string name="feed_failed_manifest">The gateway returned a publisher description this phone refused (%1$s), so nothing was saved.</string>
+    <string name="feed_failed_certificate">The gateway\'s certificate isn\'t trusted, or it\'s for another host name. Nothing was saved.</string>
+    <string name="feed_failed_cleartext">This build allows a plain-HTTP gateway only at 127.0.0.1 over adb reverse. Nothing was saved.</string>
+    <string name="feed_failed_unreachable">Couldn\'t reach %1$s. Check the connection and try again.</string>
+    <string name="feed_failed_response">The gateway\'s answer wasn\'t valid, so nothing was saved.</string>
+    <string name="feed_failed_other">The feed could not be added, so nothing was saved.</string>
+    <string name="feed_failed_no_gateway">This app build has no broadcast gateway client, so it cannot add feeds.</string>
+    <string name="feed_failed_storage">This phone couldn\'t store the feed, so nothing was saved.</string>
     <!-- What kind of server a connection is, and whether this build supports it (SEE-88). -->
     <string name="connection_status_feed">A shared feed. This phone reads it through the gateway and holds no credential for it.</string>
     <string name="connection_status_unsupported_plugin">This app doesn\'t have a client plugin this server needs, so nothing from it can be approved.</string>

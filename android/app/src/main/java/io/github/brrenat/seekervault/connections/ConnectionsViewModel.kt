@@ -4,6 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.servers.FeedReference
+import io.github.brrenat.seekervault.servers.FeedReferenceProblem
+import io.github.brrenat.seekervault.servers.FeedReferenceResult
+import io.github.brrenat.seekervault.servers.FeedReferences
+import io.github.brrenat.seekervault.servers.ManifestProblem
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.serverSupport
 import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
@@ -22,7 +27,7 @@ data class ConnectionsUiState(
     val refreshing: Set<String> = emptySet(),
     /** The code being typed. It stays in memory only, never in saved instance state. */
     val codeDraft: String = "",
-    val pairing: PairingState = PairingState.Idle,
+    val adding: AddConnectionState = AddConnectionState.Idle,
     val disconnect: DisconnectState? = null,
     val message: ConnectionMessage? = null,
     /** Current transport liveness; last successful sync remains on each [Connection]. */
@@ -44,20 +49,49 @@ data class Confirmation(
     val sameAddress: List<Connection>,
 )
 
-sealed interface PairingState {
-    data object Idle : PairingState
+sealed interface AddConnectionState {
+    data object Idle : AddConnectionState
 
     /** The entered or scanned text can't be used to pair. */
-    data class Invalid(val problem: PairingCodeProblem) : PairingState
+    data class PairingInvalid(val problem: PairingCodeProblem) : AddConnectionState
+
+    /** The entered or scanned text is a feed reference, but this app can't use it. */
+    data class FeedInvalid(val problem: FeedReferenceProblem) : AddConnectionState
 
     /** Waiting for the owner to confirm the server. */
-    data class Confirm(val confirmation: Confirmation) : PairingState
+    data class ConfirmPairing(val confirmation: Confirmation) : AddConnectionState
 
-    data class Pairing(val confirmation: Confirmation) : PairingState
+    data class Pairing(val confirmation: Confirmation) : AddConnectionState
 
-    data class Failed(val confirmation: Confirmation, val failure: PairingFailure) : PairingState
+    data class PairingFailed(val confirmation: Confirmation, val failure: PairingFailure) :
+        AddConnectionState
 
-    data class Paired(val connection: Connection) : PairingState
+    data class Paired(val connection: Connection) : AddConnectionState
+
+    /** Waiting for the owner to confirm a public feed. No network call or store write happened. */
+    data class ConfirmFeed(val reference: FeedReference) : AddConnectionState
+
+    data class AddingFeed(val reference: FeedReference) : AddConnectionState
+
+    data class FeedFailed(val reference: FeedReference, val failure: FeedAddFailure) :
+        AddConnectionState
+
+    data class FeedAdded(val connection: Connection) : AddConnectionState
+
+    /** This exact publisher was already stored, so adding it wrote nothing. */
+    data class FeedAlready(val connection: Connection) : AddConnectionState
+}
+
+/** Why a valid, confirmed feed reference wasn't added. */
+sealed interface FeedAddFailure {
+    data class Refused(val problem: ManifestProblem) : FeedAddFailure
+
+    data class Check(val outcome: CheckOutcome) : FeedAddFailure
+
+    data object NoGateway : FeedAddFailure
+
+    /** The manifest passed, but this phone could not persist the connection. */
+    data object Storage : FeedAddFailure
 }
 
 enum class PairingFailure {
@@ -92,6 +126,8 @@ sealed interface ConnectionMessage {
 
     data class Paired(override val label: String) : ConnectionMessage
 
+    data class FeedAdded(override val label: String) : ConnectionMessage
+
     data class Disconnected(override val label: String) : ConnectionMessage
 
     data class Removed(override val label: String) : ConnectionMessage
@@ -108,6 +144,8 @@ class ConnectionsViewModel(
     private val foregroundUpdates: StateFlow<ForegroundUpdatesState>? = null,
     /** The bundled client plugins this build carries, which is what a manifest is matched to. */
     private val plugins: PluginRegistry = PluginRegistry.of(),
+    /** A seam for the add flow's state tests; production always uses the repository method. */
+    private val addFeed: suspend (FeedReference) -> FeedOutcome = repository::addFeed,
     private val cleartextPermitted: (host: String) -> Boolean,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConnectionsUiState())
@@ -161,37 +199,48 @@ class ConnectionsViewModel(
     fun onCodeDraftChange(text: String) = _state.update { state ->
         state.copy(
             codeDraft = text,
-            pairing =
-                if (state.pairing is PairingState.Invalid) PairingState.Idle else state.pairing,
+            adding =
+                when (state.adding) {
+                    is AddConnectionState.PairingInvalid,
+                    is AddConnectionState.FeedInvalid -> AddConnectionState.Idle
+                    else -> state.adding
+                },
         )
     }
 
-    /** A code the owner entered or scanned. Further scans are ignored once a code is valid. */
+    /** A pairing code or feed reference. Further scans are ignored once one is valid. */
     fun onCode(text: String) {
         _state.update { state ->
-            if (state.pairing !is PairingState.Idle && state.pairing !is PairingState.Invalid) {
+            if (
+                state.adding !is AddConnectionState.Idle &&
+                    state.adding !is AddConnectionState.PairingInvalid &&
+                    state.adding !is AddConnectionState.FeedInvalid
+            ) {
                 return@update state
             }
-            val pairing =
+            val adding =
                 when (val result = PairingCodes.parse(text, cleartextPermitted)) {
-                    is PairingCodeResult.Invalid -> PairingState.Invalid(result.problem)
+                    is PairingCodeResult.Invalid -> routeAfterPairing(result.problem, text)
                     is PairingCodeResult.Valid ->
-                        PairingState.Confirm(confirmationFor(result.code, state.connections))
+                        AddConnectionState.ConfirmPairing(
+                            confirmationFor(result.code, state.connections)
+                        )
                 }
-            state.copy(pairing = pairing)
+            state.copy(adding = adding)
         }
     }
 
     /** Pairs with the confirmed code, or tries again after a failure that may pass. */
     fun confirmPairing() {
         val confirmation =
-            when (val pairing = _state.value.pairing) {
-                is PairingState.Confirm -> pairing.confirmation
-                is PairingState.Failed -> pairing.confirmation.takeIf { canRetry(pairing.failure) }
+            when (val adding = _state.value.adding) {
+                is AddConnectionState.ConfirmPairing -> adding.confirmation
+                is AddConnectionState.PairingFailed ->
+                    adding.confirmation.takeIf { canRetry(adding.failure) }
                 else -> null
             } ?: return
-        val pairing = PairingState.Pairing(confirmation)
-        _state.update { it.copy(pairing = pairing) }
+        val pairing = AddConnectionState.Pairing(confirmation)
+        _state.update { it.copy(adding = pairing) }
         viewModelScope.launch {
             val next =
                 try {
@@ -199,19 +248,63 @@ class ConnectionsViewModel(
                     // The sidecar has one phone connection, so it revoked the old one: check now.
                     confirmation.sameServer.forEach { refresh(it.id) }
                     _state.update { it.copy(message = ConnectionMessage.Paired(connection.label)) }
-                    PairingState.Paired(connection)
+                    AddConnectionState.Paired(connection)
                 } catch (e: GatewayException) {
-                    PairingState.Failed(confirmation, failureOf(e.kind))
+                    AddConnectionState.PairingFailed(confirmation, failureOf(e.kind))
                 } catch (e: StorageException) {
-                    PairingState.Failed(confirmation, PairingFailure.Storage)
+                    AddConnectionState.PairingFailed(confirmation, PairingFailure.Storage)
                 }
             // If the owner left the screen meanwhile, only the message remains.
-            _state.update { if (it.pairing == pairing) it.copy(pairing = next) else it }
+            _state.update { if (it.adding == pairing) it.copy(adding = next) else it }
         }
     }
 
-    /** Forgets the code and its token, for example when the owner leaves the screen. */
-    fun resetPairing() = _state.update { it.copy(codeDraft = "", pairing = PairingState.Idle) }
+    /** Adds the confirmed feed, or tries a transient gateway failure again. */
+    fun confirmFeed() {
+        val reference =
+            when (val adding = _state.value.adding) {
+                is AddConnectionState.ConfirmFeed -> adding.reference
+                is AddConnectionState.FeedFailed ->
+                    adding.reference.takeIf { canRetry(adding.failure) }
+                else -> null
+            } ?: return
+        val working = AddConnectionState.AddingFeed(reference)
+        _state.update { it.copy(adding = working) }
+        viewModelScope.launch {
+            val next =
+                try {
+                    when (val outcome = addFeed(reference)) {
+                        is FeedOutcome.Added -> {
+                            _state.update {
+                                it.copy(
+                                    message = ConnectionMessage.FeedAdded(outcome.connection.label)
+                                )
+                            }
+                            AddConnectionState.FeedAdded(outcome.connection)
+                        }
+                        is FeedOutcome.Already -> AddConnectionState.FeedAlready(outcome.connection)
+                        is FeedOutcome.Refused ->
+                            AddConnectionState.FeedFailed(
+                                reference,
+                                FeedAddFailure.Refused(outcome.problem),
+                            )
+                        is FeedOutcome.Failed ->
+                            AddConnectionState.FeedFailed(
+                                reference,
+                                FeedAddFailure.Check(outcome.outcome),
+                            )
+                        FeedOutcome.NoGateway ->
+                            AddConnectionState.FeedFailed(reference, FeedAddFailure.NoGateway)
+                    }
+                } catch (e: StorageException) {
+                    AddConnectionState.FeedFailed(reference, FeedAddFailure.Storage)
+                }
+            _state.update { if (it.adding == working) it.copy(adding = next) else it }
+        }
+    }
+
+    /** Forgets the entered reference and any pairing token when the owner cancels or leaves. */
+    fun resetAdding() = _state.update { it.copy(codeDraft = "", adding = AddConnectionState.Idle) }
 
     fun refresh(id: String) {
         if (id in _state.value.refreshing) return
@@ -310,10 +403,30 @@ class ConnectionsViewModel(
                 },
         )
 
+    /**
+     * A malformed pairing URI remains a pairing problem. Only text that is not a pairing URI is
+     * offered to the feed parser, so neither route can accidentally call the other's action.
+     */
+    private fun routeAfterPairing(problem: PairingCodeProblem, text: String): AddConnectionState =
+        when (problem) {
+            PairingCodeProblem.NotACode,
+            PairingCodeProblem.NotSeekerVault ->
+                when (val feed = FeedReferences.parse(text, cleartextPermitted)) {
+                    is FeedReferenceResult.Valid -> AddConnectionState.ConfirmFeed(feed.reference)
+                    is FeedReferenceResult.Invalid -> AddConnectionState.FeedInvalid(feed.problem)
+                }
+            else -> AddConnectionState.PairingInvalid(problem)
+        }
+
     private companion object {
         /** A retry can only help when the sidecar wasn't reached or the failure is unknown. */
         fun canRetry(failure: PairingFailure) =
             failure == PairingFailure.Unreachable || failure == PairingFailure.Other
+
+        fun canRetry(failure: FeedAddFailure) =
+            failure is FeedAddFailure.Check &&
+                (failure.outcome == CheckOutcome.Unreachable ||
+                    failure.outcome == CheckOutcome.Failed)
 
         fun failureOf(kind: GatewayException.Kind): PairingFailure =
             when (kind) {

@@ -45,6 +45,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.servers.FeedReference
+import io.github.brrenat.seekervault.servers.FeedReferenceProblem
+import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.ui.SeekerButton
 import io.github.brrenat.seekervault.ui.SeekerButtonRole
 import io.github.brrenat.seekervault.ui.SeekerCard
@@ -70,7 +73,7 @@ enum class CameraAccess {
 fun AddConnectionRoute(
     viewModel: ConnectionsViewModel,
     onBack: () -> Unit,
-    onPaired: (Connection) -> Unit,
+    onAdded: (Connection) -> Unit,
     modifier: Modifier = Modifier,
     scanner: @Composable (onText: (String) -> Unit, onUnavailable: () -> Unit) -> Unit =
         { onText, onUnavailable ->
@@ -90,16 +93,20 @@ fun AddConnectionRoute(
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             camera = if (granted) CameraAccess.Scanning else CameraAccess.Denied
         }
-    val pairing = state.pairing
-    LaunchedEffect(pairing) {
-        if (pairing is PairingState.Paired) onPaired(pairing.connection)
+    val adding = state.adding
+    LaunchedEffect(adding) {
+        when (adding) {
+            is AddConnectionState.Paired -> onAdded(adding.connection)
+            is AddConnectionState.FeedAdded -> onAdded(adding.connection)
+            else -> Unit
+        }
     }
-    // Leaving the screen forgets the code and its token; a rotation keeps them.
+    // Leaving the screen forgets the reference and any pairing token; a rotation keeps them.
     DisposableEffect(viewModel) {
-        onDispose { if (activity?.isChangingConfigurations != true) viewModel.resetPairing() }
+        onDispose { if (activity?.isChangingConfigurations != true) viewModel.resetAdding() }
     }
     AddConnectionScreen(
-        pairing = pairing,
+        adding = adding,
         codeDraft = state.codeDraft,
         camera = camera,
         onScan = {
@@ -123,8 +130,10 @@ fun AddConnectionRoute(
         },
         onCodeDraftChange = viewModel::onCodeDraftChange,
         onCode = viewModel::onCode,
-        onConfirm = viewModel::confirmPairing,
-        onCancel = viewModel::resetPairing,
+        onConfirmPairing = viewModel::confirmPairing,
+        onConfirmFeed = viewModel::confirmFeed,
+        onOpenFeed = onAdded,
+        onCancel = viewModel::resetAdding,
         onBack = onBack,
         scanner = { scanner(viewModel::onCode) { camera = CameraAccess.Unavailable } },
         modifier = modifier,
@@ -135,7 +144,7 @@ fun AddConnectionRoute(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddConnectionScreen(
-    pairing: PairingState,
+    adding: AddConnectionState,
     codeDraft: String,
     camera: CameraAccess,
     onScan: () -> Unit,
@@ -143,7 +152,9 @@ fun AddConnectionScreen(
     onOpenSettings: () -> Unit,
     onCodeDraftChange: (String) -> Unit,
     onCode: (String) -> Unit,
-    onConfirm: () -> Unit,
+    onConfirmPairing: () -> Unit,
+    onConfirmFeed: () -> Unit,
+    onOpenFeed: (Connection) -> Unit,
     onCancel: () -> Unit,
     onBack: () -> Unit,
     scanner: @Composable () -> Unit,
@@ -170,18 +181,54 @@ fun AddConnectionScreen(
                 Modifier.padding(innerPadding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            when (pairing) {
-                is PairingState.Confirm ->
-                    ConfirmServer(pairing.confirmation, null, false, onConfirm, onCancel)
-                is PairingState.Pairing ->
-                    ConfirmServer(pairing.confirmation, null, true, onConfirm, onCancel)
-                is PairingState.Failed ->
-                    ConfirmServer(pairing.confirmation, pairing.failure, false, onConfirm, onCancel)
-                is PairingState.Idle,
-                is PairingState.Invalid,
-                is PairingState.Paired ->
+            when (adding) {
+                is AddConnectionState.ConfirmPairing ->
+                    ConfirmServer(
+                        adding.confirmation,
+                        null,
+                        false,
+                        onConfirmPairing,
+                        onCancel,
+                    )
+                is AddConnectionState.Pairing ->
+                    ConfirmServer(
+                        adding.confirmation,
+                        null,
+                        true,
+                        onConfirmPairing,
+                        onCancel,
+                    )
+                is AddConnectionState.PairingFailed ->
+                    ConfirmServer(
+                        adding.confirmation,
+                        adding.failure,
+                        false,
+                        onConfirmPairing,
+                        onCancel,
+                    )
+                is AddConnectionState.ConfirmFeed ->
+                    ConfirmFeed(adding.reference, null, false, onConfirmFeed, onCancel)
+                is AddConnectionState.AddingFeed ->
+                    ConfirmFeed(adding.reference, null, true, onConfirmFeed, onCancel)
+                is AddConnectionState.FeedFailed ->
+                    ConfirmFeed(
+                        adding.reference,
+                        adding.failure,
+                        false,
+                        onConfirmFeed,
+                        onCancel,
+                    )
+                is AddConnectionState.FeedAdded ->
+                    FeedResult(adding.connection, true, onOpenFeed, onCancel)
+                is AddConnectionState.FeedAlready ->
+                    FeedResult(adding.connection, false, onOpenFeed, onCancel)
+                is AddConnectionState.Idle,
+                is AddConnectionState.PairingInvalid,
+                is AddConnectionState.FeedInvalid,
+                is AddConnectionState.Paired ->
                     EnterCode(
-                        problem = (pairing as? PairingState.Invalid)?.problem,
+                        pairingProblem = (adding as? AddConnectionState.PairingInvalid)?.problem,
+                        feedProblem = (adding as? AddConnectionState.FeedInvalid)?.problem,
                         codeDraft = codeDraft,
                         camera = camera,
                         onScan = onScan,
@@ -198,7 +245,8 @@ fun AddConnectionScreen(
 
 @Composable
 private fun EnterCode(
-    problem: PairingCodeProblem?,
+    pairingProblem: PairingCodeProblem?,
+    feedProblem: FeedReferenceProblem?,
     codeDraft: String,
     camera: CameraAccess,
     onScan: () -> Unit,
@@ -252,9 +300,11 @@ private fun EnterCode(
                 modifier = Modifier.testTag(ConnectionsTags.SCAN),
             )
     }
-    if (problem != null) {
+    val invalid = pairingProblem != null || feedProblem != null
+    if (invalid) {
         Text(
-            problemText(problem),
+            pairingProblem?.let { problemText(it) }
+                ?: feedReferenceProblemText(checkNotNull(feedProblem)),
             color = MaterialTheme.colorScheme.error,
             modifier = Modifier.testTag(ConnectionsTags.CODE_PROBLEM),
         )
@@ -265,7 +315,7 @@ private fun EnterCode(
         onValueChange = onCodeDraftChange,
         label = { Text(stringResource(R.string.code_label)) },
         placeholder = { Text(stringResource(R.string.code_placeholder)) },
-        isError = problem != null,
+        isError = invalid,
         minLines = 2,
         keyboardOptions =
             KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
@@ -278,6 +328,124 @@ private fun EnterCode(
         enabled = codeDraft.isNotBlank(),
         modifier = Modifier.testTag(ConnectionsTags.CONTINUE),
     )
+}
+
+@Composable
+private fun ConfirmFeed(
+    reference: FeedReference,
+    failure: FeedAddFailure?,
+    adding: Boolean,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Text(stringResource(R.string.feed_confirm_title), style = MaterialTheme.typography.titleLarge)
+    SeekerCard(Modifier.fillMaxWidth()) {
+        ListItem(
+            overlineContent = { Text(stringResource(R.string.field_gateway)) },
+            headlineContent = { Text(reference.gatewayUrl) },
+            modifier = Modifier.testTag(ConnectionsTags.CONFIRM_FEED),
+            colors = seekerListItemColors(),
+        )
+        ListItem(
+            overlineContent = { Text(stringResource(R.string.field_server_id)) },
+            headlineContent = { Text(reference.serverId) },
+            colors = seekerListItemColors(),
+        )
+    }
+    Text(stringResource(R.string.feed_confirm_public), style = MaterialTheme.typography.bodySmall)
+    if (failure != null) {
+        Text(
+            feedFailureText(failure, reference.gatewayUrl),
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.testTag(ConnectionsTags.FEED_FAILURE),
+        )
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val retry =
+            failure is FeedAddFailure.Check &&
+                (failure.outcome == CheckOutcome.Unreachable ||
+                    failure.outcome == CheckOutcome.Failed)
+        if (failure == null || retry) {
+            SeekerButton(
+                text =
+                    stringResource(
+                        when {
+                            adding -> R.string.feed_adding
+                            retry -> R.string.try_again
+                            else -> R.string.feed_add
+                        }
+                    ),
+                onClick = onConfirm,
+                enabled = !adding,
+                modifier = Modifier.testTag(ConnectionsTags.ADD_FEED),
+            )
+        }
+        SeekerButton(
+            text = stringResource(R.string.cancel),
+            onClick = onCancel,
+            enabled = !adding,
+            role = SeekerButtonRole.Neutral,
+            modifier = Modifier.testTag(ConnectionsTags.CANCEL_PAIRING),
+        )
+    }
+}
+
+/** The duplicate result stays on screen so it is never mistaken for a second stored feed. */
+@Composable
+private fun FeedResult(
+    connection: Connection,
+    added: Boolean,
+    onOpen: (Connection) -> Unit,
+    onDone: () -> Unit,
+) {
+    Text(
+        stringResource(if (added) R.string.feed_added_title else R.string.feed_already_title),
+        style = MaterialTheme.typography.titleLarge,
+    )
+    Text(
+        stringResource(
+            if (added) R.string.feed_added_text else R.string.feed_already_text,
+            connection.label,
+        )
+    )
+    FeedSummary(connection)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SeekerButton(
+            text = stringResource(R.string.feed_open),
+            onClick = { onOpen(connection) },
+            modifier = Modifier.testTag(ConnectionsTags.OPEN_FEED),
+        )
+        SeekerButton(
+            text = stringResource(R.string.cancel),
+            onClick = onDone,
+            role = SeekerButtonRole.Neutral,
+        )
+    }
+}
+
+@Composable
+private fun FeedSummary(connection: Connection) {
+    val required = connection.server.manifest?.required.orEmpty()
+    val requiredText =
+        if (required.isEmpty()) stringResource(R.string.feed_required_plugins_none)
+        else required.joinToString("\n") { it.id.value }
+    SeekerCard(Modifier.fillMaxWidth()) {
+        ListItem(
+            overlineContent = { Text(stringResource(R.string.feed_display_name)) },
+            headlineContent = { Text(connection.label) },
+            colors = seekerListItemColors(),
+        )
+        ListItem(
+            overlineContent = { Text(stringResource(R.string.field_environment)) },
+            headlineContent = { Text(stringResource(environmentText(connection.environment))) },
+            colors = seekerListItemColors(),
+        )
+        ListItem(
+            overlineContent = { Text(stringResource(R.string.feed_required_plugins)) },
+            headlineContent = { Text(requiredText) },
+            colors = seekerListItemColors(),
+        )
+    }
 }
 
 @Composable
