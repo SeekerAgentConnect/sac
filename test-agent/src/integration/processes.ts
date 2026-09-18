@@ -14,9 +14,29 @@
  * a reason the assertion cannot see is otherwise a mystery, and the log line naming the problem is
  * always there.
  */
-import { spawn, spawnSync } from "node:child_process";
+import {
+  spawn,
+  spawnSync,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
 import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
+
+/**
+ * Every child still running, and one handler that stops them.
+ *
+ * `after` does not run when the runner is killed, and these are servers: a Ctrl+C or a CI timeout
+ * would otherwise leave a gateway, two templates and their databases behind, holding ports on
+ * somebody's machine. A signal that cannot be caught at all (`SIGKILL`, or the `SIGALRM` of a
+ * `perl -e alarm` wrapper) still leaks them, so a killed run is worth a look at `lsof`.
+ */
+const running = new Set<ChildProcessWithoutNullStreams>();
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    for (const child of running) child.kill("SIGKILL");
+    process.exit(1);
+  });
+}
 
 /** A process this harness started, and the two things a test needs from it. */
 export interface Running {
@@ -259,9 +279,7 @@ interface Started {
  */
 async function started(options: Started): Promise<Process> {
   let output = "";
-  let child = spawn(options.command, [], {
-    env: { PATH: process.env.PATH ?? "", ...options.environment },
-  });
+  let child = started_(options);
   const collect = (): void => {
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
       output += chunk;
@@ -288,19 +306,27 @@ async function started(options: Started): Promise<Process> {
         await exited;
       }
       output += `\n--- ${options.what} restarted ---\n`;
-      child = spawn(options.command, [], {
-        env: { PATH: process.env.PATH ?? "", ...options.environment },
-      });
+      child = started_(options);
       collect();
       await listening(options, child, said);
     },
   };
 }
 
+/** Spawns one child and remembers it until it exits, so a killed run can still stop it. */
+function started_(options: Started): ChildProcessWithoutNullStreams {
+  const child = spawn(options.command, [], {
+    env: { PATH: process.env.PATH ?? "", ...options.environment },
+  });
+  running.add(child);
+  child.once("exit", () => running.delete(child));
+  return child;
+}
+
 /** Polls the health endpoint until it answers, or the process dies, or twenty seconds pass. */
 async function listening(
   options: Started,
-  child: ReturnType<typeof spawn>,
+  child: ChildProcessWithoutNullStreams,
   said: () => string,
 ): Promise<void> {
   const deadline = Date.now() + 20_000;

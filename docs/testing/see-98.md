@@ -149,9 +149,10 @@ Revision-tagged, and separate from every automated result above. None of it can 
 JVM test, an APK build or this laptop: mark each line **PASS** or **FAIL** when it is run, with the
 date, the build and the wallet used, and leave it **NOT RUN** until then.
 
-Tested at revision: `superset/feat/see-85` at `5da7cc4` — and when the run happens, replace it with
-the commit that was actually installed, because a checklist without one is about no particular
-build.
+Tested at revision: the SEE-98 commits on `superset/feat/see-85` — `5da7cc4` and the two that
+follow it, this page's own revision tag and the harness's signal cleanup. When the run happens,
+replace it with the commit that was actually installed, because a checklist without one is about no
+particular build.
 
 | # | What to do | Result |
 | --- | --- | --- |

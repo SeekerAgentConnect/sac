@@ -54,9 +54,10 @@ SEEKERVAULT_REDIS=/path/to/redis-server \
   the capture, because a market's close time decides whether it is published at all and a process
   reads the real clock; and a closed market answers under the identity of the market that was asked
   about, because a withdrawal is only meaningful for a market somebody is following.
-- **The chain and the wallet** are `sidecar/src/testing/chain.ts` and `wallet.ts`, as in
-  `pnpm test:transfer`: a chain the test controls, and a key pair that produces the same Ed25519
-  signature a wallet app would.
+- **The wallet** is `sidecar/src/testing/wallet.ts`: a key pair made in the test process, which
+  produces the same Ed25519 signature a wallet app would. The cross-component run asks it to sign a
+  message and needs no chain at all; the fake Solana JSON-RPC in `chain.ts` belongs to the
+  direct-mode leg, which is where a transfer is built.
 - **The phone** is not stood in for at all. Its own runtime is checked by `pnpm check:android`, and
   the cross-component subset above; what a person has to do on a real device is the checklist in
   `docs/testing/see-98.md`.
@@ -73,7 +74,7 @@ The harness is in `test-agent/src/integration/`:
 | `broker.ts` | The pinned Centrifugo, and a channel's position |
 | `sweep.ts` | The privacy sweep: needles, haystacks, and the positive control |
 
-Two rules worth knowing before adding to it:
+Three rules worth knowing before adding to it:
 
 - **Never call a template's CLI synchronously.** `publishctl poll` makes the template call the
   provider, and the provider is served by the test process itself; a `spawnSync` there blocks the
@@ -82,3 +83,8 @@ Two rules worth knowing before adding to it:
 - **A subscriber's own traffic is asserted.** `device.sent()` is what the privacy sweep reads, so a
   probe that deliberately knocks on the wrong door (a publisher procedure on the read port, say)
   belongs to a third device rather than to one of the two subscribers.
+- **Everything the harness starts is a server, so it is tracked.** `processes.ts` keeps every child
+  and stops them on `SIGINT` and `SIGTERM`, because `after` does not run when the runner is killed
+  and a gateway holding a port is a worse thing to leave behind than a temporary directory. A signal
+  that cannot be caught (`SIGKILL`, or an `alarm` wrapper's `SIGALRM`) still leaks them, so after
+  killing a run it is worth a look at `lsof -nP -iTCP -sTCP:LISTEN`.
