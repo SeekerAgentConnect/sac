@@ -5,7 +5,7 @@ Branch `superset/feat/see-84` (working tree; nothing committed by this task).
 
 ## Where this starts
 
-`deploy/render/` arrived untracked, written outside this repository against commit `f1e05c6`: a
+`deploy/render/` arrived untracked, written outside this repository against commit `0e5dd09`: a
 single-container image (sidecar + Caddy under a small Node supervisor), a Render Caddyfile, an
 entrypoint, and a README written for an "archive" rather than this checkout. Its verification
 record said the Docker build, the Caddy config, and the smoke test were NOT RUN.

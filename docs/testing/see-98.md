@@ -8,9 +8,9 @@ exercises are the shipped ones — and nothing here claims a test that did not r
 
 | | |
 | --- | --- |
-| Branch | `superset/feat/see-85`, on base `superset/feat/see-84` |
-| Baseline integrated first | `602a269` (the base branch's Render image and `deploy/server/`) and `2bdb1a3` (the SEE-45 review fixes), merged before anything was added — SEE-98's own Baseline section asks for the tree that will ship |
-| Stage 7.1 in the tree | SEE-90 to SEE-97, through `4978429` |
+| Branch | `superset/feat/see-85`, rebased onto `master` (`9b644e8`), which now carries what was the base branch `superset/feat/see-84` |
+| Baseline integrated first | `9b644e8` (the Render image and `deploy/server/`) and `2feee27` (the SEE-45 review fixes), in the tree before anything was added — SEE-98's own Baseline section asks for the tree that will ship. Both were merged into the branch while the work was done, and the rebase onto `master` made them the base's own commits instead, leaving the tree identical |
+| Stage 7.1 in the tree | SEE-90 to SEE-97, through `6040a1e` |
 | Date run | 2026-09-18 |
 | Machine | macOS (Darwin 25.5.0), Apple silicon. **No Docker daemon** was reachable, as in every Stage 7 record |
 
@@ -149,8 +149,8 @@ Revision-tagged, and separate from every automated result above. None of it can 
 JVM test, an APK build or this laptop: mark each line **PASS** or **FAIL** when it is run, with the
 date, the build and the wallet used, and leave it **NOT RUN** until then.
 
-Tested at revision: the SEE-98 commits on `superset/feat/see-85` — `5da7cc4` and the two that
-follow it, this page's own revision tag and the harness's signal cleanup. When the run happens,
+Tested at revision: the SEE-98 commits on `superset/feat/see-85` — `6424ddd`, which added the
+harness, and the documentation and cleanup commits that follow it. When the run happens,
 replace it with the commit that was actually installed, because a checklist without one is about no
 particular build.
 

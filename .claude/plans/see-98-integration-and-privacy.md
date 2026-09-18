@@ -8,9 +8,10 @@ says what a laptop could not answer.
 
 1. **The baseline is the tree that will ship.** SEE-98's own Baseline section says to integrate the
    owner's pushed work rather than validate what this branch happened to fork from. Two commits
-   were merged before anything else: `602a269` (the base branch's Render image and
-   `deploy/server/`) and `2bdb1a3` (the SEE-45 review fixes). Every number in the report is against
-   the merge, and the report names the revision.
+   were merged before anything else: the base branch's Render image and `deploy/server/`, and the
+   SEE-45 review fixes — `9b644e8` and `2feee27` on `master`, which the branch was later rebased
+   onto. Every number in the report is against a tree that carries both, and the report names the
+   revision.
 2. **One command, three legs, and it says which ones ran.** `pnpm test:integration` builds the five
    Go binaries and runs the cross-component suite; the broker leg is opt-in on the pinned Centrifugo
    and Redis binaries; the phone's own suite stays `pnpm check:android`, and this command runs the
@@ -39,8 +40,9 @@ says what a laptop could not answer.
 
 ## The baseline
 
-- [x] Merge `602a269` from `origin/superset/feat/see-84`, resolving the append-only documents.
-- [x] Merge `2bdb1a3` from `origin/superset/feat/see-45`.
+- [x] Merge the base branch's tip (`origin/superset/feat/see-84`, now `9b644e8` on `master`),
+      resolving the append-only documents.
+- [x] Merge the SEE-45 review fixes (`origin/superset/feat/see-45`, now `2feee27` on `master`).
 - [x] `pnpm check`, `pnpm check:broadcast` and `pnpm check:publisher` pass on the merge before
       anything is added.
 - [x] The report records the revision, the toolchain versions and every configuration tested.
@@ -115,11 +117,12 @@ Done, and the shape held. Three things are worth recording because they were not
 plan was written.
 
 **The baseline was real work, and it came first.** Two commits existed upstream that this branch did
-not have: the base branch's own tip (`602a269`, the Render image and `deploy/server/`) and the SEE-45
-review fixes (`2bdb1a3`). Validating a tree nobody will merge into would have been the wrong tree,
-so both were merged before anything was added, every conflict was in an append-only document, and
-`CODEBASE.md`'s two contested rows were resolved by taking each side's own edit rather than either
-side whole. Every number in the report is against the merge.
+not have: the base branch's own tip (the Render image and `deploy/server/`) and the SEE-45 review
+fixes — `9b644e8` and `2feee27` on `master`, which the branch was later rebased onto. Validating a
+tree nobody will merge into would have been the wrong tree, so both were merged before anything was
+added, every conflict was in an append-only document, and `CODEBASE.md`'s two contested rows were
+resolved by taking each side's own edit rather than either side whole. Every number in the report is
+against a tree that carries both.
 
 **The harness's two hard-won rules are about the harness being a server.** `publishctl poll` makes
 the template run a cycle, the cycle calls the provider, and the provider is a Node server inside the
