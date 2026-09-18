@@ -27,6 +27,7 @@
     <string name="operation_outcome_pending">The wallet is being asked.</string>
     <string name="operation_outcome_submitted">The wallet signed and sent it. Whether it succeeded on chain is a separate question, and this app does not follow it.</string>
     <string name="operation_outcome_declined">You declined in the wallet. Nothing was signed.</string>
+    <string name="operation_outcome_simulated">Simulated. This feed is a sandbox, so nothing was signed and nothing was sent.</string>
     <string name="operation_outcome_failed">Nothing was signed.</string>
     <string name="operation_outcome_unresolved">This phone never learned what the wallet did, so it may or may not have been sent. Nothing is asked of the wallet again.</string>
 
@@ -57,6 +58,9 @@
     <string name="operation_prepare_again">Get a fresh quote and prepare again</string>
     <string name="operation_approve">Approve and swap</string>
     <string name="operation_approve_note">This opens your wallet with exactly the transaction above. Nothing is signed or sent until you approve it there.</string>
+    <string name="operation_sandbox">This feed is a sandbox. Everything above is real — the live market, the exact transaction, and this phone\'s own reading of it — and the last step is not: your wallet is not opened, nothing is signed, and nothing is sent.</string>
+    <string name="operation_simulate">Simulate</string>
+    <string name="operation_simulate_note">This records what would have happened and stops there. No wallet is opened, no transaction exists, and there is no signature to look up afterwards.</string>
     <string name="operation_dismiss">Hide this signal</string>
     <string name="operation_acknowledge">I have read the warnings above and mean to go ahead</string>
     <string name="operation_proposal_id">Proposal</string>
@@ -94,4 +98,5 @@
     <string name="operation_binding_no_wallet">No wallet is connected on this phone.</string>
     <string name="operation_binding_other_wallet">The wallet selected now is not the one this was prepared for.</string>
     <string name="operation_binding_other_network">Your wallet is selected for another network than this was prepared for.</string>
+    <string name="operation_binding_other_environment">This feed changed between sandbox and production while you were reading. Prepare it again and review it as it is now.</string>
 </resources>

@@ -82,7 +82,6 @@ class ProposalRepositoryTest {
             store = store,
             connections = { connections },
             plugins = plugins,
-            environment = PluginEnvironment.Production,
             feed = if (withFeed) feed else null,
             history = history,
             now = { clock },

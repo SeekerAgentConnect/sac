@@ -63,7 +63,7 @@ func TestGatewayAcceptsWhatThisTemplatePublishes(t *testing.T) {
 	}
 	documents, err := store.Open(filepath.Join(directory, "publisher.db"), store.Stamp{
 		ServerID:    settings.ServerID,
-		Environment: settings.Environment,
+		Environment: settings.Environment.String(),
 		GatewayURL:  settings.GatewayURL,
 	})
 	if err != nil {
@@ -231,7 +231,7 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 	}
 	documents, err := store.Open(filepath.Join(running.directory, "prediction.db"), store.Stamp{
 		ServerID:    settings.ServerID,
-		Environment: settings.Environment,
+		Environment: settings.Environment.String(),
 		GatewayURL:  settings.GatewayURL,
 	})
 	if err != nil {

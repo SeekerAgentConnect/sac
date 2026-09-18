@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/environment"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/signals"
 )
 
@@ -60,10 +61,10 @@ type Config struct {
 	PublishURL string
 	// The credential the gateway issued this publisher.
 	Credential string
-	// "production" or "sandbox": which promise this deployment's signals carry when an owner
-	// approves one. It is in the manifest, it is stamped into the database, and it is in every
-	// answer the API gives, because the way this gets confused is a copied compose file.
-	Environment string
+	// Which promise this deployment's signals carry when an owner approves one (SEE-97). It is in
+	// the manifest, it is stamped into the database, and it is in every answer the API gives,
+	// because the way this gets confused is a copied compose file.
+	Environment environment.Environment
 	// The SQLite file: the signals this template holds, and what the gateway has confirmed about
 	// each of them.
 	DatabasePath string
@@ -109,7 +110,6 @@ func Load(lookup Lookup) (*Config, []string) {
 		DatabasePath:   text("PUBLISHER_DATABASE_PATH", ""),
 		APIAddress:     text("PUBLISHER_API_ADDRESS", DefaultAPIAddress),
 		DisplayName:    text("PUBLISHER_DISPLAY_NAME", ""),
-		Environment:    strings.ToLower(text("PUBLISHER_ENVIRONMENT", "")),
 		PublishTimeout: DefaultPublishTimeout,
 	}
 
@@ -149,7 +149,11 @@ func Load(lookup Lookup) (*Config, []string) {
 		note("PUBLISHER_DATABASE_PATH must be set to the file this template keeps its signals in, " +
 			"for example /data/publisher.db")
 	}
-	if config.Environment != "production" && config.Environment != "sandbox" {
+	// The one setting with no default at all: a deployment that did not say which promise it
+	// keeps does not start, because the alternative is a demonstration that quietly spends money.
+	if named, ok := environment.Parse(strings.ToLower(text("PUBLISHER_ENVIRONMENT", ""))); ok {
+		config.Environment = named
+	} else {
 		note("PUBLISHER_ENVIRONMENT must be production or sandbox: it is what a phone is told " +
 			"this server promises when its owner approves a signal, and one deployment serves " +
 			"one of them")

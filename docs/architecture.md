@@ -227,6 +227,35 @@ flowchart TB
   once; one server's manifest says nothing about another's connection, and a private request is
   never converted into a broadcast one.
 
+#### Which promise a connection keeps (SEE-97)
+
+A manifest says which environments a server *serves*; the connection records which one it *keeps*,
+and only the owner changes that ([`wiki/environments.md`](wiki/environments.md)).
+
+```mermaid
+flowchart LR
+    Manifest["manifest.environments<br>what the server serves"] --> Start
+    Start["Connection.environment<br>sandbox if the publisher offers one"]
+    Owner["the owner, on the feed's details"] --> Start
+    Start --> Gate["ExecutionBinding.environment<br>pinned, and checked inside the wallet's lock"]
+    Gate -- production --> Wallet["the wallet, once"]
+    Gate -- sandbox --> Record["Simulated<br>no signature, no link"]
+```
+
+- **Production is an act by a person.** A feed starts in sandbox whenever its publisher serves one,
+  and the switch is on the feed's own details — so no document a publisher republishes can move a
+  demonstration onto real money. The gateway refuses such a document anyway (SEE-97), and a manifest
+  that stops naming the environment a connection keeps makes that server unsupported rather than
+  moving it.
+- **A rehearsal is the real thing minus the signature.** The same live data, the same bytes, the
+  same review, the same rules — and then no wallet, nothing sent, and no signature or explorer link
+  invented for something that did not happen.
+- **It is not a cluster.** Which chain a signature belongs to is the owner's wallet selection,
+  checked separately and always; there is no Jupiter test network for a sandbox to point at.
+- **A direct connection is always production.** A rehearsal is possible only where nobody is waiting
+  for the answer: an agent that asked for a signature can be told no, but it cannot be handed a
+  simulation.
+
 ### Shared proposals and device-local decisions
 
 From SEE-89 a publisher's feed carries **proposals**: one document, published once, received

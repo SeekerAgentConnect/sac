@@ -55,6 +55,20 @@ class DailySpendingTest {
     }
 
     @Test
+    fun aRehearsalInASandboxSpendsNothing() {
+        // SEE-97. A sandbox execution signs nothing and sends nothing, so it must not count
+        // against a threshold the owner set on real money — for the same reason devnet play money
+        // never does. It is not exposure either: there is no transaction to have been sent.
+        val totals =
+            total(
+                record("a", outcome = ActivityOutcome.Simulated, amount = "500"),
+                record("b", outcome = ActivityOutcome.Simulated, amount = "500", signature = null),
+            )
+
+        assertEquals(DailyTotal.none(scope, today), totals)
+    }
+
+    @Test
     fun aTransactionTheChainRanAndFailedMovedNothing() {
         val totals =
             total(

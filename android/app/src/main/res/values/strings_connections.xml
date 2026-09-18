@@ -67,6 +67,12 @@
     <string name="rename">Rename</string>
     <string name="connection_disconnect">Disconnect</string>
     <string name="connection_remove">Remove from this phone</string>
+    <string name="field_environment">What this feed does when you approve</string>
+    <string name="connection_environment_production">Production</string>
+    <string name="connection_environment_production_note">Real operations. Approving one opens your wallet, and what it signs is sent to the network your wallet is selected for.</string>
+    <string name="connection_environment_sandbox">Sandbox</string>
+    <string name="connection_environment_sandbox_note">A demonstration. The market data and the transaction are real and you review them exactly as you would, and then nothing is signed and nothing is sent.</string>
+    <string name="connection_environment_switch_note">This publisher serves both. Switching invalidates anything already prepared here, so you review again before anything happens.</string>
     <string name="connection_rules_note">Review this connection’s own rules and global defaults.</string>
     <string name="connection_rules_advisory">Rules highlight requests that need attention. You still approve every request.</string>
 

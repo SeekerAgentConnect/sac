@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/discovery"
+	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/environment"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/jupiter"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/signals"
 )
@@ -170,7 +171,7 @@ func LoadPrediction(lookup Lookup) (*Config, *Prediction, []string) {
 	case "open":
 	case "any":
 		held.Filters.Closed = true
-		if config != nil && config.Environment == "production" {
+		if config != nil && config.Environment == environment.Production {
 			read.note("PREDICTION_STATE=any is refused in production: it publishes markets the " +
 				"provider will not take an order for, which every phone then refuses. Run it " +
 				"with PUBLISHER_ENVIRONMENT=sandbox, as a deliberate exercise of the closure " +

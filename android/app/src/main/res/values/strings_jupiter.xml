@@ -28,7 +28,6 @@
     <string name="jupiter_choice_bad_slippage">Choose how far the price may move, within what this signal allows.</string>
 
     <!-- Why nothing could be prepared. -->
-    <string name="jupiter_failure_sandbox">This server is in sandbox mode, so nothing is prepared and nothing can be signed. Its signals can be read here, and no swap is made.</string>
     <string name="jupiter_failure_terms">This signal cannot be read as a swap, so there is nothing to prepare.</string>
     <string name="jupiter_failure_no_wallet">Connect a wallet before preparing a swap.</string>
     <string name="jupiter_failure_other_network">Your wallet is selected for a network this provider does not serve. Swaps happen on Solana mainnet.</string>
@@ -95,7 +94,6 @@
     <string name="jupiter_choice_stake_too_little">That is below the smallest order this provider accepts, or below the smallest this signal is for.</string>
 
     <!-- Why nothing could be prepared. -->
-    <string name="jupiter_failure_sandbox_prediction">This server is in sandbox mode, so no order is prepared and nothing can be signed. Its markets can be read here, and no order is placed.</string>
     <string name="jupiter_failure_prediction_terms">This signal cannot be read as a market, so there is nothing to prepare.</string>
     <string name="jupiter_failure_prediction_unusable">The provider answered with something this phone cannot use, so nothing was prepared.</string>
     <string name="jupiter_failure_no_such_market">The provider has no such market. The signal may name one that never existed, or one that has been removed.</string>

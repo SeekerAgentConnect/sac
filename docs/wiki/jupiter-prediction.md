@@ -86,7 +86,7 @@ There is deliberately **no position link**. The platform has no per-position add
 ## Limits, honestly
 
 - **Mainnet or nothing.** There is no devnet prediction market to point at.
-- **Sandbox asks the provider nothing**, before any call: an environment that performs no purchase must not be able to make one.
+- **Sandbox gets the same work**, and stops before the wallet: the market is read, the order is built and reviewed, and nothing is signed or sent (SEE-97, [`docs/wiki/environments.md`](environments.md)). The plugin never reads the environment — whether bytes are signed is core's.
 - **One minute of freshness**, as for a swap: a market's price moves and the transaction carries a recent blockhash.
 - **The keyless allowance is 0.5 requests a second, 30 a minute** — three calls per order (market, order, tables), which is ample for a person and not for polling. Nothing polls.
 - **Buying only.** Selling a position is managing one, and this app does not.

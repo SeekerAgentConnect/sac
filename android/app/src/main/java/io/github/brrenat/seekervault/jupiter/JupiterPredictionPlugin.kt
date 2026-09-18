@@ -60,6 +60,9 @@ class JupiterPredictionPlugin(
             id = JUPITER_PREDICTION,
             contract = PLUGIN_CONTRACT,
             operations = setOf(PREDICTION_OPERATION),
+            // Both, and the same work in each: what a sandbox owner reviews is the order this
+            // plugin built from the live market, and core is what stops before the wallet
+            // (SEE-97, docs/wiki/environments.md).
             environments = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
         )
 
@@ -97,11 +100,6 @@ class JupiterPredictionPlugin(
         subject: ActionSubject,
         choice: ParameterChoice,
     ): PluginPreparation {
-        // The environment first, before anything is read and long before anything is asked of the
-        // network: an environment that performs no purchase must not be able to make one.
-        if (subject.environment != PluginEnvironment.Production) {
-            throw PluginFailure(SANDBOX, R.string.jupiter_failure_sandbox_prediction)
-        }
         val terms =
             when (val read = predictionTermsFrom(subject.terms)) {
                 is PredictionTermsResult.Valid -> read.terms
@@ -240,7 +238,6 @@ class JupiterPredictionPlugin(
         ActionInspection.nothingEstablished(version, listOf(finding))
 
     private companion object {
-        const val SANDBOX = "sandbox_no_execution"
         const val NO_WALLET = "no_wallet"
         const val OTHER_NETWORK = "other_network"
         const val OTHER_EVENT = "other_event"

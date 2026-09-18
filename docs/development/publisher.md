@@ -131,7 +131,7 @@ something.
 | --- | --- | --- |
 | `PUBLISHER_SERVER_ID` | none; required | The lowercase UUID this publisher was registered with. Its channel is `server/<this>` |
 | `PUBLISHER_GATEWAY_URL` | none; required | The gateway's own origin, as a phone's feed reference spells it. Every published manifest names exactly this |
-| `PUBLISHER_ENVIRONMENT` | none; required | `production` or `sandbox`. One deployment serves one, and the database is stamped with it |
+| `PUBLISHER_ENVIRONMENT` | none; required | `production` or `sandbox`. One deployment serves one, the database is stamped with it, and the gateway refuses a manifest that changes the set a server ID already published (SEE-97, [environments.md](../wiki/environments.md)). Both `.env` examples ship as `sandbox` |
 | `PUBLISHER_DATABASE_PATH` | none; required | The SQLite file: the signals, and what the gateway has confirmed about each |
 | `PUBLISHER_API_TOKEN` | none; required | The token a caller of this template's API presents. At least 32 characters |
 | `BROADCAST_CREDENTIAL` | none; required | The credential the gateway's operator issued this publisher |
@@ -230,6 +230,7 @@ stderr.
 | `internal/jupiter` | The prediction provider: two endpoints, its pagination, its error codes, a paced client, and **the only file in the module that names its host** |
 | `internal/discovery` | What a filter means, what a cycle does, and the two row types the store keeps for it. No SQL and no HTTP: it is written against two interfaces |
 | `internal/manifest` | What this server says about itself, its fingerprint, and the feed reference |
+| `internal/environment` | Which promise a deployment keeps (SEE-97): one type, one pair of words, shared by both templates and by everything that validates, stamps, publishes or answers with it |
 | `internal/store` | The only place that speaks SQL: six tables, one writer, two revisions per row that are the whole of the outbox, and a schema that is brought forward rather than refused |
 | `internal/publish` | The one package that reaches the gateway: its client, the classification of every refusal, and the drainer |
 | `internal/api` | The JSON API, its authorization, its strict decoding, who may write a signal, and the boundary tests |
@@ -252,7 +253,8 @@ no phone behaviour in a publisher, and nothing here is mocked that the binary do
 | `internal/signals/swap_test.go` | Every way a swap's terms can be wrong with the code a caller is told, that direction is the pair and there is no side field, canonical numbers, absent-is-absent, a label counted the way the phone counts it, and base58 |
 | `internal/signals/prediction_test.go` | Every way a market's terms can be wrong, that no term can carry a side, the provider's floor being published rather than assumed, both deposit mints with their own decimals, and the identifier rule |
 | `internal/signals/contract_test.go` | The bounds are the **gateway's own** and the prediction rules are the **phone's own**, both read out of their source rather than trusted |
-| `internal/manifest/manifest_test.go` | A manifest is always a gateway feed, names one environment, carries the kind's plugin requirement, and a reference that carries no secret |
+| `internal/manifest/manifest_test.go` | A manifest is always a gateway feed, names one environment, carries the kind's plugin requirement, and a reference that carries no secret. An environment that came from anywhere but the configuration is published as unspecified rather than as production (SEE-97) |
+| `internal/environment/environment_test.go` | Only the two words are an environment, including the ways an operator nearly gets it right; one from nowhere has no wire value at all; and the two words are **the phone's own**, read out of `ActionPlugin.kt` rather than trusted |
 | `internal/store/store_test.go` | The live schema has no column for a subscriber; the file remembers whose it is and which environment; revisions, idempotency, a withdrawal being final, a late answer confirming nothing, deferral and refusal, and everything surviving a restart |
 | `internal/store/markets_test.go` | A market and its signal as one write, the same market twice being one proposal, the `UNIQUE` proposal, a re-opened market at the next generation, the cycle's number surviving a restart, and **a version-1 database brought forward with its signals intact** |
 | `internal/jupiter/jupiter_test.go` | A real listing decoded as the provider sent it, a walk that ends on an empty page, a market read directly, what makes a market tradeable, **every provider failure classified** with whether it is temporary, the pacing, and that the key is in one header and no message. Its fixtures are seven real answers |

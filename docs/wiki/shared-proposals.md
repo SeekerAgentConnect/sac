@@ -128,6 +128,7 @@ before the wallet is opened, and `bindingProblem` is the whole gate:
 | `nothing_prepared` | No preparation, or no content hash to bind to |
 | `preparation_expired` | What was prepared can no longer be included |
 | `no_wallet`, `other_wallet`, `other_network` | The wallet selected now isn't the one bound |
+| `other_environment` | The promise moved: the owner switched the feed between sandbox and production while this was in hand (SEE-97, [environments.md](environments.md)) |
 
 Every rule is in that one function rather than spread between a repository and a screen, because a
 rule in two places is a rule that gets forgotten in one of them. None of them is a warning to be
@@ -174,8 +175,9 @@ gateway was ever asked.
 
 An execution is written to **Activity** as it happens, as `ActivityKind.Operation` with a
 `ReviewedOperation`: the operation and the plugin as codes, the proposal revision, the wallet and
-cluster, the preparation version, and the parameters this owner chose. It is the binding, written
-down — so recording it records what was executed rather than an account of it.
+cluster, which promise it was bound under (SEE-97), the preparation version, and the parameters this
+owner chose. It is the binding, written down — so recording it records what was executed rather than
+an account of it.
 
 The outcomes are the transfer path's own, because the facts are the same shape:
 
@@ -186,6 +188,12 @@ The outcomes are the transfer path's own, because the facts are the same shape:
 | declined | `DeclinedInWallet` |
 | failed, and said so | `NotSigned` |
 | never answered | `Unknown` |
+| **not asked at all** | `Simulated` — the feed is a sandbox, so nothing was signed and nothing was sent (SEE-97) |
+
+A simulated execution spends the proposal exactly as a declined one does: one execution per proposal
+per device, whatever came of it. It carries no signature, and so it offers no explorer link — a
+rehearsal has nothing to look up, and this app invents neither
+([environments.md](environments.md)).
 
 Nothing in this build follows a proposal's transaction to the chain, and nothing pretends to: `Sent`
 is where it stops. A signed message's signature is still never called a payment, and an operation's

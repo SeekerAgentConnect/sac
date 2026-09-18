@@ -181,6 +181,8 @@ func TestTheRulesReachForNothing(t *testing.T) {
 		"google.golang.org/protobuf/types/known/timestamppb",
 		// The shapes an identity, a name and a piece of text are held to.
 		"regexp",
+		// Comparing two manifests' environments as sets (SEE-97).
+		"slices",
 		"strings",
 		"time",
 		"unicode",

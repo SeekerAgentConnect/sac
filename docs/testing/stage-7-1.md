@@ -12,7 +12,10 @@ run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast`,
   validate` and `caddy fmt` accept every Caddyfile, and `centrifugo checkconfig` accepts
   `broadcast/centrifugo.yaml`. Then every binary was **run natively** instead: the gateway, two
   broker nodes, Redis, and both publisher templates.
-- **A physical Seeker.** The device run below is the owner's.
+- **A physical Seeker.** The device run below is the owner's. That includes the phone's half of
+  SEE-97: whether a sandbox rehearsal really opens no wallet on a real device, and whether the
+  result is unmistakable to a person, are questions only a person with a phone can answer. The rest
+  of that contract — the manifest, the gateway's refusal, both templates — was run here, below.
 - **A market closing on cue (SEE-96).** The live provider's markets close when they close, so the
   closure path — a tracked market leaving the listing, being asked about directly, and being
   withdrawn — was run against a **local stand-in** serving the provider's own answer shapes, with
@@ -172,6 +175,29 @@ against a local stand-in serving the provider's own answer shapes.
 | `SEEKERVAULT_JUPITER=1 go test ./internal/jupiter/ -run Live` | **PASS** — a live listing and a live market read, with every field discovery depends on present |
 
 What is left is the part that needs two phones, which is step 9 below.
+
+## Verified by hand, for the two promises (SEE-97)
+
+The environment contract spans the manifest, the templates, the gateway and the phone. Everything
+except the phone's half can be run here, and was, on **2026-09-18**: the real gateway binary on two
+loopback ports and the real CopyTrading template binary against it.
+
+| What was asked | What happened |
+| --- | --- |
+| The template started with `PUBLISHER_ENVIRONMENT=sandbox` | `publishing as this server` with `"environment":"sandbox"`, the manifest published at revision 1 |
+| What a phone would read: `FeedService/GetServerManifest` | `"environments": ["SERVER_ENVIRONMENT_SANDBOX"]` — one value, and the one the deployment was configured with |
+| `publishctl status`, and `GET /v1/manifest` | `"environment": "sandbox"`, and `"environments": ["sandbox"]` rendered from the document that will be published rather than from the setting beside it |
+| Restarting it with `PUBLISHER_ENVIRONMENT=production` against **the same database** | Refused at startup: `the database was created for the other environment: it is a sandbox database, and PUBLISHER_ENVIRONMENT is production` |
+| A **fresh** database, the same server ID and the same credential, as production — a publisher trying to promote itself at the gateway | The gateway refused: `other_environment`, `permanent: true`, field `environments`, and the template said `nobody can subscribe to this publisher until its manifest is published` |
+| What a subscriber read after that refusal | Still `SERVER_ENVIRONMENT_SANDBOX` at revision 1, with the old display name: **nothing was written** |
+| A signal published in sandbox, then read back through the feed | Twelve fields, and the words `sandbox`, `production` and `environment` appear **nowhere** in the gateway's answer: a proposal carries no environment, because its publisher's manifest already says which one it is |
+| `grep PUBLISHER_ENVIRONMENT publisher/.env.example publisher/.env.prediction.example` | Both `sandbox`: a copied example is a demonstration, and production is a deliberate edit |
+
+The phone's half — a rehearsal with no wallet, an unmistakable result, and a switch that invalidates
+what was prepared — is covered by the automated suite (`OperationViewModelTest`,
+`ProposalBindingTest`, `ConnectionManifestTest`, `ConnectionStoreTest`, `ProposalScreensTest`,
+`ConnectionDetailsScreenTest`) and by step 10 below, which is the part only a person with a phone
+and a wallet can do.
 
 ## The device run (for the owner)
 
@@ -352,10 +378,47 @@ over a real certificate, a real network and the app's own lifecycle.
      withdraws the proposal, that both phones show it as withdrawn, and that **neither offers to
      place a new order from it**, while what each of them already did stays in its own Activity.
 
+10. **A sandbox rehearsal, and then production on purpose (SEE-97).** The two promises, in the
+    order anybody sane would take them. Do this one **first**, before steps 6 to 9: a sandbox feed
+    is how the whole path can be watched before any of it costs anything.
+
+    ```sh
+    cd publisher
+    cp .env.example .env            # it ships as PUBLISHER_ENVIRONMENT=sandbox
+    docker compose up -d --build
+    docker compose run --rm ctl reference   # the feed to add on the phone
+    ```
+
+    With that feed added:
+    - check the feed's **details**: it says **Sandbox**, with the sentence saying what that means.
+      A publisher that serves only sandbox offers no switch, because there is nothing to choose;
+    - open a signal and prepare it. Everything must be there and be real: the live route or market,
+      the exact transaction, the facts read out of the bytes, your own rules under them. This is the
+      demonstration, and a thin version of it would demonstrate nothing;
+    - check the banner above it, and that the button says **Simulate** rather than Approve;
+    - tap it. **Your wallet must not open.** No signature, no explorer link, and the signal now
+      says `Simulated. This feed is a sandbox, so nothing was signed and nothing was sent.`;
+    - check Activity: one record, `Simulated`, with **What the feed did: Sandbox** beside the
+      network, no signature and **no explorer link**. Confirm it is still that after force-stopping
+      and reopening the app;
+    - open the signal again: there is no second action. A rehearsal is an execution, and there is
+      one per signal;
+    - check that nothing was counted: a daily spending threshold you have set must be untouched.
+
+    Then production, deliberately, and only when you mean it:
+    - run a **second** deployment, with its own server ID, its own credential, its own database and
+      `PUBLISHER_ENVIRONMENT=production`, and add **its** reference as a second connection. The same
+      publisher cannot be promoted: its own database refuses, and the gateway refuses the manifest;
+    - if you run a publisher that serves **both**, switch the connection on its details screen and
+      check that anything already prepared is discarded and asks to be prepared again;
+    - then do steps 6 to 9 on that production feed, with **real funds and a deliberately small
+      amount**. That is the only run that spends anything, and it is recorded separately below.
+
 Record the date, the app build, the Solana endpoint used, the gateway, broker and Firebase project,
 the publisher's server ID and environment (**both** publishers, if you run the prediction template
-too), the pair and amount swapped, the market and stake ordered, and both transactions' signatures —
-as `docs/testing/stage-5-3.md` does for the direct path.
+too — and note which runs were sandbox rehearsals, which cost nothing, apart from the production
+ones, which do), the pair and amount swapped, the market and stake ordered, and both transactions'
+signatures — as `docs/testing/stage-5-3.md` does for the direct path.
 
 ## Not covered here
 

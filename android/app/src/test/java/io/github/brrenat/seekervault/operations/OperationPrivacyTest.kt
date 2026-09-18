@@ -180,7 +180,6 @@ class OperationPrivacyTest {
                             clock
                         }
                     ),
-                environment = PluginEnvironment.Production,
                 feed = feeds,
                 history = history,
                 now = { clock },

@@ -74,8 +74,11 @@ func run(log *slog.Logger) error {
 	}
 
 	documents, err := store.Open(settings.DatabasePath, store.Stamp{
-		ServerID:    settings.ServerID,
-		Environment: settings.Environment,
+		ServerID: settings.ServerID,
+		// The word itself: what the file is stamped with is text, and the store compares it
+		// without knowing the vocabulary, so a file that holds anything else is refused and named
+		// rather than interpreted.
+		Environment: settings.Environment.String(),
 		GatewayURL:  settings.GatewayURL,
 	})
 	if err != nil {

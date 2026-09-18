@@ -32,6 +32,11 @@ import org.json.JSONObject
  * file is still read, as what it is: a direct connection whose server has not been asked for a
  * manifest yet. The owner paired it and nothing about it changed, so it keeps working exactly as it
  * did, and the next refresh finds out whether its server publishes one.
+ *
+ * Version 3 added the environment the connection keeps (SEE-97). An older file is read as
+ * production, which is exactly what this build did before the field existed: every connection was
+ * production, and one whose server did not serve it was unexecutable and said so. So nothing a
+ * phone already holds changes meaning when the app is updated.
  */
 class ConnectionStore(private val dir: File) {
     /** Every readable connection, oldest pairing first. A damaged file is skipped. */
@@ -83,11 +88,13 @@ class ConnectionStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        const val VERSION = 2
+        const val VERSION = 3
         /**
          * Version 1 files predate the mode and the manifest, and are read as direct and unasked.
          */
         const val FIRST_VERSION = 1
+        /** Version 3 added the environment; before it, every connection was production. */
+        const val ENVIRONMENT_VERSION = 3
 
         fun encode(connection: Connection): String =
             JSONObject()
@@ -110,6 +117,7 @@ class ConnectionStore(private val dir: File) {
                     },
                 )
                 .put("mode", connection.mode.code)
+                .put("environment", connection.environment.code)
                 .put("server", encodeServer(connection.server))
                 .toString()
 
@@ -176,6 +184,20 @@ class ConnectionStore(private val dir: File) {
             val server = decodeServer(json.optJSONObject("server")) ?: ServerRecord.Unknown
             if (mode == ConnectionMode.GatewayFeed && server !is ServerRecord.Known) return null
             if (server.manifest?.mode?.equals(mode) == false) return null
+            // A direct connection is production whatever the file says, so nothing an edited or
+            // half-written file could hold puts one in an environment that does not sign. For a
+            // feed, an environment this build cannot read is the whole record gone, exactly as an
+            // unreadable manifest is: the alternative would be resolving it, and the only
+            // direction to resolve it in is the one with the money attached.
+            val environment =
+                when {
+                    mode == ConnectionMode.Direct -> PluginEnvironment.Production
+                    version < ENVIRONMENT_VERSION -> PluginEnvironment.Production
+                    else ->
+                        PluginEnvironment.entries.firstOrNull {
+                            it.code == json.optString("environment")
+                        } ?: return null
+                }
             return Connection(
                 id = json.getString("id"),
                 label = json.getString("label"),
@@ -199,6 +221,7 @@ class ConnectionStore(private val dir: File) {
                 hasCredential = mode == ConnectionMode.Direct,
                 mode = mode,
                 server = server,
+                environment = environment,
             )
         }
 

@@ -33,6 +33,7 @@ object OperationTags {
     const val ACKNOWLEDGE = "operations.acknowledge"
     const val UNSUPPORTED = "operations.unsupported"
     const val AFTERWARDS = "operations.afterwards"
+    const val SANDBOX = "operations.sandbox"
     const val REFERENCES = "operations.references"
 
     fun link(name: String) = "operations.link.$name"
@@ -60,6 +61,7 @@ fun outcomeText(outcome: ProposalOutcome): Int =
         is ProposalOutcome.Pending -> R.string.operation_outcome_pending
         is ProposalOutcome.Submitted -> R.string.operation_outcome_submitted
         is ProposalOutcome.Declined -> R.string.operation_outcome_declined
+        is ProposalOutcome.Simulated -> R.string.operation_outcome_simulated
         is ProposalOutcome.Failed -> R.string.operation_outcome_failed
         is ProposalOutcome.Unresolved -> R.string.operation_outcome_unresolved
     }
@@ -96,4 +98,5 @@ fun bindingText(problem: BindingProblem): Int =
         BindingProblem.NoWallet -> R.string.operation_binding_no_wallet
         BindingProblem.OtherWallet -> R.string.operation_binding_other_wallet
         BindingProblem.OtherNetwork -> R.string.operation_binding_other_network
+        BindingProblem.OtherEnvironment -> R.string.operation_binding_other_environment
     }

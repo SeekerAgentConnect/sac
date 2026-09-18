@@ -653,17 +653,46 @@ class StageBoundaryTest {
             listOf("plugins", "servers", "proposals", "jupiter").map {
                 File(main, "java/io/github/brrenat/seekervault/$it")
             }
-        val importers =
+        val outside =
             File(main, "java")
                 .walk()
                 .filter { it.extension == "kt" }
                 .filterNot { file -> owners.any { file.startsWith(it) } }
-                .filter {
-                    it.readText().contains("import io.github.brrenat.seekervault.plugins.")
+                .map {
+                    it to
+                        Regex("""import io\.github\.brrenat\.seekervault\.plugins\.(\S+)""")
+                            .findAll(it.readText())
+                            .map { match -> match.groupValues[1] }
+                            .toList()
                 }
-                .map { it.name }
-                .sorted()
+                .filter { (_, imports) -> imports.isNotEmpty() }
                 .toList()
+        // One name in that package is not about plugins at all: PluginEnvironment is which promise
+        // a connection keeps when the owner approves (SEE-97). It lives beside the boundary
+        // because a plugin says which environments it serves, but the decision is core's — a
+        // connection records it, the owner changes it, a binding pins it and a record keeps it —
+        // so the files below know what a sandbox is and still know nothing about a registry.
+        val promise =
+            outside
+                .filter { (_, imports) -> imports.all { it == "PluginEnvironment" } }
+                .map { (file, _) -> file.name }
+                .sorted()
+        assertEquals(
+            listOf(
+                "ActivityRecord.kt",
+                "ActivityStore.kt",
+                "Connection.kt",
+                "ConnectionDetailsScreen.kt",
+                "ConnectionRepository.kt",
+                "ConnectionText.kt",
+            ),
+            promise,
+        )
+        val importers =
+            outside
+                .filterNot { (_, imports) -> imports.all { it == "PluginEnvironment" } }
+                .map { (file, _) -> file.name }
+                .sorted()
         assertEquals(
             listOf(
                 "ConnectionStore.kt",

@@ -34,6 +34,7 @@
     <string name="activity_outcome_confirmed">Confirmed on the network</string>
     <string name="activity_outcome_chain_failed">Failed on the network</string>
     <string name="activity_outcome_not_signed">Not signed</string>
+    <string name="activity_outcome_simulated">Simulated</string>
     <string name="activity_outcome_unknown">Outcome unknown</string>
     <string name="activity_outcome_not_delivered">Never reached the server</string>
     <string name="activity_outcome_superseded">The request had already ended</string>
@@ -52,6 +53,7 @@
     <string name="activity_field_source">Asked by</string>
     <string name="activity_field_server">Server</string>
     <string name="activity_field_cluster">Network</string>
+    <string name="activity_field_environment">What the feed did</string>
     <string name="activity_field_wallet">Paid from</string>
     <string name="activity_field_recipient">To</string>
     <string name="activity_field_amount">Amount</string>

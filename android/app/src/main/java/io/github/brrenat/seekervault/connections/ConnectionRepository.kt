@@ -6,6 +6,7 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.ActionRequest
@@ -76,6 +77,31 @@ sealed interface FeedOutcome {
      * gateway).
      */
     data object NoGateway : FeedOutcome
+}
+
+/**
+ * What came of moving a feed between the environments its server serves (SEE-97).
+ *
+ * Each answer is a separate fact because each is a different thing to tell the owner, and none of
+ * them is a partial success: either the connection now keeps the other promise, or it keeps the one
+ * it had.
+ */
+enum class EnvironmentOutcome {
+    /**
+     * The connection now keeps the other promise, and nothing prepared under the old one stands.
+     */
+    Changed,
+    /** It already kept that one. Nothing was written and nothing was invalidated. */
+    Unchanged,
+    /** Its server does not serve that environment, so no connection to it could keep it. */
+    NotServed,
+    /**
+     * It is a direct connection, which is always production: an agent waiting for a signature
+     * cannot be handed a simulation.
+     */
+    NotAFeed,
+    /** There is no such connection on this phone any more. */
+    Gone,
 }
 
 /** What a publisher's settings came to, from a read or from the stream (SEE-91). */
@@ -423,6 +449,10 @@ class ConnectionRepository(
                 hasCredential = false,
                 mode = ConnectionMode.GatewayFeed,
                 server = ServerRecord.Known(manifest),
+                // Sandbox whenever this publisher offers one, and the owner's to change afterwards
+                // (SEE-97). A feed that is added straight into production is one whose publisher
+                // serves nothing else.
+                environment = startingEnvironment(ServerRecord.Known(manifest)),
             )
         locked {
             if (store.get(connection.id) != null) {
@@ -1078,6 +1108,38 @@ class ConnectionRepository(
     suspend fun rename(id: String, label: String) {
         require(labelProblem(label) == null) { "invalid label" }
         update(id) { it.copy(label = label.trim()) }
+    }
+
+    /**
+     * Moves a feed between the environments its server serves (SEE-97, docs/wiki/environments.md),
+     * and returns what became of the request.
+     *
+     * Three things are true of every switch. It is the owner's: nothing a publisher republishes
+     * reaches this method. It is only ever to an environment the server actually names, so a
+     * connection cannot be put into a promise its server never made. And it invalidates what was
+     * prepared — the review a phone is holding was prepared for the other environment, and a
+     * preparation, a quote and an approval all belong to the environment they were made in, so the
+     * owner reviews again rather than carrying one across.
+     *
+     * A direct connection is refused: it is always production, because an agent waiting for a
+     * signature cannot be handed a simulation.
+     */
+    suspend fun setEnvironment(id: String, environment: PluginEnvironment): EnvironmentOutcome {
+        val connection = find(id) ?: return EnvironmentOutcome.Gone
+        if (connection.mode != ConnectionMode.GatewayFeed) return EnvironmentOutcome.NotAFeed
+        if (connection.environment == environment) return EnvironmentOutcome.Unchanged
+        val served = connection.server.manifest?.environments.orEmpty()
+        if (environment !in served) return EnvironmentOutcome.NotServed
+        update(id) { it.copy(environment = environment) }
+        // Nothing else is written, and nothing is deleted. What was in hand for the other promise
+        // stops counting by itself: an open review on screen carries the environment it was opened
+        // in, so the preparation under it is dropped, and a binding carries it too, so one made
+        // under the other promise is refused inside the wallet's own lock (SEE-97). An
+        // invalidation that had to be remembered here is one that could be forgotten here.
+        //
+        // What is kept is the amount the owner typed, which is neither an approval nor a quote:
+        // they still prepare again, read the fresh review, acknowledge again and approve again.
+        return EnvironmentOutcome.Changed
     }
 
     /**

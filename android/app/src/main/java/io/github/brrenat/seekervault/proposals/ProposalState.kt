@@ -128,6 +128,23 @@ sealed interface ProposalOutcome {
     /** The owner declined in the wallet, after choosing to go ahead here. */
     data object Declined : ProposalOutcome
 
+    /**
+     * The connection is a sandbox, so the operation was rehearsed and not performed (SEE-97,
+     * docs/wiki/environments.md).
+     *
+     * Everything up to the wallet happened, and happened for real: the plugin read the provider,
+     * built the bytes and they were inspected, the owner's rules were applied, and the binding
+     * below was written. Then nothing was signed and nothing was sent. There is deliberately no
+     * signature here and none is invented — an explorer link needs one, so a rehearsal offers none
+     * — and this is a settled outcome, because a rehearsal is over when it is over.
+     *
+     * Like every other outcome, it means this device has finished with the proposal. A rehearsal is
+     * what the owner asked for under this connection's promise, and a phone that then let the same
+     * proposal be executed for real would be treating what they asked for as not having counted
+     * (`proposalStanding`).
+     */
+    data object Simulated : ProposalOutcome
+
     /** Nothing was signed, and the phone knows why. [detail] is display text. */
     data class Failed(val detail: String) : ProposalOutcome
 

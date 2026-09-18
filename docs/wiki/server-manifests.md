@@ -15,7 +15,7 @@ That statement is a **server manifest**. It says who the server is, which phoneâ
 | `settings_revision` | Changes whenever anything else in the manifest does, and never goes backwards |
 | `mode` | `direct` or `gateway_feed`. Never absent, and never inferred |
 | `required_plugins` | Plugin IDs with the contract range each one is needed at |
-| `environments` | `production`, `sandbox`, or both (SEE-97) |
+| `environments` | `production`, `sandbox`, or both â€” which the server *serves*; the connection records which one it *keeps* ([environments.md](environments.md)) |
 | `display_name` | The name the server calls itself. Optional, bounded, and never verified |
 | `direct` / `feed` | One reference, selected by the mode: a URL, or a gateway origin and a channel |
 
@@ -59,7 +59,7 @@ The phone caches the manifest by validated identity and revision:
 
 A server that can't be reached leaves the record exactly as it was: not hearing an answer is not an answer.
 
-The manifest is cached because it is the server's data. **Support is not cached**, ever: a verdict written to disk would outlive the build that reached it, and installing a version of the app that carries a plugin would leave yesterday's "missing" sitting in a file. `serverSupport(record, registry, environment)` is a pure function over the compiled registry, called on every read.
+The manifest is cached because it is the server's data. **Support is not cached**, ever: a verdict written to disk would outlive the build that reached it, and installing a version of the app that carries a plugin would leave yesterday's "missing" sitting in a file. `serverSupport(record, registry, environment)` is a pure function over the compiled registry and the connection's own environment, called on every read.
 
 ## What the owner is told
 
@@ -69,7 +69,7 @@ The manifest is cached because it is the server's data. **Support is not cached*
 | --- | --- | --- |
 | `ManifestRefused` | The server published something this phone refused | no |
 | `ProtocolUnsupported` | The server speaks a contract this build doesn't: update the app | no |
-| `EnvironmentUnsupported` | The server doesn't serve the environment the app runs in | no |
+| `EnvironmentUnsupported` | The server doesn't serve the environment this connection keeps (SEE-97) | no |
 | `PluginMissing` | This build carries no plugin with a required ID | no |
 | `PluginIncompatible` | It carries one, at a contract version the server doesn't work with | no |
 | `Supported` | Everything the server requires is here | yes |

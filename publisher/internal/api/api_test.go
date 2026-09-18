@@ -9,6 +9,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/environment"
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/gateway/v1"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/proposal/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/signals"
@@ -523,6 +524,31 @@ func TestTheManifestAndTheReferenceAreTheDeploymentsOwn(t *testing.T) {
 	if environments := document["environments"].([]any); len(environments) != 1 ||
 		environments[0] != "production" {
 		t.Fatalf("environments %v: one deployment serves one of them", environments)
+	}
+	// And it is the document's own answer rather than the setting beside it (SEE-97): one fact,
+	// one source, and the source is the one a phone will read.
+	for _, one := range []struct {
+		named    environment.Environment
+		expected string
+	}{
+		{environment.Production, "production"},
+		{environment.Sandbox, "sandbox"},
+		// A setting nobody validated does not become the promise with the money attached to it:
+		// the document says unspecified, the gateway refuses it, and the answer says so too.
+		{"staging", "unspecified"},
+	} {
+		deployment := startIn(t, &fakeGateway{}, one.named)
+		manifested := deployment.call(http.MethodGet, "/v1/manifest", nil)
+		document := manifested.body["manifest"].(map[string]any)
+		environments := document["environments"].([]any)
+		if len(environments) != 1 || environments[0] != one.expected {
+			t.Fatalf("%q answered %v, expected [%s]", one.named, environments, one.expected)
+		}
+		// The status answers the word itself, which is what an operator reads.
+		status := deployment.call(http.MethodGet, "/v1/status", nil)
+		if status.body["environment"] != one.named.String() {
+			t.Fatalf("status said %v", status.body["environment"])
+		}
 	}
 	plugins := document["required_plugins"].([]any)
 	if len(plugins) != 1 {

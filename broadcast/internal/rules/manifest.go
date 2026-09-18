@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"slices"
+
 	"google.golang.org/protobuf/proto"
 
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1"
@@ -126,9 +128,24 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 // of the two the publisher meant, and every phone caching by revision would believe whichever it
 // happened to read. A lower revision is refused because a late retry must not restore settings the
 // publisher has moved past.
+//
+// One field cannot move at all (SEE-97). A higher revision may change anything a publisher may
+// change — the plugins it needs, the name it calls itself — but not the environments it serves: an
+// environment is what a server promises when the owner approves, and a promise that a higher
+// revision can raise is not one. A phone that added a demonstration would be moved to real money
+// by a document nobody looked at. A second environment is a second deployment, with its own server
+// ID, credential and database, which is the same rule the publisher's own database stamp keeps at
+// its end (docs/wiki/environments.md).
 func AdvanceManifest(held, next *serverv1.ServerManifest) (Decision, *Fault) {
 	if held == nil {
 		return Stored, nil
+	}
+	if !sameEnvironments(held.GetEnvironments(), next.GetEnvironments()) {
+		return Stored, &Fault{
+			Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT,
+			Field:   "environments",
+			Held:    held.GetSettingsRevision(),
+		}
 	}
 	switch {
 	case next.GetSettingsRevision() < held.GetSettingsRevision():
@@ -149,4 +166,20 @@ func AdvanceManifest(held, next *serverv1.ServerManifest) (Decision, *Fault) {
 	default:
 		return Stored, nil
 	}
+}
+
+// sameEnvironments is whether two manifests promise the same thing, compared as sets: the order a
+// publisher wrote them in is not part of the promise, and a document that reorders them is a retry
+// rather than a change of mind. Both have been through [Manifest], which refuses an empty set, an
+// unknown value and a repeated one, so length and membership are the whole comparison.
+func sameEnvironments(held, next []serverv1.ServerEnvironment) bool {
+	if len(held) != len(next) {
+		return false
+	}
+	for _, environment := range held {
+		if !slices.Contains(next, environment) {
+			return false
+		}
+	}
+	return true
 }

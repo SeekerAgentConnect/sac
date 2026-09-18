@@ -67,8 +67,14 @@ func codeOf(problem gatewayv1.GatewayProblem) connect.Code {
 	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_STALE_REVISION,
 		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT,
 		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_CANCELLED,
-		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_PROPOSALS:
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_PROPOSALS,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT:
 		// True of the call only while the gateway holds what it holds. Nothing was written.
+		//
+		// The environment is in this group rather than among the malformed documents because the
+		// document is well formed: it is this server ID that has already promised something else
+		// (SEE-97), and a publisher reading the refusal needs to know that nothing about the
+		// spelling would fix it.
 		return connect.CodeFailedPrecondition
 	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_SERVER,
 		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL:

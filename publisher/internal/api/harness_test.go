@@ -18,6 +18,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/environment"
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/gateway/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/gateway/v1/gatewayv1connect"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/proposal/v1"
@@ -172,6 +173,18 @@ func start(t *testing.T, fake *fakeGateway) *template {
 	return startWith(t, fake, signals.Swap{}, nil)
 }
 
+// startIn is start in the environment the deployment was configured with (SEE-97), for the tests
+// that are about what a sandbox deployment answers.
+func startIn(t *testing.T, fake *fakeGateway, named environment.Environment) *template {
+	t.Helper()
+	return startWith(t, fake, signals.Swap{}, func(held *template, plan *Plan) {
+		// Both, because the plan took its copy before this ran: the template's own settings are
+		// what its assertions read, and the plan's are what the API answers from.
+		held.settings.Environment = named
+		plan.Settings.Environment = named
+	})
+}
+
 // startWith is start with the kind the template registered, and a chance to change the plan before
 // the API is built — which is what the Prediction template's own tests need (discovery_test.go).
 func startWith(
@@ -191,7 +204,7 @@ func startWith(
 	}
 	documents, err := store.Open(path, store.Stamp{
 		ServerID:    settings.ServerID,
-		Environment: settings.Environment,
+		Environment: settings.Environment.String(),
 		GatewayURL:  settings.GatewayURL,
 	})
 	if err != nil {

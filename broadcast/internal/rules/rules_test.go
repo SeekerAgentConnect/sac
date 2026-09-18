@@ -488,6 +488,22 @@ func TestWhatARevisionMeansForAManifest(t *testing.T) {
 		{"a late retry", manifest(func(m *serverv1.ServerManifest) {
 			m.SettingsRevision = 2
 		}), Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_STALE_REVISION},
+		// The one field a higher revision cannot move (SEE-97). Everything else about this
+		// document may change; what the server promises when the owner approves may not, or a
+		// phone that added a demonstration would be holding a production feed without being asked.
+		{"a sandbox server that publishes itself as production", manifest(
+			func(m *serverv1.ServerManifest) {
+				m.SettingsRevision = 4
+				m.Environments = []serverv1.ServerEnvironment{
+					serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
+				}
+			}), Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT},
+		{"one that adds an environment to the one it had", manifest(
+			func(m *serverv1.ServerManifest) {
+				m.SettingsRevision = 4
+				m.Environments = append(m.Environments,
+					serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX)
+			}), Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			next, fault := Manifest(one.next, expectation())
@@ -508,6 +524,36 @@ func TestWhatARevisionMeansForAManifest(t *testing.T) {
 				t.Fatalf("%s answered %v, expected %v", one.name, fault, one.problem)
 			}
 		})
+	}
+}
+
+// The promise is the set, not the order a publisher happened to write it in: a document that lists
+// the same two environments the other way round has changed nothing, and refusing it would make a
+// publisher's serialization order part of its identity (SEE-97).
+func TestReorderingTheEnvironmentsChangesNothing(t *testing.T) {
+	both := func(first, second serverv1.ServerEnvironment) *serverv1.ServerManifest {
+		return manifest(func(m *serverv1.ServerManifest) {
+			m.Environments = []serverv1.ServerEnvironment{first, second}
+		})
+	}
+	production := serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION
+	sandbox := serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX
+	held, fault := Manifest(both(production, sandbox), expectation())
+	if fault != nil {
+		t.Fatal(fault.Problem)
+	}
+	reordered := both(sandbox, production)
+	reordered.SettingsRevision = 4
+	next, fault := Manifest(reordered, expectation())
+	if fault != nil {
+		t.Fatal(fault.Problem)
+	}
+	decision, fault := AdvanceManifest(held, next)
+	if fault != nil {
+		t.Fatalf("a reorder was refused: %v", fault.Problem)
+	}
+	if decision != Stored {
+		t.Fatalf("a higher revision was %v", decision)
 	}
 }
 

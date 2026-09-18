@@ -11,6 +11,7 @@ import io.github.brrenat.seekervault.activity.ReviewedRuleSource
 import io.github.brrenat.seekervault.activity.ReviewedTransfer
 import io.github.brrenat.seekervault.activity.ReviewedValue
 import io.github.brrenat.seekervault.connections.isConnectionId
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
 import java.io.IOException
@@ -208,6 +209,10 @@ class ActivityStore(private val dir: File) {
                 .put("revision", operation.revision)
                 .put("wallet", operation.wallet)
                 .put("network", operation.network.name)
+                // SEE-97 added the promise it was bound under, and left the version alone for the
+                // same reason SAW-028 and SEE-94 did: the field is additive, and a record written
+                // before it is a production one, which is what every execution was then.
+                .put("environment", operation.environment.code)
                 .put("preparedVersion", operation.preparedVersion)
                 .put(
                     "values",
@@ -236,6 +241,10 @@ class ActivityStore(private val dir: File) {
                 revision = it.getLong("revision"),
                 wallet = it.getString("wallet"),
                 network = Network.valueOf(it.getString("network")),
+                environment =
+                    PluginEnvironment.entries.firstOrNull { named ->
+                        named.code == it.optString("environment")
+                    } ?: PluginEnvironment.Production,
                 preparedVersion = it.getInt("preparedVersion"),
                 values = decodeValues(it.optJSONArray("values")),
                 references = decodeValues(it.optJSONArray("references")),

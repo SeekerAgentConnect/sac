@@ -122,6 +122,12 @@ data class PluginDescriptor(
     /**
      * The environments it serves them in. Sandbox and production are different promises about what
      * happens when the owner approves (SEE-97), and a plugin says which ones it can keep.
+     *
+     * A plugin that serves both does the same work in each: whether the bytes it prepared are
+     * signed is core's decision, at the wallet, and a plugin is never asked to enforce it. The
+     * field is here for the plugin that genuinely cannot serve one — a provider with no public read
+     * to rehearse against, say — and [PluginRegistry.resolve] reports that as unsupported rather
+     * than letting it be called for something it said it could not do.
      */
     val environments: Set<PluginEnvironment>,
 ) {
@@ -143,6 +149,12 @@ data class PluginDescriptor(
  * stage's own. Publishers exist now — SEE-95's template publishes `jupiter.swap` at `1..1` and
  * SEE-96's publishes `jupiter.prediction` at `1..1` — so the next change to [ActionPlugin] raises
  * this number rather than redefining it.
+ *
+ * SEE-97 did not raise it, and that is the same decision rather than a lapse of it: nothing about
+ * this interface changed. The environment was always in [ActionSubject], every plugin already
+ * declared which environments it serves, and what SEE-97 settled is what *core* does with a
+ * preparation made in one of them. A plugin written against contract 1 is called exactly as before
+ * and is correct in both environments, which is the test of whether a change was a contract change.
  */
 const val PLUGIN_CONTRACT: Int = 1
 
@@ -187,16 +199,36 @@ fun isPluginId(value: String): Boolean =
 fun isOperationId(value: String): Boolean = value.length in 1..64 && ID_PATTERN.matches(value)
 
 /**
- * Which promise the app is keeping when the owner approves (SEE-97 makes it their choice; until
- * then core asks for [Production] and nothing selects the other).
+ * Which promise is being kept when the owner approves (SEE-97, docs/wiki/environments.md).
+ *
+ * It belongs to a connection rather than to the app or to a plugin. A server's manifest says which
+ * environments it *serves*; the connection records the one it *keeps*, and only the owner changes
+ * that — so no document a publisher republishes can move a demonstration onto real money, and one
+ * phone holds a sandbox feed and a production one at the same time without either affecting the
+ * other.
+ *
+ * Neither value is a Solana cluster and neither selects one. The cluster is the network the owner's
+ * wallet is selected for, and it is checked separately and always ([ActionSubject.wallet]): there
+ * is no Jupiter test network to point [Sandbox] at, and inventing one would be worse than saying
+ * so.
+ *
+ * [code] is the word the publisher's own configuration, its API and its logs use, so an operator
+ * and an owner are reading the same two words about the same deployment
+ * (`publisher/internal/environment`).
  */
 enum class PluginEnvironment(val code: String) {
     /** A real operation, on the network the owner's wallet is selected for. */
     Production("production"),
 
     /**
-     * Live public market data where it exists, and execution that is clearly simulated. It is not a
-     * claim that a provider runs a test trading service.
+     * Live public market data where it exists, the same review, and an execution that is simulated
+     * and said to be: nothing is signed, nothing is sent, and no signature or explorer link is
+     * invented for something that did not happen.
+     *
+     * It is not a claim that a provider runs a test trading service — none of them does — and it is
+     * not a smaller kind of approval. A plugin prepares identically in both environments, because a
+     * rehearsal of something other than the real thing would demonstrate nothing; what stops is
+     * core, at the wallet.
      */
     Sandbox("sandbox"),
 }

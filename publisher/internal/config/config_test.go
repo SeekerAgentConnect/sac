@@ -108,7 +108,7 @@ func TestTheEnvironmentIsProductionOrSandboxAndHasNoDefault(t *testing.T) {
 			if mentions(problems, "PUBLISHER_ENVIRONMENT") == one.ok {
 				t.Fatalf("%q: %v", one.value, problems)
 			}
-			if one.ok && settings.Environment != strings.ToLower(one.value) {
+			if one.ok && settings.Environment.String() != strings.ToLower(one.value) {
 				t.Fatalf("environment %q", settings.Environment)
 			}
 		})

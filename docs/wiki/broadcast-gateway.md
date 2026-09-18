@@ -85,6 +85,14 @@ Everything else is bounded the way the contract says: at most 32 named terms of 
 note of at most 1024, a name of at most 64, at most 16 plugin requirements, an explicit environment,
 and times that agree with each other.
 
+**An environment that does not move (SEE-97).** A higher revision may change anything a publisher
+may change — the plugins it needs, the name it calls itself — but not the environments it serves
+(`other_environment`). A promise a higher revision can raise is not a promise: every subscribed
+phone caches a manifest by revision, so one document would move all of them from a demonstration to
+real money without anybody looking at it. A second environment is a second deployment, with its own
+server ID, credential and database, which is the same rule the publisher's own database stamp keeps
+at its end ([environments.md](environments.md)).
+
 ### What cannot pass through
 
 The gateway **rebuilds every document from the fields it validated** rather than storing what
@@ -338,7 +346,8 @@ gateway that relays nothing answers `NO_PUSH`, which the phone reads the way it 
 The environment is the deployment's own setting, and it is in the name so that one Firebase project
 can serve a sandbox deployment and a production one without a sandbox publication waking a
 production subscriber. It is not SEE-97's environment model: nothing here decides what a server
-promises when the owner approves.
+promises when the owner approves, and the two words happening to be the same is a coincidence of
+vocabulary ([environments.md](environments.md#two-other-things-called-environment)).
 
 **A topic is public and grants nothing.** What it admits someone to is the news that a broadcast
 changed, and the broadcast is readable by anyone who holds its reference. It is not proof of access

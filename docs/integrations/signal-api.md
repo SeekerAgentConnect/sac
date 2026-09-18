@@ -259,6 +259,7 @@ The problem is the gateway's own code. The ones worth knowing:
 | `other_gateway`, `not_a_feed` | `PUBLISHER_GATEWAY_URL` is not the gateway's own origin |
 | `too_many_proposals` | The channel is at its bound. Withdraw something, then retry |
 | `stale_revision`, `revision_conflict`, `cancelled` | This template's view and the gateway's disagree; look at both before retrying |
+| `other_environment` | `PUBLISHER_ENVIRONMENT` is not the one this server ID already published (SEE-97). A second environment is a second deployment, with its own server ID, credential and database |
 | `unimplemented` (404) | `PUBLISHER_PUBLISH_URL` is not reaching the gateway's publisher API |
 
 Nothing retries a refusal on its own. When the cause is fixed:

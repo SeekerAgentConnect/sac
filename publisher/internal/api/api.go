@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/discovery"
+	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/ids"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/manifest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/publish"
@@ -455,7 +456,7 @@ func (s *Server) manifest(writer http.ResponseWriter, request *http.Request) {
 			"protocol_version":  document.GetProtocolVersion(),
 			"settings_revision": number(revision),
 			"mode":              "gateway_feed",
-			"environments":      []string{s.settings.Environment},
+			"environments":      environmentsOf(document),
 			"display_name":      document.GetDisplayName(),
 			"required_plugins": []map[string]any{{
 				"plugin_id":    s.kind.Requirement().PluginID,
@@ -815,6 +816,20 @@ func send(writer http.ResponseWriter, status int, body any) {
 	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")
 	_ = encoder.Encode(body)
+}
+
+// environmentsOf is what a manifest answer says a deployment promises, read out of the document
+// that will be published rather than out of the setting beside it (SEE-97).
+//
+// One fact, one source. The setting and the document cannot disagree if only one of them is ever
+// rendered, and the document is the one a phone will read.
+func environmentsOf(document *serverv1.ServerManifest) []string {
+	named := make([]string, 0, len(document.GetEnvironments()))
+	for _, environment := range document.GetEnvironments() {
+		named = append(named, strings.ToLower(
+			strings.TrimPrefix(environment.String(), "SERVER_ENVIRONMENT_")))
+	}
+	return named
 }
 
 // publicationOf is what an answer says about a publication.

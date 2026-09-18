@@ -275,6 +275,40 @@ saying exactly how small it is.
   and no term a side could be published in: a term the kind does not know is refused, so `side`,
   `is_yes`, `confidence` and `recommendation` cannot be published at all.
 
+### Nothing can quietly promote a demonstration to real money (SEE-97)
+
+Sandbox exists so that the whole path can be watched without anybody's funds, and that is only
+worth having if getting *out* of it is an act somebody performed on purpose
+([`wiki/environments.md`](wiki/environments.md)).
+
+- **The promise is not the document's to change.** A manifest says which environments a server
+  serves; the phone records which one the connection keeps, and only the owner changes that. The
+  gateway refuses a manifest that changes the environments a server ID already published
+  (`other_environment`), and a manifest that stops naming the one a connection keeps makes that
+  server unsupported — readable, executing nothing — rather than moving the connection to the other
+  one.
+- **It is checked where every other execution rule is checked.** The environment is pinned in the
+  `ExecutionBinding` before the wallet is opened and compared with the connection's own inside the
+  wallet's single lock, beside the preparation's expiry and the wallet selection. A mode switch that
+  lands while an approval is in flight is refused there; it cannot land between the check and the
+  signature, because there is no gap.
+- **A rehearsal cannot reach a wallet, structurally.** The sandbox branch of an approval is
+  lexically outside `withWallet`, so there is no session in scope to sign with — not a flag beside
+  one. Two tests assert it from opposite directions: the wallet's fake adapter records nothing in
+  sandbox, and a source-level check keeps `signAndSendTransactions` in the one file that has always
+  held it.
+- **Nothing about a simulation is fabricated.** No signature, so no explorer link; no fill, no
+  position, no profit. A simulated record is labelled as one in Activity, keeps the promise it was
+  bound under beside the cluster, and counts nothing against a daily threshold the owner set on real
+  money — for the same reason devnet play money never does.
+- **A rehearsal spends the proposal.** One execution per proposal per device, whatever came of it,
+  exactly as a decline in the wallet does. The alternative is a record that can hold two executions,
+  and a phone deciding which of them counted.
+- **The private workflow is untouched.** A direct connection is production by construction, and the
+  invariant is stated where a connection is built rather than checked where one is used: an agent
+  waiting for a signature can be told no, but it cannot be handed a simulation, and this app will not
+  invent one for it.
+
 ## One active phone per sidecar
 
 A sidecar has one paired phone at a time. A phone can pair with several sidecars (SAW-012).

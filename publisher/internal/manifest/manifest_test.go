@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/environment"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/signals"
 )
@@ -51,9 +52,9 @@ func TestAManifestIsAlwaysAGatewayFeed(t *testing.T) {
 // to treat a server as supported in an environment the server does not name, because sandbox and
 // production are different promises about what happens when the owner approves.
 func TestAManifestNamesExactlyOneEnvironment(t *testing.T) {
-	for name, expected := range map[string]serverv1.ServerEnvironment{
-		"production": serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-		"sandbox":    serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
+	for name, expected := range map[environment.Environment]serverv1.ServerEnvironment{
+		environment.Production: serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
+		environment.Sandbox:    serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
 	} {
 		held := settings()
 		held.Environment = name
@@ -61,6 +62,21 @@ func TestAManifestNamesExactlyOneEnvironment(t *testing.T) {
 		if len(environments) != 1 || environments[0] != expected {
 			t.Fatalf("%s: %v", name, environments)
 		}
+	}
+}
+
+// And an environment that came from anywhere but the configuration is published as unspecified
+// rather than as production (SEE-97). The gateway refuses that document
+// (GATEWAY_PROBLEM_BAD_ENVIRONMENT), which is a deployment that does not publish; the alternative
+// is a deployment that publishes the promise with the money attached to it because a string was
+// misspelled somewhere.
+func TestAnEnvironmentFromNowhereIsNotPublishedAsProduction(t *testing.T) {
+	held := settings()
+	held.Environment = "staging"
+	environments := Document(held, 1).GetEnvironments()
+	if len(environments) != 1 ||
+		environments[0] != serverv1.ServerEnvironment_SERVER_ENVIRONMENT_UNSPECIFIED {
+		t.Fatalf("%v", environments)
 	}
 }
 

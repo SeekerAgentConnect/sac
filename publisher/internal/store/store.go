@@ -77,7 +77,12 @@ var (
 
 // Stamp is who the file belongs to. It is checked on every open, and the check is the isolation.
 type Stamp struct {
-	ServerID    string
+	ServerID string
+	// Which promise the deployment that created this file keeps (SEE-97), as the word itself. It
+	// is deliberately not this module's Environment type: what makes the isolation work is
+	// comparing the text in the file with the text the configuration was read from, and a file
+	// holding a word nobody recognizes must be refused and named rather than parsed into one of
+	// the two.
 	Environment string
 	// The gateway this template publishes through. Unlike the two above it may change — a
 	// deployment moves domain — so it is recorded and updated rather than enforced. The manifest's
