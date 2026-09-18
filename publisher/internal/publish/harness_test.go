@@ -49,6 +49,13 @@ func (f *fakeGateway) PublishRequest(
 	ctx context.Context,
 	request *connect.Request[gatewayv1.PublishRequestRequest],
 ) (*connect.Response[gatewayv1.PublishRequestResponse], error) {
+	f.mutex.Lock()
+	f.note("PublishRequest", request.Header().Get("Authorization"))
+	if err := f.refusal("PublishRequest"); err != nil {
+		f.mutex.Unlock()
+		return nil, err
+	}
+	f.mutex.Unlock()
 	legacy := connect.NewRequest(&gatewayv1.PublishProposalRequest{Proposal: proposalFromRequest(request.Msg.GetRequest())})
 	legacy.Header().Set("Authorization", request.Header().Get("Authorization"))
 	answer, err := f.PublishProposal(ctx, legacy)
@@ -64,6 +71,13 @@ func (f *fakeGateway) CancelRequest(
 	ctx context.Context,
 	request *connect.Request[gatewayv1.CancelRequestRequest],
 ) (*connect.Response[gatewayv1.CancelRequestResponse], error) {
+	f.mutex.Lock()
+	f.note("CancelRequest", request.Header().Get("Authorization"))
+	if err := f.refusal("CancelRequest"); err != nil {
+		f.mutex.Unlock()
+		return nil, err
+	}
+	f.mutex.Unlock()
 	legacy := connect.NewRequest(&gatewayv1.CancelProposalRequest{ProposalId: request.Msg.GetRequestId(), Revision: request.Msg.GetRevision()})
 	legacy.Header().Set("Authorization", request.Header().Get("Authorization"))
 	answer, err := f.CancelProposal(ctx, legacy)

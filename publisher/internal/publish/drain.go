@@ -204,8 +204,14 @@ func (d *Drainer) One(ctx context.Context, record signals.Record) (*Refusal, err
 	)
 	if signal.Status == signals.Cancelled {
 		status, err = d.gateway.WithdrawRequest(ctx, signal.ProposalID, signal.Revision)
+		if unimplemented(err) {
+			status, err = d.gateway.Withdraw(ctx, signal.ProposalID, signal.Revision)
+		}
 	} else {
 		status, err = d.gateway.Request(ctx, d.RequestDocument(signal))
+		if unimplemented(err) {
+			status, err = d.gateway.Proposal(ctx, d.Document(signal))
+		}
 	}
 	if err != nil {
 		var refusal *Refusal
@@ -235,6 +241,14 @@ func (d *Drainer) One(ctx context.Context, record signals.Record) (*Refusal, err
 		"revision", signal.Revision, "status", string(status),
 		"withdrawn", signal.Status == signals.Cancelled)
 	return nil, d.documents.Published(ctx, signal.ProposalID, signal.Revision, "")
+}
+
+// unimplemented is a gateway that does not yet serve PublishRequest/CancelRequest. Those RPCs
+// were added in SEE-108; PublishProposal/CancelProposal still carry the same signal, so a
+// template upgraded first keeps publishing instead of marking the row refused.
+func unimplemented(err error) bool {
+	var refusal *Refusal
+	return errors.As(err, &refusal) && refusal.Problem == "unimplemented"
 }
 
 // Document is the proposal a signal becomes: the same bytes every time, for the same signal at the

@@ -80,7 +80,8 @@ gateway stores none.
 - Sandbox stops at simulation and never asks a wallet to sign or send.
 - Production always requires manual approval.
 - An approval is for the exact revision and prepared bytes the owner reviewed.
-- Unknown contracts, missing plugins, unreadable bytes and unresolved lookup tables block signing;
-  none falls back to a blind signature.
+- Unknown envelope or capability versions, missing plugins, unreadable bytes and unresolved lookup
+  tables block signing; none falls back to a blind signature. A capability version this build does
+  not interpret stays readable and dismissible.
 - Broadcast cancellation changes the source document for everyone, but one subscriber's action
   changes only that device's local record.

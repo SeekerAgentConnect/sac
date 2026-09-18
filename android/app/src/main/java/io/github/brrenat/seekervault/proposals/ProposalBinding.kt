@@ -151,6 +151,9 @@ fun bindingProblem(
     }
     if (binding.choice != review.choice) return BindingProblem.ChoiceChanged
     if (binding.plugin != record.proposal.plugin) return BindingProblem.OtherPlugin
+    if (record.proposal.capabilityVersion != SUPPORTED_CAPABILITY_VERSION) {
+        return BindingProblem.OtherContract
+    }
     if (binding.contract !in SUPPORTED_PLUGIN_CONTRACTS) return BindingProblem.OtherContract
     if (binding.preparedVersion < 1 || binding.contentHash.size() != CONTENT_HASH_BYTES) {
         return BindingProblem.NothingPrepared
@@ -193,8 +196,15 @@ fun proposalPlugin(
     proposal: Proposal,
     plugins: PluginRegistry,
     environment: PluginEnvironment,
-): ProposalPlugin =
-    when (val resolution = plugins.resolve(proposal.operation, environment)) {
+): ProposalPlugin {
+    // A capability version this build does not interpret is the same kind of gap as a plugin
+    // written against another boundary: readable, and never a reason to sign bytes with a
+    // version-1 reader. The check is here rather than in validation so the document stays a
+    // proposal the owner can dismiss.
+    if (proposal.capabilityVersion != SUPPORTED_CAPABILITY_VERSION) {
+        return ProposalPlugin.Unserved(UnsupportedReason.ContractUnsupported)
+    }
+    return when (val resolution = plugins.resolve(proposal.operation, environment)) {
         is PluginResolution.Unsupported -> ProposalPlugin.Unserved(resolution.reason)
         is PluginResolution.Supported -> {
             val id = resolution.plugin.descriptor.id
@@ -202,3 +212,4 @@ fun proposalPlugin(
             else ProposalPlugin.OtherPlugin(id)
         }
     }
+}

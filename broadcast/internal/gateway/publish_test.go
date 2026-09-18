@@ -63,6 +63,38 @@ func TestAProtocolOneRowMigratesForwardWithoutARevisionConflictOrDowngrade(t *te
 		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_PROTOCOL)
 }
 
+func TestCancelProposalKeepsACommonRowsPresentationAndInputs(t *testing.T) {
+	gateway := newGateway(t)
+	publisher := gateway.publisher(gateway.register(publisherA))
+	common := rules.RequestFromProposal(proposalOf(publisherA, proposalA, 1))
+	common.Presentation.Title = "Swap SOL for USDC"
+	common.OwnerInputs = []*requestv2.OwnerInput{{
+		Key: "input_amount", Label: "Amount",
+		Kind: requestv2.OwnerInputKind_OWNER_INPUT_KIND_AMOUNT, Required: true, Minimum: "1",
+	}}
+	if _, err := publisher.PublishRequest(context.Background(),
+		connect.NewRequest(&gatewayv1.PublishRequestRequest{Request: common})); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := publisher.CancelProposal(context.Background(),
+		connect.NewRequest(&gatewayv1.CancelProposalRequest{ProposalId: proposalA, Revision: 2})); err != nil {
+		t.Fatal(err)
+	}
+	held, err := gateway.feed.GetRequest(context.Background(), connect.NewRequest(
+		&gatewayv1.GetRequestRequest{Channel: rules.ChannelFor(publisherA), RequestId: proposalA}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := held.Msg.GetRequest()
+	if got.GetPresentation().GetTitle() != "Swap SOL for USDC" ||
+		len(got.GetOwnerInputs()) != 1 ||
+		got.GetLifecycle().GetStatus() != requestv2.RequestStatus_REQUEST_STATUS_CANCELLED ||
+		got.GetLifecycle().GetRevision() != 2 {
+		t.Fatalf("common cancellation lost source fields: %+v", got)
+	}
+}
+
 // The acceptance this whole service is for: two publishers publish to their own channels, and
 // neither can touch the other's settings or proposals. Nothing about it depends on them behaving —
 // the credential says which server the caller is, and every document is checked against that.
