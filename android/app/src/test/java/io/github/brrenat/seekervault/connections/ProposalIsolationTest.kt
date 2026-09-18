@@ -195,6 +195,146 @@ class ProposalIsolationTest {
     }
 
     @Test
+    fun twoDevicesKeepTheirOwnDecisionsThroughAReplayAndARestart() = runBlocking {
+        val published = wireProposal(revision = 2)
+        val first = Device("first", FEED_A)
+        val second = Device("second", FEED_B)
+        first.proposals.apply(FEED_A, published)
+        second.proposals.apply(FEED_B, published)
+        val chose = choice(1_000_000u)
+        first.proposals.review(FEED_A, PROPOSAL_A, chose)
+        first.proposals.beginExecution(
+            FEED_A,
+            PROPOSAL_A,
+            binding(
+                checkNotNull(first.proposals.proposal(FEED_A, PROPOSAL_A)).proposal,
+                chose,
+                wallet = WALLET,
+            ),
+            wallets[0],
+        )
+        first.proposals.recordOutcome(FEED_A, PROPOSAL_A, ProposalOutcome.Submitted(hash(7)))
+        second.proposals.dismiss(FEED_B, PROPOSAL_A)
+
+        // The same document again, which is what a replayed event, a duplicate hint and a re-read
+        // snapshot all look like from here. It is the publisher's half, so it changes the
+        // publisher's half and nothing either owner decided.
+        first.proposals.apply(FEED_A, published)
+        second.proposals.apply(FEED_B, published)
+
+        // And then both processes stop. New stores over the same files are what the next launch
+        // sees, which is the only way to tell a decision that was kept from one that was cached.
+        val firstAgain = Device("first", FEED_A)
+        val secondAgain = Device("second", FEED_B)
+        firstAgain.proposals.load()
+        secondAgain.proposals.load()
+        firstAgain.history.load()
+        secondAgain.history.load()
+
+        assertEquals(
+            ProposalStanding.Executed(ProposalOutcome.Submitted(hash(7))),
+            firstAgain.proposals.standing(
+                checkNotNull(firstAgain.proposals.proposal(FEED_A, PROPOSAL_A))
+            ),
+        )
+        assertEquals(
+            ProposalStanding.Dismissed(clock),
+            secondAgain.proposals.standing(
+                checkNotNull(secondAgain.proposals.proposal(FEED_B, PROPOSAL_A))
+            ),
+        )
+        // Neither device acquired the other's half of it across any of that.
+        assertNull(secondAgain.proposals.proposal(FEED_B, PROPOSAL_A)?.execution)
+        assertNull(firstAgain.proposals.proposal(FEED_A, PROPOSAL_A)?.dismissed)
+        assertEquals(
+            ParameterValue.Amount(1_000_000u),
+            firstAgain.proposals.proposal(FEED_A, PROPOSAL_A)?.review?.choice?.get(AMOUNT),
+        )
+        assertNull(secondAgain.proposals.proposal(FEED_B, PROPOSAL_A)?.review)
+        assertEquals(ActivityKind.Operation, firstAgain.history.records.value.single().kind)
+        assertEquals(0, secondAgain.history.records.value.size)
+    }
+
+    @Test
+    fun aPairedSidecarAnswersItsAgentWhileAFeedAnswersNobody() = runBlocking {
+        val gateway = FakeConnectionGateway()
+        val sidecar = gateway.serve(SIDECAR)
+        val feeds = FakeFeedGateway(feedManifest(serverId = SERVER_B, gateway = GATEWAY))
+        val store = ProposalStore(File(folder.root, "files/proposals"))
+        val history = ActivityLog(ActivityStore(File(folder.root, "files/activity")))
+        val key: () -> SecretKey = softwareKey().let { k -> { k } }
+        val repository =
+            ConnectionRepository(
+                store = ConnectionStore(File(folder.root, "files/connections")),
+                vault = CredentialVault(File(folder.root, "no_backup/credentials")) { key() },
+                results = ResultStore(File(folder.root, "files/results")),
+                gateway = gateway,
+                history = history,
+                proposals = store,
+                feeds = feeds,
+                deviceName = "Seeker",
+                now = { clock },
+                io = Dispatchers.Unconfined,
+            )
+        // The private workflow, unchanged: a paired sidecar with one request an agent is waiting
+        // on.
+        val paired = repository.pair(sidecar.issue(SIDECAR))
+        val waiting = sidecar.addPending(paired.id)
+        repository.refresh(paired.id)
+        // And a public feed beside it, on the same phone, at the same time.
+        val feed =
+            (repository.addFeed(FeedReference(GATEWAY, SERVER_B)) as FeedOutcome.Added)
+                .connection
+                .id
+        val proposals =
+            ProposalRepository(
+                store = store,
+                connections = { repository.connections.value },
+                plugins = PluginRegistry.of(TestPlugin(id = SWAP_PLUGIN)),
+                history = history,
+                now = { clock },
+                io = Dispatchers.Unconfined,
+            )
+        proposals.apply(feed, wireProposal())
+
+        // The agent's request is answered, and the answer goes back to the server that asked for
+        // it. That is the existing workflow, and a feed on the same phone does not change it.
+        val answered =
+            repository.answer(RequestKey(paired.id, waiting.ref.requestId), Answer.Acknowledge)
+        assertEquals(Delivery.Accepted, answered.delivery)
+        assertEquals(listOf(SIDECAR), gateway.submits.map { it.first })
+
+        // The feed's proposal is acted on, on this phone, and nothing goes anywhere at all: a
+        // decision about a broadcast is the owner's own, and there is nobody to report it to.
+        val chose = choice(1_000_000u)
+        proposals.review(feed, PROPOSAL_A, chose)
+        proposals.beginExecution(
+            feed,
+            PROPOSAL_A,
+            binding(checkNotNull(proposals.proposal(feed, PROPOSAL_A)).proposal, chose),
+            wallets[0],
+        )
+        proposals.recordOutcome(feed, PROPOSAL_A, ProposalOutcome.Submitted(hash(7)))
+
+        assertEquals(listOf(SIDECAR), gateway.submits.map { it.first })
+        assertFalse(gateway.submits.toString().contains(PROPOSAL_A))
+        // Every call this phone made went to the sidecar it paired with. The gateway that holds
+        // the feed was asked for the manifest and nothing else, and it holds no credential of
+        // this phone's to be called with.
+        assertEquals(
+            emptyList<Pair<String, String>>(),
+            gateway.sent.filter { it.first != SIDECAR },
+        )
+        assertEquals(listOf(FeedReference(GATEWAY, SERVER_B)), feeds.resolved)
+        // Both are the owner's own record, and the two kinds sit in one history.
+        history.load()
+        assertEquals(
+            setOf(ActivityKind.Operation, ActivityKind.Acknowledgement),
+            history.records.value.map { it.kind }.toSet(),
+        )
+    }
+
+    @Test
     fun nothingAboutTheOwnerGoesOutToTheGateway() = runBlocking {
         val device = Device("first", FEED_A)
         device.feed.answers = listOf(wireProposal())
@@ -318,6 +458,7 @@ class ProposalIsolationTest {
         const val FEED_A = "11111111-2222-4333-8444-555555555555"
         const val FEED_B = "22222222-3333-4444-8555-666666666666"
         const val OTHER_WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+        const val SIDECAR = "https://sidecar.example.com"
 
         val manifest =
             ServerManifest(

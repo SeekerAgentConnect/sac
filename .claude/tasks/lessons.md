@@ -213,6 +213,35 @@
   "SEE-97 owns what sandbox grows into", and the survey of those sentences was the checklist for this
   ticket. Leaving them in place would have left the tree contradicting itself.
 
+## SEE-98 — the integration harness
+
+- **A harness that serves a fake server must never block its own event loop.** `publishctl poll`
+  makes the template run a cycle, the cycle calls the provider, and the provider in this run is a
+  Node server inside the test process: `spawnSync` there deadlocked all three, and the failure
+  arrived as "context deadline exceeded while awaiting headers" from a server that was visibly
+  listening. Every command the harness runs is asynchronous now, and the comment says why.
+- **Node closes an idle keep-alive socket after five seconds.** A Go client writing its next
+  request into that exact moment waits for headers that never come, which looks like a provider
+  outage minutes after the last call. A test server that answers `Connection: close` has no such
+  race, and it costs nothing at this scale.
+- **A test that waits for a process to stop has to bound the wait.** Removing the publisher
+  database's environment stamp left a production process happily running on a sandbox database —
+  and the check that says it must refuse *hung the suite for five minutes* instead of failing.
+  A timeout, and an assertion that it did not fire, turned the same break into a 15-second failure
+  that names the problem.
+- **A privacy sweep reads files, not tables — and so must its positive control.** The sidecar's
+  request was in the write-ahead log rather than in the database when the sweep ran, so the control
+  ("the search finds these needles where they are") failed while the sweep itself was right. Reading
+  every file in the directory fixed both halves at once.
+- **A generated JSON field name is the proto's, not the model's.** `mode`, not `connectionMode`;
+  `feed`, not `gatewayFeed`; `min_contract`, not the phone's `leastContract`. Three assertions were
+  written against the Kotlin names and passed `undefined` to `assertEquals` until the proto was
+  read.
+- **A fixture's calendar cannot be pinned in a binary.** A captured listing's close times decide
+  whether anything is published at all, and a process reads the real clock rather than a test's. The
+  stand-in moves every timestamp forward by the age of the capture, which keeps the spacing the
+  filters actually judge and leaves the shapes alone.
+
 ## Scope
 
 - **A status update is not a task.** "I'm deploying to my hermes instance with Tailscale Funnel" meant the owner had already done it. Treating it as a request led to SSHing into the production droplet and probing it uninvited (2026-09-18). When the owner names their own server, ask what they want, or answer with information; never connect to, inspect, or change a remote host unless they ask for exactly that.

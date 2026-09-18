@@ -147,6 +147,7 @@ pnpm check                       # formatting, lint, type checks, tests
 pnpm check:android               # Kotlin formatting, unit tests, Android lint, debug APK
 pnpm check:broadcast             # the broadcast gateway: gofmt, go vet, go test (needs Go)
 pnpm check:publisher             # the publisher templates: gofmt, go vet, go test (needs Go)
+pnpm test:integration            # the Stage 7.1 cross-component run (needs Go)
 (cd android && ./gradlew :app:assembleDebug)
 ```
 
@@ -179,6 +180,7 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm test:updates` | Runs Stage 5.2's production TLS/h2 and loopback h2c sidecar tests, bidirectional interoperability proof, and cross-component Android sync/lifecycle acceptance. It is separate from the Stage 1 Live diagnostic. | Works |
 | `pnpm test:push` | Runs Stage 5.3's sidecar ownership/invalidation acceptance and Android two-sidecar recovery, registration, callback, notification, permission, tap, and boundary suites. It uses no real Firebase credential or delivery and does not replace the physical Seeker checklist. | Works |
 | `pnpm test:swap` | Runs Stage 7.1's Jupiter suites (SEE-93, SEE-94): the signal payload, the instruction readers against four real captured transactions, every tampering the review refuses, the plugin over a stood-in provider, the wire over a real HTTP endpoint, the whole path from a signal to a signature, the captured gateway and provider traffic, the two screens, the chain reader and every way a lookup table can be unusable, and the stage boundary. It spends nothing, signs nothing and places nothing; the live-provider tests skip unless asked for. See [`docs/wiki/jupiter-swap.md`](docs/wiki/jupiter-swap.md) and [`docs/wiki/jupiter-prediction.md`](docs/wiki/jupiter-prediction.md). | Works |
+| `pnpm test:integration` | Runs Stage 7.1's cross-component acceptance (SEE-98) in one command: it builds the gateway, both publisher templates and their two CLIs, then runs them against each other with two subscribers, the sidecar as its own process and a real MCP agent — mixed mode, manifests, the transport, two devices, the wallet's binding, the prediction path, the environments, and a privacy sweep of everything the run wrote. Then the direct-mode acceptance suites unchanged, and the phone's cross-component cases. Every leg is reported PASS, FAIL or NOT RUN. It needs Go, no network and no funds; the stream leg is opt-in on `SEEKERVAULT_CENTRIFUGO`. See [`docs/development/integration.md`](docs/development/integration.md) and [`docs/testing/see-98.md`](docs/testing/see-98.md). | Works |
 | `pnpm format`, `pnpm format:android` | Apply Prettier and `buf format`, and ktfmt for Kotlin | Works |
 
 ## Development configuration
