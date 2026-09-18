@@ -12,6 +12,9 @@ surface, not a contract between runtimes.
 The tool in [`publisher/cmd/publishctl`](../../publisher/cmd/publishctl) is a client of exactly
 these endpoints and has no privileged path of its own, so anything it does, your program can do.
 
+If you have not yet got a template running to call, start at
+[`docs/guides/server-development.md`](../guides/server-development.md).
+
 ## What this API is not for
 
 **There is no field here for anything about a subscriber**, and there never will be: not a wallet

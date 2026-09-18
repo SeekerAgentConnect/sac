@@ -4,6 +4,8 @@ The stack in [`gateway/compose.yaml`](../../gateway/compose.yaml) runs the sidec
 
 What this gives you is the server half of Seeker Agent Connect. The phone still reviews and approves every request, and the wallet still signs; the sidecar holds no key and signs nothing ([`docs/architecture.md`](../architecture.md)).
 
+**This is the private kind of server**, paired to one owner's phone. The other kind broadcasts to everybody subscribed and is deployed separately, from `broadcast/` and `publisher/`: if that is what you are building, [`server-development.md`](server-development.md) is its numbered walkthrough and this page is not about it.
+
 Everything builds from this checkout, and nothing in the path is ours. That is not the same as needing nothing: a public deployment needs a domain and a certificate authority, transfers need somebody's Solana RPC endpoint, and a hosted client needs an authorization server. [What this needs from outside](#what-this-needs-from-outside) is the whole list, with what is optional marked as optional.
 
 **Starting the stack does nothing on its own.** It opens a port and waits. It creates no request, asks for no signature, moves no funds, and runs no LLM. The test agent is not started by `docker compose up` at all.

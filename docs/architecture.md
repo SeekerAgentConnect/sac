@@ -493,7 +493,7 @@ flowchart TB
 | The assessment the owner read when they answered | The phone, as codes on the Activity record; never the rules themselves, and never sent anywhere | SAW-028 |
 | Assessments | Nowhere — computed on demand from the rules and the records, never stored | SAW-026 |
 | Daily counters | The phone, derived from the Activity records in `filesDir` | SAW-026 |
-| A connection's mode, and the server manifest it caches | The phone, in the connection's own JSON file in `filesDir` (version 2). Whether this build *supports* that server is never stored: it is derived from the compiled plugin registry on every read | SEE-88 |
+| A connection's mode, and the server manifest it caches | The phone, in the connection's own JSON file in `filesDir` (version 3). Whether this build *supports* that server is never stored: it is derived from the compiled plugin registry on every read | SEE-88 |
 | The manifest's settings revision, and a fingerprint of the content it was computed for | The sidecar's SQLite database, on the `server` singleton | SEE-88 |
 | A publisher's proposals, and this device's decisions about each one — the dismissal, the review and its exact revision, the binding, and what the wallet did | The phone, one file per proposal under its feed in `filesDir`. Nothing of it is published, and the proposals go when the feed does | SEE-89 |
 | Whether a proposal still stands, and where it stands for this owner | Nowhere — derived on every read from the publisher's status, its absolute expiry, what this device did, and the plugins this build carries | SEE-89 |

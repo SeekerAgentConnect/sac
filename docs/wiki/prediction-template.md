@@ -4,7 +4,8 @@ The second publisher template, in the same module as the first: a Go service in
 [`publisher/`](../../publisher) that **discovers** Jupiter Prediction markets, applies the filters
 its operator configured, and publishes one proposal per market that matches. Every subscribed phone
 reads the same document; each owner then chooses a side and a stake on their own device and places
-the order through the bundled `jupiter.prediction` plugin (SEE-94).
+the order through the bundled `jupiter.prediction` plugin (SEE-94). To deploy one rather than
+understand it, follow [`docs/guides/server-development.md`](../guides/server-development.md).
 
 **There is no model in it.** No YES/NO recommendation, no probability of its own, no personalised
 selection, no order placed on the server, no position watched, no settlement and no payout. A signal
