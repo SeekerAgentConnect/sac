@@ -284,6 +284,15 @@ measurements are in [`docs/testing/stage-7-1.md`](../testing/stage-7-1.md).
 **Each listener still costs a connection** on a broker node. Redis makes the nodes interchangeable,
 not free.
 
+**Every bound in that table was driven under load for SEE-99**, and two of them turned out to be the
+ones that decide a deployment's shape. The queue bound behaves exactly as described above — a
+listener that stops reading is closed as `slow` once there is enough traffic to fill the window in
+front of it, and the listeners beside it lose nothing. The one that surprised: the **read rate limit
+is per address**, and a deployment behind a proxy counts a phone by its forwarded address, so four
+hundred phones behind one office address share one bucket and most of them cannot get a stream
+ticket at all. The measurements, the topology and what stopped the climb are in
+[`docs/testing/see-99.md`](../testing/see-99.md), and `pnpm test:load` is how to run them again.
+
 ### Deployment
 
 The broker's API port, its Redis and the gateway's own two listeners are on an internal compose
@@ -534,6 +543,15 @@ appears. The gateway cannot lose a user's financial history because it never has
 - **No screen lists a feed yet.** The listener applies what arrives through the repositories, the
   proposal alert opens the feed it is on, and the plugins that read a proposal's terms are SEE-93
   and SEE-94.
+- **It has been measured under load, and the report says where it stopped** (SEE-99). `pnpm
+  test:load` drives this gateway, the pinned broker and real Redis with synthetic publishers and
+  simulated phones whose client makes the app's own reconnect and continuity decisions; it drains a
+  node, kills one, stops Redis, restarts the gateway, stalls a fifth of the listeners, floods a
+  publisher, tries three ways into another publisher's channel, cuts every stream at once, and
+  climbs toward ten thousand listeners. [`docs/testing/see-99.md`](../testing/see-99.md) is the
+  report and [`docs/development/load.md`](../development/load.md) is the command. What it does not
+  measure is stated there rather than implied: the proxy hop, a real phone, a real network, and
+  anything about how long a push takes to arrive.
 - **Nothing was run in Docker.** No daemon is reachable on the machine these checks ran on, so the
   compose and Caddy configurations were validated statically and every binary — the gateway, the
   broker, Redis — was run natively instead (`docs/changelog/2026-09-17.md`).
