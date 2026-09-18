@@ -32,11 +32,16 @@ class MainActivity : ComponentActivity() {
     /** The same for a proposal alert (SEE-92): the feed it is on, and the document on it. */
     data class FeedTap(val sequence: Long, val ref: ProposalRef)
 
+    /** A cold or warm gateway invitation. The URI remains only in process until it is confirmed. */
+    data class InvitationTap(val sequence: Long, val uri: String)
+
     private var nextNotificationTap = 0L
     private val _notificationTaps = MutableStateFlow<NotificationTap?>(null)
     private val notificationTaps = _notificationTaps.asStateFlow()
     private val _feedTaps = MutableStateFlow<FeedTap?>(null)
     private val feedTaps = _feedTaps.asStateFlow()
+    private val _invitationTaps = MutableStateFlow<InvitationTap?>(null)
+    private val invitationTaps = _invitationTaps.asStateFlow()
 
     private val viewModel: LiveCommandViewModel by viewModels {
         viewModelFactory {
@@ -155,6 +160,7 @@ class MainActivity : ComponentActivity() {
                     viewModel,
                     notificationTaps,
                     feedTaps,
+                    invitationTaps,
                     operations,
                 )
             }
@@ -172,12 +178,23 @@ class MainActivity : ComponentActivity() {
         // built it, and an intent that is neither — a launch, say — is left exactly as it is.
         val request = RequestNotificationIntent.destination(intent)
         val proposal = ProposalNotificationIntent.destination(intent)
-        if (request == null && proposal == null) return
+        val invitation =
+            intent
+                ?.takeIf { it.action == Intent.ACTION_VIEW }
+                ?.data
+                ?.toString()
+                ?.takeIf {
+                    intent.data?.scheme.equals("seekervault", ignoreCase = true) &&
+                        intent.data?.host == "invite"
+                }
+        if (request == null && proposal == null && invitation == null) return
         request?.let { _notificationTaps.value = NotificationTap(++nextNotificationTap, it) }
         proposal?.let { _feedTaps.value = FeedTap(++nextNotificationTap, it) }
+        invitation?.let { _invitationTaps.value = InvitationTap(++nextNotificationTap, it) }
         // The saved Compose route survives rotation. Do not interpret the same Activity intent as
         // another owner tap when Android recreates only the screen.
         intent?.action = null
+        intent?.data = null
     }
 
     override fun onDestroy() {

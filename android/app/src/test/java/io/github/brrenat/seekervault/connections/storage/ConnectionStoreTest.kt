@@ -170,6 +170,32 @@ class ConnectionStoreTest {
     }
 
     @Test
+    fun keepsAGatewayPrivateConnectionsSandboxPromise() {
+        val manifest =
+            ServerManifest(
+                serverId = a.serverId,
+                protocolVersion = SERVER_PROTOCOL,
+                settingsRevision = 1,
+                mode = ConnectionMode.GatewayPrivate,
+                reference = ServerReference.GatewayPrivate(GATEWAY),
+                required = listOf(PluginRequirement(PluginId("jupiter.swap"), 1..1)),
+                environments = setOf(PluginEnvironment.Sandbox),
+                name = "Sandbox trader",
+            )
+        val private =
+            a.copy(
+                serverUrl = GATEWAY,
+                mode = ConnectionMode.GatewayPrivate,
+                server = ServerRecord.Known(manifest),
+                environment = PluginEnvironment.Sandbox,
+            )
+
+        store.put(private)
+
+        assertEquals(private, ConnectionStore(dir).get(private.id))
+    }
+
+    @Test
     fun keepsWhichPromiseAFeedIsKeepingAndNeverResolvesOneItCannotRead() {
         // SEE-97. The environment is the owner's choice, so it is stored — and an older file, or
         // one whose word this build does not know, must not become the promise with the money
@@ -202,7 +228,7 @@ class ConnectionStoreTest {
         file.writeText(
             file
                 .readText()
-                .replace("\"version\":3", "\"version\":2")
+                .replace("\"version\":4", "\"version\":2")
                 .replace(
                     ",\"environment\":\"sandbox\"",
                     "",

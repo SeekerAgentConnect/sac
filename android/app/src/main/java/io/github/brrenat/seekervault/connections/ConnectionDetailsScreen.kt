@@ -178,7 +178,9 @@ fun ConnectionDetailsScreen(
                                     CircleShape,
                                 )
                                 .clickable(
-                                    enabled = connection.usable && !refreshing,
+                                    enabled =
+                                        (connection.usable || connection.gatewayUsable) &&
+                                            !refreshing,
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() },
                                     onClick = onRefresh,
@@ -205,7 +207,7 @@ fun ConnectionDetailsScreen(
                 Field(R.string.field_connection_id, connection.id, "connectionId")
                 Field(R.string.field_paired, formatInstant(connection.pairedAt), "paired")
                 Field(R.string.field_device_name, connection.deviceName, "deviceName")
-                if (connection.mode == ConnectionMode.GatewayFeed) {
+                if (connection.mode != ConnectionMode.Direct) {
                     EnvironmentCard(connection, onEnvironment)
                     val required = connection.server.manifest?.required.orEmpty()
                     val requiredText =
@@ -297,15 +299,31 @@ fun ConnectionDetailsScreen(
                             }
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    stringResource(R.string.operations_signals),
+                                    stringResource(
+                                        if (connection.mode == ConnectionMode.GatewayPrivate) {
+                                            R.string.operations_requests
+                                        } else {
+                                            R.string.operations_signals
+                                        }
+                                    ),
                                     style = MaterialTheme.typography.titleMedium,
                                 )
                                 Text(
                                     if (signals == 0) {
-                                        stringResource(R.string.operations_signals_note)
+                                        stringResource(
+                                            if (connection.mode == ConnectionMode.GatewayPrivate) {
+                                                R.string.operations_requests_note
+                                            } else {
+                                                R.string.operations_signals_note
+                                            }
+                                        )
                                     } else {
                                         pluralStringResource(
-                                            R.plurals.connection_signals_held,
+                                            if (connection.mode == ConnectionMode.GatewayPrivate) {
+                                                R.plurals.connection_requests_held
+                                            } else {
+                                                R.plurals.connection_signals_held
+                                            },
                                             signals,
                                             signals,
                                         )
@@ -399,8 +417,8 @@ fun ConnectionDetailsScreen(
 }
 
 /**
- * Which promise this feed keeps, and the owner's switch between them when its publisher serves both
- * (SEE-97, docs/wiki/environments.md).
+ * Which promise this gateway connection keeps, and the owner's switch between them when its server
+ * serves both (SEE-97, docs/wiki/environments.md).
  *
  * A publisher that serves one environment leaves nothing to choose, and the row is then a statement
  * rather than a control: the promise is still said out loud, because "this feed is a demonstration"

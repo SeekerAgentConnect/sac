@@ -347,6 +347,71 @@ export enum GatewayProblem {
    * @generated from enum value: GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;
    */
   OTHER_ENVIRONMENT = 34,
+
+  /**
+   * --- Gateway pairing and private routing (SEE-109) -----------------------
+   *
+   * @generated from enum value: GATEWAY_PROBLEM_BAD_USER_REF = 35;
+   */
+  BAD_USER_REF = 35,
+
+  /**
+   * @generated from enum value: GATEWAY_PROBLEM_BAD_LIFETIME = 36;
+   */
+  BAD_LIFETIME = 36,
+
+  /**
+   * One answer for an unknown, malformed, already-used or otherwise unusable invitation. Resolve
+   * and redeem do not disclose which temporary secret was ever valid.
+   *
+   * @generated from enum value: GATEWAY_PROBLEM_INVALID_INVITATION = 37;
+   */
+  INVALID_INVITATION = 37,
+
+  /**
+   * @generated from enum value: GATEWAY_PROBLEM_INVITATION_EXPIRED = 38;
+   */
+  INVITATION_EXPIRED = 38,
+
+  /**
+   * @generated from enum value: GATEWAY_PROBLEM_INVITATION_USED = 39;
+   */
+  INVITATION_USED = 39,
+
+  /**
+   * @generated from enum value: GATEWAY_PROBLEM_NO_BINDING = 40;
+   */
+  NO_BINDING = 40,
+
+  /**
+   * @generated from enum value: GATEWAY_PROBLEM_BINDING_EXISTS = 41;
+   */
+  BINDING_EXISTS = 41,
+
+  /**
+   * @generated from enum value: GATEWAY_PROBLEM_WRONG_RECIPIENT = 42;
+   */
+  WRONG_RECIPIENT = 42,
+
+  /**
+   * @generated from enum value: GATEWAY_PROBLEM_NO_SUCH_REQUEST = 43;
+   */
+  NO_SUCH_REQUEST = 43,
+
+  /**
+   * @generated from enum value: GATEWAY_PROBLEM_RESULT_CONFLICT = 44;
+   */
+  RESULT_CONFLICT = 44,
+
+  /**
+   * @generated from enum value: GATEWAY_PROBLEM_REQUEST_SETTLED = 45;
+   */
+  REQUEST_SETTLED = 45,
+
+  /**
+   * @generated from enum value: GATEWAY_PROBLEM_NOT_PRIVATE = 46;
+   */
+  NOT_PRIVATE = 46,
 }
 
 /**

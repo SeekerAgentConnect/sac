@@ -41,18 +41,33 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 	if message.GetServerId() != expect.ServerID {
 		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_SERVER, "server_id")
 	}
-	if message.GetMode() != serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_FEED {
+	var feedReference *serverv1.GatewayFeed
+	var privateReference *serverv1.GatewayPrivate
+	switch message.GetMode() {
+	case serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_FEED:
+		feed := message.GetFeed()
+		if feed == nil || message.GetDirect() != nil || message.GetGatewayPrivate() != nil {
+			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NOT_A_FEED, "reference")
+		}
+		if feed.GetGatewayUrl() != expect.GatewayURL {
+			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_GATEWAY, "feed.gateway_url")
+		}
+		if feed.GetChannel() != ChannelFor(message.GetServerId()) {
+			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_FOREIGN_CHANNEL, "feed.channel")
+		}
+		feedReference = &serverv1.GatewayFeed{
+			GatewayUrl: expect.GatewayURL, Channel: ChannelFor(message.GetServerId())}
+	case serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_PRIVATE:
+		private := message.GetGatewayPrivate()
+		if private == nil || message.GetDirect() != nil || message.GetFeed() != nil {
+			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NOT_PRIVATE, "reference")
+		}
+		if private.GetGatewayUrl() != expect.GatewayURL {
+			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_GATEWAY, "gateway_private.gateway_url")
+		}
+		privateReference = &serverv1.GatewayPrivate{GatewayUrl: expect.GatewayURL}
+	default:
 		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NOT_A_FEED, "mode")
-	}
-	feed := message.GetFeed()
-	if feed == nil || message.GetDirect() != nil {
-		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NOT_A_FEED, "reference")
-	}
-	if feed.GetGatewayUrl() != expect.GatewayURL {
-		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_GATEWAY, "feed.gateway_url")
-	}
-	if feed.GetChannel() != ChannelFor(message.GetServerId()) {
-		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_FOREIGN_CHANNEL, "feed.channel")
 	}
 	revision := message.GetSettingsRevision()
 	if revision == 0 || revision > MaxRevision {
@@ -103,19 +118,21 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 	if !printable(message.GetDisplayName(), MaxNameBytes, false) {
 		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NAME, "display_name")
 	}
-	return &serverv1.ServerManifest{
+	rebuilt := &serverv1.ServerManifest{
 		ServerId:         message.GetServerId(),
 		ProtocolVersion:  Protocol,
 		SettingsRevision: revision,
-		Mode:             serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_FEED,
+		Mode:             message.GetMode(),
 		RequiredPlugins:  required,
 		Environments:     environments,
 		DisplayName:      message.GetDisplayName(),
-		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
-			GatewayUrl: expect.GatewayURL,
-			Channel:    ChannelFor(message.GetServerId()),
-		}},
-	}, nil
+	}
+	if feedReference != nil {
+		rebuilt.Reference = &serverv1.ServerManifest_Feed{Feed: feedReference}
+	} else {
+		rebuilt.Reference = &serverv1.ServerManifest_GatewayPrivate{GatewayPrivate: privateReference}
+	}
+	return rebuilt, nil
 }
 
 // AdvanceManifest says what a manifest publication is, given what the gateway already holds:
@@ -144,6 +161,16 @@ func AdvanceManifest(held, next *serverv1.ServerManifest) (Decision, *Fault) {
 		return Stored, &Fault{
 			Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT,
 			Field:   "environments",
+			Held:    held.GetSettingsRevision(),
+		}
+	}
+	// The mode is the transport relationship a phone confirmed, not mutable presentation. Letting
+	// a higher revision turn a public feed into a private adapter (or the reverse) would strand
+	// existing clients and bypass the fresh invitation required for a device binding.
+	if held.GetMode() != next.GetMode() {
+		return Stored, &Fault{
+			Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT,
+			Field:   "mode",
 			Held:    held.GetSettingsRevision(),
 		}
 	}

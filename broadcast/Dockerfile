@@ -59,6 +59,7 @@ ENV BROADCAST_DATABASE_PATH=/data/broadcast.db
 # Neither is published to the host by the compose file; that is the proxy's job.
 ENV BROADCAST_READ_ADDRESS=127.0.0.1:8090
 ENV BROADCAST_PUBLISHER_ADDRESS=127.0.0.1:8091
+ENV BROADCAST_CLIENT_ADDRESS=127.0.0.1:8092
 
 COPY --from=build /out/broadcast /out/broadcastctl /
 # /data has to exist in the image, owned by the account below: Docker gives a

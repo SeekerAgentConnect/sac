@@ -4,9 +4,9 @@ SEE-88 made the kind of server part of a connection's record, and left `FeedGate
 publisher's manifest arrives through. SEE-89 added the document a publisher broadcasts, and left
 `ProposalFeed` as the seam it arrives through. Both said the same thing: the gateway is SEE-90.
 
-This is it: a Go service in [`broadcast/`](../../broadcast), with a publisher API a developer's
-server calls once per thing it wants to say, and a read-only client API every subscribed phone reads
-from. This page is why it is shaped the way it is;
+This is it: a Go service in [`broadcast/`](../../broadcast), with an authenticated publisher API,
+a read-only public-feed API, and SEE-109's invitation/device API for private servers. This page is
+why its public broadcast half is shaped the way it is;
 [`docs/guides/server-development.md`](../guides/server-development.md) is what a developer does with
 it, in order.
 
@@ -38,28 +38,25 @@ each owner decides — the parameters they chose, whether they went ahead, what 
 leaves the device that decided it (SEE-89). The gateway is the only party in the middle, and the
 most it knows is which channel someone asked about.
 
-## The two APIs
+## The three APIs
 
-Separate services, on separate listeners, with separate credentials — one of which does not exist.
+Separate services, on separate listeners, with credentials matched to each role:
 
-| | The publisher API | The client API |
-| --- | --- | --- |
-| Contract | [`publish.proto`](../../proto/seekervault/gateway/v1/publish.proto) | [`feed.proto`](../../proto/seekervault/gateway/v1/feed.proto) |
-| Who calls it | A developer's server | Every subscribed phone |
-| Credential | A bearer credential, scoped to one server | None: a feed is a broadcast |
-| What it can do | Publish a manifest, publish a proposal, withdraw one | Read a manifest, a page of the feed, one proposal |
-| Where it listens | `BROADCAST_PUBLISHER_ADDRESS` | `BROADCAST_READ_ADDRESS` |
-| Generated for | Go only | Go, Kotlin and TypeScript |
+| | Publisher API | Public-feed API | Invitation/device API |
+| --- | --- | --- | --- |
+| Contract | [`publish.proto`](../../proto/seekervault/gateway/v1/publish.proto) | [`feed.proto`](../../proto/seekervault/gateway/v1/feed.proto) | [`onboarding.proto`](../../proto/seekervault/gateway/v1/onboarding.proto) |
+| Who calls it | A developer's backend | Every feed subscriber | Invitation viewers and confirmed SAC devices |
+| Credential | Bearer credential scoped to one server | None: a feed is a broadcast | None for preview/redeem; device credential afterwards |
+| What it can do | Publish feed documents; create invitations and private requests for its own scope | Read public manifests and feed requests | Render/resolve/redeem invitations; read one device's private requests; submit results; revoke that binding |
+| Where it listens | `BROADCAST_PUBLISHER_ADDRESS` | `BROADCAST_READ_ADDRESS` | `BROADCAST_CLIENT_ADDRESS` |
 
-Two sockets rather than one service with a check per method, because the separation then survives
-things that are not code: a deployment can keep the publisher API off the internet entirely, and a
-routing mistake in front of the read port answers 404 rather than accepting a write. A boundary test
-holds both directions of that
-([`boundary_test.go`](../../broadcast/internal/gateway/boundary_test.go)).
+Three sockets rather than one service with a check per method make the separation survive routing
+mistakes. The publisher listener has no device operation, the public read listener has no mutation,
+and the client listener cannot create a source document. A boundary test holds every direction of
+that separation ([`boundary_test.go`](../../broadcast/internal/gateway/boundary_test.go)).
 
-The phone's half of it is stronger still: `buf.gen.yaml` excludes `publish.proto` from the Kotlin
-and TypeScript output, so there is no publisher client in the app because none is compiled for the
-app.
+SAC has no publisher service client. It is generated only for the public-feed and
+invitation/device contracts it calls.
 
 ## What a publisher may say
 
@@ -73,11 +70,12 @@ and every document is checked against that rather than against what the document
 is `server/<server_id>` for the document's own server, so a publisher cannot name another's;
 `CancelProposal` has no channel field at all, because there is nothing for it to say.
 
-**A feed, never a direct server.** A published manifest must be `CONNECTION_MODE_GATEWAY_FEED`
-naming this gateway's own origin. A direct manifest carries a URL, and relaying one would let a
-publisher hand every subscribed phone an address of its choosing. The phone would refuse it — its
-own check is that the origin must equal the one it paired with — but the gateway does not rely on
-that: it refuses to hold one.
+**A gateway mode, never a direct server.** A published manifest must be
+`CONNECTION_MODE_GATEWAY_FEED` or `CONNECTION_MODE_GATEWAY_PRIVATE` and name this gateway's own
+origin. A feed must also name the caller's own channel. A direct manifest carries a URL, and
+relaying one would let a server hand phones an address of its choosing. The phone would refuse it,
+but the gateway does not rely on that: it refuses to hold one. A server ID also cannot move between
+the two gateway modes at a later revision.
 
 **A revision it can order.** Zero is never published, and neither is anything above 2⁶³−1: the phone
 reads a revision into a signed 64-bit integer and refuses one it cannot compare, so a publisher
@@ -297,7 +295,7 @@ ticket at all. The measurements, the topology and what stopped the climb are in
 
 ### Deployment
 
-The broker's API port, its Redis and the gateway's own two listeners are on an internal compose
+The broker's API port, its Redis and the gateway's own three listeners are on an internal compose
 network with no route out of the deployment. The single public path is one gRPC procedure:
 
 ```

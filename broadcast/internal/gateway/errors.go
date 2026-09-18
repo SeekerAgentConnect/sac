@@ -1,10 +1,10 @@
-// Package gateway serves the broadcast gateway's two APIs (SEE-90,
+// Package gateway serves the shared gateway's feed, publisher, and client APIs (SEE-90, SEE-109,
 // docs/wiki/broadcast-gateway.md).
 //
-// The read API and the publisher API are built here as separate handlers on separate listeners,
-// with separate interceptors, and the only thing they share is the store underneath them. That
-// separation is the deployment's as well as the code's: a read port has no handler that could
-// change anything, so no routing mistake in front of it can turn a read endpoint into a write one.
+// The three APIs are built here as separate handlers on separate listeners, with separate
+// interceptors, and the only thing they share is the store underneath them. That separation is the
+// deployment's as well as the code's: a read port has no handler that could change anything, so no
+// routing mistake in front of it can turn a read endpoint into a write one.
 //
 // Nothing in this package calls out. The gateway is called — by publishers, and by phones — and it
 // contacts no publisher, no chain, no provider and no phone. A boundary test fails if an HTTP
@@ -60,7 +60,8 @@ func codeOf(problem gatewayv1.GatewayProblem) connect.Code {
 	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_UNAUTHENTICATED:
 		return connect.CodeUnauthenticated
 	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_SERVER,
-		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_FOREIGN_CHANNEL:
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_FOREIGN_CHANNEL,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_WRONG_RECIPIENT:
 		// Not an argument problem: the document is well formed and names something the caller has
 		// no claim on.
 		return connect.CodePermissionDenied
@@ -68,7 +69,12 @@ func codeOf(problem gatewayv1.GatewayProblem) connect.Code {
 		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT,
 		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_CANCELLED,
 		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_PROPOSALS,
-		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT:
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_INVITATION_EXPIRED,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_INVITATION_USED,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BINDING_EXISTS,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_RESULT_CONFLICT,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REQUEST_SETTLED:
 		// True of the call only while the gateway holds what it holds. Nothing was written.
 		//
 		// The environment is in this group rather than among the malformed documents because the
@@ -77,7 +83,10 @@ func codeOf(problem gatewayv1.GatewayProblem) connect.Code {
 		// spelling would fix it.
 		return connect.CodeFailedPrecondition
 	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_SERVER,
-		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL:
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_INVALID_INVITATION,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_BINDING,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_REQUEST:
 		return connect.CodeNotFound
 	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_REQUESTS:
 		return connect.CodeResourceExhausted

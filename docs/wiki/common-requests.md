@@ -23,7 +23,7 @@ The protobuf deliberately has no field for an owner's answer, selected wallet, d
 bytes, signature, execution outcome, subscriber, credential, code, or URL. A plugin ID is checked
 against code already bundled in the app; it cannot select or download code.
 
-## Two adapters, one review collection
+## Three adapters, one review collection
 
 The direct sidecar adapter accepts a private request draft and assigns its connection-scoped
 identity and durable lifecycle through the existing `RequestStore`. Its result policy is
@@ -36,12 +36,20 @@ The publisher adapter builds the same envelope with a feed audience, `Signal` pr
 methods and `/v1/signals` publisher routes remain compatibility adapters over the same rows,
 revision rules and outbox; they are not a second workflow.
 
-On Android, legacy direct `ActionRequest` records and feed records normalize into the v2 envelope
-before they enter the shared pending collection. Home shows one chronological carousel, Pending
-shows one list, and `request/private/...` and `request/feed/...` share one review dispatcher. A
-feed's **Signals** entry is only a connection filter over that list. Existing specialized review
-content remains: direct actions still use the direct lifecycle, while a feed action still uses its
-bundled plugin and device-local binding.
+The gateway-private adapter accepts the same envelope from an authenticated server only with a
+private audience scoped to that server and `RETURN_TO_ORIGIN`. The server supplies its own opaque
+user reference and the completed connection ID; the gateway verifies that exact active binding and
+pins the request to it. SAC reads through `DeviceService` and returns only the declared owner inputs and final
+outcome. The server never receives a device credential, wallet credential, selected wallet,
+prepared bytes, or history. See [`gateway-pairing.md`](gateway-pairing.md).
+
+On Android, legacy direct `ActionRequest` records, feed records and gateway-private records
+normalize into the v2 envelope before they enter the shared pending collection. Home shows one
+chronological carousel, Pending shows one list, and all three paths share one review dispatcher. A
+feed's **Signals** entry and a private server's **Requests** entry are connection filters over that
+list. Existing specialized review content remains: direct actions still use the direct lifecycle;
+gateway actions use their bundled plugin and exact execution binding; only private actions deliver
+a declared result.
 
 ## State and migration
 
@@ -49,6 +57,8 @@ The common envelope is the source's half. It does not replace the state that onl
 change:
 
 - private pending results and activity keep their existing stores and retry semantics;
+- gateway-private terminal results are durably retained on the device until their authenticated
+  delivery succeeds;
 - feed dismissal is final across revisions;
 - one execution attempt is recorded before a wallet opens and remains final for that proposal
   identity;
@@ -71,9 +81,10 @@ input declarations; a caller supplies expiry, description and operation paramete
 decoder rejects unknown fields, including anything that tries to send a wallet, amount choice,
 decision, signature or result. `Idempotency-Key` retains its existing meaning.
 
-The publisher write API and subscriber read API remain separate listeners at the gateway. A read
-port has no mutation handler; a publisher credential grants no subscriber identity because the
-gateway stores none.
+The publisher write API, public-feed read API and invitation/device API are separate listeners at
+the gateway. A public read port has no mutation handler. A publisher credential grants only that
+server's documents, invitations and opaque user scope; a device credential grants only its one
+binding.
 
 ## Execution invariants
 
@@ -85,3 +96,5 @@ gateway stores none.
   not interpret stays readable and dismissible.
 - Broadcast cancellation changes the source document for everyone, but one subscriber's action
   changes only that device's local record.
+- A gateway-private result returns only to the authenticated server that created the request and
+  only when the source explicitly chose `RETURN_TO_ORIGIN`.

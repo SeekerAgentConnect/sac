@@ -45,9 +45,10 @@ func TestWhatIsConfiguredWhenNothingElseIs(t *testing.T) {
 	// The listeners are loopback until a deployment says otherwise: a gateway that was started
 	// without being told where to listen is not one that should be on every interface.
 	if settings.ReadAddress != DefaultReadAddress ||
-		settings.PublisherAddress != DefaultPublisherAddress {
-		t.Fatalf("the default addresses are %s and %s",
-			settings.ReadAddress, settings.PublisherAddress)
+		settings.PublisherAddress != DefaultPublisherAddress ||
+		settings.ClientAddress != DefaultClientAddress {
+		t.Fatalf("the default addresses are %s, %s and %s",
+			settings.ReadAddress, settings.PublisherAddress, settings.ClientAddress)
 	}
 	if settings.Retention != DefaultRetention || settings.MaxProposals != DefaultMaxProposals {
 		t.Fatalf("the defaults are %v and %d", settings.Retention, settings.MaxProposals)

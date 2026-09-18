@@ -90,9 +90,12 @@ func (t *Tx) PutManifest(ctx context.Context, manifest *serverv1.ServerManifest,
 		return 0, fmt.Errorf("write manifest: %w", err)
 	}
 	channel := manifest.GetFeed().GetChannel()
-	sequence, err := t.bump(ctx, channel)
-	if err != nil {
-		return 0, err
+	var sequence uint64
+	if channel != "" {
+		sequence, err = t.bump(ctx, channel)
+		if err != nil {
+			return 0, err
+		}
 	}
 	if _, err := t.tx.ExecContext(ctx,
 		`INSERT INTO manifest (server_id, settings_revision, document, updated_at_ms)
@@ -105,9 +108,11 @@ func (t *Tx) PutManifest(ctx context.Context, manifest *serverv1.ServerManifest,
 		milliseconds(at)); err != nil {
 		return 0, fmt.Errorf("write manifest: %w", err)
 	}
-	if err := t.notice(ctx, channel, ManifestNotice, "",
-		manifest.GetSettingsRevision(), sequence, at); err != nil {
-		return 0, err
+	if channel != "" {
+		if err := t.notice(ctx, channel, ManifestNotice, "",
+			manifest.GetSettingsRevision(), sequence, at); err != nil {
+			return 0, err
+		}
 	}
 	return sequence, nil
 }

@@ -2,19 +2,20 @@ syntax = "proto3";
 
 // How a publisher publishes (SEE-90, docs/wiki/broadcast-gateway.md).
 //
-// A developer's server calls this once per thing it wants to say, and then has nothing further to
-// do: the gateway holds the document and every subscribed phone reads it from there. The publisher
-// maintains no connection to any phone, learns nothing about who is subscribed, and is never
-// called by one.
+// A developer's server uses this authenticated API either to publish a public feed document or to
+// create an invitation and route a private request. A feed publisher maintains no connection to
+// any phone and learns nothing about who is subscribed. A private server addresses only its own
+// opaque user reference and a completed connection ID; the gateway verifies that exact device
+// binding under the authenticated server.
 //
 // It is authenticated, and the credential is the whole of the grant: it says which server the
 // caller publishes as, and every document is checked against that rather than against anything the
 // document claims. There is no field here for a channel on a cancellation and no field anywhere
 // for a server other than the caller's own.
 //
-// **This file is generated for Go only.** The phone and the sidecar are not publishers, so
-// buf.gen.yaml excludes it from their generation: there is no publisher client in the app because
-// there is no publisher client compiled for the app.
+// The publisher service is called only by backends. Generating the message types for another
+// runtime grants no role: SAC uses InvitationService and DeviceService on the separately routed
+// client listener and never instantiates a PublisherService client.
 //
 // Retrying is the ordinary case, not an exception: a template that lost its answer, was restarted,
 // or ran twice publishes the same revision again and is told it was unchanged. The contract's own
@@ -22,6 +23,7 @@ syntax = "proto3";
 // second key to mint, store or expire.
 package seekervault.gateway.v1;
 
+import "seekervault/gateway/v1/onboarding.proto";
 import "seekervault/proposal/v1/proposal.proto";
 import "seekervault/request/v2/request.proto";
 import "seekervault/server/v1/manifest.proto";
@@ -30,9 +32,9 @@ import "seekervault/server/v1/manifest.proto";
 // deployment can publish the read port to the internet and keep this one on a private address, and
 // the Caddy configuration in broadcast/ routes them separately by default.
 service PublisherService {
-  // Register or replace what this server says about itself. The manifest must be a gateway feed
-  // naming this gateway's own origin and the caller's own channel: a direct manifest carries a
-  // URL, and the gateway refuses to relay one.
+  // Register or replace what this server says about itself. The manifest must name this gateway's
+  // own origin and be either a feed on the caller's own channel or a gateway-private server. A
+  // direct manifest carries a URL, and the gateway refuses to relay one.
   rpc PublishManifest(PublishManifestRequest) returns (PublishManifestResponse);
   // Create or update one request through the common developer contract. A feed request must use
   // the caller's own channel and device-local result handling. PublishProposal remains below as a
@@ -46,7 +48,89 @@ service PublisherService {
   // has to cancel may no longer hold what it published — and because the gateway is then the only
   // thing that writes the transition, in one place, from one state.
   rpc CancelProposal(CancelProposalRequest) returns (CancelProposalResponse);
+
+  // Create one temporary, single-use invitation for this authenticated server and its opaque
+  // user/onboarding reference. The returned URLs carry the temporary invitation capability only;
+  // the publisher credential never leaves this backend call.
+  rpc CreateInvitation(CreateInvitationRequest) returns (CreateInvitationResponse);
+  // Poll completion without learning a device credential. The server already knows the opaque
+  // user reference it supplied; the gateway reports only this invitation and its binding.
+  rpc GetInvitation(GetInvitationRequest) returns (GetInvitationResponse);
+  // Permanently invalidate one still-pending invitation. This is idempotent, cannot undo a
+  // completed connection, and discloses no token to the caller.
+  rpc RevokeInvitation(RevokeInvitationRequest) returns (RevokeInvitationResponse);
+  // Route a common private request to one confirmed binding for its recipient. The connection ID
+  // is the one GetInvitation reported after confirmation, so two devices for the same opaque user
+  // remain independently addressable. Feed publication remains above and still requires
+  // DEVICE_LOCAL; this method requires RETURN_TO_ORIGIN.
+  rpc CreatePrivateRequest(CreatePrivateRequestRequest) returns (CreatePrivateRequestResponse);
+  rpc GetPrivateRequest(GetPrivateRequestRequest) returns (GetPrivateRequestResponse);
+  rpc CancelPrivateRequest(CancelPrivateRequestRequest) returns (CancelPrivateRequestResponse);
+  // Revoke exactly one connection owned by this authenticated server. This does not rotate the
+  // publisher credential or affect another binding; another device always needs a fresh invite.
+  rpc RevokePrivateConnection(RevokePrivateConnectionRequest) returns (RevokePrivateConnectionResponse);
 }
+
+message CreateInvitationRequest {
+  // Opaque to the gateway and scoped to the authenticated server. Another device needs a fresh
+  // invitation but may use the same user reference; the gateway creates no central SAC account.
+  string user_ref = 1;
+  uint32 lifetime_seconds = 2;
+}
+
+message CreateInvitationResponse {
+  Invitation invitation = 1;
+}
+
+message GetInvitationRequest {
+  string invitation_id = 1;
+}
+
+message GetInvitationResponse {
+  Invitation invitation = 1;
+}
+
+message RevokeInvitationRequest {
+  string invitation_id = 1;
+}
+
+message RevokeInvitationResponse {}
+
+message CreatePrivateRequestRequest {
+  seekervault.request.v2.Request request = 1;
+  // The confirmed device binding to address. The gateway checks that it belongs to the
+  // authenticated server and to request.audience.private.recipient_id.
+  string connection_id = 2;
+}
+
+message CreatePrivateRequestResponse {
+  PrivateRequestRecord record = 1;
+  bool unchanged = 2;
+}
+
+message GetPrivateRequestRequest {
+  string request_id = 1;
+}
+
+message GetPrivateRequestResponse {
+  PrivateRequestRecord record = 1;
+}
+
+message CancelPrivateRequestRequest {
+  string request_id = 1;
+  uint64 revision = 2;
+}
+
+message CancelPrivateRequestResponse {
+  PrivateRequestRecord record = 1;
+  bool unchanged = 2;
+}
+
+message RevokePrivateConnectionRequest {
+  string connection_id = 1;
+}
+
+message RevokePrivateConnectionResponse {}
 
 // What became of a publication. Both answers mean the gateway holds what the caller sent; they
 // differ in whether anything changed, which is what a retry needs to know.

@@ -114,7 +114,9 @@ data class OwnerInputOption(val value: String, val label: String)
 data class ProposalKey(val serverId: String, val channel: String, val proposalId: String) {
     init {
         require(isConnectionId(serverId)) { "not a server ID: $serverId" }
-        require(channel == channelFor(serverId)) { "not $serverId's own channel: $channel" }
+        require(channel == channelFor(serverId) || channel == "private/$serverId") {
+            "not $serverId's own scope: $channel"
+        }
         require(isConnectionId(proposalId)) { "not a proposal ID: $proposalId" }
     }
 }

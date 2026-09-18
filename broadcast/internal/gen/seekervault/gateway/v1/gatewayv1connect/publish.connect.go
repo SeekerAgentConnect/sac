@@ -4,19 +4,20 @@
 
 // How a publisher publishes (SEE-90, docs/wiki/broadcast-gateway.md).
 //
-// A developer's server calls this once per thing it wants to say, and then has nothing further to
-// do: the gateway holds the document and every subscribed phone reads it from there. The publisher
-// maintains no connection to any phone, learns nothing about who is subscribed, and is never
-// called by one.
+// A developer's server uses this authenticated API either to publish a public feed document or to
+// create an invitation and route a private request. A feed publisher maintains no connection to
+// any phone and learns nothing about who is subscribed. A private server addresses only its own
+// opaque user reference and a completed connection ID; the gateway verifies that exact device
+// binding under the authenticated server.
 //
 // It is authenticated, and the credential is the whole of the grant: it says which server the
 // caller publishes as, and every document is checked against that rather than against anything the
 // document claims. There is no field here for a channel on a cancellation and no field anywhere
 // for a server other than the caller's own.
 //
-// **This file is generated for Go only.** The phone and the sidecar are not publishers, so
-// buf.gen.yaml excludes it from their generation: there is no publisher client in the app because
-// there is no publisher client compiled for the app.
+// The publisher service is called only by backends. Generating the message types for another
+// runtime grants no role: SAC uses InvitationService and DeviceService on the separately routed
+// client listener and never instantiates a PublisherService client.
 //
 // Retrying is the ordinary case, not an exception: a template that lost its answer, was restarted,
 // or ran twice publishes the same revision again and is told it was unchanged. The contract's own
@@ -68,13 +69,34 @@ const (
 	// PublisherServiceCancelProposalProcedure is the fully-qualified name of the PublisherService's
 	// CancelProposal RPC.
 	PublisherServiceCancelProposalProcedure = "/seekervault.gateway.v1.PublisherService/CancelProposal"
+	// PublisherServiceCreateInvitationProcedure is the fully-qualified name of the PublisherService's
+	// CreateInvitation RPC.
+	PublisherServiceCreateInvitationProcedure = "/seekervault.gateway.v1.PublisherService/CreateInvitation"
+	// PublisherServiceGetInvitationProcedure is the fully-qualified name of the PublisherService's
+	// GetInvitation RPC.
+	PublisherServiceGetInvitationProcedure = "/seekervault.gateway.v1.PublisherService/GetInvitation"
+	// PublisherServiceRevokeInvitationProcedure is the fully-qualified name of the PublisherService's
+	// RevokeInvitation RPC.
+	PublisherServiceRevokeInvitationProcedure = "/seekervault.gateway.v1.PublisherService/RevokeInvitation"
+	// PublisherServiceCreatePrivateRequestProcedure is the fully-qualified name of the
+	// PublisherService's CreatePrivateRequest RPC.
+	PublisherServiceCreatePrivateRequestProcedure = "/seekervault.gateway.v1.PublisherService/CreatePrivateRequest"
+	// PublisherServiceGetPrivateRequestProcedure is the fully-qualified name of the PublisherService's
+	// GetPrivateRequest RPC.
+	PublisherServiceGetPrivateRequestProcedure = "/seekervault.gateway.v1.PublisherService/GetPrivateRequest"
+	// PublisherServiceCancelPrivateRequestProcedure is the fully-qualified name of the
+	// PublisherService's CancelPrivateRequest RPC.
+	PublisherServiceCancelPrivateRequestProcedure = "/seekervault.gateway.v1.PublisherService/CancelPrivateRequest"
+	// PublisherServiceRevokePrivateConnectionProcedure is the fully-qualified name of the
+	// PublisherService's RevokePrivateConnection RPC.
+	PublisherServiceRevokePrivateConnectionProcedure = "/seekervault.gateway.v1.PublisherService/RevokePrivateConnection"
 )
 
 // PublisherServiceClient is a client for the seekervault.gateway.v1.PublisherService service.
 type PublisherServiceClient interface {
-	// Register or replace what this server says about itself. The manifest must be a gateway feed
-	// naming this gateway's own origin and the caller's own channel: a direct manifest carries a
-	// URL, and the gateway refuses to relay one.
+	// Register or replace what this server says about itself. The manifest must name this gateway's
+	// own origin and be either a feed on the caller's own channel or a gateway-private server. A
+	// direct manifest carries a URL, and the gateway refuses to relay one.
 	PublishManifest(context.Context, *connect.Request[v1.PublishManifestRequest]) (*connect.Response[v1.PublishManifestResponse], error)
 	// Create or update one request through the common developer contract. A feed request must use
 	// the caller's own channel and device-local result handling. PublishProposal remains below as a
@@ -88,6 +110,26 @@ type PublisherServiceClient interface {
 	// has to cancel may no longer hold what it published — and because the gateway is then the only
 	// thing that writes the transition, in one place, from one state.
 	CancelProposal(context.Context, *connect.Request[v1.CancelProposalRequest]) (*connect.Response[v1.CancelProposalResponse], error)
+	// Create one temporary, single-use invitation for this authenticated server and its opaque
+	// user/onboarding reference. The returned URLs carry the temporary invitation capability only;
+	// the publisher credential never leaves this backend call.
+	CreateInvitation(context.Context, *connect.Request[v1.CreateInvitationRequest]) (*connect.Response[v1.CreateInvitationResponse], error)
+	// Poll completion without learning a device credential. The server already knows the opaque
+	// user reference it supplied; the gateway reports only this invitation and its binding.
+	GetInvitation(context.Context, *connect.Request[v1.GetInvitationRequest]) (*connect.Response[v1.GetInvitationResponse], error)
+	// Permanently invalidate one still-pending invitation. This is idempotent, cannot undo a
+	// completed connection, and discloses no token to the caller.
+	RevokeInvitation(context.Context, *connect.Request[v1.RevokeInvitationRequest]) (*connect.Response[v1.RevokeInvitationResponse], error)
+	// Route a common private request to one confirmed binding for its recipient. The connection ID
+	// is the one GetInvitation reported after confirmation, so two devices for the same opaque user
+	// remain independently addressable. Feed publication remains above and still requires
+	// DEVICE_LOCAL; this method requires RETURN_TO_ORIGIN.
+	CreatePrivateRequest(context.Context, *connect.Request[v1.CreatePrivateRequestRequest]) (*connect.Response[v1.CreatePrivateRequestResponse], error)
+	GetPrivateRequest(context.Context, *connect.Request[v1.GetPrivateRequestRequest]) (*connect.Response[v1.GetPrivateRequestResponse], error)
+	CancelPrivateRequest(context.Context, *connect.Request[v1.CancelPrivateRequestRequest]) (*connect.Response[v1.CancelPrivateRequestResponse], error)
+	// Revoke exactly one connection owned by this authenticated server. This does not rotate the
+	// publisher credential or affect another binding; another device always needs a fresh invite.
+	RevokePrivateConnection(context.Context, *connect.Request[v1.RevokePrivateConnectionRequest]) (*connect.Response[v1.RevokePrivateConnectionResponse], error)
 }
 
 // NewPublisherServiceClient constructs a client for the seekervault.gateway.v1.PublisherService
@@ -131,16 +173,65 @@ func NewPublisherServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(publisherServiceMethods.ByName("CancelProposal")),
 			connect.WithClientOptions(opts...),
 		),
+		createInvitation: connect.NewClient[v1.CreateInvitationRequest, v1.CreateInvitationResponse](
+			httpClient,
+			baseURL+PublisherServiceCreateInvitationProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("CreateInvitation")),
+			connect.WithClientOptions(opts...),
+		),
+		getInvitation: connect.NewClient[v1.GetInvitationRequest, v1.GetInvitationResponse](
+			httpClient,
+			baseURL+PublisherServiceGetInvitationProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("GetInvitation")),
+			connect.WithClientOptions(opts...),
+		),
+		revokeInvitation: connect.NewClient[v1.RevokeInvitationRequest, v1.RevokeInvitationResponse](
+			httpClient,
+			baseURL+PublisherServiceRevokeInvitationProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("RevokeInvitation")),
+			connect.WithClientOptions(opts...),
+		),
+		createPrivateRequest: connect.NewClient[v1.CreatePrivateRequestRequest, v1.CreatePrivateRequestResponse](
+			httpClient,
+			baseURL+PublisherServiceCreatePrivateRequestProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("CreatePrivateRequest")),
+			connect.WithClientOptions(opts...),
+		),
+		getPrivateRequest: connect.NewClient[v1.GetPrivateRequestRequest, v1.GetPrivateRequestResponse](
+			httpClient,
+			baseURL+PublisherServiceGetPrivateRequestProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("GetPrivateRequest")),
+			connect.WithClientOptions(opts...),
+		),
+		cancelPrivateRequest: connect.NewClient[v1.CancelPrivateRequestRequest, v1.CancelPrivateRequestResponse](
+			httpClient,
+			baseURL+PublisherServiceCancelPrivateRequestProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("CancelPrivateRequest")),
+			connect.WithClientOptions(opts...),
+		),
+		revokePrivateConnection: connect.NewClient[v1.RevokePrivateConnectionRequest, v1.RevokePrivateConnectionResponse](
+			httpClient,
+			baseURL+PublisherServiceRevokePrivateConnectionProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("RevokePrivateConnection")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // publisherServiceClient implements PublisherServiceClient.
 type publisherServiceClient struct {
-	publishManifest *connect.Client[v1.PublishManifestRequest, v1.PublishManifestResponse]
-	publishRequest  *connect.Client[v1.PublishRequestRequest, v1.PublishRequestResponse]
-	cancelRequest   *connect.Client[v1.CancelRequestRequest, v1.CancelRequestResponse]
-	publishProposal *connect.Client[v1.PublishProposalRequest, v1.PublishProposalResponse]
-	cancelProposal  *connect.Client[v1.CancelProposalRequest, v1.CancelProposalResponse]
+	publishManifest         *connect.Client[v1.PublishManifestRequest, v1.PublishManifestResponse]
+	publishRequest          *connect.Client[v1.PublishRequestRequest, v1.PublishRequestResponse]
+	cancelRequest           *connect.Client[v1.CancelRequestRequest, v1.CancelRequestResponse]
+	publishProposal         *connect.Client[v1.PublishProposalRequest, v1.PublishProposalResponse]
+	cancelProposal          *connect.Client[v1.CancelProposalRequest, v1.CancelProposalResponse]
+	createInvitation        *connect.Client[v1.CreateInvitationRequest, v1.CreateInvitationResponse]
+	getInvitation           *connect.Client[v1.GetInvitationRequest, v1.GetInvitationResponse]
+	revokeInvitation        *connect.Client[v1.RevokeInvitationRequest, v1.RevokeInvitationResponse]
+	createPrivateRequest    *connect.Client[v1.CreatePrivateRequestRequest, v1.CreatePrivateRequestResponse]
+	getPrivateRequest       *connect.Client[v1.GetPrivateRequestRequest, v1.GetPrivateRequestResponse]
+	cancelPrivateRequest    *connect.Client[v1.CancelPrivateRequestRequest, v1.CancelPrivateRequestResponse]
+	revokePrivateConnection *connect.Client[v1.RevokePrivateConnectionRequest, v1.RevokePrivateConnectionResponse]
 }
 
 // PublishManifest calls seekervault.gateway.v1.PublisherService.PublishManifest.
@@ -168,12 +259,47 @@ func (c *publisherServiceClient) CancelProposal(ctx context.Context, req *connec
 	return c.cancelProposal.CallUnary(ctx, req)
 }
 
+// CreateInvitation calls seekervault.gateway.v1.PublisherService.CreateInvitation.
+func (c *publisherServiceClient) CreateInvitation(ctx context.Context, req *connect.Request[v1.CreateInvitationRequest]) (*connect.Response[v1.CreateInvitationResponse], error) {
+	return c.createInvitation.CallUnary(ctx, req)
+}
+
+// GetInvitation calls seekervault.gateway.v1.PublisherService.GetInvitation.
+func (c *publisherServiceClient) GetInvitation(ctx context.Context, req *connect.Request[v1.GetInvitationRequest]) (*connect.Response[v1.GetInvitationResponse], error) {
+	return c.getInvitation.CallUnary(ctx, req)
+}
+
+// RevokeInvitation calls seekervault.gateway.v1.PublisherService.RevokeInvitation.
+func (c *publisherServiceClient) RevokeInvitation(ctx context.Context, req *connect.Request[v1.RevokeInvitationRequest]) (*connect.Response[v1.RevokeInvitationResponse], error) {
+	return c.revokeInvitation.CallUnary(ctx, req)
+}
+
+// CreatePrivateRequest calls seekervault.gateway.v1.PublisherService.CreatePrivateRequest.
+func (c *publisherServiceClient) CreatePrivateRequest(ctx context.Context, req *connect.Request[v1.CreatePrivateRequestRequest]) (*connect.Response[v1.CreatePrivateRequestResponse], error) {
+	return c.createPrivateRequest.CallUnary(ctx, req)
+}
+
+// GetPrivateRequest calls seekervault.gateway.v1.PublisherService.GetPrivateRequest.
+func (c *publisherServiceClient) GetPrivateRequest(ctx context.Context, req *connect.Request[v1.GetPrivateRequestRequest]) (*connect.Response[v1.GetPrivateRequestResponse], error) {
+	return c.getPrivateRequest.CallUnary(ctx, req)
+}
+
+// CancelPrivateRequest calls seekervault.gateway.v1.PublisherService.CancelPrivateRequest.
+func (c *publisherServiceClient) CancelPrivateRequest(ctx context.Context, req *connect.Request[v1.CancelPrivateRequestRequest]) (*connect.Response[v1.CancelPrivateRequestResponse], error) {
+	return c.cancelPrivateRequest.CallUnary(ctx, req)
+}
+
+// RevokePrivateConnection calls seekervault.gateway.v1.PublisherService.RevokePrivateConnection.
+func (c *publisherServiceClient) RevokePrivateConnection(ctx context.Context, req *connect.Request[v1.RevokePrivateConnectionRequest]) (*connect.Response[v1.RevokePrivateConnectionResponse], error) {
+	return c.revokePrivateConnection.CallUnary(ctx, req)
+}
+
 // PublisherServiceHandler is an implementation of the seekervault.gateway.v1.PublisherService
 // service.
 type PublisherServiceHandler interface {
-	// Register or replace what this server says about itself. The manifest must be a gateway feed
-	// naming this gateway's own origin and the caller's own channel: a direct manifest carries a
-	// URL, and the gateway refuses to relay one.
+	// Register or replace what this server says about itself. The manifest must name this gateway's
+	// own origin and be either a feed on the caller's own channel or a gateway-private server. A
+	// direct manifest carries a URL, and the gateway refuses to relay one.
 	PublishManifest(context.Context, *connect.Request[v1.PublishManifestRequest]) (*connect.Response[v1.PublishManifestResponse], error)
 	// Create or update one request through the common developer contract. A feed request must use
 	// the caller's own channel and device-local result handling. PublishProposal remains below as a
@@ -187,6 +313,26 @@ type PublisherServiceHandler interface {
 	// has to cancel may no longer hold what it published — and because the gateway is then the only
 	// thing that writes the transition, in one place, from one state.
 	CancelProposal(context.Context, *connect.Request[v1.CancelProposalRequest]) (*connect.Response[v1.CancelProposalResponse], error)
+	// Create one temporary, single-use invitation for this authenticated server and its opaque
+	// user/onboarding reference. The returned URLs carry the temporary invitation capability only;
+	// the publisher credential never leaves this backend call.
+	CreateInvitation(context.Context, *connect.Request[v1.CreateInvitationRequest]) (*connect.Response[v1.CreateInvitationResponse], error)
+	// Poll completion without learning a device credential. The server already knows the opaque
+	// user reference it supplied; the gateway reports only this invitation and its binding.
+	GetInvitation(context.Context, *connect.Request[v1.GetInvitationRequest]) (*connect.Response[v1.GetInvitationResponse], error)
+	// Permanently invalidate one still-pending invitation. This is idempotent, cannot undo a
+	// completed connection, and discloses no token to the caller.
+	RevokeInvitation(context.Context, *connect.Request[v1.RevokeInvitationRequest]) (*connect.Response[v1.RevokeInvitationResponse], error)
+	// Route a common private request to one confirmed binding for its recipient. The connection ID
+	// is the one GetInvitation reported after confirmation, so two devices for the same opaque user
+	// remain independently addressable. Feed publication remains above and still requires
+	// DEVICE_LOCAL; this method requires RETURN_TO_ORIGIN.
+	CreatePrivateRequest(context.Context, *connect.Request[v1.CreatePrivateRequestRequest]) (*connect.Response[v1.CreatePrivateRequestResponse], error)
+	GetPrivateRequest(context.Context, *connect.Request[v1.GetPrivateRequestRequest]) (*connect.Response[v1.GetPrivateRequestResponse], error)
+	CancelPrivateRequest(context.Context, *connect.Request[v1.CancelPrivateRequestRequest]) (*connect.Response[v1.CancelPrivateRequestResponse], error)
+	// Revoke exactly one connection owned by this authenticated server. This does not rotate the
+	// publisher credential or affect another binding; another device always needs a fresh invite.
+	RevokePrivateConnection(context.Context, *connect.Request[v1.RevokePrivateConnectionRequest]) (*connect.Response[v1.RevokePrivateConnectionResponse], error)
 }
 
 // NewPublisherServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -226,6 +372,48 @@ func NewPublisherServiceHandler(svc PublisherServiceHandler, opts ...connect.Han
 		connect.WithSchema(publisherServiceMethods.ByName("CancelProposal")),
 		connect.WithHandlerOptions(opts...),
 	)
+	publisherServiceCreateInvitationHandler := connect.NewUnaryHandler(
+		PublisherServiceCreateInvitationProcedure,
+		svc.CreateInvitation,
+		connect.WithSchema(publisherServiceMethods.ByName("CreateInvitation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	publisherServiceGetInvitationHandler := connect.NewUnaryHandler(
+		PublisherServiceGetInvitationProcedure,
+		svc.GetInvitation,
+		connect.WithSchema(publisherServiceMethods.ByName("GetInvitation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	publisherServiceRevokeInvitationHandler := connect.NewUnaryHandler(
+		PublisherServiceRevokeInvitationProcedure,
+		svc.RevokeInvitation,
+		connect.WithSchema(publisherServiceMethods.ByName("RevokeInvitation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	publisherServiceCreatePrivateRequestHandler := connect.NewUnaryHandler(
+		PublisherServiceCreatePrivateRequestProcedure,
+		svc.CreatePrivateRequest,
+		connect.WithSchema(publisherServiceMethods.ByName("CreatePrivateRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	publisherServiceGetPrivateRequestHandler := connect.NewUnaryHandler(
+		PublisherServiceGetPrivateRequestProcedure,
+		svc.GetPrivateRequest,
+		connect.WithSchema(publisherServiceMethods.ByName("GetPrivateRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	publisherServiceCancelPrivateRequestHandler := connect.NewUnaryHandler(
+		PublisherServiceCancelPrivateRequestProcedure,
+		svc.CancelPrivateRequest,
+		connect.WithSchema(publisherServiceMethods.ByName("CancelPrivateRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	publisherServiceRevokePrivateConnectionHandler := connect.NewUnaryHandler(
+		PublisherServiceRevokePrivateConnectionProcedure,
+		svc.RevokePrivateConnection,
+		connect.WithSchema(publisherServiceMethods.ByName("RevokePrivateConnection")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/seekervault.gateway.v1.PublisherService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PublisherServicePublishManifestProcedure:
@@ -238,6 +426,20 @@ func NewPublisherServiceHandler(svc PublisherServiceHandler, opts ...connect.Han
 			publisherServicePublishProposalHandler.ServeHTTP(w, r)
 		case PublisherServiceCancelProposalProcedure:
 			publisherServiceCancelProposalHandler.ServeHTTP(w, r)
+		case PublisherServiceCreateInvitationProcedure:
+			publisherServiceCreateInvitationHandler.ServeHTTP(w, r)
+		case PublisherServiceGetInvitationProcedure:
+			publisherServiceGetInvitationHandler.ServeHTTP(w, r)
+		case PublisherServiceRevokeInvitationProcedure:
+			publisherServiceRevokeInvitationHandler.ServeHTTP(w, r)
+		case PublisherServiceCreatePrivateRequestProcedure:
+			publisherServiceCreatePrivateRequestHandler.ServeHTTP(w, r)
+		case PublisherServiceGetPrivateRequestProcedure:
+			publisherServiceGetPrivateRequestHandler.ServeHTTP(w, r)
+		case PublisherServiceCancelPrivateRequestProcedure:
+			publisherServiceCancelPrivateRequestHandler.ServeHTTP(w, r)
+		case PublisherServiceRevokePrivateConnectionProcedure:
+			publisherServiceRevokePrivateConnectionHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -265,4 +467,32 @@ func (UnimplementedPublisherServiceHandler) PublishProposal(context.Context, *co
 
 func (UnimplementedPublisherServiceHandler) CancelProposal(context.Context, *connect.Request[v1.CancelProposalRequest]) (*connect.Response[v1.CancelProposalResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.CancelProposal is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) CreateInvitation(context.Context, *connect.Request[v1.CreateInvitationRequest]) (*connect.Response[v1.CreateInvitationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.CreateInvitation is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) GetInvitation(context.Context, *connect.Request[v1.GetInvitationRequest]) (*connect.Response[v1.GetInvitationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.GetInvitation is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) RevokeInvitation(context.Context, *connect.Request[v1.RevokeInvitationRequest]) (*connect.Response[v1.RevokeInvitationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.RevokeInvitation is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) CreatePrivateRequest(context.Context, *connect.Request[v1.CreatePrivateRequestRequest]) (*connect.Response[v1.CreatePrivateRequestResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.CreatePrivateRequest is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) GetPrivateRequest(context.Context, *connect.Request[v1.GetPrivateRequestRequest]) (*connect.Response[v1.GetPrivateRequestResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.GetPrivateRequest is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) CancelPrivateRequest(context.Context, *connect.Request[v1.CancelPrivateRequestRequest]) (*connect.Response[v1.CancelPrivateRequestResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.CancelPrivateRequest is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) RevokePrivateConnection(context.Context, *connect.Request[v1.RevokePrivateConnectionRequest]) (*connect.Response[v1.RevokePrivateConnectionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.RevokePrivateConnection is not implemented"))
 }

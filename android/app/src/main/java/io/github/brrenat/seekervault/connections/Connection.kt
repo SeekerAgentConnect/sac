@@ -15,7 +15,9 @@ import java.time.Instant
  * one that has always been here: the owner's own server, which this phone paired with and calls
  * with the credential it holds. A [ConnectionMode.GatewayFeed] connection is a publisher's
  * broadcast, read through the shared gateway, with no credential and no call to the publisher at
- * all. One phone holds any mixture of the two, and neither affects the other.
+ * all. A [ConnectionMode.GatewayPrivate] connection is one device binding accepted from a temporary
+ * gateway invitation. One phone may hold any mixture of the three, and none silently changes
+ * another.
  */
 data class Connection(
     val id: String,
@@ -28,8 +30,8 @@ data class Connection(
     val serverUrl: String,
     val serverId: String,
     /**
-     * The name this phone gave the sidecar when it paired; empty for a feed, which pairs with
-     * nothing.
+     * The name this phone gave the private server when it paired; empty for a feed, which pairs
+     * with nothing.
      */
     val deviceName: String,
     val pairedAt: Instant,
@@ -63,17 +65,18 @@ data class Connection(
      * republished.
      *
      * A [ConnectionMode.Direct] connection is always [PluginEnvironment.Production], and the
-     * invariant below is the whole of it: a sandbox rehearsal is possible only where nobody is
-     * waiting for the answer. A paired sidecar's agent asked for a signature and can be told no,
-     * but it cannot be handed a simulation, and this app will not invent one for it.
+     * invariant below is the whole of it: the legacy direct sidecar cannot be handed a simulated
+     * answer. Gateway connections preserve the immutable environment promise in their manifest; a
+     * private request can therefore report an explicit simulated outcome over its own contract.
      */
     val environment: PluginEnvironment = PluginEnvironment.Production,
 ) {
     init {
-        // A feed exists only because a manifest was read for it: the gateway, the channel and the
-        // plugins it needs all come from that manifest, and there is no other way to reach one.
+        // A gateway connection exists only because a manifest was read for it: its gateway
+        // reference and the plugins it needs all come from that manifest, and there is no other
+        // way to reach one.
         require(mode == ConnectionMode.Direct || server is ServerRecord.Known) {
-            "a feed connection needs its manifest"
+            "a gateway connection needs its manifest"
         }
         // And a manifest a connection holds is always a manifest about that connection's mode,
         // which manifestFrom is what guarantees.
@@ -82,7 +85,7 @@ data class Connection(
         }
         // Stated here rather than in the four places a connection is built, so that a connection
         // which could ask a wallet to sign something for an agent is production by construction.
-        require(mode == ConnectionMode.GatewayFeed || environment == PluginEnvironment.Production) {
+        require(mode != ConnectionMode.Direct || environment == PluginEnvironment.Production) {
             "a direct connection is always production"
         }
     }
@@ -109,6 +112,10 @@ data class Connection(
      */
     val usable: Boolean
         get() = mode == ConnectionMode.Direct && revokedAt == null && hasCredential
+
+    /** Whether the gateway-private adapter may use its own credential and transport. */
+    val gatewayUsable: Boolean
+        get() = mode == ConnectionMode.GatewayPrivate && revokedAt == null && hasCredential
 }
 
 enum class CheckOutcome {

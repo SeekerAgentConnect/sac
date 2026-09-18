@@ -32,10 +32,12 @@ const (
 	drainTimeout  = 15 * time.Second
 )
 
-// Gateway is the whole service: two handlers, the fan-out drainer, and the retention sweep.
+// Gateway is the whole service: its isolated feed, publisher and onboarding/device handlers, the
+// fan-out drainer, and the retention sweep.
 type Gateway struct {
 	Read    http.Handler
 	Publish http.Handler
+	Client  http.Handler
 	Drainer *dispatch.Drainer
 
 	config *config.Config
@@ -45,8 +47,8 @@ type Gateway struct {
 }
 
 // Build assembles the service. It opens no listener — [Gateway.Run] does that, and the tests serve
-// the same two handlers over loopback instead, so what they exercise is the service rather than a
-// rehearsal of it.
+// the same three handlers over loopback instead, so what they exercise is the service rather than
+// a rehearsal of it.
 func Build(
 	settings *config.Config,
 	from *store.Store,
@@ -94,9 +96,46 @@ func Build(
 	))
 	publishMux.HandleFunc("/healthz", healthz)
 
+	// Gateway-private onboarding is neither a public feed read nor a publisher write. Invitation
+	// preview/redeem and device traffic share one public client socket, while each service carries
+	// its own authentication rule: an invitation is its temporary capability; a paired call needs
+	// the device credential issued at redemption.
+	clients := NewLimiter(settings.ReadRate, settings.ReadBurst, now)
+	invitation := NewInvitation(from, settings.PublicURL, now)
+	clientMux := http.NewServeMux()
+	clientMux.Handle(gatewayv1connect.NewInvitationServiceHandler(
+		invitation,
+		connect.WithReadMaxBytes(MostBytes),
+		connect.WithCodec(strictJSON{}),
+		connect.WithInterceptors(
+			reporting(log),
+			Limiting(clients, func(_ context.Context, request connect.AnyRequest) string {
+				return caller(request.Peer().Addr, request.Header().Get("X-Forwarded-For"))
+			}),
+		),
+	))
+	clientMux.Handle(gatewayv1connect.NewDeviceServiceHandler(
+		NewDevice(from, now),
+		connect.WithReadMaxBytes(MostBytes),
+		connect.WithCodec(strictJSON{}),
+		connect.WithInterceptors(
+			reporting(log),
+			AuthenticatingDevice(from),
+			Limiting(clients, func(ctx context.Context, request connect.AnyRequest) string {
+				if binding := deviceOf(ctx); binding != nil {
+					return binding.ConnectionID
+				}
+				return caller(request.Peer().Addr, request.Header().Get("X-Forwarded-For"))
+			}),
+		),
+	))
+	clientMux.HandleFunc("/invite/", invitation.Page)
+	clientMux.HandleFunc("/healthz", healthz)
+
 	return &Gateway{
 		Read:    readMux,
 		Publish: publishMux,
+		Client:  clientMux,
 		Drainer: drainer,
 		config:  settings,
 		store:   from,
@@ -126,6 +165,15 @@ func (g *Gateway) Run(ctx context.Context) error {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    16 * 1024,
 	}
+	client := &http.Server{
+		Addr:              g.config.ClientAddress,
+		Handler:           g.Client,
+		ReadHeaderTimeout: headerTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+		MaxHeaderBytes:    16 * 1024,
+	}
 
 	reading, err := net.Listen("tcp", read.Addr)
 	if err != nil {
@@ -136,15 +184,23 @@ func (g *Gateway) Run(ctx context.Context) error {
 		_ = reading.Close()
 		return err
 	}
+	servingClients, err := net.Listen("tcp", client.Addr)
+	if err != nil {
+		_ = reading.Close()
+		_ = publishing.Close()
+		return err
+	}
 	g.log.Info("broadcast gateway listening",
 		"read", reading.Addr().String(),
 		"publish", publishing.Addr().String(),
+		"client", servingClients.Addr().String(),
 		"origin", g.config.PublicURL,
 		"database", g.store.Path())
 
-	failed := make(chan error, 2)
+	failed := make(chan error, 3)
 	go func() { failed <- serve(read, reading) }()
 	go func() { failed <- serve(publish, publishing) }()
+	go func() { failed <- serve(client, servingClients) }()
 
 	background, stop := context.WithCancel(ctx)
 	defer stop()
@@ -159,7 +215,7 @@ func (g *Gateway) Run(ctx context.Context) error {
 	closing, cancel := context.WithTimeout(context.WithoutCancel(ctx), drainTimeout)
 	defer cancel()
 	// The listeners first, so nothing new arrives while the drainer makes its last pass.
-	shutdown := errors.Join(read.Shutdown(closing), publish.Shutdown(closing))
+	shutdown := errors.Join(read.Shutdown(closing), publish.Shutdown(closing), client.Shutdown(closing))
 	stop()
 	return errors.Join(reason, shutdown)
 }

@@ -368,8 +368,9 @@ sealed interface ParameterKind {
 data class ParameterOption(val key: ParameterKey, @StringRes val label: Int)
 
 /**
- * What the owner chose, on their own phone. It is never sent to a publishing server or to a shared
- * gateway (SEE-89): a shared proposal is common, and the decision about it is not.
+ * What the owner chose, on their own phone. A public feed never receives it (SEE-89). A private
+ * RETURN_TO_ORIGIN request may return only the values its source explicitly declared, through the
+ * device's authenticated result path (SEE-109); it is never added to a shared proposal.
  */
 data class ParameterChoice(val values: Map<ParameterKey, ParameterValue> = emptyMap()) {
     operator fun get(key: ParameterKey): ParameterValue? = values[key]

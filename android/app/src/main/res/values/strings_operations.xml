@@ -9,9 +9,15 @@
     <string name="operations_expired">Expired %1$s</string>
     <string name="operations_signals">Signals</string>
     <string name="operations_signals_note">What this feed has proposed, and what you decided about each one</string>
+    <string name="operations_requests">Requests</string>
+    <string name="operations_requests_note">Private requests from this server; connecting does not approve any of them</string>
     <plurals name="connection_signals_held">
         <item quantity="one">%1$d signal held on this phone</item>
         <item quantity="other">%1$d signals held on this phone</item>
+    </plurals>
+    <plurals name="connection_requests_held">
+        <item quantity="one">%1$d request needs attention</item>
+        <item quantity="other">%1$d requests need attention</item>
     </plurals>
 
     <!-- Where a proposal stands for this owner. -->
@@ -37,6 +43,7 @@
     <string name="operation_expires">Expires %1$s</string>
     <string name="operation_your_part">Your part</string>
     <string name="operation_your_part_note">How much to swap is yours alone. It stays on this phone: the publisher and the shared gateway are never told the amount, your wallet, or whether you acted.</string>
+    <string name="operation_your_part_private_note">Your declared choices and final outcome return only to the server that sent this private request. Connecting did not approve it, and your wallet authorization is never shared.</string>
     <string name="operation_what_this_phone_read">What this phone read in the transaction</string>
     <string name="operation_not_prepared">Nothing was prepared</string>
     <string name="operation_not_prepared_unknown">The plugin could not prepare this operation.</string>
@@ -62,9 +69,12 @@
     <string name="operation_simulate">Simulate</string>
     <string name="operation_simulate_note">This records what would have happened and stops there. No wallet is opened, no transaction exists, and there is no signature to look up afterwards.</string>
     <string name="operation_dismiss">Hide this signal</string>
+    <string name="operation_reject">Reject this request</string>
     <string name="operation_acknowledge">I have read the warnings above and mean to go ahead</string>
     <string name="operation_proposal_id">Proposal</string>
+    <string name="operation_request_id">Request</string>
     <string name="operation_publisher">Publisher</string>
+    <string name="operation_server">Server</string>
     <string name="operation_revision">Revision %1$d</string>
 
     <!-- What the owner has once an operation has been submitted (SEE-94). -->

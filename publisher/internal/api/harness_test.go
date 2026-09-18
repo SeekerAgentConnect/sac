@@ -44,6 +44,7 @@ var now = time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
 // real — the protocol, the codec, the headers, the error details — and it emulates only the one
 // gateway rule this side depends on: the same document again is "unchanged".
 type fakeGateway struct {
+	gatewayv1connect.UnimplementedPublisherServiceHandler
 	mutex     sync.Mutex
 	manifests []*serverv1.ServerManifest
 	proposals []*proposalv1.Proposal

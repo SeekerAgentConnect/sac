@@ -1016,9 +1016,11 @@ class StageBoundaryTest {
                 "display_name",
                 "direct",
                 "feed",
+                "gateway_private",
                 "url",
                 "gateway_url",
                 "channel",
+                "gateway_url",
                 "plugin_id",
                 "min_contract",
                 "max_contract",
@@ -1285,6 +1287,9 @@ class StageBoundaryTest {
                 "ConnectLiveCommandTransport.kt",
                 "ConnectUpdateTransport.kt",
                 "ConnectFeedGateway.kt",
+                // Gateway-private pairing and request/result delivery has a third adapter. It is
+                // the only new HTTP client; its credential is scoped to one device binding.
+                "InvitationGateway.kt",
                 "CentrifugoFeedStream.kt",
                 "SeekerVaultApplication.kt",
                 // And one more, deliberately: a swap's execution data comes from a provider, and

@@ -64,6 +64,9 @@ object ConnectionsTags {
     const val OPEN_SETTINGS = "openSettings"
     const val CONFIRM_SERVER = "confirmServer"
     const val CONFIRM_FEED = "confirmFeed"
+    const val CONFIRM_INVITATION = "confirmInvitation"
+    const val CONNECT_INVITATION = "connectInvitation"
+    const val INVITATION_FAILURE = "invitationFailure"
     const val CONFIRM_NOTE = "confirmNote"
     const val PAIR = "pair"
     const val CANCEL_PAIRING = "cancelPairing"
@@ -124,6 +127,10 @@ fun statusText(
         // A feed holds no credential and never did, so it is not one that has gone missing.
         connection.mode == ConnectionMode.GatewayFeed && support?.executable != false ->
             stringResource(R.string.connection_status_feed)
+        connection.mode == ConnectionMode.GatewayPrivate &&
+            connection.gatewayUsable &&
+            support?.executable != false ->
+            stringResource(R.string.connection_status_gateway_private)
         !connection.hasCredential -> stringResource(R.string.connection_status_credential_missing)
         support != null && !support.executable -> supportText(support)
         live == ForegroundConnectionState.Background ->
@@ -155,6 +162,7 @@ fun hasProblem(
     // A feed is not "usable" in the sense that word has here — the phone never calls one — so its
     // problems are its own: a manifest this build can't act on, and nothing else yet (SEE-88).
     (connection.mode == ConnectionMode.Direct && !connection.usable) ||
+        (connection.mode == ConnectionMode.GatewayPrivate && !connection.gatewayUsable) ||
         support?.executable == false ||
         when (live) {
             is ForegroundConnectionState.Unreachable,
@@ -238,6 +246,22 @@ fun feedReferenceProblemText(problem: FeedReferenceProblem): String =
             FeedReferenceProblem.BadGatewayUrl -> R.string.feed_reference_bad_gateway
             FeedReferenceProblem.InsecureGatewayUrl -> R.string.feed_reference_insecure_gateway
             FeedReferenceProblem.BadServerId -> R.string.feed_reference_bad_server_id
+        }
+    )
+
+@Composable
+fun invitationProblemText(problem: InvitationProblem): String =
+    stringResource(
+        when (problem) {
+            InvitationProblem.NotAnInvitation -> R.string.invitation_not_invitation
+            InvitationProblem.OtherVersion -> R.string.invitation_other_version
+            InvitationProblem.BadGatewayUrl -> R.string.invitation_bad_gateway
+            InvitationProblem.InsecureGatewayUrl -> R.string.invitation_insecure_gateway
+            InvitationProblem.BadToken,
+            InvitationProblem.Invalid -> R.string.invitation_invalid
+            InvitationProblem.Expired -> R.string.invitation_expired
+            InvitationProblem.Used -> R.string.invitation_used
+            InvitationProblem.Failed -> R.string.invitation_failed
         }
     )
 

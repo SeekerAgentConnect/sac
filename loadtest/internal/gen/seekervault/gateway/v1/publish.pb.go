@@ -6,19 +6,20 @@
 
 // How a publisher publishes (SEE-90, docs/wiki/broadcast-gateway.md).
 //
-// A developer's server calls this once per thing it wants to say, and then has nothing further to
-// do: the gateway holds the document and every subscribed phone reads it from there. The publisher
-// maintains no connection to any phone, learns nothing about who is subscribed, and is never
-// called by one.
+// A developer's server uses this authenticated API either to publish a public feed document or to
+// create an invitation and route a private request. A feed publisher maintains no connection to
+// any phone and learns nothing about who is subscribed. A private server addresses only its own
+// opaque user reference and a completed connection ID; the gateway verifies that exact device
+// binding under the authenticated server.
 //
 // It is authenticated, and the credential is the whole of the grant: it says which server the
 // caller publishes as, and every document is checked against that rather than against anything the
 // document claims. There is no field here for a channel on a cancellation and no field anywhere
 // for a server other than the caller's own.
 //
-// **This file is generated for Go only.** The phone and the sidecar are not publishers, so
-// buf.gen.yaml excludes it from their generation: there is no publisher client in the app because
-// there is no publisher client compiled for the app.
+// The publisher service is called only by backends. Generating the message types for another
+// runtime grants no role: SAC uses InvitationService and DeviceService on the separately routed
+// client listener and never instantiates a PublisherService client.
 //
 // Retrying is the ordinary case, not an exception: a template that lost its answer, was restarted,
 // or ran twice publishes the same revision again and is told it was unchanged. The contract's own
@@ -99,6 +100,650 @@ func (PublishStatus) EnumDescriptor() ([]byte, []int) {
 	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{0}
 }
 
+type CreateInvitationRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Opaque to the gateway and scoped to the authenticated server. Another device needs a fresh
+	// invitation but may use the same user reference; the gateway creates no central SAC account.
+	UserRef         string `protobuf:"bytes,1,opt,name=user_ref,json=userRef,proto3" json:"user_ref,omitempty"`
+	LifetimeSeconds uint32 `protobuf:"varint,2,opt,name=lifetime_seconds,json=lifetimeSeconds,proto3" json:"lifetime_seconds,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CreateInvitationRequest) Reset() {
+	*x = CreateInvitationRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateInvitationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateInvitationRequest) ProtoMessage() {}
+
+func (x *CreateInvitationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateInvitationRequest.ProtoReflect.Descriptor instead.
+func (*CreateInvitationRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *CreateInvitationRequest) GetUserRef() string {
+	if x != nil {
+		return x.UserRef
+	}
+	return ""
+}
+
+func (x *CreateInvitationRequest) GetLifetimeSeconds() uint32 {
+	if x != nil {
+		return x.LifetimeSeconds
+	}
+	return 0
+}
+
+type CreateInvitationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Invitation    *Invitation            `protobuf:"bytes,1,opt,name=invitation,proto3" json:"invitation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateInvitationResponse) Reset() {
+	*x = CreateInvitationResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateInvitationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateInvitationResponse) ProtoMessage() {}
+
+func (x *CreateInvitationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateInvitationResponse.ProtoReflect.Descriptor instead.
+func (*CreateInvitationResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *CreateInvitationResponse) GetInvitation() *Invitation {
+	if x != nil {
+		return x.Invitation
+	}
+	return nil
+}
+
+type GetInvitationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InvitationId  string                 `protobuf:"bytes,1,opt,name=invitation_id,json=invitationId,proto3" json:"invitation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInvitationRequest) Reset() {
+	*x = GetInvitationRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInvitationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInvitationRequest) ProtoMessage() {}
+
+func (x *GetInvitationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInvitationRequest.ProtoReflect.Descriptor instead.
+func (*GetInvitationRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GetInvitationRequest) GetInvitationId() string {
+	if x != nil {
+		return x.InvitationId
+	}
+	return ""
+}
+
+type GetInvitationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Invitation    *Invitation            `protobuf:"bytes,1,opt,name=invitation,proto3" json:"invitation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInvitationResponse) Reset() {
+	*x = GetInvitationResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInvitationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInvitationResponse) ProtoMessage() {}
+
+func (x *GetInvitationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInvitationResponse.ProtoReflect.Descriptor instead.
+func (*GetInvitationResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GetInvitationResponse) GetInvitation() *Invitation {
+	if x != nil {
+		return x.Invitation
+	}
+	return nil
+}
+
+type RevokeInvitationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InvitationId  string                 `protobuf:"bytes,1,opt,name=invitation_id,json=invitationId,proto3" json:"invitation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeInvitationRequest) Reset() {
+	*x = RevokeInvitationRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeInvitationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeInvitationRequest) ProtoMessage() {}
+
+func (x *RevokeInvitationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeInvitationRequest.ProtoReflect.Descriptor instead.
+func (*RevokeInvitationRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RevokeInvitationRequest) GetInvitationId() string {
+	if x != nil {
+		return x.InvitationId
+	}
+	return ""
+}
+
+type RevokeInvitationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeInvitationResponse) Reset() {
+	*x = RevokeInvitationResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeInvitationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeInvitationResponse) ProtoMessage() {}
+
+func (x *RevokeInvitationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeInvitationResponse.ProtoReflect.Descriptor instead.
+func (*RevokeInvitationResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{5}
+}
+
+type CreatePrivateRequestRequest struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Request *v2.Request            `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
+	// The confirmed device binding to address. The gateway checks that it belongs to the
+	// authenticated server and to request.audience.private.recipient_id.
+	ConnectionId  string `protobuf:"bytes,2,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreatePrivateRequestRequest) Reset() {
+	*x = CreatePrivateRequestRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreatePrivateRequestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreatePrivateRequestRequest) ProtoMessage() {}
+
+func (x *CreatePrivateRequestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreatePrivateRequestRequest.ProtoReflect.Descriptor instead.
+func (*CreatePrivateRequestRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *CreatePrivateRequestRequest) GetRequest() *v2.Request {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
+func (x *CreatePrivateRequestRequest) GetConnectionId() string {
+	if x != nil {
+		return x.ConnectionId
+	}
+	return ""
+}
+
+type CreatePrivateRequestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Record        *PrivateRequestRecord  `protobuf:"bytes,1,opt,name=record,proto3" json:"record,omitempty"`
+	Unchanged     bool                   `protobuf:"varint,2,opt,name=unchanged,proto3" json:"unchanged,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreatePrivateRequestResponse) Reset() {
+	*x = CreatePrivateRequestResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreatePrivateRequestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreatePrivateRequestResponse) ProtoMessage() {}
+
+func (x *CreatePrivateRequestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreatePrivateRequestResponse.ProtoReflect.Descriptor instead.
+func (*CreatePrivateRequestResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *CreatePrivateRequestResponse) GetRecord() *PrivateRequestRecord {
+	if x != nil {
+		return x.Record
+	}
+	return nil
+}
+
+func (x *CreatePrivateRequestResponse) GetUnchanged() bool {
+	if x != nil {
+		return x.Unchanged
+	}
+	return false
+}
+
+type GetPrivateRequestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPrivateRequestRequest) Reset() {
+	*x = GetPrivateRequestRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPrivateRequestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPrivateRequestRequest) ProtoMessage() {}
+
+func (x *GetPrivateRequestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPrivateRequestRequest.ProtoReflect.Descriptor instead.
+func (*GetPrivateRequestRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetPrivateRequestRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+type GetPrivateRequestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Record        *PrivateRequestRecord  `protobuf:"bytes,1,opt,name=record,proto3" json:"record,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPrivateRequestResponse) Reset() {
+	*x = GetPrivateRequestResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPrivateRequestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPrivateRequestResponse) ProtoMessage() {}
+
+func (x *GetPrivateRequestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPrivateRequestResponse.ProtoReflect.Descriptor instead.
+func (*GetPrivateRequestResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetPrivateRequestResponse) GetRecord() *PrivateRequestRecord {
+	if x != nil {
+		return x.Record
+	}
+	return nil
+}
+
+type CancelPrivateRequestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Revision      uint64                 `protobuf:"varint,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelPrivateRequestRequest) Reset() {
+	*x = CancelPrivateRequestRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelPrivateRequestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelPrivateRequestRequest) ProtoMessage() {}
+
+func (x *CancelPrivateRequestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelPrivateRequestRequest.ProtoReflect.Descriptor instead.
+func (*CancelPrivateRequestRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CancelPrivateRequestRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *CancelPrivateRequestRequest) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+type CancelPrivateRequestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Record        *PrivateRequestRecord  `protobuf:"bytes,1,opt,name=record,proto3" json:"record,omitempty"`
+	Unchanged     bool                   `protobuf:"varint,2,opt,name=unchanged,proto3" json:"unchanged,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelPrivateRequestResponse) Reset() {
+	*x = CancelPrivateRequestResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelPrivateRequestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelPrivateRequestResponse) ProtoMessage() {}
+
+func (x *CancelPrivateRequestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelPrivateRequestResponse.ProtoReflect.Descriptor instead.
+func (*CancelPrivateRequestResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *CancelPrivateRequestResponse) GetRecord() *PrivateRequestRecord {
+	if x != nil {
+		return x.Record
+	}
+	return nil
+}
+
+func (x *CancelPrivateRequestResponse) GetUnchanged() bool {
+	if x != nil {
+		return x.Unchanged
+	}
+	return false
+}
+
+type RevokePrivateConnectionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ConnectionId  string                 `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokePrivateConnectionRequest) Reset() {
+	*x = RevokePrivateConnectionRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokePrivateConnectionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokePrivateConnectionRequest) ProtoMessage() {}
+
+func (x *RevokePrivateConnectionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokePrivateConnectionRequest.ProtoReflect.Descriptor instead.
+func (*RevokePrivateConnectionRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *RevokePrivateConnectionRequest) GetConnectionId() string {
+	if x != nil {
+		return x.ConnectionId
+	}
+	return ""
+}
+
+type RevokePrivateConnectionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokePrivateConnectionResponse) Reset() {
+	*x = RevokePrivateConnectionResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokePrivateConnectionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokePrivateConnectionResponse) ProtoMessage() {}
+
+func (x *RevokePrivateConnectionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokePrivateConnectionResponse.ProtoReflect.Descriptor instead.
+func (*RevokePrivateConnectionResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{13}
+}
+
 type PublishManifestRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Manifest      *v1.ServerManifest     `protobuf:"bytes,1,opt,name=manifest,proto3" json:"manifest,omitempty"`
@@ -108,7 +753,7 @@ type PublishManifestRequest struct {
 
 func (x *PublishManifestRequest) Reset() {
 	*x = PublishManifestRequest{}
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[0]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -120,7 +765,7 @@ func (x *PublishManifestRequest) String() string {
 func (*PublishManifestRequest) ProtoMessage() {}
 
 func (x *PublishManifestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[0]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -133,7 +778,7 @@ func (x *PublishManifestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishManifestRequest.ProtoReflect.Descriptor instead.
 func (*PublishManifestRequest) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{0}
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PublishManifestRequest) GetManifest() *v1.ServerManifest {
@@ -154,7 +799,7 @@ type PublishManifestResponse struct {
 
 func (x *PublishManifestResponse) Reset() {
 	*x = PublishManifestResponse{}
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[1]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -166,7 +811,7 @@ func (x *PublishManifestResponse) String() string {
 func (*PublishManifestResponse) ProtoMessage() {}
 
 func (x *PublishManifestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[1]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -179,7 +824,7 @@ func (x *PublishManifestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishManifestResponse.ProtoReflect.Descriptor instead.
 func (*PublishManifestResponse) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{1}
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PublishManifestResponse) GetStatus() PublishStatus {
@@ -205,7 +850,7 @@ type PublishRequestRequest struct {
 
 func (x *PublishRequestRequest) Reset() {
 	*x = PublishRequestRequest{}
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[2]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -217,7 +862,7 @@ func (x *PublishRequestRequest) String() string {
 func (*PublishRequestRequest) ProtoMessage() {}
 
 func (x *PublishRequestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[2]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -230,7 +875,7 @@ func (x *PublishRequestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishRequestRequest.ProtoReflect.Descriptor instead.
 func (*PublishRequestRequest) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{2}
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *PublishRequestRequest) GetRequest() *v2.Request {
@@ -251,7 +896,7 @@ type PublishRequestResponse struct {
 
 func (x *PublishRequestResponse) Reset() {
 	*x = PublishRequestResponse{}
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[3]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -263,7 +908,7 @@ func (x *PublishRequestResponse) String() string {
 func (*PublishRequestResponse) ProtoMessage() {}
 
 func (x *PublishRequestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[3]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -276,7 +921,7 @@ func (x *PublishRequestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishRequestResponse.ProtoReflect.Descriptor instead.
 func (*PublishRequestResponse) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{3}
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PublishRequestResponse) GetStatus() PublishStatus {
@@ -310,7 +955,7 @@ type CancelRequestRequest struct {
 
 func (x *CancelRequestRequest) Reset() {
 	*x = CancelRequestRequest{}
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[4]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -322,7 +967,7 @@ func (x *CancelRequestRequest) String() string {
 func (*CancelRequestRequest) ProtoMessage() {}
 
 func (x *CancelRequestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[4]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -335,7 +980,7 @@ func (x *CancelRequestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelRequestRequest.ProtoReflect.Descriptor instead.
 func (*CancelRequestRequest) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{4}
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CancelRequestRequest) GetRequestId() string {
@@ -363,7 +1008,7 @@ type CancelRequestResponse struct {
 
 func (x *CancelRequestResponse) Reset() {
 	*x = CancelRequestResponse{}
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[5]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -375,7 +1020,7 @@ func (x *CancelRequestResponse) String() string {
 func (*CancelRequestResponse) ProtoMessage() {}
 
 func (x *CancelRequestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[5]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -388,7 +1033,7 @@ func (x *CancelRequestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelRequestResponse.ProtoReflect.Descriptor instead.
 func (*CancelRequestResponse) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{5}
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *CancelRequestResponse) GetStatus() PublishStatus {
@@ -421,7 +1066,7 @@ type PublishProposalRequest struct {
 
 func (x *PublishProposalRequest) Reset() {
 	*x = PublishProposalRequest{}
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[6]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -433,7 +1078,7 @@ func (x *PublishProposalRequest) String() string {
 func (*PublishProposalRequest) ProtoMessage() {}
 
 func (x *PublishProposalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[6]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -446,7 +1091,7 @@ func (x *PublishProposalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishProposalRequest.ProtoReflect.Descriptor instead.
 func (*PublishProposalRequest) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{6}
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *PublishProposalRequest) GetProposal() *v11.Proposal {
@@ -469,7 +1114,7 @@ type PublishProposalResponse struct {
 
 func (x *PublishProposalResponse) Reset() {
 	*x = PublishProposalResponse{}
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[7]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -481,7 +1126,7 @@ func (x *PublishProposalResponse) String() string {
 func (*PublishProposalResponse) ProtoMessage() {}
 
 func (x *PublishProposalResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[7]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -494,7 +1139,7 @@ func (x *PublishProposalResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishProposalResponse.ProtoReflect.Descriptor instead.
 func (*PublishProposalResponse) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{7}
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *PublishProposalResponse) GetStatus() PublishStatus {
@@ -531,7 +1176,7 @@ type CancelProposalRequest struct {
 
 func (x *CancelProposalRequest) Reset() {
 	*x = CancelProposalRequest{}
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[8]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -543,7 +1188,7 @@ func (x *CancelProposalRequest) String() string {
 func (*CancelProposalRequest) ProtoMessage() {}
 
 func (x *CancelProposalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[8]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -556,7 +1201,7 @@ func (x *CancelProposalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelProposalRequest.ProtoReflect.Descriptor instead.
 func (*CancelProposalRequest) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{8}
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *CancelProposalRequest) GetProposalId() string {
@@ -587,7 +1232,7 @@ type CancelProposalResponse struct {
 
 func (x *CancelProposalResponse) Reset() {
 	*x = CancelProposalResponse{}
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[9]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -599,7 +1244,7 @@ func (x *CancelProposalResponse) String() string {
 func (*CancelProposalResponse) ProtoMessage() {}
 
 func (x *CancelProposalResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[9]
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -612,7 +1257,7 @@ func (x *CancelProposalResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelProposalResponse.ProtoReflect.Descriptor instead.
 func (*CancelProposalResponse) Descriptor() ([]byte, []int) {
-	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{9}
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CancelProposalResponse) GetStatus() PublishStatus {
@@ -640,7 +1285,44 @@ var File_seekervault_gateway_v1_publish_proto protoreflect.FileDescriptor
 
 const file_seekervault_gateway_v1_publish_proto_rawDesc = "" +
 	"\n" +
-	"$seekervault/gateway/v1/publish.proto\x12\x16seekervault.gateway.v1\x1a&seekervault/proposal/v1/proposal.proto\x1a$seekervault/request/v2/request.proto\x1a$seekervault/server/v1/manifest.proto\"[\n" +
+	"$seekervault/gateway/v1/publish.proto\x12\x16seekervault.gateway.v1\x1a'seekervault/gateway/v1/onboarding.proto\x1a&seekervault/proposal/v1/proposal.proto\x1a$seekervault/request/v2/request.proto\x1a$seekervault/server/v1/manifest.proto\"_\n" +
+	"\x17CreateInvitationRequest\x12\x19\n" +
+	"\buser_ref\x18\x01 \x01(\tR\auserRef\x12)\n" +
+	"\x10lifetime_seconds\x18\x02 \x01(\rR\x0flifetimeSeconds\"^\n" +
+	"\x18CreateInvitationResponse\x12B\n" +
+	"\n" +
+	"invitation\x18\x01 \x01(\v2\".seekervault.gateway.v1.InvitationR\n" +
+	"invitation\";\n" +
+	"\x14GetInvitationRequest\x12#\n" +
+	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\"[\n" +
+	"\x15GetInvitationResponse\x12B\n" +
+	"\n" +
+	"invitation\x18\x01 \x01(\v2\".seekervault.gateway.v1.InvitationR\n" +
+	"invitation\">\n" +
+	"\x17RevokeInvitationRequest\x12#\n" +
+	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\"\x1a\n" +
+	"\x18RevokeInvitationResponse\"}\n" +
+	"\x1bCreatePrivateRequestRequest\x129\n" +
+	"\arequest\x18\x01 \x01(\v2\x1f.seekervault.request.v2.RequestR\arequest\x12#\n" +
+	"\rconnection_id\x18\x02 \x01(\tR\fconnectionId\"\x82\x01\n" +
+	"\x1cCreatePrivateRequestResponse\x12D\n" +
+	"\x06record\x18\x01 \x01(\v2,.seekervault.gateway.v1.PrivateRequestRecordR\x06record\x12\x1c\n" +
+	"\tunchanged\x18\x02 \x01(\bR\tunchanged\"9\n" +
+	"\x18GetPrivateRequestRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\"a\n" +
+	"\x19GetPrivateRequestResponse\x12D\n" +
+	"\x06record\x18\x01 \x01(\v2,.seekervault.gateway.v1.PrivateRequestRecordR\x06record\"X\n" +
+	"\x1bCancelPrivateRequestRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\x04R\brevision\"\x82\x01\n" +
+	"\x1cCancelPrivateRequestResponse\x12D\n" +
+	"\x06record\x18\x01 \x01(\v2,.seekervault.gateway.v1.PrivateRequestRecordR\x06record\x12\x1c\n" +
+	"\tunchanged\x18\x02 \x01(\bR\tunchanged\"E\n" +
+	"\x1eRevokePrivateConnectionRequest\x12#\n" +
+	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\"!\n" +
+	"\x1fRevokePrivateConnectionResponse\"[\n" +
 	"\x16PublishManifestRequest\x12A\n" +
 	"\bmanifest\x18\x01 \x01(\v2%.seekervault.server.v1.ServerManifestR\bmanifest\"\x85\x01\n" +
 	"\x17PublishManifestResponse\x12=\n" +
@@ -677,13 +1359,20 @@ const file_seekervault_gateway_v1_publish_proto_rawDesc = "" +
 	"\rPublishStatus\x12\x1e\n" +
 	"\x1aPUBLISH_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15PUBLISH_STATUS_STORED\x10\x01\x12\x1c\n" +
-	"\x18PUBLISH_STATUS_UNCHANGED\x10\x022\xca\x04\n" +
+	"\x18PUBLISH_STATUS_UNCHANGED\x10\x022\xb5\v\n" +
 	"\x10PublisherService\x12r\n" +
 	"\x0fPublishManifest\x12..seekervault.gateway.v1.PublishManifestRequest\x1a/.seekervault.gateway.v1.PublishManifestResponse\x12o\n" +
 	"\x0ePublishRequest\x12-.seekervault.gateway.v1.PublishRequestRequest\x1a..seekervault.gateway.v1.PublishRequestResponse\x12l\n" +
 	"\rCancelRequest\x12,.seekervault.gateway.v1.CancelRequestRequest\x1a-.seekervault.gateway.v1.CancelRequestResponse\x12r\n" +
 	"\x0fPublishProposal\x12..seekervault.gateway.v1.PublishProposalRequest\x1a/.seekervault.gateway.v1.PublishProposalResponse\x12o\n" +
-	"\x0eCancelProposal\x12-.seekervault.gateway.v1.CancelProposalRequest\x1a..seekervault.gateway.v1.CancelProposalResponseB\x81\x02\n" +
+	"\x0eCancelProposal\x12-.seekervault.gateway.v1.CancelProposalRequest\x1a..seekervault.gateway.v1.CancelProposalResponse\x12u\n" +
+	"\x10CreateInvitation\x12/.seekervault.gateway.v1.CreateInvitationRequest\x1a0.seekervault.gateway.v1.CreateInvitationResponse\x12l\n" +
+	"\rGetInvitation\x12,.seekervault.gateway.v1.GetInvitationRequest\x1a-.seekervault.gateway.v1.GetInvitationResponse\x12u\n" +
+	"\x10RevokeInvitation\x12/.seekervault.gateway.v1.RevokeInvitationRequest\x1a0.seekervault.gateway.v1.RevokeInvitationResponse\x12\x81\x01\n" +
+	"\x14CreatePrivateRequest\x123.seekervault.gateway.v1.CreatePrivateRequestRequest\x1a4.seekervault.gateway.v1.CreatePrivateRequestResponse\x12x\n" +
+	"\x11GetPrivateRequest\x120.seekervault.gateway.v1.GetPrivateRequestRequest\x1a1.seekervault.gateway.v1.GetPrivateRequestResponse\x12\x81\x01\n" +
+	"\x14CancelPrivateRequest\x123.seekervault.gateway.v1.CancelPrivateRequestRequest\x1a4.seekervault.gateway.v1.CancelPrivateRequestResponse\x12\x8a\x01\n" +
+	"\x17RevokePrivateConnection\x126.seekervault.gateway.v1.RevokePrivateConnectionRequest\x1a7.seekervault.gateway.v1.RevokePrivateConnectionResponseB\x81\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\fPublishProtoP\x01Z[github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (
@@ -699,49 +1388,85 @@ func file_seekervault_gateway_v1_publish_proto_rawDescGZIP() []byte {
 }
 
 var file_seekervault_gateway_v1_publish_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_seekervault_gateway_v1_publish_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_seekervault_gateway_v1_publish_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_seekervault_gateway_v1_publish_proto_goTypes = []any{
-	(PublishStatus)(0),              // 0: seekervault.gateway.v1.PublishStatus
-	(*PublishManifestRequest)(nil),  // 1: seekervault.gateway.v1.PublishManifestRequest
-	(*PublishManifestResponse)(nil), // 2: seekervault.gateway.v1.PublishManifestResponse
-	(*PublishRequestRequest)(nil),   // 3: seekervault.gateway.v1.PublishRequestRequest
-	(*PublishRequestResponse)(nil),  // 4: seekervault.gateway.v1.PublishRequestResponse
-	(*CancelRequestRequest)(nil),    // 5: seekervault.gateway.v1.CancelRequestRequest
-	(*CancelRequestResponse)(nil),   // 6: seekervault.gateway.v1.CancelRequestResponse
-	(*PublishProposalRequest)(nil),  // 7: seekervault.gateway.v1.PublishProposalRequest
-	(*PublishProposalResponse)(nil), // 8: seekervault.gateway.v1.PublishProposalResponse
-	(*CancelProposalRequest)(nil),   // 9: seekervault.gateway.v1.CancelProposalRequest
-	(*CancelProposalResponse)(nil),  // 10: seekervault.gateway.v1.CancelProposalResponse
-	(*v1.ServerManifest)(nil),       // 11: seekervault.server.v1.ServerManifest
-	(*v2.Request)(nil),              // 12: seekervault.request.v2.Request
-	(*v11.Proposal)(nil),            // 13: seekervault.proposal.v1.Proposal
+	(PublishStatus)(0),                      // 0: seekervault.gateway.v1.PublishStatus
+	(*CreateInvitationRequest)(nil),         // 1: seekervault.gateway.v1.CreateInvitationRequest
+	(*CreateInvitationResponse)(nil),        // 2: seekervault.gateway.v1.CreateInvitationResponse
+	(*GetInvitationRequest)(nil),            // 3: seekervault.gateway.v1.GetInvitationRequest
+	(*GetInvitationResponse)(nil),           // 4: seekervault.gateway.v1.GetInvitationResponse
+	(*RevokeInvitationRequest)(nil),         // 5: seekervault.gateway.v1.RevokeInvitationRequest
+	(*RevokeInvitationResponse)(nil),        // 6: seekervault.gateway.v1.RevokeInvitationResponse
+	(*CreatePrivateRequestRequest)(nil),     // 7: seekervault.gateway.v1.CreatePrivateRequestRequest
+	(*CreatePrivateRequestResponse)(nil),    // 8: seekervault.gateway.v1.CreatePrivateRequestResponse
+	(*GetPrivateRequestRequest)(nil),        // 9: seekervault.gateway.v1.GetPrivateRequestRequest
+	(*GetPrivateRequestResponse)(nil),       // 10: seekervault.gateway.v1.GetPrivateRequestResponse
+	(*CancelPrivateRequestRequest)(nil),     // 11: seekervault.gateway.v1.CancelPrivateRequestRequest
+	(*CancelPrivateRequestResponse)(nil),    // 12: seekervault.gateway.v1.CancelPrivateRequestResponse
+	(*RevokePrivateConnectionRequest)(nil),  // 13: seekervault.gateway.v1.RevokePrivateConnectionRequest
+	(*RevokePrivateConnectionResponse)(nil), // 14: seekervault.gateway.v1.RevokePrivateConnectionResponse
+	(*PublishManifestRequest)(nil),          // 15: seekervault.gateway.v1.PublishManifestRequest
+	(*PublishManifestResponse)(nil),         // 16: seekervault.gateway.v1.PublishManifestResponse
+	(*PublishRequestRequest)(nil),           // 17: seekervault.gateway.v1.PublishRequestRequest
+	(*PublishRequestResponse)(nil),          // 18: seekervault.gateway.v1.PublishRequestResponse
+	(*CancelRequestRequest)(nil),            // 19: seekervault.gateway.v1.CancelRequestRequest
+	(*CancelRequestResponse)(nil),           // 20: seekervault.gateway.v1.CancelRequestResponse
+	(*PublishProposalRequest)(nil),          // 21: seekervault.gateway.v1.PublishProposalRequest
+	(*PublishProposalResponse)(nil),         // 22: seekervault.gateway.v1.PublishProposalResponse
+	(*CancelProposalRequest)(nil),           // 23: seekervault.gateway.v1.CancelProposalRequest
+	(*CancelProposalResponse)(nil),          // 24: seekervault.gateway.v1.CancelProposalResponse
+	(*Invitation)(nil),                      // 25: seekervault.gateway.v1.Invitation
+	(*v2.Request)(nil),                      // 26: seekervault.request.v2.Request
+	(*PrivateRequestRecord)(nil),            // 27: seekervault.gateway.v1.PrivateRequestRecord
+	(*v1.ServerManifest)(nil),               // 28: seekervault.server.v1.ServerManifest
+	(*v11.Proposal)(nil),                    // 29: seekervault.proposal.v1.Proposal
 }
 var file_seekervault_gateway_v1_publish_proto_depIdxs = []int32{
-	11, // 0: seekervault.gateway.v1.PublishManifestRequest.manifest:type_name -> seekervault.server.v1.ServerManifest
-	0,  // 1: seekervault.gateway.v1.PublishManifestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	12, // 2: seekervault.gateway.v1.PublishRequestRequest.request:type_name -> seekervault.request.v2.Request
-	0,  // 3: seekervault.gateway.v1.PublishRequestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	0,  // 4: seekervault.gateway.v1.CancelRequestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	12, // 5: seekervault.gateway.v1.CancelRequestResponse.request:type_name -> seekervault.request.v2.Request
-	13, // 6: seekervault.gateway.v1.PublishProposalRequest.proposal:type_name -> seekervault.proposal.v1.Proposal
-	0,  // 7: seekervault.gateway.v1.PublishProposalResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	0,  // 8: seekervault.gateway.v1.CancelProposalResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	13, // 9: seekervault.gateway.v1.CancelProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
-	1,  // 10: seekervault.gateway.v1.PublisherService.PublishManifest:input_type -> seekervault.gateway.v1.PublishManifestRequest
-	3,  // 11: seekervault.gateway.v1.PublisherService.PublishRequest:input_type -> seekervault.gateway.v1.PublishRequestRequest
-	5,  // 12: seekervault.gateway.v1.PublisherService.CancelRequest:input_type -> seekervault.gateway.v1.CancelRequestRequest
-	7,  // 13: seekervault.gateway.v1.PublisherService.PublishProposal:input_type -> seekervault.gateway.v1.PublishProposalRequest
-	9,  // 14: seekervault.gateway.v1.PublisherService.CancelProposal:input_type -> seekervault.gateway.v1.CancelProposalRequest
-	2,  // 15: seekervault.gateway.v1.PublisherService.PublishManifest:output_type -> seekervault.gateway.v1.PublishManifestResponse
-	4,  // 16: seekervault.gateway.v1.PublisherService.PublishRequest:output_type -> seekervault.gateway.v1.PublishRequestResponse
-	6,  // 17: seekervault.gateway.v1.PublisherService.CancelRequest:output_type -> seekervault.gateway.v1.CancelRequestResponse
-	8,  // 18: seekervault.gateway.v1.PublisherService.PublishProposal:output_type -> seekervault.gateway.v1.PublishProposalResponse
-	10, // 19: seekervault.gateway.v1.PublisherService.CancelProposal:output_type -> seekervault.gateway.v1.CancelProposalResponse
-	15, // [15:20] is the sub-list for method output_type
-	10, // [10:15] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	25, // 0: seekervault.gateway.v1.CreateInvitationResponse.invitation:type_name -> seekervault.gateway.v1.Invitation
+	25, // 1: seekervault.gateway.v1.GetInvitationResponse.invitation:type_name -> seekervault.gateway.v1.Invitation
+	26, // 2: seekervault.gateway.v1.CreatePrivateRequestRequest.request:type_name -> seekervault.request.v2.Request
+	27, // 3: seekervault.gateway.v1.CreatePrivateRequestResponse.record:type_name -> seekervault.gateway.v1.PrivateRequestRecord
+	27, // 4: seekervault.gateway.v1.GetPrivateRequestResponse.record:type_name -> seekervault.gateway.v1.PrivateRequestRecord
+	27, // 5: seekervault.gateway.v1.CancelPrivateRequestResponse.record:type_name -> seekervault.gateway.v1.PrivateRequestRecord
+	28, // 6: seekervault.gateway.v1.PublishManifestRequest.manifest:type_name -> seekervault.server.v1.ServerManifest
+	0,  // 7: seekervault.gateway.v1.PublishManifestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
+	26, // 8: seekervault.gateway.v1.PublishRequestRequest.request:type_name -> seekervault.request.v2.Request
+	0,  // 9: seekervault.gateway.v1.PublishRequestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
+	0,  // 10: seekervault.gateway.v1.CancelRequestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
+	26, // 11: seekervault.gateway.v1.CancelRequestResponse.request:type_name -> seekervault.request.v2.Request
+	29, // 12: seekervault.gateway.v1.PublishProposalRequest.proposal:type_name -> seekervault.proposal.v1.Proposal
+	0,  // 13: seekervault.gateway.v1.PublishProposalResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
+	0,  // 14: seekervault.gateway.v1.CancelProposalResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
+	29, // 15: seekervault.gateway.v1.CancelProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
+	15, // 16: seekervault.gateway.v1.PublisherService.PublishManifest:input_type -> seekervault.gateway.v1.PublishManifestRequest
+	17, // 17: seekervault.gateway.v1.PublisherService.PublishRequest:input_type -> seekervault.gateway.v1.PublishRequestRequest
+	19, // 18: seekervault.gateway.v1.PublisherService.CancelRequest:input_type -> seekervault.gateway.v1.CancelRequestRequest
+	21, // 19: seekervault.gateway.v1.PublisherService.PublishProposal:input_type -> seekervault.gateway.v1.PublishProposalRequest
+	23, // 20: seekervault.gateway.v1.PublisherService.CancelProposal:input_type -> seekervault.gateway.v1.CancelProposalRequest
+	1,  // 21: seekervault.gateway.v1.PublisherService.CreateInvitation:input_type -> seekervault.gateway.v1.CreateInvitationRequest
+	3,  // 22: seekervault.gateway.v1.PublisherService.GetInvitation:input_type -> seekervault.gateway.v1.GetInvitationRequest
+	5,  // 23: seekervault.gateway.v1.PublisherService.RevokeInvitation:input_type -> seekervault.gateway.v1.RevokeInvitationRequest
+	7,  // 24: seekervault.gateway.v1.PublisherService.CreatePrivateRequest:input_type -> seekervault.gateway.v1.CreatePrivateRequestRequest
+	9,  // 25: seekervault.gateway.v1.PublisherService.GetPrivateRequest:input_type -> seekervault.gateway.v1.GetPrivateRequestRequest
+	11, // 26: seekervault.gateway.v1.PublisherService.CancelPrivateRequest:input_type -> seekervault.gateway.v1.CancelPrivateRequestRequest
+	13, // 27: seekervault.gateway.v1.PublisherService.RevokePrivateConnection:input_type -> seekervault.gateway.v1.RevokePrivateConnectionRequest
+	16, // 28: seekervault.gateway.v1.PublisherService.PublishManifest:output_type -> seekervault.gateway.v1.PublishManifestResponse
+	18, // 29: seekervault.gateway.v1.PublisherService.PublishRequest:output_type -> seekervault.gateway.v1.PublishRequestResponse
+	20, // 30: seekervault.gateway.v1.PublisherService.CancelRequest:output_type -> seekervault.gateway.v1.CancelRequestResponse
+	22, // 31: seekervault.gateway.v1.PublisherService.PublishProposal:output_type -> seekervault.gateway.v1.PublishProposalResponse
+	24, // 32: seekervault.gateway.v1.PublisherService.CancelProposal:output_type -> seekervault.gateway.v1.CancelProposalResponse
+	2,  // 33: seekervault.gateway.v1.PublisherService.CreateInvitation:output_type -> seekervault.gateway.v1.CreateInvitationResponse
+	4,  // 34: seekervault.gateway.v1.PublisherService.GetInvitation:output_type -> seekervault.gateway.v1.GetInvitationResponse
+	6,  // 35: seekervault.gateway.v1.PublisherService.RevokeInvitation:output_type -> seekervault.gateway.v1.RevokeInvitationResponse
+	8,  // 36: seekervault.gateway.v1.PublisherService.CreatePrivateRequest:output_type -> seekervault.gateway.v1.CreatePrivateRequestResponse
+	10, // 37: seekervault.gateway.v1.PublisherService.GetPrivateRequest:output_type -> seekervault.gateway.v1.GetPrivateRequestResponse
+	12, // 38: seekervault.gateway.v1.PublisherService.CancelPrivateRequest:output_type -> seekervault.gateway.v1.CancelPrivateRequestResponse
+	14, // 39: seekervault.gateway.v1.PublisherService.RevokePrivateConnection:output_type -> seekervault.gateway.v1.RevokePrivateConnectionResponse
+	28, // [28:40] is the sub-list for method output_type
+	16, // [16:28] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_gateway_v1_publish_proto_init() }
@@ -749,13 +1474,14 @@ func file_seekervault_gateway_v1_publish_proto_init() {
 	if File_seekervault_gateway_v1_publish_proto != nil {
 		return
 	}
+	file_seekervault_gateway_v1_onboarding_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_gateway_v1_publish_proto_rawDesc), len(file_seekervault_gateway_v1_publish_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

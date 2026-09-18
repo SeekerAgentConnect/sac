@@ -2,11 +2,10 @@
 // @generated from file seekervault/server/v1/manifest.proto (package seekervault.server.v1, syntax proto3)
 /* eslint-disable */
 
-// What a server says about itself (SEE-88, docs/wiki/server-manifests.md). Stage 7.1 has two
-// kinds of server: the owner's own private sidecar, which one paired phone calls directly, and a
-// developer's publisher, which broadcasts proposals to everyone subscribed through the shared
-// gateway. A manifest is how the phone learns which one it is talking to, what contract that
-// server speaks, and which bundled client plugins it needs, without guessing any of it.
+// What a server says about itself (SEE-88, docs/wiki/server-manifests.md). A server is direct, a
+// public gateway feed, or a private server reached through the gateway. A manifest is how the
+// phone learns which one it is talking to, what contract that server speaks, and which bundled
+// client plugins it needs, without guessing any of it.
 //
 // It is a separate package from seekervault.request.v1 on purpose: the durable request workflow
 // is the private phone-sidecar contract, while a manifest is published by every kind of server,
@@ -24,7 +23,7 @@ import { enumDesc, fileDesc, messageDesc, tsEnum } from "@bufbuild/protobuf/code
  * Describes the file seekervault/server/v1/manifest.proto.
  */
 export const file_seekervault_server_v1_manifest = /*@__PURE__*/
-  fileDesc("CiRzZWVrZXJ2YXVsdC9zZXJ2ZXIvdjEvbWFuaWZlc3QucHJvdG8SFXNlZWtlcnZhdWx0LnNlcnZlci52MSKfAwoOU2VydmVyTWFuaWZlc3QSEQoJc2VydmVyX2lkGAEgASgJEhgKEHByb3RvY29sX3ZlcnNpb24YAiABKA0SGQoRc2V0dGluZ3NfcmV2aXNpb24YAyABKAQSMwoEbW9kZRgEIAEoDjIlLnNlZWtlcnZhdWx0LnNlcnZlci52MS5Db25uZWN0aW9uTW9kZRJCChByZXF1aXJlZF9wbHVnaW5zGAUgAygLMiguc2Vla2VydmF1bHQuc2VydmVyLnYxLlBsdWdpblJlcXVpcmVtZW50Ej4KDGVudmlyb25tZW50cxgGIAMoDjIoLnNlZWtlcnZhdWx0LnNlcnZlci52MS5TZXJ2ZXJFbnZpcm9ubWVudBIUCgxkaXNwbGF5X25hbWUYByABKAkSNQoGZGlyZWN0GAggASgLMiMuc2Vla2VydmF1bHQuc2VydmVyLnYxLkRpcmVjdFNlcnZlckgAEjIKBGZlZWQYCSABKAsyIi5zZWVrZXJ2YXVsdC5zZXJ2ZXIudjEuR2F0ZXdheUZlZWRIAEILCglyZWZlcmVuY2UiGwoMRGlyZWN0U2VydmVyEgsKA3VybBgBIAEoCSIzCgtHYXRld2F5RmVlZBITCgtnYXRld2F5X3VybBgBIAEoCRIPCgdjaGFubmVsGAIgASgJIlIKEVBsdWdpblJlcXVpcmVtZW50EhEKCXBsdWdpbl9pZBgBIAEoCRIUCgxtaW5fY29udHJhY3QYAiABKA0SFAoMbWF4X2NvbnRyYWN0GAMgASgNKm8KDkNvbm5lY3Rpb25Nb2RlEh8KG0NPTk5FQ1RJT05fTU9ERV9VTlNQRUNJRklFRBAAEhoKFkNPTk5FQ1RJT05fTU9ERV9ESVJFQ1QQARIgChxDT05ORUNUSU9OX01PREVfR0FURVdBWV9GRUVEEAIqegoRU2VydmVyRW52aXJvbm1lbnQSIgoeU0VSVkVSX0VOVklST05NRU5UX1VOU1BFQ0lGSUVEEAASIQodU0VSVkVSX0VOVklST05NRU5UX1BST0RVQ1RJT04QARIeChpTRVJWRVJfRU5WSVJPTk1FTlRfU0FOREJPWBACQq4BCidpby5naXRodWIuYnJyZW5hdC5zZWVrZXJ2YXVsdC5zZXJ2ZXIudjFCDU1hbmlmZXN0UHJvdG9QAaICA1NTWKoCFVNlZWtlcnZhdWx0LlNlcnZlci5WMcoCFVNlZWtlcnZhdWx0XFNlcnZlclxWMeICIVNlZWtlcnZhdWx0XFNlcnZlclxWMVxHUEJNZXRhZGF0YeoCF1NlZWtlcnZhdWx0OjpTZXJ2ZXI6OlYxYgZwcm90bzM");
+  fileDesc("CiRzZWVrZXJ2YXVsdC9zZXJ2ZXIvdjEvbWFuaWZlc3QucHJvdG8SFXNlZWtlcnZhdWx0LnNlcnZlci52MSLhAwoOU2VydmVyTWFuaWZlc3QSEQoJc2VydmVyX2lkGAEgASgJEhgKEHByb3RvY29sX3ZlcnNpb24YAiABKA0SGQoRc2V0dGluZ3NfcmV2aXNpb24YAyABKAQSMwoEbW9kZRgEIAEoDjIlLnNlZWtlcnZhdWx0LnNlcnZlci52MS5Db25uZWN0aW9uTW9kZRJCChByZXF1aXJlZF9wbHVnaW5zGAUgAygLMiguc2Vla2VydmF1bHQuc2VydmVyLnYxLlBsdWdpblJlcXVpcmVtZW50Ej4KDGVudmlyb25tZW50cxgGIAMoDjIoLnNlZWtlcnZhdWx0LnNlcnZlci52MS5TZXJ2ZXJFbnZpcm9ubWVudBIUCgxkaXNwbGF5X25hbWUYByABKAkSNQoGZGlyZWN0GAggASgLMiMuc2Vla2VydmF1bHQuc2VydmVyLnYxLkRpcmVjdFNlcnZlckgAEjIKBGZlZWQYCSABKAsyIi5zZWVrZXJ2YXVsdC5zZXJ2ZXIudjEuR2F0ZXdheUZlZWRIABJACg9nYXRld2F5X3ByaXZhdGUYCiABKAsyJS5zZWVrZXJ2YXVsdC5zZXJ2ZXIudjEuR2F0ZXdheVByaXZhdGVIAEILCglyZWZlcmVuY2UiGwoMRGlyZWN0U2VydmVyEgsKA3VybBgBIAEoCSIzCgtHYXRld2F5RmVlZBITCgtnYXRld2F5X3VybBgBIAEoCRIPCgdjaGFubmVsGAIgASgJIiUKDkdhdGV3YXlQcml2YXRlEhMKC2dhdGV3YXlfdXJsGAEgASgJIlIKEVBsdWdpblJlcXVpcmVtZW50EhEKCXBsdWdpbl9pZBgBIAEoCRIUCgxtaW5fY29udHJhY3QYAiABKA0SFAoMbWF4X2NvbnRyYWN0GAMgASgNKpQBCg5Db25uZWN0aW9uTW9kZRIfChtDT05ORUNUSU9OX01PREVfVU5TUEVDSUZJRUQQABIaChZDT05ORUNUSU9OX01PREVfRElSRUNUEAESIAocQ09OTkVDVElPTl9NT0RFX0dBVEVXQVlfRkVFRBACEiMKH0NPTk5FQ1RJT05fTU9ERV9HQVRFV0FZX1BSSVZBVEUQAyp6ChFTZXJ2ZXJFbnZpcm9ubWVudBIiCh5TRVJWRVJfRU5WSVJPTk1FTlRfVU5TUEVDSUZJRUQQABIhCh1TRVJWRVJfRU5WSVJPTk1FTlRfUFJPRFVDVElPThABEh4KGlNFUlZFUl9FTlZJUk9OTUVOVF9TQU5EQk9YEAJCrgEKJ2lvLmdpdGh1Yi5icnJlbmF0LnNlZWtlcnZhdWx0LnNlcnZlci52MUINTWFuaWZlc3RQcm90b1ABogIDU1NYqgIVU2Vla2VydmF1bHQuU2VydmVyLlYxygIVU2Vla2VydmF1bHRcU2VydmVyXFYx4gIhU2Vla2VydmF1bHRcU2VydmVyXFYxXEdQQk1ldGFkYXRh6gIXU2Vla2VydmF1bHQ6OlNlcnZlcjo6VjFiBnByb3RvMw");
 
 /**
  * Describes the message seekervault.server.v1.ServerManifest.
@@ -48,11 +47,18 @@ export const GatewayFeedSchema = /*@__PURE__*/
   messageDesc(file_seekervault_server_v1_manifest, 2);
 
 /**
+ * Describes the message seekervault.server.v1.GatewayPrivate.
+ * Use `create(GatewayPrivateSchema)` to create a new message.
+ */
+export const GatewayPrivateSchema = /*@__PURE__*/
+  messageDesc(file_seekervault_server_v1_manifest, 3);
+
+/**
  * Describes the message seekervault.server.v1.PluginRequirement.
  * Use `create(PluginRequirementSchema)` to create a new message.
  */
 export const PluginRequirementSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_server_v1_manifest, 3);
+  messageDesc(file_seekervault_server_v1_manifest, 4);
 
 /**
  * Describes the enum seekervault.server.v1.ConnectionMode.
@@ -62,8 +68,8 @@ export const ConnectionModeSchema = /*@__PURE__*/
 
 /**
  * Which transport a connection uses. It is stored per connection: one phone can hold a direct
- * connection to its own sidecar and several gateway feeds at the same time, and neither affects
- * the other.
+ * connection to its own sidecar, gateway feeds and gateway-private servers at the same time, and
+ * none affects another.
  *
  * @generated from enum seekervault.server.v1.ConnectionMode
  */

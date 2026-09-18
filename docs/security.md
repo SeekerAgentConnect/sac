@@ -21,6 +21,18 @@ Each credential opens one role, and the sidecar accepts it in one place only:
 - **Pairing tokens and phone credentials are 32 random bytes,** written as 43 base64url characters. Because they're random, a single SHA-256 is enough to store them. A slow password hash only helps with guessable secrets.
 - **Tokens travel only in `Authorization: Bearer <token>`,** never in a URL or a log line. The one exception is the pairing code, because showing it is how pairing works.
 
+The shared gateway has its own, separately routed roles:
+
+| Credential | Held by | Accepted by | Grant |
+| --- | --- | --- | --- |
+| Publisher credential | An independent backend | Publisher listener | That server's feed documents, manifests, invitations and private requests |
+| Invitation capability | The person opening a temporary link/QR | Client listener, until expiry or redemption | Preview and one explicit-confirmation redemption; no wallet or request authority |
+| Device credential | SAC, after redemption | Client listener | One binding's manifest, private requests, declared results and revocation |
+
+Publisher and device credentials travel only in bearer headers and are stored as SHA-256 hashes.
+The invitation capability is the deliberate URL exception: short-lived and single-use, omitted from
+application errors, and excluded from proxy access logs. It never grants signing or execution.
+
 ### The operator's account
 
 Anyone who can run `pnpm pair` or write the sidecar's database acts as the operator. They could pair a phone of their own, which would revoke the owner's. So an agent must never run as the sidecar's user or have access to its files. Connect it over MCP only, as [`docs/integrations/hermes.md`](integrations/hermes.md) does, including when Hermes runs on another machine.
@@ -75,8 +87,8 @@ what the phone already has, and can never change it
 - **The origin has to be the one the connection already uses** — the paired server URL, character
   for character, or the gateway a feed was added through. A manifest naming another origin is
   refused, and the credential keeps going exactly where it did.
-- **The mode cannot change.** A paired direct connection can never become a gateway feed, and a
-  feed can never become a direct connection. A missing mode is refused rather than read as either.
+- **The mode cannot change.** A direct, gateway-feed or gateway-private connection can never become
+  another mode. A missing mode is refused rather than guessed.
 - **A publisher may name only its own channel** (`server/<its own ID>`), so a manifest cannot claim
   another publisher's audience.
 - **A refusal is recorded, not acted on.** The connection stays as it was and keeps working as it
@@ -114,29 +126,27 @@ What each owner does about one is theirs, and it stays on their phone
   revision, the plugin, the cluster and the parameters they chose — on the phone, and nowhere else.
   It outlives the feed being removed.
 
-### The broadcast gateway holds no person (SEE-90, SEE-91, SEE-92)
+### The public broadcast path holds no reader (SEE-90, SEE-91, SEE-92)
 
 The shared gateway in [`broadcast/`](../broadcast) is what a publisher publishes to and every
 subscribed phone reads from ([`wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md)). It is a
 third party in the middle of the stage's one public relationship, so what it is unable to do matters
 more than what it does.
 
-- **It has nowhere to put anything about a subscriber.** Six tables: a publisher, its credential
-  hashes, its manifest, its proposals, its channel's sequence, and the outbox. No address, no chosen
-  quantity, no decision, no signature, no history — and a Go boundary test reads the schema and the
-  protocol files and fails if a column or a field for any of it appears.
+- **The public tables have nowhere to put anything about a subscriber.** A publisher, its credential
+  hashes, its manifest, its proposals, its channel's sequence, and the outbox contain no reader,
+  address, chosen quantity, decision, signature or history. Go boundary tests read the schema and
+  public contracts and fail if those appear in the feed path.
 - **A document cannot be smuggled through it.** Every publication is rebuilt from the fields that
   were validated rather than stored as it arrived, so a protobuf field the gateway does not
   understand is dropped instead of relayed to every phone on the channel. Over JSON the same attempt
   is refused outright: the codec is strict, and a field the contract does not have is an error.
-- **There is no endpoint that would take a result.** No financial method exists on either service,
-  and the read listener serves no handler that could change anything at all — a publication sent to
-  it answers 404 with a valid credential.
-- **It cannot point a phone anywhere but at itself.** A published manifest must be a feed naming
-  this gateway's own origin; a `direct` manifest carries a URL, and the gateway refuses to hold one.
-  The phone would refuse it too — its own rule is that the origin must equal the one it added the
-  feed from — and this is the same rule applied a hop earlier, so neither side depends on the other
-  getting it right.
+- **There is no public-feed endpoint that takes a result.** `FeedService` is read-only; a publication
+  or result sent to its listener answers 404 even with a valid credential.
+- **It cannot point a phone anywhere but at itself.** A published feed or gateway-private manifest
+  must name this gateway's own origin; a `direct` manifest carries a URL, and the gateway refuses to
+  hold one. The phone applies the same origin rule, so neither side depends on the other getting it
+  right.
 - **Listening says which channels and nothing about who (SEE-91).** A stream is opened with a
   ticket the gateway mints: an anonymous subject, an expiry, and the channels. No device
   identifier, no address, no session, nothing derived from any of them — and the gateway writes no
@@ -190,6 +200,30 @@ more than what it does.
 - **Reading writes nothing down.** No session, no subscription record, no count of who read what: a
   test reads the database after several reads and requires every row count to be unchanged. What the
   gateway learns from a read is which channel someone asked about.
+
+### A private gateway binding is minimal and explicit (SEE-109)
+
+The private adapter deliberately does keep one association, because routing a request to one
+confirmed device is its purpose: authenticated `server_id`, that server's opaque `user_ref`, a
+random connection ID and the hash of the credential SAC received once. It is not a central SAC
+account, does not join identities across servers, and contains no wallet, authorization token,
+amount, prepared transaction or activity history.
+
+- Creating, viewing, resolving or opening an invitation writes no binding. Only the owner's
+  confirmation calls redemption, and invitation consumption plus binding creation is one SQLite
+  transaction.
+- A fresh invitation creates a new `(server_id, user_ref, connection_id)` binding and cannot
+  silently replace another. Requests must name that exact connection ID as well as the user
+  reference; revoking one binding leaves sibling devices active.
+- A private request must use SEE-108's private audience and `RETURN_TO_ORIGIN`; it is pinned to the
+  exact binding the authenticated server named. Another binding cannot inherit it.
+- The returned record is limited to declared owner inputs and the terminal outcome. Connecting does
+  not select a wallet or authorize policy, approval, signing or execution; SAC repeats every one of
+  those gates per request.
+- The server credential never enters a link, QR or browser. The temporary invitation capability is
+  redacted from logs; the device credential is returned once and is hashed at rest.
+
+The wire flow and storage boundary are in [`wiki/gateway-pairing.md`](wiki/gateway-pairing.md).
 
 ### A publisher template holds no subscriber either (SEE-95)
 
