@@ -1,0 +1,5 @@
+# Reuse the existing Claude Code instructions instead of maintaining a copy.
+project_doc_fallback_filenames = ["CLAUDE.md"]
+
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"
