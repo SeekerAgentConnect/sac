@@ -20,16 +20,16 @@ issue body and current status but not comments, parent, sub-issues, or comment c
   and the repository build. Do not run additional test suites unless the user explicitly asks.
 - [x] Add the design-system molecule documentation and changelog entry, update `CODEBASE.md`, and
   complete this plan's review section with PASS / FAIL / NOT RUN evidence.
-- [ ] Re-read SEE-118, commit and push to `superset/feat/see-117`, attach all side-by-side images to
+- [x] Re-read SEE-118, commit and push to `superset/feat/see-117`, attach all side-by-side images to
   PR #34, move the ticket to In Review, and add a Linear summary/evidence comment if the available
   integration supports comments.
-- [ ] POST the required final session webhook for SEE-118 and stop without starting another ticket.
+- [x] POST the required final session webhook for SEE-118 and stop without starting another ticket.
 
 ## Acceptance criteria (verbatim)
 
 - [x] Long base58 address and two-line values wrap as in the reference.
 - [x] `nav-item` previews assembled into a four-item bar match the nav bar on the screen references.
-- [ ] Side-by-side images for every variant attached to the PR.
+- [x] Side-by-side images for every variant attached to the PR.
 
 ## Review
 
@@ -52,3 +52,7 @@ issue body and current status but not comments, parent, sub-issues, or comment c
 - **NOT RUN — Linear comment:** the configured Linear plugin is disconnected and the Superset task
   fallback exposes status/PR updates but no comment operation. Per the owner instruction, this is
   recorded in the final webhook rather than blocking the implementation.
+- **PASS — delivery:** implementation commit `b548c91` is pushed to
+  `superset/feat/see-117`; PR #34's body and comment link the complete review; the Superset Linear
+  fallback records SEE-118 as In Review with PR #34. The required final webhook is sent after this
+  review record is pushed.
