@@ -29,33 +29,38 @@ The shipped CopyTrading and Prediction servers are reference implementations mai
 
 ## Runtime relationships
 
+A third-party developer runs an **independent server** and chooses one of three connection modes: direct private communication, private communication through the gateway, or a public feed through the gateway.
+
 ```mermaid
 flowchart TB
-    Server["Independent server"]
-    subgraph infrastructure["SAC gateway deployment"]
-        Gateway["Shared gateway: broadcast/"]
+    Server["Independent developer server"]
+    subgraph infrastructure["SAC gateway: broadcast/"]
+        Private["Private routing"]
+        Feed["Public feed"]
         Delivery["Centrifugo + Redis"]
-        Gateway --> Delivery
+        Feed -->|"feed updates"| Delivery
     end
-    subgraph client["Android application"]
-        App["Connections, Inbox, review and policy"]
-        Plugin["Bundled action plugins"]
-        App --> Plugin
-    end
-    Server <-->|"via gateway: private requests/results or public publications"| Gateway
-    Gateway <-->|"reads, private onboarding and results"| App
-    Delivery -->|"public feed updates"| App
-    Server <-->|"direct: requests and results"| App
-    Plugin -->|"prepare execution data"| Provider["Jupiter APIs"]
-    App -->|"explicit wallet interaction"| Wallet["External MWA wallet"]
-    Wallet -->|"transaction submission"| Chain["Solana"]
+    Device["SAC device: private connection"]
+    Subscribers["Many SAC devices: public subscribers"]
+    Server <-->|"direct requests and results"| Device
+    Server <-->|"addressed requests and returned results"| Private
+    Private <-->|"invitation and device binding"| Device
+    Server -->|"publish once"| Feed
+    Feed -->|"public snapshots"| Subscribers
+    Delivery -->|"public stream updates"| Subscribers
 ```
 
-**Independent server is one architectural role with two connection paths:** directly to SAC, or through the shared gateway. The existing `sidecar/` implements the direct path; custom backends and the CopyTrading/Prediction demos use gateway APIs. These are alternative implementations and routes, not two mandatory services to deploy together. The diagram does not imply that the existing sidecar already implements gateway delivery.
+**The two gateway boxes are logical responsibilities within the existing service, not two separately deployed services.** The device boxes show connection roles; the same physical phone can use private connections and public feeds together.
 
-An AI agent can be a caller of either kind of server; AI/MCP does not define the delivery path. The current sidecar provides an MCP adapter. A gateway-connected backend would provide its own agent-facing integration.
+- **Direct:** the device connects to the independent server itself and returns results to it. The existing `sidecar/` is the shipped implementation of this server path.
+- **Gateway private:** the developer's server addresses a specific device binding through the gateway. The owner confirms an invitation, and results return to the originating server. Multiple devices are possible, but each requires its own explicit binding.
+- **Gateway public feed:** the server publishes once, and many devices read the same content through the gateway. Devices do not pair with or contact the publishing server, and do not send their inputs, decisions or results back to it. Feed subscriptions and owner decisions are local to each device; the gateway's public-feed path stores no per-device subscription binding.
 
-The diagram shows logical boundaries, not a requirement to deploy everything together. TLS proxies and optional FCM wake-ups are omitted for clarity. The app also performs configured read-only Solana RPC calls where needed to inspect address lookup tables.
+CopyTrading and Prediction are examples of servers using the public-feed path. A custom backend can use the private gateway path through the Server SDK. This diagram describes protocol roles; it does not imply that the existing sidecar supports gateway delivery or that one server manifest declares all three modes.
+
+An AI agent can call an independent server using either delivery approach. The current sidecar supplies an MCP adapter; a gateway-connected backend supplies its own agent-facing integration. AI/MCP does not define the connection mode.
+
+Client plugins, policy review and external wallet interaction run on the phone after delivery, regardless of the source's business logic. They are described below rather than mixed into this connection diagram. Caddy and optional FCM wake-ups are also omitted here; Centrifugo and Redis serve the public-feed streaming path shown.
 
 ## Three connection modes
 
