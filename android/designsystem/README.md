@@ -63,6 +63,19 @@ Each of the 22 captured component variants has one exact-text `@Preview` and `@D
 committed [`reference | actual` review](../../docs/reviews/see-118/README.md) is the PR evidence set;
 an additional 390dp preview composes four `NavItem` instances into the required bottom bar.
 
+## Organism library
+
+SEE-119 adds request tiles and their snapping carousel, merged Inbox and Activity-history rows,
+server and rule rows, verdict and owner-input cards, terms summaries, wallet banners and handoff,
+and the reusable sheet scaffold. The public APIs, composition boundaries, missing-specimen notes,
+and ticket/spec resolutions are documented in
+[`docs/wiki/design-system-organisms.md`](../../docs/wiki/design-system-organisms.md).
+
+All 43 generated organism variants have exact-copy `@Preview` and `@DesignRef` coverage. The
+committed [`reference | actual` review](../../docs/reviews/see-119/README.md) contains every pair.
+The carousel follows SEE-119's 358dp viewport and centred highlight while retaining SEE-81's
+start/centre/end snapping policy.
+
 ## Guardrail
 
 `checkDesignSystemLiterals` rejects `Color(0x...)`, raw `.dp`, and raw `.sp` literals in production
