@@ -73,8 +73,35 @@ class DesignPreviewNamingTest {
                     }
                 }
         }
+        val moleculePaths =
+            setOf(
+                "fact-row/value-full-address.png",
+                "fact-row/value-longest-wraps.png",
+                "fact-row/value-mono.png",
+                "fact-row/value-short.png",
+                "daily-row/state-nolimit-scope-global.png",
+                "daily-row/state-over-scope-connection.png",
+                "daily-row/state-within-scope-global.png",
+                "segmented/count-2-mode.png",
+                "segmented/count-2-selected-0.png",
+                "segmented/count-3-selected-1.png",
+                "tab-bar/selected-pending.png",
+                "nav-item/state-rest.png",
+                "nav-item/state-selected.png",
+                "nav-bar/state-home-selected.png",
+                "section-header/trailing-button.png",
+                "section-header/trailing-none.png",
+                "text-field/state-error.png",
+                "text-field/state-rest.png",
+                "notice-card/sandbox-card.png",
+                "notice-card/stale-card.png",
+                "empty-state/screen-inbox.png",
+                "empty-state/screen-rules.png",
+                "filter-bar/src-studio-mac.png",
+            )
         val expectedPaths =
             atomPaths +
+                moleculePaths +
                 setOf(
                     "token-colour/surf.png",
                     "size-probe/height-48dp.png",
@@ -87,7 +114,7 @@ class DesignPreviewNamingTest {
         assertEquals(expectedPaths, paths.toSet())
 
         previews
-            .filter { DesignPreviewNaming.relativePath(it, "png") in atomPaths }
+            .filter { DesignPreviewNaming.relativePath(it, "png") in atomPaths + moleculePaths }
             .forEach { preview ->
                 assertEquals(
                     DesignPreviewNaming.relativePath(preview, "png").removeSuffix(".png"),
