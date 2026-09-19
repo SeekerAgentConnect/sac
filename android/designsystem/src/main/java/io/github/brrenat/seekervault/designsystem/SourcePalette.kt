@@ -35,8 +35,13 @@ internal fun sourcePaletteSlot(sourceName: String): SourcePaletteSlot {
 
 @Composable
 internal fun sourcePaletteColors(sourceName: String): SourcePaletteColors {
+    return sourcePaletteColors(sourcePaletteSlot(sourceName))
+}
+
+@Composable
+internal fun sourcePaletteColors(slot: SourcePaletteSlot): SourcePaletteColors {
     val colors = SeekerTheme.colors
-    return when (sourcePaletteSlot(sourceName)) {
+    return when (slot) {
         SourcePaletteSlot.Pink -> SourcePaletteColors(colors.pinkChip, colors.onPinkChip)
         SourcePaletteSlot.Sand -> SourcePaletteColors(colors.sandChip, colors.onSandChip)
         SourcePaletteSlot.Violet -> SourcePaletteColors(colors.violetChip, colors.onVioletChip)

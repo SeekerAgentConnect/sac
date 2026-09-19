@@ -31,7 +31,7 @@ private fun HomeScreenDesignPreview() {
     }
 }
 
-private fun homeDesignFixture() =
+internal fun homeDesignFixture() =
     HomeScreenState(
         wallet =
             HomeWalletState(
@@ -136,7 +136,7 @@ private fun homeDesignFixture() =
             ),
     )
 
-private fun homePreviewCallbacks() =
+internal fun homePreviewCallbacks() =
     HomeScreenCallbacks(
         onWallet = {},
         onCopyWalletAddress = {},

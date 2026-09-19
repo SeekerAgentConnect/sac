@@ -1,21 +1,13 @@
 package io.github.brrenat.seekervault
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.signMessage
-import io.github.brrenat.seekervault.designsystem.WalletHandoff
-import io.github.brrenat.seekervault.designsystem.WalletHandoffKind
-import io.github.brrenat.seekervault.designsystem.WalletHandoffWallet
-import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.designsystem.WalletHandoffSheet
+import io.github.brrenat.seekervault.designsystem.WalletHandoffSheetCallbacks
+import io.github.brrenat.seekervault.designsystem.WalletHandoffSheetState
 import io.github.brrenat.seekervault.policy.networkText
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
@@ -32,37 +24,28 @@ internal fun WalletHandoffScreen(
     onLeaveWithoutAnswering: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .testTag(AppNavigationTags.WALLET_HANDOFF),
-        contentAlignment = Alignment.BottomCenter,
-    ) {
-        WalletHandoff(
-            summary = summary,
-            wallet = WalletHandoffWallet.SeedVault,
-            kind = WalletHandoffKind.Transfer,
-            onApprove = onApprove,
-            onDecline = onDecline,
-            onLeaveWithoutAnswering = onLeaveWithoutAnswering,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Box(
-            modifier =
-                Modifier.align(Alignment.TopEnd)
-                    .padding(
-                        top = SeekerTheme.spacing.lg,
-                        end = SeekerTheme.spacing.md,
-                    )
-        ) {
-            CloseButton(
-                onClose = onLeaveWithoutAnswering,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            )
-        }
-    }
+    WalletHandoffSheet(
+        state =
+            WalletHandoffSheetState(
+                walletName = "Seed Vault Wallet",
+                walletKind = "Another app",
+                headline = "Approve a transaction",
+                summary = summary,
+                explanation =
+                    "The wallet holds the keys. Seeker Agent Connect only asked; what happens " +
+                        "next is decided here.",
+                primaryLabel = "Sign and send",
+                declineLabel = "Decline",
+                leaveLabel = "Leave without answering",
+            ),
+        callbacks =
+            WalletHandoffSheetCallbacks(
+                onPrimary = onApprove,
+                onDecline = onDecline,
+                onLeave = onLeaveWithoutAnswering,
+            ),
+        modifier = modifier.fillMaxWidth().testTag(AppNavigationTags.WALLET_HANDOFF),
+    )
 }
 
 @Composable

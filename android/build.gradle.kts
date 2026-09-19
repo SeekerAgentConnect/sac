@@ -45,7 +45,8 @@ abstract class DesignCompareTask : DefaultTask() {
         outputRoot.mkdirs()
 
         val references =
-            pngFiles(referenceRoot) + screenReferences.files.associateBy { "screens/${it.name}" }
+            pngFiles(referenceRoot) +
+                screenReferences.files.associateBy { "screens/${screenReferenceName(it.name)}" }
         val actuals = buildMap {
             actualDirectories.files.filter(File::exists).forEach { root ->
                 pngFiles(root).forEach { (path, file) ->
@@ -88,6 +89,16 @@ abstract class DesignCompareTask : DefaultTask() {
                     !file.nameWithoutExtension.endsWith("_actual")
             }
             .associateBy { it.relativeTo(root).invariantSeparatorsPath }
+
+    private fun screenReferenceName(name: String): String =
+        when (name) {
+            "walletHandoff.png" -> "wallet-handoff.png"
+            "rulesConn.png" -> "rules-connection.png"
+            "rulesGlobal.png" -> "rules-global.png"
+            "assetEdit.png" -> "asset-edit.png"
+            "addAddress.png" -> "add-address.png"
+            else -> name
+        }
 
     private fun writeComparison(reference: File, actual: File, output: File) {
         val referenceImage =
@@ -199,6 +210,12 @@ tasks.register<DesignCompareTask>("designCompare") {
                 "wallet.png",
                 "activity.png",
                 "add.png",
+                "walletHandoff.png",
+                "connection.png",
+                "rulesConn.png",
+                "rulesGlobal.png",
+                "assetEdit.png",
+                "addAddress.png",
             )
             .map { rootProject.layout.projectDirectory.file("../design/screens/$it") }
     )

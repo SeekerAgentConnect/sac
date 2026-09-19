@@ -137,7 +137,7 @@ class InboxActivityTest {
     }
 
     @Test
-    fun connectionDetailsExposeRulesWithoutAnUndesignedInboxDrillIn() {
+    fun connectionDetailsExposeRulesAndItsInboxDrillIn() {
         val home = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
         server.addPending(home.id, text = "For home")
         launch()
@@ -146,7 +146,8 @@ class InboxActivityTest {
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().assertExists()
-        compose.onNodeWithTag(ConnectionsTags.PENDING).assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionsTags.PENDING).performScrollTo().performClick()
+        compose.onNodeWithTag(InboxTags.LIST).assertExists()
     }
 
     @Test

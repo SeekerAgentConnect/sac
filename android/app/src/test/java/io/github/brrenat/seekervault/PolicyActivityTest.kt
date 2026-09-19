@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault
 
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -84,7 +85,7 @@ class PolicyActivityTest {
 
     /** Saves, and lets the snackbar go so it doesn't cover the buttons under it. */
     private fun save() {
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.SAVE).performClick()
         compose.mainClock.advanceTimeBy(10_000)
     }
 
@@ -117,13 +118,7 @@ class PolicyActivityTest {
             .onNodeWithTag(PolicyTags.action(PolicyAction.Transfer))
             .performScrollTo()
             .performClick()
-        compose.onNodeWithTag(PolicyTags.ADD_LIMIT_ASSET).performScrollTo().performClick()
-        compose
-            .onNodeWithTag(
-                PolicyTags.overridePerOperation(PolicyAsset.sol(Network.NETWORK_MAINNET))
-            )
-            .performScrollTo()
-            .performClick()
+        compose.onNodeWithTag(PolicyTags.ADD_ALLOWED_ASSET).performScrollTo().performClick()
         compose
             .onNodeWithTag(
                 PolicyTags.connectionPerOperation(PolicyAsset.sol(Network.NETWORK_MAINNET))
@@ -131,7 +126,7 @@ class PolicyActivityTest {
             .performScrollTo()
             .performTextReplacement("1.5")
         compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.SAVE).performClick()
         compose.onNodeWithText(app.getString(R.string.policy_saved)).assertExists()
 
         // On the phone, in this connection's own file, and nowhere else.
@@ -146,7 +141,10 @@ class PolicyActivityTest {
         // Still there when the app starts again, and shown as what was written.
         scenario.recreate()
         compose.onNodeWithTag(PolicyTags.override("actions")).performScrollTo().assertExists()
-        compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertExists()
+        compose
+            .onNodeWithTag(PolicyTags.connectionAsset(PolicyAsset.sol(Network.NETWORK_MAINNET)))
+            .performScrollTo()
+            .assertExists()
     }
 
     @Test
@@ -164,22 +162,12 @@ class PolicyActivityTest {
             .performTextReplacement(RECIPIENT)
         compose.onNodeWithTag(PolicyTags.add(RECIPIENTS)).performClick()
         save()
-        compose.onNodeWithTag(PolicyTags.CANCEL).performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Close").performClick()
         compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
         compose.mainClock.advanceTimeBy(240)
 
         openRules(second)
         compose.onNodeWithTag(PolicyTags.inherit(RECIPIENTS)).performScrollTo().assertExists()
-        compose
-            .onNodeWithText(
-                app.getString(
-                    R.string.policy_effective_line,
-                    app.getString(R.string.policy_section_recipients),
-                    app.getString(R.string.policy_effective_not_checked),
-                    app.getString(R.string.policy_source_none),
-                )
-            )
-            .assertExists()
         compose.onNodeWithTag(PolicyTags.entry(RECIPIENTS, RECIPIENT)).assertDoesNotExist()
         assertEquals(StoredPolicy.None, stored(second))
         assertEquals(setOf(first.id), app.policyStore.connectionIds())
@@ -197,7 +185,7 @@ class PolicyActivityTest {
         compose.onNodeWithTag(PolicyTags.override("actions")).performScrollTo().performClick()
         save()
         assertTrue(File(app.filesDir, "policies/${connection.id}.json").isFile)
-        compose.onNodeWithTag(PolicyTags.CANCEL).performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Close").performClick()
         compose.onNodeWithTag(ConnectionsTags.DISCONNECT).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()
         compose.onNodeWithTag(ConnectionsTags.EMPTY).assertExists()
@@ -212,7 +200,7 @@ class PolicyActivityTest {
         launch()
         openRules(connection)
         compose.onNodeWithTag(PolicyTags.override("actions")).performScrollTo().performClick()
-        compose.onNodeWithTag(PolicyTags.CANCEL).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.CANCEL).performClick()
         compose.onNodeWithTag(PolicyTags.DISCARD).performClick()
         assertEquals(StoredPolicy.None, stored(connection))
         // Back on the connection, and the editor opens again on what is stored: nothing.
@@ -254,14 +242,8 @@ class PolicyActivityTest {
             .performScrollTo()
             .assertExists()
         compose
-            .onNodeWithText(
-                app.getString(
-                    R.string.policy_effective_line,
-                    app.getString(R.string.policy_section_actions),
-                    app.getString(R.string.policy_action_transfer_short),
-                    app.getString(R.string.policy_source_global),
-                )
-            )
+            .onNodeWithTag(PolicyTags.action(PolicyAction.Transfer))
+            .performScrollTo()
             .assertExists()
         assertEquals(StoredPolicy.None, stored(connection))
     }

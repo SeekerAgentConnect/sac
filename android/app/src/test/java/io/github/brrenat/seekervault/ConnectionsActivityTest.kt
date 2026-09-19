@@ -91,7 +91,7 @@ class ConnectionsActivityTest {
             .onNodeWithTag(ConnectionsTags.item(id))
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
-        compose.onNodeWithTag(ConnectionsTags.field("connectionId")).assertTextContains(id)
+        compose.onNodeWithTag(ConnectionsTags.field("serverId")).assertTextContains(code.serverId)
 
         compose.onNodeWithTag(ConnectionsTags.RENAME).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.LABEL_FIELD).performTextReplacement("Home Mac")

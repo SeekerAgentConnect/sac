@@ -41,6 +41,7 @@ fun Segmented(
     count: SegmentedCount,
     usage: SegmentedUsage = SegmentedUsage.Standard,
     modifier: Modifier = Modifier,
+    optionModifiers: List<Modifier> = emptyList(),
 ) {
     val expectedCount = if (count == SegmentedCount.Two) 2 else 3
     require(options.size == expectedCount) { "$count requires $expectedCount options" }
@@ -71,7 +72,9 @@ fun Segmented(
             val selected = index == selectedIndex
             Box(
                 modifier =
-                    Modifier.weight(1f)
+                    optionModifiers
+                        .getOrElse(index) { Modifier }
+                        .weight(1f)
                         .fillMaxHeight()
                         .background(
                             if (selected) {

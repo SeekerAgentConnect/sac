@@ -509,7 +509,7 @@ private fun Field(@StringRes label: Int, value: String, name: String) {
 }
 
 @Composable
-private fun RenameDialog(
+internal fun RenameDialog(
     current: String,
     onSave: (String) -> LabelProblem?,
     onDismiss: () -> Unit,
@@ -555,7 +555,7 @@ private fun RenameDialog(
 }
 
 @Composable
-private fun DisconnectDialog(
+internal fun DisconnectDialog(
     label: String,
     state: DisconnectState,
     onDisconnect: () -> Unit,
