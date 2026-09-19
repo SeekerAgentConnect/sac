@@ -1,11 +1,18 @@
 package io.github.brrenat.seekervault.designsystem
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -254,28 +261,51 @@ enum class ScopeChipSource {
     None,
 }
 
+enum class ScopeChipContext {
+    Standard,
+    OnVerdict,
+}
+
 @Composable
-fun ScopeChip(source: ScopeChipSource, modifier: Modifier = Modifier) {
+fun ScopeChip(
+    source: ScopeChipSource,
+    label: String? = null,
+    context: ScopeChipContext = ScopeChipContext.Standard,
+    modifier: Modifier = Modifier,
+) {
     val connection = source == ScopeChipSource.Connection
     val text =
-        when (source) {
-            ScopeChipSource.Global -> "Global"
-            ScopeChipSource.Connection -> "Connection override"
-            ScopeChipSource.None -> "Not configured"
-        }
+        label
+            ?: when (source) {
+                ScopeChipSource.Global -> "Global"
+                ScopeChipSource.Connection -> "Connection override"
+                ScopeChipSource.None -> "Not configured"
+            }
     val containerColor =
         if (connection) SeekerTheme.colors.limeContainer else SeekerTheme.colors.surface3
     val contentColor =
         if (connection) SeekerTheme.colors.onLimeContainer else MaterialTheme.colorScheme.onSurface
 
-    Box(
+    Row(
         modifier =
             modifier
                 .height(SeekerTheme.spacing.xxxl)
                 .background(containerColor, MaterialTheme.shapes.small)
                 .padding(horizontal = (SeekerTheme.spacing.md + SeekerTheme.spacing.mdPlus) / 2),
-        contentAlignment = Alignment.Center,
+        horizontalArrangement =
+            Arrangement.spacedBy((SeekerTheme.spacing.xs + SeekerTheme.spacing.sm) / 2),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (context == ScopeChipContext.OnVerdict) {
+            Icon(
+                imageVector =
+                    if (source == ScopeChipSource.None) Icons.Outlined.Block
+                    else Icons.Outlined.Public,
+                contentDescription = null,
+                modifier = Modifier.size(SeekerTheme.spacing.lg),
+                tint = contentColor,
+            )
+        }
         Text(
             text = text,
             color = contentColor,

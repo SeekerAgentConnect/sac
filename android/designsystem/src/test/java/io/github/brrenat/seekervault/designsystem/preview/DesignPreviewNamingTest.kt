@@ -99,9 +99,56 @@ class DesignPreviewNamingTest {
                 "empty-state/screen-rules.png",
                 "filter-bar/src-studio-mac.png",
             )
+        val organismPaths =
+            setOf(
+                "request-tile/kind-ack-state-centred.png",
+                "request-tile/kind-ack-state-in-rail.png",
+                "request-tile/kind-pred-state-centred.png",
+                "request-tile/kind-pred-state-in-rail.png",
+                "request-tile/kind-sig-state-centred.png",
+                "request-tile/kind-sig-state-in-rail.png",
+                "request-tile/kind-sign-state-centred.png",
+                "request-tile/kind-sign-state-in-rail.png",
+                "request-tile/kind-tx-state-centred.png",
+                "request-tile/kind-tx-state-in-rail.png",
+                "request-carousel/state-rest-centred-0.png",
+                "inbox-row/network-none-env-production.png",
+                "inbox-row/origin-request-verdict-ok.png",
+                "inbox-row/origin-request-verdict-warning.png",
+                "inbox-row/origin-signal-count-3-title-two-line.png",
+                "inbox-row/origin-signal-verdict-warning.png",
+                "history-row/state-cancelled.png",
+                "history-row/state-dismissed.png",
+                "history-row/state-expired.png",
+                "history-row/state-sent.png",
+                "history-row/state-simulated.png",
+                "history-row/state-unknown.png",
+                "server-row/state-connected.png",
+                "server-row/state-disconnected.png",
+                "server-row/state-unreachable.png",
+                "rule-row/kind-action-state-checked.png",
+                "rule-row/kind-action-state-unchecked.png",
+                "rule-row/kind-asset-state-readonly.png",
+                "rule-row/kind-asset.png",
+                "rule-row/kind-program.png",
+                "rule-row/kind-recipient.png",
+                "verdict-card/verdict-ok.png",
+                "verdict-card/verdict-warning-count-1.png",
+                "verdict-card/verdict-warning-count-3.png",
+                "owner-input-card/state-chosen-kind-prediction.png",
+                "owner-input-card/state-chosen-kind-swap.png",
+                "owner-input-card/state-unchosen-kind-swap.png",
+                "terms-card/kind-swap-state-quoted.png",
+                "wallet-banner/variant-compact.png",
+                "wallet-banner/variant-expanded.png",
+                "wallet-handoff/wallet-seed-vault-kind-transfer.png",
+                "sheet-scaffold/variant-plain.png",
+                "sheet-scaffold/variant-stacked-over-blurred.png",
+            )
         val expectedPaths =
             atomPaths +
                 moleculePaths +
+                organismPaths +
                 setOf(
                     "token-colour/surf.png",
                     "size-probe/height-48dp.png",
@@ -114,7 +161,10 @@ class DesignPreviewNamingTest {
         assertEquals(expectedPaths, paths.toSet())
 
         previews
-            .filter { DesignPreviewNaming.relativePath(it, "png") in atomPaths + moleculePaths }
+            .filter {
+                DesignPreviewNaming.relativePath(it, "png") in
+                    atomPaths + moleculePaths + organismPaths
+            }
             .forEach { preview ->
                 assertEquals(
                     DesignPreviewNaming.relativePath(preview, "png").removeSuffix(".png"),

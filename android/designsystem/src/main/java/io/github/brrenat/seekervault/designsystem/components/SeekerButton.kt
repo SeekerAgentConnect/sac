@@ -71,7 +71,11 @@ fun SeekerButton(
                 .background(colors.container)
                 .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                 .padding(start = startPadding, end = dimensions.horizontalPadding),
-        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+        horizontalArrangement =
+            Arrangement.spacedBy(
+                space = SeekerTheme.spacing.md,
+                alignment = Alignment.CenterHorizontally,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CompositionLocalProvider(LocalContentColor provides colors.content) {
@@ -102,9 +106,9 @@ private fun SeekerButtonVariant.colors(): ButtonColors =
         SeekerButtonVariant.Tertiary ->
             ButtonColors(SeekerTheme.colors.orangeContainer, MaterialTheme.colorScheme.onSurface)
         SeekerButtonVariant.OnVerdictOk ->
-            ButtonColors(SeekerTheme.colors.onLimeContainer, SeekerTheme.colors.limeContainer)
+            ButtonColors(SeekerTheme.colors.lime, SeekerTheme.colors.onLime)
         SeekerButtonVariant.OnVerdictWarn ->
-            ButtonColors(SeekerTheme.colors.onOrangeContainer, SeekerTheme.colors.orangeContainer)
+            ButtonColors(SeekerTheme.colors.orange, SeekerTheme.colors.onOrange)
         SeekerButtonVariant.Disabled ->
             ButtonColors(SeekerTheme.colors.surface3, MaterialTheme.colorScheme.onSurfaceVariant)
     }
