@@ -31,13 +31,7 @@ The shipped CopyTrading and Prediction servers are reference implementations mai
 
 ```mermaid
 flowchart TB
-    subgraph sources["Independent request sources"]
-        Backend["Custom backend"]
-        Demo["CopyTrading / Prediction demos"]
-        Agent["AI agent"]
-        Direct["Optional direct sidecar"]
-        Agent --> Direct
-    end
+    Server["Independent server"]
     subgraph infrastructure["SAC gateway deployment"]
         Gateway["Shared gateway: broadcast/"]
         Delivery["Centrifugo + Redis"]
@@ -48,15 +42,18 @@ flowchart TB
         Plugin["Bundled action plugins"]
         App --> Plugin
     end
-    Backend <-->|"private requests and results"| Gateway
-    Demo -->|"public feed publications"| Gateway
+    Server <-->|"via gateway: private requests/results or public publications"| Gateway
     Gateway <-->|"reads, private onboarding and results"| App
     Delivery -->|"public feed updates"| App
-    Direct <-->|"direct requests and results"| App
+    Server <-->|"direct: requests and results"| App
     Plugin -->|"prepare execution data"| Provider["Jupiter APIs"]
     App -->|"explicit wallet interaction"| Wallet["External MWA wallet"]
     Wallet -->|"transaction submission"| Chain["Solana"]
 ```
+
+**Independent server is one architectural role with two connection paths:** directly to SAC, or through the shared gateway. The existing `sidecar/` implements the direct path; custom backends and the CopyTrading/Prediction demos use gateway APIs. These are alternative implementations and routes, not two mandatory services to deploy together. The diagram does not imply that the existing sidecar already implements gateway delivery.
+
+An AI agent can be a caller of either kind of server; AI/MCP does not define the delivery path. The current sidecar provides an MCP adapter. A gateway-connected backend would provide its own agent-facing integration.
 
 The diagram shows logical boundaries, not a requirement to deploy everything together. TLS proxies and optional FCM wake-ups are omitted for clarity. The app also performs configured read-only Solana RPC calls where needed to inspect address lookup tables.
 
