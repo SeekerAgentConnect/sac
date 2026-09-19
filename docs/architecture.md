@@ -152,4 +152,4 @@ The implementation cleanup removes gateway-private invitations, redemption, priv
 
 Do not remove public publisher credentials, feed references, stream tickets, publication storage or direct pairing. For stored gateway-private connections, define an explicit retirement path: explain that a fresh direct pairing is required and prevent further execution. Never silently convert credentials or connections between modes. Preserve local history and unaffected direct/feed data.
 
-The architecture PR changes this document only. Runtime cleanup, supporting documentation and migration verification belong to the linked Linear implementation task.
+The architecture PR changes this document only. Runtime cleanup, supporting documentation and migration verification belong to [SEE-128](https://linear.app/seekeragentwallet/issue/SEE-128/simplify-architecture-to-direct-public-feed-remove-private-gateway).
