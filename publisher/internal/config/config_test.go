@@ -46,6 +46,28 @@ func TestACompleteConfigurationNeedsNothingElse(t *testing.T) {
 	if settings.DisplayName != "" {
 		t.Fatalf("display name %q: it is optional and there is no default", settings.DisplayName)
 	}
+	if settings.CreateLimit != 0 {
+		t.Fatalf("create limit %d: unset must be unlimited", settings.CreateLimit)
+	}
+}
+
+func TestACreateLimitIsOptionalAndZeroIsUnlimited(t *testing.T) {
+	environment := complete()
+	environment["PUBLISHER_CREATE_LIMIT"] = "200"
+	settings := load(t, environment)
+	if settings.CreateLimit != 200 {
+		t.Fatalf("create limit %d", settings.CreateLimit)
+	}
+	environment["PUBLISHER_CREATE_LIMIT"] = "0"
+	settings = load(t, environment)
+	if settings.CreateLimit != 0 {
+		t.Fatalf("zero must stay unlimited, got %d", settings.CreateLimit)
+	}
+	environment["PUBLISHER_CREATE_LIMIT"] = "-1"
+	_, problems := Load(from(environment))
+	if !mentions(problems, "PUBLISHER_CREATE_LIMIT") {
+		t.Fatalf("a negative cap was accepted: %v", problems)
+	}
 }
 
 // Every problem at once, so a first start is fixed in one pass rather than one variable at a time.

@@ -206,7 +206,13 @@ a publisher together with its proxy (`restart copytrading copytrading-proxy`), n
 proxy lives in the publisher's network namespace and is stranded by a lone restart. Compose's
 `Found orphan containers (…-sidecar-1)` warning is expected; never answer it with
 `--remove-orphans`. Create `secrets/copytrading` and
-`secrets/prediction` owned by `10001:10001`. Run the `grpcurl` stream check from the Mac (it needs
+`secrets/prediction` owned by `10001:10001`. Also mint `admin-session-secret` and at least one
+`copytrading-pass hash <name>` line in `secrets/copytrading/admin-passwords` (README Part 2). The
+public trader URL is `https://$D:8443/trader` on this Funnel layout — judges use a normal browser
+and do not install Tailscale. Recreate `copytrading copytrading-proxy copytrading-admin` together,
+and recreate `gateway-proxy` once so Caddy has the `/trader` route. Stopping `copytrading-admin`
+leaves feeds and the loopback API intact; after the event rotate the API token and the password
+file. Run the `grpcurl` stream check from the Mac (it needs
 `third_party/` from the checkout) against `$D:8443`, without `--add-host`.
 
 ## Updating later
@@ -225,7 +231,7 @@ docker compose -f compose.direct.yaml pull && docker compose -f compose.direct.y
 docker compose -f compose.yaml -f compose.tailscale.yaml -f compose.demos.yaml pull
 docker compose -f compose.yaml -f compose.tailscale.yaml -f compose.demos.yaml \
   up -d --no-build --no-deps \
-  copytrading copytrading-proxy prediction prediction-proxy
+  copytrading copytrading-proxy copytrading-admin prediction prediction-proxy
 ```
 
 `centrifugo` and `redis` staying at their previous age is expected: their tags are pinned and this

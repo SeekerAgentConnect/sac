@@ -31,6 +31,7 @@ google-services.json
 /publisher/copytrading
 /publisher/prediction
 /publisher/publishctl
+/publisher/copytrading-admin
 /loadtest/loadtest
 
 # Local databases

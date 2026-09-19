@@ -11,6 +11,8 @@
 	}
 	# Invitation paths contain temporary capabilities and never enter access logs.
 	log_skip /invite/*
+	# Login posts carry passwords; skip them the same way.
+	log_skip /trader/login
 	# Caddy redacts credential headers unless log_credentials is enabled. It is
 	# deliberately not enabled here.
 }
@@ -57,6 +59,21 @@
 				read_timeout 0
 				write_timeout 0
 			}
+		}
+	}
+
+	# Password-gated CopyTrading trader HTML (SEE-126). The API token stays in
+	# the UI container; /v1 and /healthz are not on this origin. Cookie Path is
+	# /trader, so the session is not sent to feed RPCs.
+	@trader path /trader /trader/*
+	handle @trader {
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy copytrading:8096 {
+			header_up Host {host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
 		}
 	}
 

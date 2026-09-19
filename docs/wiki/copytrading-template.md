@@ -234,8 +234,16 @@ a restart; report honestly what has and has not been published; and keep sandbox
 apart in the file as well as in the manifest.
 
 It does not: monitor a wallet, detect anybody's trades, execute anything, hold a key, sign anything,
-read the feed it publishes to, learn who is subscribed, collect a decision or a result, deliver
-anything to a phone, or offer an administrative web interface. Its own automated checks are
+read the feed it publishes to, learn who is subscribed, collect a decision or a result, or deliver
+anything to a phone. Its own automated checks are
 [`publisher/`](../../publisher)'s tests, including one that runs the **real** gateway as a separate
 process; the half that needs two phones is the owner's device run
 ([`docs/testing/stage-7-1.md`](../testing/stage-7-1.md)).
+
+## The demo trader page (SEE-126)
+
+`cmd/copytrading-admin` is a **client** of this API, not a second write path. It serves a
+password-gated HTML page on `/trader` for hackathon judges: create, list, cancel and retry sandbox
+swap signals. The publisher token never enters the browser. The one-server deployment attaches that
+page to the existing gateway origin; `/v1` stays on host loopback. See
+[`deploy/server/README.md`](../../deploy/server/README.md).

@@ -80,6 +80,10 @@ type Config struct {
 	// How long one publication to the gateway may take before it is treated as unreachable and
 	// retried.
 	PublishTimeout time.Duration
+	// The most new creates this process will accept in one hour. Zero (the default) is unlimited,
+	// so existing tests and deployments keep their previous behaviour. The CopyTrading demo sets
+	// a cap so a public trader UI cannot fill the store (SEE-126).
+	CreateLimit int
 }
 
 // Defaults every setting that has one.
@@ -202,6 +206,9 @@ func Load(lookup Lookup) (*Config, []string) {
 			config.PublishTimeout = time.Duration(seconds) * time.Second
 		}
 	}
+
+	config.CreateLimit = read.whole("PUBLISHER_CREATE_LIMIT", 0, 0, 1_000_000,
+		"the most new signals this process will accept in one hour; 0 is unlimited")
 
 	if len(read.problems) > 0 {
 		return nil, read.problems

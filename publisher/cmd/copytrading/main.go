@@ -160,13 +160,14 @@ func run(log *slog.Logger) error {
 	service := &http.Server{
 		Addr: settings.APIAddress,
 		Handler: api.New(api.Plan{
-			Documents: documents,
-			Drainer:   drainer,
-			Kind:      kind,
-			Settings:  description,
-			Token:     settings.APIToken,
-			Log:       log,
-			Now:       time.Now,
+			Documents:   documents,
+			Drainer:     drainer,
+			Kind:        kind,
+			Settings:    description,
+			Token:       settings.APIToken,
+			Log:         log,
+			Now:         time.Now,
+			CreateLimit: settings.CreateLimit,
 		}).Handler(),
 		// A slow-header client should not be able to hold a connection open indefinitely, and
 		// nothing here streams: a request is a bounded JSON document and an answer is another.
