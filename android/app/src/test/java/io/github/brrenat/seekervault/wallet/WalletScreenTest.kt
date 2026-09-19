@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.wallet
 
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -9,11 +10,13 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -32,12 +35,16 @@ class WalletScreenTest {
     private fun show(state: WalletUiState) = compose.setContent {
         SeekerTheme {
             WalletScreen(
-                state = state,
-                onChooseNetwork = { actions += "network:${it.name}" },
-                onConnect = { actions += "connect" },
-                onDisconnect = { actions += "disconnect" },
-                onPublishAgain = { actions += "again" },
-                onBack = { actions += "back" },
+                state = walletScreenState(state),
+                callbacks =
+                    WalletScreenCallbacks(
+                        onChooseNetwork = { actions += "network:${it.name}" },
+                        onConnect = { actions += "connect" },
+                        onDisconnect = { actions += "disconnect" },
+                        onPublishAgain = { actions += "again" },
+                        onBack = { actions += "back" },
+                        navigation = NAVIGATION,
+                    ),
             )
         }
     }
@@ -51,7 +58,10 @@ class WalletScreenTest {
         compose.onNodeWithTag(WalletTags.network(WalletNetwork.Mainnet)).assertIsSelected()
         compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).assertIsNotSelected()
         compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).performClick()
-        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().performClick()
+        compose
+            .onNodeWithTag(WalletTags.CONNECT)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(listOf("network:Devnet", "connect"), actions)
     }
 
@@ -59,11 +69,13 @@ class WalletScreenTest {
     fun showsTheAddressAndNetworkOnceAWalletIsConnected() {
         show(WalletUiState(wallet = SELECTED, loaded = true, connections = listOf(CONNECTION)))
         compose.onNodeWithTag(WalletTags.STATUS).assertTextContains(WALLET, substring = true)
-        compose.onNodeWithTag(WalletTags.field("address")).assertTextContains(WALLET)
         compose
-            .onNodeWithTag(WalletTags.field("network"))
-            .assertTextContains(context.getString(R.string.wallet_network_devnet))
-        compose.onNodeWithTag(WalletTags.field("label")).assertTextContains("Account 1")
+            .onNodeWithTag(WalletTags.STATUS)
+            .assertTextContains(
+                context.getString(R.string.wallet_network_devnet),
+                substring = true,
+            )
+        compose.onNodeWithTag(WalletTags.STATUS).assertTextContains("Account 1")
         compose.onNodeWithTag(WalletTags.DISCONNECT).performScrollTo().performClick()
         assertEquals(listOf("disconnect"), actions)
     }
@@ -119,7 +131,10 @@ class WalletScreenTest {
             .onNodeWithTag(WalletTags.PUBLISHED)
             .performScrollTo()
             .assertTextContains("Home Mac", substring = true)
-        compose.onNodeWithTag(WalletTags.PUBLISH_AGAIN).performScrollTo().performClick()
+        compose
+            .onNodeWithTag(WalletTags.PUBLISH_AGAIN, useUnmergedTree = true)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(listOf("again"), actions)
     }
 
@@ -155,5 +170,8 @@ class WalletScreenTest {
                 lastCheck =
                     Connection.Check(Instant.parse("2026-09-12T09:29:00Z"), CheckOutcome.Ok, 0),
             )
+
+        val NAVIGATION =
+            ScreenNavigationCallbacks(onHome = {}, onInbox = {}, onWallet = {}, onActivity = {})
     }
 }

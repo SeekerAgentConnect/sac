@@ -52,10 +52,11 @@ fun SeekerButton(
     size: SeekerButtonSize,
     modifier: Modifier = Modifier,
     leadingIcon: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
 ) {
     val dimensions = size.dimensions()
     val colors = variant.colors()
-    val enabled = variant != SeekerButtonVariant.Disabled
+    val clickable = enabled && variant != SeekerButtonVariant.Disabled
     val startPadding =
         if (leadingIcon == null) {
             dimensions.horizontalPadding
@@ -69,7 +70,7 @@ fun SeekerButton(
                 .height(dimensions.height)
                 .clip(RoundedCornerShape(dimensions.radius))
                 .background(colors.container)
-                .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                .clickable(enabled = clickable, role = Role.Button, onClick = onClick)
                 .padding(start = startPadding, end = dimensions.horizontalPadding),
         horizontalArrangement =
             Arrangement.spacedBy(
@@ -104,7 +105,10 @@ private fun SeekerButtonVariant.colors(): ButtonColors =
         SeekerButtonVariant.ErrorStrong ->
             ButtonColors(SeekerTheme.colors.destructive, SeekerTheme.colors.onDestructive)
         SeekerButtonVariant.Tertiary ->
-            ButtonColors(SeekerTheme.colors.orangeContainer, MaterialTheme.colorScheme.onSurface)
+            ButtonColors(
+                SeekerTheme.colors.tertiaryAction,
+                SeekerTheme.colors.onTertiaryAction,
+            )
         SeekerButtonVariant.OnVerdictOk ->
             ButtonColors(SeekerTheme.colors.lime, SeekerTheme.colors.onLime)
         SeekerButtonVariant.OnVerdictWarn ->

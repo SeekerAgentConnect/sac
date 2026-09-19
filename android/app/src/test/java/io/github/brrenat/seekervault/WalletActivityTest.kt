@@ -1,10 +1,12 @@
 package io.github.brrenat.seekervault
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -81,9 +83,12 @@ class WalletActivityTest {
             .performClick()
         adapter.answerConnected(WALLET, chains = listOf("solana:devnet"))
         compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).performClick()
-        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().performClick()
+        compose
+            .onNodeWithTag(WalletTags.CONNECT)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
 
-        compose.onNodeWithTag(WalletTags.field("address")).assertTextContains(WALLET)
+        compose.onNodeWithTag(WalletTags.STATUS).assertTextContains(WALLET, substring = true)
         assertEquals(WALLET, server.wallet?.wallet)
         assertEquals(Network.NETWORK_DEVNET, server.wallet?.network)
         // The binding went to this connection's own server, and nowhere else.
@@ -94,11 +99,11 @@ class WalletActivityTest {
         compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
         compose
             .onNodeWithTag(ConnectionsTags.WALLET)
-            .assertTextContains(WALLET.take(9), substring = true)
+            .assertTextContains(WALLET.take(8), substring = true)
         scenario?.recreate()
         compose
             .onNodeWithTag(ConnectionsTags.WALLET)
-            .assertTextContains(WALLET.take(9), substring = true)
+            .assertTextContains(WALLET.take(8), substring = true)
     }
 
     @Test
@@ -107,9 +112,15 @@ class WalletActivityTest {
         launch()
         compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
         adapter.answerConnected(WALLET, authToken = SECRET)
-        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().performClick()
+        compose
+            .onNodeWithTag(WalletTags.CONNECT)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
 
-        compose.onNodeWithTag(WalletTags.DISCONNECT).performScrollTo().performClick()
+        compose
+            .onNodeWithTag(WalletTags.DISCONNECT)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose
             .onNodeWithTag(WalletTags.STATUS)
             .assertTextContains(app.getString(R.string.wallet_none_title))
@@ -124,8 +135,11 @@ class WalletActivityTest {
         launch()
         compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
         adapter.answerConnected(WALLET)
-        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().performClick()
-        compose.onNodeWithTag(WalletTags.field("address")).assertTextContains(WALLET)
+        compose
+            .onNodeWithTag(WalletTags.CONNECT)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithTag(WalletTags.STATUS).assertTextContains(WALLET, substring = true)
         assertNull(server.wallet)
 
         runBlocking { app.connectionRepository.pair(server.issue(URL)) }
@@ -140,7 +154,10 @@ class WalletActivityTest {
         launch()
         compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
         adapter.answer(WalletResult.NoWallet)
-        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().performClick()
+        compose
+            .onNodeWithTag(WalletTags.CONNECT)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose
             .onNodeWithTag(WalletTags.PROBLEM)
             .assertTextContains(app.getString(R.string.wallet_problem_no_wallet))

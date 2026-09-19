@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +39,9 @@ fun SeekerTextField(
     state: DesignTextFieldState,
     errorMessage: String? = null,
     placeholder: String = "",
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    reserveErrorSpace: Boolean = true,
+    inputModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
     val error = state == DesignTextFieldState.Error
@@ -72,8 +76,12 @@ fun SeekerTextField(
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth().padding(top = SeekerTheme.spacing.xxs),
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(top = SeekerTheme.spacing.xxs)
+                        .then(inputModifier),
                 singleLine = true,
+                keyboardOptions = keyboardOptions,
                 textStyle =
                     MaterialTheme.typography.bodyLarge.copy(
                         color = MaterialTheme.colorScheme.onSurface
@@ -93,7 +101,9 @@ fun SeekerTextField(
                 },
             )
         }
-        Box(modifier = Modifier.size(SeekerTheme.spacing.sm))
+        if (reserveErrorSpace || errorMessage != null) {
+            Box(modifier = Modifier.size(SeekerTheme.spacing.sm))
+        }
         if (error && !errorMessage.isNullOrEmpty()) {
             Text(
                 text = errorMessage,

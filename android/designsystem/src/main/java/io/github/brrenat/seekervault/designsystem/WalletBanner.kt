@@ -2,12 +2,13 @@ package io.github.brrenat.seekervault.designsystem
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
@@ -22,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -39,8 +41,10 @@ fun WalletBanner(
     address: String,
     statusText: String?,
     variant: WalletBannerVariant,
-    onCopyAddress: () -> Unit,
+    onCopyAddress: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    shortenAddress: Boolean = true,
 ) {
     val horizontalPadding =
         if (variant == WalletBannerVariant.Compact) {
@@ -48,10 +52,6 @@ fun WalletBanner(
         } else {
             SeekerTheme.spacing.xxl
         }
-    val contentWidth =
-        SeekerTheme.spacing.huge * WalletBannerContentWidthUnits +
-            SeekerTheme.spacing.xxl +
-            SeekerTheme.spacing.xxs
     val shape =
         RoundedCornerShape(
             if (variant == WalletBannerVariant.Compact) {
@@ -62,9 +62,12 @@ fun WalletBanner(
         )
     val bannerModifier =
         modifier
-            .width(contentWidth + horizontalPadding * 2)
+            .fillMaxWidth()
             .clip(shape)
             .background(SeekerTheme.colors.limeContainer)
+            .let { base ->
+                if (onClick == null) base else base.clickable(role = Role.Button, onClick = onClick)
+            }
             .padding(horizontal = horizontalPadding)
 
     when (variant) {
@@ -73,6 +76,7 @@ fun WalletBanner(
                 walletName = walletName,
                 address = address,
                 onCopyAddress = onCopyAddress,
+                shortenAddress = shortenAddress,
                 modifier = bannerModifier.padding(vertical = SeekerTheme.spacing.xl),
             )
         WalletBannerVariant.Expanded ->
@@ -90,7 +94,8 @@ fun WalletBanner(
 private fun WalletBannerCompact(
     walletName: String,
     address: String,
-    onCopyAddress: () -> Unit,
+    onCopyAddress: (() -> Unit)?,
+    shortenAddress: Boolean,
     modifier: Modifier,
 ) {
     Row(
@@ -116,20 +121,22 @@ private fun WalletBannerCompact(
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
             )
             Text(
-                text = address.shortWalletAddress(),
+                text = if (shortenAddress) address.shortWalletAddress() else address,
                 color = SeekerTheme.colors.onLimeContainer,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = SeekerTheme.typography.identifier,
             )
         }
-        OrganismIconAction(
-            icon = Icons.Outlined.ContentCopy,
-            contentDescription = "Copy wallet address",
-            onClick = onCopyAddress,
-            size = OrganismIconActionSize.MediumLargeGlyph,
-            style = OrganismIconActionStyle.OnLime,
-        )
+        onCopyAddress?.let { copy ->
+            OrganismIconAction(
+                icon = Icons.Outlined.ContentCopy,
+                contentDescription = "Copy wallet address",
+                onClick = copy,
+                size = OrganismIconActionSize.MediumLargeGlyph,
+                style = OrganismIconActionStyle.OnLime,
+            )
+        }
     }
 }
 
@@ -138,7 +145,7 @@ private fun WalletBannerExpanded(
     walletName: String,
     address: String,
     statusText: String?,
-    onCopyAddress: () -> Unit,
+    onCopyAddress: (() -> Unit)?,
     modifier: Modifier,
 ) {
     Column(
@@ -163,13 +170,15 @@ private fun WalletBannerExpanded(
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.headlineSmall,
             )
-            OrganismIconAction(
-                icon = Icons.Outlined.ContentCopy,
-                contentDescription = "Copy wallet address",
-                onClick = onCopyAddress,
-                size = OrganismIconActionSize.MediumLargeGlyph,
-                style = OrganismIconActionStyle.OnLime,
-            )
+            onCopyAddress?.let { copy ->
+                OrganismIconAction(
+                    icon = Icons.Outlined.ContentCopy,
+                    contentDescription = "Copy wallet address",
+                    onClick = copy,
+                    size = OrganismIconActionSize.MediumLargeGlyph,
+                    style = OrganismIconActionStyle.OnLime,
+                )
+            }
         }
         Text(
             text = address,
@@ -209,7 +218,6 @@ private fun String.shortWalletAddress(): String =
             takeLast(WalletBannerVisibleAddressSuffixCharacters)
     }
 
-private const val WalletBannerContentWidthUnits = 12
 private const val WalletBannerVisibleAddressPrefixCharacters = 8
 private const val WalletBannerVisibleAddressSuffixCharacters = 7
 private const val WalletBannerPreviewDarkMode = Configuration.UI_MODE_NIGHT_YES

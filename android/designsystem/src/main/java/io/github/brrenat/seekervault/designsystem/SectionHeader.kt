@@ -28,6 +28,7 @@ fun SectionHeader(
     trailingLabel: String? = null,
     onTrailingClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    trailingModifier: Modifier = Modifier,
 ) {
     val trailingContent =
         when (trailing) {
@@ -73,6 +74,7 @@ fun SectionHeader(
                 onClick = onClick,
                 variant = SeekerButtonVariant.Tonal,
                 size = SeekerButtonSize.Sm,
+                modifier = trailingModifier,
             )
         }
     }

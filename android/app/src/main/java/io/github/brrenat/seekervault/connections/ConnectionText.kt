@@ -78,6 +78,7 @@ object ConnectionsTags {
     const val WALLET = "walletRow"
     const val WALLET_COPY = "walletCopy"
     const val PENDING = "pendingRequests"
+    const val PENDING_EMPTY = "pendingRequestsEmpty"
     const val CAROUSEL = "requestCarousel"
     const val GLOBAL_RULES = "globalRules"
     const val LIST = "connectionsList"
@@ -92,6 +93,9 @@ object ConnectionsTags {
 
     fun field(name: String) = "field:$name"
 }
+
+/** Keeps the plugin-owned environment type behind the existing connection boundary. */
+internal fun Connection.isSandboxEnvironment(): Boolean = environment == PluginEnvironment.Sandbox
 
 /** Which promise a connection keeps, in a word (SEE-97, docs/wiki/environments.md). */
 @StringRes

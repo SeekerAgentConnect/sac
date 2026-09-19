@@ -4,15 +4,14 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
-// SEE-121 turns this on when full-screen previews move into :app. Keeping the identical scanner,
-// device, naming tester, and dependencies here makes that change an enable flip plus @DesignRef
-// annotations instead of a second screenshot-testing setup.
+// Full-screen design previews live in one package so unrelated legacy previews do not become part
+// of the screen-reference contract.
 @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
 roborazzi {
     outputDir.set(layout.buildDirectory.dir("outputs/roborazzi"))
     generateComposePreviewRobolectricTests {
-        enable = false
-        packages = listOf("io.github.brrenat.seekervault")
+        enable = true
+        packages = listOf("io.github.brrenat.seekervault.designpreviews")
         includePrivatePreviews = true
         testerQualifiedClassName =
             "io.github.brrenat.seekervault.designsystem.previewtesting.DesignPreviewTester"
@@ -91,8 +90,17 @@ android {
         }
     }
 
-    // Robolectric runs the Compose tests on the JVM and needs the app's resources.
-    testOptions { unitTests { isIncludeAndroidResources = true } }
+    // Robolectric runs the Compose tests on the JVM and needs the app's resources. Native graphics
+    // keeps the full-screen captures on the same renderer as the design-system specimens.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                it.systemProperties["robolectric.pixelCopyRenderMode"] = "hardware"
+                it.maxHeapSize = "4096m"
+            }
+        }
+    }
 
     lint {
         // Versions are pinned and reviewed on purpose (docs/development/toolchain.md); lint's

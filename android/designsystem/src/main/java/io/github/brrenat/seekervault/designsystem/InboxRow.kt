@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.DoneAll
+import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.Icon
@@ -31,6 +32,14 @@ import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 enum class InboxRowOrigin {
     Request,
     Signal,
+}
+
+enum class InboxRowKind {
+    Acknowledgement,
+    Prediction,
+    Transfer,
+    Swap,
+    Signature,
 }
 
 enum class InboxRowVerdict {
@@ -56,6 +65,7 @@ data class InboxRowModel(
 @Composable
 fun InboxRow(
     model: InboxRowModel,
+    kind: InboxRowKind,
     origin: InboxRowOrigin,
     verdict: InboxRowVerdict,
     titleLines: InboxRowTitleLines = InboxRowTitleLines.One,
@@ -76,7 +86,7 @@ fun InboxRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = inboxIcon(origin, verdict, titleLines, model.warningCount),
+                imageVector = kind.inboxIcon(),
                 contentDescription = null,
                 modifier = Modifier.size(SeekerTheme.spacing.xxl + SeekerTheme.spacing.xxs),
                 tint = SeekerTheme.colors.primaryText,
@@ -129,15 +139,16 @@ fun InboxRow(
             horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val sandbox = model.environmentText.startsWith("Sandbox")
             EnvChip(
                 environment =
-                    if (model.environmentText == "Production") {
-                        EnvChipEnvironment.Production
-                    } else {
+                    if (sandbox) {
                         EnvChipEnvironment.Sandbox
+                    } else {
+                        EnvChipEnvironment.Production
                     },
                 verbosity =
-                    if (model.environmentText == "Sandbox") {
+                    if (sandbox && model.environmentText == "Sandbox") {
                         EnvChipVerbosity.Short
                     } else {
                         EnvChipVerbosity.Full
@@ -164,18 +175,13 @@ fun InboxRow(
     }
 }
 
-private fun inboxIcon(
-    origin: InboxRowOrigin,
-    verdict: InboxRowVerdict,
-    titleLines: InboxRowTitleLines,
-    warningCount: Int,
-): ImageVector =
-    when {
-        origin == InboxRowOrigin.Request && verdict == InboxRowVerdict.Ok -> Icons.Outlined.DoneAll
-        origin == InboxRowOrigin.Request -> Icons.Outlined.NorthEast
-        titleLines == InboxRowTitleLines.Two || warningCount > 1 ->
-            Icons.AutoMirrored.Outlined.TrendingUp
-        else -> Icons.Outlined.SwapHoriz
+private fun InboxRowKind.inboxIcon(): ImageVector =
+    when (this) {
+        InboxRowKind.Acknowledgement -> Icons.Outlined.DoneAll
+        InboxRowKind.Prediction -> Icons.AutoMirrored.Outlined.TrendingUp
+        InboxRowKind.Transfer -> Icons.Outlined.NorthEast
+        InboxRowKind.Swap -> Icons.Outlined.SwapHoriz
+        InboxRowKind.Signature -> Icons.Outlined.Draw
     }
 
 private const val InboxRowPreviewDarkMode = Configuration.UI_MODE_NIGHT_YES
@@ -183,6 +189,7 @@ private const val InboxRowPreviewDarkMode = Configuration.UI_MODE_NIGHT_YES
 @Composable
 private fun InboxRowPreview(
     model: InboxRowModel,
+    kind: InboxRowKind,
     origin: InboxRowOrigin,
     verdict: InboxRowVerdict,
     titleLines: InboxRowTitleLines = InboxRowTitleLines.One,
@@ -191,6 +198,7 @@ private fun InboxRowPreview(
         Surface(color = SeekerTheme.colors.surface0) {
             InboxRow(
                 model = model,
+                kind = kind,
                 origin = origin,
                 verdict = verdict,
                 titleLines = titleLines,
@@ -219,7 +227,12 @@ private val inboxRequestOkModel =
 )
 @Composable
 private fun InboxRowProductionNoNetworkPreview() =
-    InboxRowPreview(inboxRequestOkModel, InboxRowOrigin.Request, InboxRowVerdict.Ok)
+    InboxRowPreview(
+        inboxRequestOkModel,
+        InboxRowKind.Acknowledgement,
+        InboxRowOrigin.Request,
+        InboxRowVerdict.Ok,
+    )
 
 @DesignRef(component = "inbox-row", variant = "origin=request verdict=ok")
 @Preview(
@@ -229,7 +242,12 @@ private fun InboxRowProductionNoNetworkPreview() =
 )
 @Composable
 private fun InboxRowRequestOkPreview() =
-    InboxRowPreview(inboxRequestOkModel, InboxRowOrigin.Request, InboxRowVerdict.Ok)
+    InboxRowPreview(
+        inboxRequestOkModel,
+        InboxRowKind.Acknowledgement,
+        InboxRowOrigin.Request,
+        InboxRowVerdict.Ok,
+    )
 
 @DesignRef(component = "inbox-row", variant = "origin=request verdict=warning")
 @Preview(
@@ -250,6 +268,7 @@ private fun InboxRowRequestWarningPreview() =
                 networkText = "Solana devnet",
                 warningCount = 1,
             ),
+        kind = InboxRowKind.Transfer,
         origin = InboxRowOrigin.Request,
         verdict = InboxRowVerdict.Warning,
     )
@@ -273,6 +292,7 @@ private fun InboxRowSignalThreeWarningsPreview() =
                 networkText = "Solana devnet",
                 warningCount = 3,
             ),
+        kind = InboxRowKind.Prediction,
         origin = InboxRowOrigin.Signal,
         verdict = InboxRowVerdict.Warning,
         titleLines = InboxRowTitleLines.Two,
@@ -297,6 +317,7 @@ private fun InboxRowSignalWarningPreview() =
                 networkText = "Solana devnet",
                 warningCount = 1,
             ),
+        kind = InboxRowKind.Swap,
         origin = InboxRowOrigin.Signal,
         verdict = InboxRowVerdict.Warning,
     )

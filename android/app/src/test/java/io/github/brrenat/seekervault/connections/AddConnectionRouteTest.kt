@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -22,6 +23,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.core.app.ActivityOptionsCompat
@@ -189,7 +192,10 @@ class AddConnectionRouteTest {
 
     private fun enter(text: String) {
         compose.onNodeWithTag(ConnectionsTags.CODE_FIELD).performTextReplacement(text)
-        compose.onNodeWithTag(ConnectionsTags.CONTINUE).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.CONTINUE)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
     }
 
     private fun problem(id: Int) =
@@ -329,12 +335,16 @@ class AddConnectionRouteTest {
         show()
         enter(feedText())
 
-        compose.onNodeWithTag(ConnectionsTags.CANCEL_PAIRING).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.CANCEL_PAIRING)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
 
         assertEquals(0, feedCalls)
+        compose.onNodeWithText("Pairing code").assertExists()
         compose
             .onNodeWithTag(ConnectionsTags.CODE_FIELD)
-            .assertTextEquals(app.getString(R.string.code_label), "")
+            .assertTextEquals("seekervault://pair?…", "")
     }
 
     @Test
@@ -353,11 +363,17 @@ class AddConnectionRouteTest {
         // A duplicate scan or warm deep link while confirmation is open is ignored.
         viewModel.onCode(invitationText())
         assertEquals(1, invitations.resolves)
-        compose.onNodeWithText(app.getString(R.string.cancel)).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.CANCEL_PAIRING)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(0, invitations.redeems)
 
         enter(invitationText())
-        compose.onNodeWithTag(ConnectionsTags.CONNECT_INVITATION).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.CONNECT_INVITATION)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
         assertEquals(2, invitations.resolves)
         assertEquals(1, invitations.redeems)
@@ -369,12 +385,18 @@ class AddConnectionRouteTest {
         show()
         val code = server.issue(URL)
         compose.onNodeWithTag(ConnectionsTags.CODE_FIELD).performTextInput(text(code))
-        compose.onNodeWithTag(ConnectionsTags.CONTINUE).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.CONTINUE)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag(ConnectionsTags.CONFIRM_SERVER).assertTextContains(URL)
         compose
             .onAllNodesWithText(code.token, substring = true, useUnmergedTree = true)
             .assertCountEquals(0)
-        compose.onNodeWithTag(ConnectionsTags.PAIR).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.PAIR)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle() // the Paired state reaches onAdded on the next composition
         val connection = paired.single()
         val credential = server.connections.getValue(connection.id)
@@ -387,15 +409,22 @@ class AddConnectionRouteTest {
     fun explainsARefusedCodeAndOffersNoRetry() {
         show()
         enter(text(PairingCode(URL, server.serverId, newSecret())))
-        compose.onNodeWithTag(ConnectionsTags.PAIR).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.PAIR)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose
             .onNodeWithTag(ConnectionsTags.PAIRING_FAILURE)
             .assertTextEquals(app.getString(R.string.pair_failed_code))
         compose.onNodeWithTag(ConnectionsTags.PAIR).assertDoesNotExist()
-        compose.onNodeWithTag(ConnectionsTags.CANCEL_PAIRING).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.CANCEL_PAIRING)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText("Pairing code").assertExists()
         compose
             .onNodeWithTag(ConnectionsTags.CODE_FIELD)
-            .assertTextEquals(app.getString(R.string.code_label), "")
+            .assertTextEquals("seekervault://pair?…", "")
     }
 
     @Test
@@ -406,7 +435,10 @@ class AddConnectionRouteTest {
         compose
             .onNodeWithTag(ConnectionsTags.CONFIRM_NOTE)
             .assertTextEquals(app.getString(R.string.confirm_same_server, existing.label))
-        compose.onNodeWithTag(ConnectionsTags.PAIR).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.PAIR)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
         assertNotNull(repository.connection(existing.id)?.revokedAt)
     }

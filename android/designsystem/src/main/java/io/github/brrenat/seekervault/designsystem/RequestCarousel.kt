@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -66,8 +67,8 @@ fun RequestCarousel(
         modifier = modifier.fillMaxWidth(),
         contentPadding =
             PaddingValues(
-                start = SeekerTheme.spacing.xxl,
-                end = SeekerTheme.spacing.xxl,
+                start = SeekerTheme.spacing.xl,
+                end = SeekerTheme.spacing.xl,
                 bottom = SeekerTheme.spacing.xs,
             ),
         horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
@@ -87,6 +88,15 @@ fun RequestCarousel(
                             }
                     },
                 onClick = { onItemClick(item) },
+                modifier =
+                    Modifier.size(
+                        width =
+                            SeekerTheme.spacing.huge * RequestCarouselTileWidthHugeUnits +
+                                SeekerTheme.spacing.xxl - SeekerTheme.spacing.xxs,
+                        height =
+                            SeekerTheme.spacing.huge * RequestCarouselTileHeightHugeUnits +
+                                SeekerTheme.spacing.xs,
+                    ),
             )
         }
     }
@@ -119,6 +129,8 @@ private object RequestCarouselSnapPosition : SnapPosition {
 }
 
 private const val RequestCarouselPreviewDarkMode = Configuration.UI_MODE_NIGHT_YES
+private const val RequestCarouselTileWidthHugeUnits = 7
+private const val RequestCarouselTileHeightHugeUnits = 7
 
 @DesignRef(component = "request-carousel", variant = "state=rest centred=0")
 @Preview(

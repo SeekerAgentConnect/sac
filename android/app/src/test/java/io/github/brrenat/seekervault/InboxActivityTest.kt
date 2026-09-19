@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault
 
 import android.content.Intent
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -8,7 +9,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -86,7 +87,9 @@ class InboxActivityTest {
         assertTrue(gateway.submits.isEmpty())
         compose.onNodeWithTag(InboxTags.item(key)).assertExists()
         compose.onNodeWithText("Deploy finished", substring = true).assertExists()
-        compose.onNodeWithText(app.getString(R.string.review)).performClick()
+        compose
+            .onNodeWithText(app.getString(R.string.review))
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose
             .onNodeWithTag(InboxTags.MESSAGE, useUnmergedTree = true)
             .assertTextEquals("Deploy finished")
@@ -103,7 +106,7 @@ class InboxActivityTest {
         // Back in the list it's answered; reopened, it shows the outcome, not the buttons.
         compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
         compose.mainClock.advanceTimeBy(240)
-        compose.onNodeWithTag(InboxTags.SECTION_ANSWERED).assertExists()
+        compose.onNodeWithText("History").performClick()
         compose.onNodeWithTag(InboxTags.item(key)).performClick()
         scenario.recreate()
         compose
@@ -138,9 +141,12 @@ class InboxActivityTest {
         val vps = runBlocking { app.connectionRepository.pair(other.issue(OTHER_URL)) }
         val mine = server.addPending(home.id, text = "For home")
         val theirs = other.addPending(vps.id, text = "For the VPS")
+        runBlocking { app.connectionRepository.refresh(home.id) }
         launch()
-        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
-        compose.onNodeWithTag(ConnectionsTags.item(home.id)).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.item(home.id))
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag(ConnectionsTags.PENDING).performScrollTo().performClick()
         compose
             .onNodeWithTag(InboxTags.item(RequestKey(home.id, mine.ref.requestId)))
@@ -202,7 +208,9 @@ class InboxActivityTest {
 
         compose.onNodeWithTag(ConnectionsTags.INBOX).performClick()
         compose.onNodeWithTag(InboxTags.item(key)).assertExists()
-        compose.onNodeWithText(app.getString(R.string.review)).performClick()
+        compose
+            .onNodeWithText(app.getString(R.string.review))
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag(InboxTags.APPROVE).performClick()
         compose.waitForIdle()
         // The approval has gone, and the message is with the wallet.
@@ -274,7 +282,9 @@ class InboxActivityTest {
 
         compose.onNodeWithTag(ConnectionsTags.INBOX).performClick()
         compose.onNodeWithTag(InboxTags.item(key)).assertExists()
-        compose.onNodeWithText(app.getString(R.string.review)).performClick()
+        compose
+            .onNodeWithText(app.getString(R.string.review))
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
         compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performClick()
         compose.waitForIdle()

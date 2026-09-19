@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import io.github.brrenat.seekervault.designsystem.preview.DesignRef
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
@@ -20,6 +21,8 @@ import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 enum class EmptyStateScreen {
     Inbox,
     Rules,
+    Servers,
+    Activity,
 }
 
 @Composable
@@ -35,6 +38,7 @@ fun EmptyState(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(SeekerTheme.radii.lg))
                 .background(SeekerTheme.colors.surface1)
+                .semantics(mergeDescendants = true) {}
                 .padding(SeekerTheme.spacing.xl),
         verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xs),
     ) {

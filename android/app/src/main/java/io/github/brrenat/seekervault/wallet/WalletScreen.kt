@@ -1,284 +1,295 @@
 package io.github.brrenat.seekervault.wallet
 
-import androidx.annotation.StringRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.connections.BackButton
-import io.github.brrenat.seekervault.connections.formatInstant
-import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
-import io.github.brrenat.seekervault.ui.Identifier
-import io.github.brrenat.seekervault.ui.NetworkChip
-import io.github.brrenat.seekervault.ui.SeekerButton
-import io.github.brrenat.seekervault.ui.SeekerButtonRole
-import io.github.brrenat.seekervault.ui.SeekerCard
+import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.connections.ConnectionsTags
+import io.github.brrenat.seekervault.designsystem.EmptyState
+import io.github.brrenat.seekervault.designsystem.EmptyStateScreen
+import io.github.brrenat.seekervault.designsystem.NoticeCard
+import io.github.brrenat.seekervault.designsystem.NoticeCardKind
+import io.github.brrenat.seekervault.designsystem.RadioRow
+import io.github.brrenat.seekervault.designsystem.RadioRowState
+import io.github.brrenat.seekervault.designsystem.ScreenCaption
+import io.github.brrenat.seekervault.designsystem.ScreenDestination
+import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
+import io.github.brrenat.seekervault.designsystem.ScreenScaffold
+import io.github.brrenat.seekervault.designsystem.ScreenScrollBody
+import io.github.brrenat.seekervault.designsystem.SectionHeader
+import io.github.brrenat.seekervault.designsystem.SectionHeaderTrailing
+import io.github.brrenat.seekervault.designsystem.SeekerButton
+import io.github.brrenat.seekervault.designsystem.SeekerButtonSize
+import io.github.brrenat.seekervault.designsystem.SeekerButtonVariant
+import io.github.brrenat.seekervault.designsystem.WalletBanner
+import io.github.brrenat.seekervault.designsystem.WalletBannerVariant
+import io.github.brrenat.seekervault.designsystem.WalletPublishWarning
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
-/** Wallet selection stays manual and delegates every wallet operation to the existing ViewModel. */
+/** Display-only state for [WalletScreen]. */
+data class WalletScreenState(
+    val title: String,
+    val wallet: WalletScreenWallet? = null,
+    val disconnected: WalletDisconnectedState? = null,
+    val publishWarning: WalletPublishWarningState? = null,
+    val explanation: String? = null,
+    val problem: String? = null,
+    val networkWarning: String? = null,
+    val disconnectLabel: String? = null,
+    val busy: Boolean = false,
+)
+
+data class WalletScreenWallet(val name: String, val address: String, val statusText: String)
+
+data class WalletDisconnectedState(
+    val title: String,
+    val body: String,
+    val networkTitle: String,
+    val networks: List<WalletNetworkOption>,
+    val connectLabel: String,
+)
+
+data class WalletNetworkOption(
+    val network: WalletNetwork,
+    val label: String,
+    val selected: Boolean,
+)
+
+data class WalletPublishWarningState(
+    val serverName: String,
+    val message: String,
+    val actionLabel: String,
+)
+
+/** Every interaction emitted by the stateless [WalletScreen]. */
+data class WalletScreenCallbacks(
+    val onChooseNetwork: (WalletNetwork) -> Unit,
+    val onConnect: () -> Unit,
+    val onDisconnect: () -> Unit,
+    val onPublishAgain: () -> Unit,
+    val onBack: () -> Unit,
+    val navigation: ScreenNavigationCallbacks,
+)
+
+/** Keeps wallet state collection and actions outside the display-only screen. */
 @Composable
-fun WalletScreen(
-    state: WalletUiState,
-    onChooseNetwork: (WalletNetwork) -> Unit,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-    onPublishAgain: () -> Unit,
+fun WalletRoute(
+    viewModel: WalletViewModel,
     onBack: () -> Unit,
+    navigationCallbacks: ScreenNavigationCallbacks,
     modifier: Modifier = Modifier,
 ) {
-    val wallet = state.wallet
-    Column(
-        modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    WalletScreen(
+        state = walletScreenState(state),
+        callbacks =
+            WalletScreenCallbacks(
+                onChooseNetwork = viewModel::chooseNetwork,
+                onConnect = viewModel::connect,
+                onDisconnect = viewModel::disconnect,
+                onPublishAgain = viewModel::publishAgain,
+                onBack = onBack,
+                navigation = navigationCallbacks,
+            ),
+        modifier = modifier,
+    )
+}
+
+/** Wallet composed entirely from the shared design-system library. */
+@Composable
+fun WalletScreen(
+    state: WalletScreenState,
+    callbacks: WalletScreenCallbacks,
+    modifier: Modifier = Modifier,
+) {
+    ScreenScaffold(
+        title = state.title,
+        selectedDestination = ScreenDestination.Wallet,
+        navigationCallbacks = callbacks.navigation,
+        onBack = callbacks.onBack,
+        backButtonModifier = Modifier.testTag(ConnectionsTags.BACK),
+        modifier = modifier,
     ) {
-        Row(
-            Modifier.fillMaxWidth()
-                .height(SeekerTheme.dimensions.dp64)
-                .padding(horizontal = SeekerTheme.dimensions.dp8),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BackButton(onBack)
-            Text(
-                stringResource(R.string.wallet_title),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp8),
-            )
-            NetworkChip(networkText(wallet?.network ?: state.network))
-        }
-        Column(
-            Modifier.fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(
-                    horizontal = SeekerTheme.dimensions.dp16,
-                    vertical = SeekerTheme.dimensions.dp8,
-                ),
-            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
-        ) {
-            SeekerCard(
-                Modifier.fillMaxWidth().testTag(WalletTags.STATUS).semantics(
-                    mergeDescendants = true
-                ) {},
-                color =
-                    if (wallet != null) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceContainer,
-            ) {
-                Column(
-                    Modifier.padding(SeekerTheme.dimensions.dp18),
-                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp7),
-                ) {
-                    Text(
-                        when {
-                            state.connecting -> stringResource(R.string.wallet_connecting)
-                            state.disconnecting -> stringResource(R.string.wallet_disconnecting)
-                            wallet == null -> stringResource(R.string.wallet_none_title)
-                            else -> wallet.label ?: stringResource(R.string.wallet_title)
-                        },
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    Text(
-                        if (wallet == null) stringResource(R.string.wallet_none_text)
-                        else
-                            stringResource(
-                                R.string.wallet_row_connected,
-                                wallet.address,
-                                networkText(wallet.network),
-                            ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color =
-                            if (wallet == null) MaterialTheme.colorScheme.onSurfaceVariant
-                            else MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                }
-            }
-            if (state.busy) {
-                LinearProgressIndicator(
-                    Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ScreenScrollBody {
+            state.wallet?.let { wallet ->
+                WalletBanner(
+                    walletName = wallet.name,
+                    address = wallet.address,
+                    statusText = wallet.statusText,
+                    variant = WalletBannerVariant.Expanded,
+                    onCopyAddress = null,
+                    modifier =
+                        Modifier.testTag(WalletTags.STATUS).semantics(mergeDescendants = true) {},
                 )
             }
-            state.problem?.let { problem ->
-                SeekerCard(
-                    Modifier.fillMaxWidth().testTag(WalletTags.PROBLEM).semantics(
-                        mergeDescendants = true
-                    ) {},
-                    color = MaterialTheme.colorScheme.errorContainer,
-                ) {
-                    Text(
-                        problemText(problem, state.detail),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
+            state.disconnected?.let { disconnected ->
+                EmptyState(
+                    screen = EmptyStateScreen.Inbox,
+                    title = disconnected.title,
+                    body = disconnected.body,
+                    modifier =
+                        Modifier.testTag(WalletTags.STATUS).semantics(mergeDescendants = true) {},
+                )
+                SectionHeader(
+                    title = disconnected.networkTitle,
+                    trailing = SectionHeaderTrailing.None,
+                )
+                disconnected.networks.forEach { network ->
+                    RadioRow(
+                        label = network.label,
+                        state = if (network.selected) RadioRowState.On else RadioRowState.Off,
+                        onClick = {
+                            if (!state.busy) callbacks.onChooseNetwork(network.network)
+                        },
+                        modifier =
+                            Modifier.testTag(WalletTags.network(network.network)).let {
+                                if (state.busy) it.semantics { disabled() } else it
+                            },
                     )
                 }
-            }
-            if (wallet == null) {
-                NetworkChoice(state, onChooseNetwork)
                 SeekerButton(
-                    text = stringResource(R.string.wallet_connect),
-                    onClick = onConnect,
+                    label = disconnected.connectLabel,
+                    onClick = callbacks.onConnect,
+                    variant = SeekerButtonVariant.Filled,
+                    size = SeekerButtonSize.Md,
                     enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth().testTag(WalletTags.CONNECT),
                 )
-            } else {
-                SeekerCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(vertical = SeekerTheme.dimensions.dp4)) {
-                        Field(R.string.wallet_field_address, wallet.address, "address")
-                        Field(R.string.wallet_field_network, networkText(wallet.network), "network")
-                        wallet.label?.let { Field(R.string.wallet_field_label, it, "label") }
-                        Field(
-                            R.string.wallet_field_connected_at,
-                            formatInstant(wallet.selectedAt),
-                            "connectedAt",
-                        )
-                    }
-                }
-                if (!wallet.networkConfirmed) {
-                    SeekerCard(
-                        Modifier.fillMaxWidth().testTag(WalletTags.UNCONFIRMED).semantics(
+            }
+            state.problem?.let { problem ->
+                NoticeCard(
+                    kind = NoticeCardKind.StaleRules,
+                    message = problem,
+                    modifier =
+                        Modifier.testTag(WalletTags.PROBLEM).semantics(mergeDescendants = true) {},
+                )
+            }
+            state.networkWarning?.let { warning ->
+                NoticeCard(
+                    kind = NoticeCardKind.StaleRules,
+                    message = warning,
+                    modifier =
+                        Modifier.testTag(WalletTags.UNCONFIRMED).semantics(
                             mergeDescendants = true
                         ) {},
-                        color = MaterialTheme.colorScheme.errorContainer,
-                    ) {
-                        Text(
-                            stringResource(R.string.wallet_network_unconfirmed),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
-                        )
-                    }
-                }
-                SeekerButton(
-                    text = stringResource(R.string.wallet_disconnect),
-                    onClick = onDisconnect,
-                    enabled = !state.busy,
-                    role = SeekerButtonRole.Error,
-                    modifier = Modifier.fillMaxWidth().testTag(WalletTags.DISCONNECT),
                 )
             }
-            Published(state, onPublishAgain)
-        }
-    }
-}
-
-@Composable
-private fun NetworkChoice(state: WalletUiState, onChoose: (WalletNetwork) -> Unit) {
-    SeekerCard(Modifier.fillMaxWidth()) {
-        Column(
-            Modifier.padding(SeekerTheme.dimensions.dp16),
-            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
-        ) {
-            Text(
-                stringResource(R.string.wallet_network_label),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
-                for (network in WalletNetwork.entries) {
-                    val selected = state.network == network
-                    Row(
-                        Modifier.height(SeekerTheme.dimensions.dp40)
-                            .clip(RoundedCornerShape(SeekerTheme.dimensions.dp20))
-                            .background(
-                                if (selected) MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surfaceContainerHighest
-                            )
-                            .selectable(
-                                selected = selected,
-                                enabled = !state.busy,
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() },
-                                role = Role.RadioButton,
-                                onClick = { onChoose(network) },
-                            )
-                            .padding(horizontal = SeekerTheme.dimensions.dp14)
-                            .testTag(WalletTags.network(network)),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(networkText(network), style = MaterialTheme.typography.labelLarge)
-                    }
-                }
+            state.publishWarning?.let { warning ->
+                WalletPublishWarning(
+                    serverName = warning.serverName,
+                    message = warning.message,
+                    actionLabel = warning.actionLabel,
+                    onAction = { if (!state.busy) callbacks.onPublishAgain() },
+                    actionModifier = Modifier.testTag(WalletTags.PUBLISH_AGAIN),
+                    modifier =
+                        Modifier.testTag(WalletTags.PUBLISHED).semantics(
+                            mergeDescendants = true
+                        ) {},
+                )
+            }
+            state.explanation?.let { explanation -> ScreenCaption(text = explanation) }
+            state.disconnectLabel?.let { label ->
+                SeekerButton(
+                    label = label,
+                    onClick = callbacks.onDisconnect,
+                    variant = SeekerButtonVariant.Error,
+                    size = SeekerButtonSize.Md,
+                    enabled = !state.busy,
+                    modifier = Modifier.testTag(WalletTags.DISCONNECT),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun Published(state: WalletUiState, onPublishAgain: () -> Unit) {
-    val failed = state.unpublished
-    val reachable = state.connections.count { it.usable }
-    SeekerCard(Modifier.fillMaxWidth()) {
-        Column(
-            Modifier.padding(SeekerTheme.dimensions.dp16),
-            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
-        ) {
-            Text(
-                when {
-                    reachable == 0 -> stringResource(R.string.wallet_published_none)
-                    failed.isEmpty() ->
-                        pluralStringResource(R.plurals.wallet_published_all, reachable, reachable)
-                    else ->
-                        pluralStringResource(
-                            R.plurals.wallet_published_failed,
-                            failed.size,
-                            failed.size,
-                            failed.joinToString { it.label },
-                        )
+internal fun walletScreenState(state: WalletUiState): WalletScreenState {
+    val wallet = state.wallet
+    return WalletScreenState(
+        title = stringResource(R.string.wallet_title),
+        wallet =
+            wallet?.let {
+                WalletScreenWallet(
+                    name =
+                        it.label?.takeIf(String::isNotBlank)
+                            ?: stringResource(R.string.wallet_title),
+                    address = it.address,
+                    statusText =
+                        stringResource(
+                            R.string.wallet_connected_summary,
+                            walletTimeFormatter.format(it.selectedAt),
+                            networkText(it.network),
+                        ),
+                )
+            },
+        disconnected =
+            if (wallet == null) {
+                WalletDisconnectedState(
+                    title =
+                        if (state.connecting) {
+                            stringResource(R.string.wallet_connecting)
+                        } else {
+                            stringResource(R.string.wallet_none_title)
+                        },
+                    body = stringResource(R.string.wallet_none_text),
+                    networkTitle = stringResource(R.string.wallet_network_label),
+                    networks =
+                        WalletNetwork.entries.map {
+                            WalletNetworkOption(
+                                network = it,
+                                label = networkText(it),
+                                selected = it == state.network,
+                            )
+                        },
+                    connectLabel = stringResource(R.string.wallet_connect),
+                )
+            } else {
+                null
+            },
+        publishWarning = state.unpublished.takeIf { it.isNotEmpty() }?.let { publishWarning(it) },
+        explanation = wallet?.let { stringResource(R.string.wallet_security_explanation) },
+        problem = state.problem?.let { problemText(it, state.detail) },
+        networkWarning =
+            wallet
+                ?.takeUnless { it.networkConfirmed }
+                ?.let {
+                    stringResource(R.string.wallet_network_unconfirmed)
                 },
-                style = MaterialTheme.typography.bodySmall,
-                color =
-                    if (failed.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                    else MaterialTheme.colorScheme.error,
-                modifier = Modifier.testTag(WalletTags.PUBLISHED),
-            )
-            if (failed.isNotEmpty()) {
-                SeekerButton(
-                    text = stringResource(R.string.wallet_publish_again),
-                    onClick = onPublishAgain,
-                    enabled = !state.busy,
-                    role = SeekerButtonRole.Neutral,
-                    modifier = Modifier.fillMaxWidth().testTag(WalletTags.PUBLISH_AGAIN),
-                )
-            }
-        }
-    }
+        disconnectLabel =
+            wallet?.let {
+                if (state.disconnecting) {
+                    stringResource(R.string.wallet_disconnecting)
+                } else {
+                    stringResource(R.string.wallet_disconnect)
+                }
+            },
+        busy = state.busy,
+    )
 }
 
 @Composable
-private fun Field(@StringRes label: Int, value: String, tag: String) {
-    Column(
-        Modifier.fillMaxWidth()
-            .padding(
-                horizontal = SeekerTheme.dimensions.dp16,
-                vertical = SeekerTheme.dimensions.dp10,
-            )
-            .testTag(WalletTags.field(tag))
-            .semantics(mergeDescendants = true) {}
-    ) {
-        Text(
-            stringResource(label),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Identifier(value, Modifier.padding(top = SeekerTheme.dimensions.dp3), maxLines = 3)
-    }
+private fun publishWarning(connections: List<Connection>): WalletPublishWarningState {
+    val names = connections.joinToString { it.label }
+    return WalletPublishWarningState(
+        serverName =
+            if (connections.size == 1) {
+                names
+            } else {
+                stringResource(R.string.wallet_unpublished_servers, connections.size, names)
+            },
+        message = stringResource(R.string.wallet_publish_warning),
+        actionLabel = stringResource(R.string.wallet_publish_again),
+    )
 }
+
+private val walletTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withZone(ZoneId.systemDefault())

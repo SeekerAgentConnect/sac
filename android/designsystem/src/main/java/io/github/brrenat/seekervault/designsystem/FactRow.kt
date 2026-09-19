@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -46,6 +47,7 @@ fun FactRow(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(SeekerTheme.radii.lg))
                 .background(SeekerTheme.colors.surface1)
+                .semantics(mergeDescendants = true) {}
                 .padding(
                     horizontal = SeekerTheme.spacing.xl,
                     vertical = (SeekerTheme.spacing.lg + SeekerTheme.spacing.lgPlus) / 2,
