@@ -26,7 +26,7 @@ identical to the full ticket text the owner supplied in the session prompt.
 - [x] Update the feature docs, changelog, codebase map, and this plan's review section.
 - [x] Run formatting/lint/build verification and the relevant existing Android checks. The ticket's
       explicit Roborazzi and behavior acceptance authorizes the relevant test runs.
-- [ ] Re-read the ticket source, self-review the diff, commit, push the existing branch, verify PR
+- [x] Re-read the ticket source, self-review the diff, commit, push the existing branch, verify PR
       #34 CI, move SEE-120 to In Review/comment if Linear becomes available, and post the required
       finished webhook.
 
@@ -40,13 +40,13 @@ identical to the full ticket text the owner supplied in the session prompt.
 
 ## Done criteria (verbatim)
 
-1. [ ] Commit + push to `superset/feat/see-117` (updates PR #34)
-2. [ ] Move SEE-120 to In Review; comment if Linear auth works (else note in webhook)
-3. [ ] BEFORE STOP, POST webhook Bearer `$SEE_SUPERSET_TOKEN`:
+1. [x] Commit + push to `superset/feat/see-117` (updates PR #34)
+2. [x] Move SEE-120 to In Review; comment if Linear auth works (else note in webhook)
+3. [x] BEFORE STOP, POST webhook Bearer `$SEE_SUPERSET_TOKEN`:
        `{"ticket":"SEE-120","repo":"SeekerAgentWallet","branch":"superset/feat/see-117","status":"finished","message":"<short summary>","pr":"https://github.com/BrRenat/SeekerAgentWallet/pull/34"}`
        Also `stuck|blocked|failed` if needed
-4. [ ] Never switch to luna on rate limits — STOP and report
-5. [ ] STOP. Do not start SEE-121.
+4. [x] Never switch to luna on rate limits — STOP and report
+5. [x] STOP. Do not start SEE-121.
 
 ## Review
 
@@ -68,3 +68,8 @@ identical to the full ticket text the owner supplied in the session prompt.
 - Verification: `git diff --check`; `pnpm run check:format`; `pnpm run check:lint`; `pnpm run build`;
   `pnpm run check:android`; `:designsystem:recordRoborazziDebug`; `designCompare` (five review
   screen pairs present); `ReviewSheetTest`; `DesignPreviewNamingTest`.
+- Delivery: implementation commit `3162ba5` was pushed to the existing PR #34. The task fallback
+  moved SEE-120 to In Review and linked that PR; the Linear plugin remained unconnected, so no
+  Linear comment was possible and the finished webhook recorded that limitation. The new GitHub CI
+  run created all five jobs but the account billing/spending-limit gate rejected every job before
+  any step; the equivalent local checks above passed.
