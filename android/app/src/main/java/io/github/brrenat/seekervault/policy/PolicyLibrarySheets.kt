@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -275,7 +274,7 @@ fun PolicyLibrarySheetScreen(
             onCancel = leave,
         )
 
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         when (val draft = state.draft) {
             is PolicyEditorDraft.Global ->
                 GlobalRulesSheet(
@@ -304,7 +303,7 @@ fun PolicyLibrarySheetScreen(
                             introContentTag = PolicyTags.HELP_CONTENT,
                         ),
                     callbacks = callbacks,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             is PolicyEditorDraft.Connection ->
                 ConnectionRulesSheet(
@@ -332,7 +331,7 @@ fun PolicyLibrarySheetScreen(
                             introContentTag = PolicyTags.HELP_CONTENT,
                         ),
                     callbacks = callbacks,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxWidth(),
                 )
         }
         if (confirmDiscard) {
@@ -470,7 +469,7 @@ fun PolicyAssetLibraryScreen(
         onBack()
     }
 
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         AssetEditorSheet(
             state =
                 AssetEditorSheetState(
@@ -578,7 +577,7 @@ fun PolicyAddressLibraryScreen(
         onBack()
     }
 
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         AddAddressSheet(
             state =
                 AddAddressSheetState(

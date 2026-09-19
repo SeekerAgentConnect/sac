@@ -1,7 +1,7 @@
 package io.github.brrenat.seekervault.connections
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -59,7 +59,7 @@ fun ConnectionDetailLibraryScreen(
         else
             "Uses global rules · $overrideCount ${if (overrideCount == 1) "override" else "overrides"}"
 
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         ConnectionDetailSheet(
             state =
                 ConnectionDetailSheetState(
@@ -151,7 +151,7 @@ fun ConnectionDetailLibraryScreen(
                     onInbox = if (connection.retirement != null) onPairDirect else onInbox,
                     onDisconnect = onDisconnect,
                 ),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxWidth(),
         )
         SeekerSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
         if (renaming) {

@@ -64,4 +64,4 @@ The unrolled review references and [`rail-unrolled`](./screens/rail-unrolled.png
 5. Add connection → Connection detail exists in runtime but is absent from the drawn arrows.
 6. Closing a rules sheet with unsaved edits has no specified prompt or draft-reset behavior.
 7. Confirm that **Leave without answering** should reveal Review rather than close both layers; that is what the export renders.
-8. Android system Back, gesture dismissal, and scrim taps are unspecified and must not be invented from the static references.
+8. There is no outside scrim. Android Back and a downward swipe both close the top sheet; timing, height, and swipe thresholds are in [`motion.md`](./motion.md).

@@ -12,6 +12,12 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.AnchoredDraggableDefaults
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.anchoredDraggable
+import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,16 +57,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -68,16 +84,77 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
 import io.github.brrenat.seekervault.designsystem.StackedSheetUnderlay
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val SheetEnterEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 private val SheetExitEasing = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+
+private enum class SheetSwipe {
+    Shown,
+    Hidden,
+}
+
+private fun sheetSwipeNestedScroll(
+    state: AnchoredDraggableState<SheetSwipe>,
+    onFling: (Float) -> Unit,
+): NestedScrollConnection =
+    object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            val delta = available.y
+            return if (delta < 0f && source == NestedScrollSource.UserInput) {
+                Offset(0f, state.dispatchRawDelta(delta))
+            } else {
+                Offset.Zero
+            }
+        }
+
+        override fun onPostScroll(
+            consumed: Offset,
+            available: Offset,
+            source: NestedScrollSource,
+        ): Offset {
+            return if (source == NestedScrollSource.UserInput) {
+                Offset(0f, state.dispatchRawDelta(available.y))
+            } else {
+                Offset.Zero
+            }
+        }
+
+        override suspend fun onPreFling(available: Velocity): Velocity {
+            val offset = state.offset
+            return if (
+                available.y < 0f &&
+                    !offset.isNaN() &&
+                    offset > 0f &&
+                    state.anchors.hasPositionFor(SheetSwipe.Hidden)
+            ) {
+                onFling(available.y)
+                available
+            } else {
+                Velocity.Zero
+            }
+        }
+
+        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+            val offset = state.offset
+            return if (!offset.isNaN() && offset > 0f) {
+                onFling(available.y)
+                available
+            } else {
+                Velocity.Zero
+            }
+        }
+    }
 
 enum class SeekerButtonRole {
     Primary,
@@ -407,12 +484,13 @@ fun SeekerSheet(
     motionKey: Any? = Unit,
     visible: Boolean = true,
     promoteFromBackplate: Boolean = false,
+    onDismiss: () -> Unit,
     onBackplateClick: (() -> Unit)? = null,
     chrome: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val activeTop = SeekerTheme.dimensions.dp100
+    val activeTop = SeekerTheme.dimensions.dp150
     val transition =
         remember(motionKey) {
             MutableTransitionState(promoteFromBackplate).apply { targetState = visible }
@@ -423,7 +501,7 @@ fun SeekerSheet(
     LaunchedEffect(promoteFromBackplate) { promoted = true }
     val animatedTop by
         animateDpAsState(
-            if (promoted) activeTop else SeekerTheme.dimensions.dp86,
+            if (promoted) activeTop else activeTop - SeekerTheme.dimensions.dp14,
             tween(300, easing = SheetEnterEasing),
             label = "activeSheetTop",
         )
@@ -433,41 +511,97 @@ fun SeekerSheet(
             tween(300, easing = SheetEnterEasing),
             label = "activeSheetBottom",
         )
+    val swipe = remember(motionKey) { AnchoredDraggableState(SheetSwipe.Shown) }
+    var sheetHeightPx by remember(motionKey) { mutableFloatStateOf(0f) }
+    LaunchedEffect(sheetHeightPx) {
+        if (sheetHeightPx > 0f) {
+            swipe.updateAnchors(
+                DraggableAnchors {
+                    SheetSwipe.Shown at 0f
+                    SheetSwipe.Hidden at sheetHeightPx
+                }
+            )
+        }
+    }
+    val dismiss = rememberUpdatedState(onDismiss)
+    LaunchedEffect(swipe.settledValue) {
+        if (swipe.settledValue == SheetSwipe.Hidden) dismiss.value()
+    }
+    val scope = rememberCoroutineScope()
+    val settleSpec = tween<Float>(240, easing = SheetExitEasing)
+    val density = LocalDensity.current
+    val dismissVelocityPx =
+        with(density) {
+            (SeekerTheme.dimensions.dp80 +
+                    SeekerTheme.dimensions.dp40 +
+                    SeekerTheme.dimensions.dp5)
+                .toPx()
+        }
+    val settleSwipe: (Float) -> Unit = { velocity ->
+        scope.launch {
+            val offset = swipe.offset
+            if (offset.isNaN() || !swipe.anchors.hasPositionFor(SheetSwipe.Hidden)) return@launch
+            val hiddenAt = swipe.anchors.positionOf(SheetSwipe.Hidden)
+            val dismissSheet =
+                velocity >= dismissVelocityPx || (velocity >= 0f && offset >= hiddenAt / 2f)
+            swipe.animateTo(
+                if (dismissSheet) SheetSwipe.Hidden else SheetSwipe.Shown,
+                settleSpec,
+            )
+        }
+    }
+    val nestedScroll = remember(swipe) { sheetSwipeNestedScroll(swipe, settleSwipe) }
+    val sheetFling =
+        AnchoredDraggableDefaults.flingBehavior(state = swipe, animationSpec = settleSpec)
+    val swipeModifier =
+        Modifier.fillMaxWidth()
+            .onSizeChanged { sheetHeightPx = it.height.toFloat() }
+            .offset {
+                val y = swipe.offset
+                IntOffset(0, if (y.isNaN()) 0 else y.roundToInt())
+            }
+            .nestedScroll(nestedScroll)
+            .anchoredDraggable(
+                state = swipe,
+                orientation = Orientation.Vertical,
+                enabled = visible && sheetHeightPx > 0f,
+                flingBehavior = sheetFling,
+            )
     Box(modifier.fillMaxSize().zIndex(10f + depth)) {
-        AnimatedVisibility(
-            visibleState = transition,
-            enter =
-                slideInVertically(
-                    animationSpec = tween(260, easing = SheetEnterEasing),
-                    initialOffsetY = { it },
-                ),
-            exit =
-                slideOutVertically(
-                    animationSpec = tween(240, easing = SheetExitEasing),
-                    targetOffsetY = { it },
-                ),
-            modifier = Modifier.fillMaxSize(),
+        // Max height is 150dp from the top. The sheet wraps content and slides by its
+        // own height. The full-size host is not animated, so a short sheet does not
+        // travel the whole screen.
+        Box(
+            Modifier.fillMaxSize().padding(top = animatedTop, bottom = animatedBottom),
+            contentAlignment = Alignment.BottomCenter,
         ) {
-            Box(
-                Modifier.fillMaxSize().padding(top = animatedTop, bottom = animatedBottom),
-                contentAlignment = Alignment.BottomCenter,
+            AnimatedVisibility(
+                visibleState = transition,
+                enter =
+                    slideInVertically(
+                        animationSpec = tween(260, easing = SheetEnterEasing),
+                        initialOffsetY = { it },
+                    ),
+                exit =
+                    slideOutVertically(
+                        animationSpec = tween(240, easing = SheetExitEasing),
+                        targetOffsetY = { it },
+                    ),
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 if (chrome) {
                     Surface(
                         modifier =
-                            Modifier.fillMaxWidth()
-                                .then(
-                                    if (onBackplateClick == null) Modifier
-                                    else
-                                        Modifier.clickable(
-                                            indication = null,
-                                            interactionSource =
-                                                remember {
-                                                    MutableInteractionSource()
-                                                },
-                                            onClick = onBackplateClick,
-                                        )
-                                ),
+                            swipeModifier.then(
+                                if (onBackplateClick == null) Modifier
+                                else
+                                    Modifier.clickable(
+                                        indication = null,
+                                        interactionSource =
+                                            remember { MutableInteractionSource() },
+                                        onClick = onBackplateClick,
+                                    )
+                            ),
                         shape =
                             RoundedCornerShape(
                                 topStart = SeekerTheme.dimensions.dp28,
@@ -497,7 +631,7 @@ fun SeekerSheet(
                         }
                     }
                 } else {
-                    Box(Modifier.fillMaxWidth()) { content() }
+                    Box(swipeModifier) { content() }
                 }
             }
         }
@@ -530,10 +664,10 @@ fun SheetBackplate(depth: Int, title: String, onClick: () -> Unit) {
     val top by
         animateDpAsState(
             if (stacked) {
-                (SeekerTheme.dimensions.dp100 - SeekerTheme.dimensions.dp14 * back.toFloat())
+                (SeekerTheme.dimensions.dp150 - SeekerTheme.dimensions.dp14 * back.toFloat())
                     .coerceAtLeast(SeekerTheme.dimensions.dp30)
             } else {
-                SeekerTheme.dimensions.dp100
+                SeekerTheme.dimensions.dp150
             },
             tween(300, easing = SheetEnterEasing),
             label = "sheetBackplateTop",

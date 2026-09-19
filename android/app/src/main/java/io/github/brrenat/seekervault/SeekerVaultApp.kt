@@ -113,20 +113,18 @@ fun SeekerVaultApp(
             val routeBeingClosed = navigator.state.sheets.last()
             closingSheet = true
             scope.launch {
-                delay(240)
+                delay(260)
                 val currentSheets = navigator.state.sheets
                 if (currentSheets.lastOrNull() == routeBeingClosed) {
                     promotedRoute =
                         currentSheets.getOrNull(currentSheets.lastIndex - 1)?.takeIf {
                             currentSheets.size > 1
                         }
-                    // Release the guard before exposing the sheet underneath so a fast, valid
-                    // follow-up tap can push its next destination immediately.
-                    closingSheet = false
+                    // Pop while the exiting sheet is still hidden. Releasing the guard first
+                    // would make it visible again and restart the enter animation.
                     navigator.back()
-                } else {
-                    closingSheet = false
                 }
+                closingSheet = false
             }
         }
     }
@@ -353,6 +351,7 @@ fun SeekerVaultApp(
                 motionKey = activeRoute,
                 visible = !closingSheet,
                 promoteFromBackplate = promotedRoute == activeRoute,
+                onDismiss = pop,
                 chrome =
                     activeRoute is AppSheet.RequestReview ||
                         (activeRoute is AppSheet.ConnectionRules &&
