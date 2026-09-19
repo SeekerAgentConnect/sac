@@ -28,8 +28,8 @@ synced issue body and current status but not comments, parent, sub-issues, or co
 - [x] Run the focused design-system build and Roborazzi capture/compare workflow; produce a difference list and iterate until it is empty.
 - [x] Generate side-by-side evidence for every implemented variant and attach it to PR #34.
 - [x] Update `CODEBASE.md`, the relevant feature documentation, the changelog, and this plan's review section.
-- [ ] Re-read SEE-119 through any available ticket source, run the required build/lint checks, review the final diff against `master`, commit, and push to `superset/feat/see-117`.
-- [ ] Update SEE-119 to In Review and comment with summary/evidence if Linear authentication becomes available; otherwise record the auth failure in the webhook report.
+- [x] Re-read SEE-119 through any available ticket source, run the required build/lint checks, review the final diff against `master`, commit, and push to `superset/feat/see-117`.
+- [x] Update SEE-119 to In Review and comment with summary/evidence if Linear authentication becomes available; otherwise record the auth failure in the webhook report.
 - [ ] POST the required finished webhook with PR #34, then stop without starting SEE-120.
 
 ## Acceptance criteria (verbatim)
@@ -40,13 +40,13 @@ synced issue body and current status but not comments, parent, sub-issues, or co
 
 ## Done criteria (verbatim)
 
-1. [ ] Commit + push to `superset/feat/see-117` (updates PR #34)
-2. [ ] Move SEE-119 to In Review on Linear; comment with summary + evidence (if Linear auth fails, note in webhook and continue)
+1. [x] Commit + push to `superset/feat/see-117` (updates PR #34)
+2. [x] Move SEE-119 to In Review on Linear; comment with summary + evidence (if Linear auth fails, note in webhook and continue)
 3. [ ] BEFORE STOP, POST webhook with Authorization Bearer `$SEE_SUPERSET_TOKEN`:
    `{"ticket":"SEE-119","repo":"SeekerAgentWallet","branch":"superset/feat/see-117","status":"finished","message":"<short summary>","pr":"https://github.com/BrRenat/SeekerAgentWallet/pull/34"}`
    Also POST stuck|blocked|failed if you cannot finish
-4. [ ] Never switch to luna on rate limits — STOP and report
-5. [ ] STOP. Do not start SEE-120.
+4. [x] Never switch to luna on rate limits — STOP and report
+5. [x] STOP. Do not start SEE-120.
 
 ## Review
 
@@ -63,5 +63,9 @@ synced issue body and current status but not comments, parent, sub-issues, or co
   `:designsystem:recordRoborazziDebug`, `:designsystem:compareRoborazziDebug`, `designCompare`, and
   `pnpm run build`.
 - Linear MCP remained unavailable and the browser fallback reached the Linear login wall. Ticket
-  content was re-read through `superset tasks get SEE-119 --json`; status/PR update will use the
-  Superset fallback where supported.
+  content was re-read through `superset tasks get SEE-119 --json`; the Superset fallback synced the
+  In Review status and PR URL to Linear. It exposes no comment API, so summary/evidence was posted
+  to PR #34 and the Linear comment limitation is carried into the required webhook.
+- Commit `02096c2` is on `superset/feat/see-117`; PR #34 was updated in place and no second PR was
+  opened. GitHub Actions did not start any steps because account payments failed or the spending
+  limit needs to be increased; the equivalent local checks above pass.
