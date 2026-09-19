@@ -67,59 +67,59 @@ private fun RequestTilePreview(kind: RequestTileKind, railState: RequestTileRail
 @DesignRef(component = "request-tile", variant = "kind=ack state=centred")
 @Preview(name = "request-tile/kind-ack-state-centred", uiMode = RequestTilePreviewDarkMode)
 @Composable
-private fun RequestTileAckCentredPreview() =
+internal fun RequestTileAckCentredPreview() =
     RequestTilePreview(RequestTileKind.Acknowledgement, RequestTileRailState.Centred)
 
 @DesignRef(component = "request-tile", variant = "kind=ack state=in-rail")
 @Preview(name = "request-tile/kind-ack-state-in-rail", uiMode = RequestTilePreviewDarkMode)
 @Composable
-private fun RequestTileAckInRailPreview() =
+internal fun RequestTileAckInRailPreview() =
     RequestTilePreview(RequestTileKind.Acknowledgement, RequestTileRailState.InRail)
 
 @DesignRef(component = "request-tile", variant = "kind=pred state=centred")
 @Preview(name = "request-tile/kind-pred-state-centred", uiMode = RequestTilePreviewDarkMode)
 @Composable
-private fun RequestTilePredictionCentredPreview() =
+internal fun RequestTilePredictionCentredPreview() =
     RequestTilePreview(RequestTileKind.PredictionSignal, RequestTileRailState.Centred)
 
 @DesignRef(component = "request-tile", variant = "kind=pred state=in-rail")
 @Preview(name = "request-tile/kind-pred-state-in-rail", uiMode = RequestTilePreviewDarkMode)
 @Composable
-private fun RequestTilePredictionInRailPreview() =
+internal fun RequestTilePredictionInRailPreview() =
     RequestTilePreview(RequestTileKind.PredictionSignal, RequestTileRailState.InRail)
 
 @DesignRef(component = "request-tile", variant = "kind=sig state=centred")
 @Preview(name = "request-tile/kind-sig-state-centred", uiMode = RequestTilePreviewDarkMode)
 @Composable
-private fun RequestTileSwapCentredPreview() =
+internal fun RequestTileSwapCentredPreview() =
     RequestTilePreview(RequestTileKind.SwapSignal, RequestTileRailState.Centred)
 
 @DesignRef(component = "request-tile", variant = "kind=sig state=in-rail")
 @Preview(name = "request-tile/kind-sig-state-in-rail", uiMode = RequestTilePreviewDarkMode)
 @Composable
-private fun RequestTileSwapInRailPreview() =
+internal fun RequestTileSwapInRailPreview() =
     RequestTilePreview(RequestTileKind.SwapSignal, RequestTileRailState.InRail)
 
 @DesignRef(component = "request-tile", variant = "kind=sign state=centred")
 @Preview(name = "request-tile/kind-sign-state-centred", uiMode = RequestTilePreviewDarkMode)
 @Composable
-private fun RequestTileSignatureCentredPreview() =
+internal fun RequestTileSignatureCentredPreview() =
     RequestTilePreview(RequestTileKind.SignatureRequest, RequestTileRailState.Centred)
 
 @DesignRef(component = "request-tile", variant = "kind=sign state=in-rail")
 @Preview(name = "request-tile/kind-sign-state-in-rail", uiMode = RequestTilePreviewDarkMode)
 @Composable
-private fun RequestTileSignatureInRailPreview() =
+internal fun RequestTileSignatureInRailPreview() =
     RequestTilePreview(RequestTileKind.SignatureRequest, RequestTileRailState.InRail)
 
 @DesignRef(component = "request-tile", variant = "kind=tx state=centred")
 @Preview(name = "request-tile/kind-tx-state-centred", uiMode = RequestTilePreviewDarkMode)
 @Composable
-private fun RequestTileTransferCentredPreview() =
+internal fun RequestTileTransferCentredPreview() =
     RequestTilePreview(RequestTileKind.Transfer, RequestTileRailState.Centred)
 
 @DesignRef(component = "request-tile", variant = "kind=tx state=in-rail")
 @Preview(name = "request-tile/kind-tx-state-in-rail", uiMode = RequestTilePreviewDarkMode)
 @Composable
-private fun RequestTileTransferInRailPreview() =
+internal fun RequestTileTransferInRailPreview() =
     RequestTilePreview(RequestTileKind.Transfer, RequestTileRailState.InRail)

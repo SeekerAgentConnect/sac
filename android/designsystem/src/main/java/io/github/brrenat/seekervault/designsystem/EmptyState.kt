@@ -72,7 +72,7 @@ private fun EmptyStatePreviewSurface(content: @Composable () -> Unit) {
 @DesignRef(component = "empty-state", variant = "screen=inbox")
 @Preview(name = "empty-state/screen-inbox", widthDp = 358, uiMode = EmptyStateDarkMode)
 @Composable
-private fun EmptyStateInboxPreview() {
+internal fun EmptyStateInboxPreview() {
     EmptyStatePreviewSurface {
         EmptyState(
             screen = EmptyStateScreen.Inbox,
@@ -87,7 +87,7 @@ private fun EmptyStateInboxPreview() {
 @DesignRef(component = "empty-state", variant = "screen=rules")
 @Preview(name = "empty-state/screen-rules", widthDp = 358, uiMode = EmptyStateDarkMode)
 @Composable
-private fun EmptyStateRulesPreview() {
+internal fun EmptyStateRulesPreview() {
     EmptyStatePreviewSurface {
         EmptyState(
             screen = EmptyStateScreen.Rules,

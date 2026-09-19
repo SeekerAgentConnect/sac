@@ -139,7 +139,7 @@ private const val RequestCarouselTileHeightHugeUnits = 7
     uiMode = RequestCarouselPreviewDarkMode,
 )
 @Composable
-private fun RequestCarouselRestPreview() {
+internal fun RequestCarouselRestPreview() {
     val items =
         listOf(
             RequestCarouselItem(

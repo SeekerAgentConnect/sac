@@ -97,7 +97,7 @@ private fun NavIcon(imageVector: androidx.compose.ui.graphics.vector.ImageVector
 @DesignRef(component = "nav-item", variant = "state=rest")
 @Preview(name = "nav-item/state-rest", widthDp = 120, uiMode = NavItemDarkMode)
 @Composable
-private fun NavItemRestPreview() {
+internal fun NavItemRestPreview() {
     SeekerTheme(darkTheme = true) {
         Surface(color = SeekerTheme.colors.surface1) {
             NavItem(
@@ -113,7 +113,7 @@ private fun NavItemRestPreview() {
 @DesignRef(component = "nav-item", variant = "state=selected")
 @Preview(name = "nav-item/state-selected", widthDp = 120, uiMode = NavItemDarkMode)
 @Composable
-private fun NavItemSelectedPreview() {
+internal fun NavItemSelectedPreview() {
     SeekerTheme(darkTheme = true) {
         Surface(color = SeekerTheme.colors.surface1) {
             NavItem(
@@ -129,7 +129,7 @@ private fun NavItemSelectedPreview() {
 @DesignRef(component = "nav-bar", variant = "state=home-selected")
 @Preview(name = "nav-bar/state-home-selected", widthDp = 390, uiMode = NavItemDarkMode)
 @Composable
-private fun FourItemNavBarPreview() {
+internal fun FourItemNavBarPreview() {
     SeekerTheme(darkTheme = true) {
         Surface(color = SeekerTheme.colors.surface1) {
             Row(Modifier.fillMaxWidth()) {

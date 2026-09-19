@@ -103,7 +103,7 @@ private fun DailyRowPreviewSurface(content: @Composable () -> Unit) {
 @DesignRef(component = "daily-row", variant = "state=nolimit scope=global")
 @Preview(name = "daily-row/state-nolimit-scope-global", widthDp = 358, uiMode = DailyRowDarkMode)
 @Composable
-private fun DailyRowNoLimitGlobalPreview() {
+internal fun DailyRowNoLimitGlobalPreview() {
     DailyRowPreviewSurface {
         DailyRow(
             headline = "6 SOL used, no limit set",
@@ -121,7 +121,7 @@ private fun DailyRowNoLimitGlobalPreview() {
     uiMode = DailyRowDarkMode,
 )
 @Composable
-private fun DailyRowOverConnectionPreview() {
+internal fun DailyRowOverConnectionPreview() {
     DailyRowPreviewSurface {
         DailyRow(
             headline = "1.5 of 8 SOL, this takes it to 9.5",
@@ -135,7 +135,7 @@ private fun DailyRowOverConnectionPreview() {
 @DesignRef(component = "daily-row", variant = "state=within scope=global")
 @Preview(name = "daily-row/state-within-scope-global", widthDp = 358, uiMode = DailyRowDarkMode)
 @Composable
-private fun DailyRowWithinGlobalPreview() {
+internal fun DailyRowWithinGlobalPreview() {
     DailyRowPreviewSurface {
         DailyRow(
             headline = "6 of 10 SOL, this takes it to 7.5",

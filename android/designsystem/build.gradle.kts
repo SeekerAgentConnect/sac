@@ -8,7 +8,9 @@ kotlin { compilerOptions { allWarningsAsErrors = true } }
 
 @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
 roborazzi {
-    outputDir.set(layout.buildDirectory.dir("outputs/roborazzi"))
+    // Approved baselines are source-controlled. Comparison artifacts stay disposable.
+    outputDir.set(layout.projectDirectory.dir("src/test/snapshots/images"))
+    compare { outputDir.set(layout.buildDirectory.dir("outputs/roborazzi-comparison")) }
     generateComposePreviewRobolectricTests {
         enable = true
         packages = listOf("io.github.brrenat.seekervault.designsystem")

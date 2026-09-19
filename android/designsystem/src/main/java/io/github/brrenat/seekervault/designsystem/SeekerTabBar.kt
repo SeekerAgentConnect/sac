@@ -85,7 +85,7 @@ private const val TabBarDarkMode = Configuration.UI_MODE_NIGHT_YES
 @DesignRef(component = "tab-bar", variant = "selected=pending")
 @Preview(name = "tab-bar/selected-pending", widthDp = 358, uiMode = TabBarDarkMode)
 @Composable
-private fun TabBarPendingPreview() {
+internal fun TabBarPendingPreview() {
     SeekerTheme(darkTheme = true) {
         Surface(color = SeekerTheme.colors.surface0) {
             SeekerTabBar(selected = InboxTab.Pending, onSelect = {})

@@ -138,7 +138,7 @@ private fun HistoryRowPreview(model: HistoryRowModel, state: HistoryRowState) {
     uiMode = HistoryRowPreviewDarkMode,
 )
 @Composable
-private fun HistoryRowCancelledPreview() =
+internal fun HistoryRowCancelledPreview() =
     HistoryRowPreview(
         HistoryRowModel(
             title = "Send 2 SOL",
@@ -157,7 +157,7 @@ private fun HistoryRowCancelledPreview() =
     uiMode = HistoryRowPreviewDarkMode,
 )
 @Composable
-private fun HistoryRowDismissedPreview() =
+internal fun HistoryRowDismissedPreview() =
     HistoryRowPreview(
         HistoryRowModel(
             title = "Ethereum above \$4,000",
@@ -172,7 +172,7 @@ private fun HistoryRowDismissedPreview() =
 @DesignRef(component = "history-row", variant = "state=expired")
 @Preview(name = "history-row/state-expired", widthDp = 358, uiMode = HistoryRowPreviewDarkMode)
 @Composable
-private fun HistoryRowExpiredPreview() =
+internal fun HistoryRowExpiredPreview() =
     HistoryRowPreview(
         HistoryRowModel(
             title = "Acknowledge a message",
@@ -187,7 +187,7 @@ private fun HistoryRowExpiredPreview() =
 @DesignRef(component = "history-row", variant = "state=sent")
 @Preview(name = "history-row/state-sent", widthDp = 358, uiMode = HistoryRowPreviewDarkMode)
 @Composable
-private fun HistoryRowSentPreview() =
+internal fun HistoryRowSentPreview() =
     HistoryRowPreview(
         HistoryRowModel(
             title = "Send 5 SOL",
@@ -206,7 +206,7 @@ private fun HistoryRowSentPreview() =
     uiMode = HistoryRowPreviewDarkMode,
 )
 @Composable
-private fun HistoryRowSimulatedPreview() =
+internal fun HistoryRowSimulatedPreview() =
     HistoryRowPreview(
         HistoryRowModel(
             title = "Swap SOL for USDC",
@@ -221,7 +221,7 @@ private fun HistoryRowSimulatedPreview() =
 @DesignRef(component = "history-row", variant = "state=unknown")
 @Preview(name = "history-row/state-unknown", widthDp = 358, uiMode = HistoryRowPreviewDarkMode)
 @Composable
-private fun HistoryRowUnknownPreview() =
+internal fun HistoryRowUnknownPreview() =
     HistoryRowPreview(
         HistoryRowModel(
             title = "Sign a message",

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="component_gallery"
+        android:shortcutLongLabel="@string/component_gallery_name"
+        android:shortcutShortLabel="@string/component_gallery_name">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="io.github.brrenat.seekervault.debug.ComponentGalleryActivity"
+            android:targetPackage="io.github.brrenat.seekervault" />
+    </shortcut>
+</shortcuts>

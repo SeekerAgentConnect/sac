@@ -108,7 +108,7 @@ private fun CheckRowPreviewSurface(content: @Composable () -> Unit) {
 @DesignRef(component = "check-row", variant = "state=checked")
 @Preview(name = "check-row/state-checked", widthDp = 358, uiMode = DarkMode)
 @Composable
-private fun CheckRowCheckedPreview() {
+internal fun CheckRowCheckedPreview() {
     CheckRowPreviewSurface {
         CheckRow(
             label = "Expected",
@@ -121,7 +121,7 @@ private fun CheckRowCheckedPreview() {
 @DesignRef(component = "check-row", variant = "state=unchecked")
 @Preview(name = "check-row/state-unchecked", widthDp = 358, uiMode = DarkMode)
 @Composable
-private fun CheckRowUncheckedPreview() {
+internal fun CheckRowUncheckedPreview() {
     CheckRowPreviewSurface {
         CheckRow(
             label = "Not expected",
@@ -138,7 +138,7 @@ private fun CheckRowUncheckedPreview() {
     uiMode = DarkMode,
 )
 @Composable
-private fun CheckRowWarningAcknowledgementPreview() {
+internal fun CheckRowWarningAcknowledgementPreview() {
     CheckRowPreviewSurface {
         CheckRow(
             label = "I have read all 3 warnings and want to approve anyway",

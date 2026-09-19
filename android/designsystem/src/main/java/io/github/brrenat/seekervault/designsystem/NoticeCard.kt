@@ -79,7 +79,7 @@ private fun NoticeCardPreviewSurface(content: @Composable () -> Unit) {
 @DesignRef(component = "notice-card", variant = "sandbox-card")
 @Preview(name = "notice-card/sandbox-card", widthDp = 358, uiMode = NoticeCardDarkMode)
 @Composable
-private fun NoticeCardSandboxPreview() {
+internal fun NoticeCardSandboxPreview() {
     NoticeCardPreviewSurface {
         NoticeCard(
             kind = NoticeCardKind.Sandbox,
@@ -94,7 +94,7 @@ private fun NoticeCardSandboxPreview() {
 @DesignRef(component = "notice-card", variant = "stale-card")
 @Preview(name = "notice-card/stale-card", widthDp = 358, uiMode = NoticeCardDarkMode)
 @Composable
-private fun NoticeCardStalePreview() {
+internal fun NoticeCardStalePreview() {
     NoticeCardPreviewSurface {
         NoticeCard(
             kind = NoticeCardKind.StaleRules,

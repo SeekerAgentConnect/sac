@@ -142,7 +142,7 @@ private fun TextFieldPreviewSurface(content: @Composable () -> Unit) {
 @DesignRef(component = "text-field", variant = "state=error")
 @Preview(name = "text-field/state-error", widthDp = 358, uiMode = TextFieldDarkMode)
 @Composable
-private fun TextFieldErrorPreview() {
+internal fun TextFieldErrorPreview() {
     TextFieldPreviewSurface {
         SeekerTextField(
             label = "Wallet address",
@@ -157,7 +157,7 @@ private fun TextFieldErrorPreview() {
 @DesignRef(component = "text-field", variant = "state=rest")
 @Preview(name = "text-field/state-rest", widthDp = 358, uiMode = TextFieldDarkMode)
 @Composable
-private fun TextFieldRestPreview() {
+internal fun TextFieldRestPreview() {
     TextFieldPreviewSurface {
         SeekerTextField(
             label = "Amount to swap, in SOL",

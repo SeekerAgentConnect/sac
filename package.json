@@ -17,7 +17,7 @@
     "check:loadtest": "node scripts/check-loadtest.mjs",
     "check:publisher": "node scripts/check-publisher.mjs",
     "design:capture": "npm --prefix design/tools run capture --",
-    "check:android": "android/gradlew -p android spotlessCheck checkDesignSystemLiterals :designsystem:recordRoborazziDebug :app:recordRoborazziDebug :designsystem:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest",
+    "check:android": "android/gradlew -p android spotlessCheck checkDesignSystemLiterals :designsystem:verifyRoborazziDebug :app:verifyRoborazziDebug :designsystem:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest",
     "check:format": "prettier --check . && buf format --diff --exit-code",
     "check:generated": "node scripts/generate.mjs --check",
     "check:lint": "eslint . && buf lint",

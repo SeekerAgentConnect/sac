@@ -96,7 +96,7 @@ private fun SectionHeaderPreviewSurface(content: @Composable () -> Unit) {
     uiMode = SectionHeaderDarkMode,
 )
 @Composable
-private fun SectionHeaderButtonPreview() {
+internal fun SectionHeaderButtonPreview() {
     SectionHeaderPreviewSurface {
         SectionHeader(
             title = "Waiting for you",
@@ -114,7 +114,7 @@ private fun SectionHeaderButtonPreview() {
     uiMode = SectionHeaderDarkMode,
 )
 @Composable
-private fun SectionHeaderNonePreview() {
+internal fun SectionHeaderNonePreview() {
     SectionHeaderPreviewSurface {
         SectionHeader(title = "Rules", trailing = SectionHeaderTrailing.None)
     }

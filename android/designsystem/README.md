@@ -39,9 +39,19 @@ dimensions. No emulator is involved. Each preview also has a
 the design export. See [`design/README.md`](../../design/README.md) for the commands and comparison
 contract.
 
-`:app` carries the same scanner dependencies and tester configuration with generation disabled.
-SEE-121 only needs to add its design references and enable that scanner when full-screen previews
-move there.
+`:app` carries the same scanner dependencies and tester configuration. SEE-121 enabled its scanner
+for the five exact-copy full-screen previews.
+
+Approved captures are committed below each module's `src/test/snapshots/images/` directory.
+`recordRoborazziDebug` is an explicit maintainer action after visual review;
+`verifyRoborazziDebug` is the CI regression guard and never updates a baseline. The separate
+`build/outputs/roborazzi-comparison/` directories hold disposable failure artifacts.
+
+Debug builds also expose a live component gallery. Long-press the debug app icon, choose
+**Component gallery**, and select a component/variant. Its catalog calls the exact preview fixture
+functions used by the scanner, and a unit test requires the catalog paths to equal the complete
+`@DesignRef` corpus. The activity, shortcut, and gallery implementation live only in debug source
+sets and are absent from release builds.
 
 ## Atom library
 

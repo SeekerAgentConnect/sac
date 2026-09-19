@@ -213,7 +213,7 @@ private fun SheetScaffoldPreview(variant: SheetScaffoldVariant) {
     uiMode = SheetScaffoldPreviewDarkMode,
 )
 @Composable
-private fun SheetScaffoldPlainPreview() = SheetScaffoldPreview(SheetScaffoldVariant.Plain)
+internal fun SheetScaffoldPlainPreview() = SheetScaffoldPreview(SheetScaffoldVariant.Plain)
 
 @DesignRef(component = "sheet-scaffold", variant = "variant=stacked-over-blurred")
 @Preview(
@@ -222,5 +222,5 @@ private fun SheetScaffoldPlainPreview() = SheetScaffoldPreview(SheetScaffoldVari
     uiMode = SheetScaffoldPreviewDarkMode,
 )
 @Composable
-private fun SheetScaffoldStackedPreview() =
+internal fun SheetScaffoldStackedPreview() =
     SheetScaffoldPreview(SheetScaffoldVariant.StackedOverBlurred)
