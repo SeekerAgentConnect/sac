@@ -22,7 +22,7 @@ also supplied by the owner in the session prompt. Parent SEE-110 was read throug
 - [x] Re-read SEE-117, move it to In Review, and link the PR through the Superset task fallback.
 - [ ] Comment on SEE-117 with the summary and evidence (blocked: the Linear plugin is disconnected
       and the browser session is unauthenticated).
-- [ ] POST the required session webhook with the PR URL, then stop.
+- [x] POST the required blocked session webhook with the PR URL, then stop.
 
 ## Acceptance criteria (verbatim)
 
