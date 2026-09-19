@@ -27,7 +27,7 @@ same fallback. The owner also supplied the full ticket text in this session.
       changelog, `CODEBASE.md`, and this plan review section.
 - [x] Run formatting, lint, build, Android, Roborazzi, and design comparison checks; re-read the
       synchronized SEE-122 task; self-review the diff against `master`.
-- [ ] Commit and push `superset/feat/see-122`; open one PR into `master` without merging; move
+- [x] Commit and push `superset/feat/see-122`; open one PR into `master` without merging; move
       SEE-122 to In Review and comment if Linear access supports it; post the required finished
       webhook before stopping.
 
@@ -41,13 +41,13 @@ same fallback. The owner also supplied the full ticket text in this session.
 
 ## Done criteria (verbatim from the owner)
 
-1. [ ] Commit + push `superset/feat/see-122`
-2. [ ] Open ONE PR into **master**; do not merge
-3. [ ] Move SEE-122 to In Review; comment if Linear works
-4. [ ] BEFORE STOP, POST webhook Bearer `$SEE_SUPERSET_TOKEN`:
+1. [x] Commit + push `superset/feat/see-122`
+2. [x] Open ONE PR into **master**; do not merge
+3. [x] Move SEE-122 to In Review; comment if Linear works
+4. [x] BEFORE STOP, POST webhook Bearer `$SEE_SUPERSET_TOKEN`:
        `{"ticket":"SEE-122","repo":"SeekerAgentWallet","branch":"superset/feat/see-122","status":"finished","message":"<short summary>","pr":"<PR url>"}`
-5. [ ] Never switch to luna — STOP and report on rate limits
-6. [ ] STOP.
+5. [x] Never switch to luna — STOP and report on rate limits
+6. [x] STOP.
 
 ## Review
 
@@ -66,3 +66,6 @@ same fallback. The owner also supplied the full ticket text in this session.
   without `ANDROID_HOME` stopped before tasks ran because this worktree has no `local.properties`.
 - Physical Seeker verification remains NOT RUN and is recorded separately in
   `docs/testing/stage-7-2.md`; no device result is inferred from JVM rendering or APK assembly.
+- Commit `79d3991` is pushed on `superset/feat/see-122`; PR #37 targets `master` and remains open.
+  Linear is In Review and has the implementation/verification comment. The required finished
+  webhook is the final delivery action after this ledger update is pushed.
