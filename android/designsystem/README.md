@@ -41,6 +41,17 @@ contract.
 SEE-121 only needs to add its design references and enable that scanner when full-screen previews
 move there.
 
+## Atom library
+
+SEE-117 adds the shared chips, verdict/signal marks, source avatar, button, FAB, and accessible
+switch/check/radio rows. Their public state axes and visual verification record are documented in
+[`docs/wiki/design-system-atoms.md`](../../docs/wiki/design-system-atoms.md). The same internal
+deterministic source palette drives `SourceChip` and `SourceAvatar`.
+
+Every captured atom variant has one exact-text `@Preview` and `@DesignRef`. The committed
+[`reference | actual` review](../../docs/reviews/see-117/README.md) is the PR evidence set. The
+icon-button remains deferred because its required hand-written component spec is absent.
+
 ## Guardrail
 
 `checkDesignSystemLiterals` rejects `Color(0x...)`, raw `.dp`, and raw `.sp` literals in production
