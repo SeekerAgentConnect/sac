@@ -209,10 +209,21 @@ func TestACreatedSignalIsAtRevisionOneAndIsNotPublishedYet(t *testing.T) {
 func TestAnIdempotencyKeyBelongsToOneSignal(t *testing.T) {
 	documents := opened(t)
 	ctx := context.Background()
+	if _, held, err := documents.Replay(ctx, "key-1", "request-1"); err != nil || held {
+		t.Fatalf("unused key: held %v (%v)", held, err)
+	}
 
 	first, _, err := documents.Create(ctx, "key-1", "request-1", swap())
 	if err != nil {
 		t.Fatal(err)
+	}
+	lookedUp, held, err := documents.Replay(ctx, "key-1", "request-1")
+	if err != nil || !held || lookedUp.Signal.ProposalID != first.Signal.ProposalID {
+		t.Fatalf("replay lookup: held %v, signal %s (%v)", held,
+			lookedUp.Signal.ProposalID, err)
+	}
+	if _, _, err := documents.Replay(ctx, "key-1", "request-2"); !errors.Is(err, ErrKeyReused) {
+		t.Fatalf("replay lookup: expected ErrKeyReused, got %v", err)
 	}
 
 	// The same call again, which is what a caller that lost its answer sends. A second identity

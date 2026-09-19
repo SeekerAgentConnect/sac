@@ -146,6 +146,22 @@ func TestAPostWithoutThisOriginIsRefused(t *testing.T) {
 	}
 }
 
+func TestAPostFromAForwardedPublicPortIsAccepted(t *testing.T) {
+	ui, _ := startUI(t, nil)
+	request := httptest.NewRequest(http.MethodPost, "http://copytrading:8096/trader/login",
+		strings.NewReader(url.Values{"name": {"judge1"}, "password": {"secret"}}.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Origin", "https://node.ts.net:8443")
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set("X-Forwarded-Host", "node.ts.net:8443")
+	answered := httptest.NewRecorder()
+	ui.ServeHTTP(answered, request)
+	if answered.Code != http.StatusSeeOther || answered.Header().Get("Set-Cookie") == "" {
+		t.Fatalf("login from the forwarded public port answered %d: %s",
+			answered.Code, answered.Body.String())
+	}
+}
+
 func TestExcessLoginFailuresAreRefused(t *testing.T) {
 	ui, _ := startUI(t, func(plan *Plan) {
 		plan.LoginPerIP = 2
@@ -160,6 +176,57 @@ func TestExcessLoginFailuresAreRefused(t *testing.T) {
 	answered := post(t, ui, "", "/trader/login", url.Values{"name": {"judge1"}, "password": {"nope"}})
 	if answered.status != http.StatusTooManyRequests {
 		t.Fatalf("status %d: %s", answered.status, answered.body)
+	}
+}
+
+func TestSuccessfulLoginsDoNotConsumeFailureLimits(t *testing.T) {
+	for _, one := range []struct {
+		name         string
+		loginPerIP   int
+		loginPerName int
+	}{
+		{name: "per IP", loginPerIP: 1, loginPerName: 10},
+		{name: "per name", loginPerIP: 10, loginPerName: 1},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			ui, _ := startUI(t, func(plan *Plan) {
+				plan.LoginPerIP = one.loginPerIP
+				plan.LoginPerName = one.loginPerName
+			})
+			for attempt := 0; attempt < 2; attempt++ {
+				answered := post(t, ui, "", "/trader/login", url.Values{
+					"name": {"judge1"}, "password": {"secret"},
+				})
+				if answered.status != http.StatusSeeOther {
+					t.Fatalf("successful login %d answered %d: %s", attempt, answered.status, answered.body)
+				}
+			}
+			failed := post(t, ui, "", "/trader/login", url.Values{
+				"name": {"judge1"}, "password": {"wrong"},
+			})
+			if failed.status != http.StatusUnauthorized {
+				t.Fatalf("first failure answered %d: %s", failed.status, failed.body)
+			}
+			limited := post(t, ui, "", "/trader/login", url.Values{
+				"name": {"judge1"}, "password": {"wrong"},
+			})
+			if limited.status != http.StatusTooManyRequests {
+				t.Fatalf("failure limit answered %d: %s", limited.status, limited.body)
+			}
+		})
+	}
+}
+
+func TestTailscaleProxyPreservesThePublicPortForOriginChecks(t *testing.T) {
+	path := filepath.Join("..", "..", "..", "deploy", "server", "Caddyfile.tailscale")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Skipf("the server deployment is not beside this copied-out publisher module: %v", err)
+	}
+	config := string(contents)
+	forwarded := "header_up X-Forwarded-Host {http.request.hostport}"
+	if !strings.Contains(config, forwarded) {
+		t.Fatalf("%s does not preserve the browser's original host and public port", forwarded)
 	}
 }
 
