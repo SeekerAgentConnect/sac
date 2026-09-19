@@ -21,10 +21,12 @@ Starting commit: `a4feaa1551d974d4f23e6e5ea2a6301a79078035`
 - [x] 7. Inventory sanitized persistent data/deployment identities, schema versions, ownership/modes, credentials, pairings, app records, subscriptions, and history without touching live data.
 - [x] 8. Record current device-count, OAuth, operations, network/environment, and background/push behavior as preservation requirements.
 - [x] 9. Run and record relevant baseline checks with exact versions and PASS/FAIL/NOT RUN, separating pre-existing failures and assigning focused checks to later children; do not run/install on a physical Android device.
-- [ ] 10. Commit the concise migration/baseline document, completion evidence, per-child ownership matrix, and rollback/data-retention expectations.
+- [x] 10. Commit the concise migration/baseline document, completion evidence, per-child ownership matrix, and rollback/data-retention expectations.
 - [x] Verify `pnpm run build` plus the documented relevant checks, review the diff, and confirm there are no runtime/deployment changes.
-- [ ] Push one commit, open one PR into `master`, watch CI, update SEE-129 to In Review, and post a Linear evidence comment.
-- [ ] Re-read SEE-128, SEE-129, and comments before handoff; POST the required finished/blocked/failed webhook; stop before SEE-130.
+- [x] Push the baseline commit and open one PR into `master`; attempt to inspect CI.
+- [ ] Update SEE-129 to In Review and post a Linear evidence comment.
+- [x] Re-read SEE-128, SEE-129, and all comments before handoff.
+- [ ] POST the required finished/blocked/failed webhook and stop before SEE-130.
 
 ## Acceptance criteria (verbatim)
 
@@ -49,5 +51,10 @@ Starting commit: `a4feaa1551d974d4f23e6e5ea2a6301a79078035`
 - NOT RUN: physical Seeker (explicitly prohibited), live Solana/provider/FCM/full broker-load
   checks; the integration harness also reported its broker stream leg NOT RUN because
   `SEEKERVAULT_CENTRIFUGO` was unset.
-- PR, Linear In Review/comment, final ticket re-read, and webhook evidence are completed only after
-  the baseline commit exists; their checklist items intentionally remain open until then.
+- Linear In Review/comment and webhook evidence are completed only after the final evidence commit;
+  their checklist items intentionally remain open until then.
+- The final ticket re-read caught and corrected the child-ownership assignments before handoff:
+  SEE-130 retires gateway-private end to end, SEE-133 isolates the feed gateway, SEE-134 extracts
+  both demos, SEE-135 owns deployment separation, and SEE-136 owns final docs/verification.
+- PR #38 is open into `master`. GitHub accepted the PR, but the available token returned HTTP 403
+  for both check rollups and Actions runs; local equivalents above are the available CI evidence.

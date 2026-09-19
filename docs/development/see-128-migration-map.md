@@ -46,14 +46,14 @@ are pnpm 12.3.4 and Node 24.21.0 (`package.json`, `.nvmrc`); TypeScript is 6.0.3
 | --- | --- | --- | --- |
 | Reusable direct server | `sidecar/src/requests/`, `pairing/`, `storage/`, `updates/`, `push/`, `phone-api.ts`, and `manifest.ts` | `server-sdk/`; transport-neutral TypeScript library | SEE-131 |
 | MCP application | `sidecar/src/main.ts`, `server.ts`, `mcp-endpoint.ts`, `auth.ts`, `oauth.ts`, `config.ts`, `requests/mcp-tools.ts`, `solana/`, and `sidecar/Dockerfile` | `mcp-server/`; executable npm/CLI and Docker app consuming `server-sdk/` | SEE-132 |
-| Shared public gateway | Go module `broadcast/`; `cmd/broadcast` and `cmd/broadcastctl` | `feed-gateway/`, with the public reader, authenticated publisher, SQLite, stream, and optional push only | SEE-130 |
-| Hosted gateway-private mode | `onboarding.proto`, private methods in `publish.proto`, `broadcast/internal/gateway/{invitation,device,private_publisher}.go`, `broadcast/internal/store/private.go`, publisher gateway SDK, and Android invitation/device routing | Removed from active APIs and runtime; only compatibility reservations and one-way local retirement remain | SEE-130 and SEE-133 |
-| Direct reverse proxy | Misleadingly named `gateway/`; Caddy and Compose around `sidecar` | Optional direct ingress/operator assets under `deploy/`; the product executable/image belongs to `mcp-server/` | SEE-132 and SEE-136 |
+| Shared public gateway | Go module `broadcast/`; `cmd/broadcast` and `cmd/broadcastctl` | `feed-gateway/`, with the public reader, authenticated publisher, SQLite, stream, and optional push only | SEE-133 |
+| Hosted gateway-private mode | `onboarding.proto`, private methods in `publish.proto`, `broadcast/internal/gateway/{invitation,device,private_publisher}.go`, `broadcast/internal/store/private.go`, publisher gateway SDK, and Android invitation/device routing | Removed from active APIs and runtime; only compatibility reservations and one-way local retirement remain | SEE-130 |
+| Direct reverse proxy | Misleadingly named `gateway/`; Caddy and Compose around `sidecar` | Optional direct ingress/operator assets under `deploy/`; the product executable/image belongs to `mcp-server/` | SEE-132 and SEE-135 |
 | CopyTrading publisher | `publisher/cmd/copytrading`, `cmd/copytrading-admin`, shared `publisher/internal/*`, Compose/Caddy | Independently buildable and runnable `demo-copytrading/` | SEE-134 |
-| Prediction publisher | `publisher/cmd/prediction`, prediction discovery/Jupiter packages, shared `publisher/internal/*`, separate Compose overlay | Independently buildable and runnable `demo-prediction/` | SEE-135 |
-| Publisher common implementation | One copy in `publisher/internal/{publish,store,manifest,signals,api,...}` | Narrow non-deployable `publisher-support/`; no command, image, listener, or separately shipped feed-publisher client | SEE-134, finalized in SEE-135 |
+| Prediction publisher | `publisher/cmd/prediction`, prediction discovery/Jupiter packages, shared `publisher/internal/*`, separate Compose overlay | Independently buildable and runnable `demo-prediction/` | SEE-134 |
+| Publisher common implementation | One copy in `publisher/internal/{publish,store,manifest,signals,api,...}` | Narrow non-deployable `publisher-support/`; no command, image, listener, or separately shipped feed-publisher client | SEE-134 |
 | Wire contracts | `proto/seekervault/{request,server,gateway,proposal,plugin,...}` | `proto/`; remove private gateway services/methods, reserve retired identifiers, retain common/direct/public contracts | SEE-130 and SEE-133 |
-| Phone | `android/app`, generated Java/Kotlin, `designsystem` | `android/`; exactly Direct and Public feed connection behavior | SEE-133 |
+| Phone | `android/app`, generated Java/Kotlin, `designsystem` | `android/`; exactly Direct and Public feed connection behavior | SEE-130 |
 | Integration/load harnesses | `test-agent/`, `loadtest/`, fixtures, generation scripts | Updated in place to prove the two-mode boundary; never promoted to a third runtime | SEE-130 through SEE-136 as owned below |
 
 ### Dependencies and generated code
@@ -141,7 +141,7 @@ gateway-private code also uses it.
 
 | Layer | Current implementation | Required change and destination |
 | --- | --- | --- |
-| Protocol | All of `proto/seekervault/gateway/v1/onboarding.proto`: `InvitationService`, `DeviceService`, invitations, device bindings/results, and private request records | Remove the active definitions in SEE-130/SEE-133; reserve retired field/enum names and numbers where protobuf permits it, and denylist removed top-level/procedure names in compatibility tests where it does not |
+| Protocol | All of `proto/seekervault/gateway/v1/onboarding.proto`: `InvitationService`, `DeviceService`, invitations, device bindings/results, and private request records | Remove the active definitions in SEE-130; reserve retired field/enum names and numbers where protobuf permits it, and denylist removed top-level/procedure names in compatibility tests where it does not |
 | Publisher protocol | `Create/Get/RevokeInvitation`, `Create/Get/CancelPrivateRequest`, and `RevokePrivateConnection` plus their request/response messages in `publish.proto` | Remove from `PublisherService`; retain public publish/cancel methods and statuses. Protobuf cannot reserve a service method or top-level message name, so freeze their fully qualified names in a no-reuse compatibility test and reserve field identifiers inside any surviving messages |
 | Manifest mode | `CONNECTION_MODE_GATEWAY_PRIVATE = 3`, `GatewayPrivate`, and `ServerManifest.gateway_private = 10` | No active third mode; reserve numeric value 3 and field number/name 10 so old bytes cannot be reinterpreted |
 | Gateway listeners and handlers | `BROADCAST_CLIENT_ADDRESS`, client mux/listener, private publisher methods, `internal/gateway/{invitation,device,private_publisher}.go`, private auth paths | Delete in `feed-gateway/`; expose only read and publisher surfaces |
@@ -221,6 +221,14 @@ The package plan is a private workspace dependency first: `mcp-server` depends o
 surface, and the lockfile stays at the repository root. Package and executable metadata are made
 packable/testable in SEE-131/SEE-132, but no npm publication occurs in SEE-128.
 
+The two package acceptance boundaries remain distinct. SEE-131 installs the real packed SDK
+tarball in a clean project outside the workspace. SEE-132 makes the packed executable MCP artifact
+self-contained with respect to that still-unpublished SDK (for example, by bundling the built SDK
+into the application artifact): its isolated install cannot require a registry SDK release, sibling
+tarball, Docker, TypeScript build, or repository checkout. The MCP runtime keeps its database and
+credentials in an explicit stable data directory outside npm installation/cache paths, retains its
+HTTP route, and does not claim an unsupported agent-launched stdio transport.
+
 ## 5. Independent demo build strategy
 
 The current `publisher/` module compiles four commands into one image and shares one set of internal
@@ -282,7 +290,7 @@ or documented one-time volume reassignment so a service rename does not create a
 No upgrade instruction uses `docker compose down -v`.
 
 `network_mode: service:*` is a current deployment convenience, not an architectural dependency.
-SEE-136 gives each process an addressable network endpoint, keeps Redis private to Centrifugo, and
+SEE-135 gives each process an addressable network endpoint, keeps Redis private to Centrifugo, and
 keeps secrets on the process that consumes them. `BROADCAST_PUBLIC_URL` belongs to the feed gateway;
 `BROADCAST_STREAM_URL` belongs to the gateway-to-Centrifugo API client;
 `CENTRIFUGO_ENGINE_REDIS_ADDRESS` belongs only to Centrifugo; direct `SIDECAR_PUBLIC_URL` (renamed
@@ -365,33 +373,38 @@ app on a real device, and this documentation-only change cannot justify touching
 
 Later-child focused gates:
 
-- SEE-130: feed gateway Go checks, schema-v2 public-row migration fixtures, removed route negative
-  tests, publisher/read auth separation, Centrifugo/Redis integration, load isolation, and generation.
+- SEE-130: removed gateway-private procedure/route negative tests, schema-v2 private-row retirement
+  with public-row preservation, Android connection v1-v4 retirement fixtures, direct-result and
+  feed-local-result invariants, generated contracts, and no active third mode.
 - SEE-131: SDK unit/type/build/pack tests, direct schema fixtures, adapter-neutral boundary tests, and
   a consumer fixture that imports only the packed SDK.
 - SEE-132: MCP endpoint/tool/OAuth/pairing/direct result integration, executable npm and Docker
   smoke tests, direct database upgrade, and no feed dependency.
-- SEE-133: Android unit/lint/golden/APK checks, connection v1-v4 migration fixtures, no active
-  gateway-private route, direct result and feed local-result coverage, and emulator round trip. A
-  physical Seeker check stays NOT RUN unless that later ticket explicitly authorizes it.
-- SEE-134/SEE-135: each demo's independent `go build ./...`, tests and Docker build; shared support
-  tests; separate databases/identities; a real local feed-gateway publication path; the other demo
-  absent from the build context/runtime.
-- SEE-136: Compose config for base/direct/each-demo combinations, fresh and existing-volume upgrade
-  rehearsals, process addressability, backup/restore, and clean base startup with no demo or MCP app.
+- SEE-133: feed gateway Go checks, focused SQLite storage-boundary/atomic-outbox fixtures,
+  publisher/read auth separation, Centrifugo/Redis integration, load isolation, generation, and a
+  base gateway with no demo or MCP dependency.
+- SEE-134: each demo's independent `go build ./...`, tests and Docker build; shared support tests;
+  separate databases/identities; a real local feed-gateway publication path; the other demo absent
+  from the build context/runtime.
+- SEE-135: Compose config for base/direct/each-demo combinations, fresh and existing-volume upgrade
+  rehearsals, process addressability, configurable remote Redis, backup/restore, and clean base
+  startup with no demo or MCP app.
+- SEE-136: the complete direct/feed/isolation/migration/package/deployment regression matrix, all
+  four clean-setup guide walks, stale-path/API/capability scans, final two-mode docs, and explicit
+  NOT RUN evidence for any unauthorized or unavailable live/physical check.
 
 ## 10. Ordered child ownership and handoff
 
 | Order | Child | Must deliver | Must not steal from later work |
 | --- | --- | --- | --- |
 | 1 | SEE-129 | This baseline, exact migration/data/rollback map, honest check evidence | No runtime, schema, deployment, data, or package changes |
-| 2 | SEE-130 | `broadcast/` to public-only `feed-gateway/`; retire server-side hosted private APIs/data; contract reservations; public gateway migrations/tests | No Android active-mode removal beyond contract coordination; no SDK/app split |
+| 2 | SEE-130 | Remove gateway-private protocol, gateway/publisher SDK, Android mode/UI/storage/network paths and deployment routes; reserve/denylist wire identities; retire persisted private connections/rows while preserving direct/public data and history | No `broadcast/` rename or SDK/app split; no credential/endpoint conversion and no third active mode |
 | 3 | SEE-131 | Extract reusable TypeScript `server-sdk/`, preserve direct schemas and API behavior, pack/consumer evidence | No MCP application product or deployment rewrite |
 | 4 | SEE-132 | Standalone `mcp-server/` app/CLI/npm metadata/Docker, OAuth/MCP/providers, direct ingress migration | No npm publication; no public feed/demo coupling |
-| 5 | SEE-133 | Android exactly-two-mode model/UI/storage migration; retire old gateway-private connections safely | No device credential conversion; no result upload for feeds |
-| 6 | SEE-134 | Independent CopyTrading demo and initial non-deployable shared support extraction | Do not make Prediction build/start as a dependency |
-| 7 | SEE-135 | Independent Prediction demo, finalize shared support boundary | Do not duplicate durable store/outbox or make CopyTrading build/start |
-| 8 | SEE-136 | Deployment/config/docs/integration finalization, addressable processes, volume-compatible upgrade and rollback proof | No automatic volume reset, mandatory demo/MCP, package publication, or parent completion before evidence |
+| 5 | SEE-133 | Rename/isolate public-only `feed-gateway/`, focus the SQLite storage boundary, preserve authenticated publication, snapshots, tickets, streams, push and public data | No demo/MCP dependency, subscriber identity/result upload, or database-engine change |
+| 6 | SEE-134 | Extract both independent root-level demos and the smallest non-deployable shared support boundary | Neither demo may import/build/start the other; do not duplicate durable store/outbox or create another service/client product |
+| 7 | SEE-135 | Separate portable orchestration from optional ingress/host configuration; preserve volumes/identities and make process endpoints configurable | No automatic volume reset, mandatory demo/MCP, network SQLite, or mandatory network-namespace sharing |
+| 8 | SEE-136 | Reconcile all active docs/paths/APIs and execute the complete two-mode regression and clean-guide matrix | No package publication, unrun-check claims, parent completion with unresolved failures, or new architecture |
 
 Every child records changed modules/configuration, API/schema effects, data migration and rollback,
 exact commands as PASS/FAIL/NOT RUN, limitations, and the next handoff. Later work continues on the
