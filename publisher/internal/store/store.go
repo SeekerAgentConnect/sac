@@ -470,6 +470,13 @@ func (s *Store) ManifestRefused(ctx context.Context, problem, detail string) err
 	return err
 }
 
+// Replay returns the signal an earlier call with the same idempotency key and request created. An
+// unused key is not an error; a key used for a different request is [ErrKeyReused]. It lets a
+// caller apply admission controls only to creates that would actually be new.
+func (s *Store) Replay(ctx context.Context, key, request string) (signals.Record, bool, error) {
+	return replayIn(ctx, s.reader, key, request)
+}
+
 // Create stores a new signal, or returns the one an earlier call with the same idempotency key
 // created.
 //
@@ -503,23 +510,9 @@ func createIn(
 	serverID, key, request string,
 	signal signals.Signal,
 ) (signals.Record, bool, error) {
-	var (
-		held    string
-		earlier string
-	)
-	err := transaction.QueryRowContext(ctx,
-		`SELECT proposal_id, request FROM idempotency WHERE key = ?`, key).Scan(&held, &earlier)
-	switch {
-	case err == nil && earlier == request:
-		record, err := read(ctx, transaction, held)
-		if err != nil {
-			return signals.Record{}, false, err
-		}
-		return record, true, nil
-	case err == nil:
-		return signals.Record{}, false, ErrKeyReused
-	case !errors.Is(err, sql.ErrNoRows):
-		return signals.Record{}, false, err
+	record, held, err := replayIn(ctx, transaction, key, request)
+	if err != nil || held {
+		return record, held, err
 	}
 
 	// A first publication is revision 1. Zero is never published, and the number is the store's
@@ -550,11 +543,33 @@ func createIn(
 	); err != nil {
 		return signals.Record{}, false, err
 	}
-	record, err := read(ctx, transaction, signal.ProposalID)
+	record, err = read(ctx, transaction, signal.ProposalID)
 	if err != nil {
 		return signals.Record{}, false, err
 	}
 	return record, false, nil
+}
+
+func replayIn(ctx context.Context, from rower, key, request string) (signals.Record, bool, error) {
+	var (
+		held    string
+		earlier string
+	)
+	err := from.QueryRowContext(ctx,
+		`SELECT proposal_id, request FROM idempotency WHERE key = ?`, key).Scan(&held, &earlier)
+	switch {
+	case err == nil && earlier == request:
+		record, err := read(ctx, from, held)
+		if err != nil {
+			return signals.Record{}, false, err
+		}
+		return record, true, nil
+	case err == nil:
+		return signals.Record{}, false, ErrKeyReused
+	case !errors.Is(err, sql.ErrNoRows):
+		return signals.Record{}, false, err
+	}
+	return signals.Record{}, false, nil
 }
 
 // Update replaces a signal's terms, expiry and note with the whole statement given, and moves the

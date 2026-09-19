@@ -77,7 +77,7 @@ https://{$BROADCAST_DOMAIN} {
 		reverse_proxy copytrading:8096 {
 			header_up Host {host}
 			header_up X-Forwarded-Proto {scheme}
-			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Host {http.request.hostport}
 		}
 	}
 

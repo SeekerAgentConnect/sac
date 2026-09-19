@@ -143,7 +143,17 @@ func (s *Server) login(writer http.ResponseWriter, request *http.Request) {
 	name := strings.TrimSpace(request.FormValue("name"))
 	password := request.FormValue("password")
 	ip := clientIP(request)
-	if !s.loginIP.Allow("ip:"+ip) || !s.loginN.Allow("name:"+strings.ToLower(name)) {
+	ipKey := "ip:" + ip
+	nameKey := "name:" + strings.ToLower(name)
+	if !s.loginIP.Allow(ipKey) {
+		s.log.Warn("login rate limited", "from", ip)
+		s.page(writer, http.StatusTooManyRequests, loginPage, loginView{
+			Path: s.path, Message: "too many attempts; try later",
+		})
+		return
+	}
+	if !s.loginN.Allow(nameKey) {
+		s.loginIP.Undo(ipKey)
 		s.log.Warn("login rate limited", "from", ip)
 		s.page(writer, http.StatusTooManyRequests, loginPage, loginView{
 			Path: s.path, Message: "too many attempts; try later",
@@ -157,6 +167,8 @@ func (s *Server) login(writer http.ResponseWriter, request *http.Request) {
 		})
 		return
 	}
+	s.loginIP.Undo(ipKey)
+	s.loginN.Undo(nameKey)
 	cookie, err := signSession(s.secret, name, s.now())
 	if err != nil {
 		s.page(writer, http.StatusInternalServerError, loginPage, loginView{

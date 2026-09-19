@@ -43,6 +43,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -64,6 +65,7 @@ const MostBodyBytes = 64 << 10
 
 // Documents is the part of the store this API uses.
 type Documents interface {
+	Replay(ctx context.Context, key, request string) (signals.Record, bool, error)
 	Create(ctx context.Context, key, request string, signal signals.Signal) (signals.Record, bool, error)
 	Update(ctx context.Context, id string, next signals.Signal, now time.Time) (signals.Record, bool, error)
 	Cancel(ctx context.Context, id string, now time.Time) (signals.Record, bool, error)
@@ -118,7 +120,8 @@ type Server struct {
 	newID func() string
 	// Optional cap on new creates in a rolling hour. Nil, or a limiter whose max is zero, is
 	// unlimited (SEE-126).
-	creates *limit.Limiter
+	creates  *limit.Limiter
+	createMu sync.Mutex
 }
 
 // Plan is what a [Server] needs.
@@ -542,18 +545,14 @@ func (s *Server) create(writer http.ResponseWriter, request *http.Request) {
 	signal.Operation = s.kind.Operation()
 	signal.PluginID = s.kind.Requirement().PluginID
 
-	if !s.creates.Allow("create") {
+	record, held, err := s.createRecord(request.Context(), key, signals.Statement(signal), signal)
+	switch {
+	case errors.Is(err, errCreateLimited):
 		refuse(writer, http.StatusTooManyRequests, &problem{
 			Error:  "rate_limited",
 			Detail: "this publisher is not accepting more new signals right now; try later",
 		})
 		return
-	}
-	record, held, err := s.documents.Create(request.Context(), key, signals.Statement(signal), signal)
-	if err != nil || held {
-		s.creates.Undo("create")
-	}
-	switch {
 	case errors.Is(err, store.ErrKeyReused):
 		refuse(writer, http.StatusConflict, &problem{
 			Error: "key_reused",
@@ -571,6 +570,35 @@ func (s *Server) create(writer http.ResponseWriter, request *http.Request) {
 	// the likeliest reason it is asking again.
 	s.answer(writer, request, record, held, http.StatusCreated,
 		map[string]any{"idempotent": held})
+}
+
+var errCreateLimited = errors.New("publisher create limit reached")
+
+// createRecord keeps replay classification and admission in one process-local critical section.
+// The create cap is process-local too, so this prevents two concurrent HTTP requests for one key
+// from racing between the replay check and the reservation. Publication happens after it unlocks.
+func (s *Server) createRecord(
+	ctx context.Context,
+	key, request string,
+	signal signals.Signal,
+) (signals.Record, bool, error) {
+	if s.creates == nil {
+		return s.documents.Create(ctx, key, request, signal)
+	}
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
+	record, held, err := s.documents.Replay(ctx, key, request)
+	if err != nil || held {
+		return record, held, err
+	}
+	if !s.creates.Allow("create") {
+		return signals.Record{}, false, errCreateLimited
+	}
+	record, held, err = s.documents.Create(ctx, key, request, signal)
+	if err != nil || held {
+		s.creates.Undo("create")
+	}
+	return record, held, err
 }
 
 func (s *Server) update(writer http.ResponseWriter, request *http.Request) {

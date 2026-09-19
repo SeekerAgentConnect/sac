@@ -722,6 +722,24 @@ func TestACreateLimitRefusesNewSignalsAndLeavesReplaysUncounted(t *testing.T) {
 	if third.status != http.StatusTooManyRequests || third.problem() != "rate_limited" {
 		t.Fatalf("the cap must refuse the next new signal: %d %s", third.status, third.raw)
 	}
+	replayAtLimit := held.create("key-1", swapStatement())
+	if replayAtLimit.status != http.StatusOK || replayAtLimit.body["idempotent"] != true ||
+		replayAtLimit.signal()["proposal_id"] != first.signal()["proposal_id"] {
+		t.Fatalf("a replay after the cap is full must return the first signal: %d %s",
+			replayAtLimit.status, replayAtLimit.raw)
+	}
+	moved := swapStatement()
+	moved["terms"].(map[string]string)[signals.MaxSlippageBps] = "80"
+	conflict := held.create("key-1", moved)
+	if conflict.status != http.StatusConflict || conflict.problem() != "key_reused" {
+		t.Fatalf("the cap must not mask an idempotency conflict: %d %s",
+			conflict.status, conflict.raw)
+	}
+	stillLimited := held.create("key-4", swapStatement())
+	if stillLimited.status != http.StatusTooManyRequests || stillLimited.problem() != "rate_limited" {
+		t.Fatalf("a replay must not free capacity for another signal: %d %s",
+			stillLimited.status, stillLimited.raw)
+	}
 }
 
 func TestNoCreateLimitIsTheDefault(t *testing.T) {
