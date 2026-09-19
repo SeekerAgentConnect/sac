@@ -12,9 +12,9 @@ storage, transport, request, or wallet implementation type. Exact design copy li
 `SheetCompositionFixtures`; production routes map their domain state into the same contracts.
 
 `SheetScaffold` owns the drag handle, header, close action, scrolling body, and pinned footer or
-header action. Full-height detail and rules sheets fill the graph-owned sheet host. Natural-height
-wallet, asset, and address sheets size to their content. `StackedSheetUnderlay` applies the shared
-scale, blur, and clipping treatment to the preserved parent sheet.
+header action. Every sheet sizes to its content, capped by the host in
+[`design/motion.md`](../../design/motion.md). `StackedSheetUnderlay` applies the shared scale,
+blur, and clipping treatment to the preserved parent sheet.
 
 The application adapters retain all existing behavior:
 

@@ -139,9 +139,9 @@ The following files are generated and must never be hand-edited:
 
 The three `export/*.html` files are inputs replaced by a complete re-export, never edited in place.
 The hand-maintained, non-capture-generated files are component `spec.md` files,
-`components/_template/spec.md`, `navigation.md`, this `README.md`, `UPDATING.md`, `CHANGELOG.md`,
-and `tools/` (with its package lock changed through npm, not by hand). Refresh the exports and
-generated files only with [the fixed procedure](UPDATING.md).
+`components/_template/spec.md`, `navigation.md`, `motion.md`, this `README.md`, `UPDATING.md`,
+`CHANGELOG.md`, and `tools/` (with its package lock changed through npm, not by hand). Refresh the
+exports and generated files only with [the fixed procedure](UPDATING.md).
 
 ## Capture tool first run
 

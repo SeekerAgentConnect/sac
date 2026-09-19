@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -55,7 +54,7 @@ fun SheetScaffold(
     closeTag: String? = null,
     bodySpacing: Dp? = null,
 ) {
-    Box(modifier = modifier.fillMaxWidth()) {
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         if (variant == SheetScaffoldVariant.StackedOverBlurred) {
             Box(
                 modifier =
@@ -93,7 +92,6 @@ fun SheetScaffold(
         Column(
             modifier =
                 Modifier.fillMaxWidth()
-                    .then(if (expandToAvailableHeight) Modifier.fillMaxHeight() else Modifier)
                     .then(
                         if (expandToAvailableHeight) Modifier
                         else Modifier.padding(top = SeekerTheme.spacing.xxxl)

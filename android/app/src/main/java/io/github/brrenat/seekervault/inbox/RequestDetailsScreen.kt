@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,7 +33,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -208,25 +206,19 @@ fun RequestDetailsScreen(
         )
         return
     }
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.request_title)) },
-                actions = { CloseButton(onBack) },
-                expandedHeight = SeekerTheme.dimensions.dp56,
-                windowInsets = WindowInsets(0, 0, 0, 0),
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                    ),
-            )
-        },
-    ) { innerPadding ->
-        Column(Modifier.padding(innerPadding).verticalScroll(rememberScrollState())) {
+    Column(modifier.fillMaxWidth()) {
+        TopAppBar(
+            title = { Text(stringResource(R.string.request_title)) },
+            actions = { CloseButton(onBack) },
+            expandedHeight = SeekerTheme.dimensions.dp56,
+            windowInsets = WindowInsets(0, 0, 0, 0),
+            colors =
+                TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
+        )
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
             val problem =
                 result != null &&
                     (result.delivery == Delivery.Superseded ||
@@ -2070,30 +2062,21 @@ private fun TransferReview(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RequestGoneScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.request_title)) },
-                actions = { CloseButton(onBack) },
-                expandedHeight = SeekerTheme.dimensions.dp56,
-                windowInsets = WindowInsets(0, 0, 0, 0),
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                    ),
-            )
-        },
-    ) { innerPadding ->
+    Column(modifier.fillMaxWidth()) {
+        TopAppBar(
+            title = { Text(stringResource(R.string.request_title)) },
+            actions = { CloseButton(onBack) },
+            expandedHeight = SeekerTheme.dimensions.dp56,
+            windowInsets = WindowInsets(0, 0, 0, 0),
+            colors =
+                TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
+        )
         Text(
             stringResource(R.string.status_gone),
-            modifier =
-                Modifier.padding(innerPadding)
-                    .padding(SeekerTheme.dimensions.dp16)
-                    .testTag(InboxTags.GONE),
+            modifier = Modifier.padding(SeekerTheme.dimensions.dp16).testTag(InboxTags.GONE),
         )
     }
 }
@@ -2120,26 +2103,20 @@ fun NotificationRequestStateScreen(
             NotificationOpenStatus.Revoked -> R.string.notification_open_revoked
             NotificationOpenStatus.Unavailable -> R.string.notification_open_unavailable
         }
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.request_title)) },
-                actions = { CloseButton(onBack) },
-                expandedHeight = SeekerTheme.dimensions.dp56,
-                windowInsets = WindowInsets(0, 0, 0, 0),
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                    ),
-            )
-        },
-    ) { innerPadding ->
+    Column(modifier.fillMaxWidth()) {
+        TopAppBar(
+            title = { Text(stringResource(R.string.request_title)) },
+            actions = { CloseButton(onBack) },
+            expandedHeight = SeekerTheme.dimensions.dp56,
+            windowInsets = WindowInsets(0, 0, 0, 0),
+            colors =
+                TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
+        )
         Column(
-            Modifier.padding(innerPadding).padding(SeekerTheme.dimensions.dp16),
+            Modifier.padding(SeekerTheme.dimensions.dp16),
             verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp16),
         ) {
             if (status == NotificationOpenStatus.Loading) {

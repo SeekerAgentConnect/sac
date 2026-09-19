@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -83,8 +82,8 @@ fun ProposalReviewScreen(
 ) {
     val proposal = review.record.proposal
     val executed = review.record.execution
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-        Column(Modifier.fillMaxSize()) {
+    Box(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+        Column(Modifier.fillMaxWidth()) {
             Row(
                 Modifier.fillMaxWidth()
                     .height(SeekerTheme.dimensions.dp56)
@@ -105,7 +104,7 @@ fun ProposalReviewScreen(
                 CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
             }
             Column(
-                Modifier.fillMaxSize()
+                Modifier.weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
                     .padding(
                         horizontal = SeekerTheme.dimensions.dp16,
