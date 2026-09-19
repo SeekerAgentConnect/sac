@@ -1,31 +1,121 @@
 # Architecture
 
-Seeker Agent Connect has four parts: the agent, the sidecar, the Android app, and the wallet. This page covers what each part owns, how they talk, and which safety rules hold across them. The wire contract is in [`protocol.md`](protocol.md), and the plan in [`RFC.md`](../RFC.md).
+Seeker Agent Connect (SAC) is an Android client for reviewing requests from independent servers and explicitly authorizing supported actions through an external wallet. AI agents are one possible source of requests. CopyTrading and Prediction are example server applications, not required SAC services.
 
-## Components
+This repository contains several independently operated components. Being in the same repository or Docker Compose project does not make a service part of the Android application.
+
+## Component ownership and deployment boundaries
+
+| Layer | Code / component | Responsibility | Required when |
+| --- | --- | --- | --- |
+| SAC application | `android/app` | Connections, unified Inbox, owner inputs, review, policy assessment, local history, synchronization and wallet invocation | Using SAC |
+| SAC UI library | `android/designsystem` | Shared Android theme and UI components | Building the current app |
+| Bundled client integrations | Android `plugins/` contract and `jupiter/` implementations | Prepare and inspect supported operations; the app retains approval, storage and wallet authority | Executing an operation that needs that plugin |
+| Shared protocol | `proto/` | Versioned request, server-manifest and transport contracts | Implementing a compatible client or server |
+| Go Server SDK | `publisher/sdk/` | Backend integration helpers, including private invitations, connection completion and request/results via `sdk.Gateway` | Optional convenience for Go backends |
+| SAC gateway service | `broadcast/` | Public feed publication/read APIs and private invitation, device-binding and request/result routing | `gateway_feed` and `gateway_private` connections |
+| Gateway delivery infrastructure | Centrifugo, Redis, Caddy in `deploy/server/compose.yaml` | Feed streaming/recovery and TLS routing; Redis is a bounded delivery cache, not the request database | The supplied shared-gateway deployment |
+| Optional direct server | `sidecar/` | Durable private requests, pairing, preparation/results and an optional MCP adapter | `direct` connections to this implementation |
+| Demo / reference servers | `publisher/cmd/copytrading`, `publisher/cmd/prediction` | Publish swap signals or discover and publish prediction markets | Running these examples only |
+| Developer tools | `test-agent/`, integration/load harnesses and operator CLIs | Exercise, verify and operate components | Development, testing or operations |
+| External dependencies | MWA-compatible wallet, Solana RPC, Jupiter APIs, optional Firebase/FCM | Signing/submission, chain reads, provider execution data and wake-up delivery | The selected action or delivery feature |
+
+**Two distinctions matter:**
+
+- A **client plugin** is Kotlin code compiled into the Android app. A **server integration** is an independently running backend connected through the protocol. Installing or connecting a server never downloads executable plugin code.
+- The **Go Server SDK exists** inside the publisher module. A separately packaged **Android client SDK does not exist yet**: the Gradle build currently contains `:app` and `:designsystem`. Extracting a reusable Android SDK remains future work.
+
+The shipped CopyTrading and Prediction servers are reference implementations maintained in this repository. They occupy the same architectural position as a third-party server, but are not themselves external vendor services. **Jupiter is the external provider** used by the client integrations and prediction discovery.
+
+## Runtime relationships
 
 ```mermaid
-flowchart LR
-    Agent["Agent<br>(Hermes, test agent)"] -- "MCP over HTTP<br>(MCP token)" --> Sidecar
-    Phone["Seeker app<br>(Android)"] -- "Connect unary + gRPC HTTP/2<br>(phone credential)" --> Sidecar
-    Phone -- "Mobile Wallet Adapter" --> Wallet["Seed Vault Wallet"]
-    Wallet -- "signs and sends" --> Solana[("Solana")]
-    Sidecar -- "reads: blockhash,<br>confirmation, Jupiter" --> Solana
-    Publisher["Publisher template<br>(publisher/)"] -- "PublisherService<br>(gateway credential)" --> Broadcast
-    Broadcast["Broadcast gateway<br>(broadcast/)"] -- "FeedService<br>(no credential)" --> Phone
-    Independent["Independent server<br>(Server SDK)"] -- "PublisherService<br>(server credential)" --> Broadcast
-    Broadcast -- "Invitation + DeviceService<br>(temporary invite / device credential)" --> Phone
-    Strategy["A trader, a script,<br>or a strategy engine"] -- "JSON over HTTP<br>(API token)" --> Publisher
+flowchart TB
+    subgraph sources["Independent request sources"]
+        Backend["Custom backend"]
+        Demo["CopyTrading / Prediction demos"]
+        Agent["AI agent"]
+        Direct["Optional direct sidecar"]
+        Agent --> Direct
+    end
+    subgraph infrastructure["SAC gateway deployment"]
+        Gateway["Shared gateway: broadcast/"]
+        Delivery["Centrifugo + Redis"]
+        Gateway --> Delivery
+    end
+    subgraph client["Android application"]
+        App["Connections, Inbox, review and policy"]
+        Plugin["Bundled action plugins"]
+        App --> Plugin
+    end
+    Backend <-->|"private requests and results"| Gateway
+    Demo -->|"public feed publications"| Gateway
+    Gateway <-->|"reads, private onboarding and results"| App
+    Delivery -->|"public feed updates"| App
+    Direct <-->|"direct requests and results"| App
+    Plugin -->|"prepare execution data"| Provider["Jupiter APIs"]
+    App -->|"explicit wallet interaction"| Wallet["External MWA wallet"]
+    Wallet -->|"transaction submission"| Chain["Solana"]
 ```
 
-| Component | Owns | Never does |
-| --- | --- | --- |
-| **Agent** | Proposing actions and reading their results | Approve, sign, or see the phone's policy |
-| **Sidecar** (`sidecar/`) | The MCP and phone endpoints. From SAW-010 and SAW-011 on, it also holds requests and their states, prepared transactions, results, idempotency records, and pairing; Stage 5.2 adds durable update revisions/cursors and bounded snapshots. | Hold keys, sign, decide for the user, or execute anything on its own after a restart |
-| **Android app** (`android/`) | Connections and their credentials, policies and their assessments, the user's decision, invoking the wallet, results the sidecar hasn't acknowledged yet, and Stage 5.2's minimal server-state cache/sync metadata | Sign without the user's approval, or trust the agent's description over the transaction's contents |
-| **Broadcast gateway** (`broadcast/`) | Public feed publication/read state; from SEE-109, temporary private invitations, minimal server-scoped device bindings, routed common requests and their `RETURN_TO_ORIGIN` results | Create a central SAC user, select a wallet, approve, sign, execute, or let a private binding alter the anonymous feed path |
-| **Publisher templates** (`publisher/`) | From SEE-95, SEE-96 and SEE-108: a developer's or a trader's own server — its feed-audience requests, the revision each is at, what the gateway has confirmed about each, the idempotency keys callers used, its own manifest's revision, and (the discovering one) the provider's markets it is tracking. `/v1/requests` and `sdk.Client.CreateRequest` are the developer surface | Hold anything about a subscriber, read the feed it publishes to (no client for one is compiled for it), deliver anything to a phone, hold a key or sign anything, or publish an opinion about which way a market will go |
-| **Seed Vault Wallet** | Keys, signing, and sending | Know anything about Seeker Agent Connect |
+The diagram shows logical boundaries, not a requirement to deploy everything together. TLS proxies and optional FCM wake-ups are omitted for clarity. The app also performs configured read-only Solana RPC calls where needed to inspect address lookup tables.
+
+## Three connection modes
+
+| Mode | Request source and onboarding | Phone communicates with | Outcome ownership |
+| --- | --- | --- | --- |
+| `direct` | Private sidecar; one-use direct pairing code | That sidecar | Results return to that sidecar |
+| `gateway_feed` | Public publisher; public feed reference | Shared gateway and its feed stream | Owner inputs, decisions and outcomes stay on the device; no result upload to the publisher |
+| `gateway_private` | Independent backend; temporary invitation explicitly confirmed in SAC | Shared gateway invitation/device APIs | Results marked `RETURN_TO_ORIGIN` return through the gateway to the originating backend |
+
+A single app can hold connections of different modes. A shared Inbox does not merge their credentials, privacy rules or execution ownership.
+
+For private gateway onboarding, the backend uses its own server credential to create an invitation, gives the link or QR to its user, and learns the resulting connection ID after confirmation. SAC receives a separate device credential. Another device requires another invitation and binding. The gateway stores server-scoped routing associations, addressed requests and returnable results; it does not create a central SAC user account. See [gateway pairing](wiki/gateway-pairing.md).
+
+The current public feed streaming path uses Centrifugo; the direct path uses the sidecar's update service. Do not assume that every connection mode has the same stream or push implementation.
+
+## What belongs inside the app
+
+The app owns connections and their encrypted credentials, owner-selected wallet authorization, rules, owner inputs, review, approval and local outcomes. Its composition root, [SeekerVaultApplication](../android/app/src/main/java/io/github/brrenat/seekervault/SeekerVaultApplication.kt), currently registers `JupiterSwapPlugin` and `JupiterPredictionPlugin`.
+
+A plugin obtains execution data and inspects it as typed facts. Core applies policy, binds the reviewed content and owner choices, and controls wallet invocation. Neither a server nor a plugin can approve on the owner's behalf. Plugins are selected at build time; an unsupported operation stays unsupported.
+
+The app holds no signing keys. An external wallet performs signing and submission through Mobile Wallet Adapter. Acknowledgement, message signing and direct transfers have their existing core paths; bundled plugins do not imply that every operation is supported by every transport.
+
+Sandbox/Production is an execution environment, separate from the Solana network. Sandbox review ends in simulation without wallet signing or submission; the shipped publisher examples use sandbox. It is not a Jupiter devnet deployment. See [client plugins](wiki/client-plugins.md) and [environments](wiki/environments.md).
+
+## What runs outside the app
+
+- **Shared gateway:** SAC infrastructure serving compatible independent backends. It routes and stores protocol state; it does not own trading strategies, choose owner inputs, approve requests or hold wallet keys.
+- **Direct sidecar:** an optional server implementation for the direct workflow. MCP is an optional adapter over its request core. Feed and gateway-private integrations do not require an agent or this sidecar.
+- **Demo publishers:** separately deployed applications with their own identities, API credentials, databases and publication state. The phone reads their publications through the gateway, not by calling their control APIs. Their business logic is not part of the SAC client or gateway.
+- **Third-party backends:** own their business data and user relationships. They can use the Server SDK and supported protocol without running either demo template.
+- **External providers:** Jupiter supplies operation data, Solana RPC supplies chain reads, the wallet owns signing keys, and Firebase can supply best-effort wake-ups. FCM is a notification dependency, not a source of approval authority.
+
+Public-feed privacy is specific to the feed path. It must not be generalized to private gateway requests, where routing bindings and explicitly returned outcomes are stored by the gateway.
+
+## Deployment map and naming
+
+The deployment already separates the infrastructure from the examples:
+
+| Configuration / directory | Contents |
+| --- | --- |
+| `deploy/server/compose.yaml` | Shared gateway, gateway Caddy proxy, Centrifugo, Redis and optional operator CLI |
+| `deploy/server/compose.demos.yaml` | Optional CopyTrading and Prediction servers, their proxies and CLIs |
+| `deploy/server/compose.direct.yaml` | Separately optional direct sidecar deployment |
+| `gateway/` | Direct-sidecar self-hosting / TLS / OAuth deployment assets; **not** the shared Go gateway |
+| `broadcast/` | The shared Go gateway, including both public feeds and private device routing |
+| `publisher/` | A Go module containing both server templates and reusable Server SDK code |
+
+Use **SAC app**, **shared gateway**, **direct sidecar**, **Server SDK**, **demo publisher**, and **external provider** in architecture discussions. The directory name `broadcast/` is historical and no longer describes all of that service's responsibilities. Likewise, `publisher/` is not exclusively demo code.
+
+Stopping demo publishers does not remove the gateway or existing stored publications. A direct-only deployment does not require the shared gateway, broker, Redis or demo publishers. A gateway-based integration does not require the direct sidecar. See the [operator guide](../deploy/server/README.md).
+
+## Detailed implementation boundaries
+
+The sections below retain implementation and stage history. Stage-qualified statements describe the named stage, not necessarily the current whole system. In particular, direct-sidecar approval/confirmation semantics must not be applied to public-feed execution, and historical “two adapters” descriptions predate gateway-private routing.
+
+The wire contract is in [protocol.md](protocol.md); the unified envelope is described in [common requests](wiki/common-requests.md). Historical planning lives in [RFC.md](../RFC.md).
 
 ### The wallet adapter boundary
 
@@ -191,7 +281,7 @@ flowchart LR
 - **What it is handed is exhaustive:** the connection ID, the operation, the environment, the structured request, and the wallet the owner selected — a public address and a network. No credential, no wallet authorization token, no transport handle, and nothing that can approve or send. `StageBoundaryTest` reads the package's imports against an exact list.
 - **Operations are named at the protocol's own level.** Core says `swap`; a plugin claims `swap`. No provider's name appears in `connections/`, `sync/`, `live/`, `push/`, `policy/`, `transactions/` or `activity/`, and a check fails if one does.
 - **An unserved operation establishes nothing.** No plugin, no preparation, or unreadable bytes all produce unread facts: value moves, nothing is verified, and the verdict can never be `ALLOWED`. Rules written for one thing are never inherited by an operation they were never applied to.
-- **The bundled list is empty at SEE-86.** The boundary lands before anything is written against it, so a swap resolves to "no plugin" and behaves exactly as it did before.
+- **The current build bundles two plugins.** `SeekerVaultApplication` registers `JupiterSwapPlugin` and `JupiterPredictionPlugin`; SEE-86's empty registry was an intermediate stage. Unsupported operations do not load a plugin dynamically.
 
 ### Server manifests and connection modes
 
@@ -569,9 +659,9 @@ semantics. The detailed boundaries and URL formats are in
 
 The two workflows share the sidecar process and the text rules, and nothing else; the production update transport belongs only to durable requests. See [Compatibility with Stage 1](protocol.md#compatibility-with-stage-1).
 
-## Invariants
+## Direct-workflow invariants
 
-These hold across the components, and every stage keeps them:
+These describe the durable direct-sidecar workflow. Manual approval, exact content binding, key isolation and no automatic re-execution also apply to plugin operations. Sidecar approval acknowledgements and direct transfer confirmation states are specific to the direct workflow:
 
 1. **Manual approval, every time.** An `ALLOWED` assessment still waits for the user.
 2. **Approval binds to content.** The user approves a prepared version and its SHA-256, never just a request ID. The phone invokes the wallet only after the sidecar has accepted that approval.
