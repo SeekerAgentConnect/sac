@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,9 +28,11 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import io.github.brrenat.seekervault.designsystem.preview.DesignRef
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 
@@ -44,8 +47,13 @@ fun SheetScaffold(
     variant: SheetScaffoldVariant,
     onClose: () -> Unit,
     body: @Composable ColumnScope.() -> Unit,
-    actions: @Composable RowScope.() -> Unit,
+    actions: (@Composable RowScope.() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    headerAction: (@Composable RowScope.() -> Unit)? = null,
+    header: (@Composable RowScope.() -> Unit)? = null,
+    expandToAvailableHeight: Boolean = false,
+    closeTag: String? = null,
+    bodySpacing: Dp? = null,
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
         if (variant == SheetScaffoldVariant.StackedOverBlurred) {
@@ -85,7 +93,11 @@ fun SheetScaffold(
         Column(
             modifier =
                 Modifier.fillMaxWidth()
-                    .padding(top = SeekerTheme.spacing.xxxl)
+                    .then(if (expandToAvailableHeight) Modifier.fillMaxHeight() else Modifier)
+                    .then(
+                        if (expandToAvailableHeight) Modifier
+                        else Modifier.padding(top = SeekerTheme.spacing.xxxl)
+                    )
                     .clip(RoundedCornerShape(SeekerTheme.radii.sheet))
                     .background(SeekerTheme.colors.surface2)
         ) {
@@ -114,20 +126,26 @@ fun SheetScaffold(
                 horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = title,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                OrganismIconAction(
-                    icon = Icons.Outlined.Close,
-                    contentDescription = "Close",
-                    onClick = onClose,
-                    size = OrganismIconActionSize.Large,
-                    style = OrganismIconActionStyle.Transparent,
-                )
+                if (header == null) {
+                    Text(
+                        text = title,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    headerAction?.invoke(this)
+                    OrganismIconAction(
+                        icon = Icons.Outlined.Close,
+                        contentDescription = "Close",
+                        onClick = onClose,
+                        size = OrganismIconActionSize.Large,
+                        style = OrganismIconActionStyle.Transparent,
+                        modifier = if (closeTag == null) Modifier else Modifier.testTag(closeTag),
+                    )
+                } else {
+                    header.invoke(this)
+                }
             }
             Column(
                 modifier =
@@ -139,22 +157,24 @@ fun SheetScaffold(
                             end = SeekerTheme.spacing.xl,
                             bottom = SeekerTheme.spacing.xxxl,
                         ),
-                verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(bodySpacing ?: SeekerTheme.spacing.lg),
                 content = body,
             )
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .padding(
-                            start = SeekerTheme.spacing.xl,
-                            top = SeekerTheme.spacing.lg,
-                            end = SeekerTheme.spacing.xl,
-                            bottom = SeekerTheme.spacing.xxl,
-                        ),
-                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
-                verticalAlignment = Alignment.CenterVertically,
-                content = actions,
-            )
+            actions?.let {
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(
+                                start = SeekerTheme.spacing.xl,
+                                top = SeekerTheme.spacing.lg,
+                                end = SeekerTheme.spacing.xl,
+                                bottom = SeekerTheme.spacing.xxl,
+                            ),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = it,
+                )
+            }
         }
     }
 }

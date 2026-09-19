@@ -25,7 +25,7 @@ import io.github.brrenat.seekervault.activity.ActivityViewModel
 import io.github.brrenat.seekervault.activity.openLink
 import io.github.brrenat.seekervault.connections.AddConnectionRoute
 import io.github.brrenat.seekervault.connections.Answer
-import io.github.brrenat.seekervault.connections.ConnectionDetailsScreen
+import io.github.brrenat.seekervault.connections.ConnectionDetailLibraryScreen
 import io.github.brrenat.seekervault.connections.ConnectionsUiState
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.connections.HomeRoute
@@ -54,14 +54,14 @@ import io.github.brrenat.seekervault.operations.OperationViewModel
 import io.github.brrenat.seekervault.operations.OperationsUiState
 import io.github.brrenat.seekervault.operations.ProposalReviewScreen
 import io.github.brrenat.seekervault.operations.requiresWalletHandoff
-import io.github.brrenat.seekervault.policy.PolicyAddressEditorScreen
 import io.github.brrenat.seekervault.policy.PolicyAddressKind
+import io.github.brrenat.seekervault.policy.PolicyAddressLibraryScreen
 import io.github.brrenat.seekervault.policy.PolicyAsset
 import io.github.brrenat.seekervault.policy.PolicyAssetEditorKind
-import io.github.brrenat.seekervault.policy.PolicyAssetEditorScreen
+import io.github.brrenat.seekervault.policy.PolicyAssetLibraryScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorDraft
-import io.github.brrenat.seekervault.policy.PolicyEditorScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
+import io.github.brrenat.seekervault.policy.PolicyLibrarySheetScreen
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.ui.SeekerSheet
@@ -344,9 +344,15 @@ fun SeekerVaultApp(
                 motionKey = activeRoute,
                 visible = !closingSheet,
                 promoteFromBackplate = promotedRoute == activeRoute,
+                chrome =
+                    activeRoute is AppSheet.RequestReview ||
+                        (activeRoute is AppSheet.ConnectionRules &&
+                            !policyState.readyForLibrarySheet(activeRoute.connectionId)) ||
+                        (activeRoute is AppSheet.GlobalRules &&
+                            !globalPolicyState.readyForLibrarySheet()),
             ) {
                 when (activeRoute) {
-                    is AppSheet.ConnectionDetail ->
+                    is AppSheet.ConnectionDetail -> {
                         ConnectionDetailsRoute(
                             viewModel = connections,
                             state = state,
@@ -355,12 +361,21 @@ fun SeekerVaultApp(
                             onRules = {
                                 navigator.openConnectionRules(activeRoute.connectionId)
                             },
+                            onInbox = {
+                                resetTransientSheetState()
+                                navigator.selectTab(AppScreen.Inbox)
+                            },
+                            overrideCount = policyState.overrideCount(activeRoute.connectionId),
                             operationRefreshing =
                                 activeRoute.connectionId in operationsState.refreshing,
                             onOperationRefresh = {
                                 operations?.refresh(activeRoute.connectionId)
                             },
                         )
+                        LaunchedEffect(activeRoute.connectionId) {
+                            policy.open(activeRoute.connectionId)
+                        }
+                    }
                     is AppSheet.ConnectionRules -> {
                         val id = activeRoute.connectionId
                         val close = {
@@ -368,7 +383,7 @@ fun SeekerVaultApp(
                             policy.close()
                             pop()
                         }
-                        PolicyEditorScreen(
+                        PolicyLibrarySheetScreen(
                             label = state.connections.firstOrNull { it.id == id }?.label.orEmpty(),
                             state = policyState,
                             onEdit = policy::edit,
@@ -406,7 +421,7 @@ fun SeekerVaultApp(
                             pop()
                             policy.refreshGlobal()
                         }
-                        PolicyEditorScreen(
+                        PolicyLibrarySheetScreen(
                             label = "",
                             state = globalPolicyState,
                             onEdit = globalPolicy::edit,
@@ -428,7 +443,7 @@ fun SeekerVaultApp(
                         LaunchedEffect(Unit) { globalPolicy.openGlobal() }
                     }
                     is AppSheet.AssetEditor -> {
-                        PolicyAssetEditorScreen(
+                        PolicyAssetLibraryScreen(
                             state = policyState,
                             asset =
                                 policyState.connectionAssets().firstOrNull {
@@ -437,13 +452,14 @@ fun SeekerVaultApp(
                             kind = activeRoute.kind.toPolicyKind(),
                             onEdit = policy::edit,
                             onBack = pop,
+                            onEditGlobal = navigator::openGlobalRules,
                         )
                         LaunchedEffect(activeRoute.connectionId) {
                             policy.open(activeRoute.connectionId)
                         }
                     }
                     is AppSheet.AddressEditor -> {
-                        PolicyAddressEditorScreen(
+                        PolicyAddressLibraryScreen(
                             state = policyState,
                             kind = activeRoute.kind.toPolicyKind(),
                             onEdit = policy::edit,
@@ -794,6 +810,8 @@ private fun ConnectionDetailsRoute(
     id: String,
     onBack: () -> Unit,
     onRules: () -> Unit,
+    onInbox: () -> Unit,
+    overrideCount: Int,
     operationRefreshing: Boolean = false,
     onOperationRefresh: () -> Unit = {},
 ) {
@@ -806,7 +824,7 @@ private fun ConnectionDetailsRoute(
         viewModel.refresh(id)
         if (connection.mode == ConnectionMode.GatewayPrivate) onOperationRefresh()
     }
-    ConnectionDetailsScreen(
+    ConnectionDetailLibraryScreen(
         connection = connection,
         refreshing = id in state.refreshing || operationRefreshing,
         disconnect = state.disconnect?.takeIf { it.id == id },
@@ -823,10 +841,33 @@ private fun ConnectionDetailsRoute(
         onDismissDisconnect = viewModel::dismissDisconnect,
         onMessageShown = viewModel::messageShown,
         onRules = onRules,
+        onInbox = onInbox,
+        overrideCount = overrideCount,
         live = state.updates.connections[id],
         support = state.support[id],
-        onEnvironment = { viewModel.setEnvironment(id, it) },
     )
+}
+
+private fun io.github.brrenat.seekervault.policy.PolicyUiState.readyForLibrarySheet(
+    expectedConnectionId: String? = null
+): Boolean =
+    loaded &&
+        unreadable == null &&
+        draft != null &&
+        (expectedConnectionId == null || connectionId == expectedConnectionId)
+
+private fun io.github.brrenat.seekervault.policy.PolicyUiState.overrideCount(
+    expectedConnectionId: String
+): Int {
+    if (connectionId != expectedConnectionId) return 0
+    val rules = (draft as? PolicyEditorDraft.Connection)?.rules ?: return 0
+    return listOf(
+            rules.overrideActions,
+            rules.overrideAssets || rules.limits.any { it.configuresSomething },
+            rules.overrideRecipients,
+            rules.overridePrograms,
+        )
+        .count { it }
 }
 
 @Composable

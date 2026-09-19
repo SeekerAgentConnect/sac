@@ -72,6 +72,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
+import io.github.brrenat.seekervault.designsystem.StackedSheetUnderlay
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import kotlinx.coroutines.delay
 
@@ -407,6 +408,7 @@ fun SeekerSheet(
     visible: Boolean = true,
     promoteFromBackplate: Boolean = false,
     onBackplateClick: (() -> Unit)? = null,
+    chrome: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -450,48 +452,52 @@ fun SeekerSheet(
                 Modifier.fillMaxSize().padding(top = animatedTop, bottom = animatedBottom),
                 contentAlignment = Alignment.BottomCenter,
             ) {
-                Surface(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .then(
-                                if (onBackplateClick == null) Modifier
-                                else
-                                    Modifier.clickable(
-                                        indication = null,
-                                        interactionSource =
-                                            remember {
-                                                MutableInteractionSource()
-                                            },
-                                        onClick = onBackplateClick,
-                                    )
+                if (chrome) {
+                    Surface(
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .then(
+                                    if (onBackplateClick == null) Modifier
+                                    else
+                                        Modifier.clickable(
+                                            indication = null,
+                                            interactionSource =
+                                                remember {
+                                                    MutableInteractionSource()
+                                                },
+                                            onClick = onBackplateClick,
+                                        )
+                                ),
+                        shape =
+                            RoundedCornerShape(
+                                topStart = SeekerTheme.dimensions.dp28,
+                                topEnd = SeekerTheme.dimensions.dp28,
                             ),
-                    shape =
-                        RoundedCornerShape(
-                            topStart = SeekerTheme.dimensions.dp28,
-                            topEnd = SeekerTheme.dimensions.dp28,
-                        ),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shadowElevation = SeekerTheme.dimensions.dp0,
-                    tonalElevation = SeekerTheme.dimensions.dp0,
-                ) {
-                    Column {
-                        Box(
-                            Modifier.fillMaxWidth().height(SeekerTheme.dimensions.dp22),
-                            contentAlignment = Alignment.Center,
-                        ) {
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shadowElevation = SeekerTheme.dimensions.dp0,
+                        tonalElevation = SeekerTheme.dimensions.dp0,
+                    ) {
+                        Column {
                             Box(
-                                Modifier.size(
-                                        width = SeekerTheme.dimensions.dp32,
-                                        height = SeekerTheme.dimensions.dp4,
-                                    )
-                                    .background(
-                                        MaterialTheme.colorScheme.outlineVariant,
-                                        RoundedCornerShape(SeekerTheme.dimensions.dp2),
-                                    )
-                            )
+                                Modifier.fillMaxWidth().height(SeekerTheme.dimensions.dp22),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    Modifier.size(
+                                            width = SeekerTheme.dimensions.dp32,
+                                            height = SeekerTheme.dimensions.dp4,
+                                        )
+                                        .background(
+                                            MaterialTheme.colorScheme.outlineVariant,
+                                            RoundedCornerShape(SeekerTheme.dimensions.dp2),
+                                        )
+                                )
+                            }
+                            Box(Modifier.fillMaxWidth()) { content() }
                         }
-                        Box(Modifier.fillMaxWidth()) { content() }
                     }
+                } else {
+                    Box(Modifier.fillMaxWidth()) { content() }
                 }
             }
         }
@@ -539,7 +545,7 @@ fun SheetBackplate(depth: Int, title: String, onClick: () -> Unit) {
             tween(300, easing = SheetEnterEasing),
             label = "sheetBackplateBottom",
         )
-    Surface(
+    StackedSheetUnderlay(
         modifier =
             Modifier.fillMaxWidth()
                 .fillMaxHeight()
@@ -549,34 +555,38 @@ fun SheetBackplate(depth: Int, title: String, onClick: () -> Unit) {
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
                     onClick = onClick,
-                ),
-        color = SeekerTheme.colors.dim,
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        shape =
-            RoundedCornerShape(
-                topStart = SeekerTheme.dimensions.dp28,
-                topEnd = SeekerTheme.dimensions.dp28,
-            ),
-        shadowElevation = SeekerTheme.dimensions.dp0,
-        tonalElevation = SeekerTheme.dimensions.dp0,
+                )
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Spacer(Modifier.height(SeekerTheme.dimensions.dp9))
-            Box(
-                Modifier.size(
-                        width = SeekerTheme.dimensions.dp32,
-                        height = SeekerTheme.dimensions.dp4,
-                    )
-                    .background(
-                        MaterialTheme.colorScheme.outline,
-                        RoundedCornerShape(SeekerTheme.dimensions.dp2),
-                    )
-            )
-            Text(
-                title,
-                modifier = Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
-                style = MaterialTheme.typography.titleLarge,
-            )
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = SeekerTheme.colors.dim,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            shape =
+                RoundedCornerShape(
+                    topStart = SeekerTheme.dimensions.dp28,
+                    topEnd = SeekerTheme.dimensions.dp28,
+                ),
+            shadowElevation = SeekerTheme.dimensions.dp0,
+            tonalElevation = SeekerTheme.dimensions.dp0,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(SeekerTheme.dimensions.dp9))
+                Box(
+                    Modifier.size(
+                            width = SeekerTheme.dimensions.dp32,
+                            height = SeekerTheme.dimensions.dp4,
+                        )
+                        .background(
+                            MaterialTheme.colorScheme.outline,
+                            RoundedCornerShape(SeekerTheme.dimensions.dp2),
+                        )
+                )
+                Text(
+                    title,
+                    modifier = Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
         }
     }
 }
