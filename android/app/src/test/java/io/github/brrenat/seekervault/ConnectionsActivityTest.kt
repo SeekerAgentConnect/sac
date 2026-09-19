@@ -78,15 +78,19 @@ class ConnectionsActivityTest {
         compose.onNodeWithTag(ConnectionsTags.CONTINUE).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.PAIR).performScrollTo().performClick()
 
-        // The new connection's details replace the Add screen, and survive a rotation.
+        // Pairing returns to Home, as the flow map requires. Details open only from its row.
         val id = server.connections.keys.single()
         val credential = server.connections.getValue(id)
-        compose.onNodeWithTag(ConnectionsTags.field("connectionId")).assertTextContains(id)
+        compose.onNodeWithTag(ConnectionsTags.item(id)).performScrollTo().assertExists()
         compose.onNodeWithText(app.getString(R.string.message_paired, HOST)).assertExists()
         // Let the snackbar go, so it doesn't cover the buttons below.
         compose.mainClock.advanceTimeBy(10_000)
         compose.onNodeWithText(app.getString(R.string.message_paired, HOST)).assertDoesNotExist()
         scenario.recreate()
+        compose
+            .onNodeWithTag(ConnectionsTags.item(id))
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag(ConnectionsTags.field("connectionId")).assertTextContains(id)
 
         compose.onNodeWithTag(ConnectionsTags.RENAME).performScrollTo().performClick()

@@ -1,0 +1,399 @@
+package io.github.brrenat.seekervault
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+
+/** A full-height destination. Tabs are peers; the other screens return to [Home] on Back. */
+sealed interface AppScreen {
+    sealed interface Tab : AppScreen
+
+    data object Home : Tab
+
+    data object Inbox : Tab
+
+    data object Wallet : Tab
+
+    data object Activity : Tab
+
+    data object AddConnection : AppScreen
+
+    /** Retained for the explicit diagnostic activity entry; it has no in-app navigation edge. */
+    data object LiveTest : AppScreen
+}
+
+/** The two request namespaces that can drive the shared review destination. */
+sealed interface ReviewIdentity {
+    val connectionId: String
+    val requestId: String
+
+    data class Private(
+        override val connectionId: String,
+        override val requestId: String,
+    ) : ReviewIdentity {
+        init {
+            requireRouteId("connectionId", connectionId)
+            requireRouteId("requestId", requestId)
+        }
+    }
+
+    data class Signal(
+        override val connectionId: String,
+        override val requestId: String,
+    ) : ReviewIdentity {
+        init {
+            requireRouteId("connectionId", connectionId)
+            requireRouteId("requestId", requestId)
+        }
+    }
+}
+
+/** The design currently specifies one wallet hand-off presentation. */
+enum class WalletHandoffKind {
+    Transfer,
+    Signature,
+    Operation,
+}
+
+enum class AddressEditorKind {
+    Recipient,
+    Program,
+}
+
+enum class AssetEditorKind {
+    Allowlisted,
+    SpendingLimit,
+}
+
+/** A bottom-sheet destination. Every item is immutable route data, never an editor draft. */
+sealed interface AppSheet {
+    data class RequestReview(val identity: ReviewIdentity) : AppSheet
+
+    data class WalletHandoff(
+        val identity: ReviewIdentity,
+        val kind: WalletHandoffKind = WalletHandoffKind.Transfer,
+    ) : AppSheet
+
+    data class ConnectionDetail(val connectionId: String) : AppSheet {
+        init {
+            requireRouteId("connectionId", connectionId)
+        }
+    }
+
+    data class ConnectionRules(val connectionId: String) : AppSheet {
+        init {
+            requireRouteId("connectionId", connectionId)
+        }
+    }
+
+    data object GlobalRules : AppSheet
+
+    /** [assetId] is null for Add and identifies an existing draft row for Edit. */
+    data class AssetEditor(
+        val connectionId: String,
+        val kind: AssetEditorKind,
+        val assetId: String? = null,
+    ) : AppSheet {
+        init {
+            requireRouteId("connectionId", connectionId)
+            assetId?.let { requireRouteId("assetId", it) }
+        }
+    }
+
+    data class AddressEditor(
+        val connectionId: String,
+        val kind: AddressEditorKind,
+    ) : AppSheet {
+        init {
+            requireRouteId("connectionId", connectionId)
+        }
+    }
+}
+
+/** The whole navigation graph at one instant. The root stays mounted while sheets are pushed. */
+data class NavigationState(
+    val screen: AppScreen = AppScreen.Home,
+    val sheets: List<AppSheet> = emptyList(),
+)
+
+/**
+ * The single transition owner for the exported user-flow graph.
+ *
+ * Methods return false instead of mutating when an edge is absent from the flow. That makes an
+ * accidental route from the wrong screen observable without turning an ordinary double tap into a
+ * crash.
+ */
+class AppNavigator(initialState: NavigationState = NavigationState()) {
+    var state by mutableStateOf(initialState.requireValid())
+        private set
+
+    /** Peer-tab navigation replaces the base and closes every sheet. */
+    fun selectTab(tab: AppScreen.Tab): Boolean = replace(NavigationState(tab))
+
+    /** Home's FAB is the only in-app entry to Add connection. */
+    fun openAddConnection(): Boolean {
+        if (state.screen != AppScreen.Home || state.sheets.isNotEmpty()) return false
+        return replace(NavigationState(AppScreen.AddConnection))
+    }
+
+    /** Home carousel tiles and Inbox pending rows share this destination. */
+    fun openReview(identity: ReviewIdentity): Boolean = push(AppSheet.RequestReview(identity))
+
+    /** A production transfer can hand off only from its own review. */
+    fun openWalletHandoff(
+        identity: ReviewIdentity,
+        kind: WalletHandoffKind = WalletHandoffKind.Transfer,
+    ): Boolean = push(AppSheet.WalletHandoff(identity, kind))
+
+    fun openConnectionDetail(connectionId: String): Boolean =
+        push(AppSheet.ConnectionDetail(connectionId))
+
+    fun openConnectionRules(connectionId: String): Boolean =
+        push(AppSheet.ConnectionRules(connectionId))
+
+    fun openGlobalRules(): Boolean = push(AppSheet.GlobalRules)
+
+    fun openAssetEditor(
+        connectionId: String,
+        kind: AssetEditorKind,
+        assetId: String? = null,
+    ): Boolean = push(AppSheet.AssetEditor(connectionId, kind, assetId))
+
+    fun openAddressEditor(connectionId: String, kind: AddressEditorKind): Boolean =
+        push(AppSheet.AddressEditor(connectionId, kind))
+
+    /**
+     * Finishes an answered review from either the review itself or its hand-off. Leaving a hand-off
+     * without answering uses [back] instead and therefore preserves the review.
+     */
+    fun closeReview(identity: ReviewIdentity): Boolean {
+        val review = state.sheets.firstOrNull() as? AppSheet.RequestReview ?: return false
+        if (review.identity != identity) return false
+        if (
+            state.sheets.size == 2 &&
+                (state.sheets.lastOrNull() as? AppSheet.WalletHandoff)?.identity != identity
+        ) {
+            return false
+        }
+        if (state.sheets.size !in 1..2) return false
+        return replace(state.copy(sheets = emptyList()))
+    }
+
+    /** Pops one sheet, or returns a non-tab screen to Home. Back on a tab is left to Android. */
+    fun back(): Boolean =
+        when {
+            state.sheets.isNotEmpty() -> replace(state.copy(sheets = state.sheets.dropLast(1)))
+            state.screen !is AppScreen.Tab -> replace(NavigationState())
+            else -> false
+        }
+
+    private fun push(sheet: AppSheet): Boolean {
+        if (!state.canPush(sheet)) return false
+        return replace(state.copy(sheets = state.sheets + sheet))
+    }
+
+    private fun replace(next: NavigationState): Boolean {
+        if (state == next) return false
+        state = next
+        return true
+    }
+
+    companion object {
+        /** Process-restorable representation containing only destination tags and route IDs. */
+        val Saver: Saver<AppNavigator, List<String>> =
+            Saver(
+                save = { encodeNavigationState(it.state) },
+                restore = { saved ->
+                    decodeNavigationState(saved)?.let { restored -> AppNavigator(restored) }
+                },
+            )
+    }
+}
+
+@Composable
+fun rememberAppNavigator(initialState: NavigationState = NavigationState()): AppNavigator =
+    rememberSaveable(saver = AppNavigator.Saver) { AppNavigator(initialState) }
+
+private fun NavigationState.canPush(sheet: AppSheet): Boolean =
+    when (sheet) {
+        is AppSheet.RequestReview ->
+            sheets.isEmpty() && (screen == AppScreen.Home || screen == AppScreen.Inbox)
+        is AppSheet.WalletHandoff ->
+            sheets.size == 1 &&
+                (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity
+        is AppSheet.ConnectionDetail -> sheets.isEmpty() && screen == AppScreen.Home
+        is AppSheet.ConnectionRules ->
+            sheets.size == 1 &&
+                (sheets.single() as? AppSheet.ConnectionDetail)?.connectionId == sheet.connectionId
+        AppSheet.GlobalRules ->
+            (sheets.isEmpty() && screen == AppScreen.Home) ||
+                (sheets.size == 2 && sheets.last() is AppSheet.ConnectionRules)
+        is AppSheet.AssetEditor ->
+            sheets.size == 2 &&
+                (sheets.last() as? AppSheet.ConnectionRules)?.connectionId == sheet.connectionId
+        is AppSheet.AddressEditor ->
+            sheets.size == 2 &&
+                (sheets.last() as? AppSheet.ConnectionRules)?.connectionId == sheet.connectionId
+    }
+
+private fun NavigationState.requireValid(): NavigationState {
+    var rebuilt = NavigationState(screen)
+    for (sheet in sheets) {
+        require(rebuilt.canPush(sheet)) { "Invalid navigation stack: $this" }
+        rebuilt = rebuilt.copy(sheets = rebuilt.sheets + sheet)
+    }
+    return this
+}
+
+private fun requireRouteId(name: String, value: String) {
+    require(value.isNotBlank()) { "$name must not be blank" }
+}
+
+internal fun encodeNavigationState(state: NavigationState): List<String> = buildList {
+    add(SAVE_VERSION)
+    add(state.screen.savedTag())
+    state.sheets.forEach { sheet ->
+        when (sheet) {
+            is AppSheet.RequestReview -> {
+                add(SHEET_REVIEW)
+                addIdentity(sheet.identity)
+            }
+            is AppSheet.WalletHandoff -> {
+                add(SHEET_HANDOFF)
+                addIdentity(sheet.identity)
+                add(sheet.kind.name)
+            }
+            is AppSheet.ConnectionDetail -> {
+                add(SHEET_DETAIL)
+                add(sheet.connectionId)
+            }
+            is AppSheet.ConnectionRules -> {
+                add(SHEET_RULES)
+                add(sheet.connectionId)
+            }
+            AppSheet.GlobalRules -> add(SHEET_GLOBAL_RULES)
+            is AppSheet.AssetEditor -> {
+                add(SHEET_ASSET)
+                add(sheet.connectionId)
+                add(sheet.kind.name)
+                add(if (sheet.assetId == null) ABSENT else PRESENT)
+                sheet.assetId?.let(::add)
+            }
+            is AppSheet.AddressEditor -> {
+                add(SHEET_ADDRESS)
+                add(sheet.connectionId)
+                add(sheet.kind.name)
+            }
+        }
+    }
+}
+
+internal fun decodeNavigationState(saved: List<String>): NavigationState? = runCatching {
+    val cursor = SavedCursor(saved)
+    check(cursor.next() == SAVE_VERSION)
+    var restored = NavigationState(cursor.next().restoredScreen())
+    while (cursor.hasNext()) {
+        val sheet =
+            when (cursor.next()) {
+                SHEET_REVIEW -> AppSheet.RequestReview(cursor.nextIdentity())
+                SHEET_HANDOFF ->
+                    AppSheet.WalletHandoff(
+                        identity = cursor.nextIdentity(),
+                        kind = enumValueOf(cursor.next()),
+                    )
+                SHEET_DETAIL -> AppSheet.ConnectionDetail(cursor.next())
+                SHEET_RULES -> AppSheet.ConnectionRules(cursor.next())
+                SHEET_GLOBAL_RULES -> AppSheet.GlobalRules
+                SHEET_ASSET -> {
+                    val connectionId = cursor.next()
+                    val kind = enumValueOf<AssetEditorKind>(cursor.next())
+                    val assetId =
+                        when (cursor.next()) {
+                            ABSENT -> null
+                            PRESENT -> cursor.next()
+                            else -> error("Unknown optional route value")
+                        }
+                    AppSheet.AssetEditor(connectionId, kind, assetId)
+                }
+                SHEET_ADDRESS -> AppSheet.AddressEditor(cursor.next(), enumValueOf(cursor.next()))
+                else -> error("Unknown saved sheet")
+            }
+        check(restored.canPush(sheet))
+        restored = restored.copy(sheets = restored.sheets + sheet)
+    }
+    restored
+}
+    .getOrNull()
+
+private fun MutableList<String>.addIdentity(identity: ReviewIdentity) {
+    add(
+        when (identity) {
+            is ReviewIdentity.Private -> IDENTITY_PRIVATE
+            is ReviewIdentity.Signal -> IDENTITY_SIGNAL
+        }
+    )
+    add(identity.connectionId)
+    add(identity.requestId)
+}
+
+private fun AppScreen.savedTag(): String =
+    when (this) {
+        AppScreen.Home -> SCREEN_HOME
+        AppScreen.Inbox -> SCREEN_INBOX
+        AppScreen.Wallet -> SCREEN_WALLET
+        AppScreen.Activity -> SCREEN_ACTIVITY
+        AppScreen.AddConnection -> SCREEN_ADD_CONNECTION
+        AppScreen.LiveTest -> SCREEN_LIVE_TEST
+    }
+
+private fun String.restoredScreen(): AppScreen =
+    when (this) {
+        SCREEN_HOME -> AppScreen.Home
+        SCREEN_INBOX -> AppScreen.Inbox
+        SCREEN_WALLET -> AppScreen.Wallet
+        SCREEN_ACTIVITY -> AppScreen.Activity
+        SCREEN_ADD_CONNECTION -> AppScreen.AddConnection
+        SCREEN_LIVE_TEST -> AppScreen.LiveTest
+        else -> error("Unknown saved screen")
+    }
+
+private class SavedCursor(private val values: List<String>) {
+    private var index = 0
+
+    fun hasNext(): Boolean = index < values.size
+
+    fun next(): String = values.getOrElse(index++) { error("Incomplete saved navigation state") }
+
+    fun nextIdentity(): ReviewIdentity {
+        val kind = next()
+        val connectionId = next()
+        val requestId = next()
+        return when (kind) {
+            IDENTITY_PRIVATE -> ReviewIdentity.Private(connectionId, requestId)
+            IDENTITY_SIGNAL -> ReviewIdentity.Signal(connectionId, requestId)
+            else -> error("Unknown saved review identity")
+        }
+    }
+}
+
+private const val SAVE_VERSION = "1"
+private const val SCREEN_HOME = "home"
+private const val SCREEN_INBOX = "inbox"
+private const val SCREEN_WALLET = "wallet"
+private const val SCREEN_ACTIVITY = "activity"
+private const val SCREEN_ADD_CONNECTION = "add_connection"
+private const val SCREEN_LIVE_TEST = "live_test"
+private const val SHEET_REVIEW = "review"
+private const val SHEET_HANDOFF = "wallet_handoff"
+private const val SHEET_DETAIL = "connection_detail"
+private const val SHEET_RULES = "connection_rules"
+private const val SHEET_GLOBAL_RULES = "global_rules"
+private const val SHEET_ASSET = "asset_editor"
+private const val SHEET_ADDRESS = "address_editor"
+private const val IDENTITY_PRIVATE = "private"
+private const val IDENTITY_SIGNAL = "signal"
+private const val ABSENT = "absent"
+private const val PRESENT = "present"

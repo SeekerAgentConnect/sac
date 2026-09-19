@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -22,6 +23,7 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.inbox.InboxTags
 import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
+import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
@@ -48,7 +50,6 @@ class InboxActivityTest {
     private val app = ApplicationProvider.getApplicationContext<SeekerVaultApplication>()
     private val gateway = FakeConnectionGateway()
     private val server = gateway.serve(URL)
-    private val other = gateway.serve(OTHER_URL)
     private val key = softwareKey()
     private val adapter = FakeWalletAdapter()
     private var scenario: ActivityScenario<MainActivity>? = null
@@ -136,24 +137,16 @@ class InboxActivityTest {
     }
 
     @Test
-    fun aConnectionsDetailsOpenItsOwnRequestsOnly() {
+    fun connectionDetailsExposeRulesWithoutAnUndesignedInboxDrillIn() {
         val home = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
-        val vps = runBlocking { app.connectionRepository.pair(other.issue(OTHER_URL)) }
-        val mine = server.addPending(home.id, text = "For home")
-        val theirs = other.addPending(vps.id, text = "For the VPS")
-        runBlocking { app.connectionRepository.refresh(home.id) }
+        server.addPending(home.id, text = "For home")
         launch()
         compose
             .onNodeWithTag(ConnectionsTags.item(home.id))
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
-        compose.onNodeWithTag(ConnectionsTags.PENDING).performScrollTo().performClick()
-        compose
-            .onNodeWithTag(InboxTags.item(RequestKey(home.id, mine.ref.requestId)))
-            .assertExists()
-        compose
-            .onNodeWithTag(InboxTags.item(RequestKey(vps.id, theirs.ref.requestId)))
-            .assertDoesNotExist()
+        compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().assertExists()
+        compose.onNodeWithTag(ConnectionsTags.PENDING).assertDoesNotExist()
     }
 
     @Test
@@ -213,6 +206,14 @@ class InboxActivityTest {
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag(InboxTags.APPROVE).performClick()
         compose.waitForIdle()
+        compose.onNodeWithTag(AppNavigationTags.WALLET_HANDOFF).assertExists()
+        assertEquals(
+            RequestState.REQUEST_STATE_PENDING,
+            server.stateOf(connection.id, request.ref.requestId),
+        )
+        assertTrue(adapter.signings.isEmpty())
+        compose.onNodeWithText("Sign and send").performClick()
+        compose.waitForIdle()
         // The approval has gone, and the message is with the wallet.
         assertEquals(1, adapter.signings.size)
         assertEquals(
@@ -224,7 +225,9 @@ class InboxActivityTest {
         scenario.recreate()
         compose.waitForIdle()
 
-        // The request is still there, and the wallet was not asked a second time.
+        // The request is still in History, and the wallet was not asked a second time.
+        compose.onNodeWithText("History").performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).performClick()
         compose.onNodeWithTag(InboxTags.STATUS).assertExists()
         assertEquals(1, adapter.signings.size)
         assertEquals(
@@ -289,6 +292,44 @@ class InboxActivityTest {
         compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performClick()
         compose.waitForIdle()
 
+        // Approve first opens the explicit wallet hand-off over the still-pending review. Back
+        // reveals that same review without sending or answering anything.
+        compose.onNodeWithTag(AppNavigationTags.WALLET_HANDOFF).assertExists()
+        assertEquals(
+            RequestState.REQUEST_STATE_PENDING,
+            server.stateOf(connection.id, request.ref.requestId),
+        )
+        assertTrue(adapter.sendings.isEmpty())
+        scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.mainClock.advanceTimeBy(240)
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertExists()
+        assertEquals(
+            RequestState.REQUEST_STATE_PENDING,
+            server.stateOf(connection.id, request.ref.requestId),
+        )
+        compose.mainClock.advanceTimeBy(320)
+        compose.waitForIdle()
+
+        // The named non-answer exit has the same semantics as Back.
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performClick()
+        compose
+            .onNodeWithText("Leave without answering")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(300)
+        compose.waitForIdle()
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithTag(InboxTags.TRANSFER_APPROVE).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertExists()
+        assertEquals(
+            RequestState.REQUEST_STATE_PENDING,
+            server.stateOf(connection.id, request.ref.requestId),
+        )
+
+        compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).performClick()
+        compose.onNodeWithText("Sign and send").performClick()
+        compose.waitForIdle()
+
         // The approval was accepted before the wallet was opened, and the wallet got the bytes.
         assertEquals(
             RequestState.REQUEST_STATE_PROCESSING,
@@ -322,6 +363,5 @@ class InboxActivityTest {
     private companion object {
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
         const val URL = "https://mac.tailnet.ts.net"
-        const val OTHER_URL = "https://vps.example.com"
     }
 }

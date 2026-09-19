@@ -61,14 +61,14 @@ class WalletActivityTest {
     private fun launch() = ActivityScenario.launch(MainActivity::class.java).also { scenario = it }
 
     @Test
-    fun systemBackFromARootDestinationReturnsHome() {
+    fun systemBackDoesNotReinterpretAPeerTabAsHome() {
         val scenario = launch()
         compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
         compose.onNodeWithTag(WalletTags.STATUS).assertExists()
 
         scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
-        compose.onNodeWithTag(ConnectionsTags.WALLET).assertExists()
+        compose.onNodeWithTag(WalletTags.STATUS).assertExists()
         assertEquals(Lifecycle.State.RESUMED, scenario.state)
     }
 

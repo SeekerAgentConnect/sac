@@ -123,6 +123,8 @@ fun PolicyEditorScreen(
     onClose: () -> Unit,
     closeRequest: Int = 0,
     onCloseRequestCancelled: () -> Unit = {},
+    onOpenAsset: (PolicyAsset?, PolicyAssetEditorKind) -> Unit = { _, _ -> },
+    onOpenAddress: (PolicyAddressKind) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -225,6 +227,8 @@ fun PolicyEditorScreen(
                             onOpenGlobal,
                             onSave,
                             leave,
+                            onOpenAsset,
+                            onOpenAddress,
                         )
                 }
             }
@@ -620,6 +624,8 @@ private fun ConnectionEditor(
     onOpenGlobal: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
+    onOpenAsset: (PolicyAsset?, PolicyAssetEditorKind) -> Unit,
+    onOpenAddress: (PolicyAddressKind) -> Unit,
 ) {
     val draft = (state.draft as? PolicyEditorDraft.Connection)?.rules ?: return
     val review = remember(draft) { draft.review(Instant.EPOCH) }
@@ -699,6 +705,7 @@ private fun ConnectionEditor(
         globalUnreadable = state.globalUnreadable != null,
         review = review,
         onEdit = edit,
+        onOpenAsset = onOpenAsset,
     )
     OverrideSelector(
         title = R.string.policy_section_recipients,
@@ -731,6 +738,7 @@ private fun ConnectionEditor(
             onRestrict = { edit(draft.copy(restrictRecipients = it)) },
             onChange = { edit(draft.copy(recipients = it)) },
             showHeader = false,
+            onAdd = { onOpenAddress(PolicyAddressKind.Recipient) },
         )
     }
     OverrideSelector(
@@ -764,6 +772,7 @@ private fun ConnectionEditor(
             onRestrict = { edit(draft.copy(restrictPrograms = it)) },
             onChange = { edit(draft.copy(programs = it)) },
             showHeader = false,
+            onAdd = { onOpenAddress(PolicyAddressKind.Program) },
         )
     }
 
@@ -935,6 +944,7 @@ private fun ConnectionAssets(
     globalUnreadable: Boolean,
     review: ConnectionDraftReview,
     onEdit: (ConnectionPolicyDraft) -> Unit,
+    onOpenAsset: (PolicyAsset?, PolicyAssetEditorKind) -> Unit,
 ) {
     OverrideSelector(
         title = R.string.policy_section_assets,
@@ -968,8 +978,28 @@ private fun ConnectionAssets(
             for (asset in draft.assets) {
                 val label = assetLabel(asset)
                 val removeDescription = stringResource(R.string.policy_asset_remove, label)
+                val local = draft.limits.firstOrNull { it.asset == asset }
+                val asAsset = local?.asAssetDraft() ?: AssetDraft(asset.network, asset.mint)
+                val inherited = global?.limitsFor(asset)
+                val perOperation =
+                    if (local?.overridePerOperation == true) local.perOperation
+                    else inherited?.perOperation?.let { amountText(it, asAsset) }.orEmpty()
+                val daily = local?.daily.orEmpty()
                 ListItem(
                     headlineContent = { Text(label) },
+                    supportingContent = {
+                        Text(
+                            stringResource(
+                                R.string.policy_connection_asset_limits,
+                                perOperation.ifBlank {
+                                    stringResource(R.string.policy_effective_not_checked)
+                                },
+                                daily.ifBlank {
+                                    stringResource(R.string.policy_effective_not_checked)
+                                },
+                            )
+                        )
+                    },
                     trailingContent = {
                         NeutralPolicyButton(
                             onClick = { onEdit(draft.copy(assets = draft.assets - asset)) },
@@ -981,41 +1011,35 @@ private fun ConnectionAssets(
                             Text(stringResource(R.string.policy_remove))
                         }
                     },
+                    modifier =
+                        Modifier.clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                role = Role.Button,
+                                onClick = {
+                                    onOpenAsset(asset, PolicyAssetEditorKind.Allowlisted)
+                                },
+                            )
+                            .testTag(PolicyTags.connectionAsset(asset)),
                     colors = seekerListItemColors(),
                 )
             }
             AddPolicyAssetButton(
                 tag = PolicyTags.ADD_ALLOWED_ASSET,
-                listed = draft.assets,
-                onAdd = { onEdit(draft.copy(assets = draft.assets + it)) },
+                onOpen = { onOpenAsset(null, PolicyAssetEditorKind.Allowlisted) },
             )
         }
     }
-    ConnectionThresholds(draft, global, globalUnreadable, review, onEdit)
+    ConnectionThresholds(draft, global, globalUnreadable, review, onOpenAsset)
 }
 
 @Composable
-private fun AddPolicyAssetButton(
-    tag: String,
-    listed: List<PolicyAsset>,
-    onAdd: (PolicyAsset) -> Unit,
-) {
-    var adding by rememberSaveable { mutableStateOf(false) }
+private fun AddPolicyAssetButton(tag: String, onOpen: () -> Unit) {
     NeutralPolicyButton(
-        onClick = { adding = true },
+        onClick = onOpen,
         modifier = Modifier.padding(SeekerTheme.dimensions.dp16).testTag(tag),
     ) {
         Text(stringResource(R.string.policy_add_asset))
-    }
-    if (adding) {
-        AddAsset(
-            listed = listed.map { AssetDraft(it.network, it.mint) },
-            onAdd = {
-                onAdd(it.asset)
-                adding = false
-            },
-            onDismiss = { adding = false },
-        )
     }
 }
 
@@ -1025,7 +1049,7 @@ private fun ConnectionThresholds(
     global: GlobalPolicy?,
     globalUnreadable: Boolean,
     review: ConnectionDraftReview,
-    onEdit: (ConnectionPolicyDraft) -> Unit,
+    onOpenAsset: (PolicyAsset?, PolicyAssetEditorKind) -> Unit,
 ) {
     Text(
         stringResource(R.string.policy_connection_thresholds),
@@ -1046,127 +1070,37 @@ private fun ConnectionThresholds(
     assets += global?.limits.orEmpty().keys
     assets += draft.assets
     assets += draft.limits.map { it.asset }
-    val problems = (review as? ConnectionDraftReview.Problems)?.assets.orEmpty()
-    for (asset in assets) {
-        val index = draft.limits.indexOfFirst { it.asset == asset }
-        val local = draft.limits.getOrNull(index) ?: ConnectionAssetDraft(asset.network, asset.mint)
-        val rowProblem = problems[index] ?: AssetProblems()
-        val asAsset = local.asAssetDraft()
-        SectionGap(Modifier.padding(vertical = SeekerTheme.dimensions.dp8))
-        Text(
-            assetLabel(asset),
-            style = MaterialTheme.typography.titleSmall,
-            modifier =
-                Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
-                    .testTag(PolicyTags.connectionAsset(asset)),
-        )
-        val inherited = global?.limitsFor(asset)?.perOperation
-        val localPerOperation =
-            (readAmount(local.perOperation, local.decimals) as? AmountEntry.Amount)?.baseUnits
-        val effectivePerOperation = if (local.overridePerOperation) localPerOperation else inherited
-        val effectivePerOperationSource =
-            when {
-                local.overridePerOperation -> RuleSource.ConnectionOverride
-                inherited != null -> RuleSource.Global
-                else -> RuleSource.NotConfigured
-            }
-        if (local.overridePerOperation || !globalUnreadable) {
-            Text(
-                stringResource(
-                    R.string.policy_effective_per_request,
-                    effectivePerOperation?.let { amountText(it, asAsset) }
-                        ?: stringResource(R.string.policy_effective_not_checked),
-                    sourceText(effectivePerOperationSource),
-                ),
-                modifier =
-                    Modifier.padding(
-                        horizontal = SeekerTheme.dimensions.dp16,
-                        vertical = SeekerTheme.dimensions.dp4,
-                    ),
-            )
-        }
-        Choice(
-            R.string.policy_use_global_per_request,
-            !local.overridePerOperation,
-            PolicyTags.inheritPerOperation(asset),
-        ) {
-            updateConnectionLimit(
-                draft,
-                local.copy(overridePerOperation = false, perOperation = ""),
-                onEdit,
-            )
-        }
-        Choice(
-            R.string.policy_override_per_request,
-            local.overridePerOperation,
-            PolicyTags.overridePerOperation(asset),
-        ) {
-            updateConnectionLimit(draft, local.copy(overridePerOperation = true), onEdit)
-        }
-        if (local.overridePerOperation) {
-            Amount(
-                tag = PolicyTags.connectionPerOperation(asset),
-                value = local.perOperation,
-                label =
-                    if (asset.mint == null) R.string.policy_per_operation_sol
-                    else R.string.policy_per_operation_units,
-                asset = asAsset,
-                problem = rowProblem.perOperation,
-                onChange = {
-                    updateConnectionLimit(draft, local.copy(perOperation = it), onEdit)
-                },
-            )
-            if (local.perOperation.isBlank()) Note(R.string.policy_local_per_request_none)
-        }
-        val globalDaily = global?.limitsFor(asset)?.daily
-        if (!globalUnreadable) {
-            Text(
-                stringResource(
-                    R.string.policy_global_daily_context,
-                    globalDaily?.let { amountText(it, asAsset) }
-                        ?: stringResource(R.string.policy_effective_not_checked),
-                    sourceText(
-                        if (globalDaily == null) RuleSource.NotConfigured else RuleSource.Global
-                    ),
-                ),
-                modifier =
-                    Modifier.padding(
-                            horizontal = SeekerTheme.dimensions.dp16,
-                            vertical = SeekerTheme.dimensions.dp4,
-                        )
-                        .testTag(PolicyTags.globalDaily(asset)),
-            )
-        }
-        Amount(
-            tag = PolicyTags.connectionDaily(asset),
-            value = local.daily,
-            label =
-                if (asset.mint == null) R.string.policy_connection_daily_sol
-                else R.string.policy_connection_daily_units,
-            asset = asAsset,
-            problem = rowProblem.daily,
-            onChange = { updateConnectionLimit(draft, local.copy(daily = it), onEdit) },
-        )
-        val localDaily = (readAmount(local.daily, local.decimals) as? AmountEntry.Amount)?.baseUnits
-        Text(
-            stringResource(
-                R.string.policy_connection_daily_effective,
-                localDaily?.let { amountText(it, asAsset) }
-                    ?: stringResource(R.string.policy_effective_not_checked),
-                sourceText(
-                    if (localDaily == null) RuleSource.NotConfigured
-                    else RuleSource.ConnectionOverride
-                ),
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            modifier =
-                Modifier.padding(
-                        horizontal = SeekerTheme.dimensions.dp16,
-                        vertical = SeekerTheme.dimensions.dp4,
+    for (asset in assets.filterNot { it in draft.assets }) {
+        val local = draft.limits.firstOrNull { it.asset == asset }
+        val asAsset = local?.asAssetDraft() ?: AssetDraft(asset.network, asset.mint)
+        val inherited = global?.limitsFor(asset)
+        val perOperation =
+            if (local?.overridePerOperation == true) local.perOperation
+            else inherited?.perOperation?.let { amountText(it, asAsset) }.orEmpty()
+        val daily = local?.daily.orEmpty()
+        ListItem(
+            headlineContent = { Text(assetLabel(asset)) },
+            supportingContent = {
+                Text(
+                    stringResource(
+                        R.string.policy_connection_asset_limits,
+                        perOperation.ifBlank {
+                            stringResource(R.string.policy_effective_not_checked)
+                        },
+                        daily.ifBlank { stringResource(R.string.policy_effective_not_checked) },
                     )
-                    .testTag(PolicyTags.connectionDailySource(asset)),
+                )
+            },
+            modifier =
+                Modifier.clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        role = Role.Button,
+                        onClick = { onOpenAsset(asset, PolicyAssetEditorKind.SpendingLimit) },
+                    )
+                    .testTag(PolicyTags.connectionAsset(asset)),
+            colors = seekerListItemColors(),
         )
-        if (rowProblem.dailyBelowPerOperation) Note(R.string.policy_daily_below)
     }
     if (
         (review as? ConnectionDraftReview.Problems)
@@ -1182,22 +1116,10 @@ private fun ConnectionThresholds(
     }
     AddPolicyAssetButton(
         tag = PolicyTags.ADD_LIMIT_ASSET,
-        listed = assets.toList(),
-        onAdd = {
-            onEdit(draft.copy(limits = draft.limits + ConnectionAssetDraft(it.network, it.mint)))
-        },
+        onOpen = { onOpenAsset(null, PolicyAssetEditorKind.SpendingLimit) },
     )
+    if (globalUnreadable) Note(R.string.policy_global_context_unreadable)
     if (assets.any { it.mint != null }) Note(R.string.policy_token_units)
-}
-
-private fun updateConnectionLimit(
-    draft: ConnectionPolicyDraft,
-    value: ConnectionAssetDraft,
-    onEdit: (ConnectionPolicyDraft) -> Unit,
-) {
-    val without = draft.limits.filterNot { it.asset == value.asset }
-    val limits = if (value.configuresSomething) without + value else without
-    onEdit(draft.copy(limits = limits))
 }
 
 @Composable
@@ -1811,6 +1733,375 @@ private fun AddAsset(
     }
 }
 
+/** The two connection-owned address editors represented by the typed navigation graph. */
+enum class PolicyAddressKind {
+    Recipient,
+    Program,
+}
+
+/** Whether an asset editor was opened from the allowlist or the independent limits section. */
+enum class PolicyAssetEditorKind {
+    Allowlisted,
+    SpendingLimit,
+}
+
+/**
+ * Edits one connection asset in its own sheet destination.
+ *
+ * Changes stay local to this destination until Save. Closing therefore reveals the unchanged
+ * connection-rules sheet underneath, while Save updates that sheet's existing ViewModel draft.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PolicyAssetEditorScreen(
+    state: PolicyUiState,
+    asset: PolicyAsset?,
+    kind: PolicyAssetEditorKind,
+    onEdit: (PolicyEditorDraft) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val target = asset
+    val draft = (state.draft as? PolicyEditorDraft.Connection)?.rules
+    val stored = draft?.limits?.firstOrNull { it.asset == target }
+    var token by rememberSaveable(target, kind) { mutableStateOf(target?.mint != null) }
+    var mint by rememberSaveable(target, kind) { mutableStateOf(target?.mint.orEmpty()) }
+    var network by
+        rememberSaveable(target, kind) {
+            mutableStateOf(target?.network ?: Network.NETWORK_MAINNET)
+        }
+    var overridePerOperation by
+        rememberSaveable(target, stored, kind) {
+            mutableStateOf(stored?.overridePerOperation ?: false)
+        }
+    var perOperation by
+        rememberSaveable(target, stored, kind) {
+            mutableStateOf(stored?.perOperation.orEmpty())
+        }
+    var daily by rememberSaveable(target, stored, kind) { mutableStateOf(stored?.daily.orEmpty()) }
+    var identityProblem by remember { mutableStateOf<Int?>(null) }
+    val editing = target != null
+    val candidate = AssetDraft(network, mint.trim().takeIf { token }, perOperation, daily)
+    val problems = problemsOf(candidate)
+    val perOperationProblem = problems.perOperation.takeIf { overridePerOperation }
+    val validThresholds =
+        perOperationProblem == null &&
+            problems.daily == null &&
+            !(overridePerOperation && problems.dailyBelowPerOperation)
+
+    BackHandler(onBack = onBack)
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        stringResource(
+                            if (editing) R.string.policy_asset_edit_title
+                            else R.string.policy_asset_dialog_title
+                        )
+                    )
+                },
+                actions = {
+                    PrimaryPolicyButton(
+                        onClick = {
+                            val current = draft ?: return@PrimaryPolicyButton
+                            val asset = candidate.asset
+                            identityProblem =
+                                when {
+                                    token && !isSolanaAddress(asset.mint.orEmpty()) ->
+                                        R.string.policy_address_invalid
+                                    (current.assets + current.limits.map { it.asset }).any {
+                                        it != target && it == asset
+                                    } -> R.string.policy_address_listed
+                                    else -> null
+                                }
+                            if (identityProblem != null || !validThresholds) {
+                                return@PrimaryPolicyButton
+                            }
+                            val allowed =
+                                when {
+                                    kind == PolicyAssetEditorKind.Allowlisted && target == null ->
+                                        current.assets + asset
+                                    kind == PolicyAssetEditorKind.Allowlisted &&
+                                        target in current.assets ->
+                                        current.assets.map { if (it == target) asset else it }
+                                    else -> current.assets
+                                }.distinct()
+                            val nextLimit =
+                                ConnectionAssetDraft(
+                                    network = asset.network,
+                                    mint = asset.mint,
+                                    overridePerOperation = overridePerOperation,
+                                    perOperation = if (overridePerOperation) perOperation else "",
+                                    daily = daily,
+                                )
+                            val withoutEdited =
+                                current.limits.filterNot { it.asset == target || it.asset == asset }
+                            val limits =
+                                if (nextLimit.configuresSomething) withoutEdited + nextLimit
+                                else withoutEdited
+                            onEdit(
+                                PolicyEditorDraft.Connection(
+                                    current.copy(assets = allowed, limits = limits)
+                                )
+                            )
+                            onBack()
+                        },
+                        enabled = draft != null && validThresholds,
+                        modifier = Modifier.testTag(PolicyTags.DIALOG_ADD),
+                    ) {
+                        Text(stringResource(R.string.policy_save))
+                    }
+                    CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
+                },
+                expandedHeight = SeekerTheme.dimensions.dp56,
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            Modifier.padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .fillMaxWidth()
+                .padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
+        ) {
+            Text(
+                stringResource(R.string.policy_connection_only),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Choice(R.string.policy_asset_sol, !token, PolicyTags.ASSET_SOL) {
+                token = false
+                identityProblem = null
+            }
+            Choice(R.string.policy_asset_token, token, PolicyTags.ASSET_TOKEN) {
+                token = true
+                identityProblem = null
+            }
+            if (token) {
+                SolidTextField(
+                    value = mint,
+                    onValueChange = {
+                        mint = it
+                        identityProblem = null
+                    },
+                    label = { Text(stringResource(R.string.policy_mint_field)) },
+                    singleLine = true,
+                    isError = identityProblem != null,
+                    supportingText = identityProblem?.let { { Text(stringResource(it)) } },
+                    modifier = Modifier.fillMaxWidth().testTag(PolicyTags.MINT_FIELD),
+                )
+            } else if (identityProblem != null) {
+                Text(stringResource(identityProblem!!), color = MaterialTheme.colorScheme.error)
+            }
+            Text(
+                stringResource(R.string.policy_network_field),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
+                for (option in POLICY_NETWORKS) {
+                    FilterChip(
+                        selected = network == option,
+                        onClick = {
+                            network = option
+                            identityProblem = null
+                        },
+                        label = { Text(networkText(option)) },
+                        modifier = Modifier.testTag(PolicyTags.network(option)),
+                    )
+                }
+            }
+            SectionGap(Modifier.padding(vertical = SeekerTheme.dimensions.dp4))
+            Text(
+                stringResource(R.string.policy_connection_thresholds),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Choice(
+                R.string.policy_use_global_per_request,
+                !overridePerOperation,
+                PolicyTags.inheritPerOperation(candidate.asset),
+            ) {
+                overridePerOperation = false
+            }
+            Choice(
+                R.string.policy_override_per_request,
+                overridePerOperation,
+                PolicyTags.overridePerOperation(candidate.asset),
+            ) {
+                overridePerOperation = true
+            }
+            if (overridePerOperation) {
+                Amount(
+                    tag = PolicyTags.connectionPerOperation(candidate.asset),
+                    value = perOperation,
+                    label =
+                        if (candidate.mint == null) R.string.policy_per_operation_sol
+                        else R.string.policy_per_operation_units,
+                    asset = candidate,
+                    problem = perOperationProblem,
+                    onChange = { perOperation = it },
+                )
+                if (perOperation.isBlank()) Note(R.string.policy_local_per_request_none)
+            }
+            Amount(
+                tag = PolicyTags.connectionDaily(candidate.asset),
+                value = daily,
+                label =
+                    if (candidate.mint == null) R.string.policy_connection_daily_sol
+                    else R.string.policy_connection_daily_units,
+                asset = candidate,
+                problem = problems.daily,
+                onChange = { daily = it },
+            )
+            if (overridePerOperation && problems.dailyBelowPerOperation) {
+                Note(R.string.policy_daily_below)
+            }
+            if (state.globalUnreadable == null) {
+                val globalDaily = state.global?.limitsFor(candidate.asset)?.daily
+                Text(
+                    stringResource(
+                        R.string.policy_global_daily_context,
+                        globalDaily?.let { amountText(it, candidate) }
+                            ?: stringResource(R.string.policy_effective_not_checked),
+                        sourceText(
+                            if (globalDaily == null) RuleSource.NotConfigured else RuleSource.Global
+                        ),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag(PolicyTags.globalDaily(candidate.asset)),
+                )
+            }
+            Text(
+                stringResource(R.string.policy_connection_thresholds_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Adds one recipient or program through its own sheet destination. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PolicyAddressEditorScreen(
+    kind: PolicyAddressKind,
+    state: PolicyUiState,
+    onEdit: (PolicyEditorDraft) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val draft = (state.draft as? PolicyEditorDraft.Connection)?.rules
+    val values =
+        when (kind) {
+            PolicyAddressKind.Recipient -> draft?.recipients.orEmpty()
+            PolicyAddressKind.Program -> draft?.programs.orEmpty()
+        }
+    var typed by rememberSaveable(kind) { mutableStateOf("") }
+    var problem by remember { mutableStateOf<Int?>(null) }
+    val title =
+        if (kind == PolicyAddressKind.Recipient) R.string.policy_add_recipient
+        else R.string.policy_add_program
+    val field =
+        if (kind == PolicyAddressKind.Recipient) R.string.policy_recipient_field
+        else R.string.policy_program_field
+    val note =
+        if (kind == PolicyAddressKind.Recipient) R.string.policy_recipient_note
+        else R.string.policy_program_note
+
+    BackHandler(onBack = onBack)
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(title)) },
+                actions = {
+                    PrimaryPolicyButton(
+                        onClick = {
+                            val current = draft ?: return@PrimaryPolicyButton
+                            val value = typed.trim()
+                            problem =
+                                when {
+                                    !isSolanaAddress(value) -> R.string.policy_address_invalid
+                                    value in values -> R.string.policy_address_listed
+                                    else -> null
+                                }
+                            if (problem != null) return@PrimaryPolicyButton
+                            val next =
+                                when (kind) {
+                                    PolicyAddressKind.Recipient ->
+                                        current.copy(recipients = current.recipients + value)
+                                    PolicyAddressKind.Program ->
+                                        current.copy(programs = current.programs + value)
+                                }
+                            onEdit(PolicyEditorDraft.Connection(next))
+                            onBack()
+                        },
+                        enabled = draft != null,
+                        modifier = Modifier.testTag(PolicyTags.add(kind.listTag)),
+                    ) {
+                        Text(stringResource(R.string.policy_add))
+                    }
+                    CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
+                },
+                expandedHeight = SeekerTheme.dimensions.dp56,
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            Modifier.padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .fillMaxWidth()
+                .padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
+        ) {
+            Text(
+                stringResource(R.string.policy_connection_only),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            SolidTextField(
+                value = typed,
+                onValueChange = {
+                    typed = it
+                    problem = null
+                },
+                label = { Text(stringResource(field)) },
+                singleLine = true,
+                isError = problem != null,
+                keyboardOptions =
+                    KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+                supportingText = problem?.let { { Text(stringResource(it)) } },
+                modifier = Modifier.fillMaxWidth().testTag(PolicyTags.entryField(kind.listTag)),
+            )
+            Text(
+                stringResource(note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private val PolicyAddressKind.listTag: String
+    get() = if (this == PolicyAddressKind.Recipient) RECIPIENTS else PROGRAMS
+
 @Composable
 private fun Choice(@StringRes label: Int, selected: Boolean, tag: String, onSelect: () -> Unit) {
     Row(
@@ -1858,6 +2149,7 @@ private fun Addresses(
     onChange: (List<String>) -> Unit,
     showHeader: Boolean = true,
     global: Boolean = false,
+    onAdd: (() -> Unit)? = null,
 ) {
     if (global) {
         GlobalSectionCard(
@@ -1882,6 +2174,7 @@ private fun Addresses(
                 onChange,
                 showHeader = false,
                 global = true,
+                onAdd = null,
             )
         }
         return
@@ -1900,6 +2193,7 @@ private fun Addresses(
         onRestrict,
         onChange,
         showHeader,
+        onAdd = onAdd,
     )
 }
 
@@ -1919,6 +2213,7 @@ private fun AddressesContent(
     onChange: (List<String>) -> Unit,
     showHeader: Boolean = true,
     global: Boolean = false,
+    onAdd: (() -> Unit)? = null,
 ) {
     Restrict(
         title,
@@ -1966,6 +2261,26 @@ private fun AddressesContent(
         }
     }
     if (global && values.isEmpty()) GlobalEmptyListRow(list)
+    if (!global && onAdd != null) {
+        NeutralPolicyButton(
+            onClick = onAdd,
+            modifier = Modifier.padding(SeekerTheme.dimensions.dp16).testTag(PolicyTags.add(list)),
+        ) {
+            Icon(
+                Icons.Outlined.Add,
+                contentDescription = null,
+                modifier = Modifier.size(SeekerTheme.dimensions.dp20),
+            )
+            Text(
+                stringResource(
+                    if (list == RECIPIENTS) R.string.policy_add_recipient
+                    else R.string.policy_add_program
+                ),
+                modifier = Modifier.padding(start = SeekerTheme.dimensions.dp8),
+            )
+        }
+        return
+    }
     var typed by rememberSaveable(list) { mutableStateOf("") }
     var problem by remember { mutableStateOf<Int?>(null) }
     SolidTextField(

@@ -139,6 +139,9 @@
     <string name="policy_network_devnet">devnet</string>
     <string name="policy_network_testnet">testnet</string>
     <string name="policy_asset_dialog_title">Add an asset</string>
+    <string name="policy_asset_edit_title">Edit asset</string>
+    <string name="policy_connection_only">This connection only</string>
+    <string name="policy_connection_asset_limits">%1$s per request · %2$s a day here</string>
 
     <string name="policy_save">Save</string>
     <string name="policy_cancel">Cancel</string>
