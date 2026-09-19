@@ -17,7 +17,9 @@ roborazzi {
             "io.github.brrenat.seekervault.designsystem.previewtesting.DesignPreviewTester"
         useScanOptionParametersInTester = true
         generatedTestClassCount = 1
-        robolectricConfig = mapOf("qualifiers" to "\"w390dp-h844dp-xxhdpi\"")
+        // The DS corpus includes unrolled sheets taller than a phone viewport. This is only the
+        // maximum measurement window; wrap-content component previews retain their own height.
+        robolectricConfig = mapOf("qualifiers" to "\"w390dp-h1500dp-xxhdpi\"")
     }
 }
 

@@ -46,3 +46,14 @@ pnpm run design:capture --check
 - `design/manifest.json` records every input hash/size, Chromium, viewport, density, injected font and capture-tool version.
 
 The command fails on an unpacker error, a missing required font, an unstable or empty render, a component slug collision, a missing required component, an unexpected scene mapping, or stale committed output.
+
+## Android comparison inputs
+
+The Android `designCompare` task pairs the generated component tree with Roborazzi output and also
+adds the five canonical unrolled review-sheet references from `design/screens/sheet-*.png` under a
+`screens/` comparison subtree. It deliberately does not compare the fixed 844dp phone scenes for
+review-sheet component work.
+
+The `:designsystem` preview scanner uses a 390×1500dp Robolectric measurement window at xxhdpi.
+That height is a ceiling, not a fixed capture: ordinary component previews remain wrap-content,
+while the unrolled review sheets can exceed a phone viewport without an internal scroll or crop.

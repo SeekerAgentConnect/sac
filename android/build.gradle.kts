@@ -4,8 +4,10 @@ import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -29,6 +31,10 @@ abstract class DesignCompareTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val actualDirectory: DirectoryProperty
 
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val screenReferences: ConfigurableFileCollection
+
     @get:OutputDirectory abstract val comparisonDirectory: DirectoryProperty
 
     @TaskAction
@@ -39,7 +45,8 @@ abstract class DesignCompareTask : DefaultTask() {
         outputRoot.deleteRecursively()
         outputRoot.mkdirs()
 
-        val references = pngFiles(referenceRoot)
+        val references =
+            pngFiles(referenceRoot) + screenReferences.files.associateBy { "screens/${it.name}" }
         val actuals = pngFiles(actualRoot)
         val paired = references.keys.intersect(actuals.keys).sorted()
         paired.forEach { relativePath ->
@@ -174,6 +181,16 @@ tasks.register<DesignCompareTask>("designCompare") {
     description =
         "Writes reference | Roborazzi PNGs with dimensions and reports missing design pairs."
     referenceDirectory.set(rootProject.layout.projectDirectory.dir("../design/components"))
+    screenReferences.from(
+        listOf(
+                "sheet-transfer.png",
+                "sheet-swap.png",
+                "sheet-prediction.png",
+                "sheet-signature.png",
+                "sheet-acknowledge.png",
+            )
+            .map { rootProject.layout.projectDirectory.file("../design/screens/$it") }
+    )
     actualDirectory.set(project(":designsystem").layout.buildDirectory.dir("outputs/roborazzi"))
     comparisonDirectory.set(layout.buildDirectory.dir("design-compare"))
 }
