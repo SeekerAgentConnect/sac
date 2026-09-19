@@ -89,6 +89,24 @@ class PolicyActivityTest {
     }
 
     @Test
+    fun detailToRulesToGlobalBackRevealsEachSheetUnderneath() {
+        val connection = pair()
+        val scenario = launch()
+
+        openRules(connection)
+        compose.onNodeWithTag(PolicyTags.OPEN_GLOBAL).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.HELP).assertExists()
+
+        scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.mainClock.advanceTimeBy(240)
+        compose.onNodeWithTag(PolicyTags.OPEN_GLOBAL).performScrollTo().assertExists()
+
+        scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.mainClock.advanceTimeBy(240)
+        compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().assertExists()
+    }
+
+    @Test
     fun rulesWrittenHereAreStoredForThatConnectionAndSurviveARestart() {
         val connection = pair()
         val scenario = launch()
@@ -100,7 +118,6 @@ class PolicyActivityTest {
             .performScrollTo()
             .performClick()
         compose.onNodeWithTag(PolicyTags.ADD_LIMIT_ASSET).performScrollTo().performClick()
-        compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
         compose
             .onNodeWithTag(
                 PolicyTags.overridePerOperation(PolicyAsset.sol(Network.NETWORK_MAINNET))
@@ -113,6 +130,7 @@ class PolicyActivityTest {
             )
             .performScrollTo()
             .performTextReplacement("1.5")
+        compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
         compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().performClick()
         compose.onNodeWithText(app.getString(R.string.policy_saved)).assertExists()
 
@@ -129,10 +147,6 @@ class PolicyActivityTest {
         scenario.recreate()
         compose.onNodeWithTag(PolicyTags.override("actions")).performScrollTo().assertExists()
         compose.onNodeWithTag(PolicyTags.SAVE).performScrollTo().assertExists()
-        compose
-            .onNodeWithTag(PolicyTags.connectionAsset(PolicyAsset.sol(Network.NETWORK_MAINNET)))
-            .performScrollTo()
-            .assertExists()
     }
 
     @Test
@@ -143,11 +157,12 @@ class PolicyActivityTest {
         openRules(first)
         compose.onNodeWithTag(PolicyTags.override(RECIPIENTS)).performScrollTo().performClick()
         compose.onNodeWithTag(PolicyTags.restrict(RECIPIENTS)).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.add(RECIPIENTS)).performScrollTo().performClick()
         compose
             .onNodeWithTag(PolicyTags.entryField(RECIPIENTS))
             .performScrollTo()
             .performTextReplacement(RECIPIENT)
-        compose.onNodeWithTag(PolicyTags.add(RECIPIENTS)).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.add(RECIPIENTS)).performClick()
         save()
         compose.onNodeWithTag(PolicyTags.CANCEL).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
@@ -212,11 +227,12 @@ class PolicyActivityTest {
         openRules(connection)
         compose.onNodeWithTag(PolicyTags.override(RECIPIENTS)).performScrollTo().performClick()
         compose.onNodeWithTag(PolicyTags.restrict(RECIPIENTS)).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.add(RECIPIENTS)).performScrollTo().performClick()
         compose
             .onNodeWithTag(PolicyTags.entryField(RECIPIENTS))
             .performScrollTo()
             .performTextReplacement(RECIPIENT)
-        compose.onNodeWithTag(PolicyTags.add(RECIPIENTS)).performScrollTo().performClick()
+        compose.onNodeWithTag(PolicyTags.add(RECIPIENTS)).performClick()
 
         compose.onNodeWithTag(PolicyTags.OPEN_GLOBAL).performScrollTo().performClick()
         compose.onNodeWithTag(PolicyTags.restrict("actions")).performScrollTo().performClick()

@@ -36,6 +36,15 @@ class ConnectionPolicyEditorScreenTest {
     private val actions = mutableListOf<String>()
     private lateinit var ui: MutableState<PolicyUiState>
 
+    private sealed interface Editor {
+        data class Asset(
+            val asset: PolicyAsset?,
+            val kind: PolicyAssetEditorKind,
+        ) : Editor
+
+        data class Address(val kind: PolicyAddressKind) : Editor
+    }
+
     private val draft: ConnectionPolicyDraft
         get() = (ui.value.draft as PolicyEditorDraft.Connection).rules
 
@@ -60,24 +69,49 @@ class ConnectionPolicyEditorScreenTest {
                 )
             }
             ui = current
+            val editor = remember { mutableStateOf<Editor?>(null) }
             SeekerTheme {
-                PolicyEditorScreen(
-                    label = "Home Mac",
-                    state = current.value,
-                    onEdit = { current.value = current.value.copy(draft = it) },
-                    onStartOver = {},
-                    onResetConnection = {
-                        current.value =
-                            current.value.copy(
-                                draft =
-                                    PolicyEditorDraft.Connection(ConnectionPolicyDraft(CONNECTION))
-                            )
-                    },
-                    onOpenGlobal = { actions += "global" },
-                    onSave = { actions += "save" },
-                    onMessageShown = {},
-                    onClose = { actions += "close" },
-                )
+                when (val route = editor.value) {
+                    null ->
+                        PolicyEditorScreen(
+                            label = "Home Mac",
+                            state = current.value,
+                            onEdit = { current.value = current.value.copy(draft = it) },
+                            onStartOver = {},
+                            onResetConnection = {
+                                current.value =
+                                    current.value.copy(
+                                        draft =
+                                            PolicyEditorDraft.Connection(
+                                                ConnectionPolicyDraft(CONNECTION)
+                                            )
+                                    )
+                            },
+                            onOpenGlobal = { actions += "global" },
+                            onSave = { actions += "save" },
+                            onMessageShown = {},
+                            onClose = { actions += "close" },
+                            onOpenAsset = { asset, kind ->
+                                editor.value = Editor.Asset(asset, kind)
+                            },
+                            onOpenAddress = { editor.value = Editor.Address(it) },
+                        )
+                    is Editor.Asset ->
+                        PolicyAssetEditorScreen(
+                            state = current.value,
+                            asset = route.asset,
+                            kind = route.kind,
+                            onEdit = { current.value = current.value.copy(draft = it) },
+                            onBack = { editor.value = null },
+                        )
+                    is Editor.Address ->
+                        PolicyAddressEditorScreen(
+                            state = current.value,
+                            kind = route.kind,
+                            onEdit = { current.value = current.value.copy(draft = it) },
+                            onBack = { editor.value = null },
+                        )
+                }
             }
         }
     }
@@ -128,8 +162,9 @@ class ConnectionPolicyEditorScreenTest {
         show(global = GlobalPolicy(programs = Allowlist.of(SYSTEM), updatedAt = AT))
         click(PolicyTags.override(PROGRAMS))
         click(PolicyTags.restrict(PROGRAMS))
-        type(PolicyTags.entryField(PROGRAMS), STRANGER)
         click(PolicyTags.add(PROGRAMS))
+        type(PolicyTags.entryField(PROGRAMS), STRANGER)
+        compose.onNodeWithTag(PolicyTags.add(PROGRAMS)).performClick()
         assertEquals(listOf(STRANGER), draft.programs)
         compose
             .onNodeWithText(
@@ -199,6 +234,7 @@ class ConnectionPolicyEditorScreenTest {
                     updatedAt = AT,
                 ),
         )
+        click(PolicyTags.connectionAsset(SOL))
         compose
             .onNodeWithTag(PolicyTags.globalDaily(SOL))
             .performScrollTo()
@@ -209,13 +245,11 @@ class ConnectionPolicyEditorScreenTest {
             .performScrollTo()
             .assertTextContains("3", substring = true)
             .assertTextContains("3000000000", substring = true)
-        compose
-            .onNodeWithTag(PolicyTags.connectionDailySource(SOL))
-            .performScrollTo()
-            .assertTextContains(text(R.string.policy_source_connection), substring = true)
+        compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
 
         click(PolicyTags.RESET_OVERRIDES)
         assertEquals(ConnectionPolicyDraft(CONNECTION), draft)
+        click(PolicyTags.connectionAsset(SOL))
         compose
             .onNodeWithTag(PolicyTags.globalDaily(SOL))
             .performScrollTo()
@@ -224,10 +258,6 @@ class ConnectionPolicyEditorScreenTest {
             .onNodeWithTag(PolicyTags.connectionDaily(SOL))
             .performScrollTo()
             .assertTextContains(text(R.string.policy_amount_none))
-        compose
-            .onNodeWithTag(PolicyTags.connectionDailySource(SOL))
-            .performScrollTo()
-            .assertTextContains(text(R.string.policy_source_none), substring = true)
     }
 
     @Test
@@ -240,19 +270,16 @@ class ConnectionPolicyEditorScreenTest {
                     updatedAt = AT,
                 )
         )
+        click(PolicyTags.connectionAsset(SOL))
         click(PolicyTags.overridePerOperation(SOL))
         type(PolicyTags.connectionPerOperation(SOL), "1")
+        compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
         assertEquals(false, draft.overrideAssets)
         assertEquals(true, draft.limits.single().overridePerOperation)
         compose
-            .onNodeWithText(
-                text(
-                    R.string.policy_effective_per_request,
-                    "1",
-                    text(R.string.policy_source_connection),
-                )
-            )
-            .assertExists()
+            .onNodeWithTag(PolicyTags.connectionAsset(SOL))
+            .performScrollTo()
+            .assertTextContains("1", substring = true)
     }
 
     @Test
@@ -295,8 +322,51 @@ class ConnectionPolicyEditorScreenTest {
                 )
             )
             .assertDoesNotExist()
+        click(PolicyTags.connectionAsset(SOL))
         compose.onNodeWithTag(PolicyTags.globalDaily(SOL)).assertDoesNotExist()
         compose.onNodeWithTag(PolicyTags.connectionDaily(SOL)).performScrollTo().assertExists()
+    }
+
+    @Test
+    fun addAssetOpensItsEditorAndSavesBackIntoTheConnectionDraft() {
+        show(
+            draft =
+                ConnectionPolicyDraft(
+                    CONNECTION,
+                    overrideAssets = true,
+                    restrictAssets = true,
+                )
+        )
+
+        click(PolicyTags.ADD_ALLOWED_ASSET)
+        click(PolicyTags.network(Network.NETWORK_DEVNET))
+        compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
+
+        val devnetSol = PolicyAsset(Network.NETWORK_DEVNET)
+        assertEquals(listOf(devnetSol), draft.assets)
+    }
+
+    @Test
+    fun addSpendingLimitDoesNotAlsoChangeTheAssetAllowlist() {
+        show(
+            draft =
+                ConnectionPolicyDraft(
+                    CONNECTION,
+                    overrideAssets = true,
+                    restrictAssets = true,
+                )
+        )
+
+        click(PolicyTags.ADD_LIMIT_ASSET)
+        click(PolicyTags.network(Network.NETWORK_DEVNET))
+        type(PolicyTags.connectionDaily(PolicyAsset(Network.NETWORK_DEVNET)), "1")
+        compose.onNodeWithTag(PolicyTags.DIALOG_ADD).performClick()
+
+        assertTrue(draft.assets.isEmpty())
+        assertEquals(
+            listOf(ConnectionAssetDraft(Network.NETWORK_DEVNET, daily = "1")),
+            draft.limits,
+        )
     }
 
     @Test

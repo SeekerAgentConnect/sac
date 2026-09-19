@@ -640,6 +640,10 @@ data class OperationReview(
     val problem: OperationProblem? = null,
 )
 
+/** Production executions continue in the external wallet; sandbox executions remain local. */
+val OperationReview.requiresWalletHandoff: Boolean
+    get() = environment == PluginEnvironment.Production
+
 /** Why nothing could be prepared: a plugin's own code and its own words. */
 data class OperationFailure(
     val code: String,

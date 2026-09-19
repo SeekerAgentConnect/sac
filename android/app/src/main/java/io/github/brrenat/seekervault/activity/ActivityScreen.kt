@@ -46,7 +46,7 @@ data class ActivityEmptyState(val title: String, val body: String)
 
 /** Every interaction owned by the Activity route. */
 data class ActivityScreenCallbacks(
-    val onOpen: (RequestKey) -> Unit,
+    val onOpen: ((RequestKey) -> Unit)?,
     val onRefresh: () -> Unit,
     val onClear: () -> Unit,
     val onBack: () -> Unit,
@@ -57,7 +57,6 @@ data class ActivityScreenCallbacks(
 @Composable
 fun ActivityRoute(
     viewModel: ActivityViewModel,
-    onOpen: (RequestKey) -> Unit,
     onBack: () -> Unit,
     navigationCallbacks: ScreenNavigationCallbacks,
     modifier: Modifier = Modifier,
@@ -67,7 +66,8 @@ fun ActivityRoute(
         state = activityScreenState(state),
         callbacks =
             ActivityScreenCallbacks(
-                onOpen = onOpen,
+                // The design flow has no Activity-detail destination. Rows report history only.
+                onOpen = null,
                 onRefresh = viewModel::refresh,
                 onClear = viewModel::clear,
                 onBack = onBack,
@@ -116,7 +116,7 @@ fun ActivityScreen(
                 ActivityRow(
                     model = ActivityRowModel(row.title, row.supportingText),
                     kind = row.kind,
-                    onClick = { callbacks.onOpen(row.key) },
+                    onClick = callbacks.onOpen?.let { open -> { open(row.key) } },
                     modifier = Modifier.testTag(row.testTag).semantics(mergeDescendants = true) {},
                 )
             }
