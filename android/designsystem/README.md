@@ -31,8 +31,10 @@ static-TTF fallback is needed.
 ## JVM preview captures
 
 Roborazzi and ComposablePreviewScanner render every `@Preview` in this module on the JVM. Captures
-use the dark `SeekerTheme`, native Robolectric graphics, and
-`w390dp-h844dp-xxhdpi` (390×844 dp at 3×). No emulator is involved. Each preview also has a
+use the dark `SeekerTheme`, native Robolectric graphics, and a
+`w390dp-h1500dp-xxhdpi` maximum measurement window at 3×. The taller ceiling lets the five
+unrolled review sheets record at natural height; wrap-content component previews keep their own
+dimensions. No emulator is involved. Each preview also has a
 `@DesignRef`; its component and variant map to the same `<component>/<variant-slug>.png` path as
 the design export. See [`design/README.md`](../../design/README.md) for the commands and comparison
 contract.
@@ -75,6 +77,15 @@ All 43 generated organism variants have exact-copy `@Preview` and `@DesignRef` c
 committed [`reference | actual` review](../../docs/reviews/see-119/README.md) contains every pair.
 The carousel follows SEE-119's 358dp viewport and centred highlight while retaining SEE-81's
 start/centre/end snapping policy.
+
+## Review-sheet template
+
+SEE-120 adds one natural-height `ReviewSheet` and a UI-only `ReviewSheetState` for Transfer, Swap,
+Prediction, Signature, and Acknowledge. Requests and signals differ only in mapped data. The
+template composes the existing design-system tiers, owns warning confirmation, and applies the
+caller's action gate after requiring that confirmation. Five exact-copy fixtures record against
+the canonical unrolled `design/screens/sheet-*.png` references; see the
+[`reference | actual` review](../../docs/reviews/see-120/README.md).
 
 ## Guardrail
 

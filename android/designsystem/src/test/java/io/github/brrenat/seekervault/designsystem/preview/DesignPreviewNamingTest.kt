@@ -145,10 +145,19 @@ class DesignPreviewNamingTest {
                 "sheet-scaffold/variant-plain.png",
                 "sheet-scaffold/variant-stacked-over-blurred.png",
             )
+        val screenPaths =
+            setOf(
+                "screens/sheet-transfer.png",
+                "screens/sheet-swap.png",
+                "screens/sheet-prediction.png",
+                "screens/sheet-signature.png",
+                "screens/sheet-acknowledge.png",
+            )
         val expectedPaths =
             atomPaths +
                 moleculePaths +
                 organismPaths +
+                screenPaths +
                 setOf(
                     "token-colour/surf.png",
                     "size-probe/height-48dp.png",
@@ -163,7 +172,7 @@ class DesignPreviewNamingTest {
         previews
             .filter {
                 DesignPreviewNaming.relativePath(it, "png") in
-                    atomPaths + moleculePaths + organismPaths
+                    atomPaths + moleculePaths + organismPaths + screenPaths
             }
             .forEach { preview ->
                 assertEquals(
