@@ -24,7 +24,7 @@ Starting commit: `a4feaa1551d974d4f23e6e5ea2a6301a79078035`
 - [x] 10. Commit the concise migration/baseline document, completion evidence, per-child ownership matrix, and rollback/data-retention expectations.
 - [x] Verify `pnpm run build` plus the documented relevant checks, review the diff, and confirm there are no runtime/deployment changes.
 - [x] Push the baseline commit and open one PR into `master`; attempt to inspect CI.
-- [ ] Update SEE-129 to In Review and post a Linear evidence comment.
+- [x] Update SEE-129 to In Review and post a Linear evidence comment.
 - [x] Re-read SEE-128, SEE-129, and all comments before handoff.
 - [ ] POST the required finished/blocked/failed webhook and stop before SEE-130.
 
@@ -58,3 +58,6 @@ Starting commit: `a4feaa1551d974d4f23e6e5ea2a6301a79078035`
   both demos, SEE-135 owns deployment separation, and SEE-136 owns final docs/verification.
 - PR #38 is open into `master`. GitHub accepted the PR, but the available token returned HTTP 403
   for both check rollups and Actions runs; local equivalents above are the available CI evidence.
+- SEE-129 is In Review with evidence comment `20e3e571-0a32-4607-960a-340c7ff1853c` linking PR #38,
+  commits, evidence paths, API/schema scope, migration/rollback notes, PASS/NOT RUN results, the CI
+  visibility limitation, and the untouched SEE-130 handoff. SEE-128 remains In Progress.
