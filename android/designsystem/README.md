@@ -52,6 +52,17 @@ Every captured atom variant has one exact-text `@Preview` and `@DesignRef`. The 
 [`reference | actual` review](../../docs/reviews/see-117/README.md) is the PR evidence set. The
 icon-button remains deferred because its required hand-written component spec is absent.
 
+## Molecule library
+
+SEE-118 adds fact and daily-limit rows, segmented and Inbox tab selectors, navigation items,
+section headers, text fields, notice cards, empty states, and source-filter bars. Their public APIs,
+state axes, ticket/spec resolutions, and visual verification record are documented in
+[`docs/wiki/design-system-molecules.md`](../../docs/wiki/design-system-molecules.md).
+
+Each of the 22 captured component variants has one exact-text `@Preview` and `@DesignRef`. The
+committed [`reference | actual` review](../../docs/reviews/see-118/README.md) is the PR evidence set;
+an additional 390dp preview composes four `NavItem` instances into the required bottom bar.
+
 ## Guardrail
 
 `checkDesignSystemLiterals` rejects `Color(0x...)`, raw `.dp`, and raw `.sp` literals in production
