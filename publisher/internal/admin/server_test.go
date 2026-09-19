@@ -146,6 +146,33 @@ func TestAPostWithoutThisOriginIsRefused(t *testing.T) {
 	}
 }
 
+func TestAChromeSameOriginFormPostWithANullOriginIsAccepted(t *testing.T) {
+	ui, _ := startUI(t, nil)
+	request := httptest.NewRequest(http.MethodPost, "https://feeds.example.com/trader/login",
+		strings.NewReader(url.Values{"name": {"judge1"}, "password": {"secret"}}.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Origin", "null")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	answered := httptest.NewRecorder()
+	ui.ServeHTTP(answered, request)
+	if answered.Code != http.StatusSeeOther || answered.Header().Get("Set-Cookie") == "" {
+		t.Fatalf("chrome null origin login answered %d: %s", answered.Code, answered.Body.String())
+	}
+}
+
+func TestANullOriginWithoutASameOriginFetchIsRefused(t *testing.T) {
+	ui, _ := startUI(t, nil)
+	request := httptest.NewRequest(http.MethodPost, "https://feeds.example.com/trader/login",
+		strings.NewReader(url.Values{"name": {"judge1"}, "password": {"secret"}}.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Origin", "null")
+	answered := httptest.NewRecorder()
+	ui.ServeHTTP(answered, request)
+	if answered.Code != http.StatusForbidden {
+		t.Fatalf("status %d: %s", answered.Code, answered.Body.String())
+	}
+}
+
 func TestAPostFromAForwardedPublicPortIsAccepted(t *testing.T) {
 	ui, _ := startUI(t, nil)
 	request := httptest.NewRequest(http.MethodPost, "http://copytrading:8096/trader/login",

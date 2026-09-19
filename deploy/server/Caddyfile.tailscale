@@ -11,10 +11,6 @@
 		output stderr
 		format console
 	}
-	# Invitation paths contain temporary capabilities and never enter access logs.
-	log_skip /invite/*
-	# Login posts carry passwords; skip them the same way.
-	log_skip /trader/login
 	# Caddy redacts credential headers unless log_credentials is enabled. It is
 	# deliberately not enabled here.
 }
@@ -26,6 +22,11 @@ https://{$BROADCAST_DOMAIN} {
 		output stderr
 		format console
 	}
+
+	 # Invitation paths contain temporary capabilities and never enter access logs.
+    log_skip /invite/*
+    # Login posts carry passwords; skip them the same way.
+    log_skip /trader/login
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
