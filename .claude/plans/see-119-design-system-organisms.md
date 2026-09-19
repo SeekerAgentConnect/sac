@@ -42,7 +42,7 @@ synced issue body and current status but not comments, parent, sub-issues, or co
 
 1. [x] Commit + push to `superset/feat/see-117` (updates PR #34)
 2. [x] Move SEE-119 to In Review on Linear; comment with summary + evidence (if Linear auth fails, note in webhook and continue)
-3. [ ] BEFORE STOP, POST webhook with Authorization Bearer `$SEE_SUPERSET_TOKEN`:
+3. [x] BEFORE STOP, POST webhook with Authorization Bearer `$SEE_SUPERSET_TOKEN`:
    `{"ticket":"SEE-119","repo":"SeekerAgentWallet","branch":"superset/feat/see-117","status":"finished","message":"<short summary>","pr":"https://github.com/BrRenat/SeekerAgentWallet/pull/34"}`
    Also POST stuck|blocked|failed if you cannot finish
 4. [x] Never switch to luna on rate limits — STOP and report
