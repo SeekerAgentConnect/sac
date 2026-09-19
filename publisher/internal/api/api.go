@@ -50,6 +50,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/discovery"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/ids"
+	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/limit"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/manifest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/publish"
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/signals"
@@ -115,6 +116,9 @@ type Server struct {
 	cycles     Cycles
 	// The identity minted for a new signal, injected so a test can pin one.
 	newID func() string
+	// Optional cap on new creates in a rolling hour. Nil, or a limiter whose max is zero, is
+	// unlimited (SEE-126).
+	creates *limit.Limiter
 }
 
 // Plan is what a [Server] needs.
@@ -133,6 +137,8 @@ type Plan struct {
 	// Required when Authorship is [ByDiscovery], and meaningless otherwise.
 	Markets Markets
 	Cycles  Cycles
+	// The most new creates this process will accept in one hour. Zero (the default) is unlimited.
+	CreateLimit int
 }
 
 // New builds the API.
@@ -151,6 +157,10 @@ func New(plan Plan) *Server {
 		panic("api: a template whose signals are written by discovery has to supply its markets " +
 			"and its reconciler")
 	}
+	var creates *limit.Limiter
+	if plan.CreateLimit > 0 {
+		creates = limit.New(plan.CreateLimit, time.Hour, now)
+	}
 	return &Server{
 		documents:  plan.Documents,
 		drainer:    plan.Drainer,
@@ -163,6 +173,7 @@ func New(plan Plan) *Server {
 		markets:    plan.Markets,
 		cycles:     plan.Cycles,
 		newID:      newID,
+		creates:    creates,
 	}
 }
 
@@ -531,7 +542,17 @@ func (s *Server) create(writer http.ResponseWriter, request *http.Request) {
 	signal.Operation = s.kind.Operation()
 	signal.PluginID = s.kind.Requirement().PluginID
 
+	if !s.creates.Allow("create") {
+		refuse(writer, http.StatusTooManyRequests, &problem{
+			Error:  "rate_limited",
+			Detail: "this publisher is not accepting more new signals right now; try later",
+		})
+		return
+	}
 	record, held, err := s.documents.Create(request.Context(), key, signals.Statement(signal), signal)
+	if err != nil || held {
+		s.creates.Undo("create")
+	}
 	switch {
 	case errors.Is(err, store.ErrKeyReused):
 		refuse(writer, http.StatusConflict, &problem{

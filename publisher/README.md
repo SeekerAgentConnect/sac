@@ -18,6 +18,7 @@ accept it, and no endpoint that would answer about it.
 | [`cmd/copytrading`](cmd/copytrading) | The CopyTrading template: trader-authored spot-swap signals, served by the bundled `jupiter.swap` plugin |
 | [`cmd/prediction`](cmd/prediction) | The Prediction template: markets it discovered itself, served by the bundled `jupiter.prediction` plugin. Nobody may write a signal through its API |
 | [`cmd/publishctl`](cmd/publishctl) | The operator's tool, and a worked example of the API: every command is one HTTP call |
+| [`cmd/copytrading-admin`](cmd/copytrading-admin) | Password-gated HTML UI for the CopyTrading demo (SEE-126). A client of `/v1`, not a second writer |
 | [`internal/signals`](internal/signals) | What a signal is, as pure data — and the one seam a template supplies: `Kind` |
 | [`internal/jupiter`](internal/jupiter) | The prediction provider: two endpoints, paced, and the only file here that names its host |
 | [`internal/discovery`](internal/discovery) | What a filter means, and what one cycle does: publish what matches, and keep each proposal in step with its source |

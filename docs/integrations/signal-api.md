@@ -216,6 +216,7 @@ reason protojson writes a 64-bit integer as a string. Compare revisions as integ
 | **405** | That endpoint does not take this method; the `Allow` header says which |
 | **409** | `key_reused` — that key belongs to a different statement — or `cancelled`: a withdrawal is final |
 | **415** | The body was not declared `application/json` |
+| **429** | Optional `PUBLISHER_CREATE_LIMIT` (new creates per hour). Unset or 0 is unlimited. `error` is `rate_limited` |
 | **502** | The gateway **refused** the publication in a way retrying cannot change. `publication.problem` is the gateway's own problem code |
 
 A 202 is a success: the request is durably stored, and the answer a caller was given outlives the

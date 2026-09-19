@@ -701,3 +701,35 @@ func bytes201() []byte {
 	}
 	return key
 }
+
+func TestACreateLimitRefusesNewSignalsAndLeavesReplaysUncounted(t *testing.T) {
+	held := startWith(t, &fakeGateway{}, signals.Swap{}, func(_ *template, plan *Plan) {
+		plan.CreateLimit = 2
+	})
+	first := held.create("key-1", swapStatement())
+	if first.status != http.StatusCreated {
+		t.Fatalf("first create answered %d: %s", first.status, first.raw)
+	}
+	replay := held.create("key-1", swapStatement())
+	if replay.status != http.StatusOK || replay.body["idempotent"] != true {
+		t.Fatalf("a replay under the cap must still succeed: %d %s", replay.status, replay.raw)
+	}
+	second := held.create("key-2", swapStatement())
+	if second.status != http.StatusCreated {
+		t.Fatalf("second create answered %d: %s", second.status, second.raw)
+	}
+	third := held.create("key-3", swapStatement())
+	if third.status != http.StatusTooManyRequests || third.problem() != "rate_limited" {
+		t.Fatalf("the cap must refuse the next new signal: %d %s", third.status, third.raw)
+	}
+}
+
+func TestNoCreateLimitIsTheDefault(t *testing.T) {
+	held := start(t, &fakeGateway{})
+	for i := 0; i < 5; i++ {
+		answered := held.create("unlimited-"+string(rune('a'+i)), swapStatement())
+		if answered.status != http.StatusCreated {
+			t.Fatalf("create %d answered %d: %s", i, answered.status, answered.raw)
+		}
+	}
+}

@@ -9,12 +9,13 @@
 # documents to that gateway and serves its own small API to whoever writes the
 # signals (docs/wiki/copytrading-template.md).
 #
-# One image, two templates. `/copytrading` is the entrypoint and publishes a
-# trader's own signals (SEE-95); `/prediction` discovers Jupiter Prediction
-# markets and publishes those (SEE-96, docs/wiki/prediction-template.md). They
-# share everything but the kind they register and who writes their signals, so
-# they share an image too — a deployment names the one it runs
-# (compose.prediction.yaml overrides the entrypoint).
+# One image, two templates and the CopyTrading trader UI. `/copytrading` is the
+# entrypoint and publishes a trader's own signals (SEE-95); `/prediction`
+# discovers Jupiter Prediction markets and publishes those (SEE-96,
+# docs/wiki/prediction-template.md). `/copytrading-admin` is the password-gated
+# HTML UI that calls the CopyTrading API (SEE-126). They share an image —
+# a deployment names the binary it runs (compose.prediction.yaml and
+# compose.demos.yaml override the entrypoint).
 
 # Pinned to the version publisher/go.mod requires, so a build from a clean
 # checkout uses the toolchain the tests were run with
@@ -42,10 +43,11 @@ ENV CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH
 RUN go build -trimpath -ldflags="-s -w" -o /out/copytrading ./cmd/copytrading \
  && go build -trimpath -ldflags="-s -w" -o /out/prediction ./cmd/prediction \
  && go build -trimpath -ldflags="-s -w" -o /out/publishctl ./cmd/publishctl \
+ && go build -trimpath -ldflags="-s -w" -o /out/copytrading-admin ./cmd/copytrading-admin \
  && mkdir /out/data
 
 # --- runtime ----------------------------------------------------------------
-# The three binaries, a CA bundle, and nothing else. No shell and no package
+# The four binaries, a CA bundle, and nothing else. No shell and no package
 # manager.
 #
 # The bundle is here because this service calls out over TLS in the ordinary
@@ -68,7 +70,7 @@ ENV PUBLISHER_DATABASE_PATH=/data/publisher.db
 # not published to the host by the compose file; that is the proxy's job.
 ENV PUBLISHER_API_ADDRESS=127.0.0.1:8092
 
-COPY --from=build /out/copytrading /out/prediction /out/publishctl /
+COPY --from=build /out/copytrading /out/prediction /out/publishctl /out/copytrading-admin /
 # /data has to exist in the image, owned by the account below: Docker gives a
 # new named volume the ownership of the directory it is mounted over, and a path
 # the image lacks becomes root's, where uid 10001 cannot create the database.

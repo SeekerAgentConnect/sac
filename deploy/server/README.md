@@ -24,7 +24,7 @@ it is not required to assemble this deployment.
 | Command files | What runs |
 | --- | --- |
 | `-f compose.yaml` | Part 1 only: gateway, HTTPS/HTTP2 proxy, Centrifugo and Redis. |
-| `-f compose.yaml -f compose.demos.yaml` | Part 1 plus both Part 2 publishers. Start/stop only the four demo runtime services with `--no-deps`. |
+| `-f compose.yaml -f compose.demos.yaml` | Part 1 plus both Part 2 publishers and the CopyTrading trader UI. Start/stop only the five demo runtime services with `--no-deps`. |
 | `-f compose.yaml -f compose.tailscale.yaml` | Part 1 on a Tailscale MagicDNS name behind Funnel in TCP mode, for a server with no DNS name of its own ([section 7](#7-part-1-behind-tailscale-funnel)). Goes between `compose.yaml` and `compose.demos.yaml` in every command when the demos run. |
 | `-f compose.direct.yaml` | Optional direct sidecar only. It can run beside either combination and keeps the original Compose project and volume name. |
 
@@ -37,9 +37,10 @@ The address layout is deliberate:
 | Address | Audience and protocol |
 | --- | --- |
 | `https://feeds.example.com:443` | Phones: public feed reads, temporary invitation pages, invitation/device Connect RPCs and the one Centrifugo unidirectional gRPC stream over HTTP/2. |
+| `https://feeds.example.com/trader` | Hackathon judges: password-gated CopyTrading trader HTML (SEE-126). Not `/v1`. Behind Funnel, the same path on the MagicDNS origin, including the Funnel port when it is not 443. |
 | `http://broadcast:8082` | Demo containers only: authenticated `PublisherService` on the private `publisher-ingress` Docker network. It never appears in a manifest. |
-| `127.0.0.1:8092`, `127.0.0.1:8094` | Host operator only: CopyTrading and Prediction control APIs. Both require their own API token. |
-| `127.0.0.1:8443` / public TCP `:10000` | Optional direct sidecar: TLS terminates in the sidecar; a raw TCP forward preserves its private update stream. |
+| `127.0.0.1:8092`, `127.0.0.1:8094` | Host operator only: CopyTrading and Prediction control APIs. Both require their own API token. The trader UI holds that token and calls loopback; the browser never sees it. |
+| `127.0.0.1:8443` / public TCP `:10000` | Optional direct sidecar: TLS terminates in the sidecar; a raw TCP forward preserves its private update stream. Do not put the trader UI on `:10000`. |
 
 Redis, the Centrifugo API, the gateway's three implementation listeners, Caddy administration and
 the gateway operator CLI have no host port. The public Caddy route does not expose
@@ -429,7 +430,7 @@ it adds no trading logic. Both examples are explicitly `sandbox`: proposals and 
 market discovery are real data, but execution on the phone is simulated. Sandbox is not Jupiter
 devnet, and none of these commands signs a transaction or spends funds.
 
-## 1. Create two identities and four secrets
+## 1. Create two identities and the CopyTrading secrets
 
 ```sh
 cd /opt/seeker-agent-wallet/repo/deploy/server
@@ -476,7 +477,27 @@ openssl rand -base64 32 | sudo install -o 10001 -g 10001 -m 0400 /dev/stdin \
   secrets/copytrading/api-token
 openssl rand -base64 32 | sudo install -o 10001 -g 10001 -m 0400 /dev/stdin \
   secrets/prediction/api-token
+openssl rand -base64 32 | sudo install -o 10001 -g 10001 -m 0400 /dev/stdin \
+  secrets/copytrading/admin-session-secret
+sudo install -o 10001 -g 10001 -m 0400 /dev/null \
+  secrets/copytrading/admin-passwords
 ```
+
+Mint one named bcrypt line per judge. The helper never stores the password in the clear; append
+its stdout to the file. Deleting a line revokes that name on the next request, including an
+already-open session:
+
+```sh
+printf '%s\n' "$JUDGE_PASSWORD" | docker compose -f compose.yaml -f compose.demos.yaml \
+  run --rm --no-deps copytrading-pass hash judge1 \
+  | sudo tee -a secrets/copytrading/admin-passwords >/dev/null
+sudo chown 10001:10001 secrets/copytrading/admin-passwords
+sudo chmod 0400 secrets/copytrading/admin-passwords
+```
+
+`copytrading-pass` is an operator-profile tool, like `copytrading-ctl`. Recreate the trader UI after
+changing the password file if it was already running; mtime is rechecked on every request, so a
+deleted line takes effect without a recreate.
 
 The gateway stores only hashes of its grants. Each template reads its gateway grant and API token
 from its own read-only directory. Neither directory is mounted into the other demo, and neither
@@ -508,12 +529,14 @@ database, not a way to turn this demo into devnet trading.
 
 ```sh
 docker compose -f compose.yaml -f compose.demos.yaml build \
-  copytrading copytrading-ctl prediction prediction-ctl
+  copytrading copytrading-ctl copytrading-admin copytrading-pass \
+  prediction prediction-ctl
 docker compose -f compose.yaml -f compose.demos.yaml up -d --no-deps \
-  copytrading copytrading-proxy prediction prediction-proxy
+  copytrading copytrading-proxy copytrading-admin \
+  prediction prediction-proxy
 docker compose -f compose.yaml -f compose.demos.yaml ps
 docker compose -f compose.yaml -f compose.demos.yaml logs --tail=100 \
-  copytrading copytrading-proxy prediction prediction-proxy
+  copytrading copytrading-proxy copytrading-admin prediction prediction-proxy
 ```
 
 Expected from each publisher: `publishing as this server`, a
@@ -538,6 +561,19 @@ PREDICTION_API_TOKEN=$(sudo cat secrets/prediction/api-token) \
 
 `discovery` reports the filters, cycle outcome, pages/events considered, matched/skipped counts and
 tracked markets. Provider failure is a failed or partial cycle and closes no proposal.
+
+The trader UI is HTML on the **existing** gateway origin, path `/trader`. Recreate the gateway
+proxy after this checkout so Caddy has that route, then open:
+
+```
+https://$DOMAIN/trader
+```
+
+Behind Tailscale Funnel, include the Funnel port when it is not 443
+(`https://<node>.<tailnet>.ts.net:8443/trader`). Judges do not install Tailscale. The session cookie
+is `HttpOnly`, `Secure`, `SameSite=Strict`, path `/trader`, so it is not sent to feed RPCs. Stopping
+`copytrading-admin` leaves the feed and the loopback API intact. Do not use `compose.public.yaml`
+and do not publish `/v1` on this origin.
 
 ## 4. Obtain feed references and verify manifests externally
 
@@ -713,17 +749,24 @@ documents in `broadcast-data`:
 
 ```sh
 docker compose -f compose.yaml -f compose.demos.yaml stop \
-  copytrading-proxy copytrading prediction-proxy prediction
+  copytrading-admin copytrading-proxy copytrading prediction-proxy prediction
 docker compose -f compose.yaml ps
 ```
 
-Update only the publisher image and recreate only demo containers:
+Stopping only `copytrading-admin` leaves feeds and the CopyTrading API running. After the event,
+stop the UI, rotate `secrets/copytrading/api-token` and the password file, then recreate the
+publisher pair so the new token is loaded.
+
+Update only the publisher image and recreate only demo containers. Recreate publisher + proxy +
+trader UI together:
 
 ```sh
 docker compose -f compose.yaml -f compose.demos.yaml build \
-  copytrading copytrading-ctl prediction prediction-ctl
+  copytrading copytrading-ctl copytrading-admin copytrading-pass \
+  prediction prediction-ctl
 docker compose -f compose.yaml -f compose.demos.yaml up -d --no-deps \
-  copytrading copytrading-proxy prediction prediction-proxy
+  copytrading copytrading-proxy copytrading-admin \
+  prediction prediction-proxy
 ```
 
 Their identities, idempotency records, discovery state and publication outboxes remain in the two
@@ -744,7 +787,8 @@ stopped, then start that service again. The infrastructure need not stop.
 | Publisher logs `other_gateway` | `PUBLISHER_GATEWAY_URL` is not the gateway's own origin, character for character, port included. `docker inspect` the `broadcast` container for `BROADCAST_PUBLIC_URL`; behind Funnel on 8443 it needs `GATEWAY_PUBLIC_PORT=8443` in `.env` and a recreated `broadcast`. A refusal is not retried until the publisher restarts. |
 | Publisher logs 404 while publishing | `PUBLISHER_PUBLISH_URL` was overridden or the demo is not on `publisher-ingress`; it must use `http://broadcast:8082`. |
 | Gateway refuses `other_gateway` | `PUBLISHER_GATEWAY_URL` differs from `https://BROADCAST_DOMAIN`. Internal hostnames never belong there. |
-| Demo API is unreachable remotely | Expected. It binds host loopback. Use SSH/VPN or explicitly design a separately authenticated public control surface. |
+| Demo API is unreachable remotely | Expected. It binds host loopback. Use SSH/VPN or the password-gated `/trader` page. Never publish `/v1` on the public origin. |
+| `/trader` returns 502 | CopyTrading demo is not running, or `copytrading-admin` was not started with the publisher pair. Recreate `copytrading copytrading-proxy copytrading-admin` and `gateway-proxy` so Caddy has the route. |
 | Prediction publishes nothing | Run `prediction-ctl discovery`; inspect `last_cycle` and `skipped_because`, then narrow or correct filters. Provider failure closes nothing. |
 | Push topics return `no_push` | Supported no-Firebase mode, or the credential path/environment is unset. Check only the gateway's mount and logs. |
 | Push fails but streaming works | Verify Firebase project match, uid/mode of the gateway service-account file and `BROADCAST_PUSH_ENVIRONMENT`. Publishers must still have no Firebase mount. |

@@ -142,6 +142,7 @@ something.
 | `PUBLISHER_API_ADDRESS` | `127.0.0.1:8092` | Where this template's API listens |
 | `PUBLISHER_DISPLAY_NAME` | unset | The name this server calls itself, for a connection's default label. At most 64 bytes, never verified |
 | `PUBLISHER_PUBLISH_TIMEOUT_SECONDS` | 10 | How long one publication may take before it is treated as unreachable and retried |
+| `PUBLISHER_CREATE_LIMIT` | 0 (unlimited) | Optional cap on **new** creates in a rolling hour (SEE-126). Existing tests leave it unset |
 
 Either secret may be a file instead: `BROADCAST_CREDENTIAL_FILE` and `PUBLISHER_API_TOKEN_FILE` name
 a path, which is what a deployment that mounts secrets wants. Setting both a value and a file for
@@ -272,7 +273,10 @@ than as a package.
 | `internal/publish/publish_test.go` | The credential goes in a header and nowhere else, the same document again is unchanged, a withdrawal of nothing is not an error, **every refusal classified** with the reason, and that a publication is never redirected |
 | `internal/publish/drain_test.go` | The manifest first, a restart republishing identical bytes, a gateway that is down, a refusal that stops, a withdrawal before anything was published, and the drainer running on a wake-up |
 | `internal/publish/gateway_test.go` | The **real gateway**, as a separate process. Opt-in: `SEEKERVAULT_BROADCAST=/path/to/broadcast go test ./internal/publish/ -run Gateway` |
-| `internal/api/api_test.go` | A signal published end to end, a retried create, a reused key, a create with no key, the token on every route, every malformed statement, a gateway that is down, a refusal and its retry, an update that changes nothing, a withdrawal being final, 404s, 405s, and strict decoding |
+| `internal/api/api_test.go` | A signal published end to end, a retried create, a reused key, a create with no key, the token on every route, every malformed statement, a gateway that is down, a refusal and its retry, an update that changes nothing, a withdrawal being final, 404s, 405s, strict decoding, and the optional create cap (SEE-126) |
+| `internal/limit/limit_test.go` | Sliding window, unlimited zero, independent keys, undo freeing a slot |
+| `internal/admin/*_test.go` | Named bcrypt file, mtime revoke, session cookie flags, CSRF origin, `/v1` client, token never in HTML, login and create rate limits |
+| `cmd/copytrading-admin/main_test.go` | `hash` prints a `name:bcrypt` line |
 | `internal/api/discovery_test.go` | Nobody may write a prediction signal, a poll running a cycle and publishing it, what `/v1/discovery` says, that the status says it is not writable, a poll refused while one runs, and **the provider's key in no answer and no log line** |
 | `internal/api/boundary_test.go` | No feed client compiled, one package calling the gateway, no Firebase or broker or MCP in the source, no service address compiled in **except the provider's, in one file**, no credential in a log line, nothing about a subscriber accepted in a body or a term, each template saying who writes its signals, and the CLI importing nothing privileged |
 | `cmd/publishctl/main_test.go` | What each command sends, the key it mints and prints, terms from a file, what it refuses to send at all, and how it reports a refusal and a pending publication |
