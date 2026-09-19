@@ -1,6 +1,5 @@
 // Package sdk is the developer-facing Server SDK. Client writes common public-feed requests to a
-// publisher template; Gateway creates private invitations and routes common requests through the
-// shared gateway. Neither surface knows a wallet, approval, store, or plugin implementation.
+// publisher template and knows no wallet, approval, store, or plugin implementation.
 package sdk
 
 import (

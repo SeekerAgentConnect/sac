@@ -4,9 +4,9 @@ SEE-88 made the kind of server part of a connection's record, and left `FeedGate
 publisher's manifest arrives through. SEE-89 added the document a publisher broadcasts, and left
 `ProposalFeed` as the seam it arrives through. Both said the same thing: the gateway is SEE-90.
 
-This is it: a Go service in [`broadcast/`](../../broadcast), with an authenticated publisher API,
-a read-only public-feed API, and SEE-109's invitation/device API for private servers. This page is
-why its public broadcast half is shaped the way it is;
+This is it: a Go service in [`broadcast/`](../../broadcast), with an authenticated publisher API
+and a read-only public-feed API. SEE-130 retired its former invitation/device API. This page is why
+the public gateway is shaped the way it is;
 [`docs/guides/server-development.md`](../guides/server-development.md) is what a developer does with
 it, in order.
 
@@ -38,25 +38,25 @@ each owner decides — the parameters they chose, whether they went ahead, what 
 leaves the device that decided it (SEE-89). The gateway is the only party in the middle, and the
 most it knows is which channel someone asked about.
 
-## The three APIs
+## The two APIs
 
 Separate services, on separate listeners, with credentials matched to each role:
 
-| | Publisher API | Public-feed API | Invitation/device API |
-| --- | --- | --- | --- |
-| Contract | [`publish.proto`](../../proto/seekervault/gateway/v1/publish.proto) | [`feed.proto`](../../proto/seekervault/gateway/v1/feed.proto) | [`onboarding.proto`](../../proto/seekervault/gateway/v1/onboarding.proto) |
-| Who calls it | A developer's backend | Every feed subscriber | Invitation viewers and confirmed SAC devices |
-| Credential | Bearer credential scoped to one server | None: a feed is a broadcast | None for preview/redeem; device credential afterwards |
-| What it can do | Publish feed documents; create invitations and private requests for its own scope | Read public manifests and feed requests | Render/resolve/redeem invitations; read one device's private requests; submit results; revoke that binding |
-| Where it listens | `BROADCAST_PUBLISHER_ADDRESS` | `BROADCAST_READ_ADDRESS` | `BROADCAST_CLIENT_ADDRESS` |
+| | Publisher API | Public-feed API |
+| --- | --- | --- |
+| Contract | [`publish.proto`](../../proto/seekervault/gateway/v1/publish.proto) | [`feed.proto`](../../proto/seekervault/gateway/v1/feed.proto) |
+| Who calls it | A developer's backend | Every feed subscriber |
+| Credential | Bearer credential scoped to one server | None: a feed is a broadcast |
+| What it can do | Publish and cancel feed documents | Read public manifests and feed requests |
+| Where it listens | `BROADCAST_PUBLISHER_ADDRESS` | `BROADCAST_READ_ADDRESS` |
 
-Three sockets rather than one service with a check per method make the separation survive routing
-mistakes. The publisher listener has no device operation, the public read listener has no mutation,
-and the client listener cannot create a source document. A boundary test holds every direction of
-that separation ([`boundary_test.go`](../../broadcast/internal/gateway/boundary_test.go)).
+Two sockets rather than one service with a check per method make the separation survive routing
+mistakes. The publisher listener has no subscriber operation and the public read listener has no
+mutation. A boundary test holds both directions of that separation and requires every retired RPC
+and onboarding path to return 404
+([`boundary_test.go`](../../broadcast/internal/gateway/boundary_test.go)).
 
-SAC has no publisher service client. It is generated only for the public-feed and
-invitation/device contracts it calls.
+SAC has no publisher service client. It is generated only for the public-feed contract it calls.
 
 ## What a publisher may say
 
@@ -70,12 +70,11 @@ and every document is checked against that rather than against what the document
 is `server/<server_id>` for the document's own server, so a publisher cannot name another's;
 `CancelProposal` has no channel field at all, because there is nothing for it to say.
 
-**A gateway mode, never a direct server.** A published manifest must be
-`CONNECTION_MODE_GATEWAY_FEED` or `CONNECTION_MODE_GATEWAY_PRIVATE` and name this gateway's own
-origin. A feed must also name the caller's own channel. A direct manifest carries a URL, and
+**A gateway feed, never a direct server.** A published manifest must be
+`CONNECTION_MODE_GATEWAY_FEED`, name this gateway's own origin, and name the caller's own channel.
+A direct manifest carries a URL, and
 relaying one would let a server hand phones an address of its choosing. The phone would refuse it,
-but the gateway does not rely on that: it refuses to hold one. A server ID also cannot move between
-the two gateway modes at a later revision.
+but the gateway does not rely on that: it refuses to hold one.
 
 **A revision it can order.** Zero is never published, and neither is anything above 2⁶³−1: the phone
 reads a revision into a signed 64-bit integer and refuses one it cannot compare, so a publisher
@@ -295,7 +294,7 @@ ticket at all. The measurements, the topology and what stopped the climb are in
 
 ### Deployment
 
-The broker's API port, its Redis and the gateway's own three listeners are on an internal compose
+The broker's API port, its Redis and the gateway's own two listeners are on an internal compose
 network with no route out of the deployment. The single public path is one gRPC procedure:
 
 ```
@@ -522,6 +521,22 @@ Six tables: a publisher, its credential hashes, its manifest, its proposals, the
 and the outbox. **There is no table, and no column, for a subscriber** — no address, no chosen
 quantity, no decision, nothing signed — and a boundary test reads the schema and fails if one
 appears. The gateway cannot lose a user's financial history because it never has one.
+
+### Migration and rollback
+
+Schema version 3 is a one-way retirement of gateway-private routing. Opening a version-2 file runs
+one transaction that removes manifests with the former numeric mode 3, then drops
+`private_request`, `invitation`, and `device_binding` in foreign-key order, and finally stamps the
+new version. Public publisher rows and credential hashes, feed manifest/proposal bytes and
+revisions, channel sequences, and pending outbox notices remain unchanged. Reopening version 3 is
+idempotent; a binary whose schema is older refuses a newer file rather than guessing.
+
+Before upgrading, stop writers and back up the SQLite volume using the deployment's documented
+volume backup procedure. Record the application commit with the backup. To roll back, stop the new
+gateway, restore the complete version-2 database backup, then start the old binary. Do not run the
+old binary against the migrated file, and do not reconstruct removed credentials or bindings from
+logs. `TestVersionTwoMigrationRetiresOnlyPrivateStateAndIsIdempotent` verifies the migration fixture
+and `TestAFileFromALaterVersionIsRefused` pins the rollback guard.
 
 ## What this build does and does not do
 

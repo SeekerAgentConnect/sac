@@ -12,7 +12,7 @@ The app talks to each self-hosted sidecar through a **connection**. You pair onc
 
 ## Pair
 
-1. On the computer that runs the sidecar, run `pnpm pair`. It prints a QR code, and the same code as a line that starts with `seekervault://pair?`. The code works once, for 10 minutes, and a newer code replaces it.
+1. On the computer that runs the sidecar, run `pnpm pair`. It prints a QR code, and the same code as a line that starts with `seekervault://pair?`. The code works once, for 10 minutes, and a newer code replaces it. A CLI, bot or operator may share that exact URI as a clickable link; opening it on Android goes to the same confirmation screen and does not contact the server until the owner taps **Pair**.
 2. In the app, on **Connections**, tap **Add connection**.
 3. Tap **Scan QR code**. The first time, Android asks for camera access; allow it. Point the camera at the QR code.
 

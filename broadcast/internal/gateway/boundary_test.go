@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"io/fs"
@@ -17,9 +18,15 @@ import (
 
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/config"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/dispatch"
+	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/gateway/v1/gatewayv1connect"
+	serverv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/relay"
 	"github.com/BrRenat/SeekerAgentWallet/broadcast/internal/store"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
+
+	_ "modernc.org/sqlite"
 )
 
 // The boundary the broadcast gateway is held to, in the shape the phone's own StageBoundaryTest
@@ -213,77 +220,41 @@ func TestNoProviderIsNamedInTheGateway(t *testing.T) {
 	}
 }
 
-// What the gateway keeps, as its own schema spells it. SEE-109 adds only a server-scoped opaque
-// recipient, a device binding and the common request/result route. The list is pinned so this can
-// never drift into a central account, wallet profile or financial history.
-func TestTheStoreKeepsOnlyTheGatewayPrivateAssociation(t *testing.T) {
-	source, err := os.ReadFile(filepath.Join(repo, "broadcast", "internal", "store", "store.go"))
+// The live schema is public-feed state only. The retired v2 definitions remain in the migration
+// chain, so this checks the database after all migrations rather than matching source text.
+func TestTheStoreKeepsOnlyPublicFeedState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broadcast.db")
+	documents, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The SQL's own comments go too: they explain the schema, and a check that read them would
-	// fail on the explanation of itself.
-	schema := regexp.MustCompile(`(?m)^\s*--.*$`).
-		ReplaceAllString(withoutComments(string(source)), "")
-	start := strings.Index(schema, "CREATE TABLE")
-	if start < 0 {
-		t.Fatal("the schema is not in internal/store/store.go any more")
+	if err := documents.Close(); err != nil {
+		t.Fatal(err)
 	}
-	schema = schema[start:]
-
-	tables := regexp.MustCompile(`CREATE TABLE (\w+)`).FindAllStringSubmatch(schema, -1)
+	database, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	rows, err := database.Query(
+		`SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
 	var names []string
-	for _, one := range tables {
-		names = append(names, one[1])
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, name)
 	}
 	expected := []string{
-		"publisher", "publisher_credential", "manifest", "proposal", "channel_sequence", "notice",
-		"invitation", "device_binding", "private_request",
+		"channel_sequence", "manifest", "notice", "proposal", "publisher", "publisher_credential",
 	}
 	if fmt.Sprint(names) != fmt.Sprint(expected) {
 		t.Fatalf("the store holds %v, expected %v", names, expected)
-	}
-
-	// Columns are lowercase and indented by two; the constraints that follow them are shouted, so
-	// the case is what tells one from the other.
-	columns := regexp.MustCompile(`(?m)^\s{2}([a-z]\w+)\s`).FindAllStringSubmatch(schema, -1)
-	var fields []string
-	for _, one := range columns {
-		fields = append(fields, one[1])
-	}
-	pinned := []string{
-		// publisher
-		"server_id", "label", "created_at_ms",
-		// publisher_credential
-		"credential_hash", "server_id", "label", "created_at_ms", "revoked_at_ms",
-		// manifest
-		"server_id", "settings_revision", "document", "updated_at_ms",
-		// proposal
-		"channel", "proposal_id", "server_id", "revision", "cancelled", "expires_at_ms",
-		"sequence", "document", "updated_at_ms",
-		// channel_sequence
-		"channel", "sequence",
-		// notice
-		"id", "channel", "kind", "proposal_id", "revision", "sequence", "created_at_ms",
-		"attempts", "ready_at_ms",
-		// invitation
-		"invitation_id", "token_hash", "server_id", "user_ref", "created_at_ms",
-		"expires_at_ms", "revoked_at_ms", "redeemed_at_ms", "connection_id",
-		// device_binding
-		"connection_id", "server_id", "user_ref", "credential_hash", "device_name",
-		"created_at_ms", "revoked_at_ms", "sequence",
-		// private_request
-		"server_id", "request_id", "user_ref", "connection_id", "revision", "cancelled",
-		"expires_at_ms", "sequence", "document", "result", "updated_at_ms",
-	}
-	if fmt.Sprint(fields) != fmt.Sprint(pinned) {
-		t.Fatalf("the store's columns are\n%v\nexpected\n%v", fields, pinned)
-	}
-
-	forbidden := regexp.MustCompile(`(?i)\b(wallet|amount|approval|approved|decision|` +
-		`dismissal|execution|balance|payout|subscriber|central_account|email|phone)\w*`)
-	if found := forbidden.FindAllString(schema, -1); len(found) > 0 {
-		t.Fatalf("the schema grew something about a person: %v", found)
 	}
 }
 
@@ -323,18 +294,6 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 		// publisher published. A field here would be a field every listener on the channel sees.
 		"event.proto": {"sequence", "manifest", "proposal", "request"},
 		"publish.proto": {
-			"user_ref", "lifetime_seconds",
-			"invitation",
-			"invitation_id",
-			"invitation",
-			"invitation_id",
-			"request", "connection_id",
-			"record", "unchanged",
-			"request_id",
-			"record",
-			"request_id", "revision",
-			"record", "unchanged",
-			"connection_id",
 			"manifest",
 			"status", "settings_revision",
 			"request",
@@ -345,22 +304,6 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			"status", "revision", "snapshot_sequence",
 			"proposal_id", "revision",
 			"status", "proposal", "snapshot_sequence",
-		},
-		"onboarding.proto": {
-			"invitation_id", "invitation_url", "app_uri", "expires_at", "status", "connection_id", "connected_at",
-			"token",
-			"invitation_id", "server_id", "display_name", "expires_at", "status", "manifest",
-			"token", "device_name",
-			"connection_id", "device_token", "server_id", "manifest",
-			"connection_id", "known_settings_revision",
-			"manifest", "unchanged", "settings_revision",
-			"connection_id", "page_size", "page_token", "known_sequence",
-			"requests", "next_page_token", "sequence", "unchanged",
-			"request_id", "request_revision", "status", "owner_inputs", "signature", "detail", "completed_at",
-			"connection_id", "result",
-			"result", "unchanged",
-			"connection_id",
-			"request", "connection_id", "result",
 		},
 		"problem.proto": {"problem", "field", "held_revision"},
 	} {
@@ -379,7 +322,7 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			t.Fatalf("%s carries\n%v\nexpected\n%v", file, names, expected)
 		}
 		forbiddenWords := `wallet|amount|approval|approved|decision|dismissal|execution|outcome|balance|payout|prepared|transaction|secret|install|script`
-		if file != "onboarding.proto" && file != "publish.proto" {
+		if file != "publish.proto" {
 			forbiddenWords += `|signature|result|credential`
 		}
 		forbidden := regexp.MustCompile(`(?i)\b(` + forbiddenWords + `)\w*`)
@@ -389,9 +332,89 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 	}
 }
 
-// The three APIs are three listeners, and this is that statement at run time: every procedure is
-// absent from the other two handlers. Not "is refused" — is not there at all, so no credential,
-// mistake or routing rule in front can turn one boundary into another.
+// Removal is permanent protocol state, not merely an absent handler. Every deleted descriptor is
+// denied by full name, while the numbers and field/enum names older serialized values carry stay
+// reserved so a future schema cannot reinterpret them.
+func TestRetiredPrivateProtocolNamesCannotReturn(t *testing.T) {
+	retired := []protoreflect.FullName{
+		"seekervault.gateway.v1.InvitationService",
+		"seekervault.gateway.v1.DeviceService",
+		"seekervault.gateway.v1.InvitationStatus",
+		"seekervault.gateway.v1.Invitation",
+		"seekervault.gateway.v1.ResolveInvitationRequest",
+		"seekervault.gateway.v1.ResolveInvitationResponse",
+		"seekervault.gateway.v1.RedeemInvitationRequest",
+		"seekervault.gateway.v1.RedeemInvitationResponse",
+		"seekervault.gateway.v1.DeviceServiceGetServerManifestRequest",
+		"seekervault.gateway.v1.DeviceServiceGetServerManifestResponse",
+		"seekervault.gateway.v1.DeviceServiceListRequestsRequest",
+		"seekervault.gateway.v1.DeviceServiceListRequestsResponse",
+		"seekervault.gateway.v1.DeviceResultStatus",
+		"seekervault.gateway.v1.DeviceResult",
+		"seekervault.gateway.v1.DeviceServiceSubmitResultRequest",
+		"seekervault.gateway.v1.DeviceServiceSubmitResultResponse",
+		"seekervault.gateway.v1.DeviceServiceRevokeConnectionRequest",
+		"seekervault.gateway.v1.DeviceServiceRevokeConnectionResponse",
+		"seekervault.gateway.v1.PrivateRequestRecord",
+		"seekervault.gateway.v1.CreateInvitationRequest",
+		"seekervault.gateway.v1.CreateInvitationResponse",
+		"seekervault.gateway.v1.GetInvitationRequest",
+		"seekervault.gateway.v1.GetInvitationResponse",
+		"seekervault.gateway.v1.RevokeInvitationRequest",
+		"seekervault.gateway.v1.RevokeInvitationResponse",
+		"seekervault.gateway.v1.CreatePrivateRequestRequest",
+		"seekervault.gateway.v1.CreatePrivateRequestResponse",
+		"seekervault.gateway.v1.GetPrivateRequestRequest",
+		"seekervault.gateway.v1.GetPrivateRequestResponse",
+		"seekervault.gateway.v1.CancelPrivateRequestRequest",
+		"seekervault.gateway.v1.CancelPrivateRequestResponse",
+		"seekervault.gateway.v1.RevokePrivateConnectionRequest",
+		"seekervault.gateway.v1.RevokePrivateConnectionResponse",
+		"seekervault.server.v1.GatewayPrivate",
+	}
+	for _, name := range retired {
+		if descriptor, err := protoregistry.GlobalFiles.FindDescriptorByName(name); err == nil {
+			t.Fatalf("retired descriptor %s returned as %T", name, descriptor)
+		}
+	}
+
+	manifest := serverv1.File_seekervault_server_v1_manifest_proto.Messages().ByName("ServerManifest")
+	if !manifest.ReservedNames().Has("gateway_private") ||
+		!manifest.ReservedRanges().Has(protoreflect.FieldNumber(10)) {
+		t.Fatal("ServerManifest no longer reserves gateway_private field 10")
+	}
+	mode := serverv1.File_seekervault_server_v1_manifest_proto.Enums().ByName("ConnectionMode")
+	if !mode.ReservedNames().Has("CONNECTION_MODE_GATEWAY_PRIVATE") ||
+		!mode.ReservedRanges().Has(protoreflect.EnumNumber(3)) {
+		t.Fatal("ConnectionMode no longer reserves gateway-private value 3")
+	}
+	problems := gatewayv1.File_seekervault_gateway_v1_problem_proto.Enums().ByName("GatewayProblem")
+	for number := protoreflect.EnumNumber(35); number <= 46; number++ {
+		if !problems.ReservedRanges().Has(number) {
+			t.Fatalf("GatewayProblem no longer reserves %d", number)
+		}
+	}
+	for _, name := range []protoreflect.Name{
+		"GATEWAY_PROBLEM_BAD_USER_REF",
+		"GATEWAY_PROBLEM_BAD_LIFETIME",
+		"GATEWAY_PROBLEM_INVALID_INVITATION",
+		"GATEWAY_PROBLEM_INVITATION_EXPIRED",
+		"GATEWAY_PROBLEM_INVITATION_USED",
+		"GATEWAY_PROBLEM_NO_BINDING",
+		"GATEWAY_PROBLEM_BINDING_EXISTS",
+		"GATEWAY_PROBLEM_WRONG_RECIPIENT",
+		"GATEWAY_PROBLEM_NO_SUCH_REQUEST",
+		"GATEWAY_PROBLEM_RESULT_CONFLICT",
+		"GATEWAY_PROBLEM_REQUEST_SETTLED",
+		"GATEWAY_PROBLEM_NOT_PRIVATE",
+	} {
+		if !problems.ReservedNames().Has(name) {
+			t.Fatalf("GatewayProblem no longer reserves %s", name)
+		}
+	}
+}
+
+// The two APIs are two listeners, and every retired gateway-private procedure is absent from both.
 func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 	documents, err := store.Open(filepath.Join(t.TempDir(), "broadcast.db"))
 	if err != nil {
@@ -418,20 +441,12 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 	defer read.Close()
 	publish := httptest.NewServer(service.Publish)
 	defer publish.Close()
-	client := httptest.NewServer(service.Client)
-	defer client.Close()
 	publisherProcedures := []string{
 		gatewayv1connect.PublisherServicePublishManifestProcedure,
 		gatewayv1connect.PublisherServicePublishRequestProcedure,
 		gatewayv1connect.PublisherServiceCancelRequestProcedure,
 		gatewayv1connect.PublisherServicePublishProposalProcedure,
 		gatewayv1connect.PublisherServiceCancelProposalProcedure,
-		gatewayv1connect.PublisherServiceCreateInvitationProcedure,
-		gatewayv1connect.PublisherServiceGetInvitationProcedure,
-		gatewayv1connect.PublisherServiceRevokeInvitationProcedure,
-		gatewayv1connect.PublisherServiceCreatePrivateRequestProcedure,
-		gatewayv1connect.PublisherServiceGetPrivateRequestProcedure,
-		gatewayv1connect.PublisherServiceCancelPrivateRequestProcedure,
 	}
 	feedProcedures := []string{
 		gatewayv1connect.FeedServiceGetServerManifestProcedure,
@@ -441,13 +456,20 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 		gatewayv1connect.FeedServiceGetProposalProcedure,
 		gatewayv1connect.FeedServiceGetFeedTopicsProcedure,
 	}
-	clientProcedures := []string{
-		gatewayv1connect.InvitationServiceResolveInvitationProcedure,
-		gatewayv1connect.InvitationServiceRedeemInvitationProcedure,
-		gatewayv1connect.DeviceServiceGetServerManifestProcedure,
-		gatewayv1connect.DeviceServiceListRequestsProcedure,
-		gatewayv1connect.DeviceServiceSubmitResultProcedure,
-		gatewayv1connect.DeviceServiceRevokeConnectionProcedure,
+	retiredProcedures := []string{
+		"/seekervault.gateway.v1.InvitationService/ResolveInvitation",
+		"/seekervault.gateway.v1.InvitationService/RedeemInvitation",
+		"/seekervault.gateway.v1.DeviceService/GetServerManifest",
+		"/seekervault.gateway.v1.DeviceService/ListRequests",
+		"/seekervault.gateway.v1.DeviceService/SubmitResult",
+		"/seekervault.gateway.v1.DeviceService/RevokeConnection",
+		"/seekervault.gateway.v1.PublisherService/CreateInvitation",
+		"/seekervault.gateway.v1.PublisherService/GetInvitation",
+		"/seekervault.gateway.v1.PublisherService/RevokeInvitation",
+		"/seekervault.gateway.v1.PublisherService/CreatePrivateRequest",
+		"/seekervault.gateway.v1.PublisherService/GetPrivateRequest",
+		"/seekervault.gateway.v1.PublisherService/CancelPrivateRequest",
+		"/seekervault.gateway.v1.PublisherService/RevokePrivateConnection",
 	}
 
 	for _, one := range []struct {
@@ -455,9 +477,8 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 		server     *httptest.Server
 		procedures []string
 	}{
-		{"the read listener", read, append(append([]string{}, publisherProcedures...), clientProcedures...)},
-		{"the publisher listener", publish, append(append([]string{}, feedProcedures...), clientProcedures...)},
-		{"the client listener", client, append(append([]string{}, feedProcedures...), publisherProcedures...)},
+		{"the read listener", read, append(append([]string{}, publisherProcedures...), retiredProcedures...)},
+		{"the publisher listener", publish, append(append([]string{}, feedProcedures...), retiredProcedures...)},
 	} {
 		for _, procedure := range one.procedures {
 			response, err := one.server.Client().Post(
@@ -468,6 +489,18 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 			_ = response.Body.Close()
 			if response.StatusCode != http.StatusNotFound {
 				t.Fatalf("%s answered %s for %s", one.name, response.Status, procedure)
+			}
+		}
+	}
+	for _, server := range []*httptest.Server{read, publish} {
+		for _, path := range []string{"/invite/stale-token", "/invite/stale-token/qr.png"} {
+			response, err := server.Client().Get(server.URL + path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusNotFound {
+				t.Fatalf("retired onboarding path %s answered %s", path, response.Status)
 			}
 		}
 	}

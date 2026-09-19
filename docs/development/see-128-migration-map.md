@@ -3,6 +3,10 @@
 Status: SEE-129 baseline, recorded from `superset/feat/see-128` at
 `a4feaa1551d974d4f23e6e5ea2a6301a79078035` on 2026-09-19 through 2026-09-20.
 
+Implementation status: SEE-130 applies the step-2 retirement on the same branch and PR. Direct and
+gateway-feed are now the only active modes; the later extraction, moves and deployment split remain
+owned by SEE-131 through SEE-136.
+
 Authority: [SEE-128](https://linear.app/seekeragentwallet/issue/SEE-128/refactor-sac-into-a-typescript-server-sdk-self-hosted-mcp-public-feeds),
 [SEE-129](https://linear.app/seekeragentwallet/issue/SEE-129/18-establish-the-architecture-baseline-and-exact-migration-map),
 and the docs-only architecture reference [PR #36](https://github.com/BrRenat/SeekerAgentWallet/pull/36).
@@ -392,6 +396,33 @@ Later-child focused gates:
 - SEE-136: the complete direct/feed/isolation/migration/package/deployment regression matrix, all
   four clean-setup guide walks, stale-path/API/capability scans, final two-mode docs, and explicit
   NOT RUN evidence for any unauthorized or unavailable live/physical check.
+
+### SEE-130 implementation record
+
+SEE-130 removed the private invitation/device procedures, private publisher calls, the gateway's
+third listener and proxy routes, generated bindings, publisher SDK helpers/examples, and every
+Android network/execution branch for that mode. Removed protobuf identities are reserved and a
+descriptor-level deny-list prevents their return; generic direct request/result contracts and
+`RETURN_TO_ORIGIN` remain.
+
+Broadcast schema version 3 transactionally removes legacy mode-3 manifests and drops
+`private_request`, `invitation`, then `device_binding`. Its fixture starts from schema version 2 and
+proves public publisher credentials, feed manifest/proposal bytes, channel sequence and pending
+notice survive, then opens the upgraded file again. Operators must back up `broadcast.db` plus its
+`-wal` and `-shm` files while the gateway is stopped before upgrade. Rollback means stopping the new
+binary and restoring that complete pre-v3 backup before starting the old binary; schema v3 cannot
+recreate private credentials or rows and is intentionally refused by an old schema-v2 binary.
+
+Android connection storage version 5 converts only literal legacy `gateway_private` records to an
+inert no-mode retirement record. It preserves identity, owner label, former origin and timestamps,
+deletes the obsolete device credential, marks waiting result delivery undeliverable, removes
+unfinished proposals, clears sync/notification ownership, and leaves Activity history plus all
+Direct/Feed records unchanged. Re-running the cleanup is idempotent. A fresh direct pairing code is
+required; no old origin, token or identity is converted.
+
+The exact PASS/FAIL/NOT RUN matrix is in [`docs/testing/see-130.md`](../testing/see-130.md). The next
+owner is SEE-131, which may extract the reusable TypeScript SDK but must not reverse this retirement
+or reinterpret a legacy credential.
 
 ## 10. Ordered child ownership and handoff
 

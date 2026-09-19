@@ -42,11 +42,10 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_SERVER, "server_id")
 	}
 	var feedReference *serverv1.GatewayFeed
-	var privateReference *serverv1.GatewayPrivate
 	switch message.GetMode() {
 	case serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_FEED:
 		feed := message.GetFeed()
-		if feed == nil || message.GetDirect() != nil || message.GetGatewayPrivate() != nil {
+		if feed == nil || message.GetDirect() != nil {
 			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NOT_A_FEED, "reference")
 		}
 		if feed.GetGatewayUrl() != expect.GatewayURL {
@@ -57,15 +56,6 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 		}
 		feedReference = &serverv1.GatewayFeed{
 			GatewayUrl: expect.GatewayURL, Channel: ChannelFor(message.GetServerId())}
-	case serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_PRIVATE:
-		private := message.GetGatewayPrivate()
-		if private == nil || message.GetDirect() != nil || message.GetFeed() != nil {
-			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NOT_PRIVATE, "reference")
-		}
-		if private.GetGatewayUrl() != expect.GatewayURL {
-			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_GATEWAY, "gateway_private.gateway_url")
-		}
-		privateReference = &serverv1.GatewayPrivate{GatewayUrl: expect.GatewayURL}
 	default:
 		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NOT_A_FEED, "mode")
 	}
@@ -127,11 +117,7 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 		Environments:     environments,
 		DisplayName:      message.GetDisplayName(),
 	}
-	if feedReference != nil {
-		rebuilt.Reference = &serverv1.ServerManifest_Feed{Feed: feedReference}
-	} else {
-		rebuilt.Reference = &serverv1.ServerManifest_GatewayPrivate{GatewayPrivate: privateReference}
-	}
+	rebuilt.Reference = &serverv1.ServerManifest_Feed{Feed: feedReference}
 	return rebuilt, nil
 }
 
@@ -164,9 +150,7 @@ func AdvanceManifest(held, next *serverv1.ServerManifest) (Decision, *Fault) {
 			Held:    held.GetSettingsRevision(),
 		}
 	}
-	// The mode is the transport relationship a phone confirmed, not mutable presentation. Letting
-	// a higher revision turn a public feed into a private adapter (or the reverse) would strand
-	// existing clients and bypass the fresh invitation required for a device binding.
+	// The mode is the transport relationship a phone confirmed, not mutable presentation.
 	if held.GetMode() != next.GetMode() {
 		return Stored, &Fault{
 			Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT,

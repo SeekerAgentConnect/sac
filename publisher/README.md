@@ -26,8 +26,7 @@ accept it, and no endpoint that would answer about it.
 | [`internal/store`](internal/store) | The only place that speaks SQL: the signals, and what the gateway has confirmed about each |
 | [`internal/publish`](internal/publish) | The one thing that reaches out of the process: the gateway client, the retry judgment, the drainer |
 | [`internal/api`](internal/api) | The JSON API a person, a script or a strategy engine calls, and the boundary tests |
-| [`sdk`](sdk) | The Go Server SDK: common feed requests plus gateway-private manifests, invitations, completion polling and routed requests/results |
-| [`examples/gateway-onboarding`](examples/gateway-onboarding) | Website, bot and CLI onboarding through the same hosted invitation page |
+| [`sdk`](sdk) | The publisher's existing Go client for publishing common feed requests |
 | [`compose.yaml`](compose.yaml) | The stack: the template and a proxy on loopback. `ctl` sits behind a profile and does not start |
 | [`compose.public.yaml`](compose.public.yaml) | The internet-facing overlay — read the warning in it first |
 | [`compose.prediction.yaml`](compose.prediction.yaml) | The Prediction template's own stack: its own database, its own port, its own everything |
@@ -116,13 +115,9 @@ The CLI calls `/v1/requests`, and a Go integration may call `sdk.Client.CreateRe
 `/v1/signals` routes remain compatibility aliases over the same store and publisher; new code has
 one documented create method.
 
-For a request addressed privately to one confirmed SAC device, use `sdk.NewGateway` instead. It
-publishes a `gateway_private` manifest, creates a temporary invitation, exposes its hosted page/QR
-data, waits for completion and sends the same common request contract through that binding. The
-publisher credential remains in backend configuration. Run
-`go run ./examples/gateway-onboarding --user <opaque ref> --wait`; the full flow and the trading,
-prediction and MCP-origin examples are in
-[`docs/guides/gateway-onboarding.md`](../docs/guides/gateway-onboarding.md).
+For a request addressed to one phone, use the owner's direct sidecar and its ordinary
+`seekervault://pair` link or QR code. The shared gateway has no invitation, device-binding,
+request-result, or completion-polling API.
 
 ## Publishing markets you did not write
 

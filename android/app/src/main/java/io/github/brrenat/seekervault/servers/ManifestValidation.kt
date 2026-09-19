@@ -111,7 +111,6 @@ fun manifestFrom(message: WireManifest, expect: ManifestExpectation): ManifestRe
         when (message.mode) {
             WireMode.CONNECTION_MODE_DIRECT -> ConnectionMode.Direct
             WireMode.CONNECTION_MODE_GATEWAY_FEED -> ConnectionMode.GatewayFeed
-            WireMode.CONNECTION_MODE_GATEWAY_PRIVATE -> ConnectionMode.GatewayPrivate
             // Unspecified, or a mode from a later version of the format. Either way this phone
             // doesn't know how it would reach the server, and it doesn't pick one for it.
             else -> return invalid(ManifestProblem.NoMode)
@@ -197,19 +196,6 @@ private fun referenceProblem(
                 ManifestProblem.ForeignChannel
             else null
         }
-        ConnectionMode.GatewayPrivate -> {
-            if (!message.hasGatewayPrivate()) ManifestProblem.BadReference
-            else if (
-                FeedReferences.gatewayUrlProblem(
-                    message.gatewayPrivate.gatewayUrl,
-                    CLEARTEXT_ALREADY_DECIDED,
-                ) != null
-            )
-                ManifestProblem.BadEndpoint
-            else if (message.gatewayPrivate.gatewayUrl != expect.origin)
-                ManifestProblem.OtherEndpoint
-            else null
-        }
     }
 
 /**
@@ -227,8 +213,6 @@ private fun reference(message: WireManifest, mode: ConnectionMode): ServerRefere
         ConnectionMode.Direct -> ServerReference.Direct(message.direct.url)
         ConnectionMode.GatewayFeed ->
             ServerReference.Feed(message.feed.gatewayUrl, message.feed.channel)
-        ConnectionMode.GatewayPrivate ->
-            ServerReference.GatewayPrivate(message.gatewayPrivate.gatewayUrl)
     }
 
 /**

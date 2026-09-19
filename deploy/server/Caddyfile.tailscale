@@ -11,8 +11,6 @@
 		output stderr
 		format console
 	}
-	# Invitation paths contain temporary capabilities and never enter access logs.
-	log_skip /invite/*
 	# Login posts carry passwords; skip them the same way.
 	log_skip /trader/login
 	# Caddy redacts credential headers unless log_credentials is enabled. It is
@@ -40,16 +38,6 @@ https://{$BROADCAST_DOMAIN} {
 			max_size 64KiB
 		}
 		reverse_proxy 127.0.0.1:8090
-	}
-
-	# Temporary invitation pages and client RPCs reach only the gateway's client boundary. Device
-	# methods still require the credential issued at explicit confirmation.
-	@onboarding path /invite/* /seekervault.gateway.v1.InvitationService/* /seekervault.gateway.v1.DeviceService/*
-	handle @onboarding {
-		request_body {
-			max_size 64KiB
-		}
-		reverse_proxy 127.0.0.1:8092
 	}
 
 	# The only public broker route. The TLS client negotiates HTTP/2 with Caddy;

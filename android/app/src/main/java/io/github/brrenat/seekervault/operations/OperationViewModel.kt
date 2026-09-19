@@ -133,7 +133,7 @@ class OperationViewModel(
                     OperationsUiState(
                         loaded = true,
                         records = held,
-                        feeds = live.filter { it.mode != ConnectionMode.Direct },
+                        feeds = live.filter { it.mode == ConnectionMode.GatewayFeed },
                     )
                 }
                 .collect { fresh ->
@@ -423,7 +423,7 @@ class OperationViewModel(
     /**
      * Reads the owner's rules against what the plugin established, right now.
      *
-     * The history is re-read from disk first, exactly as a private request's review does it, so a
+     * The history is re-read from disk first, exactly as a direct request's review does it, so a
      * daily total is what is actually stored rather than what this process happened to see. A read
      * that fails leaves the day unknown, which shows up as unverified rather than as nothing spent.
      */

@@ -34,9 +34,6 @@
 		format console
 	}
 	log_skip /healthz
-	# Invitation paths contain temporary capabilities and never enter access logs.
-	log_skip /invite/*
-
 	header {
 		# This host is HTTPS-only from now on; a downgrade is not an option.
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -74,15 +71,6 @@
 			max_size 64KiB
 		}
 		reverse_proxy 127.0.0.1:8091
-	}
-
-	# --- Gateway-private onboarding and paired devices (SEE-109) -------------
-	@onboarding path /invite/* /seekervault.gateway.v1.InvitationService/* /seekervault.gateway.v1.DeviceService/*
-	handle @onboarding {
-		request_body {
-			max_size 64KiB
-		}
-		reverse_proxy 127.0.0.1:8092
 	}
 
 	# --- The stream: one gRPC procedure, and only that one (SEE-91) ----------

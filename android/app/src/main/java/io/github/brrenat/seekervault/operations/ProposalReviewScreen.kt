@@ -80,8 +80,6 @@ fun ProposalReviewScreen(
     onRules: (() -> Unit)? = null,
     /** Hands a link to whatever app opens them. The app fetches nothing from any of them. */
     onOpenLink: (String) -> Unit = {},
-    /** Private gateway requests return the declared owner inputs and outcome to their source. */
-    returnsResult: Boolean = false,
 ) {
     val proposal = review.record.proposal
     val executed = review.record.execution
@@ -213,10 +211,7 @@ fun ProposalReviewScreen(
                                 Field(field, review.choice.values[field.key], onChoose)
                             }
                             Text(
-                                stringResource(
-                                    if (returnsResult) R.string.operation_your_part_private_note
-                                    else R.string.operation_your_part_note
-                                ),
+                                stringResource(R.string.operation_your_part_note),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -377,31 +372,15 @@ fun ProposalReviewScreen(
                 }
                 if (review.record.dismissed == null && executed == null) {
                     SeekerButton(
-                        text =
-                            stringResource(
-                                if (returnsResult) R.string.operation_reject
-                                else R.string.operation_dismiss
-                            ),
+                        text = stringResource(R.string.operation_dismiss),
                         onClick = onDismiss,
                         role = SeekerButtonRole.Neutral,
                         enabled = !review.sending,
                         modifier = Modifier.fillMaxWidth().testTag(OperationTags.DISMISS),
                     )
                 }
-                Address(
-                    stringResource(
-                        if (returnsResult) R.string.operation_request_id
-                        else R.string.operation_proposal_id
-                    ),
-                    proposal.key.proposalId,
-                )
-                Address(
-                    stringResource(
-                        if (returnsResult) R.string.operation_server
-                        else R.string.operation_publisher
-                    ),
-                    proposal.key.serverId,
-                )
+                Address(stringResource(R.string.operation_proposal_id), proposal.key.proposalId)
+                Address(stringResource(R.string.operation_publisher), proposal.key.serverId)
                 Text(
                     stringResource(R.string.operation_revision, proposal.revision),
                     style = MaterialTheme.typography.bodySmall,

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/proposal/v1"
@@ -140,6 +142,146 @@ func TestAFileFromALaterVersionIsRefused(t *testing.T) {
 	if _, err := Open(path); !errors.Is(err, ErrNewerSchema) {
 		t.Fatalf("a newer schema was opened anyway: %v", err)
 	}
+}
+
+func TestVersionTwoMigrationRetiresOnlyPrivateStateAndIsIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broadcast.db")
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(schemaV1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(schemaV2); err != nil {
+		t.Fatal(err)
+	}
+
+	feedDocument, err := proto.Marshal(manifest(publisher, 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyPrivateDocument, err := proto.Marshal(&serverv1.ServerManifest{
+		ServerId: stranger, ProtocolVersion: 1, SettingsRevision: 9,
+		Mode: serverv1.ConnectionMode(3),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposalDocument, err := proto.Marshal(proposal(
+		publisher, proposalA, 5, published.Add(3*time.Hour)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO publisher VALUES (?, ?, ?)`, []any{publisher, "feed", 1}},
+		{`INSERT INTO publisher VALUES (?, ?, ?)`, []any{stranger, "former private", 2}},
+		{`INSERT INTO publisher_credential VALUES (?, ?, ?, ?, NULL)`,
+			[]any{credential(publisher), publisher, "feed", 3}},
+		{`INSERT INTO publisher_credential VALUES (?, ?, ?, ?, NULL)`,
+			[]any{credential(stranger), stranger, "former private", 4}},
+		{`INSERT INTO manifest VALUES (?, ?, ?, ?)`,
+			[]any{publisher, 7, feedDocument, 5}},
+		{`INSERT INTO manifest VALUES (?, ?, ?, ?)`,
+			[]any{stranger, 9, legacyPrivateDocument, 6}},
+		{`INSERT INTO proposal VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+			[]any{channelA, proposalA, publisher, 5, published.Add(3 * time.Hour).UnixMilli(),
+				17, proposalDocument, 7}},
+		{`INSERT INTO channel_sequence VALUES (?, ?)`, []any{channelA, 17}},
+		{`INSERT INTO notice
+		  (channel, kind, proposal_id, revision, sequence, created_at_ms, attempts, ready_at_ms)
+		  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			[]any{channelA, "proposal", proposalA, 5, 17, 8, 2, 9}},
+		{`INSERT INTO invitation VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
+			[]any{"11111111-2222-4333-8444-555555555555", []byte("token"), stranger,
+				"former-user", 10, 20}},
+		{`INSERT INTO device_binding VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
+			[]any{"22222222-3333-4444-8555-666666666666", stranger, "former-user",
+				[]byte("binding"), "Seeker", 11, 4}},
+		{`INSERT INTO private_request VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, NULL, ?)`,
+			[]any{stranger, "33333333-4444-4555-8666-777777777777", "former-user",
+				"22222222-3333-4444-8555-666666666666", 1, 30, 4, []byte("private"), 12}},
+	}
+	for _, statement := range statements {
+		if _, err := raw.Exec(statement.query, statement.args...); err != nil {
+			t.Fatalf("seed version two: %v", err)
+		}
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 2`); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	documents, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if held, err := documents.Manifest(ctx, publisher); err != nil ||
+		held == nil || !bytes.Equal(feedDocument, mustMarshal(t, held.Document)) {
+		t.Fatalf("feed manifest changed during migration: %v %v", held, err)
+	}
+	if held, err := documents.Manifest(ctx, stranger); err != nil || held != nil {
+		t.Fatalf("legacy private manifest remained active: %v %v", held, err)
+	}
+	for _, serverID := range []string{publisher, stranger} {
+		if found, err := documents.PublisherFor(ctx, credential(serverID)); err != nil || found != serverID {
+			t.Fatalf("publisher credential did not survive for %s: %q %v", serverID, found, err)
+		}
+	}
+	if sequence, err := documents.Sequence(ctx, channelA); err != nil || sequence != 17 {
+		t.Fatalf("sequence changed during migration: %d %v", sequence, err)
+	}
+	if pending, err := documents.Pending(ctx); err != nil || pending != 1 {
+		t.Fatalf("outbox changed during migration: %d %v", pending, err)
+	}
+	var storedProposal []byte
+	if err := documents.reader.QueryRowContext(ctx,
+		`SELECT document FROM proposal WHERE channel = ? AND proposal_id = ?`,
+		channelA, proposalA).Scan(&storedProposal); err != nil ||
+		!bytes.Equal(proposalDocument, storedProposal) {
+		t.Fatalf("proposal bytes changed during migration: %v", err)
+	}
+	for _, table := range []string{"invitation", "device_binding", "private_request"} {
+		var count int
+		if err := documents.reader.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).
+			Scan(&count); err != nil || count != 0 {
+			t.Fatalf("retired table %s remains: count=%d err=%v", table, count, err)
+		}
+	}
+	var version int
+	if err := documents.reader.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil ||
+		version != Version {
+		t.Fatalf("schema version is %d: %v", version, err)
+	}
+	if err := documents.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	again, err := Open(path)
+	if err != nil {
+		t.Fatalf("version three migration was not idempotent: %v", err)
+	}
+	defer func() { _ = again.Close() }()
+	if pending, err := again.Pending(ctx); err != nil || pending != 1 {
+		t.Fatalf("idempotent reopen changed the outbox: %d %v", pending, err)
+	}
+}
+
+func mustMarshal(t *testing.T, message proto.Message) []byte {
+	t.Helper()
+	document, err := proto.Marshal(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return document
 }
 
 func TestACredentialIsRotatedWithoutAnOutageAndRevokedForGood(t *testing.T) {

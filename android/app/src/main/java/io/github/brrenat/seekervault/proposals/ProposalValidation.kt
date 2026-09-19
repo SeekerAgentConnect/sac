@@ -49,7 +49,7 @@ data class ProposalExpectation(
      * this publisher on its own channel is on the expected channel by construction.
      */
     val serverId: String,
-    /** Private requests use the same durable review path but a private audience/result policy. */
+    /** Reserved envelope audience; a public-feed proposal must always leave this false. */
     val private: Boolean = false,
     /**
      * The revision the phone already holds for this proposal, if any. A document may repeat it or

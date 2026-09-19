@@ -20,6 +20,7 @@ import io.github.brrenat.seekervault.designsystem.ConnectionDetailStatus
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailStatusTone
 import io.github.brrenat.seekervault.designsystem.FactRowValueStyle
 import io.github.brrenat.seekervault.policy.PolicyTags
+import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
@@ -42,6 +43,7 @@ fun ConnectionDetailLibraryScreen(
     onMessageShown: () -> Unit,
     onRules: () -> Unit,
     onInbox: () -> Unit,
+    onPairDirect: () -> Unit,
     modifier: Modifier = Modifier,
     live: ForegroundConnectionState? = null,
     support: ServerSupport? = null,
@@ -73,12 +75,13 @@ fun ConnectionDetailLibraryScreen(
                                 else ConnectionDetailStatusTone.Connected,
                             tag = ConnectionsTags.STATUS,
                             enabled =
-                                (connection.usable || connection.gatewayUsable) && !refreshing,
+                                (connection.usable ||
+                                    connection.mode == ConnectionMode.GatewayFeed) && !refreshing,
                         ),
                     facts =
                         listOf(
                             ConnectionDetailFact(
-                                "Server",
+                                if (connection.retirement != null) "Former gateway" else "Server",
                                 connection.serverUrl,
                                 FactRowValueStyle.MonoWrap,
                                 ConnectionsTags.field("server"),
@@ -103,31 +106,34 @@ fun ConnectionDetailLibraryScreen(
                             ),
                         ),
                     rules =
-                        ConnectionDetailRules(
-                            title = "Rules",
-                            supportingText = overrideText,
-                            caption =
-                                "Rules highlight requests that need attention. You still approve " +
-                                    "every request.",
-                            tag = PolicyTags.RULES,
-                        ),
+                        if (connection.retirement != null) null
+                        else
+                            ConnectionDetailRules(
+                                title = "Rules",
+                                supportingText = overrideText,
+                                caption =
+                                    "Rules highlight requests that need attention. You still approve " +
+                                        "every request.",
+                                tag = PolicyTags.RULES,
+                            ),
                     renameLabel = "Rename",
-                    inboxLabel = "Its inbox",
+                    inboxLabel =
+                        if (connection.retirement != null) "Pair directly" else "Its inbox",
                     disconnectExplanation =
-                        if (connection.usable || connection.gatewayUsable) {
+                        if (connection.usable) {
                             "The server revokes this phone's credential and cancels its pending " +
                                 "requests. To connect again, pair with a new code."
                         } else {
                             "Remove this connection from this phone. To connect again, pair with " +
                                 "a new code."
                         },
-                    disconnectLabel =
-                        if (connection.usable || connection.gatewayUsable) "Disconnect"
-                        else "Remove",
+                    disconnectLabel = if (connection.usable) "Disconnect" else "Remove",
                     renameTag = ConnectionsTags.RENAME,
-                    inboxTag = ConnectionsTags.PENDING,
+                    inboxTag =
+                        if (connection.retirement != null) ConnectionsTags.PAIR_DIRECT
+                        else ConnectionsTags.PENDING,
                     disconnectTag =
-                        if (connection.usable || connection.gatewayUsable) {
+                        if (connection.usable) {
                             ConnectionsTags.DISCONNECT
                         } else {
                             ConnectionsTags.REMOVE
@@ -140,7 +146,7 @@ fun ConnectionDetailLibraryScreen(
                     onRefresh = onRefresh,
                     onRules = onRules,
                     onRename = { renaming = true },
-                    onInbox = onInbox,
+                    onInbox = if (connection.retirement != null) onPairDirect else onInbox,
                     onDisconnect = onDisconnect,
                 ),
             modifier = Modifier.fillMaxSize(),

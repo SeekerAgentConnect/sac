@@ -1,7 +1,7 @@
 # The broadcast gateway
 
-The Go service in [`broadcast/`](../../broadcast): an authenticated publisher API, an anonymous
-public-feed API, and SEE-109's invitation/device API for private server connections.
+The Go service in [`broadcast/`](../../broadcast): an authenticated publisher API and an anonymous
+public-feed API. SEE-130 removed the former invitation/device API for private server connections.
 [`docs/wiki/broadcast-gateway.md`](../wiki/broadcast-gateway.md) is why it is shaped the way it is;
 this page is how to run it, what its settings do, and where its code and tests are.
 
@@ -75,7 +75,6 @@ something.
 | `BROADCAST_DATABASE_PATH` | none; required | The SQLite file. It is the authority for everything served |
 | `BROADCAST_READ_ADDRESS` | `127.0.0.1:8090` | Where the anonymous feed API listens |
 | `BROADCAST_PUBLISHER_ADDRESS` | `127.0.0.1:8091` | Where the publisher API listens. It must differ from the read address |
-| `BROADCAST_CLIENT_ADDRESS` | `127.0.0.1:8092` | Where hosted invitations and device-authenticated private request/result RPCs listen. It must differ from both other addresses |
 | `BROADCAST_RETENTION_HOURS` | 168 | How long past its own expiry a proposal is still served |
 | `BROADCAST_MAX_PROPOSALS` | 200 | The most proposals one channel may hold at once |
 | `BROADCAST_READ_RATE`, `BROADCAST_READ_BURST` | 20, 60 | Reads per second per caller, and the burst |
@@ -122,12 +121,12 @@ while the gateway is up.
 
 | Path | What is in it |
 | --- | --- |
-| `cmd/broadcast` | The server: configuration, the store, three isolated listeners, the drainer, the sweep, and an orderly shutdown |
+| `cmd/broadcast` | The server: configuration, the store, two isolated listeners, the drainer, the sweep, and an orderly shutdown |
 | `cmd/broadcastctl` | The operator's tool, and its tests — which also pin that the tool and the gateway agree about what a credential is |
 | `internal/config` | The environment, validated, and the canonical form of a gateway origin |
 | `internal/rules` | What the gateway accepts, as pure functions: the document rules, the ordering rules, and what a withdrawal leaves behind. The phone's own rules, on this side |
-| `internal/store` | The only place that speaks SQL: public publication/outbox rows plus temporary invitations, minimal device bindings and pinned private requests/results |
-| `internal/gateway` | Public feed, authenticated publisher and invitation/device handlers; credential interceptors, limiters, cursors, the strict JSON codec and boundary tests |
+| `internal/store` | The only place that speaks SQL: the six public publication/configuration/outbox tables and the one-way schema-v3 retirement migration |
+| `internal/gateway` | Public feed and authenticated publisher handlers; credential interceptors, limiters, cursors, the strict JSON codec and boundary tests |
 | `internal/dispatch` | The outbox drainer, its backoff, `Dispatcher`, and the event envelope every subscriber receives |
 | `internal/stream` | The broker (SEE-91): publishing an event over its server API, and minting the ticket a listener connects with. One of the two packages that open a connection, and it takes the address from the operator |
 | `internal/relay` | The push relay (SEE-92): one content-free hint per changed feed, the topic it goes to, the quota that bounds how often a feed's subscribers are woken, and the service-account grant it is sent with. The other package that opens a connection, and it takes both addresses from its operator — one from the environment, one from the credential document |
@@ -135,31 +134,30 @@ while the gateway is up.
 
 ## Tests
 
-`go test ./...` covers the service contract and is complemented by Android's invitation and private
-request tests. Nothing in the gateway tests is mocked that the binary does not also use.
+`go test ./...` covers the service contract and its retirement boundary. Nothing in the gateway
+tests is mocked that the binary does not also use.
 
 Beside them, `pnpm test:integration` runs this **binary** against both publisher templates and two
 subscribers, with a privacy sweep of everything the run wrote (SEE-98,
 [`integration.md`](integration.md)). It is where the public and publisher listeners' separation, a
 forgotten publisher, a revoked credential and a restart on the same database are checked as a
-deployment rather than as a handler. `onboarding_test.go` covers all three listeners and the private
-flow end to end.
+deployment rather than as a handler. `boundary_test.go` proves every removed private procedure and
+hosted invitation route is absent from both surviving listeners.
 
 | File | What it holds |
 | --- | --- |
 | `internal/rules/rules_test.go` | Every document rule with its own answer, what a revision means, that a document is rebuilt rather than relayed, and that the environments a server ID published cannot move while the order they were written in does not matter (SEE-97) |
-| `internal/store/store_test.go` | The schema, credentials and rotation, a publication and its notice committing together, a notice surviving a stop, paging order, retention, and forgetting a publisher |
+| `internal/store/store_test.go` | The schema, credentials and rotation, a publication and its notice committing together, a notice surviving a stop, paging order, retention, forgetting a publisher, and the restart-safe schema-v2-to-v3 retirement that preserves every public table while dropping private routing rows |
 | `internal/config/config_test.go` | The two settings with no default, the ranges, and what cannot be an origin |
 | `internal/dispatch/dispatch_test.go` | Delivery, failure and retry, a publication landing mid-flight, a document swept while its notice waited, and backoff |
 | `internal/gateway/publish_test.go` | Two publishers that cannot reach each other, credentials and rotation, refusing a redirection, refusing a promotion to production (SEE-97) while what a subscriber reads stays as it was, retries and conflicts, withdrawal, the channel bound, rate limits, and a restart that still owes a fan-out |
 | `internal/gateway/read_test.go` | A phone reading a feed with no credential, a walk that stays stable while the feed moves, the caching answers, what a reader cannot ask for, and expiry and retention |
 | `internal/gateway/privacy_test.go` | The three ways to try to submit something about a person, the read listener's lack of any write, that no credential reaches a log line, and that reading writes nothing down |
-| `internal/gateway/boundary_test.go` | No HTTP client in shipped code, SQL only in the store, pure rules, no provider named, the schema's columns, the contract's fields, and no listener serving another role's procedures |
+| `internal/gateway/boundary_test.go` | No HTTP client in shipped code, SQL only in the store, pure rules, no provider named, the six live schema tables, the contract's fields and reservations, two listeners only, no listener serving another role's procedures, and 404s for every retired private RPC and invitation route |
 | `internal/gateway/fixtures_test.go` | The committed cross-runtime fixtures are what the gateway actually answers |
 | `internal/gateway/internal_test.go` | Page tokens, the limiter's arithmetic and bound, who a call is counted against, and that every problem has a code |
 | `internal/gateway/ticket_test.go` | Which channels a listener is granted, which are left out, what is refused, and that asking to listen writes nothing down |
 | `internal/gateway/topics_test.go` | Which channels are named a topic, which are left out, what is refused, that asking writes nothing down, and that a publisher cannot cause a hint about another feed |
-| `internal/gateway/onboarding_test.go` | Read-only page/QR/resolve, atomic single redemption, duplicate-binding refusal, expiry, SDK-visible completion, private routing/result, revocation and secret redaction |
 | `internal/stream/stream_test.go` | What a publication carries, that a retry is one publication, and that every refusal is a failure to retry rather than a delivery |
 | `internal/stream/ticket_test.go` | The claim set, exactly: an empty subject, an expiry, the channels — and a signature that verifies the way the broker verifies it |
 | `internal/stream/broker_test.go` | The same publication against a **real** Centrifugo with the shipped configuration. Opt-in: `SEEKERVAULT_CENTRIFUGO=/path/to/centrifugo go test ./internal/stream/ -run TestBroker` |
@@ -207,10 +205,9 @@ Three things differ from `gateway/`'s, and each for a reason:
 - **There is no healthcheck in the gateway's container**, because a scratch image has no shell to
   probe itself with. The proxy's healthcheck goes through the published listener and out the other
   side, which proves more than a self-probe would.
-- **The proxy routes three upstreams**: `FeedService` to the public read listener,
-  `PublisherService` to the backend listener, and hosted invitations plus `InvitationService` and
-  `DeviceService` to the client listener. An operator may keep publisher RPCs private while exposing
-  the two phone-facing roles.
+- **The proxy routes two upstreams**: `FeedService` to the public read listener and
+  `PublisherService` to the backend listener. An operator may keep publisher RPCs private while
+  exposing public feed reads.
 
 `docker compose config` validates both files, and `caddy validate` both Caddyfiles, without a
 daemon — which is how they were checked here (`docs/changelog/2026-09-17.md`).

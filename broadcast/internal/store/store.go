@@ -7,10 +7,8 @@
 // per-channel sequence, publisher credential hashes, and pending fan-out notices. Those tables
 // still have no subscriber column and a public read still writes nothing.
 //
-// SEE-109's explicit private half adds temporary invitation-token hashes, a minimal server-scoped
-// device binding, and common requests/results pinned to it. It is routing state, not an account or
-// financial profile: no wallet address, authorization token, policy or activity history has a
-// field here. A boundary test pins the schema whole.
+// Schema version 3 removes the retired gateway-private routing tables. The six public tables above
+// remain the complete live schema, and a boundary test pins that whole.
 //
 // # Why SQLite
 //
@@ -41,13 +39,16 @@ import (
 	"path/filepath"
 	"time"
 
+	serverv1 "github.com/BrRenat/SeekerAgentWallet/broadcast/internal/gen/seekervault/server/v1"
+	"google.golang.org/protobuf/proto"
+
 	_ "modernc.org/sqlite" // the pure-Go SQLite driver, registered as "sqlite"
 )
 
 // Version is the schema this build writes and reads. There is one, and a file from a later version
 // is refused rather than guessed at: an old binary reading a new file could silently ignore a
 // column that a rule depends on.
-const Version = 2
+const Version = 3
 
 // ErrNewerSchema is returned by Open when the file was written by a later version of the gateway.
 var ErrNewerSchema = errors.New("the database was written by a newer gateway")
@@ -163,6 +164,11 @@ func (s *Store) migrate(ctx context.Context) error {
 				migration = schemaV1
 			case 2:
 				migration = schemaV2
+			case 3:
+				if err := retirePrivateManifests(ctx, tx.tx); err != nil {
+					return fmt.Errorf("retire gateway-private manifests: %w", err)
+				}
+				migration = schemaV3
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -176,6 +182,46 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 		return nil
 	})
+}
+
+// retirePrivateManifests recognizes the one legacy numeric mode needed for migration. It neither
+// recreates that mode in the active protocol nor maps the manifest to a feed: the old private
+// document is removed, while every public feed manifest remains byte-for-byte unchanged.
+func retirePrivateManifests(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `SELECT server_id, document FROM manifest`)
+	if err != nil {
+		return err
+	}
+	var retired []string
+	for rows.Next() {
+		var serverID string
+		var document []byte
+		if err := rows.Scan(&serverID, &document); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		var manifest serverv1.ServerManifest
+		if err := proto.Unmarshal(document, &manifest); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("decode manifest for %s: %w", serverID, err)
+		}
+		if int32(manifest.GetMode()) == 3 {
+			retired = append(retired, serverID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, serverID := range retired {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM manifest WHERE server_id = ?`, serverID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // The schema, in one statement per table and with the reasoning where a column carries a rule.
@@ -243,7 +289,7 @@ CREATE TABLE channel_sequence (
 -- drainer picks up on the next start (internal/dispatch). It is deliberately one row per document
 -- and not one per revision: what a subscriber wants is the document as it stands, so two
 -- publications that have not been fanned out yet collapse into the later one, exactly as the push
--- invalidations for a private request already collapse under one key (SAW-056).
+-- invalidations for the same document already collapse under one key (SAW-056).
 CREATE TABLE notice (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   channel       TEXT NOT NULL,
@@ -310,6 +356,15 @@ CREATE TABLE private_request (
 CREATE INDEX private_request_by_device
   ON private_request(connection_id, request_id);
 CREATE INDEX private_request_by_expiry ON private_request(expires_at_ms);
+`
+
+// Version 3 retires gateway-private routing. The order satisfies the private request's foreign key
+// to its device binding, and SQLite drops each table's indexes with it. The migration runs in the
+// same transaction as the version stamp, preserving every public row, sequence and pending notice.
+const schemaV3 = `
+DROP TABLE private_request;
+DROP TABLE invitation;
+DROP TABLE device_binding;
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

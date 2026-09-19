@@ -8,6 +8,7 @@ import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
+import io.github.brrenat.seekervault.proposals.settled
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
@@ -77,22 +78,6 @@ sealed interface FeedOutcome {
      * gateway).
      */
     data object NoGateway : FeedOutcome
-}
-
-data class InvitationConfirmation(
-    val reference: InvitationReference,
-    val invitation: ResolvedInvitation,
-    val manifest: ServerManifest,
-)
-
-sealed interface InvitationOutcome {
-    data class Ready(val confirmation: InvitationConfirmation) : InvitationOutcome
-
-    data class Already(val connection: Connection) : InvitationOutcome
-
-    data class Refused(val problem: ManifestProblem) : InvitationOutcome
-
-    data class Invalid(val problem: InvitationProblem) : InvitationOutcome
 }
 
 /**
@@ -211,10 +196,6 @@ class ConnectionRepository(
      * adds nothing. Nothing else here uses it, and a direct connection never touches it.
      */
     private val feeds: FeedGateway? = null,
-    /**
-     * Gateway-private onboarding and device traffic. Direct pairing and public feeds never use it.
-     */
-    private val invitations: InvitationGateway? = null,
     private val deviceName: String,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -281,7 +262,24 @@ class ConnectionRepository(
      */
     suspend fun load() = loading.withLock {
         if (_loaded.value) return@withLock
-        locked {
+        val retired = locked {
+            val retiredConnections = store.migrateRetired()
+            retiredConnections.forEach { connection ->
+                vault.delete(connection.id)
+                results
+                    .listFor(connection.id)
+                    .filter { it.delivery == Delivery.Waiting }
+                    .forEach {
+                        results.put(it.copy(delivery = Delivery.Undeliverable, settledAt = now()))
+                    }
+                proposals
+                    ?.listFor(connection.id)
+                    ?.filter {
+                        it.dismissed == null && it.execution?.outcome?.settled != true
+                    }
+                    ?.forEach { proposals.delete(connection.id, it.key.proposalId) }
+                _inbox.update { it.copy(pending = it.pending - connection.id) }
+            }
             val ids = store.list().map { it.id }.toSet()
             vault.ids().filter { it !in ids }.forEach(vault::delete)
             results.connectionIds().filter { it !in ids }.forEach(results::deleteConnection)
@@ -303,6 +301,11 @@ class ConnectionRepository(
                 save(it.copy(signing = SigningOutcome.Unresolved(it.lostDetail(appClosed = true))))
             }
             publish()
+            retiredConnections.map { it.id }
+        }
+        retired.forEach {
+            synchronization?.remove(it)
+            onConnectionUnavailable(it)
         }
         synchronization?.load()
         _loaded.value = true
@@ -489,110 +492,6 @@ class ConnectionRepository(
     }
 
     /**
-     * Resolves an invitation for confirmation. This reads only; no binding or local record exists.
-     */
-    suspend fun resolveInvitation(reference: InvitationReference): InvitationOutcome {
-        val gateway = invitations ?: return InvitationOutcome.Invalid(InvitationProblem.Failed)
-        val resolved =
-            try {
-                gateway.resolve(reference)
-            } catch (e: GatewayException) {
-                return InvitationOutcome.Invalid(
-                    when (e.kind) {
-                        GatewayException.Kind.NotFound -> InvitationProblem.Invalid
-                        GatewayException.Kind.InvalidState -> InvitationProblem.Expired
-                        else -> InvitationProblem.Failed
-                    }
-                )
-            }
-        if (resolved.standing == InvitationStanding.Expired) {
-            return InvitationOutcome.Invalid(InvitationProblem.Expired)
-        }
-        if (resolved.standing == InvitationStanding.Connected) {
-            return InvitationOutcome.Invalid(InvitationProblem.Used)
-        }
-        val manifest =
-            when (
-                val result =
-                    manifestFrom(
-                        resolved.manifest,
-                        ManifestExpectation(
-                            serverId = resolved.serverId,
-                            mode = ConnectionMode.GatewayPrivate,
-                            origin = reference.gatewayUrl,
-                        ),
-                    )
-            ) {
-                is ManifestResult.Valid -> result.manifest
-                is ManifestResult.Invalid -> return InvitationOutcome.Refused(result.problem)
-            }
-        return InvitationOutcome.Ready(InvitationConfirmation(reference, resolved, manifest))
-    }
-
-    /**
-     * Redeems only after UI confirmation, validates the answer again, then stores its credential.
-     */
-    suspend fun redeemInvitation(confirmation: InvitationConfirmation): Connection {
-        val gateway =
-            invitations ?: throw GatewayException(GatewayException.Kind.Other, "no gateway")
-        val redeemed = gateway.redeem(confirmation.reference, deviceName)
-        if (
-            !isConnectionId(redeemed.connectionId) ||
-                !isSecret(redeemed.deviceToken) ||
-                redeemed.serverId != confirmation.invitation.serverId
-        )
-            throw GatewayException(GatewayException.Kind.BadResponse, "unusable redemption")
-        val manifest =
-            when (
-                val result =
-                    manifestFrom(
-                        redeemed.manifest,
-                        ManifestExpectation(
-                            serverId = redeemed.serverId,
-                            mode = ConnectionMode.GatewayPrivate,
-                            origin = confirmation.reference.gatewayUrl,
-                            heldRevision = confirmation.manifest.settingsRevision,
-                        ),
-                    )
-            ) {
-                is ManifestResult.Valid -> result.manifest
-                is ManifestResult.Invalid ->
-                    throw GatewayException(GatewayException.Kind.BadResponse, result.problem.code)
-            }
-        val connection =
-            Connection(
-                id = redeemed.connectionId,
-                label =
-                    manifest.name.ifEmpty {
-                        PairingCodes.hostOf(confirmation.reference.gatewayUrl)
-                    },
-                serverUrl = confirmation.reference.gatewayUrl,
-                serverId = redeemed.serverId,
-                deviceName = deviceName,
-                pairedAt = now(),
-                mode = ConnectionMode.GatewayPrivate,
-                server = ServerRecord.Known(manifest),
-                environment = startingEnvironment(ServerRecord.Known(manifest)),
-            )
-        locked {
-            if (store.get(connection.id) != null)
-                throw GatewayException(GatewayException.Kind.BadResponse, "binding already stored")
-            try {
-                vault.put(connection.id, redeemed.deviceToken)
-                store.put(connection)
-            } catch (e: GeneralSecurityException) {
-                vault.delete(connection.id)
-                throw StorageException(e)
-            } catch (e: IOException) {
-                vault.delete(connection.id)
-                throw StorageException(e)
-            }
-            publish()
-        }
-        return connection
-    }
-
-    /**
      * Reads a feed's settings and applies them, telling the gateway which revision is already held
      * so an unchanged one costs one small answer (SEE-91).
      */
@@ -689,7 +588,7 @@ class ConnectionRepository(
                             message,
                             ManifestExpectation(
                                 serverId = connection.serverId,
-                                mode = connection.mode,
+                                mode = ConnectionMode.Direct,
                                 origin = connection.serverUrl,
                                 heldRevision = connection.server.manifest?.settingsRevision,
                             ),
@@ -728,10 +627,6 @@ class ConnectionRepository(
         fetching
             .computeIfAbsent(id) { Mutex() }
             .withLock {
-                if (find(id)?.mode == ConnectionMode.GatewayPrivate) {
-                    resolvePrivateManifest(id)
-                    return@withLock
-                }
                 // Asked every time rather than once: a server's settings can change under a
                 // connection, and the phone finds out by reading the revision again. It is one
                 // small call the server answers without touching its database.
@@ -744,37 +639,6 @@ class ConnectionRepository(
                     SynchronizeOutcome.Removed -> Unit
                 }
             }
-
-    private suspend fun resolvePrivateManifest(id: String) {
-        val connection = find(id)?.takeIf { it.gatewayUsable } ?: return
-        val adapter = invitations ?: return
-        val secret = withContext(io) { vault.get(id) } ?: return forgetCredential(id)
-        val held = connection.server.manifest?.settingsRevision ?: 0L
-        val message =
-            try {
-                adapter.serverManifest(connection.serverUrl, secret, id, held)
-            } catch (e: GatewayException) {
-                if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(id)
-                return
-            } ?: return
-        val record =
-            when (
-                val result =
-                    manifestFrom(
-                        message,
-                        ManifestExpectation(
-                            serverId = connection.serverId,
-                            mode = ConnectionMode.GatewayPrivate,
-                            origin = connection.serverUrl,
-                            heldRevision = held,
-                        ),
-                    )
-            ) {
-                is ManifestResult.Valid -> validated(result.manifest, connection.server)
-                is ManifestResult.Invalid -> ServerRecord.Refused(result.problem)
-            }
-        if (record != connection.server) update(id) { it.copy(server = record) }
-    }
 
     /** Headless entry point for the later background caller; no Activity or ViewModel is needed. */
     suspend fun synchronizeAll(): Map<String, SynchronizeOutcome> {
@@ -1280,13 +1144,11 @@ class ConnectionRepository(
      * preparation, a quote and an approval all belong to the environment they were made in, so the
      * owner reviews again rather than carrying one across.
      *
-     * A direct connection is refused: it is always production because the legacy sidecar contract
-     * has no simulated result. Gateway-private requests do, so they keep the same owner-selected
-     * environment semantics as feeds.
+     * A direct or retired connection is refused: only a public feed has an environment choice.
      */
     suspend fun setEnvironment(id: String, environment: PluginEnvironment): EnvironmentOutcome {
         val connection = find(id) ?: return EnvironmentOutcome.Gone
-        if (connection.mode == ConnectionMode.Direct) return EnvironmentOutcome.NotAFeed
+        if (connection.mode != ConnectionMode.GatewayFeed) return EnvironmentOutcome.NotAFeed
         if (connection.environment == environment) return EnvironmentOutcome.Unchanged
         val served = connection.server.manifest?.environments.orEmpty()
         if (environment !in served) return EnvironmentOutcome.NotServed
@@ -1309,16 +1171,10 @@ class ConnectionRepository(
      */
     suspend fun disconnect(id: String) {
         val connection = find(id) ?: return
-        val credential =
-            if (connection.usable || connection.gatewayUsable) withContext(io) { vault.get(id) }
-            else null
+        val credential = if (connection.usable) withContext(io) { vault.get(id) } else null
         if (credential != null) {
             try {
-                if (connection.gatewayUsable) {
-                    invitations?.revoke(connection.serverUrl, credential, id)
-                } else {
-                    gateway.revoke(connection.serverUrl, credential, id)
-                }
+                gateway.revoke(connection.serverUrl, credential, id)
             } catch (e: GatewayException) {
                 // Already revoked, or unknown to the sidecar: nothing is left to end there.
                 if (
@@ -1460,30 +1316,28 @@ class ConnectionRepository(
                 // gone missing: the mode is what the app reads, and it says so itself.
                 it.copy(
                     hasCredential =
-                        it.mode != ConnectionMode.GatewayFeed &&
+                        it.mode == ConnectionMode.Direct &&
                             it.revokedAt == null &&
                             vault.contains(it.id)
                 )
             }
-        _inbox.update { it.copy(results = results.list()) }
+        val direct =
+            _connections.value.filter { it.mode == ConnectionMode.Direct }.map { it.id }.toSet()
+        _inbox.update {
+            it.copy(results = results.list().filter { result -> result.connectionId in direct })
+        }
     }
 
     // SynchronizationHost exposes only reads, retries of already-stored answers, and monotonic
     // reconciliation. In particular, it has no preparation, policy, or wallet operation.
     override suspend fun connectionIds(): Set<String> = locked {
-        store.list().map { it.id }.toSet()
+        store.list().filter { it.mode == ConnectionMode.Direct }.map { it.id }.toSet()
     }
 
     override suspend fun access(connectionId: String): SyncConnection? {
         val connection = find(connectionId)?.takeIf { it.usable } ?: return null
         val credential = withContext(io) { vault.get(connectionId) } ?: return null
         return SyncConnection(connection.serverUrl, credential)
-    }
-
-    /** The private gateway credential, exposed only to the device request/result adapter. */
-    internal suspend fun gatewayCredential(connectionId: String): String? {
-        val connection = find(connectionId)?.takeIf { it.gatewayUsable } ?: return null
-        return withContext(io) { vault.get(connection.id) }
     }
 
     override suspend fun retryRecordedResults(connectionId: String) {

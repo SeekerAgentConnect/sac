@@ -3,7 +3,7 @@
 /* eslint-disable */
 
 // What a server says about itself (SEE-88, docs/wiki/server-manifests.md). A server is direct, a
-// public gateway feed, or a private server reached through the gateway. A manifest is how the
+// public gateway feed. A manifest is how the
 // phone learns which one it is talking to, what contract that server speaks, and which bundled
 // client plugins it needs, without guessing any of it.
 //
@@ -45,7 +45,7 @@ export declare type ServerManifest = Message<"seekervault.server.v1.ServerManife
 
   /**
    * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-   * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+   * or the gateway's public-feed contract. Zero is never published, and a version
    * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
    * knows.
    *
@@ -126,15 +126,6 @@ export declare type ServerManifest = Message<"seekervault.server.v1.ServerManife
      */
     value: GatewayFeed;
     case: "feed";
-  } | {
-    /**
-     * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-     * no endpoint chosen by the originating server is introduced by pairing.
-     *
-     * @generated from field: seekervault.server.v1.GatewayPrivate gateway_private = 10;
-     */
-    value: GatewayPrivate;
-    case: "gatewayPrivate";
   } | { case: undefined; value?: undefined };
 };
 
@@ -199,25 +190,6 @@ export declare type GatewayFeed = Message<"seekervault.server.v1.GatewayFeed"> &
 export declare const GatewayFeedSchema: GenMessage<GatewayFeed>;
 
 /**
- * @generated from message seekervault.server.v1.GatewayPrivate
- */
-export declare type GatewayPrivate = Message<"seekervault.server.v1.GatewayPrivate"> & {
-  /**
-   * The shared gateway's absolute HTTPS origin. It must equal the origin in the invitation SAC
-   * opened, so a manifest can confirm the route but can never redirect the device credential.
-   *
-   * @generated from field: string gateway_url = 1;
-   */
-  gatewayUrl: string;
-};
-
-/**
- * Describes the message seekervault.server.v1.GatewayPrivate.
- * Use `create(GatewayPrivateSchema)` to create a new message.
- */
-export declare const GatewayPrivateSchema: GenMessage<GatewayPrivate>;
-
-/**
  * PluginRequirement is one bundled plugin a server's operations need, named by the stable ID the
  * plugin declares (PluginDescriptor.id), such as "jupiter.swap".
  *
@@ -256,8 +228,7 @@ export declare const PluginRequirementSchema: GenMessage<PluginRequirement>;
 
 /**
  * Which transport a connection uses. It is stored per connection: one phone can hold a direct
- * connection to its own sidecar, gateway feeds and gateway-private servers at the same time, and
- * none affects another.
+ * connection to its own sidecar and gateway feeds at the same time, and neither affects another.
  *
  * @generated from enum seekervault.server.v1.ConnectionMode
  */
@@ -286,14 +257,6 @@ export enum ConnectionMode {
    * @generated from enum value: CONNECTION_MODE_GATEWAY_FEED = 2;
    */
   GATEWAY_FEED = 2,
-
-  /**
-   * The phone exchanges a confirmed, single-use invitation for a device credential and reads one
-   * server's private requests through the gateway. It never contacts the originating server.
-   *
-   * @generated from enum value: CONNECTION_MODE_GATEWAY_PRIVATE = 3;
-   */
-  GATEWAY_PRIVATE = 3,
 }
 
 /**

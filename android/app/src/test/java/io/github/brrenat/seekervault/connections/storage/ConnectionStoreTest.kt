@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.connections.storage
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.connections.ConnectionRetirement
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -15,6 +16,7 @@ import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
 import java.io.File
 import java.time.Instant
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -170,29 +172,45 @@ class ConnectionStoreTest {
     }
 
     @Test
-    fun keepsAGatewayPrivateConnectionsSandboxPromise() {
-        val manifest =
-            ServerManifest(
-                serverId = a.serverId,
-                protocolVersion = SERVER_PROTOCOL,
-                settingsRevision = 1,
-                mode = ConnectionMode.GatewayPrivate,
-                reference = ServerReference.GatewayPrivate(GATEWAY),
-                required = listOf(PluginRequirement(PluginId("jupiter.swap"), 1..1)),
-                environments = setOf(PluginEnvironment.Sandbox),
-                name = "Sandbox trader",
-            )
-        val private =
-            a.copy(
-                serverUrl = GATEWAY,
-                mode = ConnectionMode.GatewayPrivate,
-                server = ServerRecord.Known(manifest),
-                environment = PluginEnvironment.Sandbox,
+    fun rewritesALegacyPrivateRecordAsAnInertRetirementMarkerAcrossRestarts() {
+        dir.mkdirs()
+        File(dir, "${a.id}.json")
+            .writeText(
+                JSONObject()
+                    .put("version", 4)
+                    .put("id", a.id)
+                    .put("label", "Former trading server")
+                    .put("serverUrl", GATEWAY)
+                    .put("serverId", a.serverId)
+                    .put("deviceName", "Seeker")
+                    .put("pairedAt", a.pairedAt.toString())
+                    .put("mode", "gateway_private")
+                    .put("environment", "sandbox")
+                    .put(
+                        "lastCheck",
+                        JSONObject()
+                            .put("at", a.pairedAt.toString())
+                            .put("outcome", CheckOutcome.Ok.name)
+                            .put("pending", 2)
+                            .put("morePending", false),
+                    )
+                    .put("server", JSONObject().put("state", "unknown"))
+                    .toString()
             )
 
-        store.put(private)
+        val migrated = store.migrateRetired().single()
 
-        assertEquals(private, ConnectionStore(dir).get(private.id))
+        assertEquals(ConnectionRetirement.GatewayPrivateRemoved, migrated.retirement)
+        assertNull(migrated.mode)
+        assertFalse(migrated.usable)
+        assertFalse(migrated.hasCredential)
+        assertNull(migrated.lastCheck)
+        assertEquals(ServerRecord.Unknown, migrated.server)
+        val persisted = JSONObject(File(dir, "${a.id}.json").readText())
+        assertEquals(5, persisted.getInt("version"))
+        assertFalse(persisted.has("mode"))
+        assertEquals("gateway_private_removed", persisted.getString("retirement"))
+        assertEquals(migrated, ConnectionStore(dir).migrateRetired().single())
     }
 
     @Test
@@ -228,7 +246,7 @@ class ConnectionStoreTest {
         file.writeText(
             file
                 .readText()
-                .replace("\"version\":4", "\"version\":2")
+                .replace("\"version\":5", "\"version\":2")
                 .replace(
                     ",\"environment\":\"sandbox\"",
                     "",

@@ -8,9 +8,9 @@ parts:
 2. **Demo servers:** the existing CopyTrading and Jupiter Prediction publisher templates.
 
 The optional owner-operated sidecar remains a third, independent service. It still owns its direct
-pairing, credential, request database, MCP adapter and TLS/HTTP2 update listener. An independent
-server may instead use SEE-109's gateway-private invitation/device path; that does not alter or
-replace the direct sidecar.
+pairing, credential, request database, MCP adapter and TLS/HTTP2 update listener. Gateway-private
+onboarding and routing are retired; an independent server that needs addressed requests uses this
+direct pairing path.
 
 For the one layout of a small server that pulls published images and is reached through Tailscale
 Funnel, [`GUIDE.md`](GUIDE.md) is the same material as a start-to-finish runbook, with removal.
@@ -36,13 +36,13 @@ The address layout is deliberate:
 
 | Address | Audience and protocol |
 | --- | --- |
-| `https://feeds.example.com:443` | Phones: public feed reads, temporary invitation pages, invitation/device Connect RPCs and the one Centrifugo unidirectional gRPC stream over HTTP/2. |
+| `https://feeds.example.com:443` | Phones: public feed reads and the one Centrifugo unidirectional gRPC stream over HTTP/2. |
 | `https://feeds.example.com/trader` | Hackathon judges: password-gated CopyTrading trader HTML (SEE-126). Not `/v1`. Behind Funnel, the same path on the MagicDNS origin, including the Funnel port when it is not 443. |
 | `http://broadcast:8082` | Demo containers only: authenticated `PublisherService` on the private `publisher-ingress` Docker network. It never appears in a manifest. |
 | `127.0.0.1:8092`, `127.0.0.1:8094` | Host operator only: CopyTrading and Prediction control APIs. Both require their own API token. The trader UI holds that token and calls loopback; the browser never sees it. |
 | `127.0.0.1:8443` / public TCP `:10000` | Optional direct sidecar: TLS terminates in the sidecar; a raw TCP forward preserves its private update stream. Do not put the trader UI on `:10000`. |
 
-Redis, the Centrifugo API, the gateway's three implementation listeners, Caddy administration and
+Redis, the Centrifugo API, the gateway's two implementation listeners, Caddy administration and
 the gateway operator CLI have no host port. The public Caddy route does not expose
 `PublisherService`, health or administration.
 

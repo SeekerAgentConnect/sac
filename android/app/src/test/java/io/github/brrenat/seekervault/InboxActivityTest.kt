@@ -16,18 +16,24 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.connections.ConnectionRetirement
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.softwareKey
+import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.inbox.InboxTags
 import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletNetwork
+import java.io.File
+import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -183,6 +189,38 @@ class InboxActivityTest {
         compose.onNodeWithTag(InboxTags.APPROVE).assertDoesNotExist()
         compose.onNodeWithTag(InboxTags.TRANSFER_APPROVE).assertDoesNotExist()
         assertTrue(gateway.submits.isEmpty())
+        assertTrue(adapter.signings.isEmpty())
+        assertTrue(adapter.sendings.isEmpty())
+    }
+
+    @Test
+    fun retiredConnectionNotificationOpensOnlyTheInertExplanation() {
+        val id = "7c6b5a49-3827-4615-a0b9-c8d7e6f5a4b3"
+        ConnectionStore(File(app.filesDir, "connections"))
+            .put(
+                Connection(
+                    id = id,
+                    label = "Former gateway",
+                    serverUrl = "https://gateway.example",
+                    serverId = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+                    deviceName = "Seeker",
+                    pairedAt = Instant.parse("2026-09-18T12:00:00Z"),
+                    hasCredential = false,
+                    mode = null,
+                    retirement = ConnectionRetirement.GatewayPrivateRemoved,
+                    server = ServerRecord.Unknown,
+                )
+            )
+        val key = RequestKey(id, "7c9e6679-7425-40de-944b-e07fc1f90ae7")
+
+        launch(RequestNotificationIntent.intent(app, key))
+
+        compose
+            .onNodeWithText(app.getString(R.string.connection_status_gateway_private_retired))
+            .assertExists()
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.APPROVE).assertDoesNotExist()
+        assertTrue(gateway.sent.isEmpty())
         assertTrue(adapter.signings.isEmpty())
         assertTrue(adapter.sendings.isEmpty())
     }

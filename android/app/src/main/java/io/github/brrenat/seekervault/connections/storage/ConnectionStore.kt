@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.connections.storage
 import android.util.AtomicFile
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.connections.ConnectionRetirement
 import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
@@ -37,6 +38,10 @@ import org.json.JSONObject
  * production, which is exactly what this build did before the field existed: every connection was
  * production, and one whose server did not serve it was unexecutable and said so. So nothing a
  * phone already holds changes meaning when the app is updated.
+ *
+ * Version 5 retires gateway-private records. Versions 2–4 are read just far enough to recognize the
+ * literal old mode, then rewritten without an active mode, credential state, or cached private
+ * manifest. No endpoint or credential is converted to another transport.
  */
 class ConnectionStore(private val dir: File) {
     /** Every readable connection, oldest pairing first. A damaged file is skipped. */
@@ -47,6 +52,33 @@ class ConnectionStore(private val dir: File) {
             .sortedWith(compareBy({ it.pairedAt }, { it.id }))
 
     fun get(id: String): Connection? = read(id)
+
+    /**
+     * Atomically rewrites every legacy private record and returns all durable retirement markers.
+     */
+    fun migrateRetired(): List<Connection> {
+        dir.listFiles { file -> file.name.endsWith(SUFFIX) }
+            .orEmpty()
+            .forEach { file ->
+                try {
+                    val text = String(AtomicFile(file).readFully(), Charsets.UTF_8)
+                    val json = JSONObject(text)
+                    if (
+                        json.optInt("version") in FIRST_VERSION until VERSION &&
+                            json.optString("mode") == LEGACY_GATEWAY_PRIVATE
+                    ) {
+                        decode(text)?.let(::put)
+                    }
+                } catch (_: IOException) {
+                    // Damaged records are skipped exactly as list() skips them.
+                } catch (_: JSONException) {
+                    // A file that is not readable connection metadata cannot be migrated safely.
+                } catch (_: IllegalArgumentException) {
+                    // A malformed timestamp or enum is not guessed at.
+                }
+            }
+        return list().filter { it.retirement != null }
+    }
 
     /** Writes [connection] whole, replacing its previous version. */
     fun put(connection: Connection) {
@@ -88,7 +120,8 @@ class ConnectionStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        const val VERSION = 4
+        const val VERSION = 5
+        const val LEGACY_GATEWAY_PRIVATE = "gateway_private"
         /**
          * Version 1 files predate the mode and the manifest, and are read as direct and unasked.
          */
@@ -116,7 +149,8 @@ class ConnectionStore(private val dir: File) {
                             .put("morePending", check.morePending)
                     },
                 )
-                .put("mode", connection.mode.code)
+                .putOpt("mode", connection.mode?.code)
+                .putOpt("retirement", connection.retirement?.code)
                 .put("environment", connection.environment.code)
                 .put("server", encodeServer(connection.server))
                 .toString()
@@ -146,7 +180,6 @@ class ConnectionStore(private val dir: File) {
                             put("gatewayUrl", reference.gatewayUrl)
                             put("channel", reference.channel)
                         }
-                        is ServerReference.GatewayPrivate -> put("gatewayUrl", reference.gatewayUrl)
                     }
                 }
                 .put(
@@ -172,6 +205,34 @@ class ConnectionStore(private val dir: File) {
             val json = JSONObject(text)
             val version = json.getInt("version")
             if (version !in FIRST_VERSION..VERSION) return null
+            val retirement =
+                when {
+                    version < VERSION && json.optString("mode") == LEGACY_GATEWAY_PRIVATE ->
+                        ConnectionRetirement.GatewayPrivateRemoved
+                    version >= VERSION ->
+                        ConnectionRetirement.entries.firstOrNull {
+                            it.code == json.optString("retirement")
+                        }
+                    else -> null
+                }
+            if (retirement != null) {
+                return Connection(
+                    id = json.getString("id"),
+                    label = json.getString("label"),
+                    serverUrl = json.getString("serverUrl"),
+                    serverId = json.getString("serverId"),
+                    deviceName = json.getString("deviceName"),
+                    pairedAt = Instant.parse(json.getString("pairedAt")),
+                    revokedAt =
+                        json.optString("revokedAt").takeIf { it.isNotEmpty() }?.let(Instant::parse),
+                    lastCheck = null,
+                    hasCredential = false,
+                    mode = null,
+                    retirement = retirement,
+                    server = ServerRecord.Unknown,
+                    environment = PluginEnvironment.Production,
+                )
+            }
             // An unreadable mode is never guessed at: there is no safe default between a server
             // the phone calls with a credential and one it only listens to.
             val mode =
@@ -186,8 +247,8 @@ class ConnectionStore(private val dir: File) {
             if (mode != ConnectionMode.Direct && server !is ServerRecord.Known) return null
             if (server.manifest?.mode?.equals(mode) == false) return null
             // A direct connection is production whatever the file says, so nothing an edited or
-            // half-written file could hold puts the legacy sidecar path in a simulated mode. Both
-            // gateway modes preserve their manifest's environment; an unreadable value makes the
+            // half-written file could hold puts the legacy sidecar path in a simulated mode. A
+            // feed preserves its manifest's environment; an unreadable value makes the
             // whole record unreadable rather than resolving it toward real money.
             val environment =
                 when {
@@ -268,11 +329,6 @@ class ConnectionStore(private val dir: File) {
                         val gateway = json.optString("gatewayUrl")
                         if (gateway.isEmpty() || channel.isEmpty()) return null
                         ServerReference.Feed(gateway, channel)
-                    }
-                    ConnectionMode.GatewayPrivate -> {
-                        val gateway = json.optString("gatewayUrl")
-                        if (gateway.isEmpty()) return null
-                        ServerReference.GatewayPrivate(gateway)
                     }
                 }
             val requirements = json.optJSONArray("required") ?: JSONArray()

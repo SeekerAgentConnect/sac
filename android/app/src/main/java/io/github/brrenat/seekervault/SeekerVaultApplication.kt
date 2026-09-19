@@ -11,10 +11,8 @@ import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.ConnectConnectionGateway
-import io.github.brrenat.seekervault.connections.ConnectInvitationGateway
 import io.github.brrenat.seekervault.connections.ConnectionGateway
 import io.github.brrenat.seekervault.connections.ConnectionRepository
-import io.github.brrenat.seekervault.connections.InvitationGateway
 import io.github.brrenat.seekervault.connections.ProposalRepository
 import io.github.brrenat.seekervault.connections.storage.AndroidKeystoreKey
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
@@ -94,11 +92,6 @@ class SeekerVaultApplication : Application() {
 
     /** How connections reach their sidecars. Tests replace it before the first activity starts. */
     var connectionGateway: () -> ConnectionGateway = { ConnectConnectionGateway(httpClient) }
-
-    /**
-     * Gateway-private invitation and paired-device calls, isolated from direct and feed adapters.
-     */
-    var invitationGateway: () -> InvitationGateway = { ConnectInvitationGateway(httpClient) }
 
     /** The durable update endpoint. It shares the process HTTP client but never a credential. */
     var updateTransport: () -> UpdateTransport = { ConnectUpdateTransport(httpClient) }
@@ -227,7 +220,6 @@ class SeekerVaultApplication : Application() {
                 // A feed's settings are resolved through the shared broadcast gateway, never by
                 // contacting the publisher's own server (SEE-88, SEE-90).
                 feeds = feedGateway(),
-                invitations = invitationGateway(),
                 deviceName = Build.MODEL,
                 io = connectionIo,
                 syncStore = SyncStore(File(filesDir, "sync")),
@@ -288,8 +280,6 @@ class SeekerVaultApplication : Application() {
             plugins = pluginRegistry,
             // The same gateway the settings come from: one endpoint, one client (SEE-91).
             feed = feedGateway(),
-            privateGateway = invitationGateway(),
-            credential = connectionRepository::gatewayCredential,
             history = activityLog,
             io = connectionIo,
         )

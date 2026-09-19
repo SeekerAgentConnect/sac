@@ -146,6 +146,10 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | `/seekervault.update.v1.UpdateService/Subscribe` | The paired phone, configured update origin | `Authorization: Bearer <phone credential>` | Bidirectional gRPC/HTTP2 replay and live durable request changes |
 | `/seekervault.update.v1.UpdateService/Sync` | The paired phone, configured update origin | `Authorization: Bearer <phone credential>` | Unary gRPC/HTTP2 frozen reconciliation and bounded read-only confirmation |
 
+`pnpm pair` prints the same one-use `seekervault://pair` value as text and QR. It may be passed
+unchanged through a CLI, bot message or Android link; the app uses the same owner-confirmed direct
+pairing flow for all three forms. No gateway relay or hosted invitation endpoint is involved.
+
 ### What the sidecar says about itself (SEE-88)
 
 `GetServerManifest` answers with this server's own manifest

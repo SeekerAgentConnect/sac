@@ -7,8 +7,6 @@ import io.github.brrenat.seekervault.activity.ActivityRecord
 import io.github.brrenat.seekervault.activity.ReviewedOperation
 import io.github.brrenat.seekervault.activity.ReviewedValue
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
-import io.github.brrenat.seekervault.gateway.v1.DeviceResult
-import io.github.brrenat.seekervault.gateway.v1.DeviceResultStatus
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
@@ -32,7 +30,6 @@ import io.github.brrenat.seekervault.proposals.proposalPlugin
 import io.github.brrenat.seekervault.proposals.proposalStanding
 import io.github.brrenat.seekervault.proposals.settled
 import io.github.brrenat.seekervault.request.v2.Request as WireRequest
-import io.github.brrenat.seekervault.request.v2.Value
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.ServerSupport
@@ -129,7 +126,7 @@ sealed interface ExecutionOutcome {
  *
  * Nothing here reaches a publisher or a gateway except [refresh], and nothing here opens a wallet:
  * the caller asks the wallet between [beginExecution] and [recordOutcome], exactly as it does
- * between an approval and a signing outcome for a private request (SAW-017).
+ * between an approval and its signing outcome (SAW-017).
  */
 class ProposalRepository(
     private val store: ProposalStore,
@@ -145,10 +142,6 @@ class ProposalRepository(
      * Optional because the gateway is SEE-90: without one, [refresh] says so and reads nothing.
      */
     private val feed: ProposalFeed? = null,
-    /** The authenticated device adapter for gateway-private requests and their results. */
-    private val privateGateway: InvitationGateway? = null,
-    /** Reads one binding credential from encrypted storage; it is never retained here. */
-    private val credential: suspend (String) -> String? = { null },
     /**
      * The owner's own history, which an execution is written to as well (SAW-023). Optional for the
      * same reason it is on [ConnectionRepository]: a phone without one still executes and records.
@@ -168,7 +161,7 @@ class ProposalRepository(
      * closed on.
      */
     suspend fun load() {
-        val deliver = locked {
+        locked {
             val ids = connections().map { it.id }.toSet()
             store.connectionIds().filter { it !in ids }.forEach(store::deleteConnection)
             publish()
@@ -179,11 +172,7 @@ class ProposalRepository(
                 .filter { it.execution?.outcome == ProposalOutcome.Pending }
                 .forEach { settle(it, ProposalOutcome.Unresolved(APP_CLOSED)) }
             publish()
-            _proposals.value.filter {
-                it.dismissed != null || it.execution?.outcome?.settled == true
-            }
         }
-        deliver.forEach { deliverResult(it) }
     }
 
     /**
@@ -194,9 +183,6 @@ class ProposalRepository(
      */
     suspend fun refresh(id: String, knownSequence: Long = 0L): FeedRefresh {
         val connection = operationConnection(id) ?: return FeedRefresh.NotAFeed
-        if (connection.mode == ConnectionMode.GatewayPrivate) {
-            return refreshPrivate(connection, knownSequence)
-        }
         val source = feed ?: return FeedRefresh.NoFeed
         val answer =
             try {
@@ -293,7 +279,7 @@ class ProposalRepository(
                 message,
                 ProposalExpectation(
                     serverId = connection.serverId,
-                    private = connection.mode == ConnectionMode.GatewayPrivate,
+                    private = false,
                     heldRevision = held?.proposal?.revision,
                 ),
             )
@@ -337,7 +323,6 @@ class ProposalRepository(
                 publish()
             }
         }
-        updated?.let { deliverResult(it) }
         return updated
     }
 
@@ -420,7 +405,6 @@ class ProposalRepository(
             if (execution.outcome.settled) return@locked record
             settle(record, outcome).also { publish() }
         }
-        updated?.let { deliverResult(it) }
         return updated
     }
 
@@ -465,10 +449,7 @@ class ProposalRepository(
     private fun publish() {
         _proposals.value =
             connections()
-                .filter {
-                    it.mode == ConnectionMode.GatewayFeed ||
-                        it.mode == ConnectionMode.GatewayPrivate
-                }
+                .filter { it.mode == ConnectionMode.GatewayFeed }
                 .flatMap { connection ->
                     // A record is read only for the publisher whose feed it is held under. A file
                     // that says otherwise is not this feed's proposal, whatever directory it is in.
@@ -482,10 +463,7 @@ class ProposalRepository(
         connections().firstOrNull { it.id == id && it.mode == ConnectionMode.GatewayFeed }
 
     private fun operationConnection(id: String): Connection? =
-        connections().firstOrNull {
-            it.id == id &&
-                (it.mode == ConnectionMode.GatewayFeed || it.mode == ConnectionMode.GatewayPrivate)
-        }
+        connections().firstOrNull { it.id == id && it.mode == ConnectionMode.GatewayFeed }
 
     private fun stored(connection: Connection, proposalId: String): ProposalRecord? =
         store.get(connection.id, proposalId)?.takeIf { it.key.serverId == connection.serverId }
@@ -508,126 +486,6 @@ class ProposalRepository(
 
     private fun supportOf(connectionId: String): ServerSupport =
         operationConnection(connectionId)?.let(::support) ?: ServerSupport.Unknown
-
-    private suspend fun refreshPrivate(
-        connection: Connection,
-        knownSequence: Long,
-    ): FeedRefresh {
-        val source = privateGateway ?: return FeedRefresh.NoFeed
-        val secret = credential(connection.id) ?: return FeedRefresh.Failed(CheckOutcome.Failed)
-        var pageToken = ""
-        var sequence = knownSequence
-        var applied = 0
-        val refused = mutableListOf<ProposalProblem>()
-        do {
-            val page =
-                try {
-                    source.listRequests(
-                        connection.serverUrl,
-                        secret,
-                        connection.id,
-                        pageToken,
-                        if (pageToken.isEmpty()) knownSequence else 0L,
-                    )
-                } catch (e: GatewayException) {
-                    return FeedRefresh.Failed(e.kind.toOutcome())
-                }
-            sequence = page.sequence
-            if (page.unchanged) return FeedRefresh.Unchanged(sequence)
-            for (message in page.requests) {
-                when (val outcome = apply(connection.id, message)) {
-                    is ProposalApplied.Stored -> applied++
-                    is ProposalApplied.Unchanged -> Unit
-                    is ProposalApplied.Refused -> refused += outcome.problem
-                    ProposalApplied.NotAFeed -> return FeedRefresh.NotAFeed
-                }
-            }
-            pageToken = page.nextPageToken
-        } while (pageToken.isNotEmpty())
-        proposalsFor(connection.id)
-            .filter { it.dismissed != null || it.execution?.outcome?.settled == true }
-            .forEach { deliverResult(it) }
-        return FeedRefresh.Read(applied, refused, sequence)
-    }
-
-    /** Delivers only for a private RETURN_TO_ORIGIN request; feed outcomes remain device-local. */
-    private suspend fun deliverResult(record: ProposalRecord) {
-        val connection =
-            operationConnection(record.connectionId)?.takeIf {
-                it.mode == ConnectionMode.GatewayPrivate && it.gatewayUsable
-            } ?: return
-        val source = privateGateway ?: return
-        val secret = credential(connection.id) ?: return
-        val result = deviceResult(record) ?: return
-        try {
-            source.submitResult(connection.serverUrl, secret, connection.id, result)
-        } catch (_: GatewayException) {
-            // The durable local result is retried on load and every private refresh. It is never
-            // changed into a different owner outcome because delivery happened to be unavailable.
-        }
-    }
-
-    private fun deviceResult(record: ProposalRecord): DeviceResult? {
-        val at: Instant
-        val status: DeviceResultStatus
-        var signature = com.google.protobuf.ByteString.EMPTY
-        var detail = ""
-        if (record.dismissed != null) {
-            at = record.dismissed.at
-            status = DeviceResultStatus.DEVICE_RESULT_STATUS_REJECTED
-        } else {
-            val execution = record.execution ?: return null
-            at = execution.settledAt ?: return null
-            when (val outcome = execution.outcome) {
-                ProposalOutcome.Pending -> return null
-                is ProposalOutcome.Submitted -> {
-                    status = DeviceResultStatus.DEVICE_RESULT_STATUS_SUBMITTED
-                    signature = outcome.signature
-                }
-                ProposalOutcome.Declined ->
-                    status = DeviceResultStatus.DEVICE_RESULT_STATUS_REJECTED
-                ProposalOutcome.Simulated ->
-                    status = DeviceResultStatus.DEVICE_RESULT_STATUS_SIMULATED
-                is ProposalOutcome.Failed -> {
-                    status = DeviceResultStatus.DEVICE_RESULT_STATUS_FAILED
-                    detail = outcome.detail
-                }
-                is ProposalOutcome.Unresolved -> {
-                    status = DeviceResultStatus.DEVICE_RESULT_STATUS_UNKNOWN
-                    detail = outcome.detail
-                }
-            }
-        }
-        val builder =
-            DeviceResult.newBuilder()
-                .setRequestId(record.key.proposalId)
-                .setRequestRevision(record.proposal.revision)
-                .setStatus(status)
-                .setSignature(signature)
-                .setDetail(detail)
-                .setCompletedAt(
-                    com.google.protobuf.Timestamp.newBuilder()
-                        .setSeconds(at.epochSecond)
-                        .setNanos(at.nano)
-                )
-        val declared = record.proposal.ownerInputs.mapTo(mutableSetOf()) { it.key }
-        record.review
-            ?.choice
-            ?.values
-            ?.asSequence()
-            ?.filter { (key) -> key.value in declared }
-            ?.sortedBy { (key) -> key.value }
-            ?.forEach { (key, chosen) ->
-                val value = Value.newBuilder().setKey(key.value)
-                when (chosen) {
-                    is ParameterValue.Amount -> value.integer = chosen.baseUnits.toString()
-                    is ParameterValue.Count -> value.integer = chosen.value.toString()
-                    is ParameterValue.Selected -> value.text = chosen.option.value
-                }
-                builder.addOwnerInputs(value)
-            }
-        return builder.build()
-    }
 
     private suspend fun <T> locked(block: () -> T): T = lock.withLock {
         withContext(io) { block() }

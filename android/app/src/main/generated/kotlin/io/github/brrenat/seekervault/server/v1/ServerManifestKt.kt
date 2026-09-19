@@ -69,7 +69,7 @@ public object ServerManifestKt {
     /**
      * ```
      * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-     * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+     * or the gateway's public-feed contract. Zero is never published, and a version
      * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
      * knows.
      * ```
@@ -86,7 +86,7 @@ public object ServerManifestKt {
     /**
      * ```
      * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-     * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+     * or the gateway's public-feed contract. Zero is never published, and a version
      * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
      * knows.
      * ```
@@ -501,45 +501,6 @@ public object ServerManifestKt {
     public fun hasFeed(): kotlin.Boolean {
       return _builder.hasFeed()
     }
-
-    /**
-     * ```
-     * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-     * no endpoint chosen by the originating server is introduced by pairing.
-     * ```
-     *
-     * `.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];`
-     */
-    public var gatewayPrivate: io.github.brrenat.seekervault.server.v1.GatewayPrivate
-      @kotlin.jvm.JvmName("getGatewayPrivate")
-        get() = _builder.gatewayPrivate
-      @kotlin.jvm.JvmName("setGatewayPrivate")
-        set(value) {
-        _builder.gatewayPrivate = value
-      }
-    /**
-     * ```
-     * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-     * no endpoint chosen by the originating server is introduced by pairing.
-     * ```
-     *
-     * `.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];`
-     */
-    public fun clearGatewayPrivate() {
-      _builder.clearGatewayPrivate()
-    }
-    /**
-     * ```
-     * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-     * no endpoint chosen by the originating server is introduced by pairing.
-     * ```
-     *
-     * `.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];`
-     * @return Whether the gatewayPrivate field is set.
-     */
-    public fun hasGatewayPrivate(): kotlin.Boolean {
-      return _builder.hasGatewayPrivate()
-    }
     public val referenceCase: io.github.brrenat.seekervault.server.v1.ServerManifest.ReferenceCase
     @kotlin.jvm.JvmName("getReferenceCase")
       get() = _builder.referenceCase
@@ -557,7 +518,4 @@ public val io.github.brrenat.seekervault.server.v1.ServerManifestOrBuilder.direc
 
 public val io.github.brrenat.seekervault.server.v1.ServerManifestOrBuilder.feedOrNull: io.github.brrenat.seekervault.server.v1.GatewayFeed?
   get() = if (hasFeed()) getFeed() else null
-
-public val io.github.brrenat.seekervault.server.v1.ServerManifestOrBuilder.gatewayPrivateOrNull: io.github.brrenat.seekervault.server.v1.GatewayPrivate?
-  get() = if (hasGatewayPrivate()) getGatewayPrivate() else null
 

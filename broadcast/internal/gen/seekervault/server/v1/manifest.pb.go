@@ -5,7 +5,7 @@
 // source: seekervault/server/v1/manifest.proto
 
 // What a server says about itself (SEE-88, docs/wiki/server-manifests.md). A server is direct, a
-// public gateway feed, or a private server reached through the gateway. A manifest is how the
+// public gateway feed. A manifest is how the
 // phone learns which one it is talking to, what contract that server speaks, and which bundled
 // client plugins it needs, without guessing any of it.
 //
@@ -37,8 +37,7 @@ const (
 )
 
 // Which transport a connection uses. It is stored per connection: one phone can hold a direct
-// connection to its own sidecar, gateway feeds and gateway-private servers at the same time, and
-// none affects another.
+// connection to its own sidecar and gateway feeds at the same time, and neither affects another.
 type ConnectionMode int32
 
 const (
@@ -52,9 +51,6 @@ const (
 	// The phone reads this server's proposals from the shared gateway, and never calls the server
 	// itself. It holds no credential for it, and the server learns nothing about the phone.
 	ConnectionMode_CONNECTION_MODE_GATEWAY_FEED ConnectionMode = 2
-	// The phone exchanges a confirmed, single-use invitation for a device credential and reads one
-	// server's private requests through the gateway. It never contacts the originating server.
-	ConnectionMode_CONNECTION_MODE_GATEWAY_PRIVATE ConnectionMode = 3
 )
 
 // Enum value maps for ConnectionMode.
@@ -63,13 +59,11 @@ var (
 		0: "CONNECTION_MODE_UNSPECIFIED",
 		1: "CONNECTION_MODE_DIRECT",
 		2: "CONNECTION_MODE_GATEWAY_FEED",
-		3: "CONNECTION_MODE_GATEWAY_PRIVATE",
 	}
 	ConnectionMode_value = map[string]int32{
-		"CONNECTION_MODE_UNSPECIFIED":     0,
-		"CONNECTION_MODE_DIRECT":          1,
-		"CONNECTION_MODE_GATEWAY_FEED":    2,
-		"CONNECTION_MODE_GATEWAY_PRIVATE": 3,
+		"CONNECTION_MODE_UNSPECIFIED":  0,
+		"CONNECTION_MODE_DIRECT":       1,
+		"CONNECTION_MODE_GATEWAY_FEED": 2,
 	}
 )
 
@@ -163,7 +157,7 @@ type ServerManifest struct {
 	// server.
 	ServerId string `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
 	// Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-	// or the gateway's public-feed/private-request contract. Zero is never published, and a version
+	// or the gateway's public-feed contract. Zero is never published, and a version
 	// the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
 	// knows.
 	ProtocolVersion uint32 `protobuf:"varint,2,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
@@ -200,7 +194,6 @@ type ServerManifest struct {
 	//
 	//	*ServerManifest_Direct
 	//	*ServerManifest_Feed
-	//	*ServerManifest_GatewayPrivate
 	Reference     isServerManifest_Reference `protobuf_oneof:"reference"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -310,15 +303,6 @@ func (x *ServerManifest) GetFeed() *GatewayFeed {
 	return nil
 }
 
-func (x *ServerManifest) GetGatewayPrivate() *GatewayPrivate {
-	if x != nil {
-		if x, ok := x.Reference.(*ServerManifest_GatewayPrivate); ok {
-			return x.GatewayPrivate
-		}
-	}
-	return nil
-}
-
 type isServerManifest_Reference interface {
 	isServerManifest_Reference()
 }
@@ -333,17 +317,9 @@ type ServerManifest_Feed struct {
 	Feed *GatewayFeed `protobuf:"bytes,9,opt,name=feed,proto3,oneof"`
 }
 
-type ServerManifest_GatewayPrivate struct {
-	// Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-	// no endpoint chosen by the originating server is introduced by pairing.
-	GatewayPrivate *GatewayPrivate `protobuf:"bytes,10,opt,name=gateway_private,json=gatewayPrivate,proto3,oneof"`
-}
-
 func (*ServerManifest_Direct) isServerManifest_Reference() {}
 
 func (*ServerManifest_Feed) isServerManifest_Reference() {}
-
-func (*ServerManifest_GatewayPrivate) isServerManifest_Reference() {}
 
 // DirectServer is where a direct server is reached. The phone accepts it only when it is the
 // origin it paired with: this field confirms a URL, and can never change one.
@@ -453,52 +429,6 @@ func (x *GatewayFeed) GetChannel() string {
 	return ""
 }
 
-type GatewayPrivate struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// The shared gateway's absolute HTTPS origin. It must equal the origin in the invitation SAC
-	// opened, so a manifest can confirm the route but can never redirect the device credential.
-	GatewayUrl    string `protobuf:"bytes,1,opt,name=gateway_url,json=gatewayUrl,proto3" json:"gateway_url,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GatewayPrivate) Reset() {
-	*x = GatewayPrivate{}
-	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GatewayPrivate) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GatewayPrivate) ProtoMessage() {}
-
-func (x *GatewayPrivate) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GatewayPrivate.ProtoReflect.Descriptor instead.
-func (*GatewayPrivate) Descriptor() ([]byte, []int) {
-	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *GatewayPrivate) GetGatewayUrl() string {
-	if x != nil {
-		return x.GatewayUrl
-	}
-	return ""
-}
-
 // PluginRequirement is one bundled plugin a server's operations need, named by the stable ID the
 // plugin declares (PluginDescriptor.id), such as "jupiter.swap".
 type PluginRequirement struct {
@@ -518,7 +448,7 @@ type PluginRequirement struct {
 
 func (x *PluginRequirement) Reset() {
 	*x = PluginRequirement{}
-	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[4]
+	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -530,7 +460,7 @@ func (x *PluginRequirement) String() string {
 func (*PluginRequirement) ProtoMessage() {}
 
 func (x *PluginRequirement) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[4]
+	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -543,7 +473,7 @@ func (x *PluginRequirement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PluginRequirement.ProtoReflect.Descriptor instead.
 func (*PluginRequirement) Descriptor() ([]byte, []int) {
-	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{4}
+	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *PluginRequirement) GetPluginId() string {
@@ -571,7 +501,7 @@ var File_seekervault_server_v1_manifest_proto protoreflect.FileDescriptor
 
 const file_seekervault_server_v1_manifest_proto_rawDesc = "" +
 	"\n" +
-	"$seekervault/server/v1/manifest.proto\x12\x15seekervault.server.v1\"\xde\x04\n" +
+	"$seekervault/server/v1/manifest.proto\x12\x15seekervault.server.v1\"\xa3\x04\n" +
 	"\x0eServerManifest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12)\n" +
 	"\x10protocol_version\x18\x02 \x01(\rR\x0fprotocolVersion\x12+\n" +
@@ -581,28 +511,23 @@ const file_seekervault_server_v1_manifest_proto_rawDesc = "" +
 	"\fenvironments\x18\x06 \x03(\x0e2(.seekervault.server.v1.ServerEnvironmentR\fenvironments\x12!\n" +
 	"\fdisplay_name\x18\a \x01(\tR\vdisplayName\x12=\n" +
 	"\x06direct\x18\b \x01(\v2#.seekervault.server.v1.DirectServerH\x00R\x06direct\x128\n" +
-	"\x04feed\x18\t \x01(\v2\".seekervault.server.v1.GatewayFeedH\x00R\x04feed\x12P\n" +
-	"\x0fgateway_private\x18\n" +
-	" \x01(\v2%.seekervault.server.v1.GatewayPrivateH\x00R\x0egatewayPrivateB\v\n" +
-	"\treference\" \n" +
+	"\x04feed\x18\t \x01(\v2\".seekervault.server.v1.GatewayFeedH\x00R\x04feedB\v\n" +
+	"\treferenceJ\x04\b\n" +
+	"\x10\vR\x0fgateway_private\" \n" +
 	"\fDirectServer\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\"H\n" +
 	"\vGatewayFeed\x12\x1f\n" +
 	"\vgateway_url\x18\x01 \x01(\tR\n" +
 	"gatewayUrl\x12\x18\n" +
-	"\achannel\x18\x02 \x01(\tR\achannel\"1\n" +
-	"\x0eGatewayPrivate\x12\x1f\n" +
-	"\vgateway_url\x18\x01 \x01(\tR\n" +
-	"gatewayUrl\"v\n" +
+	"\achannel\x18\x02 \x01(\tR\achannel\"v\n" +
 	"\x11PluginRequirement\x12\x1b\n" +
 	"\tplugin_id\x18\x01 \x01(\tR\bpluginId\x12!\n" +
 	"\fmin_contract\x18\x02 \x01(\rR\vminContract\x12!\n" +
-	"\fmax_contract\x18\x03 \x01(\rR\vmaxContract*\x94\x01\n" +
+	"\fmax_contract\x18\x03 \x01(\rR\vmaxContract*\x96\x01\n" +
 	"\x0eConnectionMode\x12\x1f\n" +
 	"\x1bCONNECTION_MODE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CONNECTION_MODE_DIRECT\x10\x01\x12 \n" +
-	"\x1cCONNECTION_MODE_GATEWAY_FEED\x10\x02\x12#\n" +
-	"\x1fCONNECTION_MODE_GATEWAY_PRIVATE\x10\x03*z\n" +
+	"\x1cCONNECTION_MODE_GATEWAY_FEED\x10\x02\"\x04\b\x03\x10\x03*\x1fCONNECTION_MODE_GATEWAY_PRIVATE*z\n" +
 	"\x11ServerEnvironment\x12\"\n" +
 	"\x1eSERVER_ENVIRONMENT_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dSERVER_ENVIRONMENT_PRODUCTION\x10\x01\x12\x1e\n" +
@@ -622,28 +547,26 @@ func file_seekervault_server_v1_manifest_proto_rawDescGZIP() []byte {
 }
 
 var file_seekervault_server_v1_manifest_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_seekervault_server_v1_manifest_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_seekervault_server_v1_manifest_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_seekervault_server_v1_manifest_proto_goTypes = []any{
 	(ConnectionMode)(0),       // 0: seekervault.server.v1.ConnectionMode
 	(ServerEnvironment)(0),    // 1: seekervault.server.v1.ServerEnvironment
 	(*ServerManifest)(nil),    // 2: seekervault.server.v1.ServerManifest
 	(*DirectServer)(nil),      // 3: seekervault.server.v1.DirectServer
 	(*GatewayFeed)(nil),       // 4: seekervault.server.v1.GatewayFeed
-	(*GatewayPrivate)(nil),    // 5: seekervault.server.v1.GatewayPrivate
-	(*PluginRequirement)(nil), // 6: seekervault.server.v1.PluginRequirement
+	(*PluginRequirement)(nil), // 5: seekervault.server.v1.PluginRequirement
 }
 var file_seekervault_server_v1_manifest_proto_depIdxs = []int32{
 	0, // 0: seekervault.server.v1.ServerManifest.mode:type_name -> seekervault.server.v1.ConnectionMode
-	6, // 1: seekervault.server.v1.ServerManifest.required_plugins:type_name -> seekervault.server.v1.PluginRequirement
+	5, // 1: seekervault.server.v1.ServerManifest.required_plugins:type_name -> seekervault.server.v1.PluginRequirement
 	1, // 2: seekervault.server.v1.ServerManifest.environments:type_name -> seekervault.server.v1.ServerEnvironment
 	3, // 3: seekervault.server.v1.ServerManifest.direct:type_name -> seekervault.server.v1.DirectServer
 	4, // 4: seekervault.server.v1.ServerManifest.feed:type_name -> seekervault.server.v1.GatewayFeed
-	5, // 5: seekervault.server.v1.ServerManifest.gateway_private:type_name -> seekervault.server.v1.GatewayPrivate
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_server_v1_manifest_proto_init() }
@@ -654,7 +577,6 @@ func file_seekervault_server_v1_manifest_proto_init() {
 	file_seekervault_server_v1_manifest_proto_msgTypes[0].OneofWrappers = []any{
 		(*ServerManifest_Direct)(nil),
 		(*ServerManifest_Feed)(nil),
-		(*ServerManifest_GatewayPrivate)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -662,7 +584,7 @@ func file_seekervault_server_v1_manifest_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_server_v1_manifest_proto_rawDesc), len(file_seekervault_server_v1_manifest_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   5,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

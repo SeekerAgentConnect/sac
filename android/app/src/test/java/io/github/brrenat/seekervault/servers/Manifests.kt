@@ -5,7 +5,6 @@ import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest
 import io.github.brrenat.seekervault.server.v1.directServer
 import io.github.brrenat.seekervault.server.v1.gatewayFeed
-import io.github.brrenat.seekervault.server.v1.gatewayPrivate
 import io.github.brrenat.seekervault.server.v1.pluginRequirement
 import io.github.brrenat.seekervault.server.v1.serverManifest
 
@@ -66,26 +65,6 @@ fun feedManifest(
         gatewayUrl = gateway
         this.channel = channel
     }
-    requiredPlugins.addAll(required.map(::requirement))
-    this.environments.addAll(environments)
-    displayName = name
-}
-
-/** An independent server reached through a gateway after a single-use invitation. */
-fun privateManifest(
-    serverId: String = SERVER_B,
-    gateway: String = GATEWAY,
-    revision: Long = 1,
-    protocol: Int = SERVER_PROTOCOL,
-    required: List<Pair<String, IntRange>> = listOf(SWAP_PLUGIN to 1..1),
-    environments: List<ServerEnvironment> = listOf(ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION),
-    name: String = "",
-): ServerManifest = serverManifest {
-    this.serverId = serverId
-    protocolVersion = protocol
-    settingsRevision = revision
-    mode = ConnectionMode.CONNECTION_MODE_GATEWAY_PRIVATE
-    gatewayPrivate = gatewayPrivate { gatewayUrl = gateway }
     requiredPlugins.addAll(required.map(::requirement))
     this.environments.addAll(environments)
     displayName = name

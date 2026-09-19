@@ -4,9 +4,9 @@ Seeker Agent Connect (SAC) is an Android application for reviewing requests from
 
 ## Architecture decision and implementation status
 
-The agreed architecture has **two connection modes: direct private connections and public feeds through a shared gateway**. Gateway-private routing is being removed: it duplicates the private direct path and adds unnecessary device bindings, request storage and result routing to the feed gateway.
+The implemented architecture has **two connection modes: direct private connections and public feeds through a shared gateway**. Gateway-private routing was removed in SEE-130 because it duplicated the private direct path and added unnecessary device bindings, request storage and result routing to the feed gateway.
 
-This document defines the target boundaries. This documentation change does **not** remove the existing implementation. Until the cleanup is complete, the repository still contains `gateway_private`, gateway invitations, private device APIs and historical directory names. Their presence is migration work, not a third supported architectural direction. Linked detailed documents may still describe that implementation and must be reconciled during cleanup.
+Compatibility reservations and one-way migration readers may still name the retired mode, but no active API, listener, route, manifest, or Android connection mode implements it.
 
 ## Product and service boundaries
 
@@ -23,7 +23,7 @@ This document defines the target boundaries. This documentation change does **no
 
 An independent server is a role, not an extra service that every developer must install beside their backend. The existing MCP server is one implementation of that role. The historical name `sidecar` does not imply another required component.
 
-The Go Server SDK currently lives in `publisher/sdk/`; its private-gateway APIs are part of the removal work. Do not describe a replacement direct SDK API as already implemented. The Android build currently has `:app` and `:designsystem`; a separately packaged Android SDK remains future work.
+The existing publisher client remains in `publisher/sdk/`; extracting the TypeScript Server SDK is later SEE-131 work. Do not describe a replacement direct SDK API as already implemented. The Android build currently has `:app` and `:designsystem`; a separately packaged Android SDK remains future work.
 
 ## Two connection modes
 
@@ -61,7 +61,7 @@ The independent server owns pairing, authenticated request access, durable reque
 
 An AI agent calls the MCP adapter of the user's server. That adapter asks the server's request core to create/read/cancel requests; the phone reviews those requests and returns outcomes to the same server. MCP is not part of the phone-to-server contract and does not grant approval authority.
 
-Pairing links and QR codes belong to direct onboarding. A server can hand the connection information to its user through a website, bot or CLI. A hosted invitation page is not a reason to relay all subsequent private traffic through the feed gateway. Cleanup must preserve working direct pairing and explicitly address any link/QR usability gap without restoring private gateway routing.
+Pairing links and QR codes belong to direct onboarding. A server can hand the connection information to its user through a website, bot or CLI. Android handles `seekervault://pair` links directly, and the existing `pnpm pair` command prints both the URI and QR.
 
 The existing direct implementation's supported device count must be documented accurately. Removing gateway-private bindings must not silently claim that direct multi-device support already exists.
 
@@ -123,7 +123,7 @@ Public feeds use gateway snapshots and Centrifugo streaming with revision checks
 
 Optional FCM wake-ups initiate authoritative reads; they do not contain an approval or authorize execution. No foreground stream, background worker, notification or retry may open a wallet or approve a request.
 
-See [Firebase](guides/firebase.md) and [broadcast gateway](wiki/broadcast-gateway.md). Private-gateway portions of existing supporting documents are pending removal.
+See [Firebase](guides/firebase.md) and [broadcast gateway](wiki/broadcast-gateway.md).
 
 ## Repository naming and deployment cleanup
 
@@ -132,10 +132,10 @@ Current directory names describe historical implementation choices and are not t
 | Current path | What it actually contains | Cleanup direction |
 | --- | --- | --- |
 | `android/` | SAC app and design system | Keep the application boundary clear |
-| `proto/` | Shared contracts, including the unwanted private-gateway additions | Keep direct/feed contracts; retire private-gateway fields/services safely |
+| `proto/` | Shared direct/feed contracts plus compatibility reservations | Keep direct/feed contracts; never reuse retired private-gateway identifiers |
 | `sidecar/` | The user's direct request server with an optional MCP adapter | Use a clear direct/MCP server name; do not present it as an extra mandatory service |
 | `gateway/` | Deployment assets and reverse proxy for the direct server, including TLS/OAuth configuration | Move/name as direct-server deployment infrastructure |
-| `broadcast/` | Shared Go feed gateway, currently also containing unwanted private routing | Establish one canonical feed-gateway name and remove private routing |
+| `broadcast/` | Shared Go feed gateway with public read and publisher listeners | Establish one canonical feed-gateway name in SEE-133 |
 | `publisher/` | Demo server implementations plus reusable Go Server SDK | Clearly separate SDK code from examples in layout and documentation |
 | `deploy/server/` | Shared infrastructure, optional demo overlay and optional direct-server overlay | Preserve independent deployment with consistent names |
 | `test-agent/` | Developer MCP client | Keep as a test/development tool |
@@ -146,10 +146,17 @@ The cleanup task must settle and apply the final directory names consistently ac
 
 The base shared deployment must run without either demo or the direct server. Both feed demos can run independently. The direct MCP server must run without the shared feed gateway, Centrifugo or Redis. Renaming deployment services must preserve existing direct pairing data, credentials, databases and volumes through an explicit migration.
 
-## Removing the third mode
+## Removed third mode
 
-The implementation cleanup removes gateway-private invitations, redemption, private device bindings and credentials, private request/result routing and associated SDK/client/server APIs. Remove their configuration, UI routes, generated bindings, examples and tests or replace tests with meaningful assertions of the two-mode boundary.
+SEE-130 removed gateway-private invitations, redemption, private device bindings and credentials,
+private request/result routing and associated SDK/client/server APIs, together with their
+configuration, UI routes, generated bindings and examples. Boundary tests now hold the two-mode
+surface and permanently deny-list the removed descriptors and routes.
 
-Do not remove public publisher credentials, feed references, stream tickets, publication storage or direct pairing. For stored gateway-private connections, define an explicit retirement path: explain that a fresh direct pairing is required and prevent further execution. Never silently convert credentials or connections between modes. Preserve local history and unaffected direct/feed data.
+Public publisher credentials, feed references, stream tickets, publication storage and direct
+pairing remain. Stored gateway-private connections become explicit inert retirement records and
+require a fresh direct pairing; no credential, origin or identity is converted. Local Activity
+history and unaffected Direct/Feed data remain.
 
-The architecture PR changes this document only. Runtime cleanup, supporting documentation and migration verification belong to [SEE-128](https://linear.app/seekeragentwallet/issue/SEE-128/simplify-architecture-to-direct-public-feed-remove-private-gateway).
+SEE-130 completed the runtime removal and migration described here. Packaging, module extraction and
+directory renames remain separate later children of [SEE-128](https://linear.app/seekeragentwallet/issue/SEE-128/simplify-architecture-to-direct-public-feed-remove-private-gateway).

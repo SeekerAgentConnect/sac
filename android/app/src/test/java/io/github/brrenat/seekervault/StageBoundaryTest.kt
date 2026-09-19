@@ -19,20 +19,20 @@ import org.w3c.dom.Element
  * classpath. SAW-055 adds one connection-scoped registration service under `push/`. SAW-056 lets
  * that service accept exactly one content-free invalidation and enqueue a unique WorkManager Sync
  * under `sync/`. SAW-057 keeps the callback to validation and this durable handoff; network fetches
- * stay in the bounded worker and coalesce with foreground/periodic synchronization. SAW-058 adds
- * one private request channel, an isolated runtime permission prompt, notifications after
- * authoritative Sync, and a validated read-only tap route. SEE-105 lets presentation read only the
- * cached request/proposal kind and local source name while adding no authority. SAW-059 closes the
- * stage with joined acceptance while keeping Firebase optional and every Stage 5.2 path
- * independent. Other app-defined services, jobs, alarms, receivers, and wallet automation remain
- * excluded. SEE-92 extends that same push pipeline to a publisher's public feed and lifts nothing:
- * one more content-free invalidation on the existing service, one topic client beside the
- * registration client, one WorkManager job under `sync/`, and one notification channel with a
- * read-only tap route. SAW-015 lifted the "no wallet library" limit for the Mobile Wallet Adapter
- * client, on purpose: the app drives the wallet the owner already has. It still holds no wallet key
- * of its own, and Seed Vault's own SDK stays out. SEE-114 moves visual authority into a separate
- * design-system module with no dependency back into app behavior. These checks fail when a limit is
- * crossed early; the stage that lifts one changes them.
+ * stay in the bounded worker and coalesce with foreground/periodic synchronization. SAW-058 adds an
+ * isolated runtime permission prompt, notifications after authoritative Sync, and a validated
+ * read-only tap route. SEE-105 lets presentation read only the cached request/proposal kind and
+ * local source name while adding no authority. SAW-059 closes the stage with joined acceptance
+ * while keeping Firebase optional and every Stage 5.2 path independent. Other app-defined services,
+ * jobs, alarms, receivers, and wallet automation remain excluded. SEE-92 extends that same push
+ * pipeline to a publisher's public feed and lifts nothing: one more content-free invalidation on
+ * the existing service, one topic client beside the registration client, one WorkManager job under
+ * `sync/`, and one notification channel with a read-only tap route. SAW-015 lifted the "no wallet
+ * library" limit for the Mobile Wallet Adapter client, on purpose: the app drives the wallet the
+ * owner already has. It still holds no wallet key of its own, and Seed Vault's own SDK stays out.
+ * SEE-114 moves visual authority into a separate design-system module with no dependency back into
+ * app behavior. These checks fail when a limit is crossed early; the stage that lifts one changes
+ * them.
  */
 class StageBoundaryTest {
     private val repoRoot =
@@ -1037,11 +1037,9 @@ class StageBoundaryTest {
                 "display_name",
                 "direct",
                 "feed",
-                "gateway_private",
                 "url",
                 "gateway_url",
                 "channel",
-                "gateway_url",
                 "plugin_id",
                 "min_contract",
                 "max_contract",
@@ -1298,7 +1296,8 @@ class StageBoundaryTest {
                 .filter { http.containsMatchIn(it.readText()) }
                 .map { it.name },
         )
-        // The sidecar transports, the broadcast gateway's two, and the one client they share.
+        // The sidecar transports, the broadcast gateway's feed transport, and the one client they
+        // share.
         // Nothing else. A new file here is a new host this app talks to, and has to be read as one:
         // the first three reach the owner's own sidecar, and the last two reach a shared gateway
         // that is told which channels a phone is interested in and nothing else (SEE-91).
@@ -1308,9 +1307,6 @@ class StageBoundaryTest {
                 "ConnectLiveCommandTransport.kt",
                 "ConnectUpdateTransport.kt",
                 "ConnectFeedGateway.kt",
-                // Gateway-private pairing and request/result delivery has a third adapter. It is
-                // the only new HTTP client; its credential is scoped to one device binding.
-                "InvitationGateway.kt",
                 "CentrifugoFeedStream.kt",
                 "SeekerVaultApplication.kt",
                 // And one more, deliberately: a swap's execution data comes from a provider, and

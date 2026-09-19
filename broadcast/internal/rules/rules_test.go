@@ -488,13 +488,6 @@ func TestWhatARevisionMeansForAManifest(t *testing.T) {
 		{"a late retry", manifest(func(m *serverv1.ServerManifest) {
 			m.SettingsRevision = 2
 		}), Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_STALE_REVISION},
-		{"a feed changed into a private server", manifest(func(m *serverv1.ServerManifest) {
-			m.SettingsRevision = 4
-			m.Mode = serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_PRIVATE
-			m.Reference = &serverv1.ServerManifest_GatewayPrivate{
-				GatewayPrivate: &serverv1.GatewayPrivate{GatewayUrl: gatewayURL},
-			}
-		}), Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT},
 		// The one field a higher revision cannot move (SEE-97). Everything else about this
 		// document may change; what the server promises when the owner approves may not, or a
 		// phone that added a demonstration would be holding a production feed without being asked.

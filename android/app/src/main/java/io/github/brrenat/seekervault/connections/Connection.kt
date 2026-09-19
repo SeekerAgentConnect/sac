@@ -15,9 +15,8 @@ import java.time.Instant
  * one that has always been here: the owner's own server, which this phone paired with and calls
  * with the credential it holds. A [ConnectionMode.GatewayFeed] connection is a publisher's
  * broadcast, read through the shared gateway, with no credential and no call to the publisher at
- * all. A [ConnectionMode.GatewayPrivate] connection is one device binding accepted from a temporary
- * gateway invitation. One phone may hold any mixture of the three, and none silently changes
- * another.
+ * all. A retired gateway-private record has no active mode: it remains only so the owner can see
+ * what stopped working and remove or replace it with a fresh direct pairing.
  */
 data class Connection(
     val id: String,
@@ -45,7 +44,9 @@ data class Connection(
      * the connection is created: a manifest read later can confirm it but never change it, so no
      * server can move a connection onto another transport.
      */
-    val mode: ConnectionMode = ConnectionMode.Direct,
+    val mode: ConnectionMode? = ConnectionMode.Direct,
+    /** Why this historical connection is inert. Mutually exclusive with an active [mode]. */
+    val retirement: ConnectionRetirement? = null,
     /**
      * What this phone knows about the server's own manifest. [ServerRecord.Unknown] until it has
      * been asked, and [ServerRecord.Legacy] for a server that publishes none — which is a direct
@@ -66,8 +67,7 @@ data class Connection(
      *
      * A [ConnectionMode.Direct] connection is always [PluginEnvironment.Production], and the
      * invariant below is the whole of it: the legacy direct sidecar cannot be handed a simulated
-     * answer. Gateway connections preserve the immutable environment promise in their manifest; a
-     * private request can therefore report an explicit simulated outcome over its own contract.
+     * answer. A feed preserves the immutable environment promise in its manifest.
      */
     val environment: PluginEnvironment = PluginEnvironment.Production,
 ) {
@@ -75,12 +75,18 @@ data class Connection(
         // A gateway connection exists only because a manifest was read for it: its gateway
         // reference and the plugins it needs all come from that manifest, and there is no other
         // way to reach one.
-        require(mode == ConnectionMode.Direct || server is ServerRecord.Known) {
+        require((mode == null) != (retirement == null)) {
+            "a connection is either active or retired"
+        }
+        require(retirement == null || server == ServerRecord.Unknown) {
+            "a retired connection carries no active server manifest"
+        }
+        require(mode == null || mode == ConnectionMode.Direct || server is ServerRecord.Known) {
             "a gateway connection needs its manifest"
         }
         // And a manifest a connection holds is always a manifest about that connection's mode,
         // which manifestFrom is what guarantees.
-        require(server.manifest?.mode?.equals(mode) != false) {
+        require(mode == null || server.manifest?.mode?.equals(mode) != false) {
             "a $mode connection cannot hold a ${server.manifest?.mode} manifest"
         }
         // Stated here rather than in the four places a connection is built, so that a connection
@@ -112,10 +118,11 @@ data class Connection(
      */
     val usable: Boolean
         get() = mode == ConnectionMode.Direct && revokedAt == null && hasCredential
+}
 
-    /** Whether the gateway-private adapter may use its own credential and transport. */
-    val gatewayUsable: Boolean
-        get() = mode == ConnectionMode.GatewayPrivate && revokedAt == null && hasCredential
+/** Historical reason a stored connection is visible but cannot perform any action. */
+enum class ConnectionRetirement(val code: String) {
+    GatewayPrivateRemoved("gateway_private_removed")
 }
 
 enum class CheckOutcome {

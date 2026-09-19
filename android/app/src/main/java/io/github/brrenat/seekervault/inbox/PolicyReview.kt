@@ -75,7 +75,7 @@ import java.time.Instant
  * The assessment the owner was shown, as the record keeps it: codes and nothing else (SAW-028).
  *
  * It is here rather than inside one screen's view model because two things in this app now put a
- * verdict in front of somebody and then write down what they read — a private request's review, and
+ * verdict in front of somebody and then write down what they read — a direct request's review, and
  * a broadcast proposal's (SEE-93). One mapping, so the record of either says the same kind of
  * thing, and the rules themselves stay in the one place they are stored: not a threshold, not an
  * address, not a list.

@@ -25,13 +25,10 @@ The shared gateway has its own, separately routed roles:
 
 | Credential | Held by | Accepted by | Grant |
 | --- | --- | --- | --- |
-| Publisher credential | An independent backend | Publisher listener | That server's feed documents, manifests, invitations and private requests |
-| Invitation capability | The person opening a temporary link/QR | Client listener, until expiry or redemption | Preview and one explicit-confirmation redemption; no wallet or request authority |
-| Device credential | SAC, after redemption | Client listener | One binding's manifest, private requests, declared results and revocation |
+| Publisher credential | An independent backend | Publisher listener | That server's public feed documents and manifest |
 
-Publisher and device credentials travel only in bearer headers and are stored as SHA-256 hashes.
-The invitation capability is the deliberate URL exception: short-lived and single-use, omitted from
-application errors, and excluded from proxy access logs. It never grants signing or execution.
+Publisher credentials travel only in bearer headers and are stored as SHA-256 hashes. The gateway
+has no subscriber credential, binding, invitation, private-request route or result-upload route.
 
 ### The operator's account
 
@@ -87,8 +84,9 @@ what the phone already has, and can never change it
 - **The origin has to be the one the connection already uses** — the paired server URL, character
   for character, or the gateway a feed was added through. A manifest naming another origin is
   refused, and the credential keeps going exactly where it did.
-- **The mode cannot change.** A direct, gateway-feed or gateway-private connection can never become
-  another mode. A missing mode is refused rather than guessed.
+- **The mode cannot change.** A direct connection can never become a gateway feed, or vice versa. A
+  missing mode is refused rather than guessed. A retired gateway-private record has no active mode
+  and is never converted to either one.
 - **A publisher may name only its own channel** (`server/<its own ID>`), so a manifest cannot claim
   another publisher's audience.
 - **A refusal is recorded, not acted on.** The connection stays as it was and keeps working as it
@@ -143,8 +141,8 @@ more than what it does.
   is refused outright: the codec is strict, and a field the contract does not have is an error.
 - **There is no public-feed endpoint that takes a result.** `FeedService` is read-only; a publication
   or result sent to its listener answers 404 even with a valid credential.
-- **It cannot point a phone anywhere but at itself.** A published feed or gateway-private manifest
-  must name this gateway's own origin; a `direct` manifest carries a URL, and the gateway refuses to
+- **It cannot point a phone anywhere but at itself.** A published feed manifest must name this
+  gateway's own origin; a `direct` manifest carries a URL, and the gateway refuses to
   hold one. The phone applies the same origin rule, so neither side depends on the other getting it
   right.
 - **Listening says which channels and nothing about who (SEE-91).** A stream is opened with a
@@ -201,29 +199,17 @@ more than what it does.
   test reads the database after several reads and requires every row count to be unchanged. What the
   gateway learns from a read is which channel someone asked about.
 
-### A private gateway binding is minimal and explicit (SEE-109)
+### Retired private gateway state (SEE-130)
 
-The private adapter deliberately does keep one association, because routing a request to one
-confirmed device is its purpose: authenticated `server_id`, that server's opaque `user_ref`, a
-random connection ID and the hash of the credential SAC received once. It is not a central SAC
-account, does not join identities across servers, and contains no wallet, authorization token,
-amount, prepared transaction or activity history.
+The former shared-gateway invitation, device-binding and private request/result adapter is retired.
+Its routes and protocol messages are absent, and the schema-v3 migration drops its rows. Removed
+wire numbers and names remain reserved only to prevent accidental reuse.
 
-- Creating, viewing, resolving or opening an invitation writes no binding. Only the owner's
-  confirmation calls redemption, and invitation consumption plus binding creation is one SQLite
-  transaction.
-- A fresh invitation creates a new `(server_id, user_ref, connection_id)` binding and cannot
-  silently replace another. Requests must name that exact connection ID as well as the user
-  reference; revoking one binding leaves sibling devices active.
-- A private request must use SEE-108's private audience and `RETURN_TO_ORIGIN`; it is pinned to the
-  exact binding the authenticated server named. Another binding cannot inherit it.
-- The returned record is limited to declared owner inputs and the terminal outcome. Connecting does
-  not select a wallet or authorize policy, approval, signing or execution; SAC repeats every one of
-  those gates per request.
-- The server credential never enters a link, QR or browser. The temporary invitation capability is
-  redacted from logs; the device credential is returned once and is hashed at rest.
-
-The wire flow and storage boundary are in [`wiki/gateway-pairing.md`](wiki/gateway-pairing.md).
+An app upgrading with an old gateway-private connection keeps a labelled history record but removes
+its device credential, cached manifest and unfinished work. The record has no active connection mode
+and cannot sync, execute or send a result. The owner must obtain a fresh `seekervault://pair` code
+from a direct sidecar; neither its old origin nor its credential is converted. See
+[`wiki/gateway-pairing.md`](wiki/gateway-pairing.md).
 
 ### A publisher template holds no subscriber either (SEE-95)
 

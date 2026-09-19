@@ -1,10 +1,10 @@
 # Server manifests, connection modes, and plugin compatibility (SEE-88)
 
 Until Stage 7.1 a connection was one thing: a paired Node sidecar the phone holds a credential for.
-Stage 7.1 added a public publisher, broadcasting proposals through the shared gateway. SEE-109 adds
-an independent private server whose requests use that gateway after an invitation is confirmed.
-The phone learns which kind it is talking to from the server's validated statement and never by
-guessing.
+Stage 7.1 added a public publisher, broadcasting proposals through the shared gateway. SEE-130
+retired the short-lived third gateway-private mode, leaving direct and gateway-feed as the only
+active modes. The phone learns which kind it is talking to from the server's validated statement
+and never by guessing.
 
 That statement is a **server manifest**. It says who the server is, which phone–server contract it speaks, what revision its settings are at, which transport it uses, where it is reached, and which bundled client plugins its operations need. The phone validates it, caches it, matches its requirements against the plugins compiled into the build it is running, and says plainly whether it supports the server — before anything from that server can be executed.
 
@@ -19,31 +19,30 @@ A publisher does not write one by hand: the templates build and publish it from 
 | `server_id` | The server's lasting ID, a lowercase UUID: the one in its pairing code, or the publisher's own |
 | `protocol_version` | Which phone–server contract it speaks. `1` is Stage 7.1; zero is never published |
 | `settings_revision` | Changes whenever anything else in the manifest does, and never goes backwards |
-| `mode` | `direct`, `gateway_feed`, or `gateway_private`. Never absent, and never inferred |
+| `mode` | `direct` or `gateway_feed`. Never absent, and never inferred |
 | `required_plugins` | Plugin IDs with the contract range each one is needed at |
 | `environments` | `production`, `sandbox`, or both — which the server *serves*; the connection records which one it *keeps* ([environments.md](environments.md)) |
 | `display_name` | The name the server calls itself. Optional, bounded, and never verified |
-| `direct` / `feed` / `gateway_private` | One reference, selected by the mode: a URL; a gateway origin and channel; or a gateway origin |
+| `direct` / `feed` | One reference, selected by the mode: a URL, or a gateway origin and channel |
 
 The `oneof` is the last field group in the message on purpose. Where a oneof's bytes land in a serialized message is not settled by the protobuf spec — one runtime writes it in field-number order, another writes it after the fields around it — and last is the position every runtime agrees on, which is what lets the cross-runtime fixtures compare bytes at all.
 
 **What is not in it is the point.** There is no field that installs code, asks for a permission, carries or relaxes a policy, or names a wallet endpoint, and no field that could grow into one: a check in `StageBoundaryTest` reads the proto and fails if the field set changes. What the phone will do with a server is decided by the build it is running and by the owner.
 
-## The three connection modes
+## The two connection modes
 
-| | **Direct** | **Gateway feed** | **Gateway private** |
-| --- | --- | --- | --- |
-| Whose server | The owner's own (`sidecar/`) | A developer's public publisher | An independent server |
-| How it is added | A pairing code, `pnpm pair` | A public feed reference | A temporary, single-use invitation |
-| Credential on the phone | One issued by the sidecar | **None** | One issued by the gateway after confirmation |
-| Who sees a request | Only the owner who paired | Every subscriber of the channel | One confirmed binding for the server's opaque user reference |
-| Who the phone calls | The server itself | The gateway, never the publisher | The gateway, never the originating server |
-| What the server learns | That one phone is paired | Nothing about any phone | Invitation completion and declared results for requests it addressed |
+| | **Direct** | **Gateway feed** |
+| --- | --- | --- |
+| Whose server | The owner's own (`sidecar/`) | A developer's public publisher |
+| How it is added | A pairing code, `pnpm pair` | A public feed reference |
+| Credential on the phone | One issued by the sidecar | **None** |
+| Who sees a request | Only the owner who paired | Every subscriber of the channel |
+| Who the phone calls | The server itself | The gateway, never the publisher |
+| What the server learns | That one phone is paired and the results it receives | Nothing about any phone |
 
-A phone holds any mixture of the three at once, and none affects another. A private request is
-never converted into a broadcast one. Connecting through either private mode is transport
-authorization only; it selects no wallet and authorizes no signing. `docs/architecture.md` has the
-whole picture.
+A phone holds any mixture of the two at once, and none affects another. A direct request is never
+converted into a broadcast one. Pairing is transport authorization only; it selects no wallet and
+authorizes no signing. `docs/architecture.md` has the whole picture.
 
 ## What the phone checks, and why
 
@@ -115,39 +114,22 @@ It is read by the same rules a pairing code is (`FeedReferences`, which shares t
 shows the gateway origin, server ID and public/no-credential boundary for confirmation, and only then
 calls `ConnectionRepository.addFeed`. [`FeedGateway`](../../android/app/src/main/java/io/github/brrenat/seekervault/connections/FeedGateway.kt) is still the one seam through which the manifest arrives, and SEE-91's [`ConnectFeedGateway`](../../android/app/src/main/java/io/github/brrenat/seekervault/feeds/ConnectFeedGateway.kt) implements it. The identity, origin and channel are checked before anything is written; no call reaches a publisher and no credential is created. A newly stored feed is observed immediately by the authoritative snapshot, foreground stream and optional topic-subscription owners, without restarting the app. There is deliberately still no Android intent filter for a `seekervault://feed` deep link. The owner flow and every result are in [`feed-onboarding.md`](feed-onboarding.md); the publisher's side is [`docs/guides/server-development.md#5-connect-the-app`](../guides/server-development.md#5-connect-the-app).
 
-## Adding a gateway-private server
-
-An authenticated server creates a temporary invitation through the Go Server SDK. Its hosted page
-and QR contain only a short-lived invitation capability. SAC may resolve and preview the metadata
-without changing server state; only the owner's explicit confirmation atomically consumes the
-invitation and creates the server-scoped device binding. The gateway-private manifest must name the
-same gateway origin the invitation used, so neither the originating server nor its manifest can
-redirect the device credential.
-
-The backend observes completion by invitation ID over its authenticated SDK connection, stores the
-returned connection ID beside its opaque user reference, then supplies both for each SEE-108 common
-request. The gateway verifies and pins that exact binding, and returns only the result declared by
-`RETURN_TO_ORIGIN`. See
-[`gateway-pairing.md`](gateway-pairing.md) for the boundary and
-[`gateway-onboarding.md`](../guides/gateway-onboarding.md) for the developer flow.
-
 ## Where the mode lives
 
-`Connection.mode` is stored, and one invariant holds the record together: every gateway connection
-has a validated manifest, and a manifest a connection holds always agrees with its mode.
-`ConnectionStore` is at version 4 — SEE-109 added the private gateway reference — and version 1–3
-files are still read, with a connection written before the environment version treated as
-production.
+`Connection.mode` is stored, and one invariant holds the record together: every active gateway
+connection has a validated feed manifest, and a manifest a connection holds always agrees with its
+mode. `ConnectionStore` is at version 5. Versions 2–4 containing the retired literal
+`gateway_private` are rewritten to an inert retirement marker without a mode, credential, or cached
+manifest. Other older files remain readable, with a connection written before the environment
+version treated as production.
 
 `Connection.usable` still means "the phone can call this connection's sidecar" and therefore
-requires direct mode. `Connection.gatewayUsable` admits either gateway mode only through its own
-adapter. That keeps sidecar synchronization, wallet publication and push registration away from
-both gateway modes while allowing a private gateway connection to read its own requests and return
-declared results.
+requires direct mode. Feed work checks exactly `GatewayFeed`; retired records match neither path.
+That keeps sidecar synchronization, wallet publication and direct push registration away from a
+feed and prevents a retired record from fetching, executing, or returning anything.
 
-A feed holds no credential and never did. A gateway-private connection holds a device credential
-issued once after confirmation. The connection screens read the mode first so those states are not
-confused with a missing credential.
+A feed holds no credential and never did. A retired record is visibly inert and offers a fresh
+direct pairing flow; it is not treated as a missing direct credential.
 
 ## What this is not
 

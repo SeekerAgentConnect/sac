@@ -69,8 +69,8 @@ go run ./cmd/copytrading
 
 `PUBLISHER_PUBLISH_URL` is needed **only** in this shape, and it is the one setting worth
 understanding before the first start. Run natively, the gateway has separate loopback listeners —
-feeds on 8090, publications on 8091 and invitation/device traffic on 8092 — so the origin a phone
-reads from is not the address a publication goes to. Run through the gateway's own compose stack,
+feeds on 8090 and publications on 8091 — so the origin a phone reads from is not the address a
+publication goes to. Run through the gateway's own compose stack,
 one proxy serves them on one origin and this setting can be left empty. Get it wrong and the
 publication gets a 404 from a listener that has no handler which could write anything; the template
 says so at startup, because nothing else would.

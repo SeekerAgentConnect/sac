@@ -1,8 +1,8 @@
 # broadcast
 
-The shared gateway (SEE-90, SEE-109): public documents are published once and read by every
-subscriber; independent servers may also create temporary invitations and route private common
-requests to a device binding the owner explicitly confirmed. No phone ever contacts the publisher.
+The shared gateway (SEE-90): public documents are published once and read by every subscriber. No
+phone ever contacts the publisher. Gateway-private onboarding and request/result routing were
+retired in SEE-130; independent servers use the direct pairing path instead.
 
 **This is not [`gateway/`](../gateway).** That directory is one owner's private deployment — Caddy in
 front of their own sidecar (SAW-035) — run by the owner, serving one paired phone. This is a service
@@ -12,11 +12,11 @@ means this one when it is next to "broadcast", "shared" or "feed", and that one 
 
 | File | What it is |
 | --- | --- |
-| [`cmd/broadcast`](cmd/broadcast) | The server: anonymous feed, authenticated publisher and invitation/device listeners, plus the fan-out drainer and retention sweep |
+| [`cmd/broadcast`](cmd/broadcast) | The server: anonymous feed and authenticated publisher listeners, plus the fan-out drainer and retention sweep |
 | [`cmd/broadcastctl`](cmd/broadcastctl) | The operator's tool: register a publisher, rotate, revoke, forget |
 | [`internal/rules`](internal/rules) | What the gateway accepts, as pure functions — the phone's own rules, on this side |
-| [`internal/store`](internal/store) | The only place that speaks SQL: publications, publisher configuration/outbox, temporary invitations, minimal bindings and private request/results |
-| [`internal/gateway`](internal/gateway) | The three isolated APIs, their interceptors, the hosted invitation page and boundary tests |
+| [`internal/store`](internal/store) | The only place that speaks SQL: publications and the publisher configuration/outbox |
+| [`internal/gateway`](internal/gateway) | The two isolated APIs, their interceptors and boundary tests |
 | [`internal/dispatch`](internal/dispatch) | Persist first, fan out second: the outbox drainer, and the event envelope every subscriber reads |
 | [`internal/stream`](internal/stream) | The broker: publishing an event to it, and minting the ticket a listener connects with (SEE-91) |
 | [`internal/relay`](internal/relay) | The push relay: one content-free hint per changed feed, and the grant it is sent with (SEE-92) |
@@ -94,12 +94,11 @@ BROADCAST_PUBLIC_URL=http://127.0.0.1:8090 BROADCAST_DATABASE_PATH=./broadcast.d
 
 ## What it holds, and what it cannot
 
-The public-feed half holds shared publications and publisher configuration; its tables still have
-no subscriber column and reads still write nothing. The explicit private half holds only temporary
-invitations, server-scoped opaque references, revocable device bindings, requests pinned to those
-bindings and results whose contract says `RETURN_TO_ORIGIN`. It has no wallet address, SAC account,
-policy or wallet authorization. See
-[`docs/wiki/gateway-pairing.md`](../docs/wiki/gateway-pairing.md).
+The gateway holds shared publications and publisher configuration. Its six live tables have no
+subscriber column and reads write nothing. A version-2 database is migrated transactionally to
+version 3: legacy invitation, device-binding and private-request tables are dropped, legacy private
+manifests are removed, and public publications, credentials, sequences and pending notices remain.
+See [`docs/wiki/broadcast-gateway.md`](../docs/wiki/broadcast-gateway.md#migration-and-rollback).
 
 The reason is the stage's own: a proposal is common and a decision about it is not (SEE-89). Each
 owner's parameters, their approval and their execution record stay on the device that made them, so
