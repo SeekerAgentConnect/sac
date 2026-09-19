@@ -162,6 +162,7 @@ class MainActivity : ComponentActivity() {
                     feedTaps,
                     invitationTaps,
                     operations,
+                    startInLiveTest = intent.getBooleanExtra(EXTRA_LIVE_TEST, false),
                 )
             }
         }
@@ -230,5 +231,10 @@ class MainActivity : ComponentActivity() {
             connections.onAppHidden()
             wallet.onAppHidden()
         }
+    }
+
+    companion object {
+        /** Explicit diagnostic entry retained without adding a non-design item to Home. */
+        internal const val EXTRA_LIVE_TEST = "io.github.brrenat.seekervault.extra.LIVE_TEST"
     }
 }

@@ -1,99 +1,272 @@
 package io.github.brrenat.seekervault.connections
 
 import android.content.ClipData
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.snapping.SnapPosition
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.DoneAll
-import androidx.compose.material.icons.outlined.Draw
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.NorthEast
-import androidx.compose.material.icons.outlined.Public
-import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
-import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.designsystem.EmptyState
+import io.github.brrenat.seekervault.designsystem.EmptyStateScreen
+import io.github.brrenat.seekervault.designsystem.HomeRulesRow
+import io.github.brrenat.seekervault.designsystem.RequestCarousel
+import io.github.brrenat.seekervault.designsystem.RequestCarouselItem
+import io.github.brrenat.seekervault.designsystem.RequestTileKind
+import io.github.brrenat.seekervault.designsystem.RequestTileModel
+import io.github.brrenat.seekervault.designsystem.ScreenCaption
+import io.github.brrenat.seekervault.designsystem.ScreenCaptionSize
+import io.github.brrenat.seekervault.designsystem.ScreenDestination
+import io.github.brrenat.seekervault.designsystem.ScreenFullBleed
+import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
+import io.github.brrenat.seekervault.designsystem.ScreenScaffold
+import io.github.brrenat.seekervault.designsystem.ScreenScrollBody
+import io.github.brrenat.seekervault.designsystem.SectionHeader
+import io.github.brrenat.seekervault.designsystem.SectionHeaderTrailing
+import io.github.brrenat.seekervault.designsystem.SeekerFab
+import io.github.brrenat.seekervault.designsystem.ServerRow
+import io.github.brrenat.seekervault.designsystem.ServerRowModel
+import io.github.brrenat.seekervault.designsystem.ServerRowState
+import io.github.brrenat.seekervault.designsystem.WalletBanner
+import io.github.brrenat.seekervault.designsystem.WalletBannerVariant
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.PendingItem
 import io.github.brrenat.seekervault.inbox.RequestAssessment
-import io.github.brrenat.seekervault.inbox.actionText
 import io.github.brrenat.seekervault.inbox.key
-import io.github.brrenat.seekervault.inbox.messagePreview
-import io.github.brrenat.seekervault.inbox.text
-import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.request.v2.Request
+import io.github.brrenat.seekervault.request.v2.Value
 import io.github.brrenat.seekervault.servers.ServerSupport
+import io.github.brrenat.seekervault.servers.executable
+import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
-import io.github.brrenat.seekervault.transactions.mint
-import io.github.brrenat.seekervault.transactions.transfer
-import io.github.brrenat.seekervault.ui.NetworkChip
-import io.github.brrenat.seekervault.ui.SeekerCard
 import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
 import io.github.brrenat.seekervault.wallet.SelectedWallet
-import io.github.brrenat.seekervault.wallet.networkText
-import kotlin.math.abs
-import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import kotlinx.coroutines.launch
 
 /** How many requests wait for the owner, and how many answers wait to be sent. */
 data class InboxSummary(val waitingForYou: Int, val toSend: Int)
 
-/** The v4 Home dashboard. Every action still delegates to the existing feature owner. */
+data class HomeWalletState(val name: String, val address: String, val canCopy: Boolean)
+
+data class HomeServerState(
+    val id: String,
+    val model: ServerRowModel,
+    val rowState: ServerRowState,
+)
+
+/** UI-only state for the Home screen. */
+data class HomeScreenState(
+    val wallet: HomeWalletState,
+    val pendingCount: Int,
+    val pending: List<RequestCarouselItem>,
+    val serversLoaded: Boolean,
+    val servers: List<HomeServerState>,
+)
+
+data class HomeScreenCallbacks(
+    val onWallet: () -> Unit,
+    val onCopyWalletAddress: () -> Unit,
+    val onSeeAll: () -> Unit,
+    val onPending: (String) -> Unit,
+    val onGlobalRules: () -> Unit,
+    val onServer: (String) -> Unit,
+    val onRetryServer: (String) -> Unit,
+    val onAddConnection: () -> Unit,
+    val navigation: ScreenNavigationCallbacks,
+)
+
+data class HomeRouteCallbacks(
+    val onOpenConnection: (String) -> Unit,
+    val onRetryConnection: (String) -> Unit,
+    val onAddConnection: () -> Unit,
+    val onMessageShown: () -> Unit,
+    val onInbox: () -> Unit,
+    val onWallet: () -> Unit,
+    val onGlobalRules: () -> Unit,
+    val onActivity: () -> Unit,
+    val onOpenPending: (PendingItem) -> Unit,
+)
+
+/** Stateless rendering of the SEE-121 Home reference. */
 @Composable
+fun HomeScreen(
+    state: HomeScreenState,
+    callbacks: HomeScreenCallbacks,
+    modifier: Modifier = Modifier,
+) {
+    ScreenScaffold(
+        title = HomeCopy.Title,
+        selectedDestination = ScreenDestination.Home,
+        navigationCallbacks = callbacks.navigation,
+        modifier = modifier,
+    ) {
+        ScreenScrollBody(Modifier.testTag(ConnectionsTags.LIST)) {
+            WalletBanner(
+                walletName = state.wallet.name,
+                address = state.wallet.address,
+                statusText = null,
+                variant = WalletBannerVariant.Compact,
+                onCopyAddress = callbacks.onCopyWalletAddress.takeIf { state.wallet.canCopy },
+                onClick = callbacks.onWallet,
+                shortenAddress = state.wallet.canCopy,
+                modifier = Modifier.testTag(ConnectionsTags.WALLET),
+            )
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
+            ) {
+                SectionHeader(
+                    title = HomeCopy.Waiting,
+                    trailing = SectionHeaderTrailing.Button,
+                    trailingLabel = "${state.pendingCount} · see all",
+                    onTrailingClick = callbacks.onSeeAll,
+                    trailingModifier = Modifier.testTag(ConnectionsTags.INBOX),
+                )
+                if (state.pending.isEmpty()) {
+                    EmptyState(
+                        screen = EmptyStateScreen.Inbox,
+                        title = HomeCopy.EmptyPendingTitle,
+                        body = HomeCopy.EmptyPendingBody,
+                        modifier = Modifier.testTag(ConnectionsTags.PENDING_EMPTY),
+                    )
+                } else {
+                    ScreenFullBleed {
+                        RequestCarousel(
+                            items = state.pending,
+                            centredIndex = 0,
+                            onItemClick = { callbacks.onPending(it.id) },
+                            modifier = Modifier.testTag(ConnectionsTags.CAROUSEL),
+                        )
+                    }
+                    ScreenCaption(HomeCopy.CarouselCaption, size = ScreenCaptionSize.Small)
+                }
+            }
+
+            SectionHeader(title = HomeCopy.Rules, trailing = SectionHeaderTrailing.None)
+            HomeRulesRow(
+                title = HomeCopy.GlobalRules,
+                supportingText = HomeCopy.GlobalRulesNote,
+                onClick = callbacks.onGlobalRules,
+                modifier = Modifier.testTag(ConnectionsTags.GLOBAL_RULES),
+            )
+
+            SectionHeader(title = HomeCopy.Servers, trailing = SectionHeaderTrailing.None)
+            if (state.serversLoaded && state.servers.isEmpty()) {
+                EmptyState(
+                    screen = EmptyStateScreen.Servers,
+                    title = HomeCopy.EmptyServersTitle,
+                    body = HomeCopy.EmptyServersBody,
+                    modifier = Modifier.testTag(ConnectionsTags.EMPTY),
+                )
+            } else {
+                state.servers.forEach { server ->
+                    ServerRow(
+                        model = server.model,
+                        state = server.rowState,
+                        onOpen = { callbacks.onServer(server.id) },
+                        onRetry =
+                            if (server.rowState == ServerRowState.Unreachable) {
+                                { callbacks.onRetryServer(server.id) }
+                            } else {
+                                null
+                            },
+                        modifier = Modifier.testTag(ConnectionsTags.item(server.id)),
+                    )
+                }
+            }
+
+            SeekerFab(
+                label = HomeCopy.AddConnection,
+                icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                onClick = callbacks.onAddConnection,
+                modifier = Modifier.testTag(ConnectionsTags.ADD),
+            )
+        }
+    }
+}
+
+/** Thin runtime adapter. Repository/ViewModel work remains in the existing feature owners. */
+@Composable
+fun HomeRoute(
+    connectionsState: ConnectionsUiState,
+    inboxSummary: InboxSummary?,
+    wallet: SelectedWallet?,
+    pendingItems: List<PendingItem>,
+    requestAssessments: Map<RequestKey, RequestAssessment>,
+    callbacks: HomeRouteCallbacks,
+    modifier: Modifier = Modifier,
+) {
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    val itemById = pendingItems.associateBy(PendingItem::homeId)
+    MessageEffect(connectionsState.message, snackbar, callbacks.onMessageShown)
+
+    Box(modifier.fillMaxSize()) {
+        HomeScreen(
+            state =
+                homeScreenState(
+                    connectionsState = connectionsState,
+                    inboxSummary = inboxSummary,
+                    wallet = wallet,
+                    pendingItems = pendingItems,
+                    requestAssessments = requestAssessments,
+                ),
+            callbacks =
+                HomeScreenCallbacks(
+                    onWallet = callbacks.onWallet,
+                    onCopyWalletAddress = {
+                        wallet?.let { selected ->
+                            scope.launch {
+                                clipboard.setClipEntry(
+                                    ClipEntry(
+                                        ClipData.newPlainText("Wallet address", selected.address)
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    onSeeAll = callbacks.onInbox,
+                    onPending = { id -> itemById[id]?.let(callbacks.onOpenPending) },
+                    onGlobalRules = callbacks.onGlobalRules,
+                    onServer = callbacks.onOpenConnection,
+                    onRetryServer = callbacks.onRetryConnection,
+                    onAddConnection = callbacks.onAddConnection,
+                    navigation =
+                        ScreenNavigationCallbacks(
+                            onHome = {},
+                            onInbox = callbacks.onInbox,
+                            onWallet = callbacks.onWallet,
+                            onActivity = callbacks.onActivity,
+                        ),
+                ),
+            modifier = Modifier.fillMaxSize(),
+        )
+        SeekerSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+/** Compatibility entry point while the app root adopts [HomeRoute]. */
+@Composable
+@Suppress("UNUSED_PARAMETER")
 fun ConnectionsScreen(
     state: ConnectionsUiState,
     onOpen: (String) -> Unit,
@@ -113,854 +286,272 @@ fun ConnectionsScreen(
     onOpenRequest: (RequestKey) -> Unit = {},
     pendingItems: List<PendingItem>? = null,
     onOpenPending: (PendingItem) -> Unit = {},
+    onRetry: (String) -> Unit = {},
 ) {
-    val snackbar = remember { SnackbarHostState() }
-    val listState = rememberLazyListState()
-    val compact = listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 48
-    MessageEffect(state.message, snackbar, onMessageShown)
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding()) {
-        LazyColumn(
-            state = listState,
-            contentPadding =
-                PaddingValues(
-                    top = SeekerTheme.dimensions.dp68,
-                    bottom = SeekerTheme.dimensions.dp24,
-                ),
-            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
-            modifier = Modifier.fillMaxSize().testTag(ConnectionsTags.LIST),
-        ) {
-            item(key = "wallet") { WalletCard(wallet, onWallet) }
-            val commonItems = pendingItems ?: requests.map(PendingItem::Private)
-            if (inbox != null || commonItems.isNotEmpty()) {
-                item(key = "requests") {
-                    RequestCarousel(
-                        requests = commonItems,
-                        connections = state.connections,
-                        requestAssessments = requestAssessments,
-                        onOpen = { item ->
-                            if (pendingItems == null && item is PendingItem.Private) {
-                                onOpenRequest(item.request.key)
-                            } else {
-                                onOpenPending(item)
-                            }
-                        },
-                        inbox = inbox,
-                        onInbox = onInbox,
-                    )
-                }
-            }
-            item(key = "rules-heading") { SectionHeading(stringResource(R.string.rules_heading)) }
-            item(key = "global-rules") { GlobalRulesItem(onGlobalRules) }
-            item(key = "servers-heading") {
-                SectionHeading(stringResource(R.string.paired_servers_heading))
-            }
-            itemsIndexed(state.connections, key = { _, connection -> connection.id }) {
-                _,
-                connection ->
-                ConnectionItem(
-                    connection,
-                    state.updates.connections[connection.id],
-                    state.support[connection.id],
-                    onClick = { onOpen(connection.id) },
-                )
-            }
-            if (state.loaded && state.connections.isEmpty()) {
-                item(key = "empty") {
-                    SeekerCard(
-                        Modifier.padding(horizontal = SeekerTheme.dimensions.dp16),
-                        radius = SeekerTheme.dimensions.dp16,
-                    ) {
-                        Text(
-                            stringResource(R.string.connections_empty),
-                            modifier =
-                                Modifier.padding(SeekerTheme.dimensions.dp16)
-                                    .testTag(ConnectionsTags.EMPTY),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+    val commonItems = pendingItems ?: requests.map(PendingItem::Private)
+    HomeRoute(
+        connectionsState = state,
+        inboxSummary = inbox,
+        wallet = wallet,
+        pendingItems = commonItems,
+        requestAssessments = requestAssessments,
+        callbacks =
+            HomeRouteCallbacks(
+                onOpenConnection = onOpen,
+                onRetryConnection = onRetry,
+                onAddConnection = onAdd,
+                onMessageShown = onMessageShown,
+                onInbox = onInbox,
+                onWallet = onWallet,
+                onGlobalRules = onGlobalRules,
+                onActivity = onActivity,
+                onOpenPending = { item ->
+                    if (pendingItems == null && item is PendingItem.Private) {
+                        onOpenRequest(item.request.key)
+                    } else {
+                        onOpenPending(item)
                     }
-                }
-            }
-            // Compatibility for the old direct component entry point. The app uses the bottom nav.
-            if (activity != null) {
-                item(key = "activity") { ActivityItem(activity, onActivity) }
-            }
-            item(key = "add") { AddConnectionAction(onAdd) }
-        }
-        HomeAppBar(
-            wallet = wallet,
-            compact = compact,
-            onLiveTest = onLiveTest,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
-        SeekerSnackbarHost(
-            snackbar,
-            Modifier.align(Alignment.BottomCenter).padding(bottom = SeekerTheme.dimensions.dp8),
-        )
-    }
-}
-
-@Composable
-private fun HomeAppBar(
-    wallet: SelectedWallet?,
-    compact: Boolean,
-    onLiveTest: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .height(SeekerTheme.dimensions.dp64)
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(start = SeekerTheme.dimensions.dp16, end = SeekerTheme.dimensions.dp8),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            if (compact && wallet != null) walletSlug(wallet)
-            else stringResource(R.string.home_title),
-            style = MaterialTheme.typography.titleLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        if (compact) {
-            NetworkChip(
-                wallet?.let { networkText(it.network) } ?: stringResource(R.string.network_none)
-            )
-            Spacer(Modifier.width(SeekerTheme.dimensions.dp4))
-        }
-        Box(
-            Modifier.size(SeekerTheme.dimensions.dp40)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() },
-                    onClick = onLiveTest,
-                )
-                .testTag(ConnectionsTags.LIVE_TEST),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.live_title))
-        }
-    }
-}
-
-private fun walletSlug(wallet: SelectedWallet): String =
-    wallet.label?.takeIf { it.isNotBlank() }
-        ?: if (wallet.address.length <= 12) wallet.address
-        else "${wallet.address.take(5)}…${wallet.address.takeLast(4)}"
-
-private fun shortAddress(address: String): String =
-    if (address.length <= 16) address else "${address.take(9)}…${address.takeLast(7)}"
-
-@Composable
-private fun WalletCard(wallet: SelectedWallet?, onClick: () -> Unit) {
-    val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScope()
-    var copied by remember(wallet?.address) { mutableStateOf(false) }
-    SeekerCard(
-        modifier =
-            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
-                .testTag(ConnectionsTags.WALLET),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        radius = SeekerTheme.dimensions.dp16,
-        onClick = onClick,
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
-            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.Outlined.AccountBalanceWallet,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(SeekerTheme.dimensions.dp24),
-            )
-            Column(
-                Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp2),
-            ) {
-                Text(
-                    wallet?.let(::walletSlug) ?: stringResource(R.string.wallet_row),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    when {
-                        copied -> stringResource(R.string.copied)
-                        wallet == null -> stringResource(R.string.wallet_row_none)
-                        else -> shortAddress(wallet.address)
-                    },
-                    style = SeekerTheme.typography.identifier,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (wallet == null) {
-                Icon(
-                    Icons.Outlined.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            } else {
-                Box(
-                    Modifier.size(SeekerTheme.dimensions.dp40)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            onClick = {
-                                scope.launch {
-                                    clipboard.setClipEntry(
-                                        ClipEntry(
-                                            ClipData.newPlainText(
-                                                "Wallet address",
-                                                wallet.address,
-                                            )
-                                        )
-                                    )
-                                    copied = true
-                                    delay(1_600)
-                                    copied = false
-                                }
-                            },
-                        )
-                        .testTag(ConnectionsTags.WALLET_COPY),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
-                        contentDescription = stringResource(R.string.copy_wallet_address),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(SeekerTheme.dimensions.dp22),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RequestCarousel(
-    requests: List<PendingItem>,
-    connections: List<Connection>,
-    requestAssessments: Map<RequestKey, RequestAssessment>,
-    onOpen: (PendingItem) -> Unit,
-    inbox: InboxSummary?,
-    onInbox: () -> Unit,
-) {
-    val waiting = inbox?.waitingForYou ?: requests.size
-    Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp20),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                stringResource(R.string.waiting_for_you),
-                style = MaterialTheme.typography.labelLarge,
-                color = SeekerTheme.colors.primaryText,
-                modifier = Modifier.weight(1f),
-            )
-            Row(
-                Modifier.height(SeekerTheme.dimensions.dp32)
-                    .clip(RoundedCornerShape(SeekerTheme.dimensions.dp16))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        onClick = onInbox,
-                    )
-                    .padding(horizontal = SeekerTheme.dimensions.dp12)
-                    .testTag(ConnectionsTags.INBOX),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(R.string.requests_see_all, waiting),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = SeekerTheme.colors.primaryText,
-                )
-            }
-        }
-        if (requests.isNotEmpty()) {
-            Box(Modifier.fillMaxWidth()) {
-                val carouselState = rememberLazyListState()
-                val activeIndex by
-                    remember(carouselState) {
-                        derivedStateOf {
-                            val layout = carouselState.layoutInfo
-                            layout.visibleItemsInfo
-                                .minByOrNull { item ->
-                                    val snapOffset =
-                                        RequestCarouselSnapPosition.position(
-                                            layout.viewportSize.width,
-                                            item.size,
-                                            layout.beforeContentPadding,
-                                            layout.afterContentPadding,
-                                            item.index,
-                                            layout.totalItemsCount,
-                                        )
-                                    abs(item.offset - snapOffset)
-                                }
-                                ?.index ?: 0
-                        }
-                    }
-                LazyRow(
-                    state = carouselState,
-                    flingBehavior =
-                        rememberSnapFlingBehavior(carouselState, RequestCarouselSnapPosition),
-                    contentPadding = PaddingValues(horizontal = SeekerTheme.dimensions.dp20),
-                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
-                    modifier = Modifier.fillMaxWidth().testTag(ConnectionsTags.CAROUSEL),
-                ) {
-                    itemsIndexed(
-                        requests,
-                        key = { _, request ->
-                            "${request.namespace}/${request.connectionId}/${request.requestId}"
-                        },
-                    ) { index, request ->
-                        val source = connections.firstOrNull { it.id == request.connectionId }
-                        when (request) {
-                            is PendingItem.Private ->
-                                RequestTile(
-                                    request = request.request,
-                                    source = source,
-                                    assessment = requestAssessments[request.request.key],
-                                    active = index == activeIndex,
-                                    onOpen = { onOpen(request) },
-                                )
-                            is PendingItem.Signal ->
-                                SignalTile(
-                                    item = request,
-                                    source = source,
-                                    active = index == activeIndex,
-                                    onOpen = { onOpen(request) },
-                                )
-                        }
-                    }
-                }
-            }
-            Text(
-                stringResource(R.string.carousel_hint),
-                modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp20),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            SeekerCard(
-                Modifier.padding(horizontal = SeekerTheme.dimensions.dp16).fillMaxWidth(),
-                radius = SeekerTheme.dimensions.dp16,
-            ) {
-                Column(
-                    Modifier.padding(SeekerTheme.dimensions.dp16),
-                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
-                ) {
-                    Text(
-                        stringResource(R.string.requests_none),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        stringResource(R.string.requests_none_note),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SignalTile(
-    item: PendingItem.Signal,
-    source: Connection?,
-    active: Boolean,
-    onOpen: () -> Unit,
-) {
-    val container =
-        if (active) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surfaceContainer
-    val ink =
-        if (active) MaterialTheme.colorScheme.onPrimaryContainer
-        else MaterialTheme.colorScheme.onSurface
-    SeekerCard(
-        modifier =
-            Modifier.size(
-                    width = SeekerTheme.dimensions.dp204,
-                    height = SeekerTheme.dimensions.dp192,
-                )
-                .semantics { selected = active },
-        color = container,
-        radius = SeekerTheme.dimensions.dp20,
-        onClick = onOpen,
-    ) {
-        Column(
-            Modifier.fillMaxSize().padding(SeekerTheme.dimensions.dp16),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.SwapHoriz, contentDescription = null, tint = ink)
-                Text(
-                    stringResource(R.string.request_category_signal),
-                    modifier =
-                        Modifier.padding(start = SeekerTheme.dimensions.dp10)
-                            .background(
-                                MaterialTheme.colorScheme.surfaceContainerHighest,
-                                RoundedCornerShape(SeekerTheme.dimensions.dp8),
-                            )
-                            .padding(
-                                horizontal = SeekerTheme.dimensions.dp8,
-                                vertical = SeekerTheme.dimensions.dp3,
-                            ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ink,
-                )
-            }
-            Text(
-                item.envelope.presentation.title,
-                style = MaterialTheme.typography.headlineSmall,
-                color = ink,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                stringResource(
-                    R.string.request_from_feed,
-                    source?.label ?: item.record.proposal.key.serverId,
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-private object RequestCarouselSnapPosition : SnapPosition {
-    override fun position(
-        layoutSize: Int,
-        itemSize: Int,
-        beforeContentPadding: Int,
-        afterContentPadding: Int,
-        itemIndex: Int,
-        itemCount: Int,
-    ): Int {
-        val position =
-            when {
-                itemIndex == 0 -> SnapPosition.Start
-                itemIndex == itemCount - 1 -> SnapPosition.End
-                else -> SnapPosition.Center
-            }
-        return position.position(
-            layoutSize,
-            itemSize,
-            beforeContentPadding,
-            afterContentPadding,
-            itemIndex,
-            itemCount,
-        )
-    }
-}
-
-private data class RequestTileCopy(
-    val icon: ImageVector,
-    val kind: String,
-    val headline: String,
-    val detail: String,
-    val consequence: String,
-)
-
-@Composable
-private fun requestTileCopy(request: ActionRequest, source: Connection?): RequestTileCopy {
-    val sourceLabel = source?.label ?: request.ref.connectionId
-    return when (request.action.kindCase) {
-        Action.KindCase.TRANSFER -> {
-            val transfer = requireNotNull(request.transfer())
-            val amount =
-                if (transfer.mint() == null) {
-                    transfer.amount.toULongOrNull()?.let {
-                        "${formatBaseUnits(it, LAMPORT_DECIMALS)} SOL"
-                    } ?: transfer.amount
-                } else {
-                    "${transfer.amount} units"
-                }
-            RequestTileCopy(
-                Icons.Outlined.NorthEast,
-                stringResource(R.string.action_transfer),
-                amount,
-                "to ${shortAddress(transfer.recipient)}",
-                stringResource(R.string.request_funds_move),
-            )
-        }
-        Action.KindCase.SIGN_MESSAGE -> {
-            val preview = requireNotNull(messagePreview(request))
-            RequestTileCopy(
-                Icons.Outlined.Draw,
-                stringResource(R.string.request_signature),
-                stringResource(R.string.request_bytes, preview.bytes),
-                preview.display,
-                stringResource(R.string.request_no_funds_move),
-            )
-        }
-        Action.KindCase.ACK ->
-            RequestTileCopy(
-                Icons.Outlined.DoneAll,
-                stringResource(R.string.request_acknowledge),
-                request.text() ?: actionText(request),
-                stringResource(R.string.request_source_asks, sourceLabel),
-                stringResource(R.string.request_nothing_signed),
-            )
-        else ->
-            RequestTileCopy(
-                Icons.Outlined.Close,
-                actionText(request),
-                actionText(request),
-                sourceLabel,
-                stringResource(R.string.request_review_required),
-            )
-    }
-}
-
-@Composable
-private fun RequestTile(
-    request: ActionRequest,
-    source: Connection?,
-    assessment: RequestAssessment?,
-    active: Boolean,
-    onOpen: () -> Unit,
-) {
-    val copy = requestTileCopy(request, source)
-    val transition = tween<Color>(durationMillis = 200)
-    val container by
-        animateColorAsState(
-            if (active) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceContainer,
-            transition,
-            label = "request tile container",
-        )
-    val ink by
-        animateColorAsState(
-            if (active) MaterialTheme.colorScheme.onPrimaryContainer
-            else MaterialTheme.colorScheme.onSurface,
-            transition,
-            label = "request tile ink",
-        )
-    val secondary by
-        animateColorAsState(
-            if (active) MaterialTheme.colorScheme.onPrimaryContainer
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            transition,
-            label = "request tile secondary ink",
-        )
-    SeekerCard(
-        modifier =
-            Modifier.size(
-                    width = SeekerTheme.dimensions.dp204,
-                    height = SeekerTheme.dimensions.dp192,
-                )
-                .testTag(ConnectionsTags.request(request.key))
-                .semantics { selected = active },
-        color = container,
-        radius = SeekerTheme.dimensions.dp20,
-        onClick = onOpen,
-    ) {
-        Column(
-            Modifier.fillMaxSize().padding(SeekerTheme.dimensions.dp16),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    copy.icon,
-                    contentDescription = null,
-                    tint = ink,
-                    modifier = Modifier.size(SeekerTheme.dimensions.dp22),
-                )
-                Text(
-                    copy.kind,
-                    modifier = Modifier.padding(start = SeekerTheme.dimensions.dp10),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = ink,
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4)) {
-                Text(
-                    copy.headline,
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = ink,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    copy.detail,
-                    style = SeekerTheme.typography.identifier,
-                    color = secondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    copy.consequence,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = secondary,
-                )
-                RequestPill(assessment = assessment, active = active)
-            }
-        }
-    }
-}
-
-@Composable
-private fun RequestPill(assessment: RequestAssessment?, active: Boolean) {
-    val allowed = assessment?.decision?.allowed == true
-    val warningCount =
-        assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1) ?: 0
-    val targetBackground =
-        when {
-            warningCount > 0 -> MaterialTheme.colorScheme.tertiaryContainer
-            allowed && active -> MaterialTheme.colorScheme.onPrimaryContainer
-            allowed -> MaterialTheme.colorScheme.primaryContainer
-            else -> MaterialTheme.colorScheme.surfaceContainerHighest
-        }
-    val targetForeground =
-        when {
-            warningCount > 0 -> MaterialTheme.colorScheme.onTertiaryContainer
-            allowed && active -> MaterialTheme.colorScheme.primaryContainer
-            allowed -> MaterialTheme.colorScheme.onPrimaryContainer
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        }
-    val transition = tween<Color>(durationMillis = 200)
-    val background by
-        animateColorAsState(targetBackground, transition, label = "request status container")
-    val foreground by
-        animateColorAsState(targetForeground, transition, label = "request status ink")
-    Box(
-        Modifier.height(SeekerTheme.dimensions.dp24)
-            .clip(RoundedCornerShape(SeekerTheme.dimensions.dp8))
-            .background(background)
-            .padding(horizontal = SeekerTheme.dimensions.dp10),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            when {
-                warningCount > 0 ->
-                    pluralStringResource(
-                        R.plurals.request_warning_count,
-                        warningCount,
-                        warningCount,
-                    )
-                allowed -> stringResource(R.string.request_in_rules)
-                else -> stringResource(R.string.request_not_checked)
-            },
-            style = MaterialTheme.typography.labelMedium,
-            color = foreground,
-        )
-    }
-}
-
-@Composable
-private fun SectionHeading(text: String) {
-    Text(
-        text,
-        modifier =
-            Modifier.padding(
-                start = SeekerTheme.dimensions.dp20,
-                end = SeekerTheme.dimensions.dp20,
-                top = SeekerTheme.dimensions.dp8,
+                },
             ),
-        style = MaterialTheme.typography.labelLarge,
-        color = SeekerTheme.colors.primaryText,
+        modifier = modifier,
     )
 }
 
-@Composable
-private fun GlobalRulesItem(onClick: () -> Unit) {
-    SeekerCard(
-        modifier =
-            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
-                .testTag(ConnectionsTags.GLOBAL_RULES),
-        radius = SeekerTheme.dimensions.dp16,
-        onClick = onClick,
-    ) {
-        Row(
-            Modifier.fillMaxWidth()
-                .padding(
-                    horizontal = SeekerTheme.dimensions.dp16,
-                    vertical = SeekerTheme.dimensions.dp14,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RoundIcon(Icons.Outlined.Public, MaterialTheme.colorScheme.primaryContainer)
-            Column(Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp16)) {
-                Text(
-                    stringResource(R.string.global_rules_row),
-                    style = MaterialTheme.typography.bodyLarge,
+fun homeScreenState(
+    connectionsState: ConnectionsUiState,
+    inboxSummary: InboxSummary?,
+    wallet: SelectedWallet?,
+    pendingItems: List<PendingItem>,
+    requestAssessments: Map<RequestKey, RequestAssessment>,
+    formatTime: (Instant) -> String = ::homeShortTime,
+): HomeScreenState {
+    val connections = connectionsState.connections.associateBy(Connection::id)
+    val newestFirst =
+        pendingItems.sortedWith(
+            compareByDescending<PendingItem> { it.at }
+                .thenBy { it.namespace }
+                .thenBy { it.connectionId }
+                .thenBy { it.requestId }
+        )
+    return HomeScreenState(
+        wallet =
+            HomeWalletState(
+                name = wallet?.label?.takeIf(String::isNotBlank) ?: HomeCopy.Wallet,
+                address = wallet?.address ?: HomeCopy.NoWallet,
+                canCopy = wallet != null,
+            ),
+        pendingCount = inboxSummary?.waitingForYou ?: newestFirst.size,
+        pending =
+            newestFirst.map { item ->
+                item.toHomeCarouselItem(
+                    sourceName = connections[item.connectionId]?.label,
+                    assessment =
+                        (item as? PendingItem.Private)?.request?.key?.let(requestAssessments::get),
                 )
-                Text(
-                    stringResource(R.string.global_rules_row_note),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            },
+        serversLoaded = connectionsState.loaded,
+        servers =
+            connectionsState.connections.map { connection ->
+                connection.toHomeServerState(
+                    live = connectionsState.updates.connections[connection.id],
+                    support = connectionsState.support[connection.id],
+                    formatTime = formatTime,
                 )
-            }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            },
+    )
+}
+
+private fun PendingItem.toHomeCarouselItem(
+    sourceName: String?,
+    assessment: RequestAssessment?,
+): RequestCarouselItem {
+    val request = envelope
+    val capability = request.action.capabilityId
+    val source = sourceName ?: request.identity.sourceId
+    val warnings = assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1) ?: 0
+    val kind =
+        when (capability) {
+            HomeCapability.Acknowledgement -> RequestTileKind.Acknowledgement
+            HomeCapability.Prediction -> RequestTileKind.PredictionSignal
+            HomeCapability.Swap -> RequestTileKind.SwapSignal
+            HomeCapability.Signature -> RequestTileKind.SignatureRequest
+            HomeCapability.Transfer -> RequestTileKind.Transfer
+            else -> RequestTileKind.Acknowledgement
         }
+    return RequestCarouselItem(
+        id = homeId(),
+        kind = kind,
+        tile =
+            when (kind) {
+                RequestTileKind.Acknowledgement ->
+                    RequestTileModel(
+                        title = request.parameter("text") ?: request.presentation.title,
+                        sourceName = source,
+                        supportingText = "$source asks",
+                        warningCount = warnings,
+                    )
+                RequestTileKind.PredictionSignal,
+                RequestTileKind.SwapSignal ->
+                    RequestTileModel(
+                        title = request.presentation.title,
+                        sourceName = source,
+                        supportingText = request.presentation.description,
+                        warningCount = warnings,
+                    )
+                RequestTileKind.SignatureRequest ->
+                    RequestTileModel(
+                        title = request.messageByteCount().toString(),
+                        sourceName = source,
+                        supportingText = request.parameter("text") ?: HomeCopy.MessageBytes,
+                        warningCount = warnings,
+                        signatureByteCount = request.messageByteCount(),
+                    )
+                RequestTileKind.Transfer -> {
+                    val amountAndAsset = transferAmountAndAsset(request)
+                    RequestTileModel(
+                        title = amountAndAsset.first,
+                        sourceName = source,
+                        supportingText =
+                            request.parameter("recipient")?.let { "to ${it.homeShortAddress()}" }
+                                ?: HomeCopy.RecipientUnavailable,
+                        warningCount = warnings,
+                        assetSymbol = amountAndAsset.second,
+                    )
+                }
+            },
+    )
+}
+
+private fun transferAmountAndAsset(request: Request): Pair<String, String?> {
+    val amount = request.parameter("amount").orEmpty()
+    val native = request.parameter("asset_native_sol") == true.toString()
+    return if (native) {
+        val display =
+            amount.toULongOrNull()?.let { formatBaseUnits(it, LAMPORT_DECIMALS) } ?: amount
+        display to HomeCopy.Sol
+    } else {
+        amount to request.parameter("asset_mint")?.homeShortAddress()
     }
 }
 
-@Composable
-private fun ActivityItem(recorded: Int, onClick: () -> Unit) {
-    SeekerCard(
-        modifier =
-            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
-                .testTag(ConnectionsTags.ACTIVITY),
-        radius = SeekerTheme.dimensions.dp16,
-        onClick = onClick,
-    ) {
-        Row(
-            Modifier.fillMaxWidth()
-                .padding(
-                    horizontal = SeekerTheme.dimensions.dp16,
-                    vertical = SeekerTheme.dimensions.dp14,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RoundIcon(Icons.Outlined.History, MaterialTheme.colorScheme.surfaceContainerHighest)
-            Column(Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp16)) {
-                Text(
-                    stringResource(R.string.activity_row),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    if (recorded == 0) stringResource(R.string.activity_row_none)
-                    else pluralStringResource(R.plurals.activity_row_count, recorded, recorded),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ConnectionItem(
-    connection: Connection,
-    live: io.github.brrenat.seekervault.sync.ForegroundConnectionState?,
+private fun Connection.toHomeServerState(
+    live: ForegroundConnectionState?,
     support: ServerSupport?,
-    onClick: () -> Unit,
-) {
-    val problem = hasProblem(connection, live, support)
-    SeekerCard(
-        modifier =
-            Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
-                .testTag(ConnectionsTags.item(connection.id)),
-        radius = SeekerTheme.dimensions.dp16,
-        onClick = onClick,
-    ) {
-        Row(
-            Modifier.fillMaxWidth()
-                .padding(
-                    horizontal = SeekerTheme.dimensions.dp16,
-                    vertical = SeekerTheme.dimensions.dp14,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(SeekerTheme.dimensions.dp40)
-                    .clip(CircleShape)
-                    .background(
-                        if (problem) MaterialTheme.colorScheme.surfaceContainerHighest
-                        else MaterialTheme.colorScheme.tertiaryContainer
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    initials(connection.label),
-                    style = MaterialTheme.typography.labelLarge,
-                    color =
-                        if (problem) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.onTertiaryContainer,
-                )
-            }
-            Column(Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp16)) {
-                Text(connection.label, style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    statusText(connection, live, support),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color =
-                        if (problem) SeekerTheme.colors.errorText
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    formatTime: (Instant) -> String,
+): HomeServerState {
+    val disconnected =
+        revokedAt != null || !hasCredential || live == ForegroundConnectionState.Revoked
+    val unreachable =
+        !disconnected &&
+            (support?.executable == false ||
+                live is ForegroundConnectionState.Unreachable ||
+                live is ForegroundConnectionState.Unsupported ||
+                (live == null && lastCheck?.outcome?.let { it != CheckOutcome.Ok } == true))
+    val rowState =
+        when {
+            disconnected -> ServerRowState.Disconnected
+            unreachable -> ServerRowState.Unreachable
+            else -> ServerRowState.Connected
         }
-    }
+    val status =
+        when (rowState) {
+            ServerRowState.Disconnected -> HomeCopy.Disconnected
+            ServerRowState.Unreachable ->
+                lastCheck?.at?.let { "${HomeCopy.Unreachable} · ${formatTime(it)}" }
+                    ?: HomeCopy.Unreachable
+            ServerRowState.Connected -> {
+                val pending = lastCheck?.pending ?: 0
+                if (lastCheck?.morePending == true) {
+                    "Connected · more than $pending pending"
+                } else {
+                    "Connected · $pending pending"
+                }
+            }
+        }
+    return HomeServerState(
+        id = id,
+        model =
+            ServerRowModel(
+                sourceName = label,
+                initials = label.homeInitials(),
+                statusText = status,
+            ),
+        rowState = rowState,
+    )
 }
 
-private fun initials(label: String): String =
-    label
-        .split(Regex("\\s+|-"))
-        .filter { it.isNotBlank() }
-        .take(2)
+private fun PendingItem.homeId(): String = "$namespace/$connectionId/$requestId"
+
+private fun String.homeInitials(): String =
+    split(Regex("\\s+|-"))
+        .filter(String::isNotBlank)
+        .take(HomeInitialsCount)
         .joinToString("") { it.first().uppercase() }
-        .ifEmpty { "S" }
+        .ifEmpty { HomeCopy.ServerInitial }
 
-@Composable
-private fun RoundIcon(icon: ImageVector, color: Color) {
-    Box(
-        Modifier.size(SeekerTheme.dimensions.dp40).clip(CircleShape).background(color),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(SeekerTheme.dimensions.dp22))
+private fun String.homeShortAddress(): String =
+    if (length <= HomeAddressVisibleCharacters) {
+        this
+    } else {
+        take(HomeAddressPrefixCharacters) + "…" + takeLast(HomeAddressSuffixCharacters)
     }
+
+private fun Request.parameter(key: String): String? =
+    action.parametersList
+        .firstOrNull { it.key == key }
+        ?.let { value ->
+            when (value.valueCase) {
+                Value.ValueCase.TEXT -> value.text
+                Value.ValueCase.INTEGER -> value.integer
+                Value.ValueCase.FLAG -> value.flag.toString()
+                else -> null
+            }
+        }
+
+private fun Request.messageByteCount(): Int =
+    action.parametersList.firstOrNull { it.key == "data" }?.opaque?.size()
+        ?: parameter("text")?.encodeToByteArray()?.size
+        ?: 0
+
+private fun homeShortTime(instant: Instant): String =
+    DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+        .withZone(ZoneId.systemDefault())
+        .format(instant)
+
+private object HomeCapability {
+    const val Acknowledgement = "ack"
+    const val Prediction = "prediction"
+    const val Swap = "swap"
+    const val Signature = "sign_message"
+    const val Transfer = "transfer"
 }
 
-@Composable
-private fun AddConnectionAction(onClick: () -> Unit) {
-    Row(
-        Modifier.padding(horizontal = SeekerTheme.dimensions.dp16)
-            .height(SeekerTheme.dimensions.dp56)
-            .clip(RoundedCornerShape(SeekerTheme.dimensions.dp16))
-            .background(MaterialTheme.colorScheme.primary)
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() },
-                onClick = onClick,
-            )
-            .padding(horizontal = SeekerTheme.dimensions.dp20)
-            .testTag(ConnectionsTags.ADD),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
-    ) {
-        Icon(
-            Icons.Outlined.Add,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onPrimary,
-        )
-        Text(
-            stringResource(R.string.add_connection),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onPrimary,
-        )
-    }
+object HomeCopy {
+    const val Title = "Seeker Agent Connect"
+    const val Waiting = "Waiting for you"
+    const val CarouselCaption =
+        "Swipe to browse, tap to review. The carousel only browses — nothing is answered here."
+    const val Rules = "Rules"
+    const val GlobalRules = "Global rules"
+    const val GlobalRulesNote = "Defaults for every connection · 4 of 4 sections on"
+    const val Servers = "Paired servers"
+    const val AddConnection = "Add connection"
+    const val EmptyPendingTitle = "Nothing is waiting for you"
+    const val EmptyPendingBody = "New requests and signals will appear here."
+    const val EmptyServersTitle = "No paired servers"
+    const val EmptyServersBody = "Add a connection to receive requests and signals."
+    const val Wallet = "Wallet"
+    const val NoWallet = "No wallet connected."
+    const val MessageBytes = "Message bytes"
+    const val RecipientUnavailable = "Recipient unavailable"
+    const val Sol = "SOL"
+    const val Disconnected = "Disconnected · pair again to reconnect"
+    const val Unreachable = "Couldn’t reach the server"
+    const val ServerInitial = "S"
 }
+
+private const val HomeInitialsCount = 2
+private const val HomeAddressPrefixCharacters = 8
+private const val HomeAddressSuffixCharacters = 7
+private const val HomeAddressVisibleCharacters =
+    HomeAddressPrefixCharacters + HomeAddressSuffixCharacters

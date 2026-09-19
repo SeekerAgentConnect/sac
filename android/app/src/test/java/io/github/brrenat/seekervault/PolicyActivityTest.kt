@@ -1,11 +1,12 @@
 package io.github.brrenat.seekervault
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -66,14 +67,16 @@ class PolicyActivityTest {
     private fun launch() = ActivityScenario.launch(MainActivity::class.java).also { scenario = it }
 
     private fun pair(): Connection = runBlocking {
-        app.connectionRepository.pair(server.issue(URL))
+        app.connectionRepository.pair(server.issue(URL)).also {
+            app.connectionRepository.refresh(it.id)
+        }
     }
 
     private fun openRules(connection: Connection) {
-        val connectionIndex =
-            app.connectionRepository.connections.value.indexOfFirst { it.id == connection.id }
-        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5 + connectionIndex)
-        compose.onNodeWithTag(ConnectionsTags.item(connection.id)).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.item(connection.id))
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag(PolicyTags.RULES).performScrollTo().performClick()
     }
 

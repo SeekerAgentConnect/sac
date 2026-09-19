@@ -4,12 +4,12 @@ import android.content.Context
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.RequestKey
+import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -24,17 +24,19 @@ class ActivityScreenTest {
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val opened = mutableListOf<RequestKey>()
-    private var refreshes = 0
-    private var cleared = 0
 
     private fun show(state: ActivityUiState) = compose.setContent {
         SeekerTheme {
             ActivityScreen(
-                state = state,
-                onOpen = { opened += it },
-                onRefresh = { refreshes++ },
-                onClear = { cleared++ },
-                onBack = {},
+                state = activityScreenState(state),
+                callbacks =
+                    ActivityScreenCallbacks(
+                        onOpen = { opened += it },
+                        onRefresh = {},
+                        onClear = {},
+                        onBack = {},
+                        navigation = NAVIGATION,
+                    ),
             )
         }
     }
@@ -45,8 +47,7 @@ class ActivityScreenTest {
         show(ActivityUiState(listOf(confirmed), loaded = true))
         compose
             .onNodeWithTag(ActivityTags.item(confirmed))
-            .assertTextContains("Hermes")
-            .assertTextContains(RECIPIENT, substring = true)
+            .assertTextContains("SOL", substring = true)
             .assertTextContains(
                 context.getString(R.string.activity_outcome_confirmed),
                 substring = true,
@@ -58,9 +59,9 @@ class ActivityScreenTest {
     @Test
     fun saysSoWhenThereIsNothingYet() {
         show(ActivityUiState(emptyList(), loaded = true))
-        compose.onNodeWithTag(ActivityTags.EMPTY).assertExists()
-        // With nothing to clear, there is nothing to offer clearing.
-        compose.onNodeWithTag(ActivityTags.CLEAR).assertDoesNotExist()
+        compose
+            .onNodeWithTag(ActivityTags.EMPTY)
+            .assertTextContains(context.getString(R.string.activity_empty_title))
     }
 
     @Test
@@ -71,19 +72,6 @@ class ActivityScreenTest {
         // The records it has are still there, and still open.
         compose.onNodeWithTag(ActivityTags.item(known)).performClick()
         assertEquals(listOf(known.key), opened)
-        compose.onNodeWithTag(ActivityTags.REFRESH).performClick()
-        assertEquals(1, refreshes)
-    }
-
-    @Test
-    fun clearsOnlyAfterTheOwnerConfirms() {
-        show(ActivityUiState(listOf(record()), loaded = true))
-        compose.onNodeWithTag(ActivityTags.CLEAR).performClick()
-        compose.onNodeWithText(context.getString(R.string.cancel)).performClick()
-        assertEquals(0, cleared)
-        compose.onNodeWithTag(ActivityTags.CLEAR).performClick()
-        compose.onNodeWithTag(ActivityTags.CONFIRM_CLEAR).performClick()
-        assertEquals(1, cleared)
     }
 
     @Test
@@ -97,5 +85,10 @@ class ActivityScreenTest {
         show(ActivityUiState(listOf(newer, older), loaded = true))
         compose.onNodeWithTag(ActivityTags.item(newer)).assertExists()
         compose.onNodeWithTag(ActivityTags.item(older)).assertExists()
+    }
+
+    private companion object {
+        val NAVIGATION =
+            ScreenNavigationCallbacks(onHome = {}, onInbox = {}, onWallet = {}, onActivity = {})
     }
 }

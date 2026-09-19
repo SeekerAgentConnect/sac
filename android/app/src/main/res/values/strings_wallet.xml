@@ -16,6 +16,8 @@
     <string name="wallet_connecting">Waiting for the wallet…</string>
     <string name="wallet_disconnect">Disconnect wallet</string>
     <string name="wallet_disconnecting">Disconnecting…</string>
+    <string name="wallet_connected_summary">Connected %1$s · %2$s</string>
+    <string name="wallet_security_explanation">This app never sees your seed phrase or keys. It asks the wallet you already use, and keeps only the address you pick.</string>
 
     <string name="wallet_field_address">Address</string>
     <string name="wallet_field_network">Network</string>
@@ -33,6 +35,8 @@
         <item quantity="other">Couldn\'t tell %1$d connections: %2$s</item>
     </plurals>
     <string name="wallet_publish_again">Tell them again</string>
+    <string name="wallet_publish_warning">That server still has the previous address. Until it hears, its requests will name the wrong wallet.</string>
+    <string name="wallet_unpublished_servers">%1$d servers: %2$s</string>
 
     <string name="wallet_problem_no_wallet">No wallet app answered. Install or set up a wallet that supports Mobile Wallet Adapter, such as Seed Vault Wallet on the Seeker.</string>
     <string name="wallet_problem_declined">The wallet didn\'t give an account. Nothing changed.</string>

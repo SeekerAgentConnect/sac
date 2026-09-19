@@ -1,12 +1,12 @@
 package io.github.brrenat.seekervault
 
+import android.content.Intent
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -45,9 +45,10 @@ class MainActivityTest {
         app.connectionGateway = { FakeConnectionGateway() }
         app.updateTransport = { LegacyUpdateTransport() }
         app.credentialKey = softwareKey().let { key -> { key } }
-        scenario = ActivityScenario.launch(MainActivity::class.java)
-        // The app opens on Connections; the live test is one tap away.
-        compose.onNodeWithTag(ConnectionsTags.LIVE_TEST).performClick()
+        scenario =
+            ActivityScenario.launch(
+                Intent(app, MainActivity::class.java).putExtra(MainActivity.EXTRA_LIVE_TEST, true)
+            )
     }
 
     @After fun close() = scenario.close()
@@ -119,8 +120,7 @@ class MainActivityTest {
         scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
         assertFalse(sidecar.stream.open)
-        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(6)
-        compose.onNodeWithTag(ConnectionsTags.ADD).assertExists()
+        compose.onNodeWithTag(ConnectionsTags.ADD).performScrollTo().assertExists()
         compose.onNodeWithTag(LiveCommandTags.COMMAND_TEXT).assertDoesNotExist()
     }
 }

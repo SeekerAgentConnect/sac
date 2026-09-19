@@ -5,12 +5,6 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Draw
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.Wallet
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -21,25 +15,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.activity.ActivityDetailsScreen
-import io.github.brrenat.seekervault.activity.ActivityScreen
+import io.github.brrenat.seekervault.activity.ActivityRoute
 import io.github.brrenat.seekervault.activity.ActivityViewModel
 import io.github.brrenat.seekervault.activity.openLink
 import io.github.brrenat.seekervault.connections.AddConnectionRoute
 import io.github.brrenat.seekervault.connections.ConnectionDetailsScreen
-import io.github.brrenat.seekervault.connections.ConnectionsScreen
 import io.github.brrenat.seekervault.connections.ConnectionsUiState
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
+import io.github.brrenat.seekervault.connections.HomeRoute
+import io.github.brrenat.seekervault.connections.HomeRouteCallbacks
 import io.github.brrenat.seekervault.connections.InboxSummary
 import io.github.brrenat.seekervault.connections.RequestKey
-import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
+import io.github.brrenat.seekervault.inbox.InboxRoute
+import io.github.brrenat.seekervault.inbox.InboxRouteCallbacks
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.inbox.NotificationOpenStatus
 import io.github.brrenat.seekervault.inbox.NotificationRequestStateScreen
@@ -62,12 +57,10 @@ import io.github.brrenat.seekervault.policy.PolicyEditorScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.executable
-import io.github.brrenat.seekervault.ui.BottomDestination
-import io.github.brrenat.seekervault.ui.SeekerBottomBar
 import io.github.brrenat.seekervault.ui.SeekerSheet
 import io.github.brrenat.seekervault.ui.SheetBackplate
 import io.github.brrenat.seekervault.ui.SheetInputBarrier
-import io.github.brrenat.seekervault.wallet.WalletScreen
+import io.github.brrenat.seekervault.wallet.WalletRoute
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 import java.time.Instant
 import kotlinx.coroutines.delay
@@ -95,8 +88,17 @@ fun SeekerVaultApp(
     invitationTaps: StateFlow<MainActivity.InvitationTap?> = MutableStateFlow(null),
     /** A publisher's proposals, and the one path from one of them to the wallet (SEE-93). */
     operations: OperationViewModel? = null,
+    startInLiveTest: Boolean = false,
 ) {
-    var stack by rememberSaveable { mutableStateOf(listOf(Routes.CONNECTIONS)) }
+    var stack by rememberSaveable {
+        mutableStateOf(
+            if (startInLiveTest) {
+                listOf(Routes.CONNECTIONS, Routes.LIVE)
+            } else {
+                listOf(Routes.CONNECTIONS)
+            }
+        )
+    }
     var closingSheet by remember { mutableStateOf(false) }
     var promotedRoute by remember { mutableStateOf<String?>(null) }
     var backplateTargetSize by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -194,8 +196,14 @@ fun SeekerVaultApp(
         )
     val rootModifier =
         Modifier.navigationBarsPadding()
-            .padding(bottom = SeekerTheme.dimensions.dp80)
             .then(if (stack.size > 1) Modifier.clearAndSetSemantics {} else Modifier)
+    val screenNavigationCallbacks =
+        ScreenNavigationCallbacks(
+            onHome = { stack = listOf(Routes.CONNECTIONS) },
+            onInbox = { stack = listOf(Routes.INBOX) },
+            onWallet = { stack = listOf(Routes.WALLET) },
+            onActivity = { stack = listOf(Routes.ACTIVITY) },
+        )
     // Badges and any open review follow successful rule writes immediately. The stored drafts
     // change only after disk writes succeed, so in-flight edits never affect an assessment.
     LaunchedEffect(pendingKeys, policyState.stored, globalPolicyState.stored) {
@@ -223,83 +231,75 @@ fun SeekerVaultApp(
         when (root) {
             Routes.CONNECTIONS -> {
                 val (_, toSend) = inboxCounts(inboxState)
-                ConnectionsScreen(
+                HomeRoute(
                     // A detail sheet owns transient connection messages while it is open.
                     // Keeping
                     // the Home message host quiet avoids announcing the same result twice
                     // through
                     // the still-mounted layer underneath.
-                    state = if (stack.size == 1) state else state.copy(message = null),
-                    onOpen = { push(Routes.DETAILS + it) },
-                    onAdd = { stack = listOf(Routes.ADD) },
-                    onLiveTest = { push(Routes.LIVE) },
-                    onMessageShown = connections::messageShown,
-                    inbox = InboxSummary(commonPending.size, toSend),
-                    onInbox = { stack = listOf(Routes.INBOX) },
+                    connectionsState = if (stack.size == 1) state else state.copy(message = null),
+                    inboxSummary = InboxSummary(commonPending.size, toSend),
                     wallet = walletState.wallet,
-                    onWallet = { stack = listOf(Routes.WALLET) },
-                    onGlobalRules = { push(Routes.GLOBAL_POLICY) },
                     requestAssessments = inboxState.assessments,
                     pendingItems = commonPending,
-                    onOpenPending = {
-                        when (it) {
-                            is PendingItem.Private -> push(requestRoute(it.request.key))
-                            is PendingItem.Signal ->
-                                push(signalRoute(it.connectionId, it.requestId))
-                        }
-                    },
+                    callbacks =
+                        HomeRouteCallbacks(
+                            onOpenConnection = { push(Routes.DETAILS + it) },
+                            onRetryConnection = connections::refresh,
+                            onAddConnection = { stack = listOf(Routes.ADD) },
+                            onMessageShown = connections::messageShown,
+                            onInbox = screenNavigationCallbacks.onInbox,
+                            onWallet = screenNavigationCallbacks.onWallet,
+                            onGlobalRules = { push(Routes.GLOBAL_POLICY) },
+                            onActivity = screenNavigationCallbacks.onActivity,
+                            onOpenPending = {
+                                when (it) {
+                                    is PendingItem.Private -> push(requestRoute(it.request.key))
+                                    is PendingItem.Signal ->
+                                        push(signalRoute(it.connectionId, it.requestId))
+                                }
+                            },
+                        ),
                     modifier = rootModifier,
                 )
             }
             Routes.WALLET ->
-                WalletScreen(
-                    state = walletState,
-                    onChooseNetwork = wallet::chooseNetwork,
-                    onConnect = wallet::connect,
-                    onDisconnect = wallet::disconnect,
-                    onPublishAgain = wallet::publishAgain,
+                WalletRoute(
+                    viewModel = wallet,
                     onBack = { stack = listOf(Routes.CONNECTIONS) },
+                    navigationCallbacks = screenNavigationCallbacks,
                     modifier = rootModifier,
                 )
             Routes.ACTIVITY ->
-                ActivityScreen(
-                    state = historyState,
+                ActivityRoute(
+                    viewModel = history,
                     onOpen = { push("${Routes.RECORD}${it.connectionId}/${it.requestId}") },
-                    onRefresh = history::refresh,
-                    onClear = history::clear,
                     onBack = { stack = listOf(Routes.CONNECTIONS) },
+                    navigationCallbacks = screenNavigationCallbacks,
                     modifier = rootModifier,
-                    network =
-                        walletState.wallet?.let {
-                            io.github.brrenat.seekervault.wallet.networkText(it.network)
-                        },
                 )
             Routes.INBOX ->
-                PendingRequestsScreen(
+                InboxRoute(
                     state = inboxState,
-                    connectionId = null,
-                    now = Instant.now(),
-                    onOpen = { push(requestRoute(it)) },
-                    onRefresh = {
-                        inbox.refresh(null)
-                        operationsState.feeds.forEach { operations?.refresh(it.id) }
-                    },
-                    onBack = { stack = listOf(Routes.CONNECTIONS) },
-                    modifier = rootModifier,
-                    onReject = {
-                        inbox.answer(
-                            it,
-                            io.github.brrenat.seekervault.connections.Answer.Reject,
-                        )
-                    },
                     feedRecords = operationsState.records,
                     feedStanding = { record ->
                         operations?.standing(record)
                             ?: io.github.brrenat.seekervault.proposals.ProposalStanding.Expired
                     },
-                    onOpenSignal = {
-                        push(signalRoute(it.connectionId, it.key.proposalId))
-                    },
+                    now = Instant.now(),
+                    callbacks =
+                        InboxRouteCallbacks(
+                            onRefresh = {
+                                inbox.refresh(null)
+                                operationsState.feeds.forEach { operations?.refresh(it.id) }
+                            },
+                            onOpenRequest = { push(requestRoute(it)) },
+                            onOpenSignal = {
+                                push(signalRoute(it.connectionId, it.key.proposalId))
+                            },
+                            navigation = screenNavigationCallbacks,
+                        ),
+                    modifier = rootModifier,
                 )
             Routes.ADD ->
                 AddConnectionRoute(
@@ -310,6 +310,7 @@ fun SeekerVaultApp(
                         stack = listOf(Routes.CONNECTIONS, Routes.DETAILS + it.id)
                     },
                     modifier = rootModifier,
+                    navigationCallbacks = screenNavigationCallbacks,
                 )
         }
 
@@ -603,38 +604,6 @@ fun SeekerVaultApp(
                 }
             }
         }
-
-        SeekerBottomBar(
-            destinations =
-                listOf(
-                    BottomDestination(
-                        Routes.CONNECTIONS,
-                        Icons.Outlined.Inbox,
-                        stringResource(R.string.nav_home),
-                    ),
-                    BottomDestination(
-                        Routes.INBOX,
-                        Icons.Outlined.Draw,
-                        stringResource(R.string.nav_requests),
-                        commonPending.isNotEmpty(),
-                    ),
-                    BottomDestination(
-                        Routes.WALLET,
-                        Icons.Outlined.Wallet,
-                        stringResource(R.string.nav_wallet),
-                    ),
-                    BottomDestination(
-                        Routes.ACTIVITY,
-                        Icons.Outlined.History,
-                        stringResource(R.string.nav_activity),
-                    ),
-                ),
-            selected = root,
-            onSelect = { stack = listOf(it) },
-            modifier =
-                Modifier.align(Alignment.BottomCenter)
-                    .then(if (stack.size > 1) Modifier.clearAndSetSemantics {} else Modifier),
-        )
     }
 }
 

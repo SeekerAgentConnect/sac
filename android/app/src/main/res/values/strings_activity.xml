@@ -9,6 +9,9 @@
         <item quantity="other">%1$d recorded actions</item>
     </plurals>
     <string name="activity_empty">Nothing here yet. Every request you answer is recorded, and the record stays after the request itself is gone.</string>
+    <string name="activity_empty_title">Nothing recorded yet</string>
+    <string name="activity_empty_body">Every request you answer is recorded here, and the record stays after the request itself is gone.</string>
+    <string name="activity_footer">Every request you answer is recorded here, and the record stays after the request itself is gone.</string>
     <string name="activity_unreadable">The history couldn\'t be read from this phone just now. What is shown is what it last read; nothing has been changed or removed.</string>
     <string name="activity_clear">Clear</string>
     <string name="activity_clear_title">Clear the activity history?</string>
@@ -45,6 +48,7 @@
     <string name="activity_cluster_unknown">No network recorded</string>
 
     <string name="activity_amount_sol">%1$s SOL (%2$s lamports) to %3$s</string>
+    <string name="activity_row_sol_amount">%1$s SOL</string>
     <string name="activity_amount_units">%1$s base units to %2$s</string>
     <!-- The operation, and the plugin that prepared it: "swap through jupiter.swap". -->
     <string name="activity_operation_plugin">%1$s through %2$s</string>

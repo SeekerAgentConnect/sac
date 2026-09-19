@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasText
@@ -8,7 +9,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ActivityScenario
@@ -68,9 +69,11 @@ class ConnectionsActivityTest {
     fun pairsRenamesAndKeepsTheSecretsOffScreenAndOutOfBackups() {
         val scenario = launch()
         val code = server.issue(URL)
-        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(6)
-        compose.onNodeWithTag(ConnectionsTags.EMPTY).assertExists()
-        compose.onNodeWithTag(ConnectionsTags.ADD).performClick()
+        compose.onNodeWithTag(ConnectionsTags.EMPTY).performScrollTo().assertExists()
+        compose
+            .onNodeWithTag(ConnectionsTags.ADD)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag(ConnectionsTags.CODE_FIELD).performTextInput(text(code))
         compose.onNodeWithTag(ConnectionsTags.CONTINUE).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.PAIR).performScrollTo().performClick()
@@ -91,8 +94,8 @@ class ConnectionsActivityTest {
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()
         compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
         compose.mainClock.advanceTimeBy(240)
-        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
-        compose.onNodeWithTag(ConnectionsTags.item(id)).assertTextContains("Home Mac")
+        compose.onNodeWithTag(ConnectionsTags.item(id)).performScrollTo()
+        compose.onNodeWithText("Home Mac").assertExists()
 
         for (secret in listOf(code.token, credential)) {
             compose
@@ -111,9 +114,12 @@ class ConnectionsActivityTest {
     @Test
     fun disconnectingReturnsToTheListWithoutTheConnection() {
         val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
+        runBlocking { app.connectionRepository.refresh(connection.id) }
         launch()
-        compose.onNodeWithTag(ConnectionsTags.LIST).performScrollToIndex(5)
-        compose.onNodeWithTag(ConnectionsTags.item(connection.id)).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.item(connection.id))
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag(ConnectionsTags.DISCONNECT).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()
         compose.onNodeWithTag(ConnectionsTags.EMPTY).assertExists()

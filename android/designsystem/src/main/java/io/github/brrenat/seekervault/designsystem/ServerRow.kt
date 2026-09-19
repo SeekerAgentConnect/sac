@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.designsystem
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -18,6 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import io.github.brrenat.seekervault.designsystem.preview.DesignRef
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
@@ -42,16 +47,26 @@ fun ServerRow(
     onRetry: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val rowModifier =
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(SeekerTheme.radii.lg))
+            .background(SeekerTheme.colors.surface1)
+            .let { base ->
+                if (onOpen != null) {
+                    base.clickable(role = Role.Button, onClick = onOpen).semantics {
+                        contentDescription = "Open ${model.sourceName}"
+                    }
+                } else {
+                    base
+                }
+            }
+            .padding(
+                horizontal = SeekerTheme.spacing.xl,
+                vertical = SeekerTheme.spacing.lgPlus,
+            )
     Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(SeekerTheme.radii.lg))
-                .background(SeekerTheme.colors.surface1)
-                .padding(
-                    horizontal = SeekerTheme.spacing.xl,
-                    vertical = SeekerTheme.spacing.lgPlus,
-                ),
+        modifier = rowModifier,
         horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xl),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -69,13 +84,11 @@ fun ServerRow(
         }
         when (state) {
             ServerRowState.Connected ->
-                onOpen?.let { open ->
-                    OrganismIconAction(
-                        icon = Icons.Outlined.ChevronRight,
-                        contentDescription = "Open ${model.sourceName}",
-                        onClick = open,
-                        size = OrganismIconActionSize.MediumLargeGlyph,
-                        style = OrganismIconActionStyle.Transparent,
+                onOpen?.let {
+                    Icon(
+                        imageVector = Icons.Outlined.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             ServerRowState.Unreachable ->

@@ -1,228 +1,192 @@
 package io.github.brrenat.seekervault.activity
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.semantics
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.connections.BackButton
 import io.github.brrenat.seekervault.connections.RequestKey
-import io.github.brrenat.seekervault.connections.formatInstant
-import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
-import io.github.brrenat.seekervault.ui.NetworkChip
-import io.github.brrenat.seekervault.ui.SeekerButton
-import io.github.brrenat.seekervault.ui.SeekerButtonRole
-import io.github.brrenat.seekervault.ui.SeekerCard
-import io.github.brrenat.seekervault.ui.SolidDialog
+import io.github.brrenat.seekervault.designsystem.ActivityRow
+import io.github.brrenat.seekervault.designsystem.ActivityRowKind
+import io.github.brrenat.seekervault.designsystem.ActivityRowModel
+import io.github.brrenat.seekervault.designsystem.EmptyState
+import io.github.brrenat.seekervault.designsystem.EmptyStateScreen
+import io.github.brrenat.seekervault.designsystem.ScreenCaption
+import io.github.brrenat.seekervault.designsystem.ScreenDestination
+import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
+import io.github.brrenat.seekervault.designsystem.ScreenScaffold
+import io.github.brrenat.seekervault.designsystem.ScreenScrollBody
+import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
+import io.github.brrenat.seekervault.transactions.formatBaseUnits
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
-/** The owner's local history, newest first, with no side effects beyond refresh and clear. */
+/** Display-only state for [ActivityScreen]. */
+data class ActivityScreenState(
+    val title: String,
+    val rows: List<ActivityScreenRow>,
+    val footer: String? = null,
+    val empty: ActivityEmptyState? = null,
+    val unreadableMessage: String? = null,
+)
+
+data class ActivityScreenRow(
+    val key: RequestKey,
+    val title: String,
+    val supportingText: String,
+    val kind: ActivityRowKind,
+    val testTag: String,
+)
+
+data class ActivityEmptyState(val title: String, val body: String)
+
+/** Every interaction owned by the Activity route. */
+data class ActivityScreenCallbacks(
+    val onOpen: (RequestKey) -> Unit,
+    val onRefresh: () -> Unit,
+    val onClear: () -> Unit,
+    val onBack: () -> Unit,
+    val navigation: ScreenNavigationCallbacks,
+)
+
+/** Keeps history collection and ViewModel actions outside the display-only screen. */
+@Composable
+fun ActivityRoute(
+    viewModel: ActivityViewModel,
+    onOpen: (RequestKey) -> Unit,
+    onBack: () -> Unit,
+    navigationCallbacks: ScreenNavigationCallbacks,
+    modifier: Modifier = Modifier,
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    ActivityScreen(
+        state = activityScreenState(state),
+        callbacks =
+            ActivityScreenCallbacks(
+                onOpen = onOpen,
+                onRefresh = viewModel::refresh,
+                onClear = viewModel::clear,
+                onBack = onBack,
+                navigation = navigationCallbacks,
+            ),
+        modifier = modifier,
+    )
+}
+
+/** Activity composed entirely from the shared design-system library. */
 @Composable
 fun ActivityScreen(
-    state: ActivityUiState,
-    onOpen: (RequestKey) -> Unit,
-    onRefresh: () -> Unit,
-    onClear: () -> Unit,
-    onBack: () -> Unit,
+    state: ActivityScreenState,
+    callbacks: ActivityScreenCallbacks,
     modifier: Modifier = Modifier,
-    network: String? = null,
 ) {
-    var confirming by rememberSaveable { mutableStateOf(false) }
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).statusBarsPadding()) {
-        Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth()
-                    .height(SeekerTheme.dimensions.dp64)
-                    .padding(horizontal = SeekerTheme.dimensions.dp8),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
-            ) {
-                BackButton(onBack)
-                Text(
-                    stringResource(R.string.activity_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.weight(1f),
+    ScreenScaffold(
+        title = state.title,
+        selectedDestination = ScreenDestination.Activity,
+        navigationCallbacks = callbacks.navigation,
+        onBack = callbacks.onBack,
+        modifier = modifier,
+    ) {
+        ScreenScrollBody(modifier = Modifier.testTag(ActivityTags.LIST)) {
+            state.unreadableMessage?.let { message ->
+                EmptyState(
+                    screen = EmptyStateScreen.Activity,
+                    title = null,
+                    body = message,
+                    modifier =
+                        Modifier.testTag(ActivityTags.UNREADABLE).semantics(
+                            mergeDescendants = true
+                        ) {},
                 )
-                network?.let { NetworkChip(it) }
-                Box(
-                    Modifier.size(SeekerTheme.dimensions.dp48)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            onClick = onRefresh,
-                        )
-                        .testTag(ActivityTags.REFRESH),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Rounded.Refresh,
-                        contentDescription = stringResource(R.string.refresh),
-                    )
-                }
             }
-            LazyColumn(
-                contentPadding =
-                    PaddingValues(
-                        horizontal = SeekerTheme.dimensions.dp16,
-                        vertical = SeekerTheme.dimensions.dp8,
-                    ),
-                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
-                modifier = Modifier.weight(1f).testTag(ActivityTags.LIST),
-            ) {
-                if (state.unreadable) {
-                    item(key = "unreadable") {
-                        SeekerCard(
-                            Modifier.fillMaxWidth().testTag(ActivityTags.UNREADABLE),
-                            color = MaterialTheme.colorScheme.errorContainer,
-                        ) {
-                            Text(
-                                stringResource(R.string.activity_unreadable),
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.padding(SeekerTheme.dimensions.dp16),
-                            )
-                        }
-                    }
-                }
-                if (state.loaded && state.records.isEmpty()) {
-                    item(key = "empty") {
-                        SeekerCard(Modifier.fillMaxWidth()) {
-                            Text(
-                                stringResource(R.string.activity_empty),
-                                modifier =
-                                    Modifier.padding(SeekerTheme.dimensions.dp18)
-                                        .testTag(ActivityTags.EMPTY),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-                items(state.records, key = { "${it.connectionId}/${it.requestId}" }) {
-                    RecordItem(it, onOpen)
-                }
-                if (state.records.isNotEmpty()) {
-                    item(key = "clear") {
-                        SeekerButton(
-                            text = stringResource(R.string.activity_clear),
-                            onClick = { confirming = true },
-                            role = SeekerButtonRole.Error,
-                            modifier = Modifier.fillMaxWidth().testTag(ActivityTags.CLEAR),
-                        )
-                    }
-                }
+            state.empty?.let { empty ->
+                EmptyState(
+                    screen = EmptyStateScreen.Activity,
+                    title = empty.title,
+                    body = empty.body,
+                    modifier =
+                        Modifier.testTag(ActivityTags.EMPTY).semantics(mergeDescendants = true) {},
+                )
             }
-        }
-        if (confirming) {
-            SolidDialog(
-                title = stringResource(R.string.activity_clear_title),
-                body = {
-                    Text(
-                        stringResource(R.string.activity_clear_body),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                actions = {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
-                    ) {
-                        SeekerButton(
-                            text = stringResource(R.string.cancel),
-                            onClick = { confirming = false },
-                            role = SeekerButtonRole.Neutral,
-                            modifier = Modifier.weight(1f),
-                        )
-                        SeekerButton(
-                            text = stringResource(R.string.activity_clear_confirm),
-                            onClick = {
-                                confirming = false
-                                onClear()
-                            },
-                            role = SeekerButtonRole.Error,
-                            modifier = Modifier.weight(1f).testTag(ActivityTags.CONFIRM_CLEAR),
-                        )
-                    }
-                },
-            )
+            state.rows.forEach { row ->
+                ActivityRow(
+                    model = ActivityRowModel(row.title, row.supportingText),
+                    kind = row.kind,
+                    onClick = { callbacks.onOpen(row.key) },
+                    modifier = Modifier.testTag(row.testTag).semantics(mergeDescendants = true) {},
+                )
+            }
+            state.footer?.let { footer -> ScreenCaption(text = footer) }
         }
     }
 }
 
 @Composable
-private fun RecordItem(record: ActivityRecord, onOpen: (RequestKey) -> Unit) {
-    SeekerCard(
-        modifier = Modifier.fillMaxWidth().testTag(ActivityTags.item(record)),
-        onClick = { onOpen(record.key) },
-    ) {
-        Row(
-            Modifier.padding(SeekerTheme.dimensions.dp16),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(SeekerTheme.dimensions.dp10)
-                    .background(
-                        if (record.outcome == ActivityOutcome.Confirmed)
-                            MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.error,
-                        CircleShape,
-                    )
-            )
-            Column(Modifier.weight(1f).padding(horizontal = SeekerTheme.dimensions.dp14)) {
-                Text(
-                    record.source,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+internal fun activityScreenState(state: ActivityUiState): ActivityScreenState =
+    ActivityScreenState(
+        title = stringResource(R.string.activity_title),
+        rows = state.records.map { it.toScreenRow() },
+        footer =
+            state.records
+                .takeIf { it.isNotEmpty() }
+                ?.let {
+                    stringResource(R.string.activity_footer)
+                },
+        empty =
+            if (state.loaded && state.records.isEmpty()) {
+                ActivityEmptyState(
+                    title = stringResource(R.string.activity_empty_title),
+                    body = stringResource(R.string.activity_empty_body),
                 )
-                Text(
-                    operationText(record),
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    stringResource(
-                        R.string.activity_summary,
-                        stringResource(outcomeText(record.outcome)),
-                        formatInstant(record.answeredAt),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                Icons.Rounded.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+            } else {
+                null
+            },
+        unreadableMessage =
+            if (state.unreadable) stringResource(R.string.activity_unreadable) else null,
+    )
+
+@Composable
+private fun ActivityRecord.toScreenRow(): ActivityScreenRow =
+    ActivityScreenRow(
+        key = key,
+        title = activityRowTitle(this),
+        supportingText =
+            stringResource(
+                R.string.activity_summary,
+                stringResource(outcomeText(outcome)),
+                activityTimeFormatter.format(answeredAt),
+            ),
+        kind = activityRowKind(this),
+        testTag = ActivityTags.item(this),
+    )
+
+@Composable
+private fun activityRowTitle(record: ActivityRecord): String {
+    val transfer = record.transfer ?: return operationText(record)
+    val amount = transfer.amount.toULongOrNull()
+    return if (transfer.mint == null && amount != null) {
+        stringResource(
+            R.string.activity_row_sol_amount,
+            formatBaseUnits(amount, LAMPORT_DECIMALS),
+        )
+    } else {
+        operationText(record)
     }
 }
+
+private fun activityRowKind(record: ActivityRecord): ActivityRowKind =
+    when {
+        record.outcome == ActivityOutcome.Unknown -> ActivityRowKind.Unknown
+        record.kind == ActivityKind.Acknowledgement -> ActivityRowKind.Acknowledgement
+        record.kind == ActivityKind.MessageSignature -> ActivityRowKind.Signature
+        record.kind == ActivityKind.Transfer || record.kind == ActivityKind.Operation ->
+            ActivityRowKind.Transfer
+        else -> ActivityRowKind.Unknown
+    }
+
+private val activityTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withZone(ZoneId.systemDefault())

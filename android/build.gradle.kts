@@ -27,9 +27,9 @@ abstract class DesignCompareTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val referenceDirectory: DirectoryProperty
 
-    @get:InputDirectory
+    @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val actualDirectory: DirectoryProperty
+    abstract val actualDirectories: ConfigurableFileCollection
 
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.NAME_ONLY)
@@ -40,14 +40,20 @@ abstract class DesignCompareTask : DefaultTask() {
     @TaskAction
     fun compare() {
         val referenceRoot = referenceDirectory.get().asFile
-        val actualRoot = actualDirectory.get().asFile
         val outputRoot = comparisonDirectory.get().asFile
         outputRoot.deleteRecursively()
         outputRoot.mkdirs()
 
         val references =
             pngFiles(referenceRoot) + screenReferences.files.associateBy { "screens/${it.name}" }
-        val actuals = pngFiles(actualRoot)
+        val actuals = buildMap {
+            actualDirectories.files.filter(File::exists).forEach { root ->
+                pngFiles(root).forEach { (path, file) ->
+                    check(path !in this) { "Duplicate Roborazzi output path: $path" }
+                    put(path, file)
+                }
+            }
+        }
         val paired = references.keys.intersect(actuals.keys).sorted()
         paired.forEach { relativePath ->
             writeComparison(
@@ -188,9 +194,17 @@ tasks.register<DesignCompareTask>("designCompare") {
                 "sheet-prediction.png",
                 "sheet-signature.png",
                 "sheet-acknowledge.png",
+                "home.png",
+                "requests.png",
+                "wallet.png",
+                "activity.png",
+                "add.png",
             )
             .map { rootProject.layout.projectDirectory.file("../design/screens/$it") }
     )
-    actualDirectory.set(project(":designsystem").layout.buildDirectory.dir("outputs/roborazzi"))
+    actualDirectories.from(
+        project(":designsystem").layout.buildDirectory.dir("outputs/roborazzi"),
+        project(":app").layout.buildDirectory.dir("outputs/roborazzi"),
+    )
     comparisonDirectory.set(layout.buildDirectory.dir("design-compare"))
 }
