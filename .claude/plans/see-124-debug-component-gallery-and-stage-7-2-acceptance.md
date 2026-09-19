@@ -25,11 +25,13 @@ through the same fallback.
       when the Linear fallback supports it and list any unresolved/NOT RUN gaps.
 - [x] Run formatting, Android verification, build, and golden guard checks; review the diff against
       `master` and demonstrate that the guard detects an unrecorded rendering change.
-- [ ] Commit and push the existing `superset/feat/see-117` branch to update PR #34, then watch its
-      CI to completion.
-- [ ] Re-read SEE-124, move it to In Review and add the result comment when the available Linear
+- [x] Commit and push the existing `superset/feat/see-117` branch to update PR #34.
+- [ ] Watch PR #34 CI to completion. GitHub reports no checks on the head commit, and this token
+      receives HTTP 403 from the Actions/check-runs endpoints; the PR remains `DIRTY` against
+      `master` from the existing stack.
+- [x] Re-read SEE-124, move it to In Review and add the result comment when the available Linear
       transport permits it.
-- [ ] Post the required finished webhook before stopping.
+- [x] Post the required finished webhook before stopping.
 
 ## Scope (verbatim)
 
@@ -87,3 +89,8 @@ through the same fallback.
   on this branch; the exported icon-button still lacks a component spec; and SEE-74 therefore
   remains In Review. The automated baseline is ready for Stage 8, but those gaps must not be
   reported as physical or full-stage acceptance.
+- Delivery: implementation commit `e4af35e` was pushed to the existing PR #34 and SEE-124 was
+  re-read, linked to that PR, and moved to In Review. The direct Linear plugin has no connected
+  account and the task fallback has no comment command, so a Linear comment was not possible.
+  GitHub reports no checks on the head commit; Actions/check-run reads return HTTP 403 for this
+  token, and the existing PR remains `DIRTY` against `master`.
