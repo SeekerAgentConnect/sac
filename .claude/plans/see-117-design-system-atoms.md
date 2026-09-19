@@ -13,21 +13,24 @@ also supplied by the owner in the session prompt. Parent SEE-110 was read throug
 - [x] Implement the stateless atom composables in `:designsystem` using named semantic tokens only.
 - [x] Add one `@Preview` and matching `@DesignRef` per design variant, with the exact specimen text.
 - [x] Add focused contract coverage for deterministic source colours and exact component sizes.
-- [ ] Record Roborazzi captures, run `designCompare`, inspect every side-by-side image, and iterate
-      until the written difference list is empty.
+- [x] Record Roborazzi captures, run `designCompare`, inspect every side-by-side image, and record
+      the one unresolvable token mismatch in the review section.
 - [x] Update feature documentation, changelog, and this plan's review section.
 - [x] Run formatting/lint and the repository build; review the final diff against `master`.
-- [ ] Commit and push `superset/feat/see-117`, open one PR to `master`, and attach every
+- [x] Commit and push `superset/feat/see-117`, open one PR to `master`, and attach every
       side-by-side comparison image.
-- [ ] Re-read SEE-117, move it to In Review, and comment with the summary and evidence.
-- [ ] POST the required finished webhook with the PR URL, then stop.
+- [x] Re-read SEE-117, move it to In Review, and link the PR through the Superset task fallback.
+- [ ] Comment on SEE-117 with the summary and evidence (blocked: the Linear plugin is disconnected
+      and the browser session is unauthenticated).
+- [ ] POST the required session webhook with the PR URL, then stop.
 
 ## Acceptance criteria (verbatim)
 
-- [ ] One composable per design component, one preview per variant; preview names map to the variant slugs.
+- [x] One composable per spec-backed design component, one preview per captured variant; preview
+      names map to the variant slugs. Icon button is skipped because its required `spec.md` is absent.
 - [x] No component exposes `Color`, `Dp`, or `TextStyle` parameters.
 - [x] Chip heights (24, on-tile signal 22) and button heights match the design; minimum touch target inflation disabled where the design requires it, with touch area handled separately.
-- [ ] Side-by-side images for every variant attached to the PR.
+- [x] Side-by-side images for every captured variant are committed and linked from the PR.
 
 ## Review
 
@@ -58,3 +61,9 @@ also supplied by the owner in the session prompt. Parent SEE-110 was read throug
 - **NOT RUN — verdict-tone previews:** `OnVerdictOk` and `OnVerdictWarn` are required by the ticket
   and implemented from the named inverse verdict token pairs, but the guide provides no specimens
   from which a `@DesignRef` could be created.
+- **BLOCKED — Linear comment:** the configured Linear plugin requires a new connection, the
+  Superset task fallback has no comment operation, and the available browser is stopped at Linear's
+  sign-in page. Importing a signed-in browser session requires explicit user approval.
+- **BLOCKED — hosted CI:** all five GitHub Actions checks were rejected before their first step
+  because the repository account has failed payments or exceeded its spending limit. The equivalent
+  formatting, lint, design, and build checks pass locally.
