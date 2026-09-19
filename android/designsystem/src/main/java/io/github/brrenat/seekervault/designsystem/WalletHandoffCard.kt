@@ -166,7 +166,7 @@ private const val WalletHandoffPreviewDarkMode = Configuration.UI_MODE_NIGHT_YES
     uiMode = WalletHandoffPreviewDarkMode,
 )
 @Composable
-private fun WalletHandoffTransferPreview() {
+internal fun WalletHandoffTransferPreview() {
     SeekerTheme(darkTheme = true) {
         Surface(color = SeekerTheme.colors.surface0) {
             WalletHandoffCard(

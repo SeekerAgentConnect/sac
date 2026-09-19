@@ -77,7 +77,7 @@ private const val FilterBarDarkMode = Configuration.UI_MODE_NIGHT_YES
 @DesignRef(component = "filter-bar", variant = "src=studio-mac")
 @Preview(name = "filter-bar/src-studio-mac", widthDp = 358, uiMode = FilterBarDarkMode)
 @Composable
-private fun FilterBarStudioMacPreview() {
+internal fun FilterBarStudioMacPreview() {
     SeekerTheme(darkTheme = true) {
         Surface(color = SeekerTheme.colors.surface0) {
             FilterBar(

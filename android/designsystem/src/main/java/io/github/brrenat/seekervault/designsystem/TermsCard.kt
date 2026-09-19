@@ -120,7 +120,7 @@ private const val TermsCardPreviewDarkMode = Configuration.UI_MODE_NIGHT_YES
     uiMode = TermsCardPreviewDarkMode,
 )
 @Composable
-private fun TermsCardSwapQuotedPreview() {
+internal fun TermsCardSwapQuotedPreview() {
     SeekerTheme(darkTheme = true) {
         Surface(color = SeekerTheme.colors.surface0) {
             TermsCard(

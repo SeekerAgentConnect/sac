@@ -556,6 +556,25 @@ The code is in `policy/`:
 
 **Live test** on Connections opens `LiveCommandScreen`, a stateless composable in `live/LiveCommandScreen.kt`, which gets its state from `LiveCommandViewModel`. The network sits behind `LiveCommandTransport`. The real implementation, `ConnectLiveCommandTransport`, uses the generated Connect-Kotlin client over OkHttp.
 
+## Debug component gallery
+
+Debug APKs expose every design-system preview fixture on a device. Long-press the app icon, choose
+**Component gallery**, then select a component/variant. The list and its activity are compiled only
+from `src/debug`; they are not destinations in the production graph and do not exist in the release
+APK. See the [component gallery guide](../wiki/component-gallery.md) and the
+[Stage 7.2 acceptance record](../testing/stage-7-2.md).
+
+Roborazzi baselines are source-controlled under each Android module's
+`src/test/snapshots/images/`. Record only after reviewing the design references:
+
+```bash
+android/gradlew -p android :designsystem:recordRoborazziDebug :app:recordRoborazziDebug
+android/gradlew -p android designCompare
+```
+
+Ordinary verification, including `pnpm check:android` and CI, runs both
+`verifyRoborazziDebug` tasks. It never records over a changed baseline.
+
 ## Debug URL and USB connection
 
 The phone reaches the Mac's sidecar over USB with `adb reverse`:

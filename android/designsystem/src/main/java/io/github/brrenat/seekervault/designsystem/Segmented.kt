@@ -110,7 +110,7 @@ private fun SegmentedPreviewSurface(content: @Composable () -> Unit) {
 @DesignRef(component = "segmented", variant = "count=2 mode")
 @Preview(name = "segmented/count-2-mode", widthDp = 250, uiMode = SegmentedDarkMode)
 @Composable
-private fun SegmentedTwoModePreview() {
+internal fun SegmentedTwoModePreview() {
     SegmentedPreviewSurface {
         Segmented(
             options = listOf("Use global", "Override"),
@@ -125,7 +125,7 @@ private fun SegmentedTwoModePreview() {
 @DesignRef(component = "segmented", variant = "count=2 selected=0")
 @Preview(name = "segmented/count-2-selected-0", widthDp = 250, uiMode = SegmentedDarkMode)
 @Composable
-private fun SegmentedTwoSelectedPreview() {
+internal fun SegmentedTwoSelectedPreview() {
     SegmentedPreviewSurface {
         Segmented(
             options = listOf("Yes", "No"),
@@ -139,7 +139,7 @@ private fun SegmentedTwoSelectedPreview() {
 @DesignRef(component = "segmented", variant = "count=3 selected=1")
 @Preview(name = "segmented/count-3-selected-1", widthDp = 250, uiMode = SegmentedDarkMode)
 @Composable
-private fun SegmentedThreeSelectedPreview() {
+internal fun SegmentedThreeSelectedPreview() {
     SegmentedPreviewSurface {
         Segmented(
             options = listOf("0.1%", "0.5%", "1%"),

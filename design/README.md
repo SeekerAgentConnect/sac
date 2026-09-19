@@ -83,6 +83,41 @@ literal, or a style parameter to get around the scale.
 `designCompare` is a review aid, not a pixel-equality gate. Roborazzi compare/verify checks approved
 Android baselines; it does not compare Compose with the HTML export.
 
+## Complete design-to-golden workflow
+
+Use this complete path for an approved visual change. The export refresh remains a separate
+design-only change as required by [UPDATING.md](UPDATING.md); the Compose and golden update follows
+after that refreshed guide is approved.
+
+1. Change the design in Claude Design, preserving the component and variant annotations.
+2. Re-export all three offline pages into `design/export/` and follow the refresh procedure in
+   [UPDATING.md](UPDATING.md).
+3. Regenerate the references with `cd design/tools && npm run references`. This is the
+   ticket-named alias for the existing offline capture (`npm run capture`); from the repository
+   root, `pnpm run design:capture` is equivalent.
+4. Update the named tokens, stateless components, exact-copy fixtures, screens, and sheets that the
+   generated diff requires. Do not infer uncaptured variants.
+5. Record the candidate Android baselines from `android/`:
+
+   ```bash
+   ./gradlew :designsystem:recordRoborazziDebug :app:recordRoborazziDebug
+   ```
+
+6. Review every affected `reference | actual` pair from `./gradlew designCompare`, using the HTML
+   for exact measurements. Record the difference list; repeat the component and record steps until
+   every intended difference is resolved.
+7. Run the regression guard before committing:
+
+   ```bash
+   ./gradlew :designsystem:verifyRoborazziDebug :app:verifyRoborazziDebug
+   ```
+
+8. Commit the implementation and all approved PNGs under
+   `android/designsystem/src/test/snapshots/images/` and
+   `android/app/src/test/snapshots/images/`. Never commit files from the comparison-output
+   directories. CI runs the same verify tasks and fails if rendering changes without a matching
+   reviewed golden update.
+
 ## Capture contract
 
 - The design capture defaults to device scale factor 3. Compose uses
@@ -143,10 +178,10 @@ From `android/`:
 ./gradlew designCompare
 ```
 
-`recordRoborazziDebug` writes Android PNGs to
-`designsystem/build/outputs/roborazzi/<component>/<variant-slug>.png`. The repository's
-`pnpm check:android` also records the complete preview set, so previews render in CI without an
-emulator.
+`recordRoborazziDebug` writes approved Android PNGs to each module's
+`src/test/snapshots/images/<component>/<variant-slug>.png`. The repository's
+`pnpm check:android` verifies those committed baselines in CI without an emulator; it never records
+over them.
 
 `designCompare` reads `design/components`, writes labelled pairs to
 `android/build/design-compare/<component>/<variant-slug>.png`, and writes `report.txt` with paired

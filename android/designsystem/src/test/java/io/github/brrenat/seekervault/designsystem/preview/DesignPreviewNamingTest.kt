@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.designsystem.preview
 
+import io.github.brrenat.seekervault.designsystem.gallery.componentGallerySpecimens
 import io.github.brrenat.seekervault.designsystem.previewtesting.DesignPreviewNaming
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -168,6 +169,12 @@ class DesignPreviewNamingTest {
         assertEquals(expectedPaths.size, paths.size)
         assertEquals(paths.size, paths.distinct().size)
         assertEquals(expectedPaths, paths.toSet())
+
+        val galleryPaths = componentGallerySpecimens.map {
+            "${DesignPreviewNaming.slug(it.component)}/${DesignPreviewNaming.slug(it.variant)}.png"
+        }
+        assertEquals(galleryPaths.size, galleryPaths.distinct().size)
+        assertEquals(paths.toSet(), galleryPaths.toSet())
 
         previews
             .filter {

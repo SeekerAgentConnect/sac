@@ -130,7 +130,7 @@ private fun ServerRowPreview(
 @DesignRef(component = "server-row", variant = "state=connected")
 @Preview(name = "server-row/state-connected", widthDp = 358, uiMode = ServerRowPreviewDarkMode)
 @Composable
-private fun ServerRowConnectedPreview() =
+internal fun ServerRowConnectedPreview() =
     ServerRowPreview(
         model =
             ServerRowModel(
@@ -149,7 +149,7 @@ private fun ServerRowConnectedPreview() =
     uiMode = ServerRowPreviewDarkMode,
 )
 @Composable
-private fun ServerRowDisconnectedPreview() =
+internal fun ServerRowDisconnectedPreview() =
     ServerRowPreview(
         model =
             ServerRowModel(
@@ -167,7 +167,7 @@ private fun ServerRowDisconnectedPreview() =
     uiMode = ServerRowPreviewDarkMode,
 )
 @Composable
-private fun ServerRowUnreachablePreview() =
+internal fun ServerRowUnreachablePreview() =
     ServerRowPreview(
         model =
             ServerRowModel(

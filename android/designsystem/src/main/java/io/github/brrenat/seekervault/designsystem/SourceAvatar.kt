@@ -45,7 +45,7 @@ private fun SourceAvatarPreviewSurface(content: @Composable () -> Unit) {
 @DesignRef(component = "source-avatar", variant = "src=hermes-box")
 @Preview(name = "source-avatar/src-hermes-box", uiMode = DarkMode)
 @Composable
-private fun SourceAvatarHermesBoxPreview() {
+internal fun SourceAvatarHermesBoxPreview() {
     SourceAvatarPreviewSurface {
         SourceAvatar(sourceName = "hermes-box", initials = "HB")
     }
@@ -54,7 +54,7 @@ private fun SourceAvatarHermesBoxPreview() {
 @DesignRef(component = "source-avatar", variant = "src=runner-node")
 @Preview(name = "source-avatar/src-runner-node", uiMode = DarkMode)
 @Composable
-private fun SourceAvatarRunnerNodePreview() {
+internal fun SourceAvatarRunnerNodePreview() {
     SourceAvatarPreviewSurface {
         SourceAvatar(sourceName = "runner-node", initials = "RN")
     }
@@ -63,7 +63,7 @@ private fun SourceAvatarRunnerNodePreview() {
 @DesignRef(component = "source-avatar", variant = "src=studio-mac")
 @Preview(name = "source-avatar/src-studio-mac", uiMode = DarkMode)
 @Composable
-private fun SourceAvatarStudioMacPreview() {
+internal fun SourceAvatarStudioMacPreview() {
     SourceAvatarPreviewSurface {
         SourceAvatar(sourceName = "studio-mac", initials = "SM")
     }

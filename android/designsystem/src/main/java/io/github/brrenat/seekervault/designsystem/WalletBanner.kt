@@ -245,7 +245,7 @@ private fun WalletBannerPreview(variant: WalletBannerVariant) {
     uiMode = WalletBannerPreviewDarkMode,
 )
 @Composable
-private fun WalletBannerCompactPreview() = WalletBannerPreview(WalletBannerVariant.Compact)
+internal fun WalletBannerCompactPreview() = WalletBannerPreview(WalletBannerVariant.Compact)
 
 @DesignRef(component = "wallet-banner", variant = "variant=expanded")
 @Preview(
@@ -254,4 +254,4 @@ private fun WalletBannerCompactPreview() = WalletBannerPreview(WalletBannerVaria
     uiMode = WalletBannerPreviewDarkMode,
 )
 @Composable
-private fun WalletBannerExpandedPreview() = WalletBannerPreview(WalletBannerVariant.Expanded)
+internal fun WalletBannerExpandedPreview() = WalletBannerPreview(WalletBannerVariant.Expanded)

@@ -142,7 +142,7 @@ private fun OwnerInputCardPreview(
     uiMode = OwnerInputCardPreviewDarkMode,
 )
 @Composable
-private fun OwnerInputCardPredictionChosenPreview() =
+internal fun OwnerInputCardPredictionChosenPreview() =
     OwnerInputCardPreview(
         kind = OwnerInputCardKind.Prediction,
         state = OwnerInputCardState.Chosen,
@@ -156,7 +156,7 @@ private fun OwnerInputCardPredictionChosenPreview() =
     uiMode = OwnerInputCardPreviewDarkMode,
 )
 @Composable
-private fun OwnerInputCardSwapChosenPreview() =
+internal fun OwnerInputCardSwapChosenPreview() =
     OwnerInputCardPreview(
         kind = OwnerInputCardKind.Swap,
         state = OwnerInputCardState.Chosen,
@@ -170,7 +170,7 @@ private fun OwnerInputCardSwapChosenPreview() =
     uiMode = OwnerInputCardPreviewDarkMode,
 )
 @Composable
-private fun OwnerInputCardSwapUnchosenPreview() =
+internal fun OwnerInputCardSwapUnchosenPreview() =
     OwnerInputCardPreview(
         kind = OwnerInputCardKind.Swap,
         state = OwnerInputCardState.Unchosen,

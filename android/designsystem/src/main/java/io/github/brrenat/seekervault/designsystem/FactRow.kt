@@ -100,7 +100,7 @@ private fun FactRowPreviewSurface(content: @Composable () -> Unit) {
 @DesignRef(component = "fact-row", variant = "value=full-address")
 @Preview(name = "fact-row/value-full-address", widthDp = 358, uiMode = FactRowDarkMode)
 @Composable
-private fun FactRowFullAddressPreview() {
+internal fun FactRowFullAddressPreview() {
     FactRowPreviewSurface {
         FactRow(
             label = "Recipient",
@@ -113,7 +113,7 @@ private fun FactRowFullAddressPreview() {
 @DesignRef(component = "fact-row", variant = "value=longest wraps")
 @Preview(name = "fact-row/value-longest-wraps", widthDp = 358, uiMode = FactRowDarkMode)
 @Composable
-private fun FactRowLongestWrapsPreview() {
+internal fun FactRowLongestWrapsPreview() {
     FactRowPreviewSurface {
         FactRow(
             label = "Server ID",
@@ -126,7 +126,7 @@ private fun FactRowLongestWrapsPreview() {
 @DesignRef(component = "fact-row", variant = "value=mono")
 @Preview(name = "fact-row/value-mono", widthDp = 358, uiMode = FactRowDarkMode)
 @Composable
-private fun FactRowMonoPreview() {
+internal fun FactRowMonoPreview() {
     FactRowPreviewSurface {
         FactRow(
             label = "Wallet",
@@ -139,7 +139,7 @@ private fun FactRowMonoPreview() {
 @DesignRef(component = "fact-row", variant = "value=short")
 @Preview(name = "fact-row/value-short", widthDp = 358, uiMode = FactRowDarkMode)
 @Composable
-private fun FactRowShortPreview() {
+internal fun FactRowShortPreview() {
     FactRowPreviewSurface {
         FactRow(label = "From", value = "studio-mac", valueStyle = FactRowValueStyle.Plain)
     }

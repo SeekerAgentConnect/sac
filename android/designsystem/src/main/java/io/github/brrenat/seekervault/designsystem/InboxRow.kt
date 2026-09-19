@@ -226,7 +226,7 @@ private val inboxRequestOkModel =
     uiMode = InboxRowPreviewDarkMode,
 )
 @Composable
-private fun InboxRowProductionNoNetworkPreview() =
+internal fun InboxRowProductionNoNetworkPreview() =
     InboxRowPreview(
         inboxRequestOkModel,
         InboxRowKind.Acknowledgement,
@@ -241,7 +241,7 @@ private fun InboxRowProductionNoNetworkPreview() =
     uiMode = InboxRowPreviewDarkMode,
 )
 @Composable
-private fun InboxRowRequestOkPreview() =
+internal fun InboxRowRequestOkPreview() =
     InboxRowPreview(
         inboxRequestOkModel,
         InboxRowKind.Acknowledgement,
@@ -256,7 +256,7 @@ private fun InboxRowRequestOkPreview() =
     uiMode = InboxRowPreviewDarkMode,
 )
 @Composable
-private fun InboxRowRequestWarningPreview() =
+internal fun InboxRowRequestWarningPreview() =
     InboxRowPreview(
         model =
             InboxRowModel(
@@ -280,7 +280,7 @@ private fun InboxRowRequestWarningPreview() =
     uiMode = InboxRowPreviewDarkMode,
 )
 @Composable
-private fun InboxRowSignalThreeWarningsPreview() =
+internal fun InboxRowSignalThreeWarningsPreview() =
     InboxRowPreview(
         model =
             InboxRowModel(
@@ -305,7 +305,7 @@ private fun InboxRowSignalThreeWarningsPreview() =
     uiMode = InboxRowPreviewDarkMode,
 )
 @Composable
-private fun InboxRowSignalWarningPreview() =
+internal fun InboxRowSignalWarningPreview() =
     InboxRowPreview(
         model =
             InboxRowModel(

@@ -211,7 +211,7 @@ private val assetWarning =
 @DesignRef(component = "verdict-card", variant = "verdict=ok")
 @Preview(name = "verdict-card/verdict-ok", widthDp = 358, uiMode = VerdictCardPreviewDarkMode)
 @Composable
-private fun VerdictCardOkPreview() = VerdictCardPreview(VerdictCardVerdict.Ok, emptyList())
+internal fun VerdictCardOkPreview() = VerdictCardPreview(VerdictCardVerdict.Ok, emptyList())
 
 @DesignRef(component = "verdict-card", variant = "verdict=warning count=1")
 @Preview(
@@ -220,7 +220,7 @@ private fun VerdictCardOkPreview() = VerdictCardPreview(VerdictCardVerdict.Ok, e
     uiMode = VerdictCardPreviewDarkMode,
 )
 @Composable
-private fun VerdictCardOneWarningPreview() =
+internal fun VerdictCardOneWarningPreview() =
     VerdictCardPreview(VerdictCardVerdict.Warning, listOf(assetWarning))
 
 @DesignRef(component = "verdict-card", variant = "verdict=warning count=3")
@@ -230,7 +230,7 @@ private fun VerdictCardOneWarningPreview() =
     uiMode = VerdictCardPreviewDarkMode,
 )
 @Composable
-private fun VerdictCardThreeWarningsPreview() =
+internal fun VerdictCardThreeWarningsPreview() =
     VerdictCardPreview(
         verdict = VerdictCardVerdict.Warning,
         warnings =

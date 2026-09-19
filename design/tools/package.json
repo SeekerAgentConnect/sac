@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "postinstall": "playwright install chromium",
-    "capture": "node capture.mjs"
+    "capture": "node capture.mjs",
+    "references": "npm run capture --"
   },
   "dependencies": {
     "playwright": "1.63.0",

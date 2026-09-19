@@ -80,7 +80,7 @@ private fun RadioRowPreviewSurface(content: @Composable () -> Unit) {
 @DesignRef(component = "radio-row", variant = "state=off")
 @Preview(name = "radio-row/state-off", uiMode = DarkMode)
 @Composable
-private fun RadioRowOffPreview() {
+internal fun RadioRowOffPreview() {
     RadioRowPreviewSurface {
         RadioRow(label = "Another token", state = RadioRowState.Off, onClick = {})
     }
@@ -89,7 +89,7 @@ private fun RadioRowOffPreview() {
 @DesignRef(component = "radio-row", variant = "state=on")
 @Preview(name = "radio-row/state-on", uiMode = DarkMode)
 @Composable
-private fun RadioRowOnPreview() {
+internal fun RadioRowOnPreview() {
     RadioRowPreviewSurface {
         RadioRow(label = "Native SOL", state = RadioRowState.On, onClick = {})
     }

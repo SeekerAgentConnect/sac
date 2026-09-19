@@ -31,12 +31,12 @@ private fun ReviewSheetPreview(state: ReviewSheetState) {
     uiMode = ReviewSheetPreviewDarkMode,
 )
 @Composable
-private fun ReviewSheetTransferPreview() = ReviewSheetPreview(ReviewSheetFixtures.Transfer)
+internal fun ReviewSheetTransferPreview() = ReviewSheetPreview(ReviewSheetFixtures.Transfer)
 
 @DesignRef(component = "screens", variant = "sheet-swap")
 @Preview(name = "screens/sheet-swap", widthDp = 390, uiMode = ReviewSheetPreviewDarkMode)
 @Composable
-private fun ReviewSheetSwapPreview() = ReviewSheetPreview(ReviewSheetFixtures.Swap)
+internal fun ReviewSheetSwapPreview() = ReviewSheetPreview(ReviewSheetFixtures.Swap)
 
 @DesignRef(component = "screens", variant = "sheet-prediction")
 @Preview(
@@ -45,7 +45,7 @@ private fun ReviewSheetSwapPreview() = ReviewSheetPreview(ReviewSheetFixtures.Sw
     uiMode = ReviewSheetPreviewDarkMode,
 )
 @Composable
-private fun ReviewSheetPredictionPreview() = ReviewSheetPreview(ReviewSheetFixtures.Prediction)
+internal fun ReviewSheetPredictionPreview() = ReviewSheetPreview(ReviewSheetFixtures.Prediction)
 
 @DesignRef(component = "screens", variant = "sheet-signature")
 @Preview(
@@ -54,7 +54,7 @@ private fun ReviewSheetPredictionPreview() = ReviewSheetPreview(ReviewSheetFixtu
     uiMode = ReviewSheetPreviewDarkMode,
 )
 @Composable
-private fun ReviewSheetSignaturePreview() = ReviewSheetPreview(ReviewSheetFixtures.Signature)
+internal fun ReviewSheetSignaturePreview() = ReviewSheetPreview(ReviewSheetFixtures.Signature)
 
 @DesignRef(component = "screens", variant = "sheet-acknowledge")
 @Preview(
@@ -63,4 +63,4 @@ private fun ReviewSheetSignaturePreview() = ReviewSheetPreview(ReviewSheetFixtur
     uiMode = ReviewSheetPreviewDarkMode,
 )
 @Composable
-private fun ReviewSheetAcknowledgePreview() = ReviewSheetPreview(ReviewSheetFixtures.Acknowledge)
+internal fun ReviewSheetAcknowledgePreview() = ReviewSheetPreview(ReviewSheetFixtures.Acknowledge)

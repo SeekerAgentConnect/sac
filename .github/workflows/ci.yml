@@ -110,6 +110,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Includes verifyRoborazziDebug for both Android modules. CI never records over the
+      # source-controlled baselines, so an unapproved rendering change fails this job.
       - run: pnpm check:android
 
   device:

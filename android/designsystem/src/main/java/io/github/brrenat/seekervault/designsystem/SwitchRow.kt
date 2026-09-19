@@ -95,7 +95,7 @@ private fun SwitchRowPreviewSurface(content: @Composable () -> Unit) {
 @DesignRef(component = "switch-row", variant = "state=off")
 @Preview(name = "switch-row/state-off", widthDp = 358, uiMode = DarkMode)
 @Composable
-private fun SwitchRowOffPreview() {
+internal fun SwitchRowOffPreview() {
     SwitchRowPreviewSurface {
         SwitchRow(
             label = "Only these assets may move",
@@ -108,7 +108,7 @@ private fun SwitchRowOffPreview() {
 @DesignRef(component = "switch-row", variant = "state=on")
 @Preview(name = "switch-row/state-on", widthDp = 358, uiMode = DarkMode)
 @Composable
-private fun SwitchRowOnPreview() {
+internal fun SwitchRowOnPreview() {
     SwitchRowPreviewSurface {
         SwitchRow(
             label = "Only these assets may move",

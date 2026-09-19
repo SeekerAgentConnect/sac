@@ -203,8 +203,8 @@ tasks.register<DesignCompareTask>("designCompare") {
             .map { rootProject.layout.projectDirectory.file("../design/screens/$it") }
     )
     actualDirectories.from(
-        project(":designsystem").layout.buildDirectory.dir("outputs/roborazzi"),
-        project(":app").layout.buildDirectory.dir("outputs/roborazzi"),
+        project(":designsystem").layout.projectDirectory.dir("src/test/snapshots/images"),
+        project(":app").layout.projectDirectory.dir("src/test/snapshots/images"),
     )
     comparisonDirectory.set(layout.buildDirectory.dir("design-compare"))
 }

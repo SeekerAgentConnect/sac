@@ -176,7 +176,7 @@ private fun RuleRowPreview(
     uiMode = RuleRowPreviewDarkMode,
 )
 @Composable
-private fun RuleRowActionCheckedPreview() =
+internal fun RuleRowActionCheckedPreview() =
     RuleRowPreview(
         model = RuleRowModel("Transfer funds", "Expected", "check_box"),
         kind = RuleRowKind.Action,
@@ -191,7 +191,7 @@ private fun RuleRowActionCheckedPreview() =
     uiMode = RuleRowPreviewDarkMode,
 )
 @Composable
-private fun RuleRowActionUncheckedPreview() =
+internal fun RuleRowActionUncheckedPreview() =
     RuleRowPreview(
         model = RuleRowModel("Acknowledge text", "Not expected", "check_box_outline_blank"),
         kind = RuleRowKind.Action,
@@ -202,7 +202,7 @@ private fun RuleRowActionUncheckedPreview() =
 @DesignRef(component = "rule-row", variant = "kind=asset")
 @Preview(name = "rule-row/kind-asset", widthDp = 358, uiMode = RuleRowPreviewDarkMode)
 @Composable
-private fun RuleRowAssetPreview() =
+internal fun RuleRowAssetPreview() =
     RuleRowPreview(
         model = RuleRowModel("Native SOL · devnet", "6 per request · 8 a day here", "toll"),
         kind = RuleRowKind.Asset,
@@ -217,7 +217,7 @@ private fun RuleRowAssetPreview() =
     uiMode = RuleRowPreviewDarkMode,
 )
 @Composable
-private fun RuleRowAssetReadOnlyPreview() =
+internal fun RuleRowAssetReadOnlyPreview() =
     RuleRowPreview(
         model =
             RuleRowModel(
@@ -232,7 +232,7 @@ private fun RuleRowAssetReadOnlyPreview() =
 @DesignRef(component = "rule-row", variant = "kind=program")
 @Preview(name = "rule-row/kind-program", widthDp = 358, uiMode = RuleRowPreviewDarkMode)
 @Composable
-private fun RuleRowProgramPreview() =
+internal fun RuleRowProgramPreview() =
     RuleRowPreview(
         model = RuleRowModel("Compute Budget", "Compute…111111", "code"),
         kind = RuleRowKind.Program,
@@ -242,7 +242,7 @@ private fun RuleRowProgramPreview() =
 @DesignRef(component = "rule-row", variant = "kind=recipient")
 @Preview(name = "rule-row/kind-recipient", widthDp = 358, uiMode = RuleRowPreviewDarkMode)
 @Composable
-private fun RuleRowRecipientPreview() =
+internal fun RuleRowRecipientPreview() =
     RuleRowPreview(
         model =
             RuleRowModel("FyfWsS…vYSpEA", "Wallet that owns the funds", "account_balance_wallet"),
