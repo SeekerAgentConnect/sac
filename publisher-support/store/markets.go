@@ -288,7 +288,7 @@ SELECT market.provider, market.market_id, market.event_id, market.title, market.
        market.close_at_ms, market.source_url, market.proposal_id, market.generation,
        market.first_seen_at_ms, market.last_seen_at_ms, market.last_checked_at_ms,
        signal.revision, signal.status, signal.operation, signal.plugin_id, signal.created_at_ms,
-       signal.updated_at_ms, signal.expires_at_ms, signal.note, signal.terms, signal.fingerprint,
+       signal.updated_at_ms, signal.expires_at_ms, signal.title, signal.note, signal.terms, signal.fingerprint,
        signal.confirmed_revision, signal.attempts, signal.due_at_ms, signal.problem, signal.detail
 FROM market
 JOIN signal ON signal.proposal_id = market.proposal_id`
@@ -306,7 +306,8 @@ func trackedFrom(row scanner) (markets.Tracked, error) {
 		&tracked.Market.ProposalID, &tracked.Market.Generation, &firstSeen, &lastSeen, &checked,
 		&tracked.Record.Signal.Revision, &status, &tracked.Record.Signal.Operation,
 		&tracked.Record.Signal.PluginID, &created, &updated, &expires,
-		&tracked.Record.Signal.Note, &terms, &tracked.Record.Signal.Fingerprint,
+		&tracked.Record.Signal.Title, &tracked.Record.Signal.Note, &terms,
+		&tracked.Record.Signal.Fingerprint,
 		&tracked.Record.Publication.ConfirmedRevision, &tracked.Record.Publication.Attempts, &due,
 		&tracked.Record.Publication.Problem, &tracked.Record.Publication.Detail,
 	); err != nil {

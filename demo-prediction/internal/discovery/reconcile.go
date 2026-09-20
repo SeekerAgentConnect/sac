@@ -572,9 +572,19 @@ func (r *Reconciler) statement(one candidate, row markets.Market, now time.Time)
 		CreatedAt:  now,
 		UpdatedAt:  now,
 		ExpiresAt:  expiry,
+		Title:      predictionTitle(one.event, one.market),
 		Note:       written,
 		Terms:      checked,
 	}, nil
+}
+
+// predictionTitle is the provider's own question, not an app-added category or venue prefix.
+// Some provider answers omit the event title, so the market title is the honest fallback.
+func predictionTitle(event jupiter.Event, market jupiter.Market) string {
+	if title := fold(event.Title, signals.MaxNameBytes); title != "" {
+		return title
+	}
+	return fold(market.Title, signals.MaxNameBytes)
 }
 
 // Unpublishable is the reason a market that matched every filter still could not be published: the

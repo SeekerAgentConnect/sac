@@ -36,6 +36,22 @@ func open() jupiter.Market {
 	}
 }
 
+func TestPredictionTitleUsesTheProviderQuestionAndFallsBackToItsMarketText(t *testing.T) {
+	if got := predictionTitle(event(), open()); got != "Fed Decision in October?" {
+		t.Fatalf("event title %q", got)
+	}
+	withoutQuestion := event()
+	withoutQuestion.Title = ""
+	if got := predictionTitle(withoutQuestion, open()); got != "25 bps increase" {
+		t.Fatalf("market fallback %q", got)
+	}
+	nasty := event()
+	nasty.Title = "  Will\n rates\tmove?  "
+	if got := predictionTitle(nasty, open()); got != "Will rates move?" {
+		t.Fatalf("folded title %q", got)
+	}
+}
+
 // The filters an operator would write, with a window either side.
 func filters() Filters {
 	return Filters{

@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
                 ConnectionsViewModel(
                     repository = app.connectionRepository,
                     foregroundUpdates = app.foregroundUpdates.state,
+                    foregroundFeeds = app.foregroundFeeds.state,
                     cleartextPermitted = app::isCleartextPermitted,
                     // The one registry for the process, so a server's requirements are matched
                     // against the same plugins here as when a request is reviewed (SEE-88).

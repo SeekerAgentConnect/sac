@@ -58,7 +58,7 @@ class PairingCodeTest {
             PairingCode("http://127.0.0.1:8080", serverId, token),
             codeOf(
                 "http://127.0.0.1:8080/pair?v=1&url=${URLEncoder.encode("http://127.0.0.1:8080", Charsets.UTF_8)}" +
-                    "&server=$serverId&token=$token",
+                    "&server=$serverId&token=$token"
             ),
         )
         assertEquals(

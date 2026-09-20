@@ -41,12 +41,14 @@ import io.github.brrenat.seekervault.designsystem.ServerRowState
 import io.github.brrenat.seekervault.designsystem.WalletBanner
 import io.github.brrenat.seekervault.designsystem.WalletBannerVariant
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.inbox.PendingItem
 import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.inbox.key
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v2.Request
 import io.github.brrenat.seekervault.request.v2.Value
+import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
@@ -354,6 +356,11 @@ fun homeScreenState(
             connectionsState.connections.map { connection ->
                 connection.toHomeServerState(
                     live = connectionsState.updates.connections[connection.id],
+                    feed = connectionsState.feeds.gateways[connection.serverUrl],
+                    pending =
+                        newestFirst.count {
+                            it is PendingItem.Signal && it.connectionId == connection.id
+                        },
                     support = connectionsState.support[connection.id],
                     formatTime = formatTime,
                 )
@@ -390,7 +397,14 @@ private fun PendingItem.toHomeCarouselItem(
                         supportingText = "$source asks",
                         warningCount = warnings,
                     )
-                RequestTileKind.PredictionSignal,
+                RequestTileKind.PredictionSignal ->
+                    RequestTileModel(
+                        title = request.presentation.title,
+                        sourceName = source,
+                        supportingText = request.presentation.description,
+                        warningCount = warnings,
+                        footerText = request.parameter("provider")?.providerName() ?: source,
+                    )
                 RequestTileKind.SwapSignal ->
                     RequestTileModel(
                         title = request.presentation.title,
@@ -436,14 +450,21 @@ private fun transferAmountAndAsset(request: Request): Pair<String, String?> {
 
 private fun Connection.toHomeServerState(
     live: ForegroundConnectionState?,
+    feed: FeedListenerState?,
+    pending: Int,
     support: ServerSupport?,
     formatTime: (Instant) -> String,
 ): HomeServerState {
     val disconnected =
-        revokedAt != null || !hasCredential || live == ForegroundConnectionState.Revoked
+        revokedAt != null ||
+            (mode == ConnectionMode.Direct && !hasCredential) ||
+            live == ForegroundConnectionState.Revoked
     val unreachable =
         !disconnected &&
             (support?.executable == false ||
+                feed is FeedListenerState.Unreachable ||
+                feed is FeedListenerState.Refused ||
+                feed is FeedListenerState.Reconnecting ||
                 live is ForegroundConnectionState.Unreachable ||
                 live is ForegroundConnectionState.Unsupported ||
                 (live == null && lastCheck?.outcome?.let { it != CheckOutcome.Ok } == true))
@@ -457,14 +478,23 @@ private fun Connection.toHomeServerState(
         when (rowState) {
             ServerRowState.Disconnected -> HomeCopy.Disconnected
             ServerRowState.Unreachable ->
-                lastCheck?.at?.let { "${HomeCopy.Unreachable} · ${formatTime(it)}" }
-                    ?: HomeCopy.Unreachable
-            ServerRowState.Connected -> {
-                val pending = lastCheck?.pending ?: 0
-                if (lastCheck?.morePending == true) {
-                    "Connected · more than $pending pending"
+                if (mode == ConnectionMode.GatewayFeed) {
+                    if (feed is FeedListenerState.Reconnecting) {
+                        "${HomeCopy.Reconnecting} · $pending pending"
+                    } else {
+                        "${HomeCopy.Unreachable} · $pending pending"
+                    }
                 } else {
-                    "Connected · $pending pending"
+                    lastCheck?.at?.let { "${HomeCopy.Unreachable} · ${formatTime(it)}" }
+                        ?: HomeCopy.Unreachable
+                }
+            ServerRowState.Connected -> {
+                val currentPending =
+                    if (mode == ConnectionMode.GatewayFeed) pending else lastCheck?.pending ?: 0
+                if (mode == ConnectionMode.Direct && lastCheck?.morePending == true) {
+                    "Connected · more than $currentPending pending"
+                } else {
+                    "Connected · $currentPending pending"
                 }
             }
         }
@@ -479,6 +509,11 @@ private fun Connection.toHomeServerState(
         rowState = rowState,
     )
 }
+
+private fun String.providerName(): String =
+    split(Regex("[-_\\s]+")).filter(String::isNotBlank).joinToString(" ") { word ->
+        word.replaceFirstChar(Char::uppercase)
+    }
 
 private fun PendingItem.homeId(): String = "$namespace/$connectionId/$requestId"
 
@@ -546,6 +581,7 @@ object HomeCopy {
     const val RecipientUnavailable = "Recipient unavailable"
     const val Sol = "SOL"
     const val Disconnected = "Disconnected · pair again to reconnect"
+    const val Reconnecting = "Reconnecting"
     const val Unreachable = "Couldn’t reach the server"
     const val ServerInitial = "S"
 }

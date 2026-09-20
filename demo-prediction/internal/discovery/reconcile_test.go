@@ -272,6 +272,11 @@ func TestARealListingBecomesProposals(t *testing.T) {
 		t.Fatalf("revision %d", signal.Revision)
 	case signal.Status != signals.Open:
 		t.Fatalf("status %s", signal.Status)
+	case signal.Title != "Bank of Japan Decision in September?":
+		t.Fatalf("title %q is not the provider's question", signal.Title)
+	case signals.Request(server, signal).GetPresentation().GetTitle() != signal.Title:
+		t.Fatalf("request title %q, expected %q",
+			signals.Request(server, signal).GetPresentation().GetTitle(), signal.Title)
 	case !signal.ExpiresAt.Equal(first.Market.CloseAt):
 		t.Fatalf("the expiry is %s and the market closes at %s", signal.ExpiresAt,
 			first.Market.CloseAt)
@@ -400,6 +405,34 @@ func TestASecondCycleWithTheSameMarketsPublishesNothing(t *testing.T) {
 	// The row still moved: what the provider says is recorded either way.
 	if !held.tracked()[0].Market.LastSeenAt.Equal(held.clock) {
 		t.Fatalf("last seen %s", held.tracked()[0].Market.LastSeenAt)
+	}
+}
+
+func TestAProviderQuestionChangeMovesTheRequestTitleAndRevision(t *testing.T) {
+	question := "Fed Decision in October?"
+	provider := &source{events: func(query jupiter.Query) (jupiter.Page, error) {
+		if query.Start > 0 {
+			return jupiter.Page{}, nil
+		}
+		one := event("POLY-606422", market("POLY-2589813", noon.Add(72*time.Hour)))
+		one.Title = question
+		return jupiter.Page{Events: []jupiter.Event{one}}, nil
+	}}
+	held := start(t, provider)
+	held.pass()
+
+	question = "Will the Fed cut rates in October?"
+	held.clock = noon.Add(5 * time.Minute)
+	cycle := held.pass()
+	signal := held.signals()[0].Signal
+	if cycle.Updated != 1 || signal.Revision != 2 {
+		t.Fatalf("updated %d, revision %d", cycle.Updated, signal.Revision)
+	}
+	if signal.Title != question {
+		t.Fatalf("title %q, expected %q", signal.Title, question)
+	}
+	if got := signals.Request(server, signal).GetPresentation().GetTitle(); got != question {
+		t.Fatalf("request title %q, expected %q", got, question)
 	}
 }
 

@@ -24,6 +24,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReferenceProblem
@@ -122,17 +123,25 @@ fun statusText(
      * server this app can't act for is not one whose pending count means much.
      */
     support: ServerSupport? = null,
+    feed: FeedListenerState? = null,
 ): String {
     val check = connection.lastCheck
     return when {
         connection.retirement == ConnectionRetirement.GatewayPrivateRemoved ->
             stringResource(R.string.connection_status_gateway_private_retired)
         connection.revokedAt != null -> stringResource(R.string.connection_status_revoked)
-        // A feed holds no credential and never did, so it is not one that has gone missing.
-        connection.mode == ConnectionMode.GatewayFeed && support?.executable != false ->
-            stringResource(R.string.connection_status_feed)
-        !connection.hasCredential -> stringResource(R.string.connection_status_credential_missing)
         support != null && !support.executable -> supportText(support)
+        connection.mode == ConnectionMode.Direct && !connection.hasCredential ->
+            stringResource(R.string.connection_status_credential_missing)
+        feed == FeedListenerState.Connecting ->
+            stringResource(R.string.connection_status_connecting)
+        feed is FeedListenerState.Live -> stringResource(R.string.connection_status_live)
+        feed is FeedListenerState.Reconnecting ->
+            stringResource(R.string.connection_status_reconnecting)
+        feed is FeedListenerState.Unreachable -> outcomeText(feed.outcome)
+        feed == FeedListenerState.NoStream ->
+            stringResource(R.string.connection_status_feed_available)
+        feed is FeedListenerState.Refused -> stringResource(R.string.connection_status_failed)
         live == ForegroundConnectionState.Background ->
             stringResource(R.string.connection_status_background)
         live == ForegroundConnectionState.Connecting ->
@@ -158,12 +167,15 @@ fun hasProblem(
     connection: Connection,
     live: ForegroundConnectionState? = null,
     support: ServerSupport? = null,
+    feed: FeedListenerState? = null,
 ): Boolean =
-    // A feed is not "usable" in the sense that word has here — the phone never calls one — so its
-    // problems are its own: a manifest this build can't act on, and nothing else yet (SEE-88).
+    // A feed is not "usable" in the credential sense — it has no credential — so its problems are
+    // the manifest this build cannot act on or the gateway listener actually failing (SEE-139).
     connection.retirement != null ||
         (connection.mode == ConnectionMode.Direct && !connection.usable) ||
         support?.executable == false ||
+        feed is FeedListenerState.Unreachable ||
+        feed is FeedListenerState.Refused ||
         when (live) {
             is ForegroundConnectionState.Unreachable,
             ForegroundConnectionState.Revoked,

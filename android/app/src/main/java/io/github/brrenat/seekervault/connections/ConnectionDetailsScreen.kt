@@ -43,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -86,13 +87,14 @@ fun ConnectionDetailsScreen(
     live: ForegroundConnectionState? = null,
     /** Whether this build supports this connection's server (SEE-88); null until worked out. */
     support: ServerSupport? = null,
+    feed: FeedListenerState? = null,
     /**
      * Moves this feed between the environments its publisher serves (SEE-97). Null for a direct
      * connection, which is always production.
      */
     onEnvironment: ((PluginEnvironment) -> Unit)? = null,
 ) {
-    val problem = hasProblem(connection, live, support)
+    val problem = hasProblem(connection, live, support, feed)
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(message, snackbar, onMessageShown)
     var renaming by rememberSaveable { mutableStateOf(false) }
@@ -144,7 +146,7 @@ fun ConnectionDetailsScreen(
                         )
                         Column(Modifier.weight(1f)) {
                             Text(
-                                statusText(connection, live, support),
+                                statusText(connection, live, support, feed),
                                 style = MaterialTheme.typography.titleMedium,
                                 color =
                                     if (problem) {
