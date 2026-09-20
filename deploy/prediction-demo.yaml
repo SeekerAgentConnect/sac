@@ -83,7 +83,7 @@ services:
     registry_credentials: EV[1:7mKKE7I2Zi6XQhW6lZsL9Ggyl9KFXpH5:2RHbKE2EfjrgDGb3nj+Y86i7dRlAcUcda3nVKKXlZjc+MJ6BPH8aVsCuaJmt3V92hc4QPQ3B8eE0mOs=]
     registry_type: DOCKER_HUB
     repository: seeker-agent-connect
-    tag: prediction-0.1.6
+    tag: prediction-0.1.7
   instance_count: 1
   instance_size_slug: apps-s-1vcpu-0.5gb
   name: seeker-prediction-demo
@@ -121,7 +121,7 @@ services:
     registry_credentials: EV[1:7mKKE7I2Zi6XQhW6lZsL9Ggyl9KFXpH5:2RHbKE2EfjrgDGb3nj+Y86i7dRlAcUcda3nVKKXlZjc+MJ6BPH8aVsCuaJmt3V92hc4QPQ3B8eE0mOs=]
     registry_type: DOCKER_HUB
     repository: seeker-agent-connect
-    tag: prediction-0.1.6
+    tag: prediction-0.1.7
   instance_count: 1
   instance_size_slug: apps-s-1vcpu-0.5gb
   name: prediction-admin
