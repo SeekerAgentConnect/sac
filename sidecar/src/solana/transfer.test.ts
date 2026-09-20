@@ -14,7 +14,7 @@ import {
   Network,
   TransferActionSchema,
   type TransferAction,
-} from "../gen/seekervault/request/v1/request_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import {
   FakeChain,
   TOKEN_ACCOUNT_RENT,

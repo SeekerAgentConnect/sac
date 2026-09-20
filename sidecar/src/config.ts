@@ -8,13 +8,15 @@
  */
 import { fileURLToPath } from "node:url";
 
-import { isSecureEndpoint, type OAuthConfig } from "./oauth.ts";
-import { invalidServerUrlReason, normalizeServerUrl } from "./pairing/uri.ts";
-import { CHAIN_BUDGET_MS } from "./solana/rpc.ts";
 import {
   MAX_EXPIRES_IN_SECONDS,
   MIN_EXPIRES_IN_SECONDS,
-} from "./storage/request-store.ts";
+  invalidServerUrlReason,
+  normalizeServerUrl,
+} from "@seeker-vault/server-sdk";
+
+import { isSecureEndpoint, type OAuthConfig } from "./oauth.ts";
+import { CHAIN_BUDGET_MS } from "./solana/rpc.ts";
 
 export interface SidecarConfig {
   readonly host: string;

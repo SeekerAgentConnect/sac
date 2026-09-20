@@ -23,15 +23,15 @@ import {
   type AcknowledgeCommandResponse,
   type LiveCommand,
   type WatchCommandsResponse,
-} from "../gen/seekervault/live/v1/live_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import {
   PairingService,
   RequestService,
-} from "../gen/seekervault/request/v1/service_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import { DISPLAY_COMMAND_TOOL } from "../mcp-endpoint.ts";
-import { PairingStore } from "../storage/pairing-store.ts";
+import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
 import type { RequestView } from "../requests/mcp-tools.ts";
-import { openDatabase } from "../storage/database.ts";
+import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
 
 export function phoneClient(
   baseUrl: string,

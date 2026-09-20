@@ -23,7 +23,10 @@ Compatibility reservations and one-way migration readers may still name the reti
 
 An independent server is a role, not an extra service that every developer must install beside their backend. The existing MCP server is one implementation of that role. The historical name `sidecar` does not imply another required component.
 
-The existing publisher client remains in `publisher/sdk/`; extracting the TypeScript Server SDK is later SEE-131 work. Do not describe a replacement direct SDK API as already implemented. The Android build currently has `:app` and `:designsystem`; a separately packaged Android SDK remains future work.
+The existing publisher client remains in `publisher/sdk/`. The reusable TypeScript direct-server
+engine now lives in `server-sdk/` and the current MCP host consumes only its public package exports;
+moving and packaging that MCP application remains SEE-132 work. The Android build currently has
+`:app` and `:designsystem`; a separately packaged Android SDK remains future work.
 
 ## Two connection modes
 
@@ -133,7 +136,8 @@ Current directory names describe historical implementation choices and are not t
 | --- | --- | --- |
 | `android/` | SAC app and design system | Keep the application boundary clear |
 | `proto/` | Shared direct/feed contracts plus compatibility reservations | Keep direct/feed contracts; never reuse retired private-gateway identifiers |
-| `sidecar/` | The user's direct request server with an optional MCP adapter | Use a clear direct/MCP server name; do not present it as an extra mandatory service |
+| `server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Keep as an embeddable library with explicit initialization and no MCP/product configuration |
+| `sidecar/` | The current MCP host, operator CLI, provider implementations and deployment package | Relocate/package as `mcp-server/` in SEE-132; until then it consumes `server-sdk/` as a public dependency |
 | `gateway/` | Deployment assets and reverse proxy for the direct server, including TLS/OAuth configuration | Move/name as direct-server deployment infrastructure |
 | `broadcast/` | Shared Go feed gateway with public read and publisher listeners | Establish one canonical feed-gateway name in SEE-133 |
 | `publisher/` | Demo server implementations plus reusable Go Server SDK | Clearly separate SDK code from examples in layout and documentation |

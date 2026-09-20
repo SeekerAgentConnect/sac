@@ -9,7 +9,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 
-import { Network } from "../gen/seekervault/request/v1/request_pb.js";
+import { Network } from "@seeker-vault/server-sdk/protocol";
 import { FakeChain, startFakeRpc, type FakeRpc } from "../testing/chain.ts";
 import { GENESIS_HASHES } from "./network.ts";
 import { ChainUnavailable, SolanaRpc, withChainBudget } from "./rpc.ts";

@@ -12,6 +12,24 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import {
+  MAX_BASE_UNITS,
+  MAX_COMMAND_TEXT_BYTES,
+  MAX_EXPIRES_IN_SECONDS,
+  MAX_MESSAGE_BYTES,
+  MAX_NOTE_BYTES,
+  MIN_EXPIRES_IN_SECONDS,
+  RequestFailure,
+  actionBinding,
+  encodeBase58,
+  invalidActionReason,
+  isTerminal,
+  messageBytes,
+  networkName,
+  privateRequest,
+  type AgentRequests,
+  type AgentTransfers,
+} from "@seeker-vault/server-sdk";
+import {
   ActionSchema,
   AssetSchema,
   ConfirmationLevel,
@@ -22,26 +40,7 @@ import {
   type ActionRequest,
   type Confirmation,
   type WalletBinding,
-} from "../gen/seekervault/request/v1/request_pb.js";
-import { MAX_COMMAND_TEXT_BYTES } from "../live/command.ts";
-import {
-  MAX_BASE_UNITS,
-  MAX_MESSAGE_BYTES,
-  MAX_NOTE_BYTES,
-  actionBinding,
-  encodeBase58,
-  invalidActionReason,
-  messageBytes,
-} from "./action.ts";
-import type { AgentRequests, AgentTransfers } from "./agent-api.ts";
-import { privateRequest } from "./developer-api.ts";
-import { isTerminal } from "./lifecycle.ts";
-import {
-  MAX_EXPIRES_IN_SECONDS,
-  MIN_EXPIRES_IN_SECONDS,
-  networkName,
-} from "../storage/request-store.ts";
-import { RequestFailure } from "./failure.ts";
+} from "@seeker-vault/server-sdk/protocol";
 
 export const GET_ADDRESS_TOOL = "vault_get_address";
 export const GET_CAPABILITIES_TOOL = "vault_get_capabilities";

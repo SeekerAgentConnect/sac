@@ -15,8 +15,8 @@ import {
   RequestError,
   RequestErrorDetailSchema,
   RequestState,
-} from "../../sidecar/src/gen/seekervault/request/v1/request_pb.js";
-import { openDatabase } from "../../sidecar/src/storage/database.ts";
+} from "@seeker-vault/server-sdk/protocol";
+import { openDatabase } from "../../server-sdk/src/storage/database.ts";
 import {
   Code,
   ConnectError,

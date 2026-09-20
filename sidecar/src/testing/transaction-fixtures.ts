@@ -30,7 +30,7 @@ import {
 import {
   Network,
   type TransferAction,
-} from "../gen/seekervault/request/v1/request_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import {
   ASSOCIATED_TOKEN_PROGRAM,
   SYSTEM_PROGRAM,

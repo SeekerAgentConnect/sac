@@ -9,7 +9,7 @@ import type { AddressInfo } from "node:net";
 
 import { PublicKey } from "@solana/web3.js";
 
-import { Network } from "../gen/seekervault/request/v1/request_pb.js";
+import { Network } from "@seeker-vault/server-sdk/protocol";
 import {
   SYSTEM_PROGRAM,
   TOKEN_PROGRAM,

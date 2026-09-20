@@ -37,6 +37,9 @@ jobs:
       # live-network case is opt-in and stays off here: SEEKER_VAULT_NETWORK_CHECKS is not set, so
       # CI reaches no cluster and spends nothing (docs/testing/stage-4.md).
       - run: pnpm test:transfer
+      # Build and inspect the exact npm artifact, then install it into a temporary project outside
+      # the workspace. This never publishes and uses no npm credential.
+      - run: pnpm test:server-sdk-package
       - run: pnpm check:generated
       - run: pnpm build
 

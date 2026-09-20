@@ -48,13 +48,13 @@ Baseline: `docs/development/see-128-migration-map.md` from SEE-129, commit `6320
 - [x] Update `CODEBASE.md` for removed files, protocol/API changes, storage migrations, and active two-mode architecture.
 - [x] Add a review section with commit/PR, changed modules/configuration, API/schema effects, migration/rollback notes, exact PASS/FAIL/NOT RUN evidence, known limitations, and handoff to SEE-131 without starting it.
 - [x] Re-read SEE-128 and SEE-130 plus comments before handoff.
-- [ ] Commit and push `superset/feat/see-128`; do not merge PR #38 or complete SEE-128.
-- [ ] Comment evidence on SEE-130 and move it to In Review.
-- [ ] POST the required `finished` webhook before stopping.
+- [x] Commit and push `superset/feat/see-128`; do not merge PR #38 or complete SEE-128.
+- [x] Comment evidence on SEE-130 and move it to In Review.
+- [x] POST the required `finished` webhook before stopping.
 
 ## Review
 
-- Delivery target: PR #38 on `superset/feat/see-128`; implementation commit is pending the final delivery commit.
+- Delivery: implementation commit `e93e339` is pushed to PR #38 on `superset/feat/see-128`; SEE-130 is In Review with evidence, SEE-128 remains open, and the required completion webhook succeeded.
 - Changed boundaries: protobuf/generated clients, feed gateway routing/storage/listeners, publisher SDK/examples, Android persistence/repositories/onboarding/deep links/notifications, deployment configuration, and active documentation.
 - API/schema effect: gateway-private invitation, binding, request, and result procedures are removed; retired protobuf names/numbers are reserved; feed gateway schema v3 removes only private tables/records while retaining all public tables and bytes.
 - Android migration: version-5 storage rewrites legacy private connections to inert retirement records, removes their credential and pending executable work, preserves local activity/history, and is restart-safe. Direct and feed records remain unchanged.

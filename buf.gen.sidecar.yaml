@@ -1,0 +1,14 @@
+version: v2
+clean: true
+# The current MCP host retains one cross-runtime public-proposal fixture test until later children
+# relocate feed packaging. It owns no direct generated binding after SEE-131.
+plugins:
+  - local: protoc-gen-es
+    out: sidecar/src/gen
+    opt:
+      - target=js+dts
+      - import_extension=js
+inputs:
+  - directory: proto
+    paths:
+      - proto/seekervault/proposal/v1

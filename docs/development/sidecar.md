@@ -315,7 +315,12 @@ Durable requests and production update state live in one SQLite file, `DATABASE_
 - **The driver is Node's built-in `node:sqlite`,** so there's no native build and no extra dependency.
 - **The database runs in WAL mode with `synchronous = FULL`,** so a commit is on disk before it returns.
 - **Each operation is one transaction (`BEGIN IMMEDIATE`) that commits before the sidecar answers.** The agent's tool result and the phone's RPC response never report a change that a crash could still lose. Operations are synchronous, so two never interleave.
-- **Only `sidecar/src/storage/` touches SQLite or the file system.** It alone imports them, and it alone runs SQL. `request-store.ts` and `pairing-store.ts` commit lifecycle changes, while `update-store.ts` appends their complete revisioned forms, bounds replay to 512 events per connection, and freezes paginated snapshots on disk behind a renewable two-minute inactivity lease. `tls.ts` reads the configured PEM bytes. `stage-boundary.test.ts` checks the boundary.
+- **Only `server-sdk/src/storage/` touches SQLite and runs SQL.** `request-store.ts` and
+  `pairing-store.ts` commit lifecycle changes, while `update-store.ts` appends their complete
+  revisioned forms, bounds replay to 512 events per connection, and freezes paginated snapshots on
+  disk behind a renewable two-minute inactivity lease. The host's separate
+  `sidecar/src/storage/tls.ts` reads only the configured PEM bytes. `stage-boundary.test.ts` checks
+  both boundaries.
 - **Publication is part of the source transaction.** Creation, cancellation, expiry, accepted owner/wallet results, confirmation attempts/results, wallet-binding cancellations, and revocation append only if their request/connection update commits. Duplicate/idempotent calls append nothing.
 - **A cursor is process- and connection-bound.** A restart, malformed cursor, another connection, or a cursor older than retained replay requires `Sync`. The stream registers before taking its barrier, so mutations committed after the barrier are replayed or delivered live rather than falling between snapshot and subscription.
 - **Sync pages do not drift.** Page one freezes every current PENDING request plus the named nonterminal Activity records in SQLite. Later mutations do not rewrite remaining pages; every valid page renews the token's two-minute inactivity lease, while an idle token expires and a process restart invalidates every token. Only `UpdateService` responses are capped at 65,536 encoded bytes, so the established `RequestService.ListPending` page contract remains intact; the shared listener still rejects any phone request above that bound. Sync responses shrink below the response cap, and no unbounded request list is retained in heap memory.
@@ -339,10 +344,10 @@ To look inside, run `sqlite3 sidecar/data/sidecar.db "SELECT request_id, kind, s
 
 ### Migrations
 
-- **`sidecar/src/storage/migrations.ts` lists numbered migrations,** and `PRAGMA user_version` records the last one applied.
+- **`server-sdk/src/storage/migrations.ts` lists numbered migrations,** and `PRAGMA user_version` records the last one applied.
 - **At startup, the sidecar applies the missing ones in order,** each in its own transaction, so a failure leaves the database at the last complete version.
 - **A database from a newer sidecar is refused,** and the sidecar exits rather than guess.
-- **A shipped migration is never edited;** a schema change is a new migration. `sidecar/src/storage/fixtures/schema-v1.sql` freezes a v1 database, and `database.test.ts` opens it with the current code.
+- **A shipped migration is never edited;** a schema change is a new migration. `server-sdk/src/storage/fixtures/schema-v1.sql` freezes a v1 database, and `database.test.ts` opens it with the current code.
 - **Migration 2 adds pairing (SAW-011):** the `server` and `pairing_tokens` tables, and the credential and device name columns on `connections`. SAW-010's stand-in connection has no credential, so the migration revokes it and cancels its PENDING requests. Pair the phone after upgrading.
 - **Migration 3 adds the wallet binding (SAW-015):** `wallet_address`, `wallet_network`, and `wallet_bound_at_ms` on `connections`. All three are set together or all NULL, which means no wallet is connected. No key material and no wallet authorization token is ever stored; `wallet_address` is a public key. An upgraded database starts with no binding, so connect the wallet in the app after upgrading.
 - **Migration 4 adds production updates (SAW-049):** per-connection mutation sequences/events and
@@ -458,42 +463,46 @@ Typical log lines:
 | `sidecar/src/main.ts` | Entry point: loads the configuration, starts the server, and stops it on SIGINT or SIGTERM |
 | `sidecar/src/server.ts` | The HTTP/1 or TLS HTTP/2+HTTP/1 listener, optional h2c development listener, `/healthz`, `/mcp`, phone APIs, and graceful session cleanup |
 | `sidecar/src/mcp-endpoint.ts` | MCP sessions, the tools, the body limit, and the Host, Origin, and token checks |
-| `sidecar/src/phone-api.ts` | The Connect `LiveCommandService` |
-| `sidecar/src/live/bridge.ts` | The in-memory waiter: one watcher, one in-flight command, deadline timers, and cancellation |
-| `sidecar/src/live/command.ts` | The protocol rules from SAW-002 |
-| `sidecar/src/requests/action.ts` | The durable request's parameters (SAW-009): each action kind's fields, base-unit amounts, base58 addresses, and exact message bytes |
-| `sidecar/src/requests/identity.ts` | Connection scope for references, idempotency keys, and action fingerprints (SAW-009) |
-| `sidecar/src/requests/lifecycle.ts` | The durable lifecycle (SAW-009): the transition table, the phone's results, the approval binding, and expiry |
-| `sidecar/src/requests/failure.ts` | `RequestFailure`, the error that every durable operation refuses with |
-| `sidecar/src/storage/request-store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions, and the wallet binding (SAW-015) |
-| `sidecar/src/storage/update-store.ts` | Durable per-connection sequences/replay and disk-frozen Sync snapshots (SAW-049) |
+| `server-sdk/src/phone-api.ts` | The Connect `LiveCommandService` |
+| `server-sdk/src/live/bridge.ts` | The in-memory waiter: one watcher, one in-flight command, deadline timers, and cancellation |
+| `server-sdk/src/live/command.ts` | The protocol rules from SAW-002 |
+| `server-sdk/src/requests/action.ts` | The durable request's parameters (SAW-009): each action kind's fields, base-unit amounts, base58 addresses, and exact message bytes |
+| `server-sdk/src/requests/identity.ts` | Connection scope for references, idempotency keys, and action fingerprints (SAW-009) |
+| `server-sdk/src/requests/lifecycle.ts` | The durable lifecycle (SAW-009): the transition table, the phone's results, the approval binding, and expiry |
+| `server-sdk/src/requests/failure.ts` | `RequestFailure`, the error that every durable operation refuses with |
+| `server-sdk/src/storage/request-store.ts` | `RequestStore` (SAW-010), which applies those rules in SQLite transactions, and the wallet binding (SAW-015) |
+| `server-sdk/src/storage/update-store.ts` | Durable per-connection sequences/replay and disk-frozen Sync snapshots (SAW-049) |
 | `sidecar/src/storage/tls.ts` | Reads the configured production PEM identity inside the audited file-system boundary (SAW-049) |
-| `sidecar/src/updates/service.ts` | Authenticated bidirectional Subscribe, unary Sync, stream ownership/liveness, and bounded confirmation (SAW-049) |
+| `server-sdk/src/updates/service.ts` | Authenticated bidirectional Subscribe, unary Sync, stream ownership/liveness, and bounded confirmation (SAW-049) |
 | `sidecar/src/push/fcm.ts` | The optional Firebase Admin messaging transport (SAW-054). It uses Application Default Credentials and logs nothing. |
-| `sidecar/src/push/invalidation.ts` | SAW-056's coalescing dispatcher and exact data-only payload. It addresses the current connection FID, classifies failures without error text, and compare-clears only a permanently rejected current target. |
+| `server-sdk/src/push/invalidation.ts` | SAW-056's coalescing dispatcher and exact data-only payload. It addresses the current connection FID, classifies failures without error text, and compare-clears only a permanently rejected current target. |
 | `sidecar/src/requests/mcp-tools.ts` | The durable MCP tools and the request view (SAW-010), `vault_get_address` (SAW-015), and `vault_sign_message` and `vault_get_capabilities` (SAW-016) |
-| `sidecar/src/requests/signature.ts` | Ed25519 verification (SAW-016): the sidecar checks a wallet's signature, and never makes one |
-| `sidecar/src/requests/preparation.ts` | `TransactionPreparer` (SAW-019): checks an asset before a request is stored, and builds and records the next prepared version |
+| `server-sdk/src/requests/signature.ts` | Ed25519 verification (SAW-016): the sidecar checks a wallet's signature, and never makes one |
+| `server-sdk/src/requests/preparation.ts` | `TransactionPreparer` (SAW-019): checks an asset before a request is stored, and builds and records the next prepared version |
 | `sidecar/src/solana/rpc.ts` | The chain client (SAW-019): the read-only JSON-RPC calls a preparation needs. It remains the only code that reaches a blockchain. The separately confined optional FCM sender reaches only Firebase and has no chain or wallet authority. |
 | `sidecar/src/solana/transfer.ts` | Building a transfer (SAW-019): the network check, what is supported, and the unsigned transaction |
 | `sidecar/src/solana/token.ts`, `addresses.ts`, `network.ts` | The SPL Token layouts and instructions, the program addresses and the associated-token-account derivation, and each network's genesis hash |
-| `sidecar/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
-| `sidecar/src/storage/database.ts` | Opening the database, migrations, and transactions (SAW-010) |
-| `sidecar/src/storage/migrations.ts` | The numbered schema migrations, including durable update revision/replay/snapshot tables and schema 5's nullable per-connection FCM target (SAW-010, SAW-011, SAW-049, SAW-055) |
-| `sidecar/src/pairing/uri.ts` | The pairing code's URI, and the server URL rule (SAW-011) |
-| `sidecar/src/storage/pairing-store.ts` | `PairingStore` (SAW-011, SAW-055): pairing tokens, pairing, phone credentials, one current private FCM target, revocation, and the server ID |
-| `sidecar/src/pairing/service.ts` | The Connect `PairingService`, including authenticated connection-scoped FCM registration (SAW-011, SAW-055) |
+| `server-sdk/src/requests/phone-service.ts` | The Connect `RequestService` (SAW-010), which takes the paired phone's credential (SAW-011) |
+| `server-sdk/src/storage/database.ts` | Opening the database, migrations, and transactions (SAW-010) |
+| `server-sdk/src/storage/migrations.ts` | The numbered schema migrations, including durable update revision/replay/snapshot tables and schema 5's nullable per-connection FCM target (SAW-010, SAW-011, SAW-049, SAW-055) |
+| `server-sdk/src/pairing/uri.ts` | The pairing code's URI, and the server URL rule (SAW-011) |
+| `server-sdk/src/storage/pairing-store.ts` | `PairingStore` (SAW-011, SAW-055): pairing tokens, pairing, phone credentials, one current private FCM target, revocation, and the server ID |
+| `server-sdk/src/pairing/service.ts` | The Connect `PairingService`, including authenticated connection-scoped FCM registration (SAW-011, SAW-055) |
 | `sidecar/src/pairing/cli.ts` | `pnpm pair`, `pnpm pair status`, and `pnpm pair revoke` (SAW-011) |
 
-The SAW-009 modules are pure rules, which `storage/request-store.ts` applies. The contract they implement is in [`docs/protocol.md`](../protocol.md#stage-2-durable-requests).
+The SAW-009 modules are pure rules, which `server-sdk/src/storage/request-store.ts` applies. The
+contract they implement is in [`docs/protocol.md`](../protocol.md#stage-2-durable-requests).
 
 `pnpm check` runs these tests:
 
-- **`src/updates/service.test.ts`, `store.test.ts`, and `confirmation.test.ts`** test the actual TLS/h2 and loopback h2c listeners, preserved HTTP/1 routes, durable publication, replay, frozen paging, restart/gap recovery, isolation, replacement/revocation/cleanup, and bounded byte-verified confirmation.
+- **`sidecar/src/updates/service.test.ts`, `sidecar/src/updates/confirmation.test.ts`, and
+  `server-sdk/src/updates/store.test.ts`** test the actual TLS/h2 and loopback h2c listeners,
+  preserved HTTP/1 routes, durable publication, replay, frozen paging, restart/gap recovery,
+  isolation, replacement/revocation/cleanup, and bounded byte-verified confirmation.
 - **`pnpm test:updates`** runs those sidecar suites and the Android `Stage52AcceptanceTest`/gRPC tests. The joined cases use real sidecar processes, the MCP SDK client, the production h2c listener, and the production Android transport, repository, persistent cache, and foreground owner. Stage 1 still has its own acceptance command.
 
-- **`src/live/bridge.test.ts`** tests the waiter with mocked timers.
-- **`src/server.test.ts`** tests the real server with the MCP SDK client and a Connect client. It covers:
+- **`server-sdk/src/live/bridge.test.ts`** tests the waiter with mocked timers.
+- **`sidecar/src/server.test.ts`** tests the real host with the MCP SDK client and a Connect client. It covers:
   - Firebase-off startup constructs no Admin app, while configured startup owns and closes exactly one injected sender without logging its project
   - acknowledgement, OFFLINE, BUSY, and INVALID_TEXT
   - timeout, including a late acknowledgement

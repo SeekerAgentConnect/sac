@@ -15,7 +15,7 @@ import {
   RequestError,
   RequestErrorDetailSchema,
   RequestState,
-} from "../gen/seekervault/request/v1/request_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import { startSidecar, type Sidecar } from "../server.ts";
 import {
   ASSOCIATED_TOKEN_PROGRAM,
@@ -42,7 +42,7 @@ import {
   type TestPhone,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { testWallet } from "../testing/wallet.ts";
+import { testWallet } from "../../../server-sdk/src/testing/wallet.ts";
 import {
   GET_CAPABILITIES_TOOL,
   TRANSFER_TOOL,

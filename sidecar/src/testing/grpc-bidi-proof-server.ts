@@ -20,7 +20,7 @@ import {
   UpdateService,
   type SubscribeRequest,
   type SubscribeResponse,
-} from "../gen/seekervault/update/v1/update_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 
 const token = required("PROOF_PHONE_TOKEN");
 const connectionId = required("PROOF_CONNECTION_ID");

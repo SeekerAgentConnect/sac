@@ -1,14 +1,16 @@
 /**
  * Stage boundaries on the Node side (AGENTS.md). Nothing creates keys and nothing signs. The
- * sidecar stores durable requests (SAW-010): only src/storage/ imports the file system or SQLite,
- * and only it runs SQL. SAW-019 lets it read a chain, and only from src/solana/, to build a
+ * Direct Server SDK stores durable requests (SAW-010): only server-sdk/src/storage/ imports the
+ * file system or SQLite, and only it runs SQL. SAW-019 lets the host read a chain, and only from
+ * sidecar/src/solana/, to build a
  * transfer the owner reviews; it still sends nothing. SAW-048 authorizes an HTTP/2 listener and
- * UpdateService only in server.ts and src/updates/, while durable cursors and snapshots still go
- * through src/storage/. SAW-054 allows Firebase Admin only in src/push/, SAW-055 stores one
- * connection-owned target through src/storage/, and SAW-056 sends only an audited content-free
+ * UpdateService only in server.ts and the SDK's updates package, while durable cursors and
+ * snapshots still go through the SDK's storage package. SAW-054 allows Firebase Admin only in
+ * sidecar/src/push/, SAW-055 stores one connection-owned target through the SDK's storage package,
+ * and SAW-056 sends only an audited content-free
  * invalidation after a durable commit. SAW-059 closes that optional push scope without giving the
  * sender a request body, credential, policy, transaction authority, or wallet operation. SEE-87
- * makes MCP an optional adapter: it reaches the request core only through requests/agent-api.ts,
+ * makes MCP an optional adapter: it reaches the request core only through the public SDK API,
  * nothing but server.ts knows the endpoint exists, and MCP_ENABLED=false serves no /mcp at all.
  * These checks fail when that narrow boundary changes.
  */
@@ -20,6 +22,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const SRC = fileURLToPath(new URL("./", import.meta.url));
+const SDK_SRC = join(ROOT, "server-sdk/src");
 const STORAGE_IMPORT = /from "(node:)?(fs|fs\/promises|sqlite)"/;
 
 /** The sidecar's shipped sources: no tests, test helpers, or generated code. */
@@ -28,6 +31,14 @@ function shippedSources(): string[] {
     .filter((path) => path.endsWith(".ts") && !path.endsWith(".test.ts"))
     .filter((path) => !["testing", "gen"].includes(path.split("/")[0] ?? ""))
     .map((path) => join(SRC, path));
+}
+
+/** The SDK's shipped sources: no tests, test helpers, or generated code. */
+function sdkSources(): string[] {
+  return readdirSync(SDK_SRC, { recursive: true, encoding: "utf8" })
+    .filter((path) => path.endsWith(".ts") && !path.endsWith(".test.ts"))
+    .filter((path) => !["testing", "gen"].includes(path.split("/")[0] ?? ""))
+    .map((path) => join(SDK_SRC, path));
 }
 
 describe("stage boundary", () => {
@@ -93,7 +104,7 @@ describe("stage boundary", () => {
     // SAW-016 lets the sidecar check an Ed25519 signature the owner's wallet made. Making one is
     // a different thing, and stays impossible here: there is no key to make it with.
     const signing = /\bcreateSign\b|\bsign\s*\(/;
-    const hits = shippedSources().filter((file) =>
+    const hits = [...shippedSources(), ...sdkSources()].filter((file) =>
       signing.test(readFileSync(file, "utf8")),
     );
     assert.deepEqual(
@@ -101,45 +112,50 @@ describe("stage boundary", () => {
       [],
     );
     assert.match(
-      readFileSync(join(SRC, "requests/signature.ts"), "utf8"),
+      readFileSync(join(SDK_SRC, "requests/signature.ts"), "utf8"),
       /\bverify\s*\(/,
       "requests/signature.ts verifies signatures, and that is all it does",
     );
   });
 
-  it("imports the file system and SQLite only in src/storage", () => {
-    const sources = shippedSources();
-    const outside = sources.filter(
-      (file) =>
-        !relative(SRC, file).startsWith("storage/") &&
-        STORAGE_IMPORT.test(readFileSync(file, "utf8")),
-    );
+  it("imports the file system and SQLite only in storage packages", () => {
+    const sources = [...shippedSources(), ...sdkSources()];
+    const outside = sources.filter((file) => {
+      const path = relative(ROOT, file);
+      return (
+        !path.startsWith("sidecar/src/storage/") &&
+        !path.startsWith("server-sdk/src/storage/") &&
+        STORAGE_IMPORT.test(readFileSync(file, "utf8"))
+      );
+    });
     assert.deepEqual(
       outside.map((file) => relative(ROOT, file)),
       [],
     );
     assert.match(
-      readFileSync(join(SRC, "storage/database.ts"), "utf8"),
+      readFileSync(join(SDK_SRC, "storage/database.ts"), "utf8"),
       STORAGE_IMPORT,
       "storage/database.ts is where the database is opened",
     );
   });
 
-  it("runs SQL only in src/storage", () => {
+  it("runs SQL only in the SDK storage package", () => {
     // Statements, queries, and transactions stay in storage's modules; the rest of the sidecar
     // calls their APIs.
     const sql = /\.prepare\(|\btransaction\(|\.exec\(\s*["'`]/;
-    const outside = shippedSources().filter(
-      (file) =>
-        !relative(SRC, file).startsWith("storage/") &&
-        sql.test(readFileSync(file, "utf8")),
-    );
+    const outside = [...shippedSources(), ...sdkSources()].filter((file) => {
+      const path = relative(ROOT, file);
+      return (
+        !path.startsWith("server-sdk/src/storage/") &&
+        sql.test(readFileSync(file, "utf8"))
+      );
+    });
     assert.deepEqual(
       outside.map((file) => relative(ROOT, file)),
       [],
     );
     assert.match(
-      readFileSync(join(SRC, "storage/request-store.ts"), "utf8"),
+      readFileSync(join(SDK_SRC, "storage/request-store.ts"), "utf8"),
       sql,
       "the request store runs its SQL in storage",
     );
@@ -201,11 +217,11 @@ describe("stage boundary", () => {
     );
     assert.match(
       readFileSync(join(SRC, "server.ts"), "utf8"),
-      /FcmInvalidationDispatcher/,
-      "SAW-056 connects durable request changes to the audited sender",
+      /invalidationSender: fcmSender/,
+      "the host supplies the audited sender through the public SDK option",
     );
     const invalidation = readFileSync(
-      join(SRC, "push/invalidation.ts"),
+      join(SDK_SRC, "push/invalidation.ts"),
       "utf8",
     );
     assert.match(
@@ -261,9 +277,9 @@ describe("stage boundary", () => {
   it("keeps MCP an optional adapter that reaches the core through one boundary", () => {
     // SEE-87: MCP is one way an agent reaches this sidecar, not what the sidecar is
     // (docs/wiki/mcp-adapter.md). The adapter asks the request core through
-    // requests/agent-api.ts, so it cannot reach around idempotency, validation, the lifecycle or
-    // the pending limit — and a second adapter has one named surface rather than a new set of
-    // reach-ins.
+    // the package root's AgentRequests interface, so it cannot reach around idempotency,
+    // validation, the lifecycle or the pending limit — and a second adapter has one named surface
+    // rather than a new set of reach-ins.
     const adapters = ["mcp-endpoint.ts", "requests/mcp-tools.ts"].map((path) =>
       join(SRC, path),
     );
@@ -293,8 +309,8 @@ describe("stage boundary", () => {
     assert.deepEqual(importers, []);
 
     // The boundary itself forwards and holds nothing: no listener, no credential, no SQL, and no
-    // store of its own.
-    const api = readFileSync(join(SRC, "requests/agent-api.ts"), "utf8");
+    // store of its own. The host imports it through the package root, never its source path.
+    const api = readFileSync(join(SDK_SRC, "requests/agent-api.ts"), "utf8");
     for (const forbidden of [
       /createServer/,
       /\bSELECT\b/,
@@ -305,6 +321,13 @@ describe("stage boundary", () => {
       assert.ok(
         !forbidden.test(api),
         `agent-api.ts matches ${String(forbidden)}`,
+      );
+    }
+    for (const file of adapters) {
+      assert.doesNotMatch(
+        readFileSync(file, "utf8"),
+        /server-sdk\/src|@seeker-vault\/server-sdk\/(?!protocol["'])/,
+        `${relative(SRC, file)} bypasses the package's public root API`,
       );
     }
 

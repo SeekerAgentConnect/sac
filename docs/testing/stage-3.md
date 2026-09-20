@@ -12,11 +12,11 @@ SAW-018 closes the stage. It adds no feature: it writes the owner-facing walkthr
 
 | Area | What the tests cover | Where |
 | --- | --- | --- |
-| The contract | `WalletBinding` and `PublishWalletRequest`, set and cleared, byte for byte in both runtimes | `sidecar/src/requests/fixtures.test.ts`, `RequestProtocolFixturesTest` |
-| The sidecar's store | Publishing, clearing, replacing, and republishing the same binding; a malformed wallet or missing network; an unknown connection; cancelling the PENDING requests a new binding no longer fits, and leaving acks alone; `bound_at` stamped by the sidecar; each connection's binding kept to itself | `sidecar/src/storage/request-store.test.ts` |
+| The contract | `WalletBinding` and `PublishWalletRequest`, set and cleared, byte for byte in both runtimes | `server-sdk/src/requests/fixtures.test.ts`, `RequestProtocolFixturesTest` |
+| The sidecar's store | Publishing, clearing, replacing, and republishing the same binding; a malformed wallet or missing network; an unknown connection; cancelling the PENDING requests a new binding no longer fits, and leaving acks alone; `bound_at` stamped by the sidecar; each connection's binding kept to itself | `server-sdk/src/storage/request-store.test.ts` |
 | The sidecar's endpoints | `PublishWallet` for the caller's own connection only, and `vault_get_address` before, during, and after a wallet is connected | `sidecar/src/requests/endpoints.test.ts` |
 | Roles | `RequestService.PublishWallet` and `vault_get_address` against every credential | `sidecar/src/pairing/roles.test.ts` |
-| Migration 3 | An upgraded v1 database has no binding, and reaches the current schema version | `sidecar/src/storage/database.test.ts` |
+| Migration 3 | An upgraded v1 database has no binding, and reaches the current schema version | `server-sdk/src/storage/database.test.ts` |
 | The agent's side | `pnpm agent address` before and after the phone publishes, and the tool list | `test-agent/src/cli.test.ts` |
 | The wallet boundary | Success, no wallet installed, the owner declining, an expired authorization, an unsupported network, and a changed address or network, all through `FakeWalletAdapter` | `WalletRepositoryTest`, `WalletViewModelTest` |
 | The phone's storage | The selection read back, the authorization encrypted, another key that can't open it, damaged files, and clearing both together | `WalletStoreTest` |
@@ -27,9 +27,9 @@ These cover SAW-016:
 
 | Area | What the tests cover | Where |
 | --- | --- | --- |
-| Ed25519 verification | The RFC 8032 §7.1 known-answer vectors, a tampered signature, a tampered message, a message with a byte appended, another wallet's key, a signature made in the test and verified, and everything that isn't an address or a 64-byte signature | `sidecar/src/requests/signature.test.ts` |
-| The lifecycle | A `message_signature` accepted from PROCESSING and from UNKNOWN, and refused when it isn't the request's wallet's signature over the request's own bytes — another wallet's signature, a trailing newline, the NFC form of the same text, and 64 bytes that are no signature | `sidecar/src/requests/lifecycle.test.ts` |
-| The sidecar's store | An approval and the verified signature kept together in the outcome, and a signature the wallet didn't make never stored | `sidecar/src/storage/request-store.test.ts` |
+| Ed25519 verification | The RFC 8032 §7.1 known-answer vectors, a tampered signature, a tampered message, a message with a byte appended, another wallet's key, a signature made in the test and verified, and everything that isn't an address or a 64-byte signature | `server-sdk/src/requests/signature.test.ts` |
+| The lifecycle | A `message_signature` accepted from PROCESSING and from UNKNOWN, and refused when it isn't the request's wallet's signature over the request's own bytes — another wallet's signature, a trailing newline, the NFC form of the same text, and 64 bytes that are no signature | `server-sdk/src/requests/lifecycle.test.ts` |
+| The sidecar's store | An approval and the verified signature kept together in the outcome, and a signature the wallet didn't make never stored | `server-sdk/src/storage/request-store.test.ts` |
 | The sidecar's endpoints | `vault_sign_message` end to end: refused for another wallet, stored as PENDING, approved, a signature over other bytes refused with the request left where it was, and the COMPLETED view carrying the wallet, the signature, and the exact bytes; the tool's input taking the message as text and nothing else, with an empty or over-long one refused; `vault_get_capabilities` before and after a wallet is connected | `sidecar/src/requests/endpoints.test.ts` |
 | Roles | `vault_sign_message` and `vault_get_capabilities` against every credential | `sidecar/src/pairing/roles.test.ts` |
 | The agent's side | `pnpm agent capabilities`, and `pnpm agent sign` followed by the owner approving and the wallet signing, with `pnpm agent get` verifying the signature itself | `test-agent/src/cli.test.ts` |

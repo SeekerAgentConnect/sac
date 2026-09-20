@@ -23,8 +23,8 @@ import {
   Network,
   RequestState,
   type PreparedTransaction,
-} from "../../sidecar/src/gen/seekervault/request/v1/request_pb.js";
-import { encodeBase58 } from "../../sidecar/src/requests/action.ts";
+} from "@seeker-vault/server-sdk/protocol";
+import { encodeBase58 } from "@seeker-vault/server-sdk";
 import { transactionMessage } from "../../sidecar/src/solana/confirmation.ts";
 import {
   FakeChain,
@@ -48,7 +48,7 @@ import {
 import {
   testWallet,
   type TestWallet,
-} from "../../sidecar/src/testing/wallet.ts";
+} from "../../server-sdk/src/testing/wallet.ts";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 const MCP_TOKEN = "m".repeat(64);

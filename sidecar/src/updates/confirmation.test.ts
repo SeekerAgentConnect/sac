@@ -8,20 +8,17 @@ import { createGrpcTransport } from "@connectrpc/connect-node";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { PublicKey } from "@solana/web3.js";
 
-import {
-  Network,
-  RequestState,
-} from "../gen/seekervault/request/v1/request_pb.js";
+import { Network, RequestState } from "@seeker-vault/server-sdk/protocol";
 import {
   SubscribeRequestSchema,
   SubscribeSchema,
   UpdateService,
   type SubscribeRequest,
   type SubscribeResponse,
-} from "../gen/seekervault/update/v1/update_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import { create } from "@bufbuild/protobuf";
 import { TRANSFER_TOOL } from "../requests/mcp-tools.ts";
-import { encodeBase58 } from "../requests/action.ts";
+import { encodeBase58 } from "../../../server-sdk/src/requests/action.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
 import {
   FakeChain,
@@ -38,7 +35,7 @@ import {
   type TestPhone,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { testWallet } from "../testing/wallet.ts";
+import { testWallet } from "../../../server-sdk/src/testing/wallet.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);

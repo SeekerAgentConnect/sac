@@ -117,7 +117,8 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 | Path | Contents |
 | --- | --- |
 | `android/` | Kotlin/Compose/Material 3 app with one `app` module: the connection screens (pairing, details) and the live-test screen, with their Connect clients; see [`docs/development/android.md`](docs/development/android.md) |
-| `sidecar/` | TypeScript/Node sidecar: the MCP endpoint `/mcp`, the phone's Connect API, and `/healthz`, on loopback, around an in-memory live-command bridge; see [`docs/development/sidecar.md`](docs/development/sidecar.md) |
+| `server-sdk/` | Embeddable TypeScript Direct Server SDK: durable lifecycle, pairing, phone APIs, updates and public package exports; see [`server-sdk/README.md`](server-sdk/README.md) and [`docs/development/server-sdk.md`](docs/development/server-sdk.md) |
+| `sidecar/` | Current TypeScript/Node MCP host: `/mcp`, `/healthz`, provider adapters, operator CLI and deployment packaging, consuming only the public SDK API; see [`docs/development/sidecar.md`](docs/development/sidecar.md) |
 | `proto/` | Protobuf contract (a Buf module) and cross-runtime fixtures in `proto/fixtures`; see [`docs/protocol.md`](docs/protocol.md) |
 | `scripts/` | `generate.mjs`, which backs `pnpm generate` and `pnpm check:generated` |
 | `test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`test-agent/README.md`](test-agent/README.md). |
@@ -184,7 +185,8 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm check:broadcast` | Checks the broadcast gateway (SEE-90): `gofmt`, `go vet`, and its Go tests. Needs Go; no other check does | Works |
 | `pnpm check:publisher` | Checks the publisher templates (SEE-95, SEE-96): `gofmt`, `go vet`, and their Go tests — including the two that run the **real** gateway as a separate process, which it builds for you. The test that reads the live prediction provider is opt-in (`SEEKERVAULT_JUPITER=1`) and is not in it. Needs Go | Works |
 | `docker compose up -d --build` (in `broadcast/`) | Builds and starts the broadcast gateway on a loopback address ([the gateway's own README](broadcast/README.md)) | NOT RUN: no Docker daemon was available |
-| `pnpm build` | Compiles the sidecar to `sidecar/dist` | Works |
+| `pnpm build` | Compiles the SDK, sidecar and test agent; the SDK runtime and declarations go to `server-sdk/dist` | Works |
+| `pnpm test:server-sdk-package` | Runs real `npm pack --dry-run` and `npm pack`, audits the tarball, installs it outside the workspace, type-checks its public exports, verifies import has no side effects, and exercises pairing/lifecycle/restart/idempotency | Works; never publishes |
 | `docker compose up -d --build` (in `gateway/`) | Builds and starts the self-hosted stack on a loopback address ([self-hosting](docs/guides/self-hosting.md)) | NOT RUN: no Docker daemon was available |
 | `pnpm dev:sidecar` | Starts the sidecar with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. | Works |
 | `pnpm pair [status \| revoke]` | Shows a one-use pairing code for the phone, as a QR code and as text. `status` shows the paired phone, and `revoke` revokes it. See [`docs/development/sidecar.md`](docs/development/sidecar.md#pairing-a-phone), and for the app, [`docs/guides/pairing.md`](docs/guides/pairing.md). | Works |

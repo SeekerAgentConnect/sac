@@ -152,6 +152,25 @@ importers:
         specifier: 8.70.0
         version: 8.70.0(eslint@10.10.0)(typescript@6.0.3)
 
+  server-sdk:
+    dependencies:
+      '@bufbuild/protobuf':
+        specifier: 2.14.1
+        version: 2.14.1
+      '@connectrpc/connect':
+        specifier: 2.2.0
+        version: 2.2.0(@bufbuild/protobuf@2.14.1)
+      '@connectrpc/connect-node':
+        specifier: 2.2.0
+        version: 2.2.0(@bufbuild/protobuf@2.14.1)(@connectrpc/connect@2.2.0(@bufbuild/protobuf@2.14.1))
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.4
+        version: 24.13.4
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   sidecar:
     dependencies:
       '@bufbuild/protobuf':
@@ -166,6 +185,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.30.0(zod@4.6.1)
+      '@seeker-vault/server-sdk':
+        specifier: workspace:*
+        version: link:../server-sdk
       '@solana/web3.js':
         specifier: 1.99.0
         version: 1.99.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
@@ -194,6 +216,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.30.0(zod@4.6.1)
+      '@seeker-vault/server-sdk':
+        specifier: workspace:*
+        version: link:../server-sdk
       zod:
         specifier: 'catalog:'
         version: 4.6.1

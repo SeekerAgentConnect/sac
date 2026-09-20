@@ -3,9 +3,10 @@
 Status: SEE-129 baseline, recorded from `superset/feat/see-128` at
 `a4feaa1551d974d4f23e6e5ea2a6301a79078035` on 2026-09-19 through 2026-09-20.
 
-Implementation status: SEE-130 applies the step-2 retirement on the same branch and PR. Direct and
-gateway-feed are now the only active modes; the later extraction, moves and deployment split remain
-owned by SEE-131 through SEE-136.
+Implementation status: SEE-130 applied the step-2 retirement and SEE-131 extracted the reusable
+TypeScript Direct Server SDK on the same branch and PR. Direct and gateway-feed remain the only
+active modes. Relocating the MCP application starts with SEE-132; later gateway, demo and deployment
+work remains owned by SEE-133 through SEE-136.
 
 Authority: [SEE-128](https://linear.app/seekeragentwallet/issue/SEE-128/refactor-sac-into-a-typescript-server-sdk-self-hosted-mcp-public-feeds),
 [SEE-129](https://linear.app/seekeragentwallet/issue/SEE-129/18-establish-the-architecture-baseline-and-exact-migration-map),
@@ -13,9 +14,8 @@ and the docs-only architecture reference [PR #36](https://github.com/BrRenat/See
 SEE-128 supersedes PR #36 wherever the old three-mode architecture differs from the fixed two-mode
 target.
 
-This document is an implementation map, not an implementation. SEE-129 changes no runtime code,
-wire contract, persisted data, package publication, deployment, or Android behavior. In particular,
-it does not remove gateway-private behavior, move a module, reset a database, or publish a package.
+The baseline sections describe the tree SEE-129 recorded; the implementation records near the end
+describe subsequent child work. No child so far has published a package or reset direct data.
 
 ## Fixed destination and scope fence
 
@@ -48,7 +48,7 @@ are pnpm 12.3.4 and Node 24.21.0 (`package.json`, `.nvmrc`); TypeScript is 6.0.3
 
 | Current concern | Current implementation and entry points | Exact destination | Owner child |
 | --- | --- | --- | --- |
-| Reusable direct server | `sidecar/src/requests/`, `pairing/`, `storage/`, `updates/`, `push/`, `phone-api.ts`, and `manifest.ts` | `server-sdk/`; transport-neutral TypeScript library | SEE-131 |
+| Reusable direct server | `server-sdk/`; public `@seeker-vault/server-sdk` and `./protocol` exports, explicit lifecycle, direct persistence and phone services | `server-sdk/`; transport-neutral TypeScript library | SEE-131 (implemented) |
 | MCP application | `sidecar/src/main.ts`, `server.ts`, `mcp-endpoint.ts`, `auth.ts`, `oauth.ts`, `config.ts`, `requests/mcp-tools.ts`, `solana/`, and `sidecar/Dockerfile` | `mcp-server/`; executable npm/CLI and Docker app consuming `server-sdk/` | SEE-132 |
 | Shared public gateway | Go module `broadcast/`; `cmd/broadcast` and `cmd/broadcastctl` | `feed-gateway/`, with the public reader, authenticated publisher, SQLite, stream, and optional push only | SEE-133 |
 | Hosted gateway-private mode | `onboarding.proto`, private methods in `publish.proto`, `broadcast/internal/gateway/{invitation,device,private_publisher}.go`, `broadcast/internal/store/private.go`, publisher gateway SDK, and Android invitation/device routing | Removed from active APIs and runtime; only compatibility reservations and one-way local retirement remain | SEE-130 |
@@ -62,14 +62,14 @@ are pnpm 12.3.4 and Node 24.21.0 (`package.json`, `.nvmrc`); TypeScript is 6.0.3
 
 ### Dependencies and generated code
 
-- pnpm workspace members are currently `sidecar` and `test-agent`. The split adds
-  `server-sdk` and `mcp-server`, updates `test-agent` to consume the app or library deliberately,
-  and removes `sidecar` only after compatibility checks pass.
-- `scripts/generate.mjs` and `buf.gen.yaml` currently write protobuf-es code to
-  `sidecar/src/gen` and Android code to `android/app/src/main/generated`.
+- pnpm workspace members are currently `server-sdk`, `sidecar` and `test-agent`. The host and test
+  agent depend on the SDK through the workspace protocol. SEE-132 adds `mcp-server` and removes or
+  retires `sidecar` only after compatibility checks pass.
+- `scripts/generate.mjs` uses `buf.gen.server-sdk.yaml` for direct protobuf-es code,
+  `buf.gen.sidecar.yaml` for the host's proposal fixture code, and `buf.gen.yaml` for Android code.
   `buf.gen.go.yaml`, `buf.gen.publisher.yaml`, `buf.gen.loadtest.yaml`, and
   `buf.gen.centrifugo.yaml` write the Go and broker surfaces. Generated files are never edited by
-  hand. Later children change templates and regenerate atomically.
+  hand. Later children continue to change templates and regenerate atomically.
 - `buf.gen.publisher.yaml` currently includes `onboarding.proto` because `publisher/sdk/gateway.go`
   implements gateway-private onboarding. That input disappears with the SDK; retained publisher
   writes continue to generate from `publish.proto` after its private RPCs are removed.
@@ -88,10 +88,10 @@ are pnpm 12.3.4 and Node 24.21.0 (`package.json`, `.nvmrc`); TypeScript is 6.0.3
 1. An MCP client calls `/mcp` in `sidecar/src/mcp-endpoint.ts`. `MCP_TOKEN`, or an OAuth access token
    validated by `oauth.ts`, authenticates the agent-facing boundary. Host/origin checks and the body
    limit apply before tool dispatch.
-2. `requests/mcp-tools.ts` converts the tool call to the adapter-neutral `AgentRequests` interface
-   in `requests/agent-api.ts`. The request rules and lifecycle run in `requests/*`; `RequestStore`
-   durably writes the request and its idempotency record to the sidecar SQLite file.
-3. The paired phone calls the direct Connect services in `pairing/service.ts`,
+2. `sidecar/src/requests/mcp-tools.ts` converts the tool call to the public SDK `AgentRequests`
+   interface. The rules, lifecycle and `RequestStore` live in `server-sdk/src/` and durably write
+   the request and idempotency record to the direct SQLite file.
+3. The paired phone calls the SDK's direct Connect services in `server-sdk/src/pairing/`,
    `requests/phone-service.ts`, `updates/service.ts`, and `phone-api.ts`. The per-phone credential,
    stored only as a SHA-256 hash by the server, authenticates this boundary. An FCM message, when
    configured, is only a content-free invalidation; it is not request delivery.
@@ -420,9 +420,34 @@ unfinished proposals, clears sync/notification ownership, and leaves Activity hi
 Direct/Feed records unchanged. Re-running the cleanup is idempotent. A fresh direct pairing code is
 required; no old origin, token or identity is converted.
 
-The exact PASS/FAIL/NOT RUN matrix is in [`docs/testing/see-130.md`](../testing/see-130.md). The next
-owner is SEE-131, which may extract the reusable TypeScript SDK but must not reverse this retirement
-or reinterpret a legacy credential.
+The exact PASS/FAIL/NOT RUN matrix is in [`docs/testing/see-130.md`](../testing/see-130.md). SEE-131
+preserved that retirement and did not reinterpret a legacy credential.
+
+### SEE-131 implementation record
+
+SEE-131 moved the direct lifecycle, SQLite stores/migrations, pairing and phone services, update
+engine, manifest, signature verification, live bridge and content-free invalidation scheduler into
+the root `server-sdk/` workspace package. The schema and all durable identities are unchanged: an
+existing direct database reopens with the same server ID, paired phone, wallet binding, requests,
+idempotency keys, results and update revisions. Rollback therefore remains the existing database
+backup procedure; an older binary must never open a schema it reports as newer.
+
+The current sidecar remains in place for SEE-132. It owns MCP/OAuth, process configuration, TLS and
+health listeners, concrete Solana/Firebase adapters, Docker packaging and operator CLI presentation,
+but composes the direct engine only through `@seeker-vault/server-sdk` and its documented
+`./protocol` export. Boundary tests reject private source imports or a second lifecycle/store.
+
+The private `0.1.0` ESM package declares Node `>=24.21.0 <25`, exact runtime dependencies, two
+exports and an allowlist of built output, README and license. `pnpm test:server-sdk-package` runs
+real `npm pack --dry-run` and `npm pack`, compares and audits their file lists, installs the tarball
+outside the workspace without a link, type-checks both exports, proves import alone opens nothing,
+and exercises pairing, observation, duplicate result delivery, close and restart. No npm package,
+credential or automatic publish workflow was created. The exact evidence is in
+[`docs/testing/see-131.md`](../testing/see-131.md).
+
+The next owner is SEE-132. It may relocate and package the already-adapted MCP host, but must not
+move MCP concerns back into the SDK, change the direct schema/identity, publish the SDK, or begin
+feed-gateway/demo work.
 
 ## 10. Ordered child ownership and handoff
 

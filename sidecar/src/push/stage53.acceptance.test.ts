@@ -15,8 +15,8 @@ import {
   REQUEST_ACK_TOOL,
 } from "../requests/mcp-tools.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
-import { openDatabase } from "../storage/database.ts";
-import { PairingStore } from "../storage/pairing-store.ts";
+import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
+import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
 import {
   Code,
   ConnectError,
@@ -34,7 +34,7 @@ import {
   FCM_INVALIDATION_COLLAPSE_KEY,
   FCM_INVALIDATION_DATA,
   FCM_INVALIDATION_TTL_MS,
-} from "./invalidation.ts";
+} from "../../../server-sdk/src/push/invalidation.ts";
 
 describe("Stage 5.3 sidecar acceptance", () => {
   const started: Sidecar[] = [];

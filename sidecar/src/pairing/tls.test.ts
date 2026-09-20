@@ -19,12 +19,12 @@ import { createConnectTransport } from "@connectrpc/connect-node";
 import {
   PairingService,
   RequestService,
-} from "../gen/seekervault/request/v1/service_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import { startSidecar, type Sidecar } from "../server.ts";
-import { openDatabase } from "../storage/database.ts";
+import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
 import { ConnectError } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { PairingStore } from "../storage/pairing-store.ts";
+import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
 
 let sidecar: Sidecar;
 let proxy: Server;

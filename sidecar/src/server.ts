@@ -9,7 +9,6 @@
  * and closed the same way whether or not MCP_ENABLED is on, and with it off no endpoint is
  * constructed and /mcp is not served.
  */
-import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
   createServer,
@@ -29,45 +28,35 @@ import {
 import type { AddressInfo } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { create } from "@bufbuild/protobuf";
-import { connectNodeAdapter } from "@connectrpc/connect-node";
+import {
+  openDirectServer,
+  ProviderUnavailable,
+  UnsupportedPreparation,
+  type AgentRequests,
+  type ConfirmationProvider,
+  type LiveCommandBridge,
+  type TransferProvider,
+} from "@seeker-vault/server-sdk";
+import { LiveCommandService } from "@seeker-vault/server-sdk/protocol";
 
 import { DEFAULT_SOLANA_RPC_TIMEOUT_MS, type SidecarConfig } from "./config.ts";
-import { LiveCommandService } from "./gen/seekervault/live/v1/live_pb.js";
-import { UpdateCapabilitySchema } from "./gen/seekervault/request/v1/service_pb.js";
-import { LiveCommandBridge } from "./live/bridge.ts";
 import { createMcpEndpoint, type McpEndpoint } from "./mcp-endpoint.ts";
 import {
   PROTECTED_RESOURCE_PATHS,
   protectedResourceMetadata,
   type OAuthConfig,
 } from "./oauth.ts";
-import type { ServerManifest } from "./gen/seekervault/server/v1/manifest_pb.js";
-import { publishManifest } from "./manifest.ts";
-import { pairingRoutes } from "./pairing/service.ts";
-import { phoneRoutes } from "./phone-api.ts";
 import { createFcmSender, type FcmSender } from "./push/fcm.ts";
-import { FcmInvalidationDispatcher } from "./push/invalidation.ts";
-import { agentRequests, type AgentRequests } from "./requests/agent-api.ts";
-import { ConfirmationTracker } from "./requests/confirmation.ts";
-import { requestRoutes } from "./requests/phone-service.ts";
-import { TransactionPreparer } from "./requests/preparation.ts";
+import { isApprovedTransaction } from "./solana/confirmation.ts";
 import { SolanaRpc } from "./solana/rpc.ts";
+import { ChainUnavailable } from "./solana/rpc.ts";
 import {
-  openDatabase,
-  schemaVersion,
-  type DatabaseSync,
-} from "./storage/database.ts";
-import { PairingStore } from "./storage/pairing-store.ts";
-import { RequestStore } from "./storage/request-store.ts";
+  UnsupportedTransfer,
+  assertNetwork,
+  assertSupportedAsset,
+  buildTransfer,
+} from "./solana/transfer.ts";
 import { readTlsIdentity } from "./storage/tls.ts";
-import { UpdateStore } from "./storage/update-store.ts";
-import { observeCommittedRequestUpdates } from "./storage/update-store.ts";
-import {
-  UPDATE_PROTOCOL_VERSION,
-  UpdateCoordinator,
-  updateRoutes,
-} from "./updates/service.ts";
 
 export interface Sidecar {
   /** Base URL, for example http://127.0.0.1:8080. */
@@ -96,8 +85,6 @@ export interface SidecarOptions {
 
 // How long close() lets in-flight responses, such as a CANCELLED tool result, finish.
 const CLOSE_GRACE_MS = 1000;
-// Keep every phone request bounded without imposing the same cap on existing response contracts.
-const PHONE_API_MAX_REQUEST_BYTES = 64 * 1024;
 
 /** Starts listening on `config.host:config.port`; port 0 picks a free port. */
 export async function startSidecar(
@@ -109,7 +96,6 @@ export async function startSidecar(
     ((message: string) => {
       console.log(`[sidecar] ${message}`);
     });
-  const db = openDatabase(config.databasePath);
   let fcmSender: FcmSender | undefined;
   try {
     fcmSender =
@@ -118,7 +104,6 @@ export async function startSidecar(
         : (options.fcmSenderFactory ?? createFcmSender)(config.fcmProjectId);
     return await serve(
       config,
-      db,
       log,
       options.now,
       options.updatePollMs,
@@ -126,257 +111,242 @@ export async function startSidecar(
     );
   } catch (error) {
     await fcmSender?.close().catch(() => undefined);
-    db.close();
     throw error;
   }
 }
 
 async function serve(
   config: SidecarConfig,
-  db: DatabaseSync,
   log: (message: string) => void,
   now: (() => number) | undefined,
   updatePollMs: number | undefined,
   fcmSender: FcmSender | undefined,
 ): Promise<Sidecar> {
-  // Nothing is executed at startup: stored requests wait for the phone and the agent.
-  const requests = new RequestStore(db, {
-    defaultTtlSeconds: config.requestTtlSeconds,
-    pendingLimit: config.pendingLimit,
-    now,
-  });
-  const pairing = new PairingStore(db, { now });
-  const invalidations =
-    fcmSender === undefined
-      ? undefined
-      : new FcmInvalidationDispatcher(pairing, fcmSender, log);
-  const stopInvalidations =
-    invalidations === undefined
-      ? undefined
-      : observeCommittedRequestUpdates(db, (update) =>
-          invalidations.invalidate(update),
-        );
-  const serverId = pairing.serverId();
-  const serverInstanceId = randomUUID();
-  const updates = new UpdateStore(db, { serverInstanceId, now });
-  const updateCoordinator = new UpdateCoordinator();
-  const updatesConfigured =
-    config.updatePort !== undefined ||
-    (config.tlsCertificatePath !== undefined &&
-      config.tlsPrivateKeyPath !== undefined);
-  const phone = pairing.activeConnection();
-  log(
-    `requests are stored in ${config.databasePath} (schema version ${schemaVersion(db)}); server ${serverId}; ` +
-      (phone === undefined
-        ? "no phone is paired: run pnpm pair"
-        : `paired phone: connection ${phone.connectionId}`),
-  );
-  log(
-    fcmSender === undefined
-      ? "FCM sender is off; FCM_PROJECT_ID is not configured"
-      : "FCM sender is configured through Application Default Credentials",
-  );
-
   // Without an endpoint there is no vault_transfer and no preparation: the sidecar offers what it
   // can actually do. The URL may carry an API key, so only its presence is logged.
   const timeoutMs = config.solanaRpcTimeoutMs ?? DEFAULT_SOLANA_RPC_TIMEOUT_MS;
   const endpoint = config.solanaRpcUrl;
   const chain =
     endpoint === undefined ? undefined : new SolanaRpc(endpoint, { timeoutMs });
-  const preparer =
+  const transferProvider: TransferProvider | undefined =
     chain === undefined
       ? undefined
-      : new TransactionPreparer(requests, chain, now);
-  // The same endpoint says what became of a sent transaction (SAW-022). Nothing checks on its
-  // own: a check runs when the agent reads the request or the owner asks the phone.
-  const tracker =
+      : {
+          checkAsset: (asset) =>
+            providerCall(() => assertSupportedAsset(chain, asset)),
+          buildTransfer: (action, at) =>
+            providerCall(() => buildTransfer(chain, action, at)),
+        };
+  const confirmationProvider: ConfirmationProvider | undefined =
     chain === undefined || endpoint === undefined
       ? undefined
-      : new ConfirmationTracker(requests, chain, endpoint, { now });
-  log(
-    preparer === undefined
-      ? "no Solana RPC endpoint is configured (SOLANA_RPC_URL), so transfers aren't served and nothing can be confirmed on chain"
-      : `transfers are served against the configured Solana RPC endpoint (timeout ${timeoutMs} ms); a sent transaction is confirmed against ${tracker?.endpoint ?? ""}`,
-  );
-
-  const bridge = new LiveCommandBridge({
-    timeoutSeconds: config.liveCommandTimeoutSeconds,
+      : {
+          endpointUrl: endpoint,
+          assertNetwork: (network) =>
+            providerCall(() => assertNetwork(chain, network)),
+          signatureStatus: (signature, searchHistory) =>
+            providerCall(() => chain.signatureStatus(signature, searchHistory)),
+          confirmedTransaction: (signature) =>
+            providerCall(() => chain.confirmedTransaction(signature)),
+          blockHeight: () => providerCall(() => chain.blockHeight()),
+          matchesApprovedTransaction: isApprovedTransaction,
+        };
+  let listeningUrl: string | undefined;
+  const direct = openDirectServer({
+    databasePath: config.databasePath,
+    publicOrigin: () => config.publicUrl ?? listeningUrl ?? "",
+    requestTtlSeconds: config.requestTtlSeconds,
+    pendingLimit: config.pendingLimit,
+    pairingTokenTtlSeconds: config.pairingTokenTtlSeconds ?? 600,
+    liveCommandTimeoutSeconds: config.liveCommandTimeoutSeconds,
     log,
+    now,
+    updatePollMs,
+    transferProvider,
+    confirmationProvider,
+    invalidationSender: fcmSender,
   });
-  // The one place an adapter reaches the request core (SEE-87). It forwards and decides nothing:
-  // idempotency, validation, the lifecycle and the pending limit stay in the store.
-  const core = agentRequests(requests, { preparer, tracker });
-  const mcp = mcpAdapter(config, bridge, core, log);
-  let updateUrl: string | undefined;
-  // What this server says about itself (SEE-88). It names the URL the phone paired with and
-  // calls, which is known only once the listener is up, so it is published there and read per
-  // call. The routes close over this box rather than over the manifest itself.
-  const published: { manifest?: ServerManifest } = {};
-  const routes = (includeUpdates: boolean) =>
-    connectNodeAdapter({
-      routes: (router) => {
-        // The Stage 1 diagnostic keeps its development token; the durable API needs a paired phone.
-        phoneRoutes(bridge, config.phoneToken, log)(router);
-        requestRoutes(requests, pairing, log, preparer, tracker)(router);
-        pairingRoutes(
-          pairing,
-          log,
-          () =>
-            updateUrl === undefined
-              ? undefined
-              : create(UpdateCapabilitySchema, {
-                  protocolVersion: UPDATE_PROTOCOL_VERSION,
-                  grpcUrl: updateUrl,
-                }),
-          () => published.manifest,
-        )(router);
-        if (includeUpdates) {
-          updateRoutes(
-            pairing,
-            requests,
-            updates,
-            serverInstanceId,
-            updateCoordinator,
-            log,
-            { tracker, pollMs: updatePollMs },
-          )(router);
-        }
-      },
-      readMaxBytes: PHONE_API_MAX_REQUEST_BYTES,
-    });
-  const phoneApi = routes(updatesConfigured && config.updatePort === undefined);
+  try {
+    const phone = direct.pairing.active();
+    log(
+      `requests are stored in ${config.databasePath} (schema version ${direct.databaseSchemaVersion}); server ${direct.serverId}; ` +
+        (phone === undefined
+          ? "no phone is paired: run pnpm pair"
+          : `paired phone: connection ${phone.connectionId}`),
+    );
+    log(
+      fcmSender === undefined
+        ? "FCM sender is off; FCM_PROJECT_ID is not configured"
+        : "FCM sender is configured through Application Default Credentials",
+    );
+    log(
+      transferProvider === undefined
+        ? "no Solana RPC endpoint is configured (SOLANA_RPC_URL), so transfers aren't served and nothing can be confirmed on chain"
+        : `transfers are served against the configured Solana RPC endpoint (timeout ${timeoutMs} ms); a sent transaction is confirmed against ${direct.requests.confirmations?.endpoint ?? ""}`,
+    );
 
-  const handler = (req: MainRequest, res: MainResponse) => {
-    // HTTP/2's compatibility response implements the HTTP/1 methods used by these shared routes.
-    const response = res as ServerResponse;
-    let path: string;
-    try {
-      path = new URL(req.url ?? "/", "http://sidecar").pathname;
-    } catch {
-      // A request target that isn't a path, such as "//[", must not stop the sidecar.
-      response.writeHead(400).end();
-      return;
-    }
-    if (path === "/healthz") {
-      health(req, res);
-    } else if (PROTECTED_RESOURCE_PATHS.includes(path)) {
-      protectedResource(req, res, config.oauth);
-    } else if (path === "/mcp") {
-      // Not served rather than refused: a deployment without the adapter has no such endpoint,
-      // and saying 401 would suggest a credential would open one.
-      if (mcp === undefined) {
-        response.writeHead(404, { "Content-Type": "application/json" });
-        response.end(JSON.stringify({ error: "not_found" }));
+    const core = direct.requests;
+    const mcp = mcpAdapter(config, direct.liveCommands, core, log);
+    let updateUrl: string | undefined;
+    const updatesConfigured =
+      config.updatePort !== undefined ||
+      (config.tlsCertificatePath !== undefined &&
+        config.tlsPrivateKeyPath !== undefined);
+    const routes = (includeUpdates: boolean) =>
+      direct.phoneHandler({
+        legacyPhoneToken: config.phoneToken,
+        updateUrl: () => updateUrl,
+        includeUpdates,
+      });
+    const phoneApi = routes(
+      updatesConfigured && config.updatePort === undefined,
+    );
+
+    const handler = (req: MainRequest, res: MainResponse) => {
+      // HTTP/2's compatibility response implements the HTTP/1 methods used by these shared routes.
+      const response = res as ServerResponse;
+      let path: string;
+      try {
+        path = new URL(req.url ?? "/", "http://sidecar").pathname;
+      } catch {
+        // A request target that isn't a path, such as "//[", must not stop the sidecar.
+        response.writeHead(400).end();
         return;
       }
-      mcp
-        .handle(req as IncomingMessage, res as ServerResponse)
-        .catch((error: unknown) => {
-          log(
-            `MCP request failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-          if (response.headersSent) response.destroy();
-          else response.writeHead(500).end();
-        });
-    } else {
-      phoneApi(req, res);
-    }
-  };
-  const secure =
-    config.tlsCertificatePath !== undefined &&
-    config.tlsPrivateKeyPath !== undefined;
-  const server: HttpServer | Http2SecureServer = secure
-    ? createSecureServer(
-        {
-          ...readTlsIdentity(
-            config.tlsCertificatePath ?? "",
-            config.tlsPrivateKeyPath ?? "",
-          ),
-          allowHTTP1: true,
-        },
-        handler,
-      )
-    : createServer(handler);
-  const updateSessions = new Set<ServerHttp2Session>();
-  if (secure) trackSessions(server as Http2SecureServer, updateSessions);
-  server.listen(config.port, config.host);
-  await once(server, "listening");
+      if (path === "/healthz") {
+        health(req, res);
+      } else if (PROTECTED_RESOURCE_PATHS.includes(path)) {
+        protectedResource(req, res, config.oauth);
+      } else if (path === "/mcp") {
+        // Not served rather than refused: a deployment without the adapter has no such endpoint,
+        // and saying 401 would suggest a credential would open one.
+        if (mcp === undefined) {
+          response.writeHead(404, { "Content-Type": "application/json" });
+          response.end(JSON.stringify({ error: "not_found" }));
+          return;
+        }
+        mcp
+          .handle(req as IncomingMessage, res as ServerResponse)
+          .catch((error: unknown) => {
+            log(
+              `MCP request failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            if (response.headersSent) response.destroy();
+            else response.writeHead(500).end();
+          });
+      } else {
+        phoneApi(req, res);
+      }
+    };
+    const secure =
+      config.tlsCertificatePath !== undefined &&
+      config.tlsPrivateKeyPath !== undefined;
+    const server: HttpServer | Http2SecureServer = secure
+      ? createSecureServer(
+          {
+            ...readTlsIdentity(
+              config.tlsCertificatePath ?? "",
+              config.tlsPrivateKeyPath ?? "",
+            ),
+            allowHTTP1: true,
+          },
+          handler,
+        )
+      : createServer(handler);
+    const updateSessions = new Set<ServerHttp2Session>();
+    if (secure) trackSessions(server as Http2SecureServer, updateSessions);
+    server.listen(config.port, config.host);
+    await once(server, "listening");
 
-  const { port } = server.address() as AddressInfo;
-  const url = `${secure ? "https" : "http"}://${config.host.includes(":") ? `[${config.host}]` : config.host}:${port}`;
-  let updateServer: Http2Server | undefined;
-  if (config.updatePort !== undefined) {
-    const updateApi = routes(true);
-    updateServer = createHttp2Server(updateApi);
-    trackSessions(updateServer, updateSessions);
-    updateServer.listen(config.updatePort, config.host);
-    try {
-      await once(updateServer, "listening");
-    } catch (error) {
-      server.close();
-      throw error;
+    const { port } = server.address() as AddressInfo;
+    const url = `${secure ? "https" : "http"}://${config.host.includes(":") ? `[${config.host}]` : config.host}:${port}`;
+    listeningUrl = url;
+    let updateServer: Http2Server | undefined;
+    if (config.updatePort !== undefined) {
+      const updateApi = routes(true);
+      updateServer = createHttp2Server(updateApi);
+      trackSessions(updateServer, updateSessions);
+      updateServer.listen(config.updatePort, config.host);
+      try {
+        await once(updateServer, "listening");
+      } catch (error) {
+        server.close();
+        throw error;
+      }
+      const updateAddress = updateServer.address() as AddressInfo;
+      updateUrl = `http://${config.host.includes(":") ? `[${config.host}]` : config.host}:${updateAddress.port}`;
+    } else if (secure) {
+      updateUrl = new URL(config.publicUrl ?? url).origin;
     }
-    const updateAddress = updateServer.address() as AddressInfo;
-    updateUrl = `http://${config.host.includes(":") ? `[${config.host}]` : config.host}:${updateAddress.port}`;
-  } else if (secure) {
-    updateUrl = new URL(config.publicUrl ?? url).origin;
+    // The manifest names the URL the phone pairs with and calls, which is the public URL when the
+    // operator configured one and the listening URL otherwise. Its revision moves only when that
+    // content changes, so a restart with the same settings republishes the same revision and the
+    // phone keeps what it cached.
+    const manifest = direct.manifest;
+    log(
+      `listening on ${url}: ${mcp === undefined ? "no MCP endpoint (MCP_ENABLED=false)" : `MCP at ${url}/mcp`}, phone API at ${url}/${LiveCommandService.typeName}`,
+    );
+    log(
+      updateUrl === undefined
+        ? "production updates are not configured"
+        : `production updates are served as gRPC over HTTP/2 at ${updateUrl}`,
+    );
+    log(
+      `the server manifest names ${config.publicUrl ?? url} as a direct server, ` +
+        `protocol ${manifest.protocolVersion}, settings revision ${manifest.settingsRevision}`,
+    );
+
+    let closing: Promise<void> | undefined;
+    return {
+      url,
+      serverId: direct.serverId,
+      updateUrl,
+      close() {
+        closing ??= (async () => {
+          direct.beginShutdown();
+          const stopped = stopServer(server);
+          const updatesStopped =
+            updateServer === undefined
+              ? Promise.resolve()
+              : stopServer(updateServer);
+          closeIdle(server);
+          if (updateServer !== undefined) closeIdle(updateServer);
+          await Promise.race([
+            Promise.all([stopped, updatesStopped]),
+            delay(CLOSE_GRACE_MS, undefined, { ref: false }),
+          ]);
+          await mcp?.close();
+          closeAll(server);
+          if (updateServer !== undefined) closeAll(updateServer);
+          for (const session of updateSessions) session.destroy();
+          await Promise.all([stopped, updatesStopped]);
+          await direct.close();
+          await fcmSender?.close().catch(() => undefined);
+          log("stopped");
+        })();
+        return closing;
+      },
+    };
+  } catch (error) {
+    direct.beginShutdown();
+    await direct.close().catch(() => undefined);
+    throw error;
   }
-  // The manifest names the URL the phone pairs with and calls, which is the public URL when the
-  // operator configured one and the listening URL otherwise. Its revision moves only when that
-  // content changes, so a restart with the same settings republishes the same revision and the
-  // phone keeps what it cached.
-  const manifest = publishManifest(pairing, {
-    serverId,
-    url: config.publicUrl ?? url,
-  });
-  published.manifest = manifest;
-  log(
-    `listening on ${url}: ${mcp === undefined ? "no MCP endpoint (MCP_ENABLED=false)" : `MCP at ${url}/mcp`}, phone API at ${url}/${LiveCommandService.typeName}`,
-  );
-  log(
-    updateUrl === undefined
-      ? "production updates are not configured"
-      : `production updates are served as gRPC over HTTP/2 at ${updateUrl}`,
-  );
-  log(
-    `the server manifest names ${config.publicUrl ?? url} as a direct server, ` +
-      `protocol ${manifest.protocolVersion}, settings revision ${manifest.settingsRevision}`,
-  );
+}
 
-  let closing: Promise<void> | undefined;
-  return {
-    url,
-    serverId,
-    updateUrl,
-    close() {
-      closing ??= (async () => {
-        bridge.shutdown();
-        updateCoordinator.shutdown();
-        stopInvalidations?.();
-        const stopped = stopServer(server);
-        const updatesStopped =
-          updateServer === undefined
-            ? Promise.resolve()
-            : stopServer(updateServer);
-        closeIdle(server);
-        if (updateServer !== undefined) closeIdle(updateServer);
-        await Promise.race([
-          Promise.all([stopped, updatesStopped]),
-          delay(CLOSE_GRACE_MS, undefined, { ref: false }),
-        ]);
-        await mcp?.close();
-        closeAll(server);
-        if (updateServer !== undefined) closeAll(updateServer);
-        for (const session of updateSessions) session.destroy();
-        await Promise.all([stopped, updatesStopped]);
-        await invalidations?.close();
-        await fcmSender?.close().catch(() => undefined);
-        db.close();
-        log("stopped");
-      })();
-      return closing;
-    },
-  };
+/** Translates concrete provider failures into the SDK's stable optional-integration boundary. */
+async function providerCall<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof ChainUnavailable) {
+      throw new ProviderUnavailable(error.message, { cause: error });
+    }
+    if (error instanceof UnsupportedTransfer) {
+      throw new UnsupportedPreparation(error.message);
+    }
+    throw error;
+  }
 }
 
 /**

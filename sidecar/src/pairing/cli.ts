@@ -9,11 +9,9 @@
  * pairing code is the one place a token is shown, because showing it is how pairing works.
  */
 import { renderUnicodeCompact } from "uqr";
+import { openDirectServer, type PairedPhone } from "@seeker-vault/server-sdk";
 
 import { ConfigError, loadSidecarConfig } from "../config.ts";
-import { openDatabase } from "../storage/database.ts";
-import { PairingStore, type PairedPhone } from "../storage/pairing-store.ts";
-import { pairingUri } from "./uri.ts";
 
 const USAGE = `Usage: pnpm pair [status | revoke]
 
@@ -21,7 +19,7 @@ const USAGE = `Usage: pnpm pair [status | revoke]
   pnpm pair status    Shows the paired phone.
   pnpm pair revoke    Revokes the paired phone's connection, and cancels its pending requests.`;
 
-function main(args: readonly string[]): number {
+async function main(args: readonly string[]): Promise<number> {
   const [command = "", ...rest] = args;
   if (rest.length > 0 || !["", "status", "revoke"].includes(command)) {
     console.error(USAGE);
@@ -35,10 +33,17 @@ function main(args: readonly string[]): number {
     console.error(error.message);
     return 2;
   }
-  const db = openDatabase(config.databasePath);
+  const direct = openDirectServer({
+    databasePath: config.databasePath,
+    publicOrigin: config.publicUrl,
+    requestTtlSeconds: config.requestTtlSeconds,
+    pendingLimit: config.pendingLimit,
+    pairingTokenTtlSeconds: config.pairingTokenTtlSeconds,
+    liveCommandTimeoutSeconds: config.liveCommandTimeoutSeconds,
+    log: () => undefined,
+  });
   try {
-    const pairing = new PairingStore(db);
-    const phone = pairing.activeConnection();
+    const phone = direct.pairing.active();
     if (command === "status") {
       console.log(
         phone === undefined
@@ -52,18 +57,15 @@ function main(args: readonly string[]): number {
         console.log("No phone is paired.");
         return 0;
       }
-      const { cancelled } = pairing.revoke(phone.connectionId);
+      const { cancelled } = direct.pairing.revoke(phone.connectionId);
       console.log(
         `Revoked ${describe(phone)}. Its credential no longer works, and ${cancelled} pending requests were cancelled.`,
       );
       return 0;
     }
 
-    const issued = pairing.issue(
-      config.publicUrl,
-      config.pairingTokenTtlSeconds,
-    );
-    const uri = pairingUri(issued);
+    const issued = direct.pairing.issue();
+    const uri = issued.uri;
     const minutes = Math.round(config.pairingTokenTtlSeconds / 60);
     const lines = [
       `Scan this with Seeker Agent Connect on the phone to pair it with ${issued.serverUrl}.`,
@@ -92,7 +94,7 @@ function main(args: readonly string[]): number {
     console.log(lines.join("\n"));
     return 0;
   } finally {
-    db.close();
+    await direct.close();
   }
 }
 
@@ -115,4 +117,4 @@ function printable(text: string): string {
   );
 }
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));

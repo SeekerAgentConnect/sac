@@ -13,10 +13,7 @@ import { after, before, beforeEach, describe, it } from "node:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { PublicKey } from "@solana/web3.js";
 
-import {
-  Network,
-  RequestState,
-} from "../gen/seekervault/request/v1/request_pb.js";
+import { Network, RequestState } from "@seeker-vault/server-sdk/protocol";
 import { GENESIS_HASHES } from "../solana/network.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
 import {
@@ -36,8 +33,8 @@ import {
   type TestPhone,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { testWallet } from "../testing/wallet.ts";
-import { encodeBase58 } from "./action.ts";
+import { testWallet } from "../../../server-sdk/src/testing/wallet.ts";
+import { encodeBase58 } from "../../../server-sdk/src/requests/action.ts";
 import {
   GET_REQUEST_TOOL,
   TRANSFER_TOOL,

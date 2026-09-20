@@ -27,12 +27,12 @@ import {
   ActionSchema,
   Network,
   RequestState,
-} from "../gen/seekervault/request/v1/request_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import {
   ListPendingResponseSchema,
   PairingService,
   RequestService,
-} from "../gen/seekervault/request/v1/service_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import {
   ClientHeartbeatSchema,
   ResumeDisposition,
@@ -44,14 +44,14 @@ import {
   UpdateService,
   type SubscribeRequest,
   type SubscribeResponse,
-} from "../gen/seekervault/update/v1/update_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import { startSidecar, type Sidecar } from "../server.ts";
-import { openDatabase } from "../storage/database.ts";
-import { PairingStore } from "../storage/pairing-store.ts";
-import { RequestStore } from "../storage/request-store.ts";
-import { SNAPSHOT_TTL_MS } from "../storage/update-store.ts";
+import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
+import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
+import { RequestStore } from "../../../server-sdk/src/storage/request-store.ts";
+import { SNAPSHOT_TTL_MS } from "../../../server-sdk/src/storage/update-store.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { UPDATE_MAX_MESSAGE_BYTES } from "./service.ts";
+import { UPDATE_MAX_MESSAGE_BYTES } from "../../../server-sdk/src/updates/service.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);

@@ -21,7 +21,10 @@ import { after, before, describe, it } from "node:test";
 
 import { GET_REQUEST_TOOL, REQUEST_ACK_TOOL } from "./requests/mcp-tools.ts";
 import { startSidecar, type Sidecar } from "./server.ts";
-import { openDatabase, schemaVersion } from "./storage/database.ts";
+import {
+  openDatabase,
+  schemaVersion,
+} from "../../server-sdk/src/storage/database.ts";
 import {
   callTool,
   connectAgent,

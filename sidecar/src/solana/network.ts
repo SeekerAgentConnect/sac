@@ -3,7 +3,7 @@
  * unique, so comparing it with the request's network catches the mistake that matters most here:
  * a mainnet request prepared against devnet, or a devnet test prepared against mainnet funds.
  */
-import { Network } from "../gen/seekervault/request/v1/request_pb.js";
+import { Network } from "@seeker-vault/server-sdk/protocol";
 
 /** Each network's genesis hash, as `solana genesis-hash` reports it. */
 export const GENESIS_HASHES: ReadonlyMap<Network, string> = new Map([

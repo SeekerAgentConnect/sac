@@ -156,8 +156,8 @@ threw that away and started association afresh.
 | The two files an older build wrote are migrated into one; half of that pair is refused | `WalletStoreTest.readsWhatTheOlderBuildWroteAsTwoFilesAndStoresItAsOne`, `…refusesHalfOfWhatTheOlderBuildWrote` |
 | A stored record that isn't the selection in hand opens no wallet | `WalletRepositoryTest.asksTheWalletNothingWhenTheStoredRecordIsNotTheSelectionInHand` |
 | Every outcome across a restart of the app's storage, including the unresolved one | `ResultStoreTest` |
-| Repeated `SubmitResult`, for an approval and for a signature, before and after a sidecar restart | `sidecar/src/storage/request-store.test.ts` |
-| A result naming another connection's request is refused | `sidecar/src/storage/request-store.test.ts`, "keeps the phone to its own connection's requests" |
+| Repeated `SubmitResult`, for an approval and for a signature, before and after a sidecar restart | `server-sdk/src/storage/request-store.test.ts` |
+| A result naming another connection's request is refused | `server-sdk/src/storage/request-store.test.ts`, "keeps the phone to its own connection's requests" |
 | **Transfers (SAW-021)** | |
 | The approval names the reviewed version and hash, the wallet gets exactly those bytes, and the result is a transaction submission | `InboxViewModelTest.approvingHandsTheWalletExactlyTheBytesThatWereReviewed` |
 | A sidecar that rebuilt the transaction after the approval doesn't change what the wallet signs | `InboxViewModelTest.theWalletGetsTheApprovedBytesEvenWhenTheServerHasBuiltANewerVersionSince` |

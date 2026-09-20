@@ -7,12 +7,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { Message } from "firebase-admin/messaging";
 
-import { AcknowledgementResult } from "./gen/seekervault/live/v1/live_pb.js";
-import { Network } from "./gen/seekervault/request/v1/request_pb.js";
+import { AcknowledgementResult } from "@seeker-vault/server-sdk/protocol";
+import { Network } from "@seeker-vault/server-sdk/protocol";
 import { DISPLAY_COMMAND_TOOL } from "./mcp-endpoint.ts";
 import { REQUEST_ACK_TOOL } from "./requests/mcp-tools.ts";
 import { FcmSender } from "./push/fcm.ts";
-import { FCM_INVALIDATION_DATA } from "./push/invalidation.ts";
+import { FCM_INVALIDATION_DATA } from "../../server-sdk/src/push/invalidation.ts";
 import { startSidecar, type Sidecar } from "./server.ts";
 import {
   callTool,

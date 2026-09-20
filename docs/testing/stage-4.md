@@ -11,7 +11,7 @@ SAW-017's lifecycle questions — rotation, backgrounding, a killed process, a r
 - The sidecar has no way to broadcast: only `sidecar/src/solana/` reaches a chain, only read-only JSON-RPC methods exist there, and `sidecar/src/stage-boundary.test.ts` names every one of them.
 - The app has no chain endpoint at all, and `StageBoundaryTest` proves it: the only hosts it opens a connection to are the sidecars it is paired with, and the block explorer is a link handed to the browser, never a fetch.
 - The chain the tests read is `sidecar/src/testing/chain.ts`. `FakeChain` answers the builder directly, and `startFakeRpc` serves the same state as ordinary Solana JSON-RPC on loopback, so a sidecar process can be pointed at it without a network.
-- The wallet is a throwaway Ed25519 key pair in the test process (`sidecar/src/testing/wallet.ts`) and, on the phone, `FakeWalletAdapter`. They make real signatures; they are not a wallet app.
+- The wallet is a throwaway Ed25519 key pair in the test process (`server-sdk/src/testing/wallet.ts`) and, on the phone, `FakeWalletAdapter`. They make real signatures; they are not a wallet app.
 
 The one check that talks to a real network is opt-in, reads, and is described at the end of this page.
 
@@ -234,7 +234,7 @@ The request was created from **Hermes**, calling `vault_transfer`; the owner app
 
 **That capture is a reading taken 29 seconds after the approval, and it is kept exactly as it came
 back.** Devnet had already *finalized* the signature while the request still read `SUBMITTED`: the
-reading fell inside the window [`confirmation.ts`](../../sidecar/src/requests/confirmation.ts)
+reading fell inside the window [`confirmation.ts`](../../server-sdk/src/requests/confirmation.ts)
 describes, where the endpoint has a status for a signature but has not yet served the transaction
 itself, so the server had nothing to compare against the bytes the owner approved and left the
 request where it was. **No later `CONFIRMED` reading was captured**, and this record does not claim

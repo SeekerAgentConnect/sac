@@ -24,8 +24,8 @@ import {
   type FakeRpc,
 } from "../../sidecar/src/testing/chain.ts";
 import { temporaryDatabasePath } from "../../sidecar/src/testing/process.ts";
-import { testWallet } from "../../sidecar/src/testing/wallet.ts";
-import { Network } from "../../sidecar/src/gen/seekervault/request/v1/request_pb.js";
+import { testWallet } from "../../server-sdk/src/testing/wallet.ts";
+import { Network } from "@seeker-vault/server-sdk/protocol";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 const MCP_TOKEN = "m".repeat(64);

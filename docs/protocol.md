@@ -49,7 +49,7 @@ The contract is `LiveCommandService` in [`proto/seekervault/live/v1/live.proto`]
   - For any other ID, the result is `UNKNOWN_COMMAND`.
 - **Nothing is durable.** There is no backlog, replay, persistence, or pending-request API. A sidecar restart loses the in-flight command, and a reconnecting phone never receives a command sent before it connected.
 
-The rules are implemented without I/O in [`sidecar/src/live/command.ts`](../sidecar/src/live/command.ts) as `invalidTextReason`, `isExpired`, and `LiveCommandSlot`. [`sidecar/src/live/bridge.ts`](../sidecar/src/live/bridge.ts) adds the in-memory waiter around them: deadline timers, the watcher, and cancellation. On Android, the deadline check is `LiveCommand.isExpiredAt` in [`LiveCommandDeadline.kt`](../android/app/src/main/java/io/github/brrenat/seekervault/live/LiveCommandDeadline.kt).
+The rules are implemented without I/O in [`server-sdk/src/live/command.ts`](../server-sdk/src/live/command.ts) as `invalidTextReason`, `isExpired`, and `LiveCommandSlot`. [`server-sdk/src/live/bridge.ts`](../server-sdk/src/live/bridge.ts) adds the in-memory waiter around them: deadline timers, the watcher, and cancellation. On Android, the deadline check is `LiveCommand.isExpiredAt` in [`LiveCommandDeadline.kt`](../android/app/src/main/java/io/github/brrenat/seekervault/live/LiveCommandDeadline.kt).
 
 ## Errors
 
@@ -139,9 +139,9 @@ The queued acknowledgement (`ack`) takes a short path: `ListPending`, then `Subm
 
 | Module | Rules |
 | --- | --- |
-| [`action.ts`](../sidecar/src/requests/action.ts) | `invalidActionReason` (every kind's required fields and formats), `parseBaseUnits`, `isAddress`, `messageBytes`, `invalidNoteReason` |
-| [`identity.ts`](../sidecar/src/requests/identity.ts) | `checkRef` (connection scope), `invalidIdempotencyKeyReason`, `actionFingerprint`, `resolveIdempotency` |
-| [`lifecycle.ts`](../sidecar/src/requests/lifecycle.ts) | `TRANSITIONS`, `canTransition`, `isTerminal`, `successState`, `resultTarget`, `decideResult` (results and approval binding), `isOverdue` |
+| [`action.ts`](../server-sdk/src/requests/action.ts) | `invalidActionReason` (every kind's required fields and formats), `parseBaseUnits`, `isAddress`, `messageBytes`, `invalidNoteReason` |
+| [`identity.ts`](../server-sdk/src/requests/identity.ts) | `checkRef` (connection scope), `invalidIdempotencyKeyReason`, `actionFingerprint`, `resolveIdempotency` |
+| [`lifecycle.ts`](../server-sdk/src/requests/lifecycle.ts) | `TRANSITIONS`, `canTransition`, `isTerminal`, `successState`, `resultTarget`, `decideResult` (results and approval binding), `isOverdue` |
 
 ### Connections and request identity
 
@@ -497,7 +497,7 @@ seekervault://pair?v=1&url=https%3A%2F%2Fmac.tailnet.ts.net&server=9fda5035-f3b4
 | `server` | The sidecar's lasting ID | A lowercase UUID. It survives restarts and pairings. |
 | `token` | The one-use pairing token | 43 base64url characters (32 random bytes) |
 
-The phone reads the code by the same rules as `parsePairingUri` in [`sidecar/src/pairing/uri.ts`](../sidecar/src/pairing/uri.ts), and refuses a code that breaks one.
+The phone reads the code by the same rules as `parsePairingUri` in [`server-sdk/src/pairing/uri.ts`](../server-sdk/src/pairing/uri.ts), and refuses a code that breaks one.
 
 **`Pair`** takes the pairing token as its bearer credential:
 
@@ -682,7 +682,7 @@ The durable contract leaves the live diagnostic as it was.
 | **Errors** | `LiveCommandError` | `RequestError` |
 | **Credentials** | `MCP_TOKEN` and `PHONE_TOKEN` from `.env` | `MCP_TOKEN`, and the phone credential from [pairing](#pairing) (SAW-011) |
 
-- **Neither package imports the other,** and the live service keeps its two RPCs. `sidecar/src/requests/live-compat.test.ts` checks both.
+- **Neither package imports the other,** and the live service keeps its two RPCs. `server-sdk/src/requests/live-compat.test.ts` checks both.
 - **`buf breaking` against the previous commit passes,** so no live message or field changed.
 - **`vault_display_command` and its tests are unchanged.**
 - **The durable rules reuse two live rules without changing them:** an `ack`'s text follows `invalidTextReason`, and `expires_at` has `isExpired`'s boundary.
@@ -1039,12 +1039,18 @@ migration behavior.
 
 | Runtime | Output | Generators | Runtime libraries |
 | --- | --- | --- | --- |
-| TypeScript (sidecar) | `sidecar/src/gen`, as `.js` plus `.d.ts` | `protoc-gen-es` 2.14.1 | `@bufbuild/protobuf` 2.14.1 |
+| TypeScript (direct SDK) | `server-sdk/src/gen`, as `.js` plus `.d.ts` | `protoc-gen-es` 2.14.1 through `buf.gen.server-sdk.yaml` | `@bufbuild/protobuf` 2.14.1 |
+| TypeScript (MCP host fixture) | `sidecar/src/gen`, proposal only | `protoc-gen-es` 2.14.1 through `buf.gen.sidecar.yaml` | `@bufbuild/protobuf` 2.14.1 |
 | Go (broadcast gateway) | `broadcast/internal/gen` | `protocolbuffers/go` 1.36.12 and `connectrpc/go` 1.21.0, from `buf.gen.go.yaml` | `google.golang.org/protobuf` 1.36.12, `connectrpc.com/connect` 1.21.0 |
 | Kotlin (Android) | `android/app/src/main/generated/java` and `android/app/src/main/generated/kotlin` | `protocolbuffers/java` and `protocolbuffers/kotlin` v36.1 (lite), `connectrpc/kotlin` v0.9.0 | `protobuf-kotlin-lite` 4.36.1, `connect-kotlin` 0.9.0 |
 
-- **`pnpm generate`** regenerates the code and the binary fixtures from both templates. Commit the result, and never edit generated files by hand.
-- **Two templates, because the two sides speak different parts of the protocol.** `buf.gen.yaml` writes the phone's Kotlin and the sidecar's TypeScript, and excludes `seekervault/gateway/v1/publish.proto`: neither of them is a publisher, so no publisher client exists for either. `buf.gen.go.yaml` writes the gateway's Go for the three packages it speaks — the gateway has never heard of a durable request, a live command or a production update.
+- **`pnpm generate`** regenerates code and binary fixtures from every configured template. Commit
+  the result, and never edit generated files by hand.
+- **Each runtime receives only the contracts it speaks.** `buf.gen.yaml` writes Android Kotlin;
+  `buf.gen.server-sdk.yaml` writes the direct live/request/server/update TypeScript;
+  `buf.gen.sidecar.yaml` writes only the proposal fixture TypeScript retained by the current host;
+  and `buf.gen.go.yaml` writes the gateway's Go. The phone and direct server exclude the publisher
+  API, and the gateway has never heard of a durable request, live command or production update.
 - **`pnpm check:generated`** generates into a temporary directory and fails if any committed file differs. CI runs it, and running generation twice produces no diff.
 - **`pnpm check`** includes `buf format` and `buf lint` with the STANDARD rules.
 - **Buf managed mode** sets the Java and Kotlin package to `io.github.brrenat.<proto package>`: `io.github.brrenat.seekervault.live.v1`, `io.github.brrenat.seekervault.request.v1`, and `io.github.brrenat.seekervault.update.v1`.
@@ -1061,8 +1067,8 @@ Each fixture case is a Protobuf JSON file at `proto/fixtures/<package path>/<Mes
 
 | Package | Sidecar test | Android test | Cases |
 | --- | --- | --- | --- |
-| `seekervault/live/v1` | `sidecar/src/live/fixtures.test.ts` | `LiveProtocolFixturesTest` | ASCII text; Unicode text (a combining mark, an emoji with a skin-tone modifier, a ZWJ sequence, CJK, Arabic, and a newline); a 4096-byte text; nanosecond and maximum deadlines; an empty message; the `ready` event and a command event; acknowledgements |
-| `seekervault/request/v1` | `sidecar/src/requests/fixtures.test.ts` | `RequestProtocolFixturesTest` | A pending ack, and the same request ID under another connection; a transfer of the u64 maximum; a confirmed token transfer with its approval and signature; message text with CRLF, a decomposed and a precomposed accent, and a ZWJ emoji; message bytes with 0x00 and 0xFF; a swap above 2^53; an empty request; a prepared transaction whose hash is the SHA-256 of its bytes, and the uint32 and uint64 maximums; an approval, an empty rejection, and a transaction submission; a page of pending requests; an error detail; a wallet binding, and publishing a wallet and clearing one |
+| `seekervault/live/v1` | `server-sdk/src/live/fixtures.test.ts` | `LiveProtocolFixturesTest` | ASCII text; Unicode text (a combining mark, an emoji with a skin-tone modifier, a ZWJ sequence, CJK, Arabic, and a newline); a 4096-byte text; nanosecond and maximum deadlines; an empty message; the `ready` event and a command event; acknowledgements |
+| `seekervault/request/v1` | `server-sdk/src/requests/fixtures.test.ts` | `RequestProtocolFixturesTest` | A pending ack, and the same request ID under another connection; a transfer of the u64 maximum; a confirmed token transfer with its approval and signature; message text with CRLF, a decomposed and a precomposed accent, and a ZWJ emoji; message bytes with 0x00 and 0xFF; a swap above 2^53; an empty request; a prepared transaction whose hash is the SHA-256 of its bytes, and the uint32 and uint64 maximums; an approval, an empty rejection, and a transaction submission; a page of pending requests; an error detail; a wallet binding, and publishing a wallet and clearing one |
 
 To add a case, add the JSON file, run `pnpm generate`, and assert the case in both of its package's tests. The request tests fail when a fixture in their package isn't listed.
 

@@ -20,15 +20,18 @@ import {
   ConnectionMode,
   ServerEnvironment,
   ServerManifestSchema,
-} from "./gen/seekervault/server/v1/manifest_pb.js";
+} from "@seeker-vault/server-sdk/protocol";
 import {
   manifestFingerprint,
   publishManifest,
   SERVER_PROTOCOL_VERSION,
   serverManifest,
-} from "./manifest.ts";
-import { IN_MEMORY, openDatabase } from "./storage/database.ts";
-import { PairingStore } from "./storage/pairing-store.ts";
+} from "../../server-sdk/src/manifest.ts";
+import {
+  IN_MEMORY,
+  openDatabase,
+} from "../../server-sdk/src/storage/database.ts";
+import { PairingStore } from "../../server-sdk/src/storage/pairing-store.ts";
 import { temporaryDatabasePath } from "./testing/process.ts";
 
 // `pnpm generate` writes each .binpb from the .json beside it with `buf convert`. The Android unit

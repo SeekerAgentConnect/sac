@@ -12,10 +12,10 @@ import {
   RequestError,
   RequestErrorDetailSchema,
   RequestState,
-} from "../gen/seekervault/request/v1/request_pb.js";
-import { PairingStore } from "../storage/pairing-store.ts";
+} from "@seeker-vault/server-sdk/protocol";
+import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
-import { openDatabase } from "../storage/database.ts";
+import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
 import {
   Code,
   ConnectError,
@@ -29,9 +29,9 @@ import {
   type TestPhone,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { testWallet } from "../testing/wallet.ts";
-import { decodeBase58 } from "./action.ts";
-import { verifySignature } from "./signature.ts";
+import { testWallet } from "../../../server-sdk/src/testing/wallet.ts";
+import { decodeBase58 } from "../../../server-sdk/src/requests/action.ts";
+import { verifySignature } from "../../../server-sdk/src/requests/signature.ts";
 import {
   CANCEL_REQUEST_TOOL,
   GET_ADDRESS_TOOL,

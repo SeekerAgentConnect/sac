@@ -22,7 +22,7 @@ The two coexist. A phone can run a `direct` connection to a private sidecar and 
 
 **A developer writing a publisher template does not need Node, MCP, or this sidecar.** That is what making MCP optional is for: so "you need a server" stops meaning "you need to speak MCP".
 
-## The boundary inside the sidecar
+## The boundary between the host and SDK
 
 ```mermaid
 flowchart TB
@@ -31,27 +31,34 @@ flowchart TB
         Endpoint["mcp-endpoint.ts<br>Streamable HTTP, token / OAuth"]
         Tools["requests/mcp-tools.ts<br>vault_* tools"]
     end
-    Boundary["requests/agent-api.ts<br>AgentRequests"]
-    subgraph core["The core — always"]
+    Boundary["@seeker-vault/server-sdk<br>AgentRequests"]
+    subgraph core["server-sdk/ — reusable core"]
         Store["storage/request-store.ts<br>identity, idempotency, lifecycle"]
         Phone["phone-api.ts, requests/phone-service.ts<br>pairing/, updates/, push/"]
-        Chain["requests/preparation.ts<br>requests/confirmation.ts"]
+        Chain["provider interfaces<br>preparation and confirmation"]
     end
     Agent --> Endpoint --> Tools --> Boundary --> Store
     Boundary --> Chain
     Phone --> Store
 ```
 
-`AgentRequests` names the whole of what an adapter may ask for, and it is a short list on purpose: store a request, read one, withdraw one, answer a retry, read the owner's wallet binding, and — only when `SOLANA_RPC_URL` is configured — check an asset before storing a transfer and read what became of a submitted transaction.
+`AgentRequests` is exported from the package root and names the whole of what an adapter may ask
+for. It is a short list on purpose: store, read, cancel and observe a request; answer an idempotent
+retry; read the owner's wallet binding; and, only when the host supplied providers, check an asset
+or observe what became of a submitted transaction.
 
 What it deliberately does **not** do:
 
 - **It decides nothing.** Idempotency, parameter validation, the lifecycle's allowed transitions, the pending limit, and result handling stay in `RequestStore`, `requests/lifecycle.ts` and `requests/action.ts`. An adapter cannot reach around them or relax them, and the `RequestFailure` it sees is the one the core raised — which is what keeps the agent-facing error codes the same whichever adapter is asking.
 - **It authenticates nobody.** A credential belongs to the adapter that accepts it. `/mcp`'s token and OAuth checks live in `mcp-endpoint.ts` and nowhere else, and the phone's credential is still the only thing that reaches `RequestService`.
-- **It holds nothing.** No connection, no credential, no cache, no second store; one is constructed per process over the store the sidecar already opened.
+- **It exposes no store.** The explicitly opened SDK instance owns one database and one request
+  engine; the adapter receives only the public facade, with no raw connection, credential or cache.
 - **It is not a way in.** Exposing a new adapter means writing one, compiling it in, and giving it its own authentication. Nothing here loads code or accepts an adapter at runtime.
 
-`sidecar/src/stage-boundary.test.ts` holds this: the adapter files may not name `RequestStore`, `TransactionPreparer` or `ConfirmationTracker`; nothing but `server.ts` may import the endpoint; the boundary itself may not open a listener, run SQL, or read an `Authorization` header; and `createMcpEndpoint` is called in exactly one place.
+`sidecar/src/stage-boundary.test.ts` and `sidecar/src/sdk-boundary.test.ts` hold this: adapter files
+may not name `RequestStore`, `TransactionPreparer` or `ConfirmationTracker`; production host files
+may import only `@seeker-vault/server-sdk` or its documented `./protocol` export; nothing but
+`server.ts` may compose the endpoint; and no second store/lifecycle implementation exists there.
 
 ## Turning it off
 
@@ -67,7 +74,9 @@ MCP_ENABLED=false pnpm dev:sidecar
 
 What is unchanged, and covered by tests in both modes: pairing and its one-use code, the phone credential and what it may reach, the request store and every request's identity, the lifecycle and its transitions, `PrepareRequest`/`SubmitResult`, production updates, FCM registration and invalidations, the Stage 1 diagnostic and its own token, `/healthz`, startup, and shutdown.
 
-**In this stage nothing else creates requests**, so a sidecar with the adapter off serves the phone an empty inbox. That is the honest state of it: the core is now independent of MCP, and a second request source is a later child's work (SEE-88 onward).
+With this particular host, turning the adapter off leaves no configured request producer, so its
+phone sees an empty inbox. An independent TypeScript backend can instead embed the same SDK and call
+the public request API directly; that needs no MCP endpoint.
 
 ## What this is not
 

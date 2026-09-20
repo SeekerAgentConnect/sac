@@ -19,15 +19,19 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
+import {
+  LiveCommandFailure,
+  MAX_COMMAND_TEXT_BYTES,
+  type AgentRequests,
+  type LiveCommandBridge,
+} from "@seeker-vault/server-sdk";
+
 import { bearerToken, bearerTokenMatches } from "./auth.ts";
-import { LiveCommandFailure, type LiveCommandBridge } from "./live/bridge.ts";
-import { MAX_COMMAND_TEXT_BYTES } from "./live/command.ts";
 import {
   challenge,
   createAccessTokenVerifier,
   type OAuthConfig,
 } from "./oauth.ts";
-import type { AgentRequests } from "./requests/agent-api.ts";
 import { registerRequestTools } from "./requests/mcp-tools.ts";
 
 export const DISPLAY_COMMAND_TOOL = "vault_display_command";

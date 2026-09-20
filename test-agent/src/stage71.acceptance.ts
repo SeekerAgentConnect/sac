@@ -30,10 +30,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
-import {
-  Network,
-  RequestState,
-} from "../../sidecar/src/gen/seekervault/request/v1/request_pb.js";
+import { Network, RequestState } from "@seeker-vault/server-sdk/protocol";
 import {
   callTool,
   connectAgent,
@@ -51,7 +48,7 @@ import {
 import {
   testWallet,
   type TestWallet,
-} from "../../sidecar/src/testing/wallet.ts";
+} from "../../server-sdk/src/testing/wallet.ts";
 import {
   BROKER_API_KEY,
   BROKER_TOKEN_KEY,
