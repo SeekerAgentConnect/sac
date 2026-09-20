@@ -20,8 +20,10 @@ later branch fixes to reconcile at the start of this run.
       assign conflict-free combined ports and ingress ownership and keep all standalone guides linked.
 - [x] 5. Run focused/runtime/package/build checks; update SEE-135/SEE-136 evidence and all touched docs,
       CODEBASE/changelog, plan review, and PR #38 metadata without weakening CI or publishing artifacts.
-- [ ] Re-read SEE-137/SEE-128 before handoff, commit and push the existing branch, move SEE-137 to In Review,
-      comment with evidence if Linear access works, post the required finished webhook, and stop without merge.
+- [x] Re-read SEE-137/SEE-128 before handoff, commit and push the existing branch, update PR #38, move
+      SEE-137 to In Review, and preserve SEE-128 as open. Direct Linear comments remain unavailable
+      because the configured plugin returns `401 invalid_token`; the runner fallback supports status
+      and PR linkage but exposes no comment command.
 
 ## Acceptance criteria (Linear, verbatim)
 
@@ -31,7 +33,7 @@ later branch fixes to reconcile at the start of this run.
 - [x] One clearly discoverable, numbered guide covers MCP-only, feeds-only and the combined setup, with working commands, expected results and no port/address ambiguity.
 - [x] Each service remains independently deployable and documented; existing identities/data and the two-mode privacy/approval boundaries are preserved.
 - [x] Focused fixes and available runtime/package checks have reproducible evidence; all remaining unavailable live checks have concrete follow-up and correct status.
-- [ ] PR metadata is accurate, and exhausted CI limits are recorded as infrastructure context rather than a product defect.
+- [x] PR metadata is accurate, and exhausted CI limits are recorded as infrastructure context rather than a product defect.
 
 ## Verification ledger
 
@@ -53,3 +55,8 @@ resolution and the final build pass. `docs/testing/see-137.md` records exact res
 public deployment, broker/client/device checks and Android interoperability remain **NOT RUN** with
 concrete environment blockers. GitHub Actions' exhausted account usage is recorded only as an
 infrastructure limitation. No workflow was weakened and no package or image was published.
+
+Implementation commit `e70e23e9ac74c93fa171f990401ad9be519fdc01` is pushed on the existing
+branch. PR #38's title/body now describe the complete migration and evidence. The Superset runner
+fallback moved SEE-137 to In Review and linked PR #38; SEE-128 remains In Progress. The required
+finished webhook is the final out-of-repository operation after the clean final head is pushed.
