@@ -406,6 +406,11 @@ func lower(value, fallback string) string {
 // retrying client actually sends — while a call that asks for different terms under the same key is
 // a conflict. The reconciler uses it too, for the same reason: it re-derives a market's statement
 // every cycle, and the key it would use is the same key (demo-prediction/internal/discovery).
+//
+// A non-empty title is part of identity for new statements. An empty title is omitted entirely so
+// a retry of a pre-title create still matches the digest that was stored (expiry and note, then
+// the terms). The comparison is always against that stored digest, never against a signal that
+// may have been edited since it was created (SEE-143).
 func Statement(signal Signal) string {
 	keys := make([]string, 0, len(signal.Terms))
 	for key := range signal.Terms {
@@ -413,8 +418,12 @@ func Statement(signal Signal) string {
 	}
 	sort.Strings(keys)
 	digest := sha256.New()
-	fmt.Fprintf(digest, "%s\n%s\n%s\n", signal.ExpiresAt.UTC().Format(time.RFC3339), signal.Title,
-		signal.Note)
+	if signal.Title != "" {
+		fmt.Fprintf(digest, "%s\n%s\n%s\n", signal.ExpiresAt.UTC().Format(time.RFC3339),
+			signal.Title, signal.Note)
+	} else {
+		fmt.Fprintf(digest, "%s\n%s\n", signal.ExpiresAt.UTC().Format(time.RFC3339), signal.Note)
+	}
 	for _, key := range keys {
 		fmt.Fprintf(digest, "%s=%s\n", key, signal.Terms[key])
 	}
