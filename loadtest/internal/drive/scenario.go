@@ -236,7 +236,7 @@ func topology(deployment *deploy.Deployment, profile Profile) Topology {
 		Engine:      engine,
 		Push:        push,
 		// Said out loud because it is the one part of the deployment that is not in the path.
-		Proxy:  "none: broadcast/Caddyfile is not in this path (no Docker daemon on this machine)",
+		Proxy:  "none: deploy/ingress/feed is not in this path (no Docker daemon on this machine)",
 		Limits: limits,
 	}
 }
@@ -640,7 +640,7 @@ func converged(result Result) []string {
 // listeners that could not be caught up from history having read the gateway instead.
 //
 // Redis is a cache and not the source of truth — the gateway's SQLite file is that
-// (broadcast/compose.yaml says so where it declares the service) — so the thing to assert is the
+// (deploy/feed/compose.yaml says so where it declares the service) — so the thing to assert is the
 // fallback, not the stream. What would be serious is a listener that ended the run short of a
 // document, or one that neither recovered nor read a snapshot.
 func fellBack(result Result) []string {
@@ -663,7 +663,7 @@ func fellBack(result Result) []string {
 // SEE-91 and written down: `queue_max_size: 65536` protects the **broker's** memory, and the
 // transport's own receive window absorbs megabytes before that queue grows at all — a non-reading
 // client survived eight megabytes (docs/testing/stage-7-1.md,
-// docs/wiki/broadcast-gateway.md#the-transport-and-what-it-cannot-do). So a close is an outcome
+// docs/wiki/feed-gateway.md#the-transport-and-what-it-cannot-do). So a close is an outcome
 // this scenario reports rather than one it requires; what it asserts is the part that would be
 // serious either way.
 func slowly(result Result) []string {

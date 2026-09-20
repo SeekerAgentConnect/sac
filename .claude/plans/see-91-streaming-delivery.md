@@ -191,7 +191,7 @@ documentation alone.
 
 - [x] `broadcast/`: Centrifugo config, Redis service, the two-node overlay, Caddy's one gRPC route,
       `.env.example`, and a `compose config` + live `checkconfig`-by-starting validation.
-- [x] `docs/wiki/broadcast-gateway.md` (streaming), `docs/protocol.md`, `docs/architecture.md`,
+- [x] `docs/wiki/feed-gateway.md` (streaming), `docs/protocol.md`, `docs/architecture.md`,
       `docs/security.md`, `docs/development/{broadcast,toolchain}.md`, `AGENTS.md`, `CODEBASE.md`,
       the changelog, and the device-run record for the owner's TLS/HTTP2 check.
 

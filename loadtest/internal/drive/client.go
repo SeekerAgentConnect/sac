@@ -144,7 +144,7 @@ type Writer struct {
 	credential string
 }
 
-// NewWriter builds one for a publisher `broadcastctl` has already registered.
+// NewWriter builds one for a publisher `feed-gatewayctl` has already registered.
 func NewWriter(publishTo, serverID, credential string) *Writer {
 	return &Writer{
 		publish: gatewayv1connect.NewPublisherServiceClient(

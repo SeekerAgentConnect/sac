@@ -1,12 +1,9 @@
 # Building a server that publishes to Seeker Agent Connect
 
-This numbered flow builds a **public `gateway_feed`**. For a private independent server, use the
-same Server SDK and gateway registration with a temporary invitation instead: the complete flow is
-[gateway onboarding](gateway-onboarding.md). Each invitation creates one confirmed, revocable
-device binding for an opaque server-scoped user reference; the server stores the completed
-connection ID and supplies both values when routing SEE-108 common requests and their
-`RETURN_TO_ORIGIN` results. Legacy direct pairing and public feed references remain separate,
-usable paths; neither substitutes for an invitation.
+This numbered flow builds a **public `gateway_feed`**. For a private independent server, use direct
+pairing: its one-use `seekervault://pair` link or QR connects SAC to that server, and declared
+results return directly to it. Gateway invitations and private routing were retired in SEE-130;
+the migration guide is [gateway onboarding](gateway-onboarding.md).
 
 This guide takes you from a fresh checkout of this repository to a live feed, using one of the two Go templates it ships. At the end you will have published a manifest, published a signal, revised it, withdrawn it, seen two subscribers receive the same document, and sent the content-free hint that wakes a phone which is not looking — and you will have done it without a credential of ours for Firebase, without a line of Kotlin, and without holding anybody's wallet keys.
 
@@ -17,8 +14,7 @@ app directly. [Step 5](#5-connect-the-app) describes the flow.
 
 It is written for the developer who wants their own server in this system: a trader publishing their own swaps, or somebody republishing a market listing. You do not need to know how the app works inside, and you never see the private MCP implementation, which is a different kind of server entirely ([`docs/wiki/mcp-adapter.md`](../wiki/mcp-adapter.md)).
 
-**What this is not.** It is not a client-app SDK guide. The Go Server SDK does expose the common
-feed API and SEE-109 private invitation/request API, but nothing here embeds SAC screens in another
+**What this is not.** It is not a client-app SDK guide. Nothing here embeds SAC screens in another
 app. What you build by following this page is a **publisher**: a server that says what is proposed,
 to everybody subscribed, and stops there.
 
@@ -27,28 +23,28 @@ to everybody subscribed, and stops there.
 Three parties, and each one does exactly one thing:
 
 1. **Your server publishes proposals.** One document per thing it has to say, submitted once, to its own channel. It never learns who reads it, holds no subscriber list, and has no endpoint anybody's phone could reach.
-2. **The shared gateway distributes them.** It holds the authoritative copy, answers reads from any phone, fans each publication out to the phones currently listening, and sends a content-free hint to the ones that are not ([`docs/wiki/broadcast-gateway.md`](../wiki/broadcast-gateway.md)).
+2. **The shared gateway distributes them.** It holds the authoritative copy, answers reads from any phone, fans each publication out to the phones currently listening, and sends a content-free hint to the ones that are not ([`docs/wiki/feed-gateway.md`](../wiki/feed-gateway.md)).
 3. **The app executes what its owner chose.** A bundled client plugin reads the proposal, asks the owner for the parts that are theirs — the amount, the side — fetches fresh execution data from the provider itself, shows the owner exactly what will be signed, and opens the wallet once. Then it stops.
 
 The consequence worth internalising before you write anything: **a proposal is common and a decision about it is not.** Every subscriber receives the same bytes. What each owner then does with it — the amount, the wallet, the approval, the result — happens on their phone and is not sent to you, to the gateway, or to each other ([`docs/wiki/shared-proposals.md`](../wiki/shared-proposals.md#nothing-goes-the-other-way)).
 
-### The three connection modes
+### The two connection modes
 
 A phone's connection mode comes from the server's validated manifest rather than from a guess:
 
-| | `direct` | `gateway_feed` | `gateway_private` |
-| --- | --- | --- | --- |
-| Whose server | One owner's sidecar | A public publisher | An independent server |
-| How the phone adds it | A pairing code | A public feed reference | A temporary invitation |
-| Credential on the phone | Issued by the sidecar | **None** | Issued by the gateway after confirmation |
-| Who sees a request | The paired owner | Every subscriber | One explicitly selected server/user/device binding |
-| Who the phone calls | The server | The gateway | The gateway |
-| What the server learns | That one phone is paired | Nothing about any phone | Completion and declared request results |
-| Where a result goes | Back to the sidecar | Nowhere; it stays on the phone | Through the gateway only for `RETURN_TO_ORIGIN` |
+| | `direct` | `gateway_feed` |
+| --- | --- | --- |
+| Whose server | One owner's sidecar | A public publisher |
+| How the phone adds it | A pairing code | A public feed reference |
+| Credential on the phone | Issued by the sidecar | **None** |
+| Who sees a request | The paired owner | Every subscriber |
+| Who the phone calls | The server | The gateway |
+| What the server learns | That one phone is paired and the results it receives | Nothing about any phone |
+| Where a result goes | Back to the sidecar | Nowhere; it stays on the phone |
 
-A phone holds any mixture of the three and none affects another. Connecting is never wallet,
+A phone holds any mixture of the two and none affects another. Connecting is never wallet,
 signing, or execution authorization. The full account is
-[`docs/wiki/server-manifests.md`](../wiki/server-manifests.md#the-three-connection-modes).
+[`docs/wiki/server-manifests.md`](../wiki/server-manifests.md#the-two-connection-modes).
 
 ### What never leaves the phone
 
@@ -58,50 +54,59 @@ In `gateway_feed` mode the phone calls nothing of yours, so there is no path for
 
 **On your machine:**
 
-- **Go 1.27.1 or newer.** Both Go modules pin it (`publisher/go.mod`, `broadcast/go.mod`). It is the only thing you strictly need to build and run a template.
-- **Node 24.21.0 and pnpm**, if you want to run this repository's checks (`pnpm check:publisher`, `pnpm test:integration`). Versions and setup are in [`docs/development/toolchain.md`](../development/toolchain.md).
+- **Go 1.27.1 or newer.** Every Go module here pins it (`publisher-support/go.mod`, `demo-copytrading/go.mod`, `demo-prediction/go.mod`, `feed-gateway/go.mod`). It is the only thing you strictly need to build and run a demo.
+- **Node 24.21.0 and pnpm**, if you want to run this repository's checks (`pnpm check:publisher-support`, `pnpm check:copytrading`, `pnpm check:prediction`, `pnpm test:integration`). Versions and setup are in [`docs/development/toolchain.md`](../development/toolchain.md).
 - **Docker Engine 24+ with Compose v2**, if you want the packaged deployment rather than a process you started yourself. Optional for everything in this guide, required for nothing.
 - `curl` and `openssl`, which every example below uses.
 
 **From other people:**
 
-- **A broadcast gateway to publish to**, and a credential it issued you. Either somebody runs one and gives you both, or you run your own ([step 1](#1-get-a-gateway-to-publish-to)).
+- **A feed gateway to publish to**, and a credential it issued you. Either somebody runs one and gives you both, or you run your own ([step 1](#1-get-a-gateway-to-publish-to)).
 - **A domain and a certificate authority**, only if something off your own machine has to reach either service. Neither is needed for a local run.
 - **Nothing from us for push.** You are never given a Firebase project, service account, API key or device token, and there is no configuration on your side for any of it ([step 9](#9-topic-push)).
 - **Nothing from a provider for a first deployment.** Jupiter's keyless tier serves what the Prediction template reads; a key buys a higher rate limit and is your own business ([`docs/integrations/jupiter.md`](../integrations/jupiter.md#authentication-none-deliberately)).
 
 **Three roles, and they are usually three people.** The **gateway operator** runs the shared service and decides who may publish. The **publisher developer** — you — runs a template and says what is proposed. The **phone owner** subscribes, decides, and approves. This guide is written for the second role and tells you exactly what to ask the first for.
 
-**One naming trap, once.** This repository has two directories with "gateway" in their description and they are different services with different operators. `broadcast/` is the **shared broadcast gateway**: what you publish to, what phones read from. `gateway/` is **one owner's reverse proxy in front of their own private sidecar** and has nothing to do with publishing. In the docs, "gateway" means the first when it is next to *broadcast*, *shared* or *feed*, and the second next to *reverse proxy* or *deployment*.
+**One naming trap, once.** `feed-gateway/` is the shared feed application: what you publish to and
+what phones read from. Its portable project and optional public ingress are separate directories
+under `deploy/`. The direct MCP server is a different service and operator.
 
 ## 1. Get a gateway to publish to
 
 If somebody already runs one, skip to [step 2](#2-be-registered-as-a-publisher); what you need from them is its **origin** (`https://feeds.example.com`, character for character) and a **credential**.
 
-To run your own, the deployment is already packaged — extend it rather than inventing another. From `broadcast/`:
+To run your own, use the packaged portable feed from the repository root:
 
 ```sh
-cd broadcast
-cp .env.example .env          # then generate the two broker secrets it asks for
-docker compose up -d --build
+cp deploy/feed/.env.example deploy/feed/.env
+# generate the two broker secrets it asks for
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --build
 ```
 
-That is the local-development configuration: plain HTTP, published on your loopback address only. The internet-facing one is the same file plus an overlay that terminates TLS for a domain you own, and the push relay is a third:
+That is the local reference configuration: the read and authenticated publisher listeners are
+plain HTTP on host loopback. Public ingress is an independent project; the optional push mount is
+an application overlay:
 
 ```sh
-docker compose -f compose.yaml -f compose.public.yaml up -d --build                      # HTTPS
-docker compose -f compose.yaml -f compose.public.yaml -f compose.push.yaml up -d --build  # and hints
+docker compose --env-file deploy/ingress/feed/.env -f deploy/ingress/feed/compose.yaml up -d
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
+  -f deploy/feed/compose.push.yaml up -d --build
 ```
 
-Four services start: the gateway, the broker that fans publications out, the Redis the broker keeps its recovery cache in, and the proxy in front of all of it. Only the proxy's port is ever published. **Starting the stack creates no publisher and accepts no publication** — that takes step 2, which is a deliberate local act with no network surface at all.
+The portable base starts three services: the gateway, Centrifugo, and Redis. It starts no proxy,
+demo, or MCP server. **Starting it creates no publisher** — that takes step 2, a deliberate local
+act through the operator profile with no network surface.
 
-What to read rather than have repeated here: [`broadcast/README.md`](../../broadcast/README.md) for the stack itself, [`docs/development/broadcast.md#configuration`](../development/broadcast.md#configuration) for every variable with its default and range, and [`docs/development/broadcast.md#deployment`](../development/broadcast.md#deployment) for the three ways this stack differs from the sidecar's. The TLS, DNS and port mechanics are the same ones the sidecar's deployment uses, and they are written out once in [`docs/guides/self-hosting.md#going-public-tls-dns-and-ports`](self-hosting.md#going-public-tls-dns-and-ports) — the domain must already resolve to the host and ports 80 and 443 must be reachable before the first start, because that is how the proxy obtains a certificate.
+What to read rather than have repeated here: [`feed-gateway/README.md`](../../feed-gateway/README.md)
+and [`deploy/README.md`](../../deploy/README.md). A public domain must already resolve to the host
+and ports 80 and 443 must be reachable before the optional ingress obtains a certificate.
 
 Without Docker, the same thing as two processes and a broker:
 
 ```sh
-cd broadcast
-BROADCAST_PUBLIC_URL=http://127.0.0.1:8090 BROADCAST_DATABASE_PATH=./broadcast.db go run ./cmd/broadcast
+cd feed-gateway
+BROADCAST_PUBLIC_URL=http://127.0.0.1:8090 BROADCAST_DATABASE_PATH=./broadcast.db go run ./cmd/feed-gateway
 ```
 
 The four settings that decide whether phones can read you at all: `BROADCAST_PUBLIC_URL` is the origin every published manifest has to name — the phone compares it with the reference the feed was added from, so a deployment that gets it wrong has a feed nobody can read. `BROADCAST_READ_ADDRESS` (default `127.0.0.1:8090`) serves phones, `BROADCAST_PUBLISHER_ADDRESS` (default `127.0.0.1:8091`) accepts publications, and they are separate listeners on purpose: an operator who wants publishing kept off the internet deletes one route from the proxy's configuration. `BROADCAST_STREAM_URL` with its two keys turns the live stream on; without them the gateway still holds every document and answers every read, and tells a phone that asks to listen that there is no stream here.
@@ -111,8 +116,8 @@ The four settings that decide whether phones can read you at all: `BROADCAST_PUB
 A publisher exists only because an operator made one. There is no signup endpoint, no self-registration, and no way to do this over a network — the tool writes to the gateway's database directly:
 
 ```sh
-# in broadcast/, or `docker compose run --rm ctl …` against the packaged stack
-go run ./cmd/broadcastctl register --database ./broadcast.db \
+# in feed-gateway/, or `docker compose ... --profile operator run --rm gateway-ctl …`
+go run ./cmd/feed-gatewayctl register --database ./broadcast.db \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label "copy trading"
 ```
 
@@ -136,27 +141,30 @@ Four things, and it is worth being clear about which is which:
 - **`credential`** — an 8-character handle for the secret, so an operator can revoke this one later without ever seeing it again. The gateway stores only a hash.
 - **the 43-character line** — the secret itself, sent as `Authorization: Bearer <credential>`. It is not recoverable: if you lose it, the operator runs `rotate` and gives you a new one.
 
-The other commands an operator has are `rotate` (add a second credential so the first can be retired), `revoke --credential <id>`, `revoke --server <uuid> --all`, `list`, and `forget --server <uuid> --yes`, which removes a publisher and everything it published. Revoking stops future publications; it does not unpublish what is already there, and phones that already read your proposals keep their own copies until their owners remove the feed. The full table is [`docs/wiki/broadcast-gateway.md#registering-a-publisher`](../wiki/broadcast-gateway.md#registering-a-publisher).
+The other commands an operator has are `rotate` (add a second credential so the first can be retired), `revoke --credential <id>`, `revoke --server <uuid> --all`, `list`, and `forget --server <uuid> --yes`, which removes a publisher and everything it published. Revoking stops future publications; it does not unpublish what is already there, and phones that already read your proposals keep their own copies until their owners remove the feed. The full table is [`docs/wiki/feed-gateway.md#registering-a-publisher`](../wiki/feed-gateway.md#registering-a-publisher).
 
 ## 3. Copy a template out
 
-`publisher/` is a **Go module of its own**, not a command inside the gateway, precisely so that it can be copied out and still build:
+`demo-copytrading/` and `demo-prediction/` are each a **Go module of its own**, not a command inside the gateway, precisely so that one can be copied out and still build. What travels with a demo is `publisher-support/`, the source library the two share: it has no command, no image and no deployment of its own, and each demo's `go.mod` resolves it with a `replace` pointing at the directory next door.
 
 ```sh
-cp -R publisher ~/my-signals
-cd ~/my-signals
+mkdir -p ~/my-signals
+cp -R demo-copytrading publisher-support ~/my-signals
+cd ~/my-signals/demo-copytrading
 go build ./... && go test ./...
 ```
 
-It shares the protocol with the gateway and nothing else. Only the generated code in `internal/gen/` and the document rules in `internal/signals/` come from this repository's contract, and one test reads the gateway's own source to catch a drift in those bounds — that test skips when the file is not there, "which is what a copied-out template looks like". There is deliberately **no feed client compiled into it**: a template publishes, and a boundary test fails if anything in it could read a feed, reach a subscriber, or acquire an address other than its own provider's.
+Keep the two beside each other and the `replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../publisher-support` line in the demo's `go.mod` still resolves; put the library anywhere else and that one line is what you change. The Prediction demo is copied out exactly the same way, with `demo-prediction` in place of `demo-copytrading`, and neither demo ever needs the other.
 
-Three commands are built from it — the two templates, and one CLI for either:
+A demo shares the protocol with the gateway and nothing else. Only the generated code in `publisher-support/gen/` and the document rules in `publisher-support/signals/` come from this repository's contract, and one test there reads the gateway's own source to catch a drift in those bounds — that test skips when the file is not there, "which is what a copied-out template looks like". There is deliberately **no feed client compiled into either of them**: a template publishes, and a boundary test in each demo fails if anything in it could read a feed, reach a subscriber, or acquire an address other than its own provider's.
 
-| Binary            | What it is                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------- |
-| `cmd/copytrading` | Publishes what a person or a program tells it to, through its own authenticated API (SEE-95) |
-| `cmd/prediction`  | Discovers Jupiter Prediction markets through its operator's filters and publishes those (SEE-96) |
-| `cmd/publishctl`  | The operator's CLI for either one. Every command is one HTTP call to the template's API       |
+Each module builds its own template and its own copy of the one CLI:
+
+| Binary                             | What it is                                                                                  |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- |
+| `demo-copytrading/cmd/copytrading` | Publishes what a person or a program tells it to, through its own authenticated API (SEE-95) |
+| `demo-prediction/cmd/prediction`   | Discovers Jupiter Prediction markets through its operator's filters and publishes those (SEE-96) |
+| `cmd/publishctl`                   | The operator's CLI, built by each module against its own API. Every command is one HTTP call  |
 
 Then configure it. `cp .env.example .env` and fill it in; the file documents every setting where it sits, including why each one exists, so read it rather than this table. **Six settings have no default and nothing starts without them:**
 
@@ -171,16 +179,16 @@ Then configure it. `cp .env.example .env` and fill it in; the file documents eve
 
 Those last two are different things and confusing them is the first mistake to avoid. `BROADCAST_CREDENTIAL` is how the gateway knows you; `PUBLISHER_API_TOKEN` is how your own strategy process, or your own hand at a terminal, is allowed to tell your template what to say. Either may be a file instead of a value (`BROADCAST_CREDENTIAL_FILE`, `PUBLISHER_API_TOKEN_FILE`) for a deployment that mounts secrets; setting both a value and a file is a configuration error, because then there would be two answers and no way to tell which was used.
 
-One more is worth setting deliberately: `PUBLISHER_PUBLISH_URL`. Empty means `PUBLISHER_GATEWAY_URL`, which is right when the gateway's proxy serves its APIs on one origin — the packaged deployment does. Set it when the gateway runs with separate loopback listeners (feeds on 8090, publications on 8091 and invitation/device traffic on 8092), or when its operator keeps publishing off the internet and you reach it over a tunnel. Getting it wrong is the one mistake the gateway cannot report: a read origin has no handler that could write anything, so a publication gets a 404. The template says so at startup and names the variable.
+One more is worth setting deliberately: `PUBLISHER_PUBLISH_URL`. Empty means `PUBLISHER_GATEWAY_URL`, which is right only when an operator's independent ingress serves both APIs on one origin. The canonical `deploy/feed` preset keeps separate loopback listeners (feeds on 8090 and publications on 8091), so its demo presets name 8091 explicitly. Also set it when an operator keeps publishing off the internet and you reach it over a tunnel. Getting it wrong is the one mistake the gateway cannot report: a read origin has no handler that could write anything, so a publication gets a 404. The template says so at startup and names the variable.
 
 **Both `.env` examples ship as sandbox deployments**, so copying one and running it demonstrates the whole path without anybody's money. Promoting to production is a deliberate edit of one line ([step 11](#11-sandbox-and-production)).
 
-The complete settings reference, with every default and range, is [`docs/development/publisher.md#configuration`](../development/publisher.md#configuration). The reasoning behind the template's shape is [`docs/wiki/copytrading-template.md`](../wiki/copytrading-template.md).
+The complete settings reference, with every default and range, is [`docs/development/demos.md#configuration`](../development/demos.md#configuration). The reasoning behind the template's shape is [`docs/wiki/copytrading-template.md`](../wiki/copytrading-template.md).
 
 ## 4. Start it, and read the two things it prints
 
 ```sh
-cd ~/my-signals
+cd ~/my-signals/demo-copytrading
 PUBLISHER_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
@@ -192,7 +200,9 @@ PUBLISHER_API_TOKEN=$(openssl rand -base64 32) \
 go run ./cmd/copytrading
 ```
 
-Or, packaged: `docker compose up -d --build` in the copied directory, which publishes the API on `127.0.0.1:8092` and puts a proxy in front of it.
+For the repository's packaged route, use `deploy/copytrading/compose.yaml`; it publishes the
+application's own API on `127.0.0.1:8092` and starts no proxy. A copied-out source module contains
+no Compose or ingress assets unless you copy and adapt that deployment preset too.
 
 Three log lines and one bare line of text:
 
@@ -213,7 +223,7 @@ If it was refused, nobody can subscribe to you at all, and the template says so 
 seekervault://feed?v=1&gateway=<the gateway's origin, percent-encoded>&server=<your server ID>
 ```
 
-Ask for it again at any time with `publishctl reference`, or read it out of `GET /v1/manifest`. **It carries no secret**, because there is nothing to authenticate to: holding one grants the ability to read a public broadcast, which is what a broadcast is. You can print it in a README, put it on a web page, or turn it into a QR code. The app accepts the QR or pasted text in [step 5](#5-connect-the-app).
+Ask for it again at any time with `go run ./cmd/publishctl reference`, or read it out of `GET /v1/manifest`. **It carries no secret**, because there is nothing to authenticate to: holding one grants the ability to read a public broadcast, which is what a broadcast is. You can print it in a README, put it on a web page, or turn it into a QR code. The app accepts the QR or pasted text in [step 5](#5-connect-the-app).
 
 ## 5. Connect the app
 
@@ -252,7 +262,7 @@ Two ways in, and they are the same way: the CLI is an HTTP client for the templa
 
 ```sh
 export PUBLISHER_API_TOKEN=…
-publishctl create \
+go run ./cmd/publishctl create \
   --term input_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
   --term input_decimals=6 --term input_symbol=USDC \
   --term output_mint=So11111111111111111111111111111111111111112 \
@@ -309,7 +319,7 @@ curl -sS http://127.0.0.1:8092/v1/requests \
                 "max_slippage_bps":"75","least_input":"5000000"}}'
 ```
 
-The same answer shape. The status code carries the publication's fate: **201** created and published, **202** created and not yet published (stored here, and it will go when the gateway answers), **502** created and refused by the gateway, **200** nothing changed. The answer's `request` is the common envelope; the CLI and `publisher/sdk.Client.CreateRequest` call this same endpoint. The complete request, answer and status-code contract, with a working Python strategy loop, is [`docs/integrations/signal-api.md`](../integrations/signal-api.md#creating-a-request).
+The same answer shape. The status code carries the publication's fate: **201** created and published, **202** created and not yet published (stored here, and it will go when the gateway answers), **502** created and refused by the gateway, **200** nothing changed. The answer's `request` is the common envelope; the CLI and `demo-copytrading/sdk.Client.CreateRequest` call this same endpoint. The complete request, answer and status-code contract, with a working Python strategy loop, is [`docs/integrations/signal-api.md`](../integrations/signal-api.md#creating-a-request).
 
 ### What a signal may say, and what it may not
 
@@ -326,9 +336,12 @@ Bounds: at most 32 terms, each key a short lowercase name, each value at most 51
 
 ## 7. The other template: markets you did not write
 
-`cmd/prediction` is the same core with one thing changed: who writes its signals. It reads Jupiter's prediction listing through its operator's filters and publishes one proposal per market that matches. Its API is read-only about signals — `create`, `update` and `cancel` answer **403 `written_by_discovery`** rather than "no such route", so a caller is told why.
+`demo-prediction/cmd/prediction` is the same core — literally `publisher-support/`, the library both demos are built on — with one thing changed: who writes its signals. It reads Jupiter's prediction listing through its operator's filters and publishes one proposal per market that matches. Its API is read-only about signals — `create`, `update` and `cancel` answer **403 `written_by_discovery`** rather than "no such route", so a caller is told why.
+
+It is the other module, so this one runs from the Prediction demo's own directory — `demo-prediction/` in a checkout of this repository, or the copy you took out beside `publisher-support/`:
 
 ```sh
+cd demo-prediction
 PUBLISHER_SERVER_ID=<a second server ID, registered separately> \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
 PUBLISHER_ENVIRONMENT=sandbox PUBLISHER_DATABASE_PATH=./prediction.db \
@@ -340,14 +353,14 @@ go run ./cmd/prediction
 
 It needs its **own** server ID and its own credential: two templates sharing one identity would be two servers claiming one channel, which the gateway refuses. Note also that the database is stamped with the server ID and the environment word and refuses to open for another — pointing a sandbox deployment at a production volume is a startup error rather than a silent mixture.
 
-The filters are all operator settings and they divide in two. `PREDICTION_SOURCE` (`polymarket`, `kalshi`, `bisonfi`), `PREDICTION_CATEGORIES` and `PREDICTION_FILTER` (`new`, `live`, `trending`, `upcoming`) are the **provider's own query parameters** and decide which events the listing returns at all. Everything else is applied here, to the records that came back: `PREDICTION_TAGS`, `PREDICTION_KEYWORDS`, `PREDICTION_STATE`, the two close-time edges, `PREDICTION_LIFETIME_HOURS`, and the ceilings `PREDICTION_MOST_OPEN` and `PREDICTION_MOST_CHECKS`. Each one's range and default is in [`docs/development/publisher.md#the-prediction-templates-own-settings`](../development/publisher.md#the-prediction-templates-own-settings); what each one *means* is [`docs/wiki/prediction-template.md#the-filters-and-what-they-mean`](../wiki/prediction-template.md#the-filters-and-what-they-mean).
+The filters are all operator settings and they divide in two. `PREDICTION_SOURCE` (`polymarket`, `kalshi`, `bisonfi`), `PREDICTION_CATEGORIES` and `PREDICTION_FILTER` (`new`, `live`, `trending`, `upcoming`) are the **provider's own query parameters** and decide which events the listing returns at all. Everything else is applied here, to the records that came back: `PREDICTION_TAGS`, `PREDICTION_KEYWORDS`, `PREDICTION_STATE`, the two close-time edges, `PREDICTION_LIFETIME_HOURS`, and the ceilings `PREDICTION_MOST_OPEN` and `PREDICTION_MOST_CHECKS`. Each one's range and default is in [`docs/development/demos.md#the-prediction-templates-own-settings`](../development/demos.md#the-prediction-templates-own-settings); what each one *means* is [`docs/wiki/prediction-template.md#the-filters-and-what-they-mean`](../wiki/prediction-template.md#the-filters-and-what-they-mean).
 
 Run a cycle now rather than at the next interval, and read back exactly what it decided:
 
 ```sh
 export PUBLISHER_API_URL=http://127.0.0.1:8094 PUBLISHER_API_TOKEN=…
-publishctl poll
-publishctl discovery
+go run ./cmd/publishctl poll
+go run ./cmd/publishctl discovery
 ```
 
 ```json
@@ -390,7 +403,7 @@ For the Prediction template, expiry is the market's own close time, or first-see
 ### Updating
 
 ```sh
-publishctl update dcf362cb-647b-4e8f-9506-fb3dc72a3fba \
+go run ./cmd/publishctl update dcf362cb-647b-4e8f-9506-fb3dc72a3fba \
   --term input_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v --term input_decimals=6 \
   --term output_mint=So11111111111111111111111111111111111111112 --term output_decimals=9 \
   --term max_slippage_bps=30 --in 90m --note "Tightening the slippage cap to 0.3%."
@@ -402,7 +415,7 @@ An update replaces the **whole** statement; it is never a merge, so a term you l
 ### Withdrawal
 
 ```sh
-publishctl cancel 277e94f7-c510-488f-97e8-29e4b721b66f
+go run ./cmd/publishctl cancel 277e94f7-c510-488f-97e8-29e4b721b66f
 # signal 277e94f7-c510-488f-97e8-29e4b721b66f revision 2 cancelled, publication published
 ```
 
@@ -427,7 +440,7 @@ signal c8f01feb-7c64-494e-a03f-bcc17932eb40 revision 1 open, publication pending
   it is stored here and will be published when the gateway answers
 ```
 
-The template's own drainer retries with a doubling backoff from one second to a minute (the log says `"this signal will be published again","in":"1s"`, then `2s`, and so on), and `publishctl status` counts what is outstanding as `pending`. `publishctl retry <id>` nudges one by hand, which is also the only way out of a *permanent* refusal — a restart does not clear one, on purpose. What is retried is the **identical document**, which the gateway answers `unchanged` if it did arrive, so a slow gateway costs a delay and never a duplicate signal.
+The template's own drainer retries with a doubling backoff from one second to a minute (the log says `"this signal will be published again","in":"1s"`, then `2s`, and so on), and `go run ./cmd/publishctl status` counts what is outstanding as `pending`. `go run ./cmd/publishctl retry <id>` nudges one by hand, which is also the only way out of a *permanent* refusal — a restart does not clear one, on purpose. What is retried is the **identical document**, which the gateway answers `unchanged` if it did arrive, so a slow gateway costs a delay and never a duplicate signal.
 
 ### When the source is not there
 
@@ -500,7 +513,11 @@ That is the whole payload. No proposal, no revision, no sequence, no publisher, 
 
 **Bounds.** One hint per topic per ten seconds with five in hand (`BROADCAST_PUSH_RATE`, `BROADCAST_PUSH_BURST`); over the quota a hint is dropped rather than queued, because the next one wakes a phone that reads everything anyway. One collapse key for every feed, so a phone that was off for an hour is woken once. Five-minute expiry. Nothing about a hint is retried, and a hint that fails never fails the publication — a hint is a hint, and the stream and the periodic read are what the app actually relies on.
 
-For a deployment that wants the relay on, the operator's side is `compose.push.yaml` and the walkthrough in [`docs/guides/firebase.md#the-broadcast-relay-and-feed-topics-see-92`](firebase.md#the-broadcast-relay-and-feed-topics-see-92). Note that `BROADCAST_PUSH_ENVIRONMENT` is a label the operator chooses for their topic names and decides nothing — it is not the same thing as [step 11](#11-sandbox-and-production)'s environment, and sandbox and production publishers must not share a topic.
+For a deployment that wants the relay on, the operator's side is
+`deploy/feed/compose.push.yaml` and the walkthrough in
+[`docs/guides/firebase.md#the-broadcast-relay-and-feed-topics-see-92`](firebase.md#the-broadcast-relay-and-feed-topics-see-92).
+`BROADCAST_PUSH_ENVIRONMENT` is a topic label, not [step 11](#11-sandbox-and-production)'s
+environment, and sandbox and production publishers must not share one.
 
 ## 10. A build that does not have your plugin
 
@@ -571,7 +588,7 @@ What a **provider** learns is separate from both and is not private: a quote car
 
 **What your template keeps** is its own signals, in one SQLite file: the statement, the revision, the publication state and the idempotency keys it has seen. Plus, for the Prediction template, the markets it tracks and their source links. **Nothing about a subscriber**, because there is nothing to keep: no wallet, no amount, no decision, no outcome, and no endpoint that would accept one. A boundary test fails if anything in the module could send something about a subscriber, and another fails if a credential reaches a log line.
 
-**What the gateway keeps** for a public feed is the publications, manifests and publisher permissions, plus the transient connection state a broker needs. Public feed tables still have no subscriber column, and a test reads the database after several feed reads and requires every row count to be unchanged. A gateway-private server separately creates the minimal server/user/device binding and exact routed requests described in [gateway onboarding](gateway-onboarding.md); it is not a public-feed subscriber record or a central SAC account. What the gateway necessarily observes is a caller's address for rate limiting, and it writes none of that metadata down. This is not a claim that network infrastructure observes no metadata; Firebase learns that a topic was subscribed to, a provider learns what it was asked, and a proxy sees connections.
+**What the gateway keeps** is public publications, manifests and publisher permissions, plus the transient connection state a broker needs. Its six live tables have no subscriber column, and a test reads the database after several feed reads and requires every row count to be unchanged. What the gateway necessarily observes is a caller's address for rate limiting, and it writes none of that metadata down. This is not a claim that network infrastructure observes no metadata; Firebase learns that a topic was subscribed to, a provider learns what it was asked, and a proxy sees connections.
 
 **What is yours to answer for**, in practice:
 
@@ -638,17 +655,20 @@ Three failures that are not refusals and are worth recognising:
 ## 16. Checking your work
 
 ```sh
-pnpm check:publisher     # the templates' own formatting, vet and tests. Needs Go
-pnpm test:integration    # the gateway, both templates, two subscribers, the sidecar and an agent
+pnpm check:publisher-support  # the shared library's own formatting, vet and tests. Needs Go
+pnpm check:copytrading        # the CopyTrading demo's
+pnpm check:prediction         # the Prediction demo's
+pnpm test:integration         # the gateway, both demos, two subscribers, the sidecar and an agent
 ```
 
 `pnpm test:integration` is the one to run before you believe anything: it builds the real gateway, both real templates and both CLIs, runs them against each other with two subscribers, and reports every leg as PASS, FAIL or **NOT RUN** — a leg that could not run on the machine is never quietly a pass. It needs Go and nothing else; naming a Centrifugo and a Redis binary in `SEEKERVAULT_CENTRIFUGO` and `SEEKERVAULT_REDIS` adds the real-broker leg ([`docs/development/integration.md`](../development/integration.md)).
 
-To run one of the two opt-in tests against real things:
+To run the opt-in tests against real things — the publication path is the shared library's, and the Prediction demo has one of its own against the same gateway:
 
 ```sh
-cd broadcast && go build -o /tmp/broadcast ./cmd/broadcast && go build -o /tmp/broadcastctl ./cmd/broadcastctl
-cd ../publisher && SEEKERVAULT_BROADCAST=/tmp/broadcast go test ./internal/publish/ -run Gateway -v
+cd feed-gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway && go build -o /tmp/feed-gatewayctl ./cmd/feed-gatewayctl
+cd ../publisher-support && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./publish/ -run Gateway -v
+cd ../demo-prediction && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./internal/discovery/ -run Gateway -v
 SEEKERVAULT_JUPITER=1 go test ./internal/jupiter/ -run Live -v
 ```
 

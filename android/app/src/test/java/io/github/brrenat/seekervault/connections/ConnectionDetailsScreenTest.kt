@@ -107,6 +107,12 @@ class ConnectionDetailsScreenTest {
         compose
             .onNodeWithTag(ConnectionsTags.field("plugins"))
             .assertTextContains("jupiter.prediction")
+        compose
+            .onNodeWithTag(ConnectionsTags.REFRESH)
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
+        assertEquals(listOf("refresh"), calls)
     }
 
     /** A feed of HOME's, whose publisher serves [served] (SEE-97). */

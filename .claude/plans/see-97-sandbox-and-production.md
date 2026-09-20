@@ -144,9 +144,9 @@ invented Jupiter test network.
       into: `docs/wiki/jupiter-swap.md`, `docs/wiki/jupiter-prediction.md`,
       `docs/wiki/client-plugins.md`, `docs/wiki/server-manifests.md`,
       `docs/wiki/copytrading-template.md`, `docs/wiki/prediction-template.md`,
-      `docs/wiki/broadcast-gateway.md`, `docs/wiki/shared-proposals.md`, `docs/architecture.md`,
+      `docs/wiki/feed-gateway.md`, `docs/wiki/shared-proposals.md`, `docs/architecture.md`,
       `docs/protocol.md`, `docs/security.md`, `docs/development/android.md`,
-      `docs/development/publisher.md`, `docs/development/broadcast.md`,
+      `docs/development/publisher.md`, `docs/development/feed-gateway.md`,
       `docs/integrations/signal-api.md`, `CODEBASE.md`, `AGENTS.md`.
 - [x] "Execution environment is separate from cluster selection", said outright rather than by
       adjacency, and no promise of Jupiter devnet parity anywhere.

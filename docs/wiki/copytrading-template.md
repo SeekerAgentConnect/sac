@@ -4,9 +4,10 @@ SEE-88 gave a server a way to say what it is. SEE-89 gave it a document to broad
 the gateway that carries one. SEE-93 gave the phone a plugin that can execute one. Every one of
 them named the thing that would write the documents: the publisher templates.
 
-This is the first of them: a Go service in [`publisher/`](../../publisher), run by a developer or a
-trader, which publishes trader-authored spot-swap signals and stops there. To deploy one rather than
-understand it, follow [`docs/guides/server-development.md`](../guides/server-development.md).
+This is the first of them: a Go service in [`demo-copytrading/`](../../demo-copytrading), run by a
+developer or a trader, which publishes trader-authored spot-swap signals and stops there. To deploy
+one rather than understand it, follow
+[`docs/guides/server-development.md`](../guides/server-development.md).
 
 **"CopyTrading" here means user-approved trader signals.** There is no wallet monitoring in it, no
 copy detection, no unattended execution, no exchange account and no leverage. A signal is a
@@ -15,7 +16,7 @@ for themselves, with their own amount, on their own phone.
 
 ## Three servers, and why this is the third
 
-| | `sidecar/` (Node) | `broadcast/` (Go) | **`publisher/` (Go)** |
+| | `mcp-server/` (Node) | `feed-gateway/` (Go) | **`demo-copytrading/` (Go)** |
 | --- | --- | --- | --- |
 | Whose it is | the owner's own | whoever hosts the broadcast | **a developer's or a trader's** |
 | Who calls it | one paired phone | publishers, and every phone | **whoever writes the signals** |
@@ -23,17 +24,20 @@ for themselves, with their own amount, on their own phone.
 | Knows a subscriber | yes — the one it is paired with | no | **no; there is nobody to know** |
 | Speaks MCP | optionally (SEE-87) | never | **never** |
 
-It is a separate Go module rather than a command inside `broadcast/`, because the gateway's
+It is a separate Go module rather than a command inside `feed-gateway/`, because the gateway's
 operator and a publisher are different people: a template that compiled against the gateway's store
 would be a template nobody could copy out. What the two share is the protocol in
 [`proto/`](../../proto) and nothing else — and where that risks drift, a test reads the gateway's
 own source rather than trusting a comment
-([`contract_test.go`](../../publisher/internal/signals/contract_test.go)).
+([`contract_test.go`](../../publisher-support/signals/contract_test.go)).
 
-**One module, two templates.** SEE-96 is the prediction template, so what is not about swaps — the
-configuration, the store, the outbox, the API and the CLI — is the module's core, and the swap
-signal is one `signals.Kind` that `cmd/copytrading` registers. The seam exists because the second
-kind is already specified, not on speculation.
+**One library, two templates.** SEE-96 is the prediction template, so what is not about swaps —
+the configuration, the store, the outbox, the API and the CLI — is
+[`publisher-support/`](../../publisher-support), a source library that is deployed nowhere itself,
+and the swap signal is one `signals.Kind` that `cmd/copytrading` registers. The seam exists because
+the second kind is already specified, not on speculation. SEE-134 then gave each template its own
+Go module and its own image, so this one is built, tested and deployed without the other's source
+being compiled at all.
 
 ## Where publication ends, and execution begins
 
@@ -41,11 +45,11 @@ This is the whole shape of the stage in one path, and the line in the middle of 
 
 ```mermaid
 flowchart TB
-    subgraph publisher["the publisher — publisher/ (SEE-95)"]
+    subgraph publisher["the publisher — demo-copytrading/ (SEE-95)"]
         Strategy["a trader, a script,<br>or a strategy engine"] -- "POST /v1/requests" --> Template["the template"]
         Template -- "PublishProposal, once" --> Gateway
     end
-    Gateway["the broadcast gateway (SEE-90)"]
+    Gateway["the feed gateway (SEE-90)"]
     subgraph phones["each owner's own phone (SEE-89, SEE-93)"]
         Gateway -- "the same document" --> A["phone A<br>chooses 2 SOL"]
         Gateway -- "the same document" --> B["phone B<br>chooses 0.1 SOL"]
@@ -62,7 +66,7 @@ approved, not the signature, not the outcome. The publisher does not learn that 
 
 A worked example, end to end, with nothing left out:
 
-1. **The gateway's operator registers the publisher.** `broadcastctl register --server <uuid>`
+1. **The gateway's operator registers the publisher.** `feed-gatewayctl register --server <uuid>`
    prints one credential, once. That is the only act that grants the ability to publish, and it has
    no network surface at all.
 2. **The template starts** with that credential, the gateway's origin, its own API token and an
@@ -201,9 +205,9 @@ has no default, so a deployment that says nothing does not start.
 ## The API is the one path in
 
 Everything a caller can do is nine JSON endpoints, and the CLI in
-[`cmd/publishctl`](../../publisher/cmd/publishctl) is a client of them with no privileged access of
-its own — which is what keeps validation, identity, revisions and publication in one place.
-[`docs/integrations/signal-api.md`](../integrations/signal-api.md) is the contract.
+[`cmd/publishctl`](../../demo-copytrading/cmd/publishctl) is a client of them with no privileged
+access of its own — which is what keeps validation, identity, revisions and publication in one
+place. [`docs/integrations/signal-api.md`](../integrations/signal-api.md) is the contract.
 
 One token guards all of it, presented as `Authorization: Bearer <token>`, compared in constant time,
 required on everything but `/healthz`. It is the whole of the grant — a caller holding it can say
@@ -235,15 +239,17 @@ apart in the file as well as in the manifest.
 
 It does not: monitor a wallet, detect anybody's trades, execute anything, hold a key, sign anything,
 read the feed it publishes to, learn who is subscribed, collect a decision or a result, or deliver
-anything to a phone. Its own automated checks are
-[`publisher/`](../../publisher)'s tests, including one that runs the **real** gateway as a separate
-process; the half that needs two phones is the owner's device run
+anything to a phone. Its own automated checks are [`demo-copytrading/`](../../demo-copytrading)'s
+tests and the shared library's in [`publisher-support/`](../../publisher-support), including one
+that runs the **real** gateway as a separate process
+([`feedgateway_test.go`](../../publisher-support/publish/feedgateway_test.go)); the half that needs
+two phones is the owner's device run
 ([`docs/testing/stage-7-1.md`](../testing/stage-7-1.md)).
 
 ## The demo trader page (SEE-126)
 
 `cmd/copytrading-admin` is a **client** of this API, not a second write path. It serves a
-password-gated HTML page on `/trader` for hackathon judges: create, list, cancel and retry sandbox
-swap signals. The publisher token never enters the browser. The one-server deployment attaches that
-page to the existing gateway origin; `/v1` stays on host loopback. See
-[`deploy/server/README.md`](../../deploy/server/README.md).
+password-gated HTML page for hackathon judges: create, list, cancel and retry sandbox swap signals.
+The publisher token never enters the browser. `deploy/copytrading` makes the page an opt-in
+host-loopback profile; neither it nor `/v1` is placed on the public feed ingress. See
+[`deploy/README.md`](../../deploy/README.md).

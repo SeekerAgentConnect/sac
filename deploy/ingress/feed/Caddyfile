@@ -1,0 +1,59 @@
+{
+	admin off
+	email {$ACME_EMAIL}
+	log {
+		output stderr
+		format console
+	}
+}
+
+{$FEED_DOMAIN} {
+	log {
+		output stderr
+		format console
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	@feed path /seekervault.gateway.v1.FeedService/*
+	handle @feed {
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy feed-gateway:8090
+	}
+
+	# Authenticated by the feed gateway's publisher credential. The operator can delete this
+	# block and use the host-loopback/private publisher listener without changing phone access.
+	@publish path /seekervault.gateway.v1.PublisherService/*
+	handle @publish {
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy feed-gateway:8091
+	}
+
+	@stream path /centrifugal.centrifugo.unistream.CentrifugoUniStream/Consume
+	handle @stream {
+		reverse_proxy h2c://centrifugo:11000 {
+			flush_interval -1
+			transport http {
+				versions h2c
+				read_timeout 0
+				write_timeout 0
+			}
+		}
+	}
+
+	# No health, operator CLI, broker API/admin, Redis, SQLite, or demo control route is public.
+	handle {
+		abort
+	}
+}
+
+:443 {
+	abort
+}

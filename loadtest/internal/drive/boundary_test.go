@@ -19,7 +19,7 @@ import (
 // trading or provider traffic. Each of them is a thing that could be crossed in an afternoon by
 // someone adding a scenario — "let's point it at the live provider and see" — so each of them is a
 // test. The publisher templates' own boundary test is the model
-// (`publisher/internal/api/boundary_test.go`).
+// (`publisher-support/api/boundary_test.go`).
 
 // root is this module, from this package.
 const root = "../.."

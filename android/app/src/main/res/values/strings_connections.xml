@@ -98,15 +98,15 @@
     <string name="message_renamed">Renamed to %1$s.</string>
 
     <string name="add_title">Add connection</string>
-    <string name="add_instructions">Scan or enter a direct pairing code, a private gateway invitation, or a public feed reference.</string>
+    <string name="add_instructions">Scan or enter a direct pairing code or a public feed reference.</string>
     <string name="scan_qr">Scan QR code</string>
     <string name="scan_hint">Point the camera at the QR code.</string>
     <string name="stop_scanning">Stop scanning</string>
     <string name="camera_denied">Camera access is off, so the app can\'t scan. Enter the code instead, or allow camera access in the app\'s settings.</string>
     <string name="open_settings">Open settings</string>
     <string name="no_camera">This phone has no camera the app can use. Enter the code instead.</string>
-    <string name="code_label">Pairing code, invitation, or feed reference</string>
-    <string name="code_placeholder">seekervault://pair?…, seekervault://invite?…, or seekervault://feed?…</string>
+    <string name="code_label">Pairing code or feed reference</string>
+    <string name="code_placeholder">seekervault://pair?… or seekervault://feed?…</string>
     <string name="continue_pairing">Continue</string>
 
     <string name="code_not_a_code">That isn\'t a pairing code. Enter the whole line that starts with seekervault://pair.</string>
@@ -123,23 +123,6 @@
     <string name="feed_reference_bad_gateway">The gateway address in the feed reference isn\'t valid.</string>
     <string name="feed_reference_insecure_gateway">The feed\'s gateway doesn\'t use HTTPS. Only a debug build accepts plain HTTP, and only to 127.0.0.1 over adb reverse.</string>
     <string name="feed_reference_bad_server_id">The publisher\'s server ID in the feed reference isn\'t valid.</string>
-
-    <string name="invitation_not_invitation">That isn\'t a gateway invitation. Open the whole invitation link or scan its QR code.</string>
-    <string name="invitation_other_version">This invitation is for another version of Seeker Agent Connect. Update the app or ask for a new invitation.</string>
-    <string name="invitation_bad_gateway">The gateway address in the invitation isn\'t valid.</string>
-    <string name="invitation_insecure_gateway">The invitation\'s gateway doesn\'t use HTTPS. Only a debug build accepts plain HTTP to loopback.</string>
-    <string name="invitation_invalid">This invitation is invalid or incomplete. Ask the server for a fresh invitation.</string>
-    <string name="invitation_expired">This invitation expired. Ask the server for a fresh invitation.</string>
-    <string name="invitation_used">This invitation was already used. Each device needs a fresh invitation.</string>
-    <string name="invitation_failed">The gateway couldn\'t complete this connection. Check the network and try again.</string>
-    <string name="invitation_pending">Checking the invitation…</string>
-    <string name="invitation_confirm_title">Connect to this server?</string>
-    <string name="invitation_expires">Invitation expires</string>
-    <string name="invitation_confirm_scope">Connecting lets this server send private requests to this device through the gateway. It does not share a wallet, grant signing authority, approve a request, or expose your history.</string>
-    <string name="invitation_connect">Connect</string>
-    <string name="invitation_connecting">Connecting…</string>
-    <string name="invitation_connected">Connected</string>
-    <string name="invitation_already">Already connected</string>
 
     <string name="confirm_title">Pair with this server?</string>
     <string name="confirm_trust">Pair only with a server you run. Whoever controls it can send this phone requests to review.</string>
@@ -178,11 +161,11 @@
     <string name="feed_failed_unreachable">Couldn\'t reach %1$s. Check the connection and try again.</string>
     <string name="feed_failed_response">The gateway\'s answer wasn\'t valid, so nothing was saved.</string>
     <string name="feed_failed_other">The feed could not be added, so nothing was saved.</string>
-    <string name="feed_failed_no_gateway">This app build has no broadcast gateway client, so it cannot add feeds.</string>
+    <string name="feed_failed_no_gateway">This app build has no feed gateway client, so it cannot add feeds.</string>
     <string name="feed_failed_storage">This phone couldn\'t store the feed, so nothing was saved.</string>
     <!-- What kind of server a connection is, and whether this build supports it (SEE-88). -->
     <string name="connection_status_feed">A shared feed. This phone reads it through the gateway and holds no credential for it.</string>
-    <string name="connection_status_gateway_private">Connected through the gateway. Requests still need your review and approval.</string>
+    <string name="connection_status_gateway_private_retired">This gateway connection was retired. It cannot sync, open requests, or send results. Ask the operator for a fresh direct pairing code.</string>
     <string name="connection_status_unsupported_plugin">This app doesn\'t have a client plugin this server needs, so nothing from it can be approved.</string>
     <string name="connection_status_unsupported_version">This app has the client plugin this server needs, but not at a version it works with.</string>
     <string name="connection_status_unsupported_protocol">This server speaks a newer version of the protocol than this app. Update the app to use it.</string>

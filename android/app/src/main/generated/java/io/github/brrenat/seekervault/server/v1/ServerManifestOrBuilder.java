@@ -39,7 +39,7 @@ public interface ServerManifestOrBuilder extends
   /**
    * <pre>
    * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-   * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+   * or the gateway's public-feed contract. Zero is never published, and a version
    * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
    * knows.
    * </pre>
@@ -243,27 +243,6 @@ public interface ServerManifestOrBuilder extends
    * @return The feed.
    */
   io.github.brrenat.seekervault.server.v1.GatewayFeed getFeed();
-
-  /**
-   * <pre>
-   * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-   * no endpoint chosen by the originating server is introduced by pairing.
-   * </pre>
-   *
-   * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-   * @return Whether the gatewayPrivate field is set.
-   */
-  boolean hasGatewayPrivate();
-  /**
-   * <pre>
-   * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-   * no endpoint chosen by the originating server is introduced by pairing.
-   * </pre>
-   *
-   * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-   * @return The gatewayPrivate.
-   */
-  io.github.brrenat.seekervault.server.v1.GatewayPrivate getGatewayPrivate();
 
   public io.github.brrenat.seekervault.server.v1.ServerManifest.ReferenceCase getReferenceCase();
 }

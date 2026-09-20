@@ -1,4 +1,5 @@
 <resources>
+    <string name="gateway_invitation_retired">Gateway invitations were retired. Ask the server operator for a fresh direct pairing code, then scan or paste it here.</string>
     <string name="request_category_signal">Signal</string>
     <string name="request_from_feed">From %1$s</string>
     <string name="app_name">Seeker Agent Connect</string>

@@ -13,6 +13,7 @@ import java.time.Instant
 import javax.crypto.SecretKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -321,6 +322,63 @@ class ConnectionRepositoryTest {
         vault().put(orphan, newSecret())
         repository.load()
         assertEquals(emptySet<String>(), vault().ids())
+    }
+
+    @Test
+    fun retiresLegacyPrivateStateWithoutCallingOrConvertingItsGateway() = runBlocking {
+        val id = "7c6b5a49-3827-4615-a0b9-c8d7e6f5a4b3"
+        val requestId = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+        val connectionDir = File(folder.root, "files/connections").apply { mkdirs() }
+        File(connectionDir, "$id.json")
+            .writeText(
+                JSONObject()
+                    .put("version", 4)
+                    .put("id", id)
+                    .put("label", "Former gateway")
+                    .put("serverUrl", "https://gateway.example.com")
+                    .put("serverId", serverA.serverId)
+                    .put("deviceName", "Seeker")
+                    .put("pairedAt", clock.toString())
+                    .put("mode", "gateway_private")
+                    .put("environment", "production")
+                    .put("server", JSONObject().put("state", "unknown"))
+                    .toString()
+            )
+        vault().put(id, newSecret())
+        val results = ResultStore(File(folder.root, "files/results"))
+        val localResult =
+            LocalResult(
+                connectionId = id,
+                requestId = requestId,
+                answer = Answer.Reject,
+                answeredAt = clock,
+                request = FakeConnectionGateway.request(id, requestId, "retired"),
+            )
+        results.put(localResult)
+        val activity = history()
+        activity.record(localResult, null)
+        val cleaned = mutableListOf<String>()
+
+        val migrated = repository(log = activity, onConnectionUnavailable = { cleaned += it })
+        migrated.load()
+
+        val connection = checkNotNull(migrated.connection(id))
+        assertEquals(ConnectionRetirement.GatewayPrivateRemoved, connection.retirement)
+        assertNull(connection.mode)
+        assertFalse(connection.usable)
+        assertFalse(vault().contains(id))
+        assertEquals(Delivery.Undeliverable, results.get(id, requestId)?.delivery)
+        assertEquals(clock, results.get(id, requestId)?.settledAt)
+        assertEquals(listOf(id), cleaned)
+        assertTrue(gateway.sent.isEmpty())
+        activity.load()
+        assertEquals(requestId, activity.records.value.single().requestId)
+
+        val reopened = repository()
+        reopened.load()
+        assertEquals(connection, reopened.connection(id))
+        assertEquals(Delivery.Undeliverable, results.get(id, requestId)?.delivery)
+        assertTrue(gateway.sent.isEmpty())
     }
 
     @Test

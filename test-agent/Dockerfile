@@ -1,10 +1,10 @@
 # Test-agent image. Build from the repository root:
 #   docker build -f test-agent/Dockerfile .
-# The context is the root for the same reason as the sidecar's: the workspace
+# The context is the root for the same reason as the MCP server's: the workspace
 # lockfile and catalog resolve this package's dependencies.
 #
 # This is a CLI, not a service. It runs one command and exits; it holds no key,
-# and it is not an LLM. Nothing here starts on its own — see gateway/compose.yaml,
+# and it is not an LLM. Nothing here starts on its own — see deploy/mcp/compose.yaml,
 # where it sits behind the `agent` profile.
 
 ARG NODE_VERSION=24.21.0
@@ -17,7 +17,8 @@ ENV CI=true
 RUN npm install --global --no-fund --no-audit pnpm@${PNPM_VERSION}
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY sidecar/package.json sidecar/
+COPY server-sdk/package.json server-sdk/
+COPY mcp-server/package.json mcp-server/
 COPY test-agent/package.json test-agent/
 RUN pnpm install --frozen-lockfile
 

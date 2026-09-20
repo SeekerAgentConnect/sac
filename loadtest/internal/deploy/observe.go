@@ -25,7 +25,7 @@ import (
 // NodeInfo is one broker node, as it describes itself.
 //
 // The numbers come from the node's own metrics endpoint rather than from its server API, and that
-// is the one setting this harness turns on that `broadcast/centrifugo.yaml` does not:
+// is the one setting this harness turns on that `feed-gateway/centrifugo.yaml` does not:
 // `prometheus.enabled`. The reason is a measurement one. The server API's `info` answers from an
 // aggregate the node refreshes every sixty seconds, so a fifteen-second window reads zero for
 // every counter in it; the metrics endpoint answers live. It is on the API port, which is private
@@ -167,7 +167,7 @@ func normalize(name string) string {
 //
 // `history` with a limit of zero is the one thing the broker's JSON API can say about a channel
 // carrying protobuf publications — reading the payloads back answers 500, because a protobuf
-// document is not JSON (internal/stream, docs/wiki/broadcast-gateway.md). It is also all a run
+// document is not JSON (internal/stream, docs/wiki/feed-gateway.md). It is also all a run
 // needs: whether the channel moved, and by how much.
 func Position(ctx context.Context, api, streamChannel string) (string, uint64, error) {
 	body, err := json.Marshal(map[string]any{"channel": streamChannel, "limit": 0})

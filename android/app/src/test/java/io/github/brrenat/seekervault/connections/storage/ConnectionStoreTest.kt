@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.connections.storage
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.connections.ConnectionRetirement
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -15,6 +16,8 @@ import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
 import java.io.File
 import java.time.Instant
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -122,6 +125,62 @@ class ConnectionStoreTest {
     }
 
     @Test
+    fun upgradesAPreEnvironmentFeedFixtureWithoutLosingItsSubscription() {
+        // A literal version 2 public-feed record, from before the owner's environment choice was
+        // stored. It must remain the same anonymous gateway/channel subscription and take the old
+        // production meaning, then survive a current-version rewrite (SEE-136).
+        val manifest =
+            JSONObject()
+                .put("serverId", SERVER_B)
+                .put("protocolVersion", SERVER_PROTOCOL)
+                .put("settingsRevision", 1)
+                .put("mode", "gateway_feed")
+                .put("gatewayUrl", GATEWAY)
+                .put("channel", channelFor(SERVER_B))
+                .put(
+                    "required",
+                    JSONArray()
+                        .put(
+                            JSONObject()
+                                .put("id", "jupiter.prediction")
+                                .put("least", 1)
+                                .put("most", 1)
+                        ),
+                )
+                .put("environments", JSONArray().put("production"))
+                .put("name", "Prediction feed")
+        dir.mkdirs()
+        File(dir, "${b.id}.json")
+            .writeText(
+                JSONObject()
+                    .put("version", 2)
+                    .put("id", b.id)
+                    .put("label", "Saved prediction feed")
+                    .put("serverUrl", GATEWAY)
+                    .put("serverId", SERVER_B)
+                    .put("deviceName", "")
+                    .put("pairedAt", b.pairedAt.toString())
+                    .put("mode", "gateway_feed")
+                    .put(
+                        "server",
+                        JSONObject().put("state", "known").put("manifest", manifest),
+                    )
+                    .toString()
+            )
+
+        val upgraded = checkNotNull(store.get(b.id))
+        val known = upgraded.server as ServerRecord.Known
+
+        assertEquals(ConnectionMode.GatewayFeed, upgraded.mode)
+        assertEquals(PluginEnvironment.Production, upgraded.environment)
+        assertEquals(ServerReference.Feed(GATEWAY, channelFor(SERVER_B)), known.manifest.reference)
+        assertFalse(upgraded.hasCredential)
+        store.put(upgraded)
+        assertEquals(5, JSONObject(File(dir, "${b.id}.json").readText()).getInt("version"))
+        assertEquals(upgraded, ConnectionStore(dir).get(b.id))
+    }
+
+    @Test
     fun keepsAValidatedManifestAndTheModeItSelects() {
         val manifest =
             ServerManifest(
@@ -170,29 +229,45 @@ class ConnectionStoreTest {
     }
 
     @Test
-    fun keepsAGatewayPrivateConnectionsSandboxPromise() {
-        val manifest =
-            ServerManifest(
-                serverId = a.serverId,
-                protocolVersion = SERVER_PROTOCOL,
-                settingsRevision = 1,
-                mode = ConnectionMode.GatewayPrivate,
-                reference = ServerReference.GatewayPrivate(GATEWAY),
-                required = listOf(PluginRequirement(PluginId("jupiter.swap"), 1..1)),
-                environments = setOf(PluginEnvironment.Sandbox),
-                name = "Sandbox trader",
-            )
-        val private =
-            a.copy(
-                serverUrl = GATEWAY,
-                mode = ConnectionMode.GatewayPrivate,
-                server = ServerRecord.Known(manifest),
-                environment = PluginEnvironment.Sandbox,
+    fun rewritesALegacyPrivateRecordAsAnInertRetirementMarkerAcrossRestarts() {
+        dir.mkdirs()
+        File(dir, "${a.id}.json")
+            .writeText(
+                JSONObject()
+                    .put("version", 4)
+                    .put("id", a.id)
+                    .put("label", "Former trading server")
+                    .put("serverUrl", GATEWAY)
+                    .put("serverId", a.serverId)
+                    .put("deviceName", "Seeker")
+                    .put("pairedAt", a.pairedAt.toString())
+                    .put("mode", "gateway_private")
+                    .put("environment", "sandbox")
+                    .put(
+                        "lastCheck",
+                        JSONObject()
+                            .put("at", a.pairedAt.toString())
+                            .put("outcome", CheckOutcome.Ok.name)
+                            .put("pending", 2)
+                            .put("morePending", false),
+                    )
+                    .put("server", JSONObject().put("state", "unknown"))
+                    .toString()
             )
 
-        store.put(private)
+        val migrated = store.migrateRetired().single()
 
-        assertEquals(private, ConnectionStore(dir).get(private.id))
+        assertEquals(ConnectionRetirement.GatewayPrivateRemoved, migrated.retirement)
+        assertNull(migrated.mode)
+        assertFalse(migrated.usable)
+        assertFalse(migrated.hasCredential)
+        assertNull(migrated.lastCheck)
+        assertEquals(ServerRecord.Unknown, migrated.server)
+        val persisted = JSONObject(File(dir, "${a.id}.json").readText())
+        assertEquals(5, persisted.getInt("version"))
+        assertFalse(persisted.has("mode"))
+        assertEquals("gateway_private_removed", persisted.getString("retirement"))
+        assertEquals(migrated, ConnectionStore(dir).migrateRetired().single())
     }
 
     @Test
@@ -228,7 +303,7 @@ class ConnectionStoreTest {
         file.writeText(
             file
                 .readText()
-                .replace("\"version\":4", "\"version\":2")
+                .replace("\"version\":5", "\"version\":2")
                 .replace(
                     ",\"environment\":\"sandbox\"",
                     "",

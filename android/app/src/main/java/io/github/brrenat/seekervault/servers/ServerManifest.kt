@@ -87,12 +87,6 @@ enum class ConnectionMode(val code: String) {
      * holds no credential for it, and the server learns nothing about the phone.
      */
     GatewayFeed("gateway_feed"),
-
-    /**
-     * A private independent server reached through the shared gateway with the device credential
-     * issued only after the owner confirmed a single-use invitation.
-     */
-    GatewayPrivate("gateway_private"),
 }
 
 /** Where a server is reached, which is one thing for each mode and never both. */
@@ -122,15 +116,6 @@ sealed interface ServerReference {
     data class Feed(val gatewayUrl: String, val channel: String) : ServerReference {
         override val mode: ConnectionMode
             get() = ConnectionMode.GatewayFeed
-
-        override val origin: String
-            get() = gatewayUrl
-    }
-
-    /** A private server reached only through the gateway origin the invitation named. */
-    data class GatewayPrivate(val gatewayUrl: String) : ServerReference {
-        override val mode: ConnectionMode
-            get() = ConnectionMode.GatewayPrivate
 
         override val origin: String
             get() = gatewayUrl

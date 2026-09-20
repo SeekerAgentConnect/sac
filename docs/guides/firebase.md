@@ -8,7 +8,7 @@ inside the Firebase callback budget, deduplicates the handoff, and schedules onl
 that need the existing authoritative Sync path. SAW-058 adds one private request channel, an
 isolated runtime notification-permission request, and a read-only tap route which fetches current
 state before showing review controls. SEE-92 extends the same pipeline to a
-publisher's public feed, with a relay in the shared broadcast gateway and per-feed topics
+publisher's public feed, with a relay in the shared feed gateway and per-feed topics
 ([below](#the-broadcast-relay-and-feed-topics-see-92)). Adding or removing Firebase, or denying
 notification permission, does not change the Stage 5.2 foreground stream, manual **Refresh**, unary
 Sync, periodic WorkManager recovery, or Stage 7.1's own feed stream.
@@ -109,7 +109,7 @@ Then set the non-secret project ID and start the sidecar:
 ```bash
 export FCM_PROJECT_ID=your-firebase-project-id
 export GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/seeker-vault-fcm.json
-pnpm dev:sidecar
+pnpm dev:mcp-server
 ```
 
 `FCM_PROJECT_ID` may instead live in the ignored `.env`. Keep
@@ -329,7 +329,7 @@ subscribed through the shared gateway — and a second kind of message about it.
 stays exactly as it is: the direct path's registration, its `fid`-addressed invalidation, its Sync
 and its request alerts are untouched, and a deployment can run either half, both, or neither.
 
-**Who sends.** The broadcast gateway, not the publisher. The publisher publishes a document to the
+**Who sends.** The feed gateway, not the publisher. The publisher publishes a document to the
 gateway as it already did; the gateway commits it and then sends one message to that feed's topic.
 A publisher is given no Firebase credential, cannot name a topic, and never learns that any phone
 received anything.
@@ -359,12 +359,13 @@ it is the news that a public broadcast changed, with no document in it at all.
 
 One Firebase project for the whole deployment — the same project whose `google-services.json` the
 APK was built with, or the messages will be sent to topics no phone is subscribed to. Then, in
-`broadcast/.env`:
+`deploy/feed/.env`:
 
 ```bash
 BROADCAST_PUSH_CREDENTIALS_FILE=/run/secrets/seeker-broadcast-fcm.json
 BROADCAST_PUSH_ENVIRONMENT=production
-docker compose -f compose.yaml -f compose.push.yaml up -d --build
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
+  -f deploy/feed/compose.push.yaml up -d --build
 ```
 
 The credential is a service-account JSON for that project, with permission to send (Firebase's
@@ -375,7 +376,7 @@ malformed credential stops the process with a message that names the field and n
 contents.
 
 The gateway's own image carries a CA bundle from SEE-92 onwards, because this is its first outbound
-TLS connection (`broadcast/Dockerfile` says so in a comment beside the line that copies it).
+TLS connection (`feed-gateway/Dockerfile` says so in a comment beside the line that copies it).
 
 ### What the phone does with a hint
 

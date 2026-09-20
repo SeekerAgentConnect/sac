@@ -2,6 +2,8 @@
 node_modules/
 dist/
 build/
+mcp-server/package/
+*.tgz
 .gradle/
 .kotlin/
 *.apk
@@ -11,11 +13,9 @@ build/
 .env
 .env.*
 !.env.example
-# The Prediction template's own example, which is a second deployment's
-# (publisher/.env.prediction.example, SEE-96).
-!.env.prediction.example
-# deploy/server ships its settings template under this name.
-!.env.template
+deploy/**/secrets/
+deploy/**/backups/
+deploy/**/tls/
 local.properties
 *.jks
 *.keystore
@@ -25,13 +25,14 @@ google-services.json
 *.pem
 *.key
 
-# Go binaries built in place by `go build` in broadcast/, publisher/ and loadtest/
-/broadcast/broadcast
-/broadcast/broadcastctl
-/publisher/copytrading
-/publisher/prediction
-/publisher/publishctl
-/publisher/copytrading-admin
+# Go binaries built in place by `go build` in feed-gateway/, the two demos and loadtest/
+/feed-gateway/feed-gateway
+/feed-gateway/feed-gatewayctl
+/demo-copytrading/copytrading
+/demo-copytrading/copytrading-admin
+/demo-copytrading/publishctl
+/demo-prediction/prediction
+/demo-prediction/publishctl
 /loadtest/loadtest
 
 # Local databases

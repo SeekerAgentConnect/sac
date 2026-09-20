@@ -27,12 +27,6 @@ class ServerManifestTest {
             mode = ConnectionMode.GatewayFeed,
             origin = GATEWAY,
         )
-    private val private =
-        ManifestExpectation(
-            serverId = SERVER_B,
-            mode = ConnectionMode.GatewayPrivate,
-            origin = GATEWAY,
-        )
 
     private fun valid(message: WireManifest, expect: ManifestExpectation = direct): ServerManifest {
         val result = manifestFrom(message, expect)
@@ -66,19 +60,6 @@ class ServerManifestTest {
         assertEquals(ConnectionMode.GatewayFeed, manifest.mode)
         assertEquals(ServerReference.Feed(GATEWAY, "server/$SERVER_B"), manifest.reference)
         assertEquals(listOf(PluginRequirement(PluginId(SWAP_PLUGIN), 1..2)), manifest.required)
-    }
-
-    @Test
-    fun aPrivateManifestCanOnlyConfirmTheInvitationGateway() {
-        val manifest = valid(privateManifest(name = "Trading agent"), private)
-
-        assertEquals(ConnectionMode.GatewayPrivate, manifest.mode)
-        assertEquals(ServerReference.GatewayPrivate(GATEWAY), manifest.reference)
-        assertEquals("Trading agent", manifest.name)
-        assertEquals(
-            ManifestProblem.OtherEndpoint,
-            refused(privateManifest(gateway = "https://elsewhere.example"), private),
-        )
     }
 
     @Test

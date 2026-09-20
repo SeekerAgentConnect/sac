@@ -17,7 +17,7 @@ import { parseArgs } from "node:util";
 import {
   freePort,
   startSidecarProcess,
-} from "../sidecar/src/testing/process.ts";
+} from "../mcp-server/src/testing/process.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const TEXT = "Hello Seeker — device check 👋";

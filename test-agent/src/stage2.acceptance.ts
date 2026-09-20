@@ -15,8 +15,8 @@ import {
   RequestError,
   RequestErrorDetailSchema,
   RequestState,
-} from "../../sidecar/src/gen/seekervault/request/v1/request_pb.js";
-import { openDatabase } from "../../sidecar/src/storage/database.ts";
+} from "@seeker-vault/server-sdk/protocol";
+import { openDatabase } from "../../server-sdk/src/storage/database.ts";
 import {
   Code,
   ConnectError,
@@ -25,18 +25,18 @@ import {
   requestClient,
   type Phone,
   type TestPhone,
-} from "../../sidecar/src/testing/clients.ts";
+} from "../../mcp-server/src/testing/clients.ts";
 import {
   freePort,
   startSidecarProcess,
   temporaryDatabasePath,
   type SidecarProcess,
-} from "../../sidecar/src/testing/process.ts";
+} from "../../mcp-server/src/testing/process.ts";
 import type { RequestView } from "./agent.ts";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 const PAIR = fileURLToPath(
-  new URL("../../sidecar/src/pairing/cli.ts", import.meta.url),
+  new URL("../../mcp-server/src/cli.ts", import.meta.url),
 );
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);
@@ -156,7 +156,7 @@ function agent(
 
 /** `pnpm pair` on `target`'s database, as the operator runs it. */
 function pairCommand(target: Server, args: readonly string[]): Promise<Run> {
-  return run(PAIR, args, {
+  return run(PAIR, ["pair", ...args], {
     SIDECAR_HOST: "127.0.0.1",
     SIDECAR_PORT: String(target.port),
     MCP_TOKEN,

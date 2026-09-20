@@ -25,7 +25,7 @@ auto-init is explicitly false until SAW-055 can pair token creation with ownersh
 - `server.test.ts` injects the sender boundary. Firebase-off startup never invokes the factory;
   configured startup owns and closes one sender and logs neither the project ID nor credential
   data.
-- Node `stage-boundary.test.ts` confines `firebase-admin` imports to `sidecar/src/push/` and rejects
+- Node `stage-boundary.test.ts` confines `firebase-admin` imports to `mcp-server/src/push/` and rejects
   logging from that credential-bearing module. No request lifecycle calls the sender.
 - Android `StageBoundaryTest` requires Firebase Messaging on the classpath while allowing only the
   disabled-auto-init metadata beside `MainActivity`, `INTERNET`, and optional camera access in the
@@ -417,7 +417,7 @@ Firebase project, or physical Android device was present during this run.
 
 ### Joined automated acceptance
 
-`sidecar/src/push/stage53.acceptance.test.ts` starts two real configured sidecar listeners with
+`mcp-server/src/push/stage53.acceptance.test.ts` starts two real configured sidecar listeners with
 throwaway SQLite databases and injected credential-free sender boundaries. Production Connect
 clients pair the phones and register targets; production MCP clients create, retry, cancel, and
 read durable requests. The test proves:

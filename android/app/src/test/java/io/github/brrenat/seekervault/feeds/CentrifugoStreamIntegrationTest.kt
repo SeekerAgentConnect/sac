@@ -49,9 +49,9 @@ import org.junit.Test
  * ```
  *
  * Two things here stand in for the gateway, which is a Go service this test does not run: the
- * ticket is minted with the same claims (`broadcast/internal/stream/ticket_test.go` pins them), and
- * publications are made with the same request (`broadcast/internal/stream/broker_test.go` pins that
- * against a real broker). What is under test is everything between them and the phone.
+ * ticket is minted with the same claims (`feed-gateway/internal/stream/ticket_test.go` pins them),
+ * and publications are made with the same request (`feed-gateway/internal/stream/broker_test.go`
+ * pins that against a real broker). What is under test is everything between them and the phone.
  */
 class CentrifugoStreamIntegrationTest {
     private val centrifugo = System.getProperty("seekervault.centrifugo")
@@ -59,7 +59,7 @@ class CentrifugoStreamIntegrationTest {
     private val config =
         File(
             System.getProperty("seekervault.repoRoot") ?: ".",
-            "broadcast/centrifugo.yaml",
+            "feed-gateway/centrifugo.yaml",
         )
 
     private val processes = mutableListOf<Process>()
@@ -79,7 +79,7 @@ class CentrifugoStreamIntegrationTest {
         )
         redisPort = free()
         // No persistence: the history here is a recovery cache, which is all it ever is
-        // (docs/wiki/broadcast-gateway.md#the-stream).
+        // (docs/wiki/feed-gateway.md#the-stream).
         processes +=
             ProcessBuilder(
                     redis!!,
@@ -484,7 +484,9 @@ class CentrifugoStreamIntegrationTest {
         const val SERVER = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
         const val PROPOSAL = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         const val CHANNEL = "feed:server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
-        /** What the shipped configuration keeps on a feed channel (broadcast/centrifugo.yaml). */
+        /**
+         * What the shipped configuration keeps on a feed channel (feed-gateway/centrifugo.yaml).
+         */
         const val HISTORY = 256
     }
 }

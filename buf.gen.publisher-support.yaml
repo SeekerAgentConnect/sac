@@ -1,0 +1,45 @@
+version: v2
+clean: true
+# Go for the public-feed demos, generated once into the library they share (SEE-134,
+# publisher-support/). A third template, beside buf.gen.yaml and buf.gen.feed-gateway.yaml, because a
+# publisher speaks a third subset of the protocol: it writes manifests and common requests through the
+# gateway's publisher API, and it never reads a feed, never serves one, and has never heard of a durable
+# private lifecycle or a live command.
+#
+# One output, not one per demo: demo-copytrading and demo-prediction publish the same documents
+# through the same API, and two generated copies of one contract would be two contracts.
+#
+# **No feed client is generated here**, and that is the boundary rather than a note about it: the
+# template cannot read a feed because no feed client is compiled for it, which is the same argument
+# that keeps publish.proto out of the phone's generation in buf.gen.yaml. A phone reads feeds; a
+# publisher publishes and stops (docs/wiki/shared-proposals.md).
+managed:
+  enabled: true
+  override:
+    # The module path plus the proto directory, so an import reads
+    # .../publisher-support/gen/seekervault/proposal/v1.
+    - file_option: go_package_prefix
+      value: github.com/BrRenat/SeekerAgentWallet/publisher-support/gen
+plugins:
+  # Messages. The runtime library in publisher-support/go.mod must match this version, and it is the
+  # same version feed-gateway/go.mod pins: the two speak the same wire format to each other
+  # (docs/development/toolchain.md).
+  - remote: buf.build/protocolbuffers/go:v1.36.12
+    out: publisher-support/gen
+    opt: paths=source_relative
+  # The Connect client for PublisherService. Only the client is used — a demo serves none of these
+  # procedures — and the generated handler that comes with it is never mounted outside tests, which
+  # publisher-support/api/boundary_test.go checks.
+  - remote: buf.build/connectrpc/go:v1.21.0
+    out: publisher-support/gen
+    opt: paths=source_relative
+inputs:
+  - directory: proto
+    paths:
+      # The publisher API, the problem detail its refusals carry, and the two documents a
+      # publisher writes. feed.proto and event.proto are deliberately absent.
+      - proto/seekervault/gateway/v1/publish.proto
+      - proto/seekervault/gateway/v1/problem.proto
+      - proto/seekervault/proposal/v1/proposal.proto
+      - proto/seekervault/request/v2/request.proto
+      - proto/seekervault/server/v1/manifest.proto

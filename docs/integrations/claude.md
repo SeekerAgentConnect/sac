@@ -64,12 +64,13 @@ Write down four values before going on:
 ### 1. Have the public endpoint first
 
 OAuth runs over HTTPS on a real domain: the redirect URIs, the token request, and the MCP calls
-themselves. Set up `docs/guides/self-hosting.md#going-public-tls-dns-and-ports` and check it works
-before adding any of this.
+themselves. Set up the generic native-TLS direct endpoint in the canonical
+[`deploy/README.md`](../../deploy/README.md#3-direct-mcp-over-native-https-and-http2) and check it
+works before adding any of this.
 
 ### 2. Tell the sidecar about the authorization server
 
-In `gateway/.env`:
+In `deploy/mcp/.env`:
 
 ```sh
 MCP_OAUTH_ISSUER=https://auth.example.com/realms/seeker
@@ -79,11 +80,12 @@ MCP_OAUTH_SCOPE=seeker-vault:agent
 # MCP_OAUTH_JWKS_URL=https://auth.example.com/realms/seeker/protocol/openid-connect/certs
 ```
 
-Then start the stack with the OAuth overlay on top of the public one:
+Then replace the MCP service and start the independent ingress:
 
 ```sh
-cd gateway
-docker compose -f compose.yaml -f compose.public.yaml -f compose.oauth.yaml up -d --build
+docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --build
+docker compose --env-file deploy/ingress/direct/.env \
+  -f deploy/ingress/direct/compose.yaml up -d
 ```
 
 `MCP_OAUTH_ISSUER` is the switch. Without it there is no OAuth at all, and the other three
@@ -147,11 +149,10 @@ this page is where it goes). As of writing, in Claude's settings:
   the update stream — takes the phone's credentials, and an access token opens none of it. A
   hosted client never gains a phone approval credential.
 - `/healthz` and the Stage 1 `LiveCommandService` diagnostic are not on the public interface at
-  all (`gateway/Caddyfile.public`).
-- `MCP_TOKEN` still opens the stack's own private endpoint on the container network's loopback
-  address — the healthcheck and the `agent` profile use it, and nothing outside the stack can
-  reach it. It does **not** open `/mcp` under the public name while OAuth is on, so there is no
-  second way in that skips the authorization server.
+  all ([`deploy/ingress/direct/Caddyfile`](../../deploy/ingress/direct/Caddyfile)).
+- `MCP_TOKEN` still opens the host-loopback endpoint. It does **not** open `/mcp` under the public
+  name while OAuth is on, so there is no second way in through the public ingress that skips the
+  authorization server.
 - Everything the tools do is still a request waiting for the owner. An access token is permission
   to ask.
 
@@ -172,7 +173,8 @@ back to being the way in.
 
 ## When it does not work
 
-The refusal says which check failed, both in the response and in `docker compose logs sidecar`.
+The refusal says which check failed, both in the response and in
+`docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml logs mcp-server`.
 None of these ever quotes the token.
 
 | What you see | What it means |
@@ -192,7 +194,7 @@ None of these ever quotes the token.
 
 The whole path was exercised against an authorization server the tests control: the discovery
 document through the public TLS gateway, a real MCP session opened with an access token, and every
-refusal above (`sidecar/src/oauth.test.ts`, `docs/testing/stage-7.md#saw-036`).
+refusal above (`mcp-server/src/oauth.test.ts`, `docs/testing/stage-7.md#saw-036`).
 
 **No hosted Claude client has connected to it.** That needs a public domain, a real authorization
 server, and an account, and it is the one check this integration is actually for — a metadata

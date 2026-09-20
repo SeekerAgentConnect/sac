@@ -2,7 +2,7 @@
 
 The transactions in [`fixtures/transactions/cases.json`](../../fixtures/transactions/cases.json) are
 built by the sidecar and decoded by the phone. They are what ties the two halves of a transfer
-together: the sidecar's builder (`sidecar/src/solana/transfer.ts`) and the phone's parser
+together: the sidecar's builder (`mcp-server/src/solana/transfer.ts`) and the phone's parser
 (`android/.../transactions/`) never share a line of code, so the only thing that can show they agree
 is a transaction one of them made and the other read.
 
@@ -60,7 +60,7 @@ perfectly valid transaction that simply isn't the one the owner was asked to app
 
 | Runtime | Test | What it checks |
 | --- | --- | --- |
-| Node | `sidecar/src/solana/fixtures.test.ts` | The committed file is the one the builder produces now, every verdict appears, and the findings are sorted |
+| Node | `mcp-server/src/solana/fixtures.test.ts` | The committed file is the one the builder produces now, every verdict appears, and the findings are sorted |
 | Android | `TransactionFixturesTest` | Each case decodes to the recorded verdict, findings, addresses, and base units; nothing unread reads as verified; only a fully read and matching transaction is approvable |
 
 The Android test reads the file straight from `fixtures/`, which `android/app/build.gradle.kts` adds
@@ -68,14 +68,14 @@ to the unit tests' resources. Nothing is copied, so the two sides cannot drift a
 
 ## Changing or adding a case
 
-1. Edit `transactionFixtures()` in `sidecar/src/testing/transaction-fixtures.ts`. A case built by `built(…)` goes
+1. Edit `transactionFixtures()` in `mcp-server/src/testing/transaction-fixtures.ts`. A case built by `built(…)` goes
    through the real builder; one assembled by `crafted(…)` is for shapes the sidecar would never
    produce, such as a second signer.
-2. Run `node sidecar/src/testing/transaction-fixtures.ts` to rewrite the file.
+2. Run `node mcp-server/src/testing/transaction-fixtures.ts` to rewrite the file.
 3. Run `pnpm check` and `pnpm check:android`. Both sides read the same file, so a case whose
    expectation is wrong fails in one of them.
 
-Never edit `fixtures/transactions/cases.json` by hand: `sidecar/src/solana/fixtures.test.ts` rebuilds
+Never edit `fixtures/transactions/cases.json` by hand: `mcp-server/src/solana/fixtures.test.ts` rebuilds
 it and fails if what is committed isn't what the builder produces.
 
 ## Verification record: SAW-020
@@ -91,5 +91,5 @@ cluster was reached by any check.
 | `pnpm check:generated` | PASS |
 | `pnpm test:hello`, `pnpm test:queue` | PASS: 9/9 and 7/7, unchanged |
 | `pnpm build` | PASS |
-| Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>A decoder that tolerates bytes left over at the end failed both `TransactionDecoderTest` and the shared fixtures.</li><li>Reading the recipient from the request instead of from the instruction failed `changed_recipient` — the case that exists for exactly that mistake.</li><li>Treating an unread instruction as approvable failed the coverage test.</li><li>Downgrading a value-moving program's unread instruction to a coverage gap let the delegate case through, and failed.</li><li>Skipping the curve check in the derivation failed `PdaTest` and every token case.</li><li>Editing the committed fixture file by hand failed `sidecar/src/solana/fixtures.test.ts`.</li></ul> |
+| Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>A decoder that tolerates bytes left over at the end failed both `TransactionDecoderTest` and the shared fixtures.</li><li>Reading the recipient from the request instead of from the instruction failed `changed_recipient` — the case that exists for exactly that mistake.</li><li>Treating an unread instruction as approvable failed the coverage test.</li><li>Downgrading a value-moving program's unread instruction to a coverage gap let the delegate case through, and failed.</li><li>Skipping the curve check in the derivation failed `PdaTest` and every token case.</li><li>Editing the committed fixture file by hand failed `mcp-server/src/solana/fixtures.test.ts`.</li></ul> |
 | Physical device | **PASS**, indirectly, 2026-09-12: the devnet transfer recorded in [`stage-4.md`](stage-4.md#verification-record-saw-024) was decoded and shown on the Seeker before the owner approved it. SAW-020 itself adds no wallet interaction. |

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    // Emits the generated JavaScript in src/gen alongside the compiled sources.
+    "allowJs": true
+  },
+  "include": ["src/cli.ts", "src/healthcheck.ts"],
+  "exclude": ["src/**/*.test.ts", "src/testing", "src/gen"]
+}

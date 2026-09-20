@@ -35,11 +35,8 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
-import io.github.brrenat.seekervault.gateway.v1.DeviceResult
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.server.v1.ServerEnvironment
-import io.github.brrenat.seekervault.server.v1.ServerManifest as WireServerManifest
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.GATEWAY
 import io.github.brrenat.seekervault.servers.PluginRequirement
@@ -48,7 +45,6 @@ import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
-import io.github.brrenat.seekervault.servers.privateManifest
 import java.io.File
 import java.net.URLEncoder
 import java.time.Instant
@@ -76,14 +72,12 @@ class AddConnectionRouteTest {
     private val gateway = FakeConnectionGateway()
     private val server = gateway.serve(URL)
     private val key = softwareKey()
-    private val invitations = RouteInvitationGateway()
     private val repository by lazy {
         ConnectionRepository(
             store = ConnectionStore(File(folder.root, "connections")),
             vault = CredentialVault(File(folder.root, "credentials")) { key },
             results = ResultStore(File(folder.root, "results")),
             gateway = gateway,
-            invitations = invitations,
             deviceName = "Seeker",
             io = Dispatchers.Unconfined,
         )
@@ -348,36 +342,15 @@ class AddConnectionRouteTest {
     }
 
     @Test
-    fun previewsAnInvitationOnceAndOnlyRedeemsAfterASecondExplicitConfirmation() {
+    fun explainsThatAStaleInvitationWasRetiredWithoutCallingAnyGateway() {
         show()
         enter(invitationText())
 
         compose
-            .onNodeWithTag(ConnectionsTags.CONFIRM_INVITATION)
-            .assertTextContains("Trading agent")
-        compose.onNodeWithText("Sandbox").assertExists()
-        compose.onNodeWithText("jupiter.swap").assertExists()
-        assertEquals(1, invitations.resolves)
-        assertEquals(0, invitations.redeems)
-
-        // A duplicate scan or warm deep link while confirmation is open is ignored.
-        viewModel.onCode(invitationText())
-        assertEquals(1, invitations.resolves)
-        compose
-            .onNodeWithTag(ConnectionsTags.CANCEL_PAIRING)
-            .performScrollTo()
-            .performSemanticsAction(SemanticsActions.OnClick)
-        assertEquals(0, invitations.redeems)
-
-        enter(invitationText())
-        compose
-            .onNodeWithTag(ConnectionsTags.CONNECT_INVITATION)
-            .performScrollTo()
-            .performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitForIdle()
-        assertEquals(2, invitations.resolves)
-        assertEquals(1, invitations.redeems)
-        assertEquals(PluginEnvironment.Sandbox, paired.single().environment)
+            .onNodeWithTag(ConnectionsTags.CODE_PROBLEM)
+            .assertTextEquals(app.getString(R.string.gateway_invitation_retired))
+        assertEquals(0, feedCalls)
+        assertTrue(server.connections.isEmpty())
     }
 
     @Test
@@ -447,68 +420,5 @@ class AddConnectionRouteTest {
         const val URL = "https://vault.example.com"
         const val FAKE_CAMERA = "fakeCamera"
         const val INVITATION_TOKEN = "abcdefghijklmnopqrstuvwxyzABCDEFGH123456789"
-    }
-
-    private class RouteInvitationGateway : InvitationGateway {
-        var resolves = 0
-        var redeems = 0
-        private val manifest =
-            privateManifest(
-                name = "Trading agent",
-                environments = listOf(ServerEnvironment.SERVER_ENVIRONMENT_SANDBOX),
-            )
-
-        override suspend fun resolve(reference: InvitationReference): ResolvedInvitation {
-            resolves++
-            return ResolvedInvitation(
-                invitationId = "11111111-2222-4333-8444-555555555555",
-                serverId = SERVER_B,
-                displayName = "Trading agent",
-                expiresAt = Instant.parse("2026-09-18T12:15:00Z"),
-                standing = InvitationStanding.Pending,
-                manifest = manifest,
-            )
-        }
-
-        override suspend fun redeem(
-            reference: InvitationReference,
-            deviceName: String,
-        ): RedeemedInvitation {
-            redeems++
-            return RedeemedInvitation(
-                "22222222-3333-4444-8555-666666666666",
-                "0123456789abcdefghijklmnopqrstuvwxyzABCDEFG",
-                SERVER_B,
-                manifest,
-            )
-        }
-
-        override suspend fun serverManifest(
-            gatewayUrl: String,
-            credential: String,
-            connectionId: String,
-            knownRevision: Long,
-        ): WireServerManifest? = error("not used")
-
-        override suspend fun listRequests(
-            gatewayUrl: String,
-            credential: String,
-            connectionId: String,
-            pageToken: String,
-            knownSequence: Long,
-        ) = GatewayPrivatePage(emptyList(), "", knownSequence, true)
-
-        override suspend fun submitResult(
-            gatewayUrl: String,
-            credential: String,
-            connectionId: String,
-            result: DeviceResult,
-        ) = Unit
-
-        override suspend fun revoke(
-            gatewayUrl: String,
-            credential: String,
-            connectionId: String,
-        ) = Unit
     }
 }

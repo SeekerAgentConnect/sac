@@ -10,8 +10,9 @@ Connect ([`docs/protocol.md`](../protocol.md)). What you send here is deliberate
 template supplies its registered capability, feed audience, Signal presentation and local-input
 declarations.
 
-The tool in [`publisher/cmd/publishctl`](../../publisher/cmd/publishctl) is a client of exactly
-these endpoints and has no privileged path of its own, so anything it does, your program can do.
+The tool in [`demo-copytrading/cmd/publishctl`](../../demo-copytrading/cmd/publishctl) is a client
+of exactly these endpoints and has no privileged path of its own, so anything it does, your program
+can do.
 
 If you have not yet got a template running to call, start at
 [`docs/guides/server-development.md`](../guides/server-development.md).
@@ -111,6 +112,14 @@ Reading is identical on both, and so is `POST /v1/requests/{id}/retry`: a retry 
 rather than about the statement, so it belongs to whoever operates the template rather than to
 whoever wrote the signal.
 
+The reason the two agree that closely is that the frame is one piece of source: the authorization,
+the routing, the strict decoding and the shape of every refusal are
+[`publisher-support/api`](../../publisher-support/api), written once and read by both. Everything
+around it is each demo's own, and since SEE-134 that includes the Go module and the image: its own
+listener, its own `PUBLISHER_API_TOKEN`, its own database, its own server ID and credential, and its
+own declaration of who writes its signals. They are two publishers that answer alike, not two doors
+into one — so a token for one is nothing at all to the other.
+
 ## Creating a request
 
 ```sh
@@ -134,7 +143,7 @@ curl -sS https://signals.example.com/v1/requests \
   }'
 ```
 
-The Go client in `publisher/sdk` calls that same endpoint:
+The Go client in `demo-copytrading/sdk` calls that same endpoint:
 
 ```go
 client, _ := sdk.New(sdk.Options{URL: apiURL, Token: token})

@@ -4,7 +4,7 @@
 // 	protoc        (unknown)
 // source: seekervault/gateway/v1/feed.proto
 
-// What a phone reads from the broadcast gateway (SEE-90, docs/wiki/broadcast-gateway.md).
+// What a phone reads from the feed gateway (SEE-90, docs/wiki/feed-gateway.md).
 //
 // This is the whole of the client API, and nothing on it changes a document. A phone asks what a
 // publisher says about itself, what it is currently proposing, what one of those proposals says,
@@ -701,7 +701,7 @@ func (x *GetStreamTicketRequest) GetChannels() []string {
 type GetStreamTicketResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The credential a listener connects with, opaque to the caller. What it is made of is the
-	// stream's business (docs/wiki/broadcast-gateway.md#the-stream); what a caller needs to know is
+	// stream's business (docs/wiki/feed-gateway.md#the-stream); what a caller needs to know is
 	// that it grants the channels below, expires, and can be asked for again.
 	Ticket string `protobuf:"bytes,1,opt,name=ticket,proto3" json:"ticket,omitempty"`
 	// The channels granted, one entry per channel the gateway hosts, in the order they were asked

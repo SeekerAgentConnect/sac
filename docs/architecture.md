@@ -4,9 +4,9 @@ Seeker Agent Connect (SAC) is an Android application for reviewing requests from
 
 ## Architecture decision and implementation status
 
-The agreed architecture has **two connection modes: direct private connections and public feeds through a shared gateway**. Gateway-private routing is being removed: it duplicates the private direct path and adds unnecessary device bindings, request storage and result routing to the feed gateway.
+The implemented architecture has **two connection modes: direct private connections and public feeds through a shared gateway**. Gateway-private routing was removed in SEE-130 because it duplicated the private direct path and added unnecessary device bindings, request storage and result routing to the feed gateway.
 
-This document defines the target boundaries. This documentation change does **not** remove the existing implementation. Until the cleanup is complete, the repository still contains `gateway_private`, gateway invitations, private device APIs and historical directory names. Their presence is migration work, not a third supported architectural direction. Linked detailed documents may still describe that implementation and must be reconciled during cleanup.
+Compatibility reservations and one-way migration readers may still name the retired mode, but no active API, listener, route, manifest, or Android connection mode implements it.
 
 ## Product and service boundaries
 
@@ -14,7 +14,7 @@ This document defines the target boundaries. This documentation change does **no
 | --- | --- | --- |
 | SAC Android app | Connections, Inbox, owner inputs, inspection, rules, manual approval, wallet invocation and local history | User's phone |
 | Shared protocol | Request identity, lifecycle, action capabilities, manifests and transport contracts | Implemented by compatible clients and servers |
-| Server SDK | Help developers implement the supported direct or feed integration; expose only capabilities actually implemented | Developer's backend |
+| Direct Server SDK | Embed the supported private direct-server lifecycle, persistence and phone services in a TypeScript backend | Developer's backend |
 | Independent server | Business logic and request creation; private results for direct connections, or common publications for public feeds | Developer/user-operated host |
 | Feed gateway | Accept a publication once; store and distribute it to subscribers | Shared infrastructure |
 | Bundled client plugins | Prepare and inspect supported actions, such as Jupiter operations | Compiled into SAC |
@@ -23,7 +23,12 @@ This document defines the target boundaries. This documentation change does **no
 
 An independent server is a role, not an extra service that every developer must install beside their backend. The existing MCP server is one implementation of that role. The historical name `sidecar` does not imply another required component.
 
-The Go Server SDK currently lives in `publisher/sdk/`; its private-gateway APIs are part of the removal work. Do not describe a replacement direct SDK API as already implemented. The Android build currently has `:app` and `:designsystem`; a separately packaged Android SDK remains future work.
+The CopyTrading demo's API client remains in `demo-copytrading/sdk/`. The publication engine both
+feed demos use is `publisher-support/`, a source library with no command, image or deployment of
+its own. The reusable TypeScript direct-server engine lives in `server-sdk/`; the independently
+packaged `mcp-server/` application consumes only its public exports. Feed publishers use the
+gateway's ordinary publication API rather than this Direct Server SDK. The Android build currently
+has `:app` and `:designsystem`; a separately packaged Android SDK remains future work.
 
 ## Two connection modes
 
@@ -61,7 +66,7 @@ The independent server owns pairing, authenticated request access, durable reque
 
 An AI agent calls the MCP adapter of the user's server. That adapter asks the server's request core to create/read/cancel requests; the phone reviews those requests and returns outcomes to the same server. MCP is not part of the phone-to-server contract and does not grant approval authority.
 
-Pairing links and QR codes belong to direct onboarding. A server can hand the connection information to its user through a website, bot or CLI. A hosted invitation page is not a reason to relay all subsequent private traffic through the feed gateway. Cleanup must preserve working direct pairing and explicitly address any link/QR usability gap without restoring private gateway routing.
+Pairing links and QR codes belong to direct onboarding. A server can hand the connection information to its user through a website, bot or CLI. Android handles `seekervault://pair` links directly, and the existing `pnpm pair` command prints both the URI and QR.
 
 The existing direct implementation's supported device count must be documented accurately. Removing gateway-private bindings must not silently claim that direct multi-device support already exists.
 
@@ -123,33 +128,44 @@ Public feeds use gateway snapshots and Centrifugo streaming with revision checks
 
 Optional FCM wake-ups initiate authoritative reads; they do not contain an approval or authorize execution. No foreground stream, background worker, notification or retry may open a wallet or approve a request.
 
-See [Firebase](guides/firebase.md) and [broadcast gateway](wiki/broadcast-gateway.md). Private-gateway portions of existing supporting documents are pending removal.
+See [Firebase](guides/firebase.md) and [feed gateway](wiki/feed-gateway.md).
 
-## Repository naming and deployment cleanup
+## Final repository and deployment layout
 
-Current directory names describe historical implementation choices and are not the desired product vocabulary:
+These are the canonical post-refactor boundaries:
 
-| Current path | What it actually contains | Cleanup direction |
+| Path | Responsibility | Boundary |
 | --- | --- | --- |
-| `android/` | SAC app and design system | Keep the application boundary clear |
-| `proto/` | Shared contracts, including the unwanted private-gateway additions | Keep direct/feed contracts; retire private-gateway fields/services safely |
-| `sidecar/` | The user's direct request server with an optional MCP adapter | Use a clear direct/MCP server name; do not present it as an extra mandatory service |
-| `gateway/` | Deployment assets and reverse proxy for the direct server, including TLS/OAuth configuration | Move/name as direct-server deployment infrastructure |
-| `broadcast/` | Shared Go feed gateway, currently also containing unwanted private routing | Establish one canonical feed-gateway name and remove private routing |
-| `publisher/` | Demo server implementations plus reusable Go Server SDK | Clearly separate SDK code from examples in layout and documentation |
-| `deploy/server/` | Shared infrastructure, optional demo overlay and optional direct-server overlay | Preserve independent deployment with consistent names |
-| `test-agent/` | Developer MCP client | Keep as a test/development tool |
+| `android/` | SAC app and design system | No server implementation |
+| `proto/` | Shared direct/feed contracts plus compatibility reservations | Retired private-gateway identifiers stay reserved |
+| `server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Embeddable library; no MCP/product configuration |
+| `mcp-server/` | Self-hosted MCP host, executable CLI, providers and standalone Docker/npm packaging | Consumes only the Direct Server SDK's public API; the npm artifact vendors the unpublished runtime |
+| `deploy/mcp/`, `deploy/ingress/direct/` | Portable direct server and separately managed TLS/OAuth ingress | Application and ingress have independent lifecycles |
+| `feed-gateway/` | Shared Go feed gateway with public-read and publisher listeners, storage contract and local SQLite implementation | The only shared public-feed service |
+| `publisher-support/` | Go source library shared by both feed demos: publication bindings, document rules, manifest, store, gateway client, API and operator CLI | No command, image or deployment of its own |
+| `demo-copytrading/` | CopyTrading application: commands, admin UI, SDK and image | Independent preset in `deploy/copytrading/` |
+| `demo-prediction/` | Prediction application: command, provider client, discovery cycle and image | Independent preset in `deploy/prediction/` |
+| `deploy/` | Portable feed/MCP/demo presets, separate ingress and isolated operator examples | Canonical orchestration with explicit volume identities |
+| `test-agent/` | Developer MCP client | Development and verification only |
 
-**There is one shared feed gateway in the target architecture.** Today's `gateway/` folder is not a duplicate implementation of `broadcast/`: it contains reverse-proxy/deployment configuration for the direct server. Resolve the confusing naming by relocating or renaming those assets, not by deleting TLS/OAuth support or merging private direct traffic into the feed gateway.
-
-The cleanup task must settle and apply the final directory names consistently across code imports, generated code, build commands, Docker images, Compose, CI, scripts, examples and documentation. Directory renaming alone is not architectural cleanup.
+**There is one shared feed gateway.** Direct MCP traffic stays out of it; optional direct and feed
+ingress projects are separate from their applications and from each other.
 
 The base shared deployment must run without either demo or the direct server. Both feed demos can run independently. The direct MCP server must run without the shared feed gateway, Centrifugo or Redis. Renaming deployment services must preserve existing direct pairing data, credentials, databases and volumes through an explicit migration.
 
-## Removing the third mode
+## Removed third mode
 
-The implementation cleanup removes gateway-private invitations, redemption, private device bindings and credentials, private request/result routing and associated SDK/client/server APIs. Remove their configuration, UI routes, generated bindings, examples and tests or replace tests with meaningful assertions of the two-mode boundary.
+SEE-130 removed gateway-private invitations, redemption, private device bindings and credentials,
+private request/result routing and associated SDK/client/server APIs, together with their
+configuration, UI routes, generated bindings and examples. Boundary tests now hold the two-mode
+surface and permanently deny-list the removed descriptors and routes.
 
-Do not remove public publisher credentials, feed references, stream tickets, publication storage or direct pairing. For stored gateway-private connections, define an explicit retirement path: explain that a fresh direct pairing is required and prevent further execution. Never silently convert credentials or connections between modes. Preserve local history and unaffected direct/feed data.
+Public publisher credentials, feed references, stream tickets, publication storage and direct
+pairing remain. Stored gateway-private connections become explicit inert retirement records and
+require a fresh direct pairing; no credential, origin or identity is converted. Local Activity
+history and unaffected Direct/Feed data remain.
 
-The architecture PR changes this document only. Runtime cleanup, supporting documentation and migration verification belong to [SEE-128](https://linear.app/seekeragentwallet/issue/SEE-128/simplify-architecture-to-direct-public-feed-remove-private-gateway).
+SEE-130 completed the runtime removal and migration described here. SEE-131 through SEE-135 then
+packaged the Direct Server SDK and MCP application, isolated the gateway and demos, and established
+the canonical deployment boundaries. The final joined verification and its explicitly unavailable
+live checks are recorded in [`docs/testing/see-136.md`](testing/see-136.md).

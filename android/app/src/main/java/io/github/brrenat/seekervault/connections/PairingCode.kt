@@ -38,9 +38,9 @@ enum class PairingCodeProblem {
 
 /**
  * Reads pairing codes by the same rules as the sidecar's `parsePairingUri`
- * (sidecar/src/pairing/uri.ts). The one difference: plain HTTP to a loopback host is accepted only
- * where the platform's network security policy permits cleartext to that host, which is in debug
- * builds (docs/development/android.md).
+ * (server-sdk/src/pairing/uri.ts). The one difference: plain HTTP to a loopback host is accepted
+ * only where the platform's network security policy permits cleartext to that host, which is in
+ * debug builds (docs/development/android.md).
  */
 object PairingCodes {
     const val VERSION = "1"

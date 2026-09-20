@@ -5,7 +5,7 @@
 //   pnpm test:load -- --list                what there is to run
 //   pnpm test:load -- --report out.json     the evidence, as JSON
 //
-// It builds the gateway, `broadcastctl` and the harness, then hands the harness the paths — the
+// It builds the gateway, `feed-gatewayctl` and the harness, then hands the harness the paths — the
 // same arrangement `pnpm test:integration` uses, and for the same reason: what is measured has to
 // be the binaries this checkout builds rather than something on the PATH.
 //
@@ -26,7 +26,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const BROADCAST = join(ROOT, "broadcast");
+const FEED_GATEWAY = join(ROOT, "feed-gateway");
 const LOADTEST = join(ROOT, "loadtest");
 
 // The version the go.mod files require, and the one docs/development/toolchain.md records as
@@ -34,7 +34,7 @@ const LOADTEST = join(ROOT, "loadtest");
 const GO = "1.27.1";
 
 try {
-  execFileSync("go", ["version"], { cwd: BROADCAST, stdio: "pipe" });
+  execFileSync("go", ["version"], { cwd: FEED_GATEWAY, stdio: "pipe" });
 } catch {
   console.error(
     [
@@ -62,10 +62,10 @@ console.log(
 
 const built = mkdtempSync(join(tmpdir(), "seeker-vault-loadtest-"));
 try {
-  console.log("Building the gateway, broadcastctl and the harness…\n");
+  console.log("Building the gateway, feed-gatewayctl and the harness…\n");
   for (const [module, command] of [
-    [BROADCAST, "broadcast"],
-    [BROADCAST, "broadcastctl"],
+    [FEED_GATEWAY, "feed-gateway"],
+    [FEED_GATEWAY, "feed-gatewayctl"],
     [LOADTEST, "loadtest"],
   ]) {
     execFileSync(
@@ -86,8 +86,8 @@ try {
     stdio: "inherit",
     env: {
       ...process.env,
-      SEEKERVAULT_BROADCAST: join(built, "broadcast"),
-      SEEKERVAULT_BROADCASTCTL: join(built, "broadcastctl"),
+      SEEKERVAULT_FEED_GATEWAY: join(built, "feed-gateway"),
+      SEEKERVAULT_FEED_GATEWAYCTL: join(built, "feed-gatewayctl"),
     },
   });
   process.exitCode = run.status ?? 1;

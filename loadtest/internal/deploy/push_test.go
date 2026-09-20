@@ -16,7 +16,7 @@ import (
 //
 // Two things are being checked, and the first matters more than it looks: the credential this writes
 // has to be one the **gateway** accepts, or the relay refuses to start and the whole push leg of a
-// run is silently absent. The gateway's rules are in `broadcast/internal/relay/token.go` and cannot
+// run is silently absent. The gateway's rules are in `feed-gateway/internal/relay/token.go` and cannot
 // be imported from here, so they are restated — and the end-to-end proof that the restatement is
 // right is that `mixed` runs with the relay on and hints arrive.
 

@@ -8,10 +8,10 @@ SAW-017's lifecycle questions — rotation, backgrounding, a killed process, a r
 
 **No automated check in this repository sends a transaction to any cluster, on mainnet or anywhere else, and none needs a funded wallet.**
 
-- The sidecar has no way to broadcast: only `sidecar/src/solana/` reaches a chain, only read-only JSON-RPC methods exist there, and `sidecar/src/stage-boundary.test.ts` names every one of them.
+- The sidecar has no way to broadcast: only `mcp-server/src/solana/` reaches a chain, only read-only JSON-RPC methods exist there, and `mcp-server/src/stage-boundary.test.ts` names every one of them.
 - The app has no chain endpoint at all, and `StageBoundaryTest` proves it: the only hosts it opens a connection to are the sidecars it is paired with, and the block explorer is a link handed to the browser, never a fetch.
-- The chain the tests read is `sidecar/src/testing/chain.ts`. `FakeChain` answers the builder directly, and `startFakeRpc` serves the same state as ordinary Solana JSON-RPC on loopback, so a sidecar process can be pointed at it without a network.
-- The wallet is a throwaway Ed25519 key pair in the test process (`sidecar/src/testing/wallet.ts`) and, on the phone, `FakeWalletAdapter`. They make real signatures; they are not a wallet app.
+- The chain the tests read is `mcp-server/src/testing/chain.ts`. `FakeChain` answers the builder directly, and `startFakeRpc` serves the same state as ordinary Solana JSON-RPC on loopback, so a sidecar process can be pointed at it without a network.
+- The wallet is a throwaway Ed25519 key pair in the test process (`server-sdk/src/testing/wallet.ts`) and, on the phone, `FakeWalletAdapter`. They make real signatures; they are not a wallet app.
 
 The one check that talks to a real network is opt-in, reads, and is described at the end of this page.
 
@@ -21,12 +21,12 @@ The one check that talks to a real network is opt-in, reads, and is described at
 
 | Area | What the tests cover | Where |
 | --- | --- | --- |
-| The chain client | Every read the sidecar makes, the errors each one maps to, and that a URL that can hold an API key never reaches a log or a message | `sidecar/src/solana/rpc.test.ts` |
-| The transaction builder | SOL and SPL transfers, a recipient with no token account, a Token-2022 mint, an NFT, a token account given as a recipient, a frozen account, too little held, and a cluster that doesn't match the request | `sidecar/src/solana/transfer.test.ts` |
-| Preparation | A new version per preparation, the content hash, the fee and rent, the blockhash window, and an approval refused once it runs down | `sidecar/src/requests/preparation.test.ts` |
+| The chain client | Every read the sidecar makes, the errors each one maps to, and that a URL that can hold an API key never reaches a log or a message | `mcp-server/src/solana/rpc.test.ts` |
+| The transaction builder | SOL and SPL transfers, a recipient with no token account, a Token-2022 mint, an NFT, a token account given as a recipient, a frozen account, too little held, and a cluster that doesn't match the request | `mcp-server/src/solana/transfer.test.ts` |
+| Preparation | A new version per preparation, the content hash, the fee and rent, the blockhash window, and an approval refused once it runs down | `mcp-server/src/requests/transfers.test.ts` |
 | The phone's own parser | The shared fixtures, decoded on the phone, including the adversarial ones that are perfectly valid transactions and simply aren't the one that was asked for | `TransactionFixturesTest`, `transactions/` tests |
-| Confirmation | A delayed confirmation, a chain failure, an RPC timeout, a signature not yet visible, a mismatched transaction, a signature that can no longer land, and a restart whose `SOLANA_RPC_URL` points at another cluster whose block height is long past the window — which settles nothing | `sidecar/src/requests/confirmation.test.ts`, `sidecar/src/solana/confirmation.test.ts` |
-| The destination's authority | A classic SPL token account at exactly the recipient's derived address whose authority is now somebody else's: the sidecar refuses to build it, and the phone refuses to call a transaction without the associated-account instruction verified at all | `sidecar/src/requests/transfers.test.ts`, `TransactionFixturesTest` (`token_destination_authority_changed`) |
+| Confirmation | A delayed confirmation, a chain failure, an RPC timeout, a signature not yet visible, a mismatched transaction, a signature that can no longer land, and a restart whose `SOLANA_RPC_URL` points at another cluster whose block height is long past the window — which settles nothing | `mcp-server/src/requests/confirmation.test.ts`, `mcp-server/src/solana/confirmation.test.ts` |
+| The destination's authority | A classic SPL token account at exactly the recipient's derived address whose authority is now somebody else's: the sidecar refuses to build it, and the phone refuses to call a transaction without the associated-account instruction verified at all | `mcp-server/src/requests/transfers.test.ts`, `TransactionFixturesTest` (`token_destination_authority_changed`) |
 | Freshness at the wallet | Time passing the blockhash window while another wallet interaction holds the lock, and while the approval is being committed: the wallet is never called with stale bytes | `InboxViewModelTest` |
 | An approval nobody answered | A lost response to the approval: it is kept rather than deleted, and the next delivery reads the request and either drops it (still PENDING) or ends it (PROCESSING) | `InboxViewModelTest` |
 | The agent's transfer command | A transfer that names its wallet and cluster; one that names neither, or only one; a cluster the CLI doesn't know; an amount that isn't base units; a retry under the same key; and a refusal from the sidecar | `test-agent/src/cli.test.ts` |
@@ -38,7 +38,7 @@ The one check that talks to a real network is opt-in, reads, and is described at
 | The history outliving the answer | An answer pruned a week after it settled, with its record read back whole on a restart | `ConnectionRepositoryTest` |
 | The explorer link | The cluster in the link for each network, no link for a message signature, and no link without a signature or without a cluster | `ExplorerTest` |
 | The screens | The list, the empty state, a history that can't be read, clearing only after a confirmation, the record in full, the cluster named on every transfer, the explorer offered only for a sent transaction, and the words that say a message signature is not a payment | `ActivityScreenTest`, `ActivityDetailsScreenTest`, `ActivityViewModelTest`, `ConnectionsScreenTest` |
-| The stage boundary | Storage only in the three storage packages; the explorer address in one file, which holds no HTTP client; the app's HTTP clients only where they talk to a sidecar; and the sidecar's chain methods, which only read | `StageBoundaryTest`, `sidecar/src/stage-boundary.test.ts` |
+| The stage boundary | Storage only in the three storage packages; the explorer address in one file, which holds no HTTP client; the app's HTTP clients only where they talk to a sidecar; and the sidecar's chain methods, which only read | `StageBoundaryTest`, `mcp-server/src/stage-boundary.test.ts` |
 
 ### The acceptance scenario (SAW-023)
 
@@ -125,7 +125,7 @@ decision the owner makes deliberately. It has not been made, and the rules for i
 - **Nothing in this repository points at any cluster by itself.** `.env.example` ships
   `SOLANA_RPC_URL=` empty, so a fresh clone prepares nothing; no `package.json` script and no CI job
   sets it; and the one check that touches a real network reads devnet behind
-  `SEEKER_VAULT_NETWORK_CHECKS`. `sidecar/src/stage-boundary.test.ts`, "spending nothing by
+  `SEEKER_VAULT_NETWORK_CHECKS`. `mcp-server/src/stage-boundary.test.ts`, "spending nothing by
   default", fails if any of that changes.
 - **The amount is deliberately small** — 100000 lamports, 0.0001 SOL — and goes to a second account
   in the owner's own wallet, so the worst case is a network fee.
@@ -193,8 +193,8 @@ and what only the Seeker can.
 | `pnpm check:android` | PASS: Spotless, lint, both APKs, and 421/421 unit tests — the same 421 as before, because SAW-024 changed no Kotlin. |
 | `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer`, `pnpm build` | PASS: 9/9, 7/7, 7/7 with the opt-in devnet case skipped, and both packages build. **No transaction was sent to any cluster.** |
 | `SEEKER_VAULT_NETWORK_CHECKS=1 pnpm test:transfer` | NOT RUN: it needs a real devnet endpoint, and nothing here reached one. |
-| Nothing spends by default | PASS: five new checks in `sidecar/src/stage-boundary.test.ts` read `.env.example`, every workspace `package.json`, the CI workflows, the sidecar's shipped sources, and the acceptance suite. |
-| Deliberate breaks | Each break failed its own check and nothing else, and each file was restored from the index afterwards:<ul><li>`SOLANA_RPC_URL=https://api.mainnet-beta.solana.com` in `.env.example` failed "ships no endpoint in .env.example".</li><li>A `test:devnet` script setting the same variable failed "runs no script that supplies an endpoint or asks for funds".</li><li>An `env: SOLANA_RPC_URL:` on a CI step failed "runs no CI job that supplies an endpoint or asks for funds".</li><li>A `DEFAULT_ENDPOINT` constant in `sidecar/src/solana/rpc.ts` failed "names no cluster endpoint in any shipped sidecar source".</li><li>A comment naming `api.devnet.solana.com` above the opt-in gate failed "keeps the one check that reaches a real network behind its variable".</li></ul> |
+| Nothing spends by default | PASS: five new checks in `mcp-server/src/stage-boundary.test.ts` read `.env.example`, every workspace `package.json`, the CI workflows, the sidecar's shipped sources, and the acceptance suite. |
+| Deliberate breaks | Each break failed its own check and nothing else, and each file was restored from the index afterwards:<ul><li>`SOLANA_RPC_URL=https://api.mainnet-beta.solana.com` in `.env.example` failed "ships no endpoint in .env.example".</li><li>A `test:devnet` script setting the same variable failed "runs no script that supplies an endpoint or asks for funds".</li><li>An `env: SOLANA_RPC_URL:` on a CI step failed "runs no CI job that supplies an endpoint or asks for funds".</li><li>A `DEFAULT_ENDPOINT` constant in `mcp-server/src/solana/rpc.ts` failed "names no cluster endpoint in any shipped sidecar source".</li><li>A comment naming `api.devnet.solana.com` above the opt-in gate failed "keeps the one check that reaches a real network behind its variable".</li></ul> |
 
 ### On the physical Seeker
 
@@ -234,7 +234,7 @@ The request was created from **Hermes**, calling `vault_transfer`; the owner app
 
 **That capture is a reading taken 29 seconds after the approval, and it is kept exactly as it came
 back.** Devnet had already *finalized* the signature while the request still read `SUBMITTED`: the
-reading fell inside the window [`confirmation.ts`](../../sidecar/src/requests/confirmation.ts)
+reading fell inside the window [`confirmation.ts`](../../server-sdk/src/requests/confirmation.ts)
 describes, where the endpoint has a status for a signature but has not yet served the transaction
 itself, so the server had nothing to compare against the bytes the owner approved and left the
 request where it was. **No later `CONFIRMED` reading was captured**, and this record does not claim

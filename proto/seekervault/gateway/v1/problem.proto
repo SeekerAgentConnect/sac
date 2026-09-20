@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-// Why the broadcast gateway refused something (SEE-90, docs/wiki/broadcast-gateway.md).
+// Why the feed gateway refused something (SEE-90, docs/wiki/feed-gateway.md).
 //
 // The gateway is the shared service a developer's publisher publishes to and every subscribed
 // phone reads from. It has two audiences and one vocabulary for saying no: a publisher that broke
@@ -134,21 +134,10 @@ enum GatewayProblem {
   // stamp already enforces at its end.
   GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;
 
-  // --- Gateway pairing and private routing (SEE-109) -----------------------
-  GATEWAY_PROBLEM_BAD_USER_REF = 35;
-  GATEWAY_PROBLEM_BAD_LIFETIME = 36;
-  // One answer for an unknown, malformed, already-used or otherwise unusable invitation. Resolve
-  // and redeem do not disclose which temporary secret was ever valid.
-  GATEWAY_PROBLEM_INVALID_INVITATION = 37;
-  GATEWAY_PROBLEM_INVITATION_EXPIRED = 38;
-  GATEWAY_PROBLEM_INVITATION_USED = 39;
-  GATEWAY_PROBLEM_NO_BINDING = 40;
-  GATEWAY_PROBLEM_BINDING_EXISTS = 41;
-  GATEWAY_PROBLEM_WRONG_RECIPIENT = 42;
-  GATEWAY_PROBLEM_NO_SUCH_REQUEST = 43;
-  GATEWAY_PROBLEM_RESULT_CONFLICT = 44;
-  GATEWAY_PROBLEM_REQUEST_SETTLED = 45;
-  GATEWAY_PROBLEM_NOT_PRIVATE = 46;
+  // Retired gateway-private problems (SEE-130). Never reuse: old logs, stored status and clients
+  // may still carry these values while the corresponding routes remain permanently unavailable.
+  reserved 35 to 46;
+  reserved "GATEWAY_PROBLEM_BAD_USER_REF", "GATEWAY_PROBLEM_BAD_LIFETIME", "GATEWAY_PROBLEM_INVALID_INVITATION", "GATEWAY_PROBLEM_INVITATION_EXPIRED", "GATEWAY_PROBLEM_INVITATION_USED", "GATEWAY_PROBLEM_NO_BINDING", "GATEWAY_PROBLEM_BINDING_EXISTS", "GATEWAY_PROBLEM_WRONG_RECIPIENT", "GATEWAY_PROBLEM_NO_SUCH_REQUEST", "GATEWAY_PROBLEM_RESULT_CONFLICT", "GATEWAY_PROBLEM_REQUEST_SETTLED", "GATEWAY_PROBLEM_NOT_PRIVATE";
 }
 
 // GatewayErrorDetail is the Connect error detail on every FeedService and PublisherService error.

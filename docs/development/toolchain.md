@@ -18,15 +18,17 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | Prettier | 3.9.6 | `package.json` |
 | Buf CLI (`@bufbuild/buf`) | 1.72.0 | `package.json` |
 | MCP TypeScript SDK (`@modelcontextprotocol/sdk`), used by the sidecar and the test agent | 1.30.0 | `catalog` in `pnpm-workspace.yaml` |
-| Connect for Node (`@connectrpc/connect`, `@connectrpc/connect-node`) | 2.2.0 | `sidecar/package.json` |
-| Firebase Admin SDK for the optional FCM sender | 14.4.0 | `sidecar/package.json` |
-| uqr, which draws the pairing QR code in the terminal (no dependencies) | 0.1.3 | `sidecar/package.json` |
+| Connect for Node (`@connectrpc/connect`, `@connectrpc/connect-node`) | 2.2.0 | `server-sdk/package.json` and `mcp-server/package.json` |
+| Firebase Admin SDK for the optional FCM sender | 14.4.0 | `mcp-server/package.json` |
+| uqr, which draws the pairing QR code in the terminal (no dependencies) | 0.1.3 | `mcp-server/package.json` |
 | zod, for the MCP tool schemas and the SDK's peer | 4.6.1 | `catalog` in `pnpm-workspace.yaml` |
 | protoc-gen-es (generator), @bufbuild/protobuf (runtime) | 2.14.1 | `catalog` in `pnpm-workspace.yaml`; generator and runtime move together |
 
 **TypeScript stays on 6.0** because typescript-eslint 8.70 supports only `typescript <6.1`. TypeScript 7 can follow once typescript-eslint supports it.
 
-**The sidecar has no build step in development.** Node runs its `.ts` files directly through type stripping, so `sidecar/tsconfig.json` sets `erasableSyntaxOnly`: no enums, namespaces, or parameter properties.
+**The host runs TypeScript directly in development.** Node runs the sidecar's `.ts` files through
+type stripping, while the workspace builds `server-sdk/dist` first because the host resolves the
+same package exports an external consumer does. Both TypeScript configs use `erasableSyntaxOnly`.
 
 **Unneeded dependency install scripts are denied** through `allowBuilds` in `pnpm-workspace.yaml`.
 `@bufbuild/buf` only locates the platform binary pnpm already installs. `protobufjs` only checks
@@ -34,33 +36,41 @@ dependency version syntax. `@firebase/util`'s script can read `FIREBASE_WEBAPP_C
 Firebase endpoint, and write web-app defaults; the sidecar uses runtime Admin SDK credentials
 instead, so installation remains deterministic and credential-independent.
 
-### The Go side (SEE-90, SEE-95, SEE-99)
+### The Go side (SEE-90, SEE-95, SEE-99, SEE-134)
 
-Three Go modules, and nothing in any of them is shared with the Node or Android sides: the shared
-gateway in [`broadcast/`](../../broadcast), the publisher templates in
-[`publisher/`](../../publisher), and the load harness in [`loadtest/`](../../loadtest).
-`pnpm check:broadcast`, `pnpm check:publisher` and `pnpm check:loadtest` run their checks and CI
-runs the first two; installing Go is not needed for `pnpm check`.
+Five Go modules, and nothing in any of them is shared with the Node or Android sides: the shared
+gateway in [`feed-gateway/`](../../feed-gateway), the public-feed demos' source library in
+[`publisher-support/`](../../publisher-support), the two demos themselves in
+[`demo-copytrading/`](../../demo-copytrading) and [`demo-prediction/`](../../demo-prediction), and
+the load harness in [`loadtest/`](../../loadtest). `pnpm check:feed-gateway`,
+`pnpm check:publisher-support`, `pnpm check:copytrading`, `pnpm check:prediction` (or
+`pnpm check:demos` for those three at once) and `pnpm check:loadtest` run their checks; CI runs the
+first four, each as its own job reading that module's own `go.mod`. Installing Go is not needed for
+`pnpm check`.
 
-They are separate modules on purpose. A template is meant to be copyable out of this repository, and
-the harness holds both ends of a feed at once — the publisher API, the client API and the broker's
-own client schema — which nothing that ships is allowed to hold together, so keeping it out of
-`broadcast/` is what keeps the gateway's dependency list at three. Each has its own `go.mod`, and
-the versions below are the same in all of them. Where that could drift, a test in `publisher/` reads
-the gateway's own source rather than trusting the match
-(`internal/signals/contract_test.go`).
+They are separate modules on purpose. Each demo is meant to be copyable out of this repository and
+to build, test, image and run without the other — which is why they are checked one module at a
+time rather than together (SEE-134, [`demos.md`](demos.md)) — and the harness holds both ends of a
+feed at once — the publisher API, the client API and the broker's own client schema — which nothing
+that ships is allowed to hold together, so keeping it out of `feed-gateway/` is what keeps the
+gateway's dependency list at three. Each has its own `go.mod`, and the versions below are the same
+in all of them; the two demos reach the library through
+`replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../publisher-support`, so they
+inherit its pins rather than choosing their own. Where the gateway and a publisher could drift, a
+test in `publisher-support/` reads the gateway's own source rather than trusting the match
+(`signals/contract_test.go`).
 
 | Tool | Version | Pinned in |
 | --- | --- | --- |
-| Go | 1.27.1 | the `go` line in `broadcast/go.mod`, `publisher/go.mod` and `loadtest/go.mod`, which `actions/setup-go` reads through `go-version-file` |
-| `connectrpc.com/connect`, the Connect runtime for all three | 1.21.0 | every `go.mod`; it must match the `connectrpc/go` generator |
+| Go | 1.27.1 | the `go` line in `feed-gateway/go.mod`, `publisher-support/go.mod`, `demo-copytrading/go.mod`, `demo-prediction/go.mod` and `loadtest/go.mod`, which `actions/setup-go` reads through `go-version-file` |
+| `connectrpc.com/connect`, the Connect runtime for all of them | 1.21.0 | every `go.mod`; it must match the `connectrpc/go` generator |
 | `google.golang.org/protobuf`, the message runtime | 1.36.12 | every `go.mod`; it must match the `protocolbuffers/go` generator |
-| `modernc.org/sqlite`, the pure-Go SQLite driver | 1.59.0 | `broadcast/go.mod` and `publisher/go.mod`; the harness holds no database |
+| `modernc.org/sqlite`, the pure-Go SQLite driver | 1.59.0 | `feed-gateway/go.mod` and `publisher-support/go.mod`, from which both demos take it; the harness holds no database |
 
 The harness's own dependency list is those two libraries and nothing else. It speaks gRPC to the
 broker without grpc-go: connect-go does the protocol, and since Go 1.24 the standard library opens
 an unencrypted HTTP/2 connection by itself (`net/http.Protocols.SetUnencryptedHTTP2`), which is the
-same argument `broadcast/internal/stream` makes for using the broker's HTTP API rather than its gRPC
+same argument `feed-gateway/internal/stream` makes for using the broker's HTTP API rather than its gRPC
 one.
 
 The broker the gateway fans out through is a service rather than a dependency, and it is pinned
@@ -68,11 +78,11 @@ where the deployment names it:
 
 | Service | Version | Pinned in |
 | --- | --- | --- |
-| Centrifugo | 6.9.6 | `broadcast/compose.yaml` (`centrifugo/centrifugo:v6.9.6`), and the schema in `third_party/centrifugo` is that release's |
-| Redis | 8.2 (alpine) | `broadcast/compose.yaml`; it holds a bounded recovery cache and nothing durable |
+| Centrifugo | 6.9.6 | `deploy/feed/compose.yaml` (`centrifugo/centrifugo:v6.9.6`), and the schema in `third_party/centrifugo` is that release's |
+| Redis | 8.2 (alpine) | `deploy/feed/compose.yaml`; it holds a bounded recovery cache and nothing durable |
 
 Neither is vendored, so the checks that need them take a path instead: `SEEKERVAULT_CENTRIFUGO` and
-`SEEKERVAULT_REDIS`, which `broadcast/internal/stream/broker_test.go`,
+`SEEKERVAULT_REDIS`, which `feed-gateway/internal/stream/broker_test.go`,
 `feeds/CentrifugoStreamIntegrationTest`, `pnpm test:integration` and `pnpm test:load` all read.
 Verify a Centrifugo download against the release's own `centrifugo_<version>_checksums.txt` before
 using it. The versions actually run for SEE-99's measurements — and how they were obtained — are in
@@ -92,7 +102,7 @@ is a dependency to audit for a service whose whole point is holding nothing pers
 
 **The SQLite driver is pure Go, so `CGO_ENABLED=0` is what the image builds with.** That is what
 lets the runtime image be `FROM scratch` with no libc and no CA bundle in it
-([`broadcast/Dockerfile`](../../broadcast/Dockerfile)).
+([`feed-gateway/Dockerfile`](../../feed-gateway/Dockerfile)).
 
 **Formatting is `gofmt`**, which is not configurable and therefore not configured. `go vet` runs
 before the tests.
@@ -137,31 +147,39 @@ before the tests.
 
 | Generator | Output | Runtime library that must match |
 | --- | --- | --- |
-| `protoc-gen-es` 2.14.1 (local), `target=js+dts` | `sidecar/src/gen` | `@bufbuild/protobuf` 2.14.1, plus `@connectrpc/connect` 2.2.0 for the service |
+| `protoc-gen-es` 2.14.1 (local), `target=js+dts` | direct contracts in `server-sdk/src/gen`; proposal fixture contract in `mcp-server/src/gen` | `@bufbuild/protobuf` 2.14.1, plus `@connectrpc/connect` 2.2.0 for the service |
 | `buf.build/protocolbuffers/java:v36.1`, `lite` | `android/app/src/main/generated/java` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/protocolbuffers/kotlin:v36.1`, `lite` | `android/app/src/main/generated/kotlin` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0, with its OkHttp transport and lite codec at the same version |
-| `buf.build/protocolbuffers/go:v1.36.12`, `paths=source_relative` (in `buf.gen.go.yaml`) | `broadcast/internal/gen` | `google.golang.org/protobuf` 1.36.12 |
-| `buf.build/connectrpc/go:v1.21.0`, `paths=source_relative` (in `buf.gen.go.yaml`) | `broadcast/internal/gen` | `connectrpc.com/connect` 1.21.0 |
-| the same two Go plugins (in `buf.gen.publisher.yaml`) | `publisher/internal/gen` | the same two runtimes, pinned in `publisher/go.mod` |
+| `buf.build/protocolbuffers/go:v1.36.12`, `paths=source_relative` (in `buf.gen.feed-gateway.yaml`) | `feed-gateway/internal/gen` | `google.golang.org/protobuf` 1.36.12 |
+| `buf.build/connectrpc/go:v1.21.0`, `paths=source_relative` (in `buf.gen.feed-gateway.yaml`) | `feed-gateway/internal/gen` | `connectrpc.com/connect` 1.21.0 |
+| the same two Go plugins (in `buf.gen.publisher-support.yaml`) | `publisher-support/gen` | the same two runtimes, pinned in `publisher-support/go.mod`, which both demos inherit |
 | the same three Kotlin plugins (in `buf.gen.centrifugo.yaml`) | `android/app/src/main/generated/centrifugo` | the vendored broker schema, for the phone alone |
 | the same two Go plugins (in `buf.gen.loadtest.yaml`), over `proto/` **and** the vendored schema | `loadtest/internal/gen` | the same two runtimes, pinned in `loadtest/go.mod` |
 
-- **There are five templates.** `buf.gen.yaml` writes the phone's Kotlin and the sidecar's
-  TypeScript for everything in `proto/` except `seekervault/gateway/v1/publish.proto` — neither of
-  them is a publisher; `buf.gen.go.yaml` writes the gateway's Go for the three packages it speaks;
-  `buf.gen.publisher.yaml` writes the publisher templates' Go for a fourth subset — the publisher
-  API, its problem detail and the two documents a publisher writes, and **no feed client at all**,
-  because a publisher publishes and never reads a feed (SEE-95); `buf.gen.centrifugo.yaml` writes
-  Kotlin for the vendored broker schema, into its own directory and keeping its own package name,
-  because only the phone speaks that protocol and only one file in it may (SEE-91); and
+- **There are seven templates.** `buf.gen.yaml` writes the phone's Kotlin, while
+  `buf.gen.server-sdk.yaml` writes the direct TypeScript contracts and `buf.gen.mcp-server.yaml` keeps
+  only the proposal fixture contract with the MCP host. None generates
+  `seekervault/gateway/v1/publish.proto` for the phone or direct server — neither is a publisher.
+  `buf.gen.feed-gateway.yaml` writes the gateway's Go for the three packages it speaks;
+  `buf.gen.publisher-support.yaml` writes the public-feed demos' Go for a fourth subset — the
+  publisher API, its problem detail and the documents a publisher writes, and **no feed client at
+  all**, because a publisher publishes and never reads a feed (SEE-95). It writes them **once**,
+  into the library both demos share, because the two publish the same documents through the same
+  API and two generated copies of one contract would be two contracts (SEE-134);
+  `buf.gen.centrifugo.yaml` writes Kotlin for the vendored broker schema, into its own directory and
+  keeping its own package name, because only the phone speaks that protocol and only one file in it
+  may (SEE-91); and
   `buf.gen.loadtest.yaml` writes the load harness's Go from `proto/` **and** that vendored schema,
   which is the only place both ends of a feed and the broker's own client protocol are compiled
   together — measuring a publication's journey means holding all three ends of it, and nothing that
-  ships is allowed to (SEE-99). `pnpm generate` runs all five, and `pnpm check:generated` compares
+  ships is allowed to (SEE-99). `pnpm generate` runs all seven, and `pnpm check:generated` compares
   every output directory.
 - **Generation is covered in the protocol doc.** [`docs/protocol.md`](../protocol.md#generated-code) describes generation, the cross-runtime fixtures, and the stale-output check (`pnpm check:generated`).
-- **The TypeScript output is JavaScript plus type declarations.** Node's type stripping can't run the TypeScript `enum`s that `target=ts` produces. `sidecar/tsconfig.build.json` sets `allowJs`, so `pnpm build` also copies that JavaScript to `dist/`.
+- **The TypeScript output is JavaScript plus type declarations.** Node's type stripping can't run
+  the TypeScript `enum`s that `target=ts` produces. The SDK build emits its TypeScript and copies the
+  generated JavaScript/declarations into `server-sdk/dist`; the host build copies its remaining
+  generated proposal fixture alongside the compiled application.
 - **Generation needs network access.** `pnpm generate` and `pnpm check:generated` call the Kotlin plugins, which run remotely on the Buf Schema Registry.
 - **Android compiles the generated code in place.** `android/app/build.gradle.kts` adds the generated directories to the `main` source set and adds `proto/fixtures` to the unit-test resources.
 
@@ -194,9 +212,10 @@ The existing pins already support the production update protocol, so SAW-048 add
    export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
    ```
 
-5. **Go, for the broadcast gateway (SEE-90):** `brew install go`, or the installer from
-   <https://go.dev/dl/>. It is needed only for `pnpm check:broadcast` and for working in
-   `broadcast/`; the Node and Android checks do not use it.
+5. **Go, for the gateway and the public-feed demos (SEE-90, SEE-134):** `brew install go`, or the
+   installer from <https://go.dev/dl/>. It is needed only for `pnpm check:feed-gateway`,
+   `pnpm check:demos` and `pnpm check:loadtest`, and for working in the five Go modules; the Node
+   and Android checks do not use it.
 6. **First build:** run `pnpm install --frozen-lockfile && pnpm check:android`. The first time, Gradle downloads the pinned Temurin 21 into `~/.gradle/jdks`.
 
 ## How Android Studio and the terminal stay compatible
@@ -226,8 +245,8 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions above. Grad
 | --- | --- |
 | `pnpm install --frozen-lockfile` | PASS |
 | `pnpm check` | PASS: Prettier, ESLint, `tsc --noEmit`, 8/8 sidecar tests |
-| `pnpm build` | PASS: produces `sidecar/dist/main.js` |
-| `pnpm dev:sidecar` | PASS. Without configuration, it lists every missing variable and exits 1. It accepts valid variables from both the environment and `.env`. `SIDECAR_PORT=9090` in the environment overrides the value in `.env`. |
+| `pnpm build` | PASS: produces `mcp-server/dist/cli.js` |
+| `pnpm dev:mcp-server` | PASS. Without configuration, it lists every missing variable and exits 2. It accepts valid variables from both the environment and `.env`. `SIDECAR_PORT=9090` in the environment overrides the value in `.env`. |
 | `pnpm check:android` | PASS: `spotlessCheck`, `testDebugUnitTest` (no tests yet), `lintDebug` (no issues), `assembleDebug` |
 | `(cd android && ./gradlew :app:assembleDebug)` | PASS: produces `android/app/build/outputs/apk/debug/app-debug.apk` |
 | `pnpm generate` | Fails as expected with `Module "proto" had no .proto files`. `buf.gen.yaml` was also run against a throwaway proto: it produced Kotlin and TypeScript output, identical across two runs. |

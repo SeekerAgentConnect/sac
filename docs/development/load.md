@@ -18,7 +18,7 @@ The report from the run these numbers were taken from is
 
 ## What it needs
 
-**Go**, which builds the gateway, `broadcastctl` and the harness. And, for anything that streams,
+**Go**, which builds the gateway, `feed-gatewayctl` and the harness. And, for anything that streams,
 two services that are not vendored:
 
 ```sh
@@ -28,10 +28,10 @@ SEEKERVAULT_REDIS=/path/to/redis-server \
 ```
 
 - **`SEEKERVAULT_CENTRIFUGO`** is the pinned Centrifugo release — v6.9.6, the version
-  `broadcast/compose.yaml` runs and `third_party/centrifugo/README.md` pins the client schema to.
+  `deploy/feed/compose.yaml` runs and `third_party/centrifugo/README.md` pins the client schema to.
   Verify the download against the release's own `centrifugo_6.9.6_checksums.txt` before using it.
   Without it, every scenario that streams is NOT RUN.
-- **`SEEKERVAULT_REDIS`** is `redis-server`, matching `broadcast/compose.yaml`'s `redis:8.2`.
+- **`SEEKERVAULT_REDIS`** is `redis-server`, matching `deploy/feed/compose.yaml`'s `redis:8.2`.
   Without it the harness runs one broker node on the memory engine, and the two-node scenarios are
   NOT RUN: Redis is what makes two nodes one broker.
 
@@ -50,9 +50,9 @@ What that number **includes**, because it is not only the transport:
 
 | Part of it | Where it is |
 | --- | --- |
-| The publish call, including the gateway's own commit | `broadcast/internal/gateway/publisher.go` |
-| The outbox drainer's pass — it wakes on a publication and sends up to 64 notices | `broadcast/internal/dispatch` |
-| The broker accepting the publication and fanning it out | `broadcast/internal/stream`, Centrifugo |
+| The publish call, including the gateway's own commit | `feed-gateway/internal/gateway/publisher.go` |
+| The outbox drainer's pass — it wakes on a publication and sends up to 64 notices | `feed-gateway/internal/dispatch` |
+| The broker accepting the publication and fanning it out | `feed-gateway/internal/stream`, Centrifugo |
 | This process decoding the `FeedEvent` | `loadtest/internal/listen` |
 
 It is what a phone would see **minus the phone**. What a device and a mobile network add is not
@@ -68,12 +68,12 @@ and the report says it did.
 ## What is in the path, and what is not
 
 Everything in the path is the shipped thing. The gateway is the `broadcast` binary on its own SQLite
-file; the broker nodes run `broadcast/centrifugo.yaml` unchanged; Redis runs the settings
-`broadcast/compose.yaml` gives it; a publisher exists only because `broadcastctl register` made one.
+file; the broker nodes run `feed-gateway/centrifugo.yaml` unchanged; Redis runs the settings
+`deploy/feed/compose.yaml` gives it; a publisher exists only because `feed-gatewayctl register` made one.
 
 Three things are not:
 
-- **Caddy.** `broadcast/Caddyfile` is in front of all of this in a deployment, and there is no
+- **Caddy.** `deploy/ingress/feed/Caddyfile` is in front of all of this in a public deployment, and there is no
   Docker daemon on the machine these runs were made on. The proxy hop is therefore named as excluded
   rather than folded into a latency number. Point the harness at your own deployment (below) to
   include it.

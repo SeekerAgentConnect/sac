@@ -56,7 +56,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:host="invite"
+                    android:host="pair"
                     android:scheme="seekervault" />
             </intent-filter>
         </activity>

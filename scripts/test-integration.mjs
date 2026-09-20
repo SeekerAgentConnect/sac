@@ -25,10 +25,14 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const BROADCAST = join(ROOT, "broadcast");
-const PUBLISHER = join(ROOT, "publisher");
+const FEED_GATEWAY = join(ROOT, "feed-gateway");
+// The two demos are two modules and two images (SEE-134). This harness builds both because it is
+// about what happens when two independent sources publish to one gateway; nothing here makes one
+// demo's build depend on the other's.
+const COPYTRADING = join(ROOT, "demo-copytrading");
+const PREDICTION = join(ROOT, "demo-prediction");
 
-// The version both go.mod files require, and the one docs/development/toolchain.md records as
+// The version every go.mod requires, and the one docs/development/toolchain.md records as
 // tested. A newer Go builds them too; this is the message for a machine that has none.
 const GO = "1.27.1";
 
@@ -62,7 +66,7 @@ const { values } = parseArgs({
 const legs = [];
 
 try {
-  execFileSync("go", ["version"], { cwd: BROADCAST, stdio: "pipe" });
+  execFileSync("go", ["version"], { cwd: FEED_GATEWAY, stdio: "pipe" });
 } catch {
   console.error(
     [
@@ -76,13 +80,13 @@ try {
 
 const built = mkdtempSync(join(tmpdir(), "seeker-vault-integration-"));
 try {
-  console.log("Building the gateway, both templates and their CLIs…\n");
+  console.log("Building the gateway, both demos and their CLIs…\n");
   for (const [module, command] of [
-    [BROADCAST, "broadcast"],
-    [BROADCAST, "broadcastctl"],
-    [PUBLISHER, "copytrading"],
-    [PUBLISHER, "prediction"],
-    [PUBLISHER, "publishctl"],
+    [FEED_GATEWAY, "feed-gateway"],
+    [FEED_GATEWAY, "feed-gatewayctl"],
+    [COPYTRADING, "copytrading"],
+    [COPYTRADING, "publishctl"],
+    [PREDICTION, "prediction"],
   ]) {
     execFileSync(
       "go",
@@ -92,8 +96,8 @@ try {
   }
 
   const binaries = {
-    SEEKERVAULT_BROADCAST: join(built, "broadcast"),
-    SEEKERVAULT_BROADCASTCTL: join(built, "broadcastctl"),
+    SEEKERVAULT_FEED_GATEWAY: join(built, "feed-gateway"),
+    SEEKERVAULT_FEED_GATEWAYCTL: join(built, "feed-gatewayctl"),
     SEEKERVAULT_COPYTRADING: join(built, "copytrading"),
     SEEKERVAULT_PREDICTION: join(built, "prediction"),
     SEEKERVAULT_PUBLISHCTL: join(built, "publishctl"),

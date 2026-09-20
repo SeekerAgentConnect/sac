@@ -3,7 +3,7 @@
  * gateway's own client API, and a record of every request it sent.
  *
  * It posts JSON to the Connect procedure paths rather than using a generated client, for the reason
- * `publisher/internal/publish/gateway_test.go` already does: the only compiled feed client in this
+ * `publisher-support/publish/feedgateway_test.go` already does: the only compiled feed client in this
  * repository is the phone's, and a second implementation here would be a third place for the
  * contract to drift. What matters for this suite is the wire — the request the gateway receives, and
  * the bytes it answers with — and `fetch` shows both without a runtime in between.

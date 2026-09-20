@@ -17,7 +17,7 @@ pnpm check:loadtest               # this module's own tests; needs no broker
 It is a Go module of its own, and the reason is the point of it: this is the only consumer in the
 repository that holds both ends of a feed — the publisher API, the client API and the broker's own
 client schema — and nothing that ships is allowed to hold them together. Keeping it out of
-[`broadcast/`](../broadcast) is what keeps the gateway's dependency list at three.
+[`feed-gateway/`](../feed-gateway) is what keeps the gateway's dependency list at three.
 
 Its client is not an approximation of the app's. `internal/listen/policy.go` is a port of
 `android/.../feeds/FeedRecovery.kt` — the same disconnect-code ranges, the same test for whether

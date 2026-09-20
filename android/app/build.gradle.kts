@@ -160,7 +160,8 @@ tasks.withType<Test>().configureEach {
     systemProperty("seekervault.repoRoot", repoRoot.asFile.absolutePath)
     // Opt-in integration switches, forwarded from the Gradle invocation to the test JVM: a broker
     // and a Redis are services, so the tests that need them skip unless someone says where they
-    // are (CentrifugoStreamIntegrationTest, docs/development/broadcast.md). `seekervault.jupiter`
+    // are (CentrifugoStreamIntegrationTest, docs/development/feed-gateway.md).
+    // `seekervault.jupiter`
     // is the same idea for a provider on the public internet (JupiterLiveTest, SEE-93): a default
     // run reaches nothing and spends nothing. A property Gradle was given does not reach a test on
     // its own, and a test that silently skipped because of that would be worse than one that
@@ -169,7 +170,7 @@ tasks.withType<Test>().configureEach {
         providers.systemProperty(name).orNull?.let { systemProperty(name, it) }
     }
     inputs
-        .dir(repoRoot.dir("sidecar/src"))
+        .dir(repoRoot.dir("mcp-server/src"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
-        .withPropertyName("sidecarSources")
+        .withPropertyName("mcpServerSources")
 }

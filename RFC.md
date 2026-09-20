@@ -3,7 +3,7 @@
 **Product name:** Seeker Agent Connect
 
 **Compatibility identifiers:** existing `seeker-vault`/`seekervault` package, protocol, URI, and storage identifiers remain unchanged
-**Revision:** September 14, 2026. Stage 5.3 includes optional Firebase invalidation, notification permission, read-only current-request routing, joined acceptance, and a physical Seeker runbook; Stage 5.2 remains the complete Firebase-off path and no wallet action becomes automatic.
+**Revision:** September 20, 2026. SEE-128 leaves exactly two connection modes: private direct servers and public feeds through the shared gateway. Stage 5.3 includes optional Firebase invalidation, notification permission, read-only current-request routing, joined acceptance, and a physical Seeker runbook; Stage 5.2 remains the complete Firebase-off path and no wallet action becomes automatic.
 
 **Purpose:** a master plan to be broken down into implementation tasks.
 
@@ -24,14 +24,17 @@ We provide the app and self-hosted server software. The user deploys the server 
 ## 2. Components and Repository
 
 ```text
-proto/         Protobuf contract, Buf, Kotlin and TypeScript code generation
-sidecar/       TypeScript/Node: MCP, Connect API, queue, transaction building
-android/       Kotlin/Compose: connections, policies, requests, MWA, history
-gateway/       Docker Compose, TLS, OAuth/MCP gateway configuration
-broadcast/     The shared broadcast gateway (Go): the publication and feed-read API
-publisher/     Go publisher templates and the common create-request SDK
-test-agent/    Minimal MCP client for testing and demos
-docs/          Architecture, protocol, policies, setup, and integrations
+proto/            Protobuf contract, Buf, Kotlin and TypeScript code generation
+server-sdk/       TypeScript direct-server lifecycle, persistence and phone services
+mcp-server/       TypeScript/Node MCP application and executable packaging
+android/          Kotlin/Compose: connections, policies, requests, MWA, history
+deploy/           Independent MCP, feed, demo and optional-ingress presets
+feed-gateway/     The shared feed gateway (Go): the publication and feed-read API
+publisher-support/  Go library the two feed demos share: publication, store, manifest, API
+demo-copytrading/   Go feed demo: a trader's own signals, plus the create-request SDK for its API
+demo-prediction/    Go feed demo: the Jupiter Prediction markets it discovers itself
+test-agent/       Minimal MCP client for testing and demos
+docs/             Architecture, protocol, policies, setup, and integrations
 ```
 
 **Android:** Kotlin, Compose, Material 3, `connect-kotlin`, `mobile-wallet-adapter-clientlib-ktx`, and a QR scanner. We will select the SDK for parsing Solana transactions during integration validation; `sol4k` is a candidate, not a mandatory dependency.

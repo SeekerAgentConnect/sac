@@ -4,7 +4,7 @@ The app talks to each self-hosted sidecar through a **connection**. You pair onc
 
 ## Before you start
 
-- The sidecar is running: `pnpm dev:sidecar` ([`docs/development/sidecar.md`](../development/sidecar.md)).
+- The MCP server is running: `pnpm dev:mcp-server` ([`docs/development/mcp-server.md`](../development/mcp-server.md)).
 - The app is installed on the phone ([`macbook-seeker-quickstart.md`](macbook-seeker-quickstart.md)).
 - The phone can reach the sidecar at `SIDECAR_PUBLIC_URL`, the address the pairing code carries:
   - **Over USB, with a debug build:** leave `SIDECAR_PUBLIC_URL` unset. The code then carries `http://127.0.0.1:8080`, and `adb reverse tcp:8080 tcp:8080` forwards it to the Mac. Only a debug build accepts that plain HTTP address, and only to `127.0.0.1` or `localhost`.
@@ -12,7 +12,7 @@ The app talks to each self-hosted sidecar through a **connection**. You pair onc
 
 ## Pair
 
-1. On the computer that runs the sidecar, run `pnpm pair`. It prints a QR code, and the same code as a line that starts with `seekervault://pair?`. The code works once, for 10 minutes, and a newer code replaces it.
+1. On the computer that runs the sidecar, run `pnpm pair`. It prints a QR code, and the same code as a line that starts with `seekervault://pair?`. The code works once, for 10 minutes, and a newer code replaces it. A CLI, bot or operator may share that exact URI as a clickable link; opening it on Android goes to the same confirmation screen and does not contact the server until the owner taps **Pair**.
 2. In the app, on **Connections**, tap **Add connection**.
 3. Tap **Scan QR code**. The first time, Android asks for camera access; allow it. Point the camera at the QR code.
 

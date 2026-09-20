@@ -32,7 +32,6 @@ public  final class ServerManifest extends
       implements com.google.protobuf.AbstractMessageLite.InternalOneOfEnum {
     DIRECT(8),
     FEED(9),
-    GATEWAY_PRIVATE(10),
     REFERENCE_NOT_SET(0);
     private final int value;
     private ReferenceCase(int value) {
@@ -50,7 +49,6 @@ public  final class ServerManifest extends
       switch (value) {
         case 8: return DIRECT;
         case 9: return FEED;
-        case 10: return GATEWAY_PRIVATE;
         case 0: return REFERENCE_NOT_SET;
         default: return null;
       }
@@ -159,7 +157,7 @@ public  final class ServerManifest extends
   /**
    * <pre>
    * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-   * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+   * or the gateway's public-feed contract. Zero is never published, and a version
    * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
    * knows.
    * </pre>
@@ -174,7 +172,7 @@ public  final class ServerManifest extends
   /**
    * <pre>
    * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-   * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+   * or the gateway's public-feed contract. Zero is never published, and a version
    * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
    * knows.
    * </pre>
@@ -189,7 +187,7 @@ public  final class ServerManifest extends
   /**
    * <pre>
    * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-   * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+   * or the gateway's public-feed contract. Zero is never published, and a version
    * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
    * knows.
    * </pre>
@@ -925,81 +923,6 @@ public  final class ServerManifest extends
     }
   }
 
-  public static final int GATEWAY_PRIVATE_FIELD_NUMBER = 10;
-  /**
-   * <pre>
-   * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-   * no endpoint chosen by the originating server is introduced by pairing.
-   * </pre>
-   *
-   * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-   */
-  @java.lang.Override
-  public boolean hasGatewayPrivate() {
-    return referenceCase_ == 10;
-  }
-  /**
-   * <pre>
-   * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-   * no endpoint chosen by the originating server is introduced by pairing.
-   * </pre>
-   *
-   * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-   */
-  @java.lang.Override
-  public io.github.brrenat.seekervault.server.v1.GatewayPrivate getGatewayPrivate() {
-    if (referenceCase_ == 10) {
-       return (io.github.brrenat.seekervault.server.v1.GatewayPrivate) reference_;
-    }
-    return io.github.brrenat.seekervault.server.v1.GatewayPrivate.getDefaultInstance();
-  }
-  /**
-   * <pre>
-   * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-   * no endpoint chosen by the originating server is introduced by pairing.
-   * </pre>
-   *
-   * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-   */
-  private void setGatewayPrivate(io.github.brrenat.seekervault.server.v1.GatewayPrivate value) {
-    java.util.Objects.requireNonNull(value);
-    reference_ = value;
-    referenceCase_ = 10;
-  }
-  /**
-   * <pre>
-   * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-   * no endpoint chosen by the originating server is introduced by pairing.
-   * </pre>
-   *
-   * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-   */
-  private void mergeGatewayPrivate(io.github.brrenat.seekervault.server.v1.GatewayPrivate value) {
-    java.util.Objects.requireNonNull(value);
-    if (referenceCase_ == 10 &&
-        reference_ != io.github.brrenat.seekervault.server.v1.GatewayPrivate.getDefaultInstance()) {
-      reference_ = io.github.brrenat.seekervault.server.v1.GatewayPrivate.newBuilder((io.github.brrenat.seekervault.server.v1.GatewayPrivate) reference_)
-          .mergeFrom(value).buildPartial();
-    } else {
-      reference_ = value;
-    }
-    referenceCase_ = 10;
-  }
-  /**
-   * <pre>
-   * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-   * no endpoint chosen by the originating server is introduced by pairing.
-   * </pre>
-   *
-   * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-   */
-  private void clearGatewayPrivate() {
-    if (referenceCase_ == 10) {
-      referenceCase_ = 0;
-      reference_ = null;
-    }
-  }
-
   public static io.github.brrenat.seekervault.server.v1.ServerManifest parseFrom(
       java.nio.ByteBuffer data)
       throws com.google.protobuf.InvalidProtocolBufferException {
@@ -1202,7 +1125,7 @@ public  final class ServerManifest extends
     /**
      * <pre>
      * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-     * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+     * or the gateway's public-feed contract. Zero is never published, and a version
      * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
      * knows.
      * </pre>
@@ -1217,7 +1140,7 @@ public  final class ServerManifest extends
     /**
      * <pre>
      * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-     * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+     * or the gateway's public-feed contract. Zero is never published, and a version
      * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
      * knows.
      * </pre>
@@ -1234,7 +1157,7 @@ public  final class ServerManifest extends
     /**
      * <pre>
      * Which phone-server contract this server speaks. Version 1 is Stage 7.1: the direct contract,
-     * or the gateway's public-feed/private-request contract. Zero is never published, and a version
+     * or the gateway's public-feed contract. Zero is never published, and a version
      * the phone doesn't speak is reported as unsupported rather than treated as the nearest one it
      * knows.
      * </pre>
@@ -1988,84 +1911,6 @@ public  final class ServerManifest extends
       return this;
     }
 
-    /**
-     * <pre>
-     * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-     * no endpoint chosen by the originating server is introduced by pairing.
-     * </pre>
-     *
-     * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-     */
-    @java.lang.Override
-    public boolean hasGatewayPrivate() {
-      return instance.hasGatewayPrivate();
-    }
-    /**
-     * <pre>
-     * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-     * no endpoint chosen by the originating server is introduced by pairing.
-     * </pre>
-     *
-     * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-     */
-    @java.lang.Override
-    public io.github.brrenat.seekervault.server.v1.GatewayPrivate getGatewayPrivate() {
-      return instance.getGatewayPrivate();
-    }
-    /**
-     * <pre>
-     * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-     * no endpoint chosen by the originating server is introduced by pairing.
-     * </pre>
-     *
-     * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-     */
-    public Builder setGatewayPrivate(io.github.brrenat.seekervault.server.v1.GatewayPrivate value) {
-      copyOnWrite();
-      instance.setGatewayPrivate(value);
-      return this;
-    }
-    /**
-     * <pre>
-     * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-     * no endpoint chosen by the originating server is introduced by pairing.
-     * </pre>
-     *
-     * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-     */
-    public Builder setGatewayPrivate(
-        io.github.brrenat.seekervault.server.v1.GatewayPrivate.Builder builderForValue) {
-      copyOnWrite();
-      instance.setGatewayPrivate(builderForValue.build());
-      return this;
-    }
-    /**
-     * <pre>
-     * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-     * no endpoint chosen by the originating server is introduced by pairing.
-     * </pre>
-     *
-     * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-     */
-    public Builder mergeGatewayPrivate(io.github.brrenat.seekervault.server.v1.GatewayPrivate value) {
-      copyOnWrite();
-      instance.mergeGatewayPrivate(value);
-      return this;
-    }
-    /**
-     * <pre>
-     * Set when mode is CONNECTION_MODE_GATEWAY_PRIVATE. The phone reaches only the shared gateway;
-     * no endpoint chosen by the originating server is introduced by pairing.
-     * </pre>
-     *
-     * <code>.seekervault.server.v1.GatewayPrivate gateway_private = 10 [json_name = "gatewayPrivate"];</code>
-     */
-    public Builder clearGatewayPrivate() {
-      copyOnWrite();
-      instance.clearGatewayPrivate();
-      return this;
-    }
-
     // @@protoc_insertion_point(builder_scope:seekervault.server.v1.ServerManifest)
   }
   @java.lang.Override
@@ -2094,11 +1939,10 @@ public  final class ServerManifest extends
             "displayName_",
             io.github.brrenat.seekervault.server.v1.DirectServer.class,
             io.github.brrenat.seekervault.server.v1.GatewayFeed.class,
-            io.github.brrenat.seekervault.server.v1.GatewayPrivate.class,
           };
           java.lang.String info =
-              "\u0000\n\u0001\u0000\u0001\n\n\u0000\u0002\u0000\u0001\u0208\u0002\u000b\u0003\u0003" +
-              "\u0004\f\u0005\u001b\u0006,\u0007\u0208\b<\u0000\t<\u0000\n<\u0000";
+              "\u0000\t\u0001\u0000\u0001\t\t\u0000\u0002\u0000\u0001\u0208\u0002\u000b\u0003\u0003" +
+              "\u0004\f\u0005\u001b\u0006,\u0007\u0208\b<\u0000\t<\u0000";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

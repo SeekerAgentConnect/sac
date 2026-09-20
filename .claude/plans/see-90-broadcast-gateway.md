@@ -150,8 +150,8 @@ server is never contacted by a phone, and nothing a phone decides ever arrives h
 
 ### Documentation
 
-- [x] `docs/wiki/broadcast-gateway.md`, and the sections in `docs/protocol.md`,
-      `docs/architecture.md`, `docs/security.md`, and `docs/development/broadcast.md`.
+- [x] `docs/wiki/feed-gateway.md`, and the sections in `docs/protocol.md`,
+      `docs/architecture.md`, `docs/security.md`, and `docs/development/feed-gateway.md`.
 - [x] `AGENTS.md`, `CODEBASE.md`, `README.md`, `RFC.md` (the layout line), `docs/changelog/`.
 
 ### Verification

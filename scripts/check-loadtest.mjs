@@ -2,7 +2,7 @@
 //
 //   pnpm check:loadtest
 //
-// It is separate from `pnpm check` for the reason `pnpm check:broadcast` is: it needs a toolchain
+// It is separate from `pnpm check` for the reason `pnpm check:feed-gateway` is: it needs a toolchain
 // the Node checks do not. What it does **not** need is a broker, a gateway or Redis — the tests
 // here are the harness's own (its quantiles, its ported client policy, its profiles, its
 // boundaries), and the ones that drive real processes skip with a reason when the binaries are not

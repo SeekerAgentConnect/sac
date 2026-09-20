@@ -8,9 +8,9 @@ Stage 2 makes requests durable: agents' requests are stored, and the owner revie
 
 | Task | What the tests cover | Where |
 | --- | --- | --- |
-| SAW-009: the contract | The lifecycle, results, idempotency, and validation rules, plus fixtures that both runtimes decode the same way | `sidecar/src/requests/*.test.ts`; `RequestProtocolFixturesTest` |
+| SAW-009: the contract | The lifecycle, results, idempotency, and validation rules, plus fixtures that both runtimes decode the same way | `server-sdk/src/requests/*.test.ts`, MCP endpoint tests in `mcp-server/src/requests/`; `RequestProtocolFixturesTest` |
 | SAW-010: the queue | SQLite storage and migrations, the MCP tools, the phone's `RequestService`, and restarts after SIGKILL | `request-store.test.ts`, `endpoints.test.ts`, `restart.test.ts`, `database.test.ts` |
-| SAW-011: pairing and roles | Pairing tokens, the role matrix, revocation, TLS, and redaction | `sidecar/src/pairing/*.test.ts`, `pairing-store.test.ts` |
+| SAW-011: pairing and roles | Pairing tokens, the role matrix, revocation, TLS, and redaction | `mcp-server/src/pairing/*.test.ts`, `server-sdk/src/storage/pairing-store.test.ts` |
 | SAW-012: connections on the phone | The code parser, the Keystore vault, isolation between connections, the real sidecar, and TLS | `connections/` in `android/app/src/test`; `CredentialVaultDeviceTest` |
 | SAW-013: the inbox | See the list below | See the list below |
 | SAW-014: the acceptance gate | Two sidecars, restarts, expiry, rejection, revocation, isolation between connections, the live diagnostic, and the demo tool | [The acceptance scenario](#the-acceptance-scenario-saw-014) |
@@ -77,7 +77,7 @@ Two suites run the same scenario, one from each side. Each starts two sidecars a
 **Deterministic clocks:**
 
 - In-process tests give the sidecar a fake clock (`SidecarOptions.now`), which moves only when the test moves it. `endpoints.test.ts` uses one to expire a request over MCP and Connect at its exact deadline, and to refuse a pairing code from its exact expiry on.
-- The suites above restart a sidecar process with `--import sidecar/src/testing/clock.ts`, which runs its clock ahead by a fixed amount. Shipped code never loads it.
+- The suites above restart a sidecar process with `--import mcp-server/src/testing/clock.ts`, which runs its clock ahead by a fixed amount. Shipped code never loads it.
 
 ## Owner-run check: the queued acknowledgement
 
@@ -204,7 +204,7 @@ A regular `pip install` of Hermes v0.21.1 refuses to build a wheel, so it was in
 | `pnpm test:queue` | PASS: 7/7, in about 7 seconds |
 | `pnpm check:android` | PASS: Spotless, 185/185 unit tests (4 of them new, in `Stage2AcceptanceTest`), lint with no issues, and the debug and instrumentation APKs |
 | `pnpm test:hello` | PASS: the 9/9 Stage 1 acceptance cases, unchanged |
-| `pnpm check:generated`, `pnpm build` | PASS: the generated code is current, and `sidecar/dist` builds |
+| `pnpm check:generated`, `pnpm build` | PASS: the generated code is current, and `mcp-server/dist` builds |
 | The demo tool | PASS. Without `MCP_DEMO_TOOLS=true`, the sidecar doesn't list `vault_request_ack`, and a call to it fails as an unknown tool (`endpoints.test.ts`). `pnpm agent ack` then exits 3 and names the variable (`cli.test.ts`). |
 | Clocks | PASS. On a fake clock, `endpoints.test.ts` expired a request over MCP and Connect exactly at its deadline, and refused a pairing code exactly at its expiry. |
 | Deliberate breaks | Each break was caught, and each file was restored byte for byte afterwards. Each break ran alone, under a time limit:<ul><li>`vault_request_ack` served without `MCP_DEMO_TOOLS`: 4 tests failed, in `endpoints.test.ts`, `server.test.ts`, and `cli.test.ts`</li><li>`pnpm agent ack` without its tool check: the exit code 3 test failed</li><li>the test clock not moved ahead: the `pnpm test:queue` expiry case failed</li><li>revocation that leaves PENDING requests: the revocation and isolation cases failed</li><li>a request looked up without its connection: the isolation case failed</li><li>the app never resending a waiting answer: `Stage2AcceptanceTest`'s answer-while-down case failed</li></ul> |

@@ -29,6 +29,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check:deployments
       - run: pnpm check
       - run: pnpm test:hello
       # The Stage 2 acceptance scenario: two sidecar processes with throwaway databases.
@@ -37,13 +38,20 @@ jobs:
       # live-network case is opt-in and stays off here: SEEKER_VAULT_NETWORK_CHECKS is not set, so
       # CI reaches no cluster and spends nothing (docs/testing/stage-4.md).
       - run: pnpm test:transfer
+      # Build and inspect the exact npm artifact, then install it into a temporary project outside
+      # the workspace. This never publishes and uses no npm credential.
+      - run: pnpm test:server-sdk-package
+      # Exercise the executable MCP tgz itself through local, global-style, and transient installs.
+      # This includes pairing, MCP discovery, a protocol-phone result, restart persistence, and
+      # duplicate-store refusal; it neither publishes nor uses npm credentials.
+      - run: pnpm test:mcp-server-package
       - run: pnpm check:generated
       - run: pnpm build
 
-  broadcast:
-    # The broadcast gateway (SEE-90). Its own toolchain, its own job: the Node checks do not need
+  feed-gateway:
+    # The feed gateway (SEE-90). Its own toolchain, its own job: the Node checks do not need
     # Go, and this one does not need pnpm's dependencies beyond the script that runs it.
-    name: Broadcast gateway formatting, vet, tests
+    name: Feed gateway formatting, vet, tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -52,22 +60,23 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # The one place the Go version is pinned: broadcast/go.mod's own requirement.
-          go-version-file: broadcast/go.mod
-          cache-dependency-path: broadcast/go.sum
+          # The one place the Go version is pinned: feed-gateway/go.mod's own requirement.
+          go-version-file: feed-gateway/go.mod
+          cache-dependency-path: feed-gateway/go.sum
       # The check itself is a Node script, so that the command CI runs and the command a
       # contributor runs are the same one. It needs no installed dependencies.
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-      - run: pnpm check:broadcast
+      - run: pnpm check:feed-gateway
 
-  publisher:
-    # The publisher templates (SEE-95). Their own module and their own job, for the same reason the
-    # gateway has one — and this job builds the gateway too, because the test that proves the two
-    # agree runs the real binary (docs/development/publisher.md).
-    name: Publisher templates formatting, vet, tests
+  publisher-support:
+    # The library both public-feed demos are built on (SEE-134). Its own module and its own job, for
+    # the same reason the gateway has one — and this job builds the gateway too, because the test
+    # that proves a publisher and the gateway agree runs the real binary
+    # (docs/development/demos.md).
+    name: Publisher support formatting, vet, tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -76,17 +85,69 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # publisher/go.mod requires the same version broadcast/go.mod does; a test in the module
-          # fails if the two modules' shared rules ever drift.
-          go-version-file: publisher/go.mod
+          # publisher-support/go.mod requires the same version feed-gateway/go.mod does; a test in
+          # the library fails if the two modules' shared rules ever drift.
+          go-version-file: publisher-support/go.mod
           cache-dependency-path: |
-            publisher/go.sum
-            broadcast/go.sum
+            publisher-support/go.sum
+            feed-gateway/go.sum
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-      - run: pnpm check:publisher
+      - run: pnpm check:publisher-support
+
+  demo-copytrading:
+    # The CopyTrading demo (SEE-95, SEE-134). A job of its own rather than a step in another,
+    # because "each demo builds and runs without the other" is a claim, and a job that checks out
+    # the repository and builds exactly one demo is what tests it. It does not build
+    # demo-prediction, and nothing here would notice if that module were absent.
+    name: CopyTrading demo formatting, vet, tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: demo-copytrading/go.mod
+          cache-dependency-path: |
+            demo-copytrading/go.sum
+            publisher-support/go.sum
+            feed-gateway/go.sum
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - run: pnpm check:copytrading
+      # The image, built the way its guide says to build it. It proves the documented command works
+      # and that the build needs no sibling demo: demo-prediction/ is never copied into the context.
+      - run: docker build -f demo-copytrading/Dockerfile -t demo-copytrading:ci .
+
+  demo-prediction:
+    # The Prediction demo (SEE-96, SEE-134). The same argument, the other way round: this job never
+    # builds demo-copytrading, and its image contains no signal-writing API and no trader UI.
+    name: Prediction demo formatting, vet, tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: demo-prediction/go.mod
+          cache-dependency-path: |
+            demo-prediction/go.sum
+            publisher-support/go.sum
+            feed-gateway/go.sum
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - run: pnpm check:prediction
+      - run: docker build -f demo-prediction/Dockerfile -t demo-prediction:ci .
 
   android:
     name: Android unit tests, lint, debug APK

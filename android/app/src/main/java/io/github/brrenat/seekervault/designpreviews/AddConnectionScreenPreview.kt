@@ -35,7 +35,6 @@ private fun AddConnectionScreenPreview() {
                     onCode = {},
                     onConfirmPairing = {},
                     onConfirmFeed = {},
-                    onConfirmInvitation = {},
                     onOpenFeed = {},
                     onCancel = {},
                     onBack = {},

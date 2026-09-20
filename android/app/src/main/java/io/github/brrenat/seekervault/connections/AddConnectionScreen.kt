@@ -51,7 +51,6 @@ import io.github.brrenat.seekervault.designsystem.SeekerTextField
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.FeedReferenceProblem
-import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.manifest
 
 /** Where the camera stands on the Add connection screen. */
@@ -79,7 +78,6 @@ data class AddConnectionScreenCallbacks(
     val onCode: (String) -> Unit,
     val onConfirmPairing: () -> Unit,
     val onConfirmFeed: () -> Unit,
-    val onConfirmInvitation: () -> Unit,
     val onOpenFeed: (Connection) -> Unit,
     val onCancel: () -> Unit,
     val onBack: () -> Unit,
@@ -123,7 +121,6 @@ fun AddConnectionRoute(
         when (adding) {
             is AddConnectionState.Paired -> onAdded(adding.connection)
             is AddConnectionState.FeedAdded -> onAdded(adding.connection)
-            is AddConnectionState.InvitationConnected -> onAdded(adding.connection)
             else -> Unit
         }
     }
@@ -158,7 +155,6 @@ fun AddConnectionRoute(
                 onCode = viewModel::onCode,
                 onConfirmPairing = viewModel::confirmPairing,
                 onConfirmFeed = viewModel::confirmFeed,
-                onConfirmInvitation = viewModel::confirmInvitation,
                 onOpenFeed = onAdded,
                 onCancel = viewModel::resetAdding,
                 onBack = onBack,
@@ -249,63 +245,15 @@ fun AddConnectionScreen(
                         callbacks.onOpenFeed,
                         callbacks.onCancel,
                     )
-                is AddConnectionState.ResolvingInvitation -> {
-                    ScreenCaption(stringResource(R.string.invitation_pending))
-                    SeekerButton(
-                        label = stringResource(R.string.cancel),
-                        onClick = callbacks.onCancel,
-                        variant = SeekerButtonVariant.Neutral,
-                        size = SeekerButtonSize.Md,
-                    )
-                }
-                is AddConnectionState.ConfirmInvitation ->
-                    ConfirmInvitation(
-                        adding.confirmation,
-                        null,
-                        false,
-                        callbacks.onConfirmInvitation,
-                        callbacks.onCancel,
-                    )
-                is AddConnectionState.RedeemingInvitation ->
-                    ConfirmInvitation(
-                        adding.confirmation,
-                        null,
-                        true,
-                        callbacks.onConfirmInvitation,
-                        callbacks.onCancel,
-                    )
-                is AddConnectionState.InvitationFailed ->
-                    ConfirmInvitation(
-                        adding.confirmation,
-                        adding.problem,
-                        false,
-                        callbacks.onConfirmInvitation,
-                        callbacks.onCancel,
-                    )
-                is AddConnectionState.InvitationConnected ->
-                    InvitationResult(
-                        adding.connection,
-                        true,
-                        callbacks.onOpenFeed,
-                        callbacks.onCancel,
-                    )
-                is AddConnectionState.InvitationAlready ->
-                    InvitationResult(
-                        adding.connection,
-                        false,
-                        callbacks.onOpenFeed,
-                        callbacks.onCancel,
-                    )
                 is AddConnectionState.Idle,
                 is AddConnectionState.PairingInvalid,
                 is AddConnectionState.FeedInvalid,
-                is AddConnectionState.InvitationInvalid,
+                AddConnectionState.RetiredInvitation,
                 is AddConnectionState.Paired ->
                     EnterCode(
                         pairingProblem = (adding as? AddConnectionState.PairingInvalid)?.problem,
                         feedProblem = (adding as? AddConnectionState.FeedInvalid)?.problem,
-                        invitationProblem =
-                            (adding as? AddConnectionState.InvitationInvalid)?.problem,
+                        retiredInvitation = adding == AddConnectionState.RetiredInvitation,
                         codeDraft = state.codeDraft,
                         camera = state.camera,
                         onScan = callbacks.onScan,
@@ -324,7 +272,7 @@ fun AddConnectionScreen(
 private fun EnterCode(
     pairingProblem: PairingCodeProblem?,
     feedProblem: FeedReferenceProblem?,
-    invitationProblem: InvitationProblem?,
+    retiredInvitation: Boolean,
     codeDraft: String,
     camera: CameraAccess,
     onScan: () -> Unit,
@@ -387,12 +335,12 @@ private fun EnterCode(
                 modifier = Modifier.testTag(ConnectionsTags.SCAN),
             )
     }
-    val invalid = pairingProblem != null || feedProblem != null || invitationProblem != null
+    val invalid = pairingProblem != null || feedProblem != null || retiredInvitation
     val problemMessage =
         when {
             pairingProblem != null -> problemText(pairingProblem)
             feedProblem != null -> feedReferenceProblemText(feedProblem)
-            invitationProblem != null -> invitationProblemText(invitationProblem)
+            retiredInvitation -> stringResource(R.string.gateway_invitation_retired)
             else -> null
         }
     SeekerTextField(
@@ -480,114 +428,6 @@ private fun ConfirmFeed(
             size = SeekerButtonSize.Md,
             enabled = !adding,
             modifier = Modifier.testTag(ConnectionsTags.CANCEL_PAIRING),
-        )
-    }
-}
-
-@Composable
-private fun ConfirmInvitation(
-    confirmation: InvitationConfirmation,
-    failure: InvitationProblem?,
-    connecting: Boolean,
-    onConfirm: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    val invitation = confirmation.invitation
-    val environment = startingEnvironment(ServerRecord.Known(confirmation.manifest))
-    val required = confirmation.manifest.required
-    val requiredText =
-        if (required.isEmpty()) stringResource(R.string.feed_required_plugins_none)
-        else required.joinToString("\n") { it.id.value }
-    AddSectionTitle(stringResource(R.string.invitation_confirm_title))
-    FactRow(
-        label = stringResource(R.string.feed_display_name),
-        value = invitation.displayName.ifEmpty { invitation.serverId },
-        valueStyle = FactRowValueStyle.Plain,
-        modifier = Modifier.testTag(ConnectionsTags.CONFIRM_INVITATION),
-    )
-    FactRow(
-        label = stringResource(R.string.field_gateway),
-        value = confirmation.reference.gatewayUrl,
-        valueStyle = FactRowValueStyle.MonoWrap,
-    )
-    FactRow(
-        label = stringResource(R.string.field_server_id),
-        value = invitation.serverId,
-        valueStyle = FactRowValueStyle.MonoWrap,
-    )
-    FactRow(
-        label = stringResource(R.string.field_environment),
-        value = stringResource(environmentText(environment)),
-        valueStyle = FactRowValueStyle.Plain,
-    )
-    FactRow(
-        label = stringResource(R.string.feed_required_plugins),
-        value = requiredText,
-        valueStyle = FactRowValueStyle.Plain,
-    )
-    FactRow(
-        label = stringResource(R.string.invitation_expires),
-        value = invitation.expiresAt.toString(),
-        valueStyle = FactRowValueStyle.MonoWrap,
-    )
-    ScreenCaption(stringResource(R.string.invitation_confirm_scope))
-    if (failure != null) {
-        ScreenCaption(
-            text = invitationProblemText(failure),
-            modifier = Modifier.testTag(ConnectionsTags.INVITATION_FAILURE),
-        )
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md)) {
-        if (failure == null || failure == InvitationProblem.Failed) {
-            SeekerButton(
-                label =
-                    stringResource(
-                        if (connecting) R.string.invitation_connecting
-                        else R.string.invitation_connect
-                    ),
-                onClick = onConfirm,
-                variant = SeekerButtonVariant.Filled,
-                size = SeekerButtonSize.Md,
-                enabled = !connecting,
-                modifier = Modifier.testTag(ConnectionsTags.CONNECT_INVITATION),
-            )
-        }
-        SeekerButton(
-            label = stringResource(R.string.cancel),
-            onClick = onCancel,
-            variant = SeekerButtonVariant.Neutral,
-            size = SeekerButtonSize.Md,
-            enabled = !connecting,
-            modifier = Modifier.testTag(ConnectionsTags.CANCEL_PAIRING),
-        )
-    }
-}
-
-@Composable
-private fun InvitationResult(
-    connection: Connection,
-    connected: Boolean,
-    onOpen: (Connection) -> Unit,
-    onDone: () -> Unit,
-) {
-    AddSectionTitle(
-        stringResource(
-            if (connected) R.string.invitation_connected else R.string.invitation_already
-        )
-    )
-    ScreenCaption(connection.label)
-    Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md)) {
-        SeekerButton(
-            label = stringResource(R.string.feed_open),
-            onClick = { onOpen(connection) },
-            variant = SeekerButtonVariant.Filled,
-            size = SeekerButtonSize.Md,
-        )
-        SeekerButton(
-            label = stringResource(R.string.cancel),
-            onClick = onDone,
-            variant = SeekerButtonVariant.Neutral,
-            size = SeekerButtonSize.Md,
         )
     }
 }

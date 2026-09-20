@@ -107,7 +107,7 @@ things on purpose, and writes a report that says where it stopped and why.
       includes, and how to run it against a deployment of your own.
 - [x] `docs/testing/see-99.md`: the report — hardware, topology, versions, every profile and
       scenario with its numbers, the bottleneck found, and the limits.
-- [x] `docs/wiki/broadcast-gateway.md`: the measured numbers, where it says what the transport can
+- [x] `docs/wiki/feed-gateway.md`: the measured numbers, where it says what the transport can
       do.
 - [x] `README.md` commands and status; `AGENTS.md` checks; `CODEBASE.md` files and commands;
       `docs/development/toolchain.md` for the broker and Redis versions used.

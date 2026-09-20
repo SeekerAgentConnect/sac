@@ -7,13 +7,6 @@ managed:
     - file_option: java_package_prefix
       value: io.github.brrenat
 plugins:
-  # TypeScript for the sidecar. JavaScript plus declarations rather than target=ts,
-  # because Node's type stripping cannot run the TypeScript enums protoc-gen-es emits.
-  - local: protoc-gen-es
-    out: sidecar/src/gen
-    opt:
-      - target=js+dts
-      - import_extension=js
   # Kotlin for Android: protobuf-lite messages and Connect-Kotlin clients. The Android
   # runtime libraries must match these versions (see docs/development/toolchain.md).
   - remote: buf.build/protocolbuffers/java:v36.1
@@ -24,11 +17,11 @@ plugins:
     opt: lite
   - remote: buf.build/connectrpc/kotlin:v0.9.0
     out: android/app/src/main/generated/kotlin
-# What is generated for the phone and the sidecar, which is everything in proto/ except one file:
-# seekervault/gateway/v1/publish.proto is the broadcast gateway's publisher API (SEE-90), and
+# What is generated for the phone, which is everything in proto/ except one file:
+# seekervault/gateway/v1/publish.proto is the feed gateway's publisher API (SEE-90), and
 # neither of them is a publisher. Excluding it here is a boundary that needs no test to hold: there
 # is no publisher client in the app because none is compiled for the app. Go generation, which does
-# need it, has its own template (buf.gen.go.yaml).
+# need it, has its own template (buf.gen.feed-gateway.yaml).
 inputs:
   - directory: proto
     exclude_paths:

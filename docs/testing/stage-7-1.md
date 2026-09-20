@@ -4,6 +4,17 @@ What was verified for SEE-90 to SEE-96, what was verified by hand, and what is l
 run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast`,
 `pnpm check:publisher` and `pnpm check:android`; this page is about the rest.
 
+> **Paths on this page are the ones that existed when it was written.** SEE-133 renamed
+> `broadcast/` to `feed-gateway/`, and SEE-134 replaced `publisher/` with `publisher-support/`,
+> `demo-copytrading/` and `demo-prediction/`. The commands below are kept as they were run, because
+> a record that says something else was run would not be a record. To re-run any of them today,
+> read the command off the module it moved to: `pnpm check:broadcast` is now
+> `pnpm check:feed-gateway`, `pnpm check:publisher` is `pnpm check:publisher-support`,
+> `pnpm check:copytrading` and `pnpm check:prediction`, and each demo's compose stack is in its own
+> directory with its own `.env.example`
+> ([`demo-copytrading/README.md`](../../demo-copytrading/README.md),
+> [`demo-prediction/README.md`](../../demo-prediction/README.md)).
+
 ## What no machine here could run
 
 - **Docker.** No daemon is reachable on the machine these checks ran on (`docs/testing/stage-7.md`
@@ -42,7 +53,7 @@ run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast`,
 Centrifugo v6.9.6 (SHA-256 verified against the release checksums) and Redis 8.10.1 (built from the
 release tarball). Everything in this section was established by running them, and the design
 decisions that came out of it are in
-[`wiki/broadcast-gateway.md#the-transport-and-what-it-cannot-do`](../wiki/broadcast-gateway.md#the-transport-and-what-it-cannot-do).
+[`wiki/feed-gateway.md#the-transport-and-what-it-cannot-do`](../wiki/feed-gateway.md#the-transport-and-what-it-cannot-do).
 
 | What was asked | What happened |
 | --- | --- |
@@ -215,7 +226,7 @@ over a real certificate, a real network and the app's own lifecycle.
    ```
 
 2. **Publish something** with the credential that printed. The Go template is the way to do it
-   (SEE-95, [`docs/development/publisher.md`](../development/publisher.md)); any Connect client
+   (SEE-95, [`docs/development/demos.md`](../development/demos.md)); any Connect client
    would also do:
 
    ```sh

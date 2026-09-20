@@ -1,6 +1,6 @@
 # Security
 
-How the sidecar tells the agent from the phone, how a phone pairs, and how a phone reaches a self-hosted sidecar safely. The wire format is in [`docs/protocol.md`](protocol.md#pairing), and the operator's commands are in [`docs/development/sidecar.md`](development/sidecar.md#pairing-a-phone).
+How the sidecar tells the agent from the phone, how a phone pairs, and how a phone reaches a self-hosted sidecar safely. The wire format is in [`docs/protocol.md`](protocol.md#pairing), and the operator's commands are in [`docs/development/mcp-server.md`](development/mcp-server.md#pairing-a-phone).
 
 ## Roles and credentials
 
@@ -14,7 +14,7 @@ Each credential opens one role, and the sidecar accepts it in one place only:
 | Phone credential (`phone_token`) | The paired phone | The `Pair` response, once | `RequestService`, `UpdateService`, and authenticated `PairingService` operations for its own connection | Its SHA-256 hash |
 | `PHONE_TOKEN` | The Stage 1 live-test screen | The operator, in `.env` | `LiveCommandService` only | The value, in `.env` |
 
-- **Only the paired phone can prepare, review, and answer requests or register an FCM target.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool pairs, prepares, submits a result, registers a target, or revokes. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `sidecar/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
+- **Only the paired phone can prepare, review, and answer requests or register an FCM target.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool pairs, prepares, submits a result, registers a target, or revokes. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `mcp-server/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
 - **An access token is an agent's credential and no more.** When `MCP_OAUTH_ISSUER` is configured, `/mcp` also accepts a token issued by that authorization server for this deployment. It opens `/mcp` and nothing else — the same refusals as `MCP_TOKEN` apply to every phone RPC — and it authorizes asking, never answering: a request still waits for the owner's hand on the wallet. See [The authorization boundary](#the-authorization-boundary-saw-036).
 - **`PHONE_TOKEN` is the Stage 1 development exception, and it stays with the live diagnostic.** It can watch and acknowledge display-only live commands, and nothing else. It can't pair, and `RequestService` refuses it.
 - **The phone credential exists only on the phone.** The sidecar returns it once, in the `Pair` response, and stores only its hash. The database, its backups, and the log can't give it away.
@@ -25,13 +25,10 @@ The shared gateway has its own, separately routed roles:
 
 | Credential | Held by | Accepted by | Grant |
 | --- | --- | --- | --- |
-| Publisher credential | An independent backend | Publisher listener | That server's feed documents, manifests, invitations and private requests |
-| Invitation capability | The person opening a temporary link/QR | Client listener, until expiry or redemption | Preview and one explicit-confirmation redemption; no wallet or request authority |
-| Device credential | SAC, after redemption | Client listener | One binding's manifest, private requests, declared results and revocation |
+| Publisher credential | An independent backend | Publisher listener | That server's public feed documents and manifest |
 
-Publisher and device credentials travel only in bearer headers and are stored as SHA-256 hashes.
-The invitation capability is the deliberate URL exception: short-lived and single-use, omitted from
-application errors, and excluded from proxy access logs. It never grants signing or execution.
+Publisher credentials travel only in bearer headers and are stored as SHA-256 hashes. The gateway
+has no subscriber credential, binding, invitation, private-request route or result-upload route.
 
 ### The operator's account
 
@@ -87,8 +84,9 @@ what the phone already has, and can never change it
 - **The origin has to be the one the connection already uses** — the paired server URL, character
   for character, or the gateway a feed was added through. A manifest naming another origin is
   refused, and the credential keeps going exactly where it did.
-- **The mode cannot change.** A direct, gateway-feed or gateway-private connection can never become
-  another mode. A missing mode is refused rather than guessed.
+- **The mode cannot change.** A direct connection can never become a gateway feed, or vice versa. A
+  missing mode is refused rather than guessed. A retired gateway-private record has no active mode
+  and is never converted to either one.
 - **A publisher may name only its own channel** (`server/<its own ID>`), so a manifest cannot claim
   another publisher's audience.
 - **A refusal is recorded, not acted on.** The connection stays as it was and keeps working as it
@@ -128,8 +126,8 @@ What each owner does about one is theirs, and it stays on their phone
 
 ### The public broadcast path holds no reader (SEE-90, SEE-91, SEE-92)
 
-The shared gateway in [`broadcast/`](../broadcast) is what a publisher publishes to and every
-subscribed phone reads from ([`wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md)). It is a
+The shared gateway in [`feed-gateway/`](../feed-gateway) is what a publisher publishes to and every
+subscribed phone reads from ([`wiki/feed-gateway.md`](wiki/feed-gateway.md)). It is a
 third party in the middle of the stage's one public relationship, so what it is unable to do matters
 more than what it does.
 
@@ -143,8 +141,8 @@ more than what it does.
   is refused outright: the codec is strict, and a field the contract does not have is an error.
 - **There is no public-feed endpoint that takes a result.** `FeedService` is read-only; a publication
   or result sent to its listener answers 404 even with a valid credential.
-- **It cannot point a phone anywhere but at itself.** A published feed or gateway-private manifest
-  must name this gateway's own origin; a `direct` manifest carries a URL, and the gateway refuses to
+- **It cannot point a phone anywhere but at itself.** A published feed manifest must name this
+  gateway's own origin; a `direct` manifest carries a URL, and the gateway refuses to
   hold one. The phone applies the same origin rule, so neither side depends on the other getting it
   right.
 - **Listening says which channels and nothing about who (SEE-91).** A stream is opened with a
@@ -201,37 +199,28 @@ more than what it does.
   test reads the database after several reads and requires every row count to be unchanged. What the
   gateway learns from a read is which channel someone asked about.
 
-### A private gateway binding is minimal and explicit (SEE-109)
+### Retired private gateway state (SEE-130)
 
-The private adapter deliberately does keep one association, because routing a request to one
-confirmed device is its purpose: authenticated `server_id`, that server's opaque `user_ref`, a
-random connection ID and the hash of the credential SAC received once. It is not a central SAC
-account, does not join identities across servers, and contains no wallet, authorization token,
-amount, prepared transaction or activity history.
+The former shared-gateway invitation, device-binding and private request/result adapter is retired.
+Its routes and protocol messages are absent, and the schema-v3 migration drops its rows. Removed
+wire numbers and names remain reserved only to prevent accidental reuse.
 
-- Creating, viewing, resolving or opening an invitation writes no binding. Only the owner's
-  confirmation calls redemption, and invitation consumption plus binding creation is one SQLite
-  transaction.
-- A fresh invitation creates a new `(server_id, user_ref, connection_id)` binding and cannot
-  silently replace another. Requests must name that exact connection ID as well as the user
-  reference; revoking one binding leaves sibling devices active.
-- A private request must use SEE-108's private audience and `RETURN_TO_ORIGIN`; it is pinned to the
-  exact binding the authenticated server named. Another binding cannot inherit it.
-- The returned record is limited to declared owner inputs and the terminal outcome. Connecting does
-  not select a wallet or authorize policy, approval, signing or execution; SAC repeats every one of
-  those gates per request.
-- The server credential never enters a link, QR or browser. The temporary invitation capability is
-  redacted from logs; the device credential is returned once and is hashed at rest.
-
-The wire flow and storage boundary are in [`wiki/gateway-pairing.md`](wiki/gateway-pairing.md).
+An app upgrading with an old gateway-private connection keeps a labelled history record but removes
+its device credential, cached manifest and unfinished work. The record has no active connection mode
+and cannot sync, execute or send a result. The owner must obtain a fresh `seekervault://pair` code
+from a direct sidecar; neither its old origin nor its credential is converted. See
+[`wiki/gateway-pairing.md`](wiki/gateway-pairing.md).
 
 ### A publisher template holds no subscriber either (SEE-95)
 
-The template in [`publisher/`](../publisher) is the other new server in this stage, and it is the
-one a stranger runs: a developer's or a trader's own process, publishing signals everybody
-subscribed will read ([`wiki/copytrading-template.md`](wiki/copytrading-template.md)). What matters
-about it is the same thing that matters about the gateway — not what it does, but what it has no way
-to do.
+The template in [`demo-copytrading/`](../demo-copytrading) is the other new server in this stage,
+and it is the one a stranger runs: a developer's or a trader's own process, publishing signals
+everybody subscribed will read ([`wiki/copytrading-template.md`](wiki/copytrading-template.md)).
+What matters about it is the same thing that matters about the gateway — not what it does, but what
+it has no way to do. Since SEE-134 the second template is its own module,
+[`demo-prediction/`](../demo-prediction), and both are built on
+[`publisher-support/`](../publisher-support) — a source library with no command, no listener and no
+deployment of its own — so each claim below is made about each of them separately.
 
 - **It has nowhere to put anything about a subscriber.** Six tables: the deployment's own stamp, its
   manifest's revision, its signals, the idempotency keys callers created them with, and — for the
@@ -245,8 +234,9 @@ to do.
   not know, so `wallet` or `amount` cannot arrive disguised as one. Both halves are tested with
   every word.
 - **It never learns that a phone exists.** It reads no feed — and the way that is true is that no
-  feed client is compiled for the module at all ([`buf.gen.publisher.yaml`](../buf.gen.publisher.yaml)
-  generates the publisher API and the two documents, and nothing else), so there is no code in it
+  feed client is compiled for either module at all
+  ([`buf.gen.publisher-support.yaml`](../buf.gen.publisher-support.yaml) generates the publisher API
+  and the two documents into the library the two share, and nothing else), so there is no code in it
   that could ask who is subscribed even if somebody wanted to.
 - **And it was checked by looking, not only by arguing.** SEE-98's integration run publishes from
   both templates, reads both feeds from two subscribers, answers an agent's private request on the
@@ -390,28 +380,41 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 
 ## Transport security
 
-- **The sidecar listens on loopback only.** `SIDECAR_HOST` can't be anything else. It uses plain HTTP by default; setting both TLS identity paths starts the production secure listener instead.
+- **The sidecar binds loopback by default.** A container may bind its internal wildcard only with an explicit public URL. Plain HTTP is for loopback/private proxying; setting both TLS identity paths starts the production secure listener instead.
 - **Production updates terminate TLS at the sidecar's HTTP/2 listener.** `SIDECAR_TLS_CERT_PATH` and `SIDECAR_TLS_KEY_PATH` name its PEM identity, and `SIDECAR_PUBLIC_URL` must be HTTPS. The certificate is publicly trusted and matches the public host. The listener negotiates `h2` for gRPC and `http/1.1` for existing clients. A pass-through or gRPC-aware proxy may expose the loopback listener only if HTTP/2 reaches it intact.
 - **Loopback development may use a separate cleartext HTTP/2 port.** `SIDECAR_UPDATE_PORT` is for `adb reverse` on the same machine, never for a LAN or public listener. It cannot be combined with the TLS identity.
 - **The app keeps Android's normal certificate and host name checks,** with no certificate pinning, custom CA, or trust-all.
 - **`SIDECAR_PUBLIC_URL` is the URL that pairing codes carry.** It must be `https://`, with one exception: `http://` on `127.0.0.1`, `localhost`, or `[::1]`, for development over `adb reverse`. That's the default, and it's the Stage 1 loopback exception. The debug build allows cleartext to `127.0.0.1` and `localhost` only, and release builds allow none. The URL can have a path, but no user name, password, query, or fragment.
-- **The secure listener preserves every existing route, `/mcp` included.** `/mcp` still refuses a public host name unless `MCP_ALLOWED_HOSTS` lists it, and it always needs `MCP_TOKEN`. The paired phone credential opens production updates; every other role is refused.
-- **The Stage 7 gateway terminates TLS in front of the sidecar,** with a certificate it obtains and renews itself for a domain the operator owns. It adds no authentication and removes none, so every boundary below is still the sidecar's own. The optional OAuth profile (SAW-036) changes nothing about that: it is the sidecar, as the MCP server, that validates an access token.
+- **The secure listener serves the production routes, `/mcp` included.** `/mcp` still refuses a public host name unless `MCP_ALLOWED_HOSTS` lists it, and it always needs `MCP_TOKEN`. The paired phone credential opens production updates; every other role is refused. The legacy Stage 1 `LiveCommandService` is absent on native TLS, and `/healthz` answers only to a loopback peer. The container health program connects over loopback while verifying the configured public hostname and certificate chain; an optional private CA extends trust but never disables it.
+- **Optional direct ingress terminates TLS separately from the MCP deployment,** with a certificate it obtains and renews for a domain the operator owns. It adds no authentication and removes none, so every boundary below is still the MCP server's own. Optional OAuth changes nothing about that: the MCP server validates the access token.
 
-### The gateway (SAW-035)
+### Optional direct ingress (SAW-035, SEE-135)
 
-This is the deployment's reverse proxy in front of one owner's sidecar, and not the shared broadcast
-gateway of SEE-90 above: different service, different operator, different directory
-([`broadcast/README.md`](../broadcast/README.md)).
+This is the optional reverse proxy in front of one owner's direct server, and not the shared feed
+gateway of SEE-90 above: different service, different operator, different deployment
+([`feed-gateway/README.md`](../feed-gateway/README.md)).
 
-[`gateway/Caddyfile`](../gateway/Caddyfile) and [`gateway/Caddyfile.public`](../gateway/Caddyfile.public) are two configurations, not one with a switch: the first is plain HTTP on a loopback address for local work, and the second is the internet-facing one, reached through [`gateway/compose.public.yaml`](../gateway/compose.public.yaml). Making a deployment public is a different command, so loopback HTTP cannot become the public default by omission.
+The portable server in [`deploy/mcp`](../deploy/mcp) is host-loopback by default. The public
+[`deploy/ingress/direct/Caddyfile`](../deploy/ingress/direct/Caddyfile) belongs to a separate Compose
+project, so a domain and certificate cannot become an application default by omission.
 
-- **Only named endpoints exist on the public interface.** `/mcp` and the phone's pairing, request, and update services are forwarded. `/healthz`, the Stage 1 `LiveCommandService` diagnostic, and every other path are refused at the gateway and never reach the sidecar. A request for a host the deployment does not serve is closed rather than answered.
-- **The health endpoint is the operator's.** In the public configuration it binds the network namespace's loopback address, so Compose cannot publish it to the host at all: the health check and the test agent reach it, nothing outside does.
+This HTTP reverse-proxy profile remains useful for MCP and unary phone calls, but it does not carry
+the UpdateService stream. The generic complete direct deployment instead uses the application's
+native-TLS overlay in [`deploy/mcp/compose.tls.yaml`](../deploy/mcp/compose.tls.yaml); the canonical
+commands are in [`deploy/README.md`](../deploy/README.md).
+
+- **Only named endpoints exist on the public interface.** `/mcp`, OAuth metadata, and the phone's
+  unary pairing and request services are forwarded. `/healthz`, the Stage 1 `LiveCommandService`
+  diagnostic, the production `UpdateService`, and every other path are refused at the ingress and
+  never reach the application. A request for a host the deployment does not serve is closed rather
+  than answered.
+- **The health endpoint stays operator-local.** The application preset publishes it only on the
+  host's loopback mapping. The public ingress has no `/healthz` route, although its private Docker
+  health check can reach the application over the external ingress network.
 - **Credentials pass through untouched.** The gateway never inserts an `Authorization` header and never strips one, so each service still takes only its own credential ([roles](protocol.md#roles)). It does not rewrite `Host` either, which is what keeps `/mcp`'s DNS-rebinding check real; the public deployment puts its own domain in `MCP_ALLOWED_HOSTS` instead.
 - **Requests are bounded before they reach the sidecar.** Each route caps a request body at 64 KiB, the same limit the sidecar enforces itself, so an oversized body is refused one hop earlier.
 - **No credential reaches the access log.** Caddy redacts `Authorization`, `Cookie`, `Set-Cookie`, and `Proxy-Authorization` unless `log_credentials` is turned on, and it is not turned on in either file. Turning it on would put every agent token, phone credential, and pairing token into the log at once. Pairing codes never travel as a URL or a header — they are shown to the phone and sent in a request body, which is not logged.
-- **The admin API is off.** `admin off` in both files means Caddy opens no configuration port for anything to reconfigure it through.
+- **The admin API is off.** `admin off` means Caddy opens no configuration port for anything to reconfigure it through.
 - **The live update stream is not carried.** `Subscribe` is gRPC over HTTP/2 and terminates at the sidecar's own TLS listener. Behind this gateway the sidecar speaks HTTP/1.1, no update endpoint is configured, and pairing therefore advertises none: nothing is promised that the endpoint cannot deliver.
 
 ### The authorization boundary (SAW-036)
@@ -423,13 +426,16 @@ An optional profile lets a hosted MCP client reach `/mcp` on a person's authoriz
 - **Only asymmetric signatures.** `RS*`, `PS*`, `ES*`, and `EdDSA` are accepted; a shared secret is not an algorithm this endpoint honours, and `none` never was. Opaque tokens are refused with an error that says so: there is no introspection call, so nothing is asked of the authorization server at request time.
 - **A token is never passed on.** It authorizes the MCP call and stops there. Nothing downstream ever sees it, and the sidecar has no upstream API to present it to.
 - **Scopes are a refusal, not a capability.** `MCP_OAUTH_SCOPE` names what a token must carry; a valid token without it is refused with `403` and `insufficient_scope`, which is how a client learns what to ask for. A scope grants nothing on its own — the tools an access token reaches are exactly the tools `MCP_TOKEN` reaches.
-- **There is no second way in.** While OAuth is on, `MCP_TOKEN` opens `/mcp` only under a loopback `Host`: that is the stack's own private endpoint inside the container's network namespace, which Compose cannot publish, and the public gateway closes any connection claiming a host it does not serve. A hosted client cannot fall back to it, and neither can anyone else.
+- **The two authentication profiles do not overlap on the public host.** While OAuth is on, a static
+  `MCP_TOKEN` remains accepted only with a loopback `Host`. The application preset's loopback host
+  mapping is an operator-local endpoint; the public ingress accepts only its declared domain. A
+  hosted client therefore cannot use the static token against the public OAuth resource.
 - **Revocation is bounded by the token's lifetime.** A signed token is not checked against the authorization server on each call, so revoking a grant stops the *next* token rather than the current one. Short access-token lifetimes are the answer, and removing `MCP_OAUTH_ISSUER` refuses every access token at once.
 - **The discovery document is public on purpose.** A client reads it before it has any credential. It names the authorization server, this resource, and the scope — no owner, no request, no connection, and no token.
 
 ### Trusted endpoints
 
-For production updates, configure the sidecar's TLS identity as shown in [`docs/development/sidecar.md`](development/sidecar.md#production-update-listener), then expose that secure loopback socket with a TLS pass-through or gRPC-aware HTTP/2 route. A proxy that speaks HTTP/1.1 to the sidecar can carry the old unary APIs but cannot carry the bidirectional `Subscribe` call. Never treat polling or a server-only stream as a transport fallback.
+For production updates, configure the sidecar's TLS identity as shown in [`docs/development/mcp-server.md`](development/mcp-server.md#production-update-listener), then expose that secure loopback socket with a TLS pass-through or gRPC-aware HTTP/2 route. A proxy that speaks HTTP/1.1 to the sidecar can carry the old unary APIs but cannot carry the bidirectional `Subscribe` call. Never treat polling or a server-only stream as a transport fallback.
 
 The following older examples remain suitable for the Stage 1 diagnostic and unary pairing/manual-refresh path. Do not assume they carry the production update stream unless their configuration is separately proven to preserve HTTP/2 to the secure sidecar listener.
 
@@ -442,11 +448,15 @@ The following older examples remain suitable for the Stage 1 diagnostic and unar
 
 Only devices on the tailnet can reach this endpoint.
 
-**Caddy,** on a machine with a public DNS name and ports 80 and 443 open. The configured form of this is the Stage 7 stack: `docker compose -f compose.yaml -f compose.public.yaml up -d --build`, described in [self-hosting](guides/self-hosting.md#going-public-tls-dns-and-ports). Outside that stack the one-liner `caddy reverse-proxy --from vault.example.com --to 127.0.0.1:8080` does the same job for the unary path, with none of the endpoint separation above. Either way, set `SIDECAR_PUBLIC_URL=https://vault.example.com`.
+**Caddy,** on a machine with a public DNS name and ports 80 and 443 open. The configured unary form
+is the independent [`deploy/ingress/direct`](../deploy/ingress/direct) project. Set
+`SIDECAR_PUBLIC_URL=https://vault.example.com`. For the production update stream, use the native
+TLS listener using the generic [native-TLS deployment](../deploy/README.md#3-direct-mcp-over-native-https-and-http2)
+so HTTP/2 remains end to end.
 
 Don't use a self-signed certificate. The phone rightly refuses it, and the only way around that is weakening its checks. The automated production-listener test trusts a throwaway local certificate only inside the test process; no such trust configuration ships.
 
-`sidecar/src/pairing/tls.test.ts` covers legacy unary proxying and certificate refusal. `sidecar/src/updates/service.test.ts` drives gRPC over negotiated HTTP/2 into the actual secure sidecar listener while also proving its health, authenticated MCP, pairing, and RequestService HTTP/1 calls still work.
+`mcp-server/src/pairing/tls.test.ts` covers legacy unary proxying and certificate refusal. `mcp-server/src/updates/service.test.ts` drives gRPC over negotiated HTTP/2 into the actual secure sidecar listener while also proving its health, authenticated MCP, pairing, and RequestService HTTP/1 calls still work.
 
 ## Local storage and recovery
 

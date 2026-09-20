@@ -32,7 +32,7 @@ public object GetStreamTicketResponseKt {
     /**
      * ```
      * The credential a listener connects with, opaque to the caller. What it is made of is the
-     * stream's business (docs/wiki/broadcast-gateway.md#the-stream); what a caller needs to know is
+     * stream's business (docs/wiki/feed-gateway.md#the-stream); what a caller needs to know is
      * that it grants the channels below, expires, and can be asked for again.
      * ```
      *
@@ -48,7 +48,7 @@ public object GetStreamTicketResponseKt {
     /**
      * ```
      * The credential a listener connects with, opaque to the caller. What it is made of is the
-     * stream's business (docs/wiki/broadcast-gateway.md#the-stream); what a caller needs to know is
+     * stream's business (docs/wiki/feed-gateway.md#the-stream); what a caller needs to know is
      * that it grants the channels below, expires, and can be asked for again.
      * ```
      *

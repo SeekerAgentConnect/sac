@@ -91,7 +91,7 @@ fun SeekerVaultApp(
     live: LiveCommandViewModel,
     notificationTaps: StateFlow<MainActivity.NotificationTap?>,
     feedTaps: StateFlow<MainActivity.FeedTap?> = MutableStateFlow(null),
-    invitationTaps: StateFlow<MainActivity.InvitationTap?> = MutableStateFlow(null),
+    connectionLinkTaps: StateFlow<MainActivity.ConnectionLinkTap?> = MutableStateFlow(null),
     operations: OperationViewModel? = null,
     startInLiveTest: Boolean = false,
 ) {
@@ -144,7 +144,7 @@ fun SeekerVaultApp(
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
     val notificationTap by notificationTaps.collectAsStateWithLifecycle()
     val feedTap by feedTaps.collectAsStateWithLifecycle()
-    val invitationTap by invitationTaps.collectAsStateWithLifecycle()
+    val connectionLinkTap by connectionLinkTaps.collectAsStateWithLifecycle()
     val operationsState by
         (operations?.state ?: MutableStateFlow(OperationsUiState())).collectAsStateWithLifecycle()
     val openOperation by
@@ -154,21 +154,33 @@ fun SeekerVaultApp(
         enabled =
             BuildConfig.FIREBASE_CONFIGURED && state.loaded && state.connections.any { it.usable }
     )
-    LaunchedEffect(notificationTap?.sequence) {
+    LaunchedEffect(notificationTap?.sequence, state.loaded) {
         val key = notificationTap?.key ?: return@LaunchedEffect
+        if (!state.loaded) return@LaunchedEffect
         resetTransientSheetState()
         navigator.selectTab(AppScreen.Home)
-        navigator.openReview(ReviewIdentity.Private(key.connectionId, key.requestId))
-        inbox.openFromNotification(key)
+        val connection = state.connections.firstOrNull { it.id == key.connectionId }
+        if (connection?.mode == ConnectionMode.Direct) {
+            navigator.openReview(ReviewIdentity.Private(key.connectionId, key.requestId))
+            inbox.openFromNotification(key)
+        } else if (connection?.retirement != null) {
+            navigator.openConnectionDetail(key.connectionId)
+        }
     }
-    LaunchedEffect(feedTap?.sequence) {
+    LaunchedEffect(feedTap?.sequence, state.loaded) {
         val ref = feedTap?.ref ?: return@LaunchedEffect
+        if (!state.loaded) return@LaunchedEffect
         resetTransientSheetState()
         navigator.selectTab(AppScreen.Home)
-        navigator.openReview(ReviewIdentity.Signal(ref.connectionId, ref.proposalId))
+        val connection = state.connections.firstOrNull { it.id == ref.connectionId }
+        if (connection?.mode == ConnectionMode.GatewayFeed) {
+            navigator.openReview(ReviewIdentity.Signal(ref.connectionId, ref.proposalId))
+        } else if (connection?.retirement != null) {
+            navigator.openConnectionDetail(ref.connectionId)
+        }
     }
-    LaunchedEffect(invitationTap?.sequence) {
-        val tap = invitationTap ?: return@LaunchedEffect
+    LaunchedEffect(connectionLinkTap?.sequence) {
+        val tap = connectionLinkTap ?: return@LaunchedEffect
         resetTransientSheetState()
         navigator.selectTab(AppScreen.Home)
         navigator.openAddConnection()
@@ -320,10 +332,7 @@ fun SeekerVaultApp(
                 AddConnectionRoute(
                     viewModel = connections,
                     onBack = navigator::back,
-                    onAdded = {
-                        if (it.mode == ConnectionMode.GatewayPrivate) operations?.refresh(it.id)
-                        navigator.selectTab(AppScreen.Home)
-                    },
+                    onAdded = { navigator.selectTab(AppScreen.Home) },
                     modifier = rootModifier,
                     navigationCallbacks = screenNavigationCallbacks,
                 )
@@ -364,6 +373,11 @@ fun SeekerVaultApp(
                             onInbox = {
                                 resetTransientSheetState()
                                 navigator.selectTab(AppScreen.Inbox)
+                            },
+                            onPairDirect = {
+                                resetTransientSheetState()
+                                navigator.selectTab(AppScreen.Home)
+                                navigator.openAddConnection()
                             },
                             overrideCount = policyState.overrideCount(activeRoute.connectionId),
                             operationRefreshing =
@@ -632,9 +646,6 @@ private fun RequestReviewRoute(
                         onBack()
                     },
                     onOpenLink = { openLink(linkContext, it) },
-                    returnsResult =
-                        state.connections.firstOrNull { it.id == identity.connectionId }?.mode ==
-                            ConnectionMode.GatewayPrivate,
                 )
             }
         }
@@ -811,6 +822,7 @@ private fun ConnectionDetailsRoute(
     onBack: () -> Unit,
     onRules: () -> Unit,
     onInbox: () -> Unit,
+    onPairDirect: () -> Unit,
     overrideCount: Int,
     operationRefreshing: Boolean = false,
     onOperationRefresh: () -> Unit = {},
@@ -822,7 +834,7 @@ private fun ConnectionDetailsRoute(
     }
     LaunchedEffect(id) {
         viewModel.refresh(id)
-        if (connection.mode == ConnectionMode.GatewayPrivate) onOperationRefresh()
+        if (connection.mode == ConnectionMode.GatewayFeed) onOperationRefresh()
     }
     ConnectionDetailLibraryScreen(
         connection = connection,
@@ -832,7 +844,7 @@ private fun ConnectionDetailsRoute(
         onBack = onBack,
         onRefresh = {
             viewModel.refresh(id)
-            if (connection.mode == ConnectionMode.GatewayPrivate) onOperationRefresh()
+            if (connection.mode == ConnectionMode.GatewayFeed) onOperationRefresh()
         },
         onRename = { viewModel.rename(id, it) },
         onDisconnect = { viewModel.askToDisconnect(id) },
@@ -842,6 +854,7 @@ private fun ConnectionDetailsRoute(
         onMessageShown = viewModel::messageShown,
         onRules = onRules,
         onInbox = onInbox,
+        onPairDirect = onPairDirect,
         overrideCount = overrideCount,
         live = state.updates.connections[id],
         support = state.support[id],

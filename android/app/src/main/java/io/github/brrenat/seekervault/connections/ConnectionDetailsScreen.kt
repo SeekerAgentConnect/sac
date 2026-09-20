@@ -179,7 +179,8 @@ fun ConnectionDetailsScreen(
                                 )
                                 .clickable(
                                     enabled =
-                                        (connection.usable || connection.gatewayUsable) &&
+                                        (connection.usable ||
+                                            connection.mode == ConnectionMode.GatewayFeed) &&
                                             !refreshing,
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() },
@@ -207,7 +208,7 @@ fun ConnectionDetailsScreen(
                 Field(R.string.field_connection_id, connection.id, "connectionId")
                 Field(R.string.field_paired, formatInstant(connection.pairedAt), "paired")
                 Field(R.string.field_device_name, connection.deviceName, "deviceName")
-                if (connection.mode != ConnectionMode.Direct) {
+                if (connection.mode == ConnectionMode.GatewayFeed) {
                     EnvironmentCard(connection, onEnvironment)
                     val required = connection.server.manifest?.required.orEmpty()
                     val requiredText =
@@ -299,31 +300,15 @@ fun ConnectionDetailsScreen(
                             }
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    stringResource(
-                                        if (connection.mode == ConnectionMode.GatewayPrivate) {
-                                            R.string.operations_requests
-                                        } else {
-                                            R.string.operations_signals
-                                        }
-                                    ),
+                                    stringResource(R.string.operations_signals),
                                     style = MaterialTheme.typography.titleMedium,
                                 )
                                 Text(
                                     if (signals == 0) {
-                                        stringResource(
-                                            if (connection.mode == ConnectionMode.GatewayPrivate) {
-                                                R.string.operations_requests_note
-                                            } else {
-                                                R.string.operations_signals_note
-                                            }
-                                        )
+                                        stringResource(R.string.operations_signals_note)
                                     } else {
                                         pluralStringResource(
-                                            if (connection.mode == ConnectionMode.GatewayPrivate) {
-                                                R.plurals.connection_requests_held
-                                            } else {
-                                                R.plurals.connection_signals_held
-                                            },
+                                            R.plurals.connection_signals_held,
                                             signals,
                                             signals,
                                         )
