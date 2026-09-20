@@ -47,9 +47,9 @@ device, live provider/FCM, and broker-backed checks were explicitly NOT RUN.
 - [x] Publish the SDK public API/ownership contract, package README/minimal consumer, version/runtime policy, release-preparation notes, and exact verification record.
 - [x] Update `docs/development/see-128-migration-map.md`, relevant direct-server developer/integration docs, `CODEBASE.md`, and `docs/changelog/2026-09-20.md` for the extracted architecture.
 - [x] Re-read SEE-128 and SEE-131 before handoff and record each ticket item as PASS, FAIL, or NOT RUN.
-- [ ] Commit and push `superset/feat/see-128`; update PR #38 without merging or completing SEE-128.
-- [ ] Move SEE-131 to In Review and comment with implementation and verification evidence if Linear access works.
-- [ ] POST the required `finished` webhook before stopping.
+- [x] Commit and push `superset/feat/see-128`; update PR #38 without merging or completing SEE-128.
+- [x] Move SEE-131 to In Review and comment with implementation and verification evidence if Linear access works. The configured Linear plugin remained unavailable with `401 invalid_token`; the Superset ticket fallback moved the issue and linked PR #38, but exposes no comment operation.
+- [x] POST the required `finished` webhook before stopping.
 
 ## Review
 
@@ -59,6 +59,9 @@ its entry point and product concerns while all production composition goes throu
 boundary tests reject private production imports and duplicate stores. The real tarball passed the
 69-file audit and outside-workspace consumer lifecycle. Full command outcomes, the one corrected
 Android SDK-path precondition and prohibited checks are recorded in `docs/testing/see-131.md`.
+
+Implementation commit `4c54d76` is pushed to PR #38. SEE-131 is In Review with the PR attached;
+SEE-128 remains open. The required completion webhook was sent after the final delivery push.
 
 No registry publication, package upload, credential provisioning, automatic release workflow,
 physical-device run, MCP package relocation or SEE-132 implementation occurred.
