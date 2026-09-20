@@ -31,15 +31,28 @@ Ticket source: both issue bodies were read in full through `superset tasks get .
 
 ## Verification
 
-- [ ] Run the moved gateway tests/build and repository codegen/path checks. (All pass except the local codegen freshness retry, blocked by Buf registry rate limiting; PR CI must pass it.)
+- [x] Run the moved gateway tests/build and repository codegen/path checks. (The all-runtime codegen command was attempted three times and blocked by Buf registry rate limiting; the renamed gateway tree matches the exact pinned local generators, and PR CI remains the all-runtime retry.)
 - [x] Run authenticated publication HTTP smoke tests for manifest create/update and item create/update/withdrawal.
 - [x] Run cross-publisher isolation and transaction/outbox rollback/replay tests.
 - [x] Exercise restart after commit before dispatch, duplicate delivery and snapshot recovery without broker history.
 - [x] Check optional push disabled and enabled paths with controlled fixtures.
 - [x] Run the repository build; run broader checks proportionate to the changed paths. Do not run or install Android on a real device.
-- [ ] Review the final diff against `0cce770`, re-read SEE-128/SEE-133, and record PASS/FAIL/NOT RUN evidence below.
-- [ ] Commit and push `superset/feat/see-128`, update PR #38, move SEE-133 to In Review/comment with evidence if the available Linear path supports it, then send the required finished webhook.
+- [x] Review the final diff against `0cce770`, re-read SEE-128/SEE-133, and record PASS/FAIL/NOT RUN evidence below.
+- [x] Commit and push the implementation to `superset/feat/see-128`, update PR #38, and resolve its current-master conflicts without restoring private routes.
+- [ ] After the frozen repository state passes its PR checks, move SEE-133 to In Review/comment with evidence if the available Linear path supports it, then send the required finished webhook.
 
 ## Review
 
-Pending implementation and verification.
+The implementation is confined to SEE-133: the shared service and its callers use canonical
+`feed-gateway/` paths, public RPC/business code uses focused storage contracts, and the SQLite
+adapter alone owns SQL/schema/transactions. Atomic publication/outbox, revision, scope,
+withdrawal, cursor, restart and at-least-once delivery behavior are covered by the moved suite plus
+new commit-failure, replay and literal-HTTP lifecycle tests. The independent guide records the
+actual Connect JSON surface, process/configuration boundaries and local-file operational limits.
+
+Local gateway, publisher, load, integration, workspace, build, format and Compose checks pass.
+Android/device, Docker-daemon, live broker/Redis and live Firebase checks are explicitly NOT RUN.
+The repository-wide remote-plugin codegen command is blocked locally by anonymous Buf rate limits;
+equivalent gateway output from the installed pinned Go generators is byte-identical. PR checks are
+the final external gate before the Linear/webhook handoff. Demos remain in `publisher/`; SEE-134 and
+SEE-135 were not started.
