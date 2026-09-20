@@ -54,7 +54,7 @@ SEEKERVAULT_REDIS=/path/to/redis-server \
   the capture, because a market's close time decides whether it is published at all and a process
   reads the real clock; and a closed market answers under the identity of the market that was asked
   about, because a withdrawal is only meaningful for a market somebody is following.
-- **The wallet** is `sidecar/src/testing/wallet.ts`: a key pair made in the test process, which
+- **The wallet** is `mcp-server/src/testing/wallet.ts`: a key pair made in the test process, which
   produces the same Ed25519 signature a wallet app would. The cross-component run asks it to sign a
   message and needs no chain at all; the fake Solana JSON-RPC in `chain.ts` belongs to the
   direct-mode leg, which is where a transfer is built.

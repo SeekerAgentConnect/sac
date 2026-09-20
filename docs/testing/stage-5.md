@@ -133,7 +133,7 @@ SAW-029, 2026-09-13, on macOS 26.5 (Apple silicon), with Node 24.21.0 and the ot
 | `pnpm check:android` | PASS: Spotless, lint with no issues, both APKs, and 662/662 unit tests — 20 more than before: ten scenarios, two about what a verdict may claim, and eight for the three defects review turned up. |
 | `pnpm check:generated` | PASS: SAW-029 changed no `.proto` file, and the committed generated code and fixtures match a fresh generation. |
 | `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer` | PASS: 9/9, 7/7, and 7/7 with the opt-in devnet case skipped. **No transaction was sent to any cluster.** |
-| The shared fixture | PASS: `node sidecar/src/testing/transaction-fixtures.ts` rewrote `fixtures/transactions/cases.json` with one case added, and `sidecar/src/solana/fixtures.test.ts` accepts the committed file as the one the builder produces now. |
+| The shared fixture | PASS: `node mcp-server/src/testing/transaction-fixtures.ts` rewrote `fixtures/transactions/cases.json` with one case added, and `mcp-server/src/solana/fixtures.test.ts` accepts the committed file as the one the builder produces now. |
 | Deliberate breaks | Nine, each applied, run, confirmed to fail the tests in the table above and nothing else, and reverted — every source file restored byte for byte. |
 | Device checks 56–78 | **PASS**, 2026-09-13, all 23 on the owner's own Seeker. They are what this record could not otherwise show: that the assessment reads the way the guide says it does on a real screen at a real text size, and that a real wallet still asks for a real approval after a verdict of either kind. |
 

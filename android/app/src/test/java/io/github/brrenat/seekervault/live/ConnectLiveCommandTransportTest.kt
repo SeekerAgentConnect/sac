@@ -20,7 +20,8 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * The real transport against the real sidecar, without a device: runs `node sidecar/src/main.ts`
+ * The real transport against the MCP server, without a device: runs
+ * `node mcp-server/src/cli.ts start`
  * and sends text through its MCP endpoint with the MCP SDK, checking the Android client's HTTP/1.1
  * streaming, headers, and error mapping. Needs Node 24 on PATH and `pnpm install`.
  */
@@ -30,7 +31,7 @@ class ConnectLiveCommandTransportTest {
             checkNotNull(System.getProperty("seekervault.repoRoot")) {
                 "run this test through Gradle"
             },
-            "sidecar",
+            "mcp-server",
         )
     private val httpClient = ConnectOkHttpClient.configureClient(OkHttpClient.Builder()).build()
     private lateinit var sidecar: Process
@@ -43,7 +44,8 @@ class ConnectLiveCommandTransportTest {
         baseUrl = "http://127.0.0.1:$port"
         sidecar =
             node(
-                "src/main.ts",
+                "src/cli.ts",
+                "start",
                 env =
                     mapOf(
                         "SIDECAR_HOST" to "127.0.0.1",
@@ -51,7 +53,7 @@ class ConnectLiveCommandTransportTest {
                         "MCP_TOKEN" to MCP_TOKEN,
                         "PHONE_TOKEN" to PHONE_TOKEN,
                         "LIVE_COMMAND_TIMEOUT_SECONDS" to "30",
-                        // A throwaway database, never the developer's sidecar/data/sidecar.db.
+                        // A throwaway database, never the developer's stable MCP server database.
                         "DATABASE_PATH" to
                             java.nio.file.Files.createTempDirectory("seeker-vault-sidecar")
                                 .resolve("sidecar.db")

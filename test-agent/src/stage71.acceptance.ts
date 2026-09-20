@@ -39,12 +39,12 @@ import {
   requestClient,
   viewOf,
   type TestPhone,
-} from "../../sidecar/src/testing/clients.ts";
+} from "../../mcp-server/src/testing/clients.ts";
 import {
   freePort,
   startSidecarProcess,
   type SidecarProcess,
-} from "../../sidecar/src/testing/process.ts";
+} from "../../mcp-server/src/testing/process.ts";
 import {
   testWallet,
   type TestWallet,

@@ -33,7 +33,7 @@ The `oneof` is the last field group in the message on purpose. Where a oneof's b
 
 | | **Direct** | **Gateway feed** |
 | --- | --- | --- |
-| Whose server | The owner's own (`sidecar/`) | A developer's public publisher |
+| Whose server | The owner's own (`mcp-server/`) | A developer's public publisher |
 | How it is added | A pairing code, `pnpm pair` | A public feed reference |
 | Credential on the phone | One issued by the sidecar | **None** |
 | Who sees a request | Only the owner who paired | Every subscriber of the channel |

@@ -40,6 +40,10 @@ jobs:
       # Build and inspect the exact npm artifact, then install it into a temporary project outside
       # the workspace. This never publishes and uses no npm credential.
       - run: pnpm test:server-sdk-package
+      # Exercise the executable MCP tgz itself through local, global-style, and transient installs.
+      # This includes pairing, MCP discovery, a protocol-phone result, restart persistence, and
+      # duplicate-store refusal; it neither publishes nor uses npm credentials.
+      - run: pnpm test:mcp-server-package
       - run: pnpm check:generated
       - run: pnpm build
 

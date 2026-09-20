@@ -9,21 +9,21 @@ import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 // The real sidecar (in process) and its Connect test client acting as the phone.
-import { startSidecar, type Sidecar } from "../../sidecar/src/server.ts";
+import { startSidecar, type Sidecar } from "../../mcp-server/src/server.ts";
 import {
   Code,
   ConnectError,
   connectPhone,
   pairPhone,
   requestClient,
-} from "../../sidecar/src/testing/clients.ts";
+} from "../../mcp-server/src/testing/clients.ts";
 import {
   FakeChain,
   startFakeRpc,
   walletAccount,
   type FakeRpc,
-} from "../../sidecar/src/testing/chain.ts";
-import { temporaryDatabasePath } from "../../sidecar/src/testing/process.ts";
+} from "../../mcp-server/src/testing/chain.ts";
+import { temporaryDatabasePath } from "../../mcp-server/src/testing/process.ts";
 import { testWallet } from "../../server-sdk/src/testing/wallet.ts";
 import { Network } from "@seeker-vault/server-sdk/protocol";
 

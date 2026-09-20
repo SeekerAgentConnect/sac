@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * The real sidecar from this repository (`node sidecar/src/main.ts`) on a free loopback port with a
+ * The real MCP server from this repository (`node mcp-server/src/cli.ts start`) on a free loopback port with a
  * throwaway database and tokens, plus the operator's `pnpm pair` commands against it. It serves the
  * demo tool `vault_request_ack` (MCP_DEMO_TOOLS), and [stop] and [start] restart it on the same
  * port and database. Needs Node 24 on PATH and `pnpm install`.
@@ -18,7 +18,7 @@ class RealSidecar(private val productionUpdates: Boolean = false) : AutoCloseabl
             checkNotNull(System.getProperty("seekervault.repoRoot")) {
                 "run this test through Gradle"
             },
-            "sidecar",
+            "mcp-server",
         )
     private val port = ServerSocket(0).use { it.localPort }
     val url = "http://127.0.0.1:$port"
@@ -34,7 +34,7 @@ class RealSidecar(private val productionUpdates: Boolean = false) : AutoCloseabl
             "PHONE_TOKEN" to PHONE_TOKEN,
             "LIVE_COMMAND_TIMEOUT_SECONDS" to "30",
             "MCP_DEMO_TOOLS" to "true",
-            // A throwaway database, never the developer's sidecar/data/sidecar.db.
+            // A throwaway database, never the developer's stable MCP server database.
             "DATABASE_PATH" to
                 Files.createTempDirectory("seeker-vault-sidecar").resolve("sidecar.db").toString(),
         ) + (updatePort?.let { mapOf("SIDECAR_UPDATE_PORT" to "$it") } ?: emptyMap())
@@ -53,7 +53,7 @@ class RealSidecar(private val productionUpdates: Boolean = false) : AutoCloseabl
 
     /**
      * Starts the sidecar on its port and database. [clockAheadSeconds] runs its clock that far
-     * ahead of the real one (`sidecar/src/testing/clock.ts`), for time that passed while it was
+     * ahead of the real one (`mcp-server/src/testing/clock.ts`), for time that passed while it was
      * down. The clock never goes back.
      */
     fun start(clockAheadSeconds: Long = this.clockAheadSeconds) {
@@ -61,12 +61,13 @@ class RealSidecar(private val productionUpdates: Boolean = false) : AutoCloseabl
         this.clockAheadSeconds = maxOf(this.clockAheadSeconds, clockAheadSeconds)
         val started =
             if (this.clockAheadSeconds == 0L) {
-                node("src/main.ts")
+                node("src/cli.ts", "start")
             } else {
                 node(
                     "--import",
                     "./src/testing/clock.ts",
-                    "src/main.ts",
+                    "src/cli.ts",
+                    "start",
                     extra =
                         mapOf("SIDECAR_TEST_CLOCK_AHEAD_MS" to "${this.clockAheadSeconds * 1000}"),
                 )
@@ -151,7 +152,7 @@ class RealSidecar(private val productionUpdates: Boolean = false) : AutoCloseabl
     override fun close() = stop()
 
     private fun cli(vararg args: String): String {
-        val cli = node("src/pairing/cli.ts", *args)
+        val cli = node("src/cli.ts", "pair", *args)
         val output = cli.inputStream.bufferedReader().readText()
         check(cli.waitFor(30, TimeUnit.SECONDS) && cli.exitValue() == 0) {
             "pnpm pair ${args.joinToString(" ")} failed:\n$output"

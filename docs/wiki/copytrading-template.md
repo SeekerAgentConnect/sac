@@ -15,7 +15,7 @@ for themselves, with their own amount, on their own phone.
 
 ## Three servers, and why this is the third
 
-| | `sidecar/` (Node) | `broadcast/` (Go) | **`publisher/` (Go)** |
+| | `mcp-server/` (Node) | `broadcast/` (Go) | **`publisher/` (Go)** |
 | --- | --- | --- | --- |
 | Whose it is | the owner's own | whoever hosts the broadcast | **a developer's or a trader's** |
 | Who calls it | one paired phone | publishers, and every phone | **whoever writes the signals** |

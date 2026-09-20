@@ -169,7 +169,7 @@ tasks.withType<Test>().configureEach {
         providers.systemProperty(name).orNull?.let { systemProperty(name, it) }
     }
     inputs
-        .dir(repoRoot.dir("sidecar/src"))
+        .dir(repoRoot.dir("mcp-server/src"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
-        .withPropertyName("sidecarSources")
+        .withPropertyName("mcpServerSources")
 }

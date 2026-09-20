@@ -18,9 +18,9 @@ Verified on 2026-09-11 on macOS 26.5.2 (Apple silicon). Each version is pinned i
 | Prettier | 3.9.6 | `package.json` |
 | Buf CLI (`@bufbuild/buf`) | 1.72.0 | `package.json` |
 | MCP TypeScript SDK (`@modelcontextprotocol/sdk`), used by the sidecar and the test agent | 1.30.0 | `catalog` in `pnpm-workspace.yaml` |
-| Connect for Node (`@connectrpc/connect`, `@connectrpc/connect-node`) | 2.2.0 | `server-sdk/package.json` and `sidecar/package.json` |
-| Firebase Admin SDK for the optional FCM sender | 14.4.0 | `sidecar/package.json` |
-| uqr, which draws the pairing QR code in the terminal (no dependencies) | 0.1.3 | `sidecar/package.json` |
+| Connect for Node (`@connectrpc/connect`, `@connectrpc/connect-node`) | 2.2.0 | `server-sdk/package.json` and `mcp-server/package.json` |
+| Firebase Admin SDK for the optional FCM sender | 14.4.0 | `mcp-server/package.json` |
+| uqr, which draws the pairing QR code in the terminal (no dependencies) | 0.1.3 | `mcp-server/package.json` |
 | zod, for the MCP tool schemas and the SDK's peer | 4.6.1 | `catalog` in `pnpm-workspace.yaml` |
 | protoc-gen-es (generator), @bufbuild/protobuf (runtime) | 2.14.1 | `catalog` in `pnpm-workspace.yaml`; generator and runtime move together |
 
@@ -139,7 +139,7 @@ before the tests.
 
 | Generator | Output | Runtime library that must match |
 | --- | --- | --- |
-| `protoc-gen-es` 2.14.1 (local), `target=js+dts` | direct contracts in `server-sdk/src/gen`; proposal fixture contract in `sidecar/src/gen` | `@bufbuild/protobuf` 2.14.1, plus `@connectrpc/connect` 2.2.0 for the service |
+| `protoc-gen-es` 2.14.1 (local), `target=js+dts` | direct contracts in `server-sdk/src/gen`; proposal fixture contract in `mcp-server/src/gen` | `@bufbuild/protobuf` 2.14.1, plus `@connectrpc/connect` 2.2.0 for the service |
 | `buf.build/protocolbuffers/java:v36.1`, `lite` | `android/app/src/main/generated/java` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/protocolbuffers/kotlin:v36.1`, `lite` | `android/app/src/main/generated/kotlin` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0, with its OkHttp transport and lite codec at the same version |
@@ -150,7 +150,7 @@ before the tests.
 | the same two Go plugins (in `buf.gen.loadtest.yaml`), over `proto/` **and** the vendored schema | `loadtest/internal/gen` | the same two runtimes, pinned in `loadtest/go.mod` |
 
 - **There are seven templates.** `buf.gen.yaml` writes the phone's Kotlin, while
-  `buf.gen.server-sdk.yaml` writes the direct TypeScript contracts and `buf.gen.sidecar.yaml` keeps
+  `buf.gen.server-sdk.yaml` writes the direct TypeScript contracts and `buf.gen.mcp-server.yaml` keeps
   only the proposal fixture contract with the MCP host. None generates
   `seekervault/gateway/v1/publish.proto` for the phone or direct server — neither is a publisher.
   `buf.gen.go.yaml` writes the gateway's Go for the three packages it speaks;
@@ -233,8 +233,8 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions above. Grad
 | --- | --- |
 | `pnpm install --frozen-lockfile` | PASS |
 | `pnpm check` | PASS: Prettier, ESLint, `tsc --noEmit`, 8/8 sidecar tests |
-| `pnpm build` | PASS: produces `sidecar/dist/main.js` |
-| `pnpm dev:sidecar` | PASS. Without configuration, it lists every missing variable and exits 1. It accepts valid variables from both the environment and `.env`. `SIDECAR_PORT=9090` in the environment overrides the value in `.env`. |
+| `pnpm build` | PASS: produces `mcp-server/dist/cli.js` |
+| `pnpm dev:mcp-server` | PASS. Without configuration, it lists every missing variable and exits 2. It accepts valid variables from both the environment and `.env`. `SIDECAR_PORT=9090` in the environment overrides the value in `.env`. |
 | `pnpm check:android` | PASS: `spotlessCheck`, `testDebugUnitTest` (no tests yet), `lintDebug` (no issues), `assembleDebug` |
 | `(cd android && ./gradlew :app:assembleDebug)` | PASS: produces `android/app/build/outputs/apk/debug/app-debug.apk` |
 | `pnpm generate` | Fails as expected with `Module "proto" had no .proto files`. `buf.gen.yaml` was also run against a throwaway proto: it produced Kotlin and TypeScript output, identical across two runs. |

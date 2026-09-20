@@ -3,10 +3,10 @@
 Status: SEE-129 baseline, recorded from `superset/feat/see-128` at
 `a4feaa1551d974d4f23e6e5ea2a6301a79078035` on 2026-09-19 through 2026-09-20.
 
-Implementation status: SEE-130 applied the step-2 retirement and SEE-131 extracted the reusable
-TypeScript Direct Server SDK on the same branch and PR. Direct and gateway-feed remain the only
-active modes. Relocating the MCP application starts with SEE-132; later gateway, demo and deployment
-work remains owned by SEE-133 through SEE-136.
+Implementation status: SEE-130 applied the step-2 retirement, SEE-131 extracted the reusable
+TypeScript Direct Server SDK, and SEE-132 relocated and packaged the self-hosted MCP application on
+the same branch and PR. Direct and gateway-feed remain the only active modes. Later gateway, demo
+and deployment work remains owned by SEE-133 through SEE-136.
 
 Authority: [SEE-128](https://linear.app/seekeragentwallet/issue/SEE-128/refactor-sac-into-a-typescript-server-sdk-self-hosted-mcp-public-feeds),
 [SEE-129](https://linear.app/seekeragentwallet/issue/SEE-129/18-establish-the-architecture-baseline-and-exact-migration-map),
@@ -15,7 +15,8 @@ SEE-128 supersedes PR #36 wherever the old three-mode architecture differs from 
 target.
 
 The baseline sections describe the tree SEE-129 recorded; the implementation records near the end
-describe subsequent child work. No child so far has published a package or reset direct data.
+describe subsequent child work. No child has published a package or reset direct data. SEE-132
+stops at `npm pack`, exact-tarball isolated installs, and local Docker preparation.
 
 ## Fixed destination and scope fence
 
@@ -49,7 +50,7 @@ are pnpm 12.3.4 and Node 24.21.0 (`package.json`, `.nvmrc`); TypeScript is 6.0.3
 | Current concern | Current implementation and entry points | Exact destination | Owner child |
 | --- | --- | --- | --- |
 | Reusable direct server | `server-sdk/`; public `@seeker-vault/server-sdk` and `./protocol` exports, explicit lifecycle, direct persistence and phone services | `server-sdk/`; transport-neutral TypeScript library | SEE-131 (implemented) |
-| MCP application | `sidecar/src/main.ts`, `server.ts`, `mcp-endpoint.ts`, `auth.ts`, `oauth.ts`, `config.ts`, `requests/mcp-tools.ts`, `solana/`, and `sidecar/Dockerfile` | `mcp-server/`; executable npm/CLI and Docker app consuming `server-sdk/` | SEE-132 |
+| MCP application | `mcp-server/src/cli.ts`, `server.ts`, `mcp-endpoint.ts`, `auth.ts`, `oauth.ts`, `config.ts`, `requests/mcp-tools.ts`, `solana/`, packaging script, standalone Compose and `mcp-server/Dockerfile` | `mcp-server/`; executable npm/CLI and Docker app consuming `server-sdk/` | SEE-132 (implemented) |
 | Shared public gateway | Go module `broadcast/`; `cmd/broadcast` and `cmd/broadcastctl` | `feed-gateway/`, with the public reader, authenticated publisher, SQLite, stream, and optional push only | SEE-133 |
 | Hosted gateway-private mode | `onboarding.proto`, private methods in `publish.proto`, `broadcast/internal/gateway/{invitation,device,private_publisher}.go`, `broadcast/internal/store/private.go`, publisher gateway SDK, and Android invitation/device routing | Removed from active APIs and runtime; only compatibility reservations and one-way local retirement remain | SEE-130 |
 | Direct reverse proxy | Misleadingly named `gateway/`; Caddy and Compose around `sidecar` | Optional direct ingress/operator assets under `deploy/`; the product executable/image belongs to `mcp-server/` | SEE-132 and SEE-135 |
@@ -62,11 +63,11 @@ are pnpm 12.3.4 and Node 24.21.0 (`package.json`, `.nvmrc`); TypeScript is 6.0.3
 
 ### Dependencies and generated code
 
-- pnpm workspace members are currently `server-sdk`, `sidecar` and `test-agent`. The host and test
-  agent depend on the SDK through the workspace protocol. SEE-132 adds `mcp-server` and removes or
-  retires `sidecar` only after compatibility checks pass.
+- pnpm workspace members are `server-sdk`, `mcp-server` and `test-agent`. The MCP source and test
+  agent depend on the SDK through the workspace protocol. The staged MCP manifest vendors the SDK's
+  built public runtime and contains no workspace/file/registry dependency on the unpublished SDK.
 - `scripts/generate.mjs` uses `buf.gen.server-sdk.yaml` for direct protobuf-es code,
-  `buf.gen.sidecar.yaml` for the host's proposal fixture code, and `buf.gen.yaml` for Android code.
+  `buf.gen.mcp-server.yaml` for the host's proposal fixture code, and `buf.gen.yaml` for Android code.
   `buf.gen.go.yaml`, `buf.gen.publisher.yaml`, `buf.gen.loadtest.yaml`, and
   `buf.gen.centrifugo.yaml` write the Go and broker surfaces. Generated files are never edited by
   hand. Later children continue to change templates and regenerate atomically.
@@ -85,10 +86,10 @@ are pnpm 12.3.4 and Node 24.21.0 (`package.json`, `.nvmrc`); TypeScript is 6.0.3
 
 ### Direct MCP to phone to the same server
 
-1. An MCP client calls `/mcp` in `sidecar/src/mcp-endpoint.ts`. `MCP_TOKEN`, or an OAuth access token
+1. An MCP client calls `/mcp` in `mcp-server/src/mcp-endpoint.ts`. `MCP_TOKEN`, or an OAuth access token
    validated by `oauth.ts`, authenticates the agent-facing boundary. Host/origin checks and the body
    limit apply before tool dispatch.
-2. `sidecar/src/requests/mcp-tools.ts` converts the tool call to the public SDK `AgentRequests`
+2. `mcp-server/src/requests/mcp-tools.ts` converts the tool call to the public SDK `AgentRequests`
    interface. The rules, lifecycle and `RequestStore` live in `server-sdk/src/` and durably write
    the request and idempotency record to the direct SQLite file.
 3. The paired phone calls the SDK's direct Connect services in `server-sdk/src/pairing/`,
@@ -156,7 +157,7 @@ gateway-private code also uses it.
 | Android private routing | `ConnectionMode.GatewayPrivate`, private branches in `Connection`, `ConnectionGateway`, `ConnectionRepository`, `ProposalRepository`, manifest validation, operation flow, sync, and application wiring | Remove fetch/result/revoke behavior. A retired record must never be treated as Direct or Feed and must never execute or send a result |
 | Proxy/deployment | Invitation/Device/private publisher routes in `broadcast/Caddyfile*`, `deploy/server/Caddyfile*`; port 8092 and `BROADCAST_CLIENT_ADDRESS` in Compose/env/docs | Remove public/private-client routing and the client listener without changing public read/publisher routing |
 | Tests/docs | Gateway onboarding/privacy tests, Android gateway-invitation/private-request tests, private examples and guides | Replace with two-mode boundary, migration, and negative-route coverage; do not silently delete compatibility evidence |
-| Generated code | Onboarding and private publisher/manifest outputs under `broadcast/internal/gen`, `publisher/internal/gen`, `sidecar/src/gen`, and Android generated trees | Change proto/templates first, then regenerate with `pnpm run generate`; `check:generated` must be clean |
+| Generated code | Onboarding and private publisher/manifest outputs under `broadcast/internal/gen`, `publisher/internal/gen`, `mcp-server/src/gen`, and Android generated trees | Change proto/templates first, then regenerate with `pnpm run generate`; `check:generated` must be clean |
 
 The concrete Android production files with active branches include
 `connections/{Connection,ConnectionGateway,ConnectionRepository,ProposalRepository,ConnectConnectionGateway}.kt`,
@@ -445,9 +446,31 @@ and exercises pairing, observation, duplicate result delivery, close and restart
 credential or automatic publish workflow was created. The exact evidence is in
 [`docs/testing/see-131.md`](../testing/see-131.md).
 
-The next owner is SEE-132. It may relocate and package the already-adapted MCP host, but must not
-move MCP concerns back into the SDK, change the direct schema/identity, publish the SDK, or begin
-feed-gateway/demo work.
+### SEE-132 implementation record
+
+SEE-132 moved the self-hosted application from `sidecar/` to `mcp-server/` without changing the
+direct schema or moving MCP concerns into the SDK. `src/cli.ts` is the one source, npm and Docker
+composition/lifecycle entry; the old source command remains only as the documented
+`pnpm dev:sidecar` alias. The standalone image starts no gateway, feed or demo.
+
+`@seeker-vault/mcp-server` 0.1.0 declares the `seeker-agent-connect-mcp` executable and Node
+`>=24.21.0 <25`. Source compiles against `@seeker-vault/server-sdk` public entries. Its staging step
+copies that built public runtime under `dist/vendor/server-sdk` and rewrites only emitted public
+package imports, so the tarball is self-contained without an unavailable workspace, file or
+registry dependency. It is not published. `pnpm test:mcp-server-package` audits dry/real packs and
+then exercises the exact tarball through clean local, global-style and transient installs outside
+the workspace.
+
+Writable npm/source state now defaults to
+`~/.seeker-agent-connect/mcp-server/direct-server.db`; an absolute data/config directory is
+configurable. Existing source data and Docker `/data/sidecar.db` remain byte-compatible and are
+migrated only while all formats are offline. A process lock refuses simultaneous application
+owners while leaving the pairing operator command usable. Backup/upgrade/rollback mappings and
+the complete evidence matrix are in [`mcp-server/README.md`](../../mcp-server/README.md) and
+[`docs/testing/see-132.md`](../testing/see-132.md).
+
+The next owner is SEE-133. It may isolate the public feed gateway, but must not move direct/MCP
+state or behavior into it, add subscriber identities/results, or begin the demo extraction.
 
 ## 10. Ordered child ownership and handoff
 

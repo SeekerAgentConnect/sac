@@ -161,7 +161,7 @@ If a step fails, look it up in [`troubleshooting.md`](troubleshooting.md).
 20. **Start the sidecar** in its own terminal, and leave it running:
 
     ```bash
-    pnpm dev:sidecar
+    pnpm dev:mcp-server
     ```
 
     ```text
@@ -252,7 +252,7 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolch
 | --- | --- |
 | Part 2: `nvm install`, `corepack enable pnpm`, `pnpm install --frozen-lockfile` | PASS: Node.js v24.21.0, pnpm 12.3.4 |
 | Part 2: `./gradlew :app:assembleDebug` | PASS: `android/app/build/outputs/apk/debug/app-debug.apk`, 37,402,109 bytes. `aapt2` shows the package `io.github.brrenat.seekervault`, the launchable activity `MainActivity`, and target SDK 37. |
-| Part 5: `.env` from the example, `pnpm dev:sidecar`, `/healthz` | PASS: both placeholders replaced; the outputs are shown above |
+| Part 5: `.env` from the example, `pnpm dev:mcp-server`, `/healthz` | PASS: both placeholders replaced; the outputs are shown above |
 | Part 6 with no phone connected | PASS: OFFLINE, exit code 4 |
 | Part 6 with the sidecar's Connect test client standing in for the phone | PASS: exit code 0. The printed ID matched the command the client received and the sidecar's log. This covers the Mac side only and is not a device pass. |
 | Part 8: Ctrl+C | PASS: the two lines shown above |

@@ -284,7 +284,7 @@ or to deploy this checkout exactly, build the existing Dockerfile from the repos
 
 ```sh
 cd /opt/seeker-agent-wallet/repo
-docker build -f sidecar/Dockerfile -t seeker-agent-wallet/sidecar:local .
+docker build -f mcp-server/Dockerfile -t seeker-agent-wallet/sidecar:local .
 cd deploy/server
 ```
 
@@ -321,8 +321,8 @@ the production updates are served as gRPC over HTTP/2 at the public sidecar orig
 outside with `openssl ... -alpn h2` and `curl https://<sidecar-domain>:10000/healthz`, then pair:
 
 ```sh
-docker compose -f compose.direct.yaml exec sidecar node sidecar/dist/pairing/cli.js
-docker compose -f compose.direct.yaml exec sidecar node sidecar/dist/pairing/cli.js status
+docker compose -f compose.direct.yaml exec sidecar node mcp-server/dist/cli.js pair
+docker compose -f compose.direct.yaml exec sidecar node mcp-server/dist/cli.js pair status
 ```
 
 An agent uses `https://<sidecar-domain>:10000/mcp` with `Authorization: Bearer <MCP_TOKEN>`; it does

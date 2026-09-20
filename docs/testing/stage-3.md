@@ -14,14 +14,14 @@ SAW-018 closes the stage. It adds no feature: it writes the owner-facing walkthr
 | --- | --- | --- |
 | The contract | `WalletBinding` and `PublishWalletRequest`, set and cleared, byte for byte in both runtimes | `server-sdk/src/requests/fixtures.test.ts`, `RequestProtocolFixturesTest` |
 | The sidecar's store | Publishing, clearing, replacing, and republishing the same binding; a malformed wallet or missing network; an unknown connection; cancelling the PENDING requests a new binding no longer fits, and leaving acks alone; `bound_at` stamped by the sidecar; each connection's binding kept to itself | `server-sdk/src/storage/request-store.test.ts` |
-| The sidecar's endpoints | `PublishWallet` for the caller's own connection only, and `vault_get_address` before, during, and after a wallet is connected | `sidecar/src/requests/endpoints.test.ts` |
-| Roles | `RequestService.PublishWallet` and `vault_get_address` against every credential | `sidecar/src/pairing/roles.test.ts` |
+| The sidecar's endpoints | `PublishWallet` for the caller's own connection only, and `vault_get_address` before, during, and after a wallet is connected | `mcp-server/src/requests/endpoints.test.ts` |
+| Roles | `RequestService.PublishWallet` and `vault_get_address` against every credential | `mcp-server/src/pairing/roles.test.ts` |
 | Migration 3 | An upgraded v1 database has no binding, and reaches the current schema version | `server-sdk/src/storage/database.test.ts` |
 | The agent's side | `pnpm agent address` before and after the phone publishes, and the tool list | `test-agent/src/cli.test.ts` |
 | The wallet boundary | Success, no wallet installed, the owner declining, an expired authorization, an unsupported network, and a changed address or network, all through `FakeWalletAdapter` | `WalletRepositoryTest`, `WalletViewModelTest` |
 | The phone's storage | The selection read back, the authorization encrypted, another key that can't open it, damaged files, and clearing both together | `WalletStoreTest` |
 | The screens | The network choice, the address and network, each problem, the unpublished connections, and the disabled controls | `WalletScreenTest`, `WalletActivityTest` |
-| The stage boundary | Storage only in `connections/storage/` and `wallet/storage/`; no wallet-key API anywhere; the MWA client on the classpath on purpose and Seed Vault's SDK off it; nothing backed up; the sidecar verifies signatures and creates none | `StageBoundaryTest`, `sidecar/src/stage-boundary.test.ts` |
+| The stage boundary | Storage only in `connections/storage/` and `wallet/storage/`; no wallet-key API anywhere; the MWA client on the classpath on purpose and Seed Vault's SDK off it; nothing backed up; the sidecar verifies signatures and creates none | `StageBoundaryTest`, `mcp-server/src/stage-boundary.test.ts` |
 
 These cover SAW-016:
 
@@ -30,8 +30,8 @@ These cover SAW-016:
 | Ed25519 verification | The RFC 8032 §7.1 known-answer vectors, a tampered signature, a tampered message, a message with a byte appended, another wallet's key, a signature made in the test and verified, and everything that isn't an address or a 64-byte signature | `server-sdk/src/requests/signature.test.ts` |
 | The lifecycle | A `message_signature` accepted from PROCESSING and from UNKNOWN, and refused when it isn't the request's wallet's signature over the request's own bytes — another wallet's signature, a trailing newline, the NFC form of the same text, and 64 bytes that are no signature | `server-sdk/src/requests/lifecycle.test.ts` |
 | The sidecar's store | An approval and the verified signature kept together in the outcome, and a signature the wallet didn't make never stored | `server-sdk/src/storage/request-store.test.ts` |
-| The sidecar's endpoints | `vault_sign_message` end to end: refused for another wallet, stored as PENDING, approved, a signature over other bytes refused with the request left where it was, and the COMPLETED view carrying the wallet, the signature, and the exact bytes; the tool's input taking the message as text and nothing else, with an empty or over-long one refused; `vault_get_capabilities` before and after a wallet is connected | `sidecar/src/requests/endpoints.test.ts` |
-| Roles | `vault_sign_message` and `vault_get_capabilities` against every credential | `sidecar/src/pairing/roles.test.ts` |
+| The sidecar's endpoints | `vault_sign_message` end to end: refused for another wallet, stored as PENDING, approved, a signature over other bytes refused with the request left where it was, and the COMPLETED view carrying the wallet, the signature, and the exact bytes; the tool's input taking the message as text and nothing else, with an empty or over-long one refused; `vault_get_capabilities` before and after a wallet is connected | `mcp-server/src/requests/endpoints.test.ts` |
+| Roles | `vault_sign_message` and `vault_get_capabilities` against every credential | `mcp-server/src/pairing/roles.test.ts` |
 | The agent's side | `pnpm agent capabilities`, and `pnpm agent sign` followed by the owner approving and the wallet signing, with `pnpm agent get` verifying the signature itself | `test-agent/src/cli.test.ts` |
 | The phone's flow | No wallet call before the owner approves; the approval sent before the signature; a wallet that declined or couldn't sign; a signature over other bytes discarded; a request that moved on while it was reviewed; a selection that changed during the review; no wallet connected; a request for another wallet; a rejection that never touches the wallet; and an approval the wallet never answered recorded as a failure when the app opens again | `InboxViewModelTest`, `InboxTest` |
 | What the owner sees | The complete message with every invisible code point marked, by Unicode category rather than a list of ranges, beyond the basic plane too; the byte count; a 4096-byte message shown whole; bytes as hex; the signing wallet and network; and every outcome | `MessagePreviewTest`, `RequestDetailsScreenTest` |
@@ -41,8 +41,8 @@ These cover SAW-018:
 
 | Area | What the tests cover | Where |
 | --- | --- | --- |
-| No spending, and no swap | Every MCP tool the sidecar registers is one of the seven named ones, so no tool creates a transfer or a swap; no shipped source reaches a chain RPC or broadcasts anything | `sidecar/src/stage-boundary.test.ts`, `endpoints.test.ts` |
-| No agent key | No shipped sidecar source holds a private key, a secret key, or a keypair: an agent authenticates with the bearer token the owner issued it | `sidecar/src/stage-boundary.test.ts` |
+| No spending, and no swap | Every MCP tool the sidecar registers is one of the seven named ones, so no tool creates a transfer or a swap; no shipped source reaches a chain RPC or broadcasts anything | `mcp-server/src/stage-boundary.test.ts`, `endpoints.test.ts` |
+| No agent key | No shipped sidecar source holds a private key, a secret key, or a keypair: an agent authenticates with the bearer token the owner issued it | `mcp-server/src/stage-boundary.test.ts` |
 | No biometric of the app's own | The app calls no `BiometricPrompt`, `BiometricManager`, `FingerprintManager`, `KeyguardManager`, or device-credential intent, requires no user authentication on its Keystore key, and has no biometric library on the classpath; the wallet decides for itself what it asks for | `StageBoundaryTest.nothingSpendsSwapsOrAsksForABiometricOfItsOwn` |
 | No transaction on the phone | The app calls no `signTransactions`, `signAndSendTransactions`, or `sendTransaction`, and names no RPC host | `StageBoundaryTest`, and the same test's positive control proves the scan reads the real sources |
 
@@ -76,7 +76,7 @@ Before starting: pair the phone with a sidecar ([`docs/guides/pairing.md`](../gu
 | 12 | Tap **Disconnect wallet** | The app says no wallet is connected, and `pnpm agent address` exits 9 with `WALLET_NOT_CONNECTED` again. |
 | 13 | Revoke the app in the wallet's own settings, then tap **Connect wallet** | The app either asks afresh or says the authorization is no longer accepted and lets you connect again. It never shows a stale address as if it still worked. |
 | 14 | Check the sidecar's log | It carries the connection ID and the address, and no token, credential, or wallet authorization. |
-| 15 | Check that no secret left the phone: `sqlite3 sidecar/data/sidecar.db "SELECT wallet_address, wallet_network FROM connections"` | The address and network only. There is no column, and no value anywhere in the database, that holds a seed phrase, a private key, or the wallet's authorization token. |
+| 15 | Check that no secret left the phone: `sqlite3 "$HOME/.seeker-agent-connect/mcp-server/direct-server.db" "SELECT wallet_address, wallet_network FROM connections"` (or use the configured `DATABASE_PATH`) | The address and network only. There is no column, and no value anywhere in the database, that holds a seed phrase, a private key, or the wallet's authorization token. |
 
 ### Message signing (SAW-016)
 
@@ -118,7 +118,7 @@ Stage 3 signs messages. A message signature is not a transaction: nothing is bui
 
 | | Why not, and where it's checked |
 | --- | --- |
-| **Funds** | Nothing reads a balance or sends anything to a network. An empty account signs exactly as well as a funded one, on any network the wallet serves. `sidecar/src/stage-boundary.test.ts` fails if any shipped source names an RPC host or a broadcast API, and `StageBoundaryTest` fails if the app does. |
+| **Funds** | Nothing reads a balance or sends anything to a network. An empty account signs exactly as well as a funded one, on any network the wallet serves. `mcp-server/src/stage-boundary.test.ts` fails if any shipped source names an RPC host or a broadcast API, and `StageBoundaryTest` fails if the app does. |
 | **Swaps, or any transfer** | The sidecar registers seven MCP tools and no more, none of which creates a transfer or a swap; `endpoints.test.ts` pins the exact set, in demo mode and out of it. The protocol knows both kinds, and the sidecar refuses them, but no tool can ask for one until Stages 4 and 6. |
 | **A key of the agent's own** | An agent authenticates with the bearer token the owner issued it, compared as a hash in constant time. No shipped sidecar source holds a private key, a secret key, or a keypair, and none creates one. |
 | **A custom biometric** | The app asks for no authentication of its own: the owner taps **Approve and sign**, and the wallet app decides for itself whether it wants a PIN, a fingerprint, or a face before signing. The app uses no `BiometricPrompt`, `BiometricManager`, `FingerprintManager`, or device-credential intent, its Keystore key sets no `setUserAuthenticationRequired`, and no biometric library is on the classpath. |
@@ -176,7 +176,7 @@ Run on 2026-09-12 on macOS 26.5.2 (Apple silicon), with the versions in
 | `pnpm test:hello` | PASS: 9/9 Stage 1 acceptance cases |
 | `pnpm test:queue` | PASS: 7/7 Stage 2 acceptance cases |
 | `pnpm check:android` | PASS: Spotless, 294/294 unit tests (one more than before), Android lint with no issues, and the debug and instrumentation APKs |
-| No funds and no swap | PASS: `sidecar/src/stage-boundary.test.ts` finds no chain RPC host and no broadcast API in any shipped source, and every registered MCP tool is one of the seven named ones; `StageBoundaryTest` finds no transaction API in the app |
+| No funds and no swap | PASS: `mcp-server/src/stage-boundary.test.ts` finds no chain RPC host and no broadcast API in any shipped source, and every registered MCP tool is one of the seven named ones; `StageBoundaryTest` finds no transaction API in the app |
 | No agent key | PASS: no private key, secret key, or keypair in any shipped sidecar source; agents authenticate with the owner's bearer token, compared as a hash in constant time |
 | No custom biometrics | PASS: `StageBoundaryTest` finds no biometric, fingerprint, or device-credential API in the app, and no biometric library on the classpath. The wallet asks for whatever it wants; this app asks for nothing. |
 | Deliberate breaks | Each break failed the matching test, and each file was restored byte for byte afterwards:<ul><li>An RPC host in `mcp-tools.ts` failed the sidecar's new boundary test.</li><li>Registering a tool under an unlisted name failed it too, naming the tool.</li><li>A `BiometricPrompt` mention in `InboxViewModel.kt`, and a `sendTransaction` mention in `MwaWalletAdapter.kt`, each failed `nothingSpendsSwapsOrAsksForABiometricOfItsOwn`.</li></ul> |

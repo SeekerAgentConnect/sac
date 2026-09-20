@@ -4,7 +4,7 @@ The app talks to each self-hosted sidecar through a **connection**. You pair onc
 
 ## Before you start
 
-- The sidecar is running: `pnpm dev:sidecar` ([`docs/development/sidecar.md`](../development/sidecar.md)).
+- The MCP server is running: `pnpm dev:mcp-server` ([`docs/development/mcp-server.md`](../development/mcp-server.md)).
 - The app is installed on the phone ([`macbook-seeker-quickstart.md`](macbook-seeker-quickstart.md)).
 - The phone can reach the sidecar at `SIDECAR_PUBLIC_URL`, the address the pairing code carries:
   - **Over USB, with a debug build:** leave `SIDECAR_PUBLIC_URL` unset. The code then carries `http://127.0.0.1:8080`, and `adb reverse tcp:8080 tcp:8080` forwards it to the Mac. Only a debug build accepts that plain HTTP address, and only to `127.0.0.1` or `localhost`.

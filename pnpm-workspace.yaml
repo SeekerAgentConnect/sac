@@ -1,6 +1,6 @@
 packages:
   - server-sdk
-  - sidecar
+  - mcp-server
   - test-agent
 
 # The postinstall only locates the platform binary that pnpm already installs as an

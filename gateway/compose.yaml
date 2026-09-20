@@ -29,8 +29,8 @@ services:
       # The repository root: the pnpm workspace's lockfile and catalog resolve
       # the package's dependencies, so the context has to contain them.
       context: ..
-      dockerfile: sidecar/Dockerfile
-    image: seeker-agent-wallet/sidecar:local
+      dockerfile: mcp-server/Dockerfile
+    image: seeker-agent-connect/mcp-server:local
     restart: unless-stopped
 
     # The one published port is the gateway's listener, which lives in this

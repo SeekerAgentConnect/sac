@@ -1,17 +1,33 @@
 # Hermes
 
-This page connects [Hermes Agent](https://hermes-agent.nousresearch.com) to the sidecar's MCP endpoint, for two kinds of tool:
+This page connects [Hermes Agent](https://hermes-agent.nousresearch.com) to the self-hosted MCP
+server's Streamable HTTP endpoint, for two kinds of tool:
 
 - **The live diagnostic, `vault_display_command`.** Hermes sends text, the Seeker shows it, you tap **OK**, and Hermes gets the acknowledgement in the same call.
 - **Durable requests, from Stage 2 on.** Hermes creates a request and gets its ID at once. You answer on the phone whenever you next open the app, and Hermes reads the result later; see [queued requests](#4-queued-requests-create-now-read-the-result-later).
 
-It covers Hermes on the Mac, Hermes on a VPS, and Hermes against the [packaged Stage 7 stack](#9-hermes-against-the-packaged-stack).
+It covers Hermes on the Mac, Hermes on a VPS, and Hermes against the
+[packaged server](#9-hermes-against-the-packaged-stack).
 
-> **What has been tested.** Hermes Agent v0.21.1 (2026.9.7) was run with this configuration against the sidecar, including through a forwarded port, and every output below is real. Hermes's own MCP client made the tool calls, without an LLM, and a test client stood in for the phone. On 2026-09-11, the owner also ran the live round trip and reported it passed. That run used their own Hermes on a VPS, reaching the Mac [over Tailscale](#over-a-vpn-you-already-use), and their physical Seeker; see [`docs/testing/stage-1.md`](../testing/stage-1.md). The durable tools were run the same way on 2026-09-11, without a model or the Seeker; see [`docs/testing/stage-2.md`](../testing/stage-2.md#acceptance-report-saw-014). The wallet tools of [section 5](#5-sign-a-message-with-your-wallet) and [section 6](#6-send-a-transfer-with-your-wallet) have **not** been run through Hermes: they have only been driven by `pnpm agent` and the automated tests, and those sections say so where their results are shown. **No transfer has ever been sent from a real wallet to any cluster** by this repository, through Hermes or otherwise. [Section 9](#9-hermes-against-the-packaged-stack), the Docker stack, is **not run with Hermes** either: it was written from the stack's own verified configuration, and no Hermes has yet driven a request through it (`docs/testing/stage-7.md#saw-037`).
+> **Compatibility target and evidence.** These instructions target Hermes Agent
+> [v0.21.3 / v2026.9.14](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.14).
+> The `mcp_servers` keys, HTTP URL, headers, timeout and tool filters below are taken from that
+> version's official
+> [MCP configuration reference](https://github.com/NousResearch/hermes-agent/blob/v2026.9.14/website/docs/reference/mcp-config-reference.md),
+> and the test/reload commands from its
+> [CLI reference](https://github.com/NousResearch/hermes-agent/blob/v2026.9.14/website/docs/reference/cli-commands.md).
+> Hermes v0.21.3 is not installed in the SEE-132 build environment, so a real v0.21.3 packaged
+> artifact run is **NOT RUN**. The older transcript below remains real historical evidence:
+> v0.21.1 was run against the same HTTP application and configuration, including through a
+> forwarded port, and the owner later passed a physical-Seeker run. See
+> [`stage-1.md`](../testing/stage-1.md) and [`stage-2.md`](../testing/stage-2.md). The automated
+> SEE-132 gate separately exercises the npm artifact with the official MCP SDK and a protocol test
+> phone. No transfer is sent by that gate.
 
 ## Before you start
 
-- The sidecar runs, and the Seeker is connected: steps 19 to 23 of the [MacBook → Seeker quickstart](../guides/macbook-seeker-quickstart.md).
+- Start the MCP server by one supported source, Docker, or npm-tarball route in
+  [`mcp-server/README.md`](../../mcp-server/README.md). Keep it running; Hermes connects to its URL.
 - Hermes is installed and works on its own. Its MCP support is part of the standard install.
 - You need the `MCP_TOKEN` value from the sidecar's `.env`. It's the agent's token; the phone's `PHONE_TOKEN` won't work here.
 - For the durable tools, the phone is paired with the sidecar ([`pairing.md`](../guides/pairing.md)), and the sidecar's `.env` has `MCP_DEMO_TOOLS=true`, as `.env.example` does.
@@ -71,7 +87,9 @@ What each setting does:
 
 Leave `trust` unset, which Hermes treats as `full`. With `trust: untrusted`, Hermes asks for approval before every call to a tool that isn't read-only.
 
-Hermes names each tool `mcp__seeker_vault__<tool>`, for example `mcp__seeker_vault__vault_display_command`. Its MCP documentation page shows an older form with single underscores; v0.21.1 registers the double-underscore form.
+Hermes names each tool `mcp__seeker_vault__<tool>`, for example
+`mcp__seeker_vault__vault_display_command`; the historical v0.21.1 run registered that
+double-underscore form.
 
 ## 2. Check the connection and reload
 
@@ -469,10 +487,16 @@ For problems on the phone or the Mac, see [`troubleshooting.md`](../guides/troub
 
 ## 9. Hermes against the packaged stack
 
-Sections 1 to 7 point Hermes at a sidecar started with `pnpm dev:sidecar`. The Stage 7 stack
-([`self-hosting.md`](../guides/self-hosting.md)) runs the same sidecar in a container behind a
-gateway, and Hermes reaches it the same way: the same tools, the same token header, the same
-answers. Only the URL and where the token comes from change.
+Sections 1 to 7 apply unchanged to the source, standalone Docker, and executable npm-tarball starts
+in [`mcp-server/README.md`](../../mcp-server/README.md). Start
+`seeker-agent-connect-mcp start`, leave it running, and give Hermes the resulting `/mcp` URL. Do
+not put `npm exec`, `npx`, or the executable in Hermes command/arguments fields: the executable is
+an HTTP server and does not implement MCP stdio. The baseline is always two independently started
+processes: the server, then Hermes connecting with the HTTP `url` configuration above.
+
+The older Stage 7 stack ([`self-hosting.md`](../guides/self-hosting.md)) runs the same application
+behind a gateway. Hermes reaches it with the same tools, header and answers; only the URL and token
+file change.
 
 **Keep your own `~/.hermes/config.yaml`.** Everything in section 1 still holds: back it up, merge
 the one `seeker_vault` entry into `mcp_servers`, and remove nothing else.

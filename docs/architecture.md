@@ -137,7 +137,7 @@ Current directory names describe historical implementation choices and are not t
 | `android/` | SAC app and design system | Keep the application boundary clear |
 | `proto/` | Shared direct/feed contracts plus compatibility reservations | Keep direct/feed contracts; never reuse retired private-gateway identifiers |
 | `server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Keep as an embeddable library with explicit initialization and no MCP/product configuration |
-| `sidecar/` | The current MCP host, operator CLI, provider implementations and deployment package | Relocate/package as `mcp-server/` in SEE-132; until then it consumes `server-sdk/` as a public dependency |
+| `mcp-server/` | The self-hosted MCP host, executable operator CLI, provider implementations and standalone Docker/npm packaging | Consumes `server-sdk/` through its public API; the npm artifact vendors that unpublished runtime |
 | `gateway/` | Deployment assets and reverse proxy for the direct server, including TLS/OAuth configuration | Move/name as direct-server deployment infrastructure |
 | `broadcast/` | Shared Go feed gateway with public read and publisher listeners | Establish one canonical feed-gateway name in SEE-133 |
 | `publisher/` | Demo server implementations plus reusable Go Server SDK | Clearly separate SDK code from examples in layout and documentation |

@@ -89,6 +89,6 @@
 
 	# The Host header is passed through unchanged, on purpose. The sidecar checks
 	# it against loopback plus MCP_ALLOWED_HOSTS as a DNS-rebinding defence
-	# (sidecar/src/mcp-endpoint.ts). Rewriting it here would quietly disable that
+	# (mcp-server/src/mcp-endpoint.ts). Rewriting it here would quietly disable that
 	# check; instead, a deployment names its public hostname in MCP_ALLOWED_HOSTS.
 }

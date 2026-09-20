@@ -174,7 +174,7 @@ threw that away and started association afresh.
 | One wallet interaction at a time | `WalletRepositoryTest.runsOneWalletInteractionAtATime` |
 | The approved transaction survives a restart of the app's storage | `ResultStoreTest.keepsTheTransactionAnApprovedTransferIsBoundToAcrossARestart` |
 | **Confirmation (SAW-022)** | |
-| A confirmed signature is checked against the approved bytes before anything is called CONFIRMED | `sidecar/src/requests/confirmation.test.ts`, "confirms only what it found on chain and checked against the approved bytes" |
+| A confirmed signature is checked against the approved bytes before anything is called CONFIRMED | `mcp-server/src/requests/confirmation.test.ts`, "confirms only what it found on chain and checked against the approved bytes" |
 | A delayed confirmation: `processed` is not a result, and the next look settles it | `…test.ts`, "waits through a delayed confirmation rather than calling processed a result" |
 | A transaction that ran and failed on chain, with the chain's own error kept | `…test.ts`, "fails a transaction that ran on chain and failed, keeping the chain's own error" |
 | A signature the endpoint hasn't seen: open while it could still land, failed only past the window and after a ledger search | `…test.ts`, "keeps a signature the endpoint hasn't seen open…", "fails a transaction that never landed, but only past its blockhash window" |
@@ -184,7 +184,7 @@ threw that away and started association afresh.
 | Status retries send nothing again, add no second spending record, and never return a request to PENDING | `…test.ts`, "reports the same signature, and records no second spending", "never returns an unsettled request to PENDING…" |
 | A sidecar restart after sending keeps the signature and the unresolved attempt | `…test.ts`, "keeps the signature and the unresolved attempt across a restart" |
 | An UNKNOWN transfer has nothing to look up, and is told so rather than settled | `…test.ts`, "explains an unknown outcome instead of inventing one, and asks the chain nothing" |
-| The bytes comparison itself: a signed copy matches, one byte's difference doesn't, and unparsable bytes never do | `sidecar/src/solana/confirmation.test.ts` |
+| The bytes comparison itself: a signed copy matches, one byte's difference doesn't, and unparsable bytes never do | `mcp-server/src/solana/confirmation.test.ts` |
 | On the phone: a confirmation is kept, no wallet opens, and no second result is sent | `InboxViewModelTest.checkingAConfirmationKeepsWhatTheServerReadAndOpensNoWallet` |
 | A chain failure is kept with its reason, and nothing is re-sent | `InboxViewModelTest.aTransactionThatFailedOnChainIsKeptAsAFailureWithItsReason` |
 | A check that settles nothing, a second tap while one runs, and a server that couldn't be reached | `InboxViewModelTest.aTransferTheChainCannotSettleStaysExactlyWhereItWas`, `…aSecondTapWhileAChecksIsRunningAsksOnlyOnce`, `…aServerThatCannotBeReachedChangesNothingAboutTheTransaction` |

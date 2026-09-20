@@ -1,5 +1,5 @@
 {
-  "note": "Built by sidecar/src/testing/transaction-fixtures.ts and decoded by the phone's TransactionFixturesTest. Run `node sidecar/src/testing/transaction-fixtures.ts` to rebuild.",
+  "note": "Built by mcp-server/src/testing/transaction-fixtures.ts and decoded by the phone's TransactionFixturesTest. Run `node mcp-server/src/testing/transaction-fixtures.ts` to rebuild.",
   "cases": [
     {
       "name": "sol_transfer",

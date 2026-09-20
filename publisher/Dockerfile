@@ -28,7 +28,7 @@ ARG GO_VERSION=1.27.1
 # The compiler runs on the building machine's own platform and cross-compiles
 # for the target: CGO is off, so GOOS/GOARCH is all it takes, and `docker buildx
 # build --platform linux/amd64` from an Apple silicon Mac needs no emulation (as
-# in sidecar/Dockerfile).
+# in mcp-server/Dockerfile).
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS build
 ARG TARGETOS
 ARG TARGETARCH

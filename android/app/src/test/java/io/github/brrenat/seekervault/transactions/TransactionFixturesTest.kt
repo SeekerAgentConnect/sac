@@ -21,7 +21,7 @@ import org.junit.runner.RunWith
  * (docs/testing/transaction-fixtures.md).
  *
  * This is what makes the phone's review independent rather than merely separate: every case is a
- * real transaction produced by `sidecar/src/solana/`, and the phone has to reach the same verdict
+ * real transaction produced by `mcp-server/src/solana/`, and the phone has to reach the same verdict
  * about it from the bytes alone — including for the cases that are valid transactions and simply
  * are not the one the owner was asked to approve.
  */
@@ -30,7 +30,7 @@ class TransactionFixturesTest {
     private val fixtures: JSONObject =
         JSONObject(
             checkNotNull(javaClass.getResourceAsStream("/transactions/cases.json")) {
-                    "fixtures/transactions/cases.json is missing; run `node sidecar/src/testing/transaction-fixtures.ts`"
+                    "fixtures/transactions/cases.json is missing; run `node mcp-server/src/testing/transaction-fixtures.ts`"
                 }
                 .use { it.readBytes().decodeToString() }
         )

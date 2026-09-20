@@ -47,7 +47,7 @@ docker buildx build --platform linux/amd64 -f broadcast/Dockerfile \
   -t brenat/seeker-agent-connect:broadcast-v1 --load .
 docker buildx build --platform linux/amd64 -f publisher/Dockerfile \
   -t brenat/seeker-agent-connect:publisher-v1 --load .
-docker buildx build --platform linux/amd64 -f sidecar/Dockerfile \
+docker buildx build --platform linux/amd64 -f mcp-server/Dockerfile \
   -t brenat/seeker-agent-connect:sidecar-v1 --load .
 docker push brenat/seeker-agent-connect:broadcast-v1
 docker push brenat/seeker-agent-connect:publisher-v1
@@ -182,8 +182,8 @@ certificate error is real; never tell a client to ignore it.
 Pairing survives an upgrade, so look before pairing again:
 
 ```sh
-docker compose -f compose.direct.yaml exec sidecar node sidecar/dist/pairing/cli.js status
-docker compose -f compose.direct.yaml exec sidecar node sidecar/dist/pairing/cli.js    # only if unpaired
+docker compose -f compose.direct.yaml exec sidecar node mcp-server/dist/cli.js pair status
+docker compose -f compose.direct.yaml exec sidecar node mcp-server/dist/cli.js pair    # only if unpaired
 ```
 
 An agent uses `https://<node>:10000/mcp` with `Authorization: Bearer <MCP_TOKEN>`. The gateway on
@@ -252,7 +252,7 @@ up").
 
    ```sh
    cd ~/seeker-agent-connect
-   docker compose -f compose.direct.yaml exec sidecar node sidecar/dist/pairing/cli.js revoke
+   docker compose -f compose.direct.yaml exec sidecar node mcp-server/dist/cli.js pair revoke
    ```
 
 2. Close the public entry points. Only these two; anything else the node serves stays.

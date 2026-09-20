@@ -19,7 +19,7 @@ class PdaTest {
 
     @Test
     fun derivesTheSameAccountTheSidecarDoes() {
-        // The sidecar froze this same pair in sidecar/src/solana/token.test.ts, derived by a
+        // The MCP server froze this same pair in mcp-server/src/solana/token.test.ts, derived by a
         // different implementation. Two independent derivations agreeing is the check.
         assertEquals(
             "FGETo8T8wMcN2wCjav8VK6eh3dLk63evNDPxzLSJra8B",

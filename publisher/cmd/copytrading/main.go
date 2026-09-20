@@ -15,7 +15,7 @@
 //	cp .env.example .env    # PUBLISHER_*, and the credential the gateway's operator issued
 //	go run ./cmd/copytrading
 //
-// It is not the sidecar in `sidecar/`, which is one owner's private server for their own phone,
+// It is not `mcp-server/`, which is one owner's private server for their own phone,
 // and it is not the gateway in `broadcast/`, which is the shared service this publishes to. Three
 // different servers, three different operators (docs/wiki/mcp-adapter.md).
 package main

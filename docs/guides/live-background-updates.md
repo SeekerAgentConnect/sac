@@ -34,7 +34,7 @@ Set different random values for `MCP_TOKEN` and `PHONE_TOKEN`, leave `SIDECAR_HO
 SIDECAR_UPDATE_PORT=8081
 ```
 
-`8080` remains the HTTP/1.1 MCP, pairing, and request endpoint. `8081` is the loopback-only h2c listener for production updates. Do not expose `8081` to a LAN or the internet. A remote deployment instead uses one publicly trusted TLS origin with the PEM settings in the [sidecar guide](../development/sidecar.md#production-update-listener); that listener negotiates HTTP/2 and HTTP/1.1 with ALPN.
+`8080` remains the HTTP/1.1 MCP, pairing, and request endpoint. `8081` is the loopback-only h2c listener for production updates. Do not expose `8081` to a LAN or the internet. A remote deployment instead uses one publicly trusted TLS origin with the PEM settings in the [sidecar guide](../development/mcp-server.md#production-update-listener); that listener negotiates HTTP/2 and HTTP/1.1 with ALPN.
 
 Forward both loopback ports over USB. Re-run these commands whenever adb or the cable reconnects:
 
@@ -47,7 +47,7 @@ adb reverse --list
 Start the sidecar in a terminal and leave it open:
 
 ```bash
-pnpm dev:sidecar
+pnpm dev:mcp-server
 ```
 
 Its startup must name both endpoints, including:

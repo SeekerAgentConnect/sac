@@ -34,7 +34,7 @@ case "${SERVER_DOMAIN:-}:$GATEWAY_DOMAIN" in
     :*.ts.net) SERVER_DOMAIN=$GATEWAY_DOMAIN ;;
 esac
 : "${SERVER_DOMAIN:?SERVER_DOMAIN is not set: fill in .env.direct, or export it}"
-# The account the sidecar image runs as (sidecar/Dockerfile).
+# The account the sidecar image runs as (mcp-server/Dockerfile).
 SIDECAR_UID=10001
 
 mkdir -p tls

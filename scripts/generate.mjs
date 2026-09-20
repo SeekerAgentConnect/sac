@@ -1,5 +1,5 @@
 // Generates the protocol code (buf.gen.yaml for the phone, the two TypeScript templates for the
-// direct SDK and the sidecar's remaining feed fixture, buf.gen.go.yaml for
+// direct SDK and the MCP server's remaining feed fixture, buf.gen.go.yaml for
 // the broadcast gateway, buf.gen.centrifugo.yaml for the phone's vendored broker schema,
 // buf.gen.loadtest.yaml for the load harness) and the binary protobuf fixtures:
 // proto/fixtures/<package path>/<Message>/<case>.json → <case>.binpb, via `buf convert`.
@@ -26,7 +26,7 @@ const fixturesDir = "proto/fixtures";
 // Owned entirely by `buf generate` (clean: true); --check compares every file in them.
 const generatedDirs = [
   "server-sdk/src/gen",
-  "sidecar/src/gen",
+  "mcp-server/src/gen",
   "android/app/src/main/generated",
   "broadcast/internal/gen",
   "publisher/internal/gen",
@@ -44,7 +44,7 @@ const generatedDirs = [
 const templates = [
   "buf.gen.yaml",
   "buf.gen.server-sdk.yaml",
-  "buf.gen.sidecar.yaml",
+  "buf.gen.mcp-server.yaml",
   "buf.gen.go.yaml",
   "buf.gen.publisher.yaml",
   "buf.gen.centrifugo.yaml",

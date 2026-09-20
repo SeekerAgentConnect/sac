@@ -71,7 +71,7 @@
 	#
 	# The Host header is passed through unchanged, on purpose. The sidecar checks
 	# it against loopback plus MCP_ALLOWED_HOSTS as a DNS-rebinding defence
-	# (sidecar/src/mcp-endpoint.ts). Rewriting it here would quietly disable that
+	# (mcp-server/src/mcp-endpoint.ts). Rewriting it here would quietly disable that
 	# check, so the overlay puts $GATEWAY_DOMAIN in MCP_ALLOWED_HOSTS instead.
 	@mcp path /mcp /mcp/*
 	handle @mcp {
@@ -97,7 +97,7 @@
 	# seekervault.update.v1.UpdateService is routed, but a sidecar behind a
 	# TLS-terminating gateway does not serve it: `Subscribe` is gRPC over HTTP/2
 	# end to end and terminates at the sidecar's own TLS listener instead
-	# (docs/development/sidecar.md#production-update-listener). Nothing is
+	# (docs/development/mcp-server.md#production-update-listener). Nothing is
 	# advertised to the phone that this endpoint cannot deliver — pairing simply
 	# omits the update capability, and the phone keeps its manual refresh.
 	@connect path /seekervault.request.v1.PairingService/* /seekervault.request.v1.RequestService/* /seekervault.update.v1.UpdateService/*

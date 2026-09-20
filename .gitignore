@@ -2,6 +2,8 @@
 node_modules/
 dist/
 build/
+mcp-server/package/
+*.tgz
 .gradle/
 .kotlin/
 *.apk

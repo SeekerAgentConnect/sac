@@ -1,6 +1,6 @@
 # The MCP adapter, and what it is not (SEE-87)
 
-The Node sidecar in `sidecar/` used to *be* its MCP endpoint: `MCP_TOKEN` was required to start, `/mcp` was always mounted, and the agent tools reached the request store, the transaction preparer and the confirmation tracker directly. SEE-87 makes MCP one **optional adapter** over a core that stands without it.
+The Node application now packaged in `mcp-server/` used to *be* its MCP endpoint: `MCP_TOKEN` was required to start, `/mcp` was always mounted, and the agent tools reached the request store, the transaction preparer and the confirmation tracker directly. SEE-87 makes MCP one **optional adapter** over a core that stands without it.
 
 Nothing about the existing private agent workflow changed. A deployment that has never heard of `MCP_ENABLED` serves exactly what it served before, with the same tool names, the same contracts, the same errors, and the same result delivery.
 
@@ -8,7 +8,7 @@ Nothing about the existing private agent workflow changed. A deployment that has
 
 Stage 7.1 introduces Go components that publish shared proposals. They are not MCP servers, and they are not this sidecar.
 
-| | **Node private-server adapter** (`sidecar/`) | **Go broadcast publisher templates** (SEE-95, SEE-96) |
+| | **Node private-server adapter** (`mcp-server/`) | **Go broadcast publisher templates** (SEE-95, SEE-96) |
 | --- | --- | --- |
 | What it is | The owner's own server, for their own agents | A developer's server, publishing to an audience |
 | Who it talks to | One paired phone, over an authenticated credential | The shared gateway (SEE-90, SEE-91), once per proposal |
@@ -55,7 +55,7 @@ What it deliberately does **not** do:
   engine; the adapter receives only the public facade, with no raw connection, credential or cache.
 - **It is not a way in.** Exposing a new adapter means writing one, compiling it in, and giving it its own authentication. Nothing here loads code or accepts an adapter at runtime.
 
-`sidecar/src/stage-boundary.test.ts` and `sidecar/src/sdk-boundary.test.ts` hold this: adapter files
+`mcp-server/src/stage-boundary.test.ts` and `mcp-server/src/sdk-boundary.test.ts` hold this: adapter files
 may not name `RequestStore`, `TransactionPreparer` or `ConfirmationTracker`; production host files
 may import only `@seeker-vault/server-sdk` or its documented `./protocol` export; nothing but
 `server.ts` may compose the endpoint; and no second store/lifecycle implementation exists there.
@@ -63,7 +63,7 @@ may import only `@seeker-vault/server-sdk` or its documented `./protocol` export
 ## Turning it off
 
 ```bash
-MCP_ENABLED=false pnpm dev:sidecar
+MCP_ENABLED=false pnpm dev:mcp-server
 # or, for the packaged stack, set MCP_ENABLED=false in gateway/.env
 ```
 
@@ -80,7 +80,7 @@ the public request API directly; that needs no MCP endpoint.
 
 ## What this is not
 
-- Not a new protocol, and not a replacement for MCP. The tools, their names, their arguments and their results are exactly as they were (`docs/protocol.md`, `docs/development/sidecar.md#the-mcp-tools`).
+- Not a new protocol, and not a replacement for MCP. The tools, their names, their arguments and their results are exactly as they were (`docs/protocol.md`, `docs/development/mcp-server.md#the-mcp-tools`).
 - Not a plugin marketplace, and not a runtime extension point. Compare `docs/wiki/client-plugins.md`, which is the *phone's* plugin boundary for actions — a different boundary, on a different side, for a different purpose.
 - Not a rewrite of the Node sidecar in Go, and not a migration of private agent traffic to the shared gateway. Both are explicitly out of scope.
 - Not a change to Stage 7's deployment: `gateway/compose.yaml` gained `MCP_ENABLED` and no new file, so there is one stack and not two.

@@ -25,7 +25,7 @@ import {
   type PreparedTransaction,
 } from "@seeker-vault/server-sdk/protocol";
 import { encodeBase58 } from "@seeker-vault/server-sdk";
-import { transactionMessage } from "../../sidecar/src/solana/confirmation.ts";
+import { transactionMessage } from "../../mcp-server/src/solana/confirmation.ts";
 import {
   FakeChain,
   holdToken,
@@ -33,18 +33,18 @@ import {
   startFakeRpc,
   walletAccount,
   type FakeRpc,
-} from "../../sidecar/src/testing/chain.ts";
+} from "../../mcp-server/src/testing/chain.ts";
 import {
   pairPhone,
   requestClient,
   type TestPhone,
-} from "../../sidecar/src/testing/clients.ts";
+} from "../../mcp-server/src/testing/clients.ts";
 import {
   freePort,
   startSidecarProcess,
   temporaryDatabasePath,
   type SidecarProcess,
-} from "../../sidecar/src/testing/process.ts";
+} from "../../mcp-server/src/testing/process.ts";
 import {
   testWallet,
   type TestWallet,

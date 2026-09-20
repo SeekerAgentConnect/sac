@@ -109,7 +109,7 @@ Then set the non-secret project ID and start the sidecar:
 ```bash
 export FCM_PROJECT_ID=your-firebase-project-id
 export GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/seeker-vault-fcm.json
-pnpm dev:sidecar
+pnpm dev:mcp-server
 ```
 
 `FCM_PROJECT_ID` may instead live in the ignored `.env`. Keep

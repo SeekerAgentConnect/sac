@@ -20,7 +20,7 @@ sequenceDiagram
     Sidecar-->>Agent: {id, result: OK}
 ```
 
-The contract is `LiveCommandService` in [`proto/seekervault/live/v1/live.proto`](../proto/seekervault/live/v1/live.proto). The sidecar serves the MCP tool `vault_display_command` and the Connect service; see [`docs/development/sidecar.md`](development/sidecar.md). The Android app's live-test screen is the phone side; see [`docs/development/android.md`](development/android.md).
+The contract is `LiveCommandService` in [`proto/seekervault/live/v1/live.proto`](../proto/seekervault/live/v1/live.proto). The sidecar serves the MCP tool `vault_display_command` and the Connect service; see [`docs/development/mcp-server.md`](development/mcp-server.md). The Android app's live-test screen is the phone side; see [`docs/development/android.md`](development/android.md).
 
 | RPC | Kind | Purpose |
 | --- | --- | --- |
@@ -79,7 +79,7 @@ Stage 1 uses two separate development bearer tokens from `.env`:
 - `MCP_TOKEN` for the agent-facing `/mcp` endpoint
 - `PHONE_TOKEN` for `LiveCommandService`
 
-Each is sent as `Authorization: Bearer <token>`, never in a URL, and never logged. The sidecar listens on loopback only, compares tokens in constant time, and checks the Host and Origin headers on `/mcp`; see [`docs/development/sidecar.md`](development/sidecar.md#endpoints).
+Each is sent as `Authorization: Bearer <token>`, never in a URL, and never logged. The sidecar listens on loopback only, compares tokens in constant time, and checks the Host and Origin headers on `/mcp`; see [`docs/development/mcp-server.md`](development/mcp-server.md#endpoints).
 
 `PHONE_TOKEN` stays with the live diagnostic. From SAW-011 on, the durable workflow authenticates the phone with the credential it gets from [pairing](#pairing), and `MCP_TOKEN` opens `/mcp` only; see [roles](#roles).
 
@@ -95,11 +95,11 @@ From Stage 2 on, agents propose actions that are stored and decided later. SAW-0
 
 - the phone's side in [`proto/seekervault/request/v1`](../proto/seekervault/request/v1)
 - the agent's side as the [MCP tools](#agent-api-mcp) below
-- the rules as pure code in [`sidecar/src/requests/`](../sidecar/src/requests)
+- the rules as pure code in [`mcp-server/src/requests/`](../mcp-server/src/requests)
 
 SAW-010 serves the workflow:
 
-- **Storage:** the sidecar stores requests in SQLite; see [storage and lifecycle](development/sidecar.md#storage-and-lifecycle).
+- **Storage:** the sidecar stores requests in SQLite; see [storage and lifecycle](development/mcp-server.md#storage-and-lifecycle).
 - **Endpoints:** it serves `vault_get_request`, `vault_cancel_request`, and `RequestService`, and the demo tool `vault_request_ack` when `MCP_DEMO_TOOLS=true` (SAW-014).
 
 SAW-011 adds [pairing](#pairing) and [separate roles](#roles). The operator shows the phone a one-use pairing code, and the phone exchanges it for a connection and a credential. Only that credential opens `RequestService`. [`docs/security.md`](security.md) explains the model.
@@ -668,7 +668,7 @@ Each credential opens one role:
 - **Only the paired phone can prepare, review, or answer a request, publish a wallet, or register an FCM target,** and only for its own connection. No MCP tool pairs, prepares, approves, submits a result, registers a target, revokes, or changes the wallet, so an agent can't act as the phone. `vault_sign_message` only stores a request for the owner to decide; `vault_get_address` and `vault_get_capabilities` only read.
 - **`PHONE_TOKEN` is the Stage 1 development credential.** It opens the live diagnostic and nothing else.
 - **`GET /healthz` needs no credential.**
-- `sidecar/src/pairing/roles.test.ts` checks every cell, and every new RPC or tool joins that test.
+- `mcp-server/src/pairing/roles.test.ts` checks every cell, and every new RPC or tool joins that test.
 
 ### Compatibility with Stage 1
 
@@ -1040,7 +1040,7 @@ migration behavior.
 | Runtime | Output | Generators | Runtime libraries |
 | --- | --- | --- | --- |
 | TypeScript (direct SDK) | `server-sdk/src/gen`, as `.js` plus `.d.ts` | `protoc-gen-es` 2.14.1 through `buf.gen.server-sdk.yaml` | `@bufbuild/protobuf` 2.14.1 |
-| TypeScript (MCP host fixture) | `sidecar/src/gen`, proposal only | `protoc-gen-es` 2.14.1 through `buf.gen.sidecar.yaml` | `@bufbuild/protobuf` 2.14.1 |
+| TypeScript (MCP host fixture) | `mcp-server/src/gen`, proposal only | `protoc-gen-es` 2.14.1 through `buf.gen.mcp-server.yaml` | `@bufbuild/protobuf` 2.14.1 |
 | Go (broadcast gateway) | `broadcast/internal/gen` | `protocolbuffers/go` 1.36.12 and `connectrpc/go` 1.21.0, from `buf.gen.go.yaml` | `google.golang.org/protobuf` 1.36.12, `connectrpc.com/connect` 1.21.0 |
 | Kotlin (Android) | `android/app/src/main/generated/java` and `android/app/src/main/generated/kotlin` | `protocolbuffers/java` and `protocolbuffers/kotlin` v36.1 (lite), `connectrpc/kotlin` v0.9.0 | `protobuf-kotlin-lite` 4.36.1, `connect-kotlin` 0.9.0 |
 
@@ -1048,7 +1048,7 @@ migration behavior.
   the result, and never edit generated files by hand.
 - **Each runtime receives only the contracts it speaks.** `buf.gen.yaml` writes Android Kotlin;
   `buf.gen.server-sdk.yaml` writes the direct live/request/server/update TypeScript;
-  `buf.gen.sidecar.yaml` writes only the proposal fixture TypeScript retained by the current host;
+  `buf.gen.mcp-server.yaml` writes only the proposal fixture TypeScript retained by the current host;
   and `buf.gen.go.yaml` writes the gateway's Go. The phone and direct server exclude the publisher
   API, and the gateway has never heard of a durable request, live command or production update.
 - **`pnpm check:generated`** generates into a temporary directory and fails if any committed file differs. CI runs it, and running generation twice produces no diff.
@@ -1080,7 +1080,7 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`docs/d
 | --- | --- |
 | `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, `tsc`, 38/38 sidecar tests (configuration, protocol rules, fixtures) |
 | `pnpm check:android` | PASS. Kotlin compiles the generated messages and `LiveCommandServiceClient`. 10 fixture tests and 3 deadline tests pass, lint reports no issues, and the debug APK builds. |
-| `pnpm build` | PASS: `sidecar/dist` includes the generated JavaScript, and the built `LiveCommandSlot` runs |
+| `pnpm build` | PASS: `mcp-server/dist` includes the generated JavaScript, and the built `LiveCommandSlot` runs |
 | Running generation twice | PASS: two more `pnpm generate` runs left all 46 generated files and fixtures byte-identical, and `pnpm check:generated` passes |
 | `pnpm check:generated` catches drift | Each of these failed it: a hand-edited generated file, a fixture JSON changed without regenerating, a stray file in a generated directory |
 | Fixture tests catch disagreement | Flipping one byte of `LiveCommand/unicode.binpb` failed both the TypeScript fixture test and `LiveProtocolFixturesTest.liveCommandUnicode` |
@@ -1098,6 +1098,6 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.
 | `pnpm check:generated` | PASS, before and after the deliberate breaks |
 | `buf breaking --against '.git#ref=HEAD'` | PASS: nothing in `seekervault.live.v1` changed |
 | `pnpm test:hello` | PASS: the 9/9 Stage 1 acceptance cases on a simulated device, unchanged |
-| `pnpm build` | PASS: `sidecar/dist` includes `requests/` and the generated `request/v1` code, and the built `TRANSITIONS` loads |
+| `pnpm build` | PASS: `mcp-server/dist` includes `requests/` and the generated `request/v1` code, and the built `TRANSITIONS` loads |
 | Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>A transition that lets the agent cancel a PROCESSING request failed the four per-kind tables and the actor rule.</li><li>A fingerprint of the action kind alone failed the idempotency conflict tests.</li><li>Accepting amounts above u64 failed the amount tests.</li><li>A `checkRef` that ignores the connection failed the scope and fixture tests.</li><li>One flipped digit in `ActionRequest/transfer_max_amount.binpb` failed the TypeScript fixture tests and `RequestProtocolFixturesTest.transferMaxAmount`.</li></ul> |
 | Physical device | NOT RUN: SAW-009 has no device behavior |

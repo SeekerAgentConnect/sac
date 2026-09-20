@@ -6,7 +6,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
- * The phone's reading of pairing codes, against the sidecar's rules (sidecar/src/pairing/uri.ts).
+ * The phone's reading of pairing codes, against the MCP server's rules
+ * (`server-sdk/src/pairing/uri.ts`).
  */
 class PairingCodeTest {
     private val serverId = "1f0e2d3c-4b5a-4698-8776-5a4b3c2d1e0f"

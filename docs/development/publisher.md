@@ -22,7 +22,7 @@ Everything else — the configuration, the store, the outbox, the drainer, the m
 is shared, so most of this page is about both.
 
 It is neither of the other two services. [`broadcast/`](../../broadcast) is the shared gateway this
-publishes *to*, run by whoever hosts the broadcast; [`sidecar/`](../../sidecar) is one owner's
+publishes *to*, run by whoever hosts the broadcast; [`mcp-server/`](../../mcp-server) is one owner's
 private server for their own phone. Three servers, three operators.
 
 ## Running it

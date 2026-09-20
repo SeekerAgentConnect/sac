@@ -85,7 +85,7 @@ waiting on the phone, and none of them moves any money.
 5. **Print a pairing code.**
 
    ```sh
-   docker compose exec sidecar node sidecar/dist/pairing/cli.js
+   docker compose exec sidecar node mcp-server/dist/cli.js pair
    ```
 
    It prints a QR code in the terminal and the same code as text. It is one use, it lasts ten
@@ -102,7 +102,7 @@ waiting on the phone, and none of them moves any money.
 7. **Check the pairing from the operator's side.**
 
    ```sh
-   docker compose exec sidecar node sidecar/dist/pairing/cli.js status
+   docker compose exec sidecar node mcp-server/dist/cli.js pair status
    ```
 
 8. **Point an agent at it.** `http://127.0.0.1:8080/mcp`, with `MCP_TOKEN` as a bearer token. See
@@ -208,7 +208,7 @@ The `GATEWAY_PORT` mapping from the development configuration is still declared 
 
 ### Live updates are not carried by this gateway
 
-The phone's live update stream is gRPC over HTTP/2 end to end, and it terminates at the sidecar's *own* TLS listener ([production update listener](../development/sidecar.md#production-update-listener)). Behind a gateway that terminates TLS the sidecar speaks HTTP/1.1, so no update endpoint is configured — and nothing is advertised that this endpoint could not deliver: pairing simply omits the update capability, the phone never tries to open a stream, and its manual refresh and background synchronization keep working.
+The phone's live update stream is gRPC over HTTP/2 end to end, and it terminates at the sidecar's *own* TLS listener ([production update listener](../development/mcp-server.md#production-update-listener)). Behind a gateway that terminates TLS the sidecar speaks HTTP/1.1, so no update endpoint is configured — and nothing is advertised that this endpoint could not deliver: pairing simply omits the update capability, the phone never tries to open a stream, and its manual refresh and background synchronization keep working.
 
 If you want the live stream, give the sidecar a publicly trusted PEM identity of its own as the sidecar guide describes, and put only a pass-through or HTTP/2-preserving proxy in front of it. An HTTP/1.1 reverse proxy is not a fallback transport for that stream, and `SIDECAR_UPDATE_PORT` is cleartext HTTP/2 for `adb reverse` on one machine — never for a public deployment. [`deploy/server/`](../../deploy/server/README.md) is that deployment, ready to run: the sidecar alone on its own TLS listener, with `tailscale cert` for the certificate and Tailscale Funnel's TCP mode in front.
 
@@ -217,7 +217,7 @@ If you want the live stream, give the sidecar a publicly trusted PEM identity of
 With the stack up and the certificate issued, print a pairing code from inside the sidecar container:
 
 ```sh
-docker compose exec sidecar node sidecar/dist/pairing/cli.js
+docker compose exec sidecar node mcp-server/dist/cli.js pair
 ```
 
 The code carries `https://<your domain>`, because the overlay set `SIDECAR_PUBLIC_URL` from the domain. Scan it from **Connections → Add connection**. [`pairing.md`](pairing.md) covers the rest, including `status` and `revoke`.
@@ -319,7 +319,7 @@ that a mistake here is reachable by everyone rather than by you.
 8. **Pair the phone over HTTPS.** Print a code, and scan it from the app:
 
    ```sh
-   docker compose exec sidecar node sidecar/dist/pairing/cli.js
+   docker compose exec sidecar node mcp-server/dist/cli.js pair
    ```
 
    The code carries `https://vault.example.com`, because the overlay set `SIDECAR_PUBLIC_URL` from
@@ -461,9 +461,9 @@ to `down` first, and no need to rebuild for a settings change.
 ### Revoking the phone, and pairing again
 
 ```sh
-docker compose exec sidecar node sidecar/dist/pairing/cli.js status   # which phone is paired
-docker compose exec sidecar node sidecar/dist/pairing/cli.js revoke   # revoke it
-docker compose exec sidecar node sidecar/dist/pairing/cli.js          # a new code
+docker compose exec sidecar node mcp-server/dist/cli.js pair status   # which phone is paired
+docker compose exec sidecar node mcp-server/dist/cli.js pair revoke   # revoke it
+docker compose exec sidecar node mcp-server/dist/cli.js pair          # a new code
 ```
 
 Revoking cancels that connection's pending requests and stops its credential working at once. Do
@@ -556,14 +556,14 @@ a permission error.
 Then check what you restored:
 
 ```sh
-docker compose exec sidecar node sidecar/dist/pairing/cli.js status
+docker compose exec sidecar node mcp-server/dist/cli.js pair status
 docker compose run --rm test-agent get <a request id you know>
 ```
 
 Keep backups off this machine, and treat them as sensitive: no credential can be read out of one,
 but the request history describes what the owner was asked to do and when.
 
-`sidecar/src/backup.test.ts` runs exactly this procedure — a hot backup, an answer recorded after
+`mcp-server/src/backup.test.ts` runs exactly this procedure — a hot backup, an answer recorded after
 it, a restore — and asserts what the next section promises.
 
 ### Deleting things on purpose
@@ -635,7 +635,7 @@ The images are built for the architecture of the machine that builds them, from 
 
 - **Apple silicon Mac** (`linux/arm64` under Docker Desktop)
 - **Linux VPS** (`linux/amd64`, the common case; `linux/arm64` on an Ampere or Graviton host)
-- **A server that only pulls images** (`linux/amd64` built elsewhere). `sidecar/Dockerfile`, `broadcast/Dockerfile` and `publisher/Dockerfile` run their install and compile stages on the building machine's own platform and assemble only the runtime stage for the target, so an Apple silicon Mac builds them with `docker buildx build --platform linux/amd64` — see [`deploy/server/GUIDE.md`](../../deploy/server/GUIDE.md).
+- **A server that only pulls images** (`linux/amd64` built elsewhere). `mcp-server/Dockerfile`, `broadcast/Dockerfile` and `publisher/Dockerfile` run their install and compile stages on the building machine's own platform and assemble only the runtime stage for the target, so an Apple silicon Mac builds them with `docker buildx build --platform linux/amd64` — see [`deploy/server/GUIDE.md`](../../deploy/server/GUIDE.md).
 
 A successful `docker buildx` for a platform is not evidence that the container runs there. [`docs/testing/stage-7.md`](../testing/stage-7.md) records which runtime checks were actually performed on which machine, and which are still outstanding.
 
@@ -647,7 +647,7 @@ A successful `docker buildx` for a platform is not evidence that the container r
 
 **An agent gets a rejection mentioning the `Host` header.** The hostname it used is not loopback and not in `MCP_ALLOWED_HOSTS`. Add it.
 
-**Port 8080 is already taken** — often by a sidecar started with `pnpm dev:sidecar`. Stop that one, or set `GATEWAY_PORT` to something else.
+**Port 8080 is already taken** — often by an MCP server started with `pnpm dev:mcp-server`. Stop that one, or set `GATEWAY_PORT` to something else.
 
 **The gateway container keeps restarting.** It shares the sidecar's namespace, so it cannot start before the sidecar is healthy. Read `docker compose logs sidecar` first.
 
@@ -665,4 +665,4 @@ A successful `docker buildx` for a platform is not evidence that the container r
 
 **The phone or an agent reports an untrusted certificate.** Read the gateway's log and fix the certificate. There is no setting here that turns the check off, and adding one would remove the only thing that makes a public endpoint safe.
 
-[`troubleshooting.md`](troubleshooting.md) covers the development setup, and [`docs/development/sidecar.md`](../development/sidecar.md) the sidecar's configuration variable by variable.
+[`troubleshooting.md`](troubleshooting.md) covers the development setup, and [`docs/development/mcp-server.md`](../development/mcp-server.md) the sidecar's configuration variable by variable.

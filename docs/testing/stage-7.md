@@ -17,8 +17,8 @@ These run anywhere, and ran here.
 | `docker compose --profile agent config --services` | `test-agent` appears only when its profile is named | PASS |
 | The published port, in the resolved config | `127.0.0.1:8080` forwards to the gateway's `8081`. The sidecar's `8080` is published nowhere | PASS |
 | `pnpm check` | Format, lint, types, and the Node test suites, the stage-boundary checks among them | PASS |
-| `pnpm --filter … run build` for both packages | The compile step each image's build stage runs succeeds, and emits `sidecar/dist/main.js` and `test-agent/dist/main.js` | PASS |
-| `node sidecar/dist/main.js`, run natively with the image's environment | The image's `CMD` is a working entry point: the sidecar starts, reports its database and that no phone is paired, and listens | PASS |
+| `pnpm --filter … run build` for both packages | The compile step each image's build stage runs succeeds, and emits `mcp-server/dist/cli.js` and `test-agent/dist/main.js` | PASS |
+| `node mcp-server/dist/cli.js start`, run natively with the image's environment | The image's `CMD` is a working entry point: the sidecar starts, reports its database and that no phone is paired, and listens | PASS |
 | The healthcheck command from `compose.yaml`, against that process | `GET /healthz` answers `200` and `{"status":"ok"}`, and the command exits `0` | PASS |
 | `SIGTERM` to that process | The shutdown `main.ts` performs on the signal a container sends: it logs the cancellation, then `stopped`, and exits `0` | PASS |
 | `node test-agent/dist/main.js tools` with no configuration | The default container command acts on nothing it was not given: it names the missing variables, echoes no token, and exits `2` | PASS |
@@ -70,7 +70,7 @@ The images pin Node and pnpm and install with `--frozen-lockfile`, and nothing i
 
 ### How these were run
 
-No Docker daemon was reachable here either (see above), so the gateway was run the same way the native SAW-034 checks were: the **configurations this repository ships**, served by the Caddy release that matches the pinned image — `caddy 2.10.2`, the version behind `caddy:2.10-alpine` — in front of a real sidecar process started from `sidecar/dist/main.js`. That exercises the routing, the authentication boundaries, the limits, the logging, and TLS termination itself. It exercises nothing about the image, the volume, or the namespace share.
+No Docker daemon was reachable here either (see above), so the gateway was run the same way the native SAW-034 checks were: the **configurations this repository ships**, served by the Caddy release that matches the pinned image — `caddy 2.10.2`, the version behind `caddy:2.10-alpine` — in front of a real sidecar process started with `node mcp-server/dist/cli.js start`. That exercises the routing, the authentication boundaries, the limits, the logging, and TLS termination itself. It exercises nothing about the image, the volume, or the namespace share.
 
 Two accommodations were needed for the internet-facing configuration, and nothing else in the file changed: `GATEWAY_DOMAIN` was `localhost:9443`, so Caddy issued the certificate from its own local authority instead of asking a public one on a privileged port, and the catch-all site's address moved from `:443` to `:9443` to match. `skip_install_trust` was added so the test did not install a root certificate into the machine's trust store. Certificate issuance from a public authority is therefore still NOT RUN; TLS termination, the certificate's verification by a client, and every route below were run.
 
@@ -133,7 +133,7 @@ Two accommodations were needed for the internet-facing configuration, and nothin
 | Pairing the physical Seeker over the HTTPS endpoint, and an authenticated request from it | A public endpoint and the phone | NOT RUN |
 | The whole stack in containers, with the gateway's own image | A Docker daemon | NOT RUN |
 
-The pairing code's own side of that was checked: `node sidecar/dist/pairing/cli.js`, run with the environment the overlay sets, prints a `seekervault://pair?…` code carrying `https://<domain>`. What has not been done is giving that code to a phone.
+The pairing code's own side of that was checked: `node mcp-server/dist/cli.js pair`, run with the environment the overlay sets, prints a `seekervault://pair?…` code carrying `https://<domain>`. What has not been done is giving that code to a phone.
 
 ### Record
 
@@ -149,15 +149,15 @@ The pairing code's own side of that was checked: `node sidecar/dist/pairing/cli.
 
 Two layers, and they are worth keeping apart.
 
-The first is automated and repeatable: `sidecar/src/oauth.test.ts` runs a real sidecar against a
-fake **authorization server** (`sidecar/src/testing/authorization-server.ts`) that publishes
+The first is automated and repeatable: `mcp-server/src/oauth.test.ts` runs a real sidecar against a
+fake **authorization server** (`mcp-server/src/testing/authorization-server.ts`) that publishes
 discovery metadata and a JWKS and mints real signed tokens. Those are the resource server's own
 checks against real signatures, and `pnpm check` and CI run them on every change. They need no
 account anywhere.
 
 The second is the same hand-run arrangement SAW-035 used: the **configurations this repository
 ships**, served by `caddy 2.10.2` — the version behind `caddy:2.10-alpine` — in front of a real
-sidecar started from `sidecar/src/main.ts`, with `MCP_OAUTH_ISSUER` pointed at that same fake
+sidecar started from `mcp-server/src/cli.ts`, with `MCP_OAUTH_ISSUER` pointed at that same fake
 authorization server. The accommodations were SAW-035's, and nothing else in the files changed:
 `GATEWAY_DOMAIN` was `vault.localhost:9443` so Caddy issued from its own local authority, the
 catch-all site moved from `:443` to `:9443` to match, and `skip_install_trust` kept the test out of
@@ -317,7 +317,7 @@ run in `pnpm check`; the third needs a Docker daemon and is NOT RUN.
 
 ### Backup and restore, run for real
 
-`sidecar/src/backup.test.ts` performs the procedure the guide gives an operator, against a real
+`mcp-server/src/backup.test.ts` performs the procedure the guide gives an operator, against a real
 sidecar and a real database file, in a throwaway directory. It is the ticket's second check, and it
 passed.
 
@@ -332,7 +332,7 @@ passed.
 
 ### The guide against the files it describes
 
-`sidecar/src/self-hosting-guide.test.ts` is the ticket's third check: every name on the page is
+`mcp-server/src/self-hosting-guide.test.ts` is the ticket's third check: every name on the page is
 held to the shipped files, so a rename cannot quietly leave the guide behind.
 
 | Check | Result |
@@ -340,7 +340,7 @@ held to the shipped files, so a rename cannot quietly leave the guide behind.
 | Every `MCP_*`, `SIDECAR_*`, `GATEWAY_*`, `ACME_*`, `SOLANA_*`, `FCM_*` … setting the guide names is one the stack reads | PASS |
 | Every `docker compose` command names a Compose file that exists, a service that exists, and a profile that exists | PASS |
 | The ports: the published mapping, the private endpoint, and the two public ones | PASS |
-| The paths: `sidecar/dist/pairing/cli.js` against the image's `WORKDIR` and a real entry point, `/data/sidecar.db`, and the volume's full name | PASS |
+| The paths: `mcp-server/dist/cli.js pair` against the image's `WORKDIR` and a real entry point, `/data/sidecar.db`, and the volume's full name | PASS |
 | Every relative link on the page, and every link to one of its own headings | PASS |
 
 Deliberately breaking the guide — an invented setting, a link to a file that is not there — fails
