@@ -313,7 +313,9 @@ func (s *Server) headers(writer http.ResponseWriter) {
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	writer.Header().Set("X-Frame-Options", "DENY")
-	writer.Header().Set("Referrer-Policy", "no-referrer")
+	// same-origin, not no-referrer: Chrome sends Origin: null on a same-origin form POST when the
+	// document used no-referrer, and that fails the check below.
+	writer.Header().Set("Referrer-Policy", "same-origin")
 	writer.Header().Set("Content-Security-Policy",
 		"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 }
@@ -331,10 +333,16 @@ func (s *Server) setCookie(writer http.ResponseWriter, value string, maxAge int)
 }
 
 func (s *Server) sameOrigin(request *http.Request) bool {
-	origin := request.Header.Get("Origin")
 	expected := publicOrigin(request)
-	if origin != "" {
+	origin := request.Header.Get("Origin")
+	// Chrome sends the literal "null" on a same-origin form POST under no-referrer. That is not a
+	// missing header, and it is not our origin.
+	if origin != "" && origin != "null" {
 		return origin == expected
+	}
+	// Forbidden request header: browsers set this. A cross-site form CSRF is "cross-site".
+	if request.Header.Get("Sec-Fetch-Site") == "same-origin" {
+		return true
 	}
 	referer := request.Header.Get("Referer")
 	if referer == "" {

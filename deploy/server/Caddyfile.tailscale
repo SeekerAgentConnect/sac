@@ -11,8 +11,6 @@
 		output stderr
 		format console
 	}
-	# Login posts carry passwords; skip them the same way.
-	log_skip /trader/login
 	# Caddy redacts credential headers unless log_credentials is enabled. It is
 	# deliberately not enabled here.
 }
@@ -24,6 +22,9 @@ https://{$BROADCAST_DOMAIN} {
 		output stderr
 		format console
 	}
+
+	# Login posts carry passwords and never enter access logs.
+	log_skip /trader/login
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
