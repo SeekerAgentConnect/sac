@@ -203,6 +203,11 @@ class ConnectionsScreenTest {
                     ConnectionsUiState(
                         connections = listOf(feed),
                         loaded = true,
+                        updates =
+                            io.github.brrenat.seekervault.sync.ForegroundUpdatesState(
+                                foreground = true,
+                                connections = mapOf(feed.id to ForegroundConnectionState.Revoked),
+                            ),
                         feeds =
                             ForegroundFeedsState(
                                 foreground = true,

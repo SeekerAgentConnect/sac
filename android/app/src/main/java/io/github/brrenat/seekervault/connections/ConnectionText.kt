@@ -112,6 +112,23 @@ fun environmentNote(environment: PluginEnvironment): Int =
         PluginEnvironment.Sandbox -> R.string.connection_environment_sandbox_note
     }
 
+/**
+ * Direct live-update state belongs only to paired sidecars. A GatewayFeed is not usable in that
+ * sense, so [ForegroundUpdateManager] publishes [ForegroundConnectionState.Revoked] for it; that
+ * value must not be read as the feed's own reachability (SEE-143).
+ */
+internal fun Connection.directTransport(
+    live: ForegroundConnectionState?
+): ForegroundConnectionState? = live.takeIf { mode == ConnectionMode.Direct }
+
+/**
+ * Gateway listener state is keyed by origin. A Direct connection at the same URL must not inherit a
+ * feed's Connecting/Live/Unreachable row (SEE-143).
+ */
+internal fun Connection.feedTransport(feed: FeedListenerState?): FeedListenerState? = feed.takeIf {
+    mode == ConnectionMode.GatewayFeed
+}
+
 /** What the phone knows about the connection, in one sentence. */
 @Composable
 fun statusText(
@@ -126,6 +143,8 @@ fun statusText(
     feed: FeedListenerState? = null,
 ): String {
     val check = connection.lastCheck
+    val liveState = connection.directTransport(live)
+    val feedState = connection.feedTransport(feed)
     return when {
         connection.retirement == ConnectionRetirement.GatewayPrivateRemoved ->
             stringResource(R.string.connection_status_gateway_private_retired)
@@ -133,26 +152,28 @@ fun statusText(
         support != null && !support.executable -> supportText(support)
         connection.mode == ConnectionMode.Direct && !connection.hasCredential ->
             stringResource(R.string.connection_status_credential_missing)
-        feed == FeedListenerState.Connecting ->
+        feedState == FeedListenerState.Connecting ->
             stringResource(R.string.connection_status_connecting)
-        feed is FeedListenerState.Live -> stringResource(R.string.connection_status_live)
-        feed is FeedListenerState.Reconnecting ->
+        feedState is FeedListenerState.Live -> stringResource(R.string.connection_status_live)
+        feedState is FeedListenerState.Reconnecting ->
             stringResource(R.string.connection_status_reconnecting)
-        feed is FeedListenerState.Unreachable -> outcomeText(feed.outcome)
-        feed == FeedListenerState.NoStream ->
+        feedState is FeedListenerState.Unreachable -> outcomeText(feedState.outcome)
+        feedState == FeedListenerState.NoStream ->
             stringResource(R.string.connection_status_feed_available)
-        feed is FeedListenerState.Refused -> stringResource(R.string.connection_status_failed)
-        live == ForegroundConnectionState.Background ->
+        feedState is FeedListenerState.Refused -> stringResource(R.string.connection_status_failed)
+        liveState == ForegroundConnectionState.Background ->
             stringResource(R.string.connection_status_background)
-        live == ForegroundConnectionState.Connecting ->
+        liveState == ForegroundConnectionState.Connecting ->
             stringResource(R.string.connection_status_connecting)
-        live == ForegroundConnectionState.Live -> stringResource(R.string.connection_status_live)
-        live is ForegroundConnectionState.Reconnecting ->
+        liveState == ForegroundConnectionState.Live ->
+            stringResource(R.string.connection_status_live)
+        liveState is ForegroundConnectionState.Reconnecting ->
             stringResource(R.string.connection_status_reconnecting)
-        live is ForegroundConnectionState.Unreachable -> outcomeText(live.failure)
-        live == ForegroundConnectionState.Revoked ->
+        liveState is ForegroundConnectionState.Unreachable -> outcomeText(liveState.failure)
+        liveState == ForegroundConnectionState.Revoked ->
             stringResource(R.string.connection_status_revoked)
-        live is ForegroundConnectionState.Unsupported -> availabilityText(live.availability)
+        liveState is ForegroundConnectionState.Unsupported ->
+            availabilityText(liveState.availability)
         check == null -> stringResource(R.string.connection_status_not_checked)
         check.outcome == CheckOutcome.Ok && check.morePending ->
             stringResource(R.string.connection_status_ok_more, check.pending ?: 0)
@@ -168,15 +189,18 @@ fun hasProblem(
     live: ForegroundConnectionState? = null,
     support: ServerSupport? = null,
     feed: FeedListenerState? = null,
-): Boolean =
+): Boolean {
+    val liveState = connection.directTransport(live)
+    val feedState = connection.feedTransport(feed)
     // A feed is not "usable" in the credential sense — it has no credential — so its problems are
     // the manifest this build cannot act on or the gateway listener actually failing (SEE-139).
-    connection.retirement != null ||
+    // Direct transport Revoked is ignored for feeds; feed listener state is ignored for Direct.
+    return connection.retirement != null ||
         (connection.mode == ConnectionMode.Direct && !connection.usable) ||
         support?.executable == false ||
-        feed is FeedListenerState.Unreachable ||
-        feed is FeedListenerState.Refused ||
-        when (live) {
+        feedState is FeedListenerState.Unreachable ||
+        feedState is FeedListenerState.Refused ||
+        when (liveState) {
             is ForegroundConnectionState.Unreachable,
             ForegroundConnectionState.Revoked,
             is ForegroundConnectionState.Unsupported -> true
@@ -184,8 +208,11 @@ fun hasProblem(
             ForegroundConnectionState.Connecting,
             ForegroundConnectionState.Live,
             is ForegroundConnectionState.Reconnecting -> false
-            null -> connection.lastCheck.let { it != null && it.outcome != CheckOutcome.Ok }
+            null ->
+                connection.mode == ConnectionMode.Direct &&
+                    connection.lastCheck.let { it != null && it.outcome != CheckOutcome.Ok }
         }
+}
 
 /**
  * Why this build can't act for the connection's server. Each state is said as itself: what is
