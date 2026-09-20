@@ -155,6 +155,57 @@ async function fixture(
 }
 
 describe("production updates over gRPC HTTP/2", () => {
+  it("advertises the public HTTPS origin on an h2c main listener", async () => {
+    const publicUrl = "https://vault.example.com";
+    const databasePath = temporaryDatabasePath();
+    const sidecar = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        mcpToken: MCP_TOKEN,
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 1,
+        databasePath,
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
+        h2c: true,
+        publicUrl,
+      },
+      { log: () => undefined, updatePollMs: 10 },
+    );
+    try {
+      assert.equal(sidecar.updateUrl, publicUrl);
+      const pairingDb = openDatabase(databasePath);
+      const issued = new PairingStore(pairingDb).issue(sidecar.url, 600);
+      pairingDb.close();
+      const pairing = createClient(
+        PairingService,
+        createConnectTransport({
+          baseUrl: sidecar.url,
+          httpVersion: "2",
+          interceptors: [authorization(issued.token)],
+        }),
+      );
+      const paired = await pairing.pair({
+        serverUrl: sidecar.url,
+        deviceName: "Seeker",
+      });
+      assert.equal(paired.updates?.grpcUrl, publicUrl);
+      const input = new StreamInput<SubscribeRequest>();
+      const abort = new AbortController();
+      const replies = iteratorOf(
+        updateClient(sidecar.url, paired.phoneToken, false).subscribe(input, {
+          signal: abort.signal,
+        }),
+      );
+      input.push(subscribeMessage(paired.connectionId));
+      assert.equal((await next(replies)).event.case, "ready");
+      abort.abort();
+    } finally {
+      await sidecar.close();
+    }
+  });
+
   it("keeps the update message cap off existing RequestService responses", async () => {
     const f = await fixture({ cleartext: true });
     try {

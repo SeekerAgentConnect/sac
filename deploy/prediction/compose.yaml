@@ -66,6 +66,29 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
 
+  prediction-admin:
+    profiles: [admin]
+    build:
+      context: ../..
+      dockerfile: demo-prediction/Dockerfile
+    image: ${PREDICTION_IMAGE:-seeker-prediction/prediction:local}
+    entrypoint: ["/prediction-admin"]
+    restart: unless-stopped
+    environment:
+      ADMIN_LISTEN_ADDRESS: 0.0.0.0:8096
+      ADMIN_PUBLIC_PATH: /
+      ADMIN_API_URL: http://prediction:8092
+      PUBLISHER_API_TOKEN: ${PUBLISHER_API_TOKEN:?set PUBLISHER_API_TOKEN in deploy/prediction/.env}
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET}
+      ADMIN_PASSWORDS: ${ADMIN_PASSWORDS}
+    ports:
+      - "${PREDICTION_ADMIN_BIND:-127.0.0.1}:${PREDICTION_ADMIN_PORT:-8096}:8096"
+    networks: [egress]
+    depends_on: [prediction]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
 networks:
   egress:
 

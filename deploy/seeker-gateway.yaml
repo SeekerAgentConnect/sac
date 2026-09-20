@@ -1,0 +1,137 @@
+alerts:
+- rule: DEPLOYMENT_FAILED
+- rule: DOMAIN_FAILED
+features:
+- buildpack-stack=ubuntu-22
+ingress:
+  rules:
+  - component:
+      name: centrifugo
+      preserve_path_prefix: true
+    match:
+      path:
+        prefix: /centrifugal.centrifugo.unistream.CentrifugoUniStream/Consume
+  - component:
+      name: edge
+      preserve_path_prefix: true
+    match:
+      path:
+        prefix: /
+name: seeker-gateway
+region: ams
+services:
+- envs:
+  - key: BROADCAST_PUBLIC_URL
+    scope: RUN_AND_BUILD_TIME
+    value: ${APP_URL}
+  - key: BROADCAST_READ_ADDRESS
+    scope: RUN_AND_BUILD_TIME
+    value: 0.0.0.0:8090
+  - key: BROADCAST_PUBLISHER_ADDRESS
+    scope: RUN_AND_BUILD_TIME
+    value: 0.0.0.0:8091
+  - key: BROADCAST_DATABASE_PATH
+    scope: RUN_AND_BUILD_TIME
+    value: /data/broadcast.db
+  - key: BROADCAST_STREAM_URL
+    scope: RUN_AND_BUILD_TIME
+    value: http://${centrifugo.PRIVATE_DOMAIN}:8000
+  - key: BROADCAST_STREAM_API_KEY
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:gUKFMy0pu2ehmyS6sX354S/EB8DcjmjU:87yurtAYldO11P6s5mBsSf2jW7kqOILRrSDmJqtQ9hWAs2bU89lX3ehHsYYaGdM/8WY5orNjS0csoz0=]
+  - key: BROADCAST_STREAM_TOKEN_KEY
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:bEz6DnyKkO72MSgmWCoNxzA3zfRlN/3G:nmr1Cc2v2wBY82WUbs6xn+E70GI4f9zIEyXvr1UabEg/DBqp4pHwcTf2bNFOziHCifFE7LoMuF9lGDs=]
+  health_check:
+    failure_threshold: 9
+    http_path: /healthz
+    period_seconds: 10
+    port: 8090
+    success_threshold: 1
+    timeout_seconds: 1
+  image:
+    registry: brenat
+    registry_credentials: EV[1:GgvPQ2H1rVXKD5mtBcqCt/NWw5WtJl48:AaHA1P/xji0d0jCY8WjKJGYAOEdOdKr3+rFgoPEZH7WBVFVj/pEsgCVbZ56+N4jFp740H5cWth1jliA=]
+    registry_type: DOCKER_HUB
+    repository: seeker-agent-connect
+    tag: gateway-0.1.3
+  instance_count: 1
+  instance_size_slug: apps-s-1vcpu-0.5gb
+  internal_ports:
+  - 8090
+  - 8091
+  name: gateway
+- health_check:
+    failure_threshold: 9
+    http_path: /healthz
+    period_seconds: 10
+    success_threshold: 1
+    timeout_seconds: 1
+  http_port: 8080
+  image:
+    registry: library
+    registry_type: DOCKER_HUB
+    repository: caddy
+    tag: 2.10-alpine
+  instance_count: 1
+  instance_size_slug: apps-s-1vcpu-0.5gb
+  name: edge
+  run_command: sh -c 'printf "%s\n" ":8080 {" "handle /seekervault.gateway.v1.FeedService*
+    {" "reverse_proxy gateway:8090" "}" "handle /seekervault.gateway.v1.PublisherService*
+    {" "reverse_proxy gateway:8091" "}" "handle /healthz {" "reverse_proxy gateway:8090"
+    "}" "}" > /tmp/Caddyfile && exec caddy run --config /tmp/Caddyfile --adapter caddyfile'
+- health_check:
+    failure_threshold: 9
+    period_seconds: 10
+    port: 6379
+    success_threshold: 1
+    timeout_seconds: 1
+  image:
+    registry: library
+    registry_type: DOCKER_HUB
+    repository: redis
+    tag: 8.2-alpine
+  instance_count: 1
+  instance_size_slug: apps-s-1vcpu-0.5gb
+  internal_ports:
+  - 6379
+  name: redis
+  run_command: redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy
+    allkeys-lru
+- envs:
+  - key: CENTRIFUGO_HTTP_API_KEY
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:yKFeULE3A5VA15Kvqgy8/Ck+TZ6KOZmD:DJgsyRkqKOcJOTYmP962oIN8VGa+0QdmWsyUF/fy18ZpqsTnd8954Jo7jqZq/p9bP2ArM7ghY5Ch7uY=]
+  - key: CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:Yb6/6N9jBXsxei0r7OdVcfGhelsjEgdq:WD2eG9w5HHc+JTelk9jeN5+FSPR6tnpvsDqQCqdL2g2aLjZTA8KOY3ZAQAlz81r8/vXiVq7G0S9YXV4=]
+  - key: CENTRIFUGO_ENGINE_REDIS_ADDRESS
+    scope: RUN_AND_BUILD_TIME
+    value: redis://${redis.PRIVATE_DOMAIN}:6379
+  health_check:
+    failure_threshold: 9
+    http_path: /health
+    period_seconds: 10
+    port: 8000
+    success_threshold: 1
+    timeout_seconds: 1
+  http_port: 11000
+  image:
+    registry: brenat
+    registry_credentials: EV[1:GgvPQ2H1rVXKD5mtBcqCt/NWw5WtJl48:AaHA1P/xji0d0jCY8WjKJGYAOEdOdKr3+rFgoPEZH7WBVFVj/pEsgCVbZ56+N4jFp740H5cWth1jliA=]
+    registry_type: DOCKER_HUB
+    repository: seeker-agent-connect
+    tag: centrifugo-0.1.1
+  instance_count: 1
+  instance_size_slug: apps-s-1vcpu-0.5gb
+  internal_ports:
+  - 8000
+  name: centrifugo
+  protocol: HTTP2
+  run_command: centrifugo -c /centrifugo/config.yaml
+  termination:
+    grace_period_seconds: 35

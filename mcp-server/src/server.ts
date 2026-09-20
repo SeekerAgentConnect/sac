@@ -2,7 +2,8 @@
  * The sidecar: GET /healthz, the phone's Connect API, and — when the MCP adapter is configured —
  * the agent endpoint at /mcp, all on one listener. A configured TLS listener also carries
  * production gRPC/HTTP2 updates; loopback development may put those updates on a separate h2c
- * port. Durable requests and pairing live in SQLite.
+ * port; a TLS-terminating HTTP/2 proxy may put h2c on the main port (SIDECAR_H2C). Durable
+ * requests and pairing live in SQLite.
  *
  * MCP is optional (SEE-87, docs/wiki/mcp-adapter.md). Everything below the adapter — the request
  * store and its lifecycle, pairing, the phone API, updates, push, and both listeners — is built
@@ -34,6 +35,7 @@ import {
   UnsupportedPreparation,
   type AgentRequests,
   type ConfirmationProvider,
+  type IssuedPairing,
   type LiveCommandBridge,
   type TransferProvider,
 } from "@seeker-vault/server-sdk";
@@ -41,6 +43,7 @@ import { LiveCommandService } from "@seeker-vault/server-sdk/protocol";
 
 import { DEFAULT_SOLANA_RPC_TIMEOUT_MS, type SidecarConfig } from "./config.ts";
 import { createMcpEndpoint, type McpEndpoint } from "./mcp-endpoint.ts";
+import { PAIRING_LINK_PATH, handlePairingLink } from "./pairing/link.ts";
 import {
   PROTECTED_RESOURCE_PATHS,
   protectedResourceMetadata,
@@ -194,12 +197,14 @@ async function serve(
     );
 
     const core = direct.requests;
-    const mcp = mcpAdapter(config, direct.liveCommands, core, log);
+    const mcp = mcpAdapter(config, direct.liveCommands, core, log, () =>
+      direct.pairing.issue(),
+    );
     let updateUrl: string | undefined;
     const secure =
       config.tlsCertificatePath !== undefined &&
       config.tlsPrivateKeyPath !== undefined;
-    const updatesConfigured = config.updatePort !== undefined || secure;
+    const h2c = config.h2c === true;
     const routes = (includeUpdates: boolean, includeLegacy: boolean) =>
       direct.phoneHandler({
         ...(includeLegacy ? { legacyPhoneToken: config.phoneToken } : {}),
@@ -207,8 +212,8 @@ async function serve(
         includeUpdates,
       });
     const phoneApi = routes(
-      updatesConfigured && config.updatePort === undefined,
-      !secure,
+      (secure || h2c) && config.updatePort === undefined,
+      !secure && !h2c,
     );
 
     const handler = (req: MainRequest, res: MainResponse) => {
@@ -223,7 +228,12 @@ async function serve(
         return;
       }
       if (path === "/healthz") {
-        health(req, res, secure);
+        health(req, res, secure || h2c);
+      } else if (
+        path === PAIRING_LINK_PATH ||
+        path === `${PAIRING_LINK_PATH}/`
+      ) {
+        handlePairingLink(req as IncomingMessage, response);
       } else if (PROTECTED_RESOURCE_PATHS.includes(path)) {
         protectedResource(req, res, config.oauth);
       } else if (path === "/mcp") {
@@ -247,7 +257,7 @@ async function serve(
         phoneApi(req, res);
       }
     };
-    const server: HttpServer | Http2SecureServer = secure
+    const server: ListenableServer = secure
       ? createSecureServer(
           {
             ...readTlsIdentity(
@@ -258,9 +268,12 @@ async function serve(
           },
           handler,
         )
-      : createServer(handler);
+      : h2c
+        ? createHttp2Server(handler)
+        : createServer(handler);
     const updateSessions = new Set<ServerHttp2Session>();
-    if (secure) trackSessions(server as Http2SecureServer, updateSessions);
+    if (secure || h2c)
+      trackSessions(server as Http2Server | Http2SecureServer, updateSessions);
     server.listen(config.port, config.host);
     await once(server, "listening");
 
@@ -281,7 +294,7 @@ async function serve(
       }
       const updateAddress = updateServer.address() as AddressInfo;
       updateUrl = `http://${config.host.includes(":") ? `[${config.host}]` : config.host}:${updateAddress.port}`;
-    } else if (secure) {
+    } else if (secure || h2c) {
       updateUrl = new URL(config.publicUrl ?? url).origin;
     }
     // The manifest names the URL the phone pairs with and calls, which is the public URL when the
@@ -290,11 +303,16 @@ async function serve(
     // phone keeps what it cached.
     const manifest = direct.manifest;
     log(
-      `listening on ${url}: ${mcp === undefined ? "no MCP endpoint (MCP_ENABLED=false)" : `MCP at ${url}/mcp`}, ${secure ? "production phone APIs on the same origin" : `phone API at ${url}/${LiveCommandService.typeName}`}`,
+      `listening on ${url}: ${mcp === undefined ? "no MCP endpoint (MCP_ENABLED=false)" : `MCP at ${url}/mcp`}, ${secure || h2c ? "production phone APIs on the same origin" : `phone API at ${url}/${LiveCommandService.typeName}`}`,
     );
     if (secure) {
       log(
         "native TLS serves pairing, request, and update APIs; the legacy LiveCommandService diagnostic is not served",
+      );
+    }
+    if (h2c) {
+      log(
+        "cleartext HTTP/2 (h2c) serves pairing, request, and update APIs behind a TLS HTTP/2 proxy; the legacy LiveCommandService diagnostic is not served",
       );
     }
     log(
@@ -384,6 +402,7 @@ function mcpAdapter(
   bridge: LiveCommandBridge,
   core: AgentRequests,
   log: (message: string) => void,
+  issuePairing: () => IssuedPairing,
 ): McpEndpoint | undefined {
   if (config.mcpToken === undefined) {
     log(
@@ -395,8 +414,12 @@ function mcpAdapter(
     return undefined;
   }
   const endpoint = createMcpEndpoint(bridge, core, config.mcpToken, log, {
-    allowedHosts: config.mcpAllowedHosts,
+    allowedHosts: [
+      ...(config.mcpAllowedHosts ?? []),
+      ...publicHostname(config.publicUrl),
+    ],
     demoTools: config.demoTools,
+    issuePairing,
     ...(config.oauth === undefined ? {} : { oauth: config.oauth }),
   });
   log(
@@ -441,6 +464,21 @@ export function isLoopbackAddress(address: string | undefined): boolean {
   if (address === "::1") return true;
   const ipv4 = address.startsWith("::ffff:") ? address.slice(7) : address;
   return ipv4.startsWith("127.");
+}
+
+/** The advertised origin's host is always allowed on /mcp, besides MCP_ALLOWED_HOSTS. */
+function publicHostname(publicUrl: string | undefined): readonly string[] {
+  if (publicUrl === undefined) return [];
+  let hostname: string;
+  try {
+    hostname = new URL(publicUrl).hostname.toLowerCase();
+  } catch {
+    return [];
+  }
+  if (hostname === "" || hostname === "127.0.0.1" || hostname === "localhost") {
+    return [];
+  }
+  return [hostname];
 }
 
 /**

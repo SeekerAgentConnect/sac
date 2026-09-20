@@ -56,7 +56,7 @@ a dependency of that.
 | Kind | `signals.Swap` → `jupiter.swap` | `signals.Prediction` → `jupiter.prediction` |
 | Written by | its callers, through the API | itself, from the provider's listing |
 | Its API | create, update, cancel, read | read only; the three writing endpoints answer 403 |
-| Its binaries | `copytrading`, `copytrading-admin`, `publishctl` | `prediction`, `publishctl` |
+| Its binaries | `copytrading`, `copytrading-admin`, `publishctl` | `prediction`, `prediction-admin`, `publishctl` |
 | Its portable preset | `deploy/copytrading/compose.yaml` | `deploy/prediction/compose.yaml` |
 | Why it is shaped so | [copytrading-template.md](../wiki/copytrading-template.md) | [prediction-template.md](../wiki/prediction-template.md) |
 
@@ -324,7 +324,9 @@ an absolute one. The answer is JSON on stdout so it can be piped; what a person 
 | Path | What is in it |
 | --- | --- |
 | `cmd/prediction` | The demo: the same core, plus the provider client and the reconciler's own goroutine, and an API nobody may write a signal through |
+| `cmd/prediction-admin` | The password-gated HTML UI (SEE-138), a client of `/v1` rather than a second writer |
 | `cmd/publishctl` | Three lines over `publisher-support/publisherctl` |
+| `internal/admin` | That UI's implementation: named bcrypt file, sessions, CSRF, pages, its own rate limits |
 | `internal/jupiter` | The prediction provider: two endpoints, its pagination, its error codes, a paced client, and **the only file in this module that names its host**. Seven captured answers under `testdata/` |
 | `internal/discovery` | What a filter means, what a cycle does, and the reconciler. No SQL and no HTTP: it is written against interfaces |
 | `internal/config` | This demo's own half of a deployment, read through the library's `Reader` so both halves are reported at once |
@@ -422,6 +424,10 @@ publishing to one gateway.
 | `internal/discovery/feedgateway_test.go` | The **real gateway**, for a *discovered* market. Opt-in; see below |
 | `internal/config/config_test.go` | A deployment that starts on its defaults, every filter read, every way one is refused, **both halves reported at once**, the provider's key as a file, and no refusal quoting it |
 | `internal/api/discovery_test.go` | Nobody may write a prediction signal, a poll running a cycle and publishing it, what `/v1/discovery` says, that the status says it is not writable, a poll refused while one runs, and **the provider's key in no answer and no log line** |
+| `internal/api/overlay_test.go` | Search lists matching markets, select publishes one through discovery, callers still cannot POST `/v1/requests` |
+| `internal/discovery/search_test.go` | Search uses the query not the deployment filters, select publishes a market the filter would skip, a closed market is refused, and select is busy during a cycle |
+| `internal/admin/*_test.go` | Named bcrypt file, mtime revoke, session cookie flags, CSRF origin, `/v1` client, token never in HTML, login and select rate limits |
+| `cmd/prediction-admin/main_test.go` | `hash` prints a `name:bcrypt` line |
 | `internal/boundary/boundary_test.go` | What *this module* is: it does not import the other demo, needs no direct server, builds the provider only in its own `main`, delivers nothing itself, names no service address **except the provider's, in one file**, its own `main` says its signals are its own discovery's, and no subscriber is known here |
 
 Note that the boundary tests are now three, not one, and that is deliberate. The rules every

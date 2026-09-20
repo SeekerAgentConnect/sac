@@ -42,6 +42,8 @@ mcp_servers:
       #   tool with no wallet involved: the sidecar serves it only with MCP_DEMO_TOOLS=true.
       # - vault_get_request: reads a request's status later, by its request_id.
       # - vault_cancel_request: withdraws a request the owner hasn't answered.
+      # - vault_create_pairing_link: issues a seekervault://pair deep link and https://…/pair
+      #   landing page. The owner still confirms on the phone.
       include:
         [
           vault_display_command,
@@ -52,6 +54,7 @@ mcp_servers:
           vault_request_ack,
           vault_get_request,
           vault_cancel_request,
+          vault_create_pairing_link,
         ]
       resources: false
       prompts: false

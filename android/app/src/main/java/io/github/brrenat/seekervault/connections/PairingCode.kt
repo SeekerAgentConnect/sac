@@ -24,7 +24,7 @@ sealed interface PairingCodeResult {
 enum class PairingCodeProblem {
     /** Not a URI at all. */
     NotACode,
-    /** A URI, but not a `seekervault://pair` one. */
+    /** A URI, but not a `seekervault://pair` or `https://…/pair` one. */
     NotSeekerVault,
     /** A pairing code for another version of the format. */
     OtherVersion,
@@ -48,8 +48,9 @@ object PairingCodes {
     private val LOOPBACK_HOSTS = setOf("127.0.0.1", "localhost", "[::1]")
 
     /**
-     * Parses [text], a `seekervault://pair?v=1&url=…&server=…&token=…` URI. [cleartextPermitted]
-     * says whether plain HTTP may reach a host (without brackets for IPv6).
+     * Parses [text], a `seekervault://pair?v=1&url=…&server=…&token=…` URI or the same query on
+     * `https://<origin>/pair`. [cleartextPermitted] says whether plain HTTP may reach a host
+     * (without brackets for IPv6).
      */
     fun parse(text: String, cleartextPermitted: (host: String) -> Boolean): PairingCodeResult {
         val uri =
@@ -59,7 +60,7 @@ object PairingCodes {
                 return invalid(PairingCodeProblem.NotACode)
             }
         if (uri.scheme == null) return invalid(PairingCodeProblem.NotACode)
-        if (!uri.scheme.equals("seekervault", ignoreCase = true) || uri.rawAuthority != "pair") {
+        if (!isPairingLink(uri)) {
             return invalid(PairingCodeProblem.NotSeekerVault)
         }
         val query = queryOf(uri.rawQuery.orEmpty())
@@ -149,6 +150,16 @@ object PairingCodes {
         }
 
     private fun invalid(problem: PairingCodeProblem) = PairingCodeResult.Invalid(problem)
+
+    /** The custom-scheme deep link, or this server's `/pair` landing page with the same query. */
+    private fun isPairingLink(uri: URI): Boolean {
+        val scheme = uri.scheme?.lowercase() ?: return false
+        if (scheme == "seekervault") return uri.rawAuthority == "pair"
+        val path = uri.rawPath.orEmpty().trimEnd('/')
+        if (path != "/pair") return false
+        val host = uri.host?.lowercase() ?: return false
+        return scheme == "https" || (scheme == "http" && host in LOOPBACK_HOSTS)
+    }
 }
 
 private val UUID = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")

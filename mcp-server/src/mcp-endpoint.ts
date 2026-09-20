@@ -1,8 +1,9 @@
 /**
  * The agent-facing MCP endpoint: Streamable HTTP at /mcp, authenticated with MCP_TOKEN, or with an
  * OAuth access token when a hosted client's authorization server is configured (SAW-036). It
- * serves the Stage 1 tool `vault_display_command` and the durable request tools
- * (requests/mcp-tools.ts), with the demo tool `vault_request_ack` only when MCP_DEMO_TOOLS is set.
+ * serves the Stage 1 tool `vault_display_command`, the durable request tools
+ * (requests/mcp-tools.ts), `vault_create_pairing_link`, and the demo tool `vault_request_ack`
+ * only when MCP_DEMO_TOOLS is set.
  *
  * It is one adapter over the request core and not the core itself (SEE-87,
  * docs/wiki/mcp-adapter.md): it reaches requests only through
@@ -23,6 +24,7 @@ import {
   LiveCommandFailure,
   MAX_COMMAND_TEXT_BYTES,
   type AgentRequests,
+  type IssuedPairing,
   type LiveCommandBridge,
 } from "@seeker-vault/server-sdk";
 
@@ -32,6 +34,7 @@ import {
   createAccessTokenVerifier,
   type OAuthConfig,
 } from "./oauth.ts";
+import { registerPairingLinkTool } from "./pairing/mcp-tool.ts";
 import { registerRequestTools } from "./requests/mcp-tools.ts";
 
 export const DISPLAY_COMMAND_TOOL = "vault_display_command";
@@ -43,6 +46,7 @@ function instructionsFor(demoTools: boolean, transfers: boolean): string {
     "Every request waits for the owner to approve it by hand; vault_get_capabilities says what this sidecar actually serves.",
     "vault_display_command is a live diagnostic: it shows text on the open live-test screen and waits for the owner's OK.",
     "vault_get_address reads the wallet the owner connected, and vault_sign_message asks that wallet to sign a message, returning at once with a request_id.",
+    "vault_create_pairing_link issues a one-use seekervault://pair deep link and an https://…/pair landing page; the owner still confirms on the phone.",
     ...(demoTools
       ? [
           "vault_request_ack, a development and demo tool, queues text for the owner to acknowledge later, and returns at once with a request_id.",
@@ -88,6 +92,8 @@ export interface McpEndpointOptions {
    * from a loopback Host — the stack's own private endpoint, which is published nowhere.
    */
   readonly oauth?: OAuthConfig;
+  /** Issues the operator pairing code the phone still has to confirm. */
+  readonly issuePairing: () => IssuedPairing;
 }
 
 export function createMcpEndpoint(
@@ -95,7 +101,7 @@ export function createMcpEndpoint(
   core: AgentRequests,
   mcpToken: string,
   log: (message: string) => void,
-  options: McpEndpointOptions = {},
+  options: McpEndpointOptions,
 ): McpEndpoint {
   const demoTools = options.demoTools === true;
   const hostnames: ReadonlySet<string> = new Set([
@@ -164,6 +170,7 @@ export function createMcpEndpoint(
       },
     );
     registerRequestTools(server, core, log, { demoTools });
+    registerPairingLinkTool(server, options.issuePairing, log);
     return server;
   }
 
@@ -246,7 +253,7 @@ export function createMcpEndpoint(
       };
     }
     if (
-      isLoopbackHost(req.headers.host) &&
+      isLoopbackHost(requestHost(req)) &&
       bearerTokenMatches(authorization, mcpToken)
     ) {
       return undefined;
@@ -352,7 +359,7 @@ function hostRejectionFor(
   req: IncomingMessage,
   hostnames: ReadonlySet<string>,
 ): Rejection | undefined {
-  if (!isAllowed(hostnameOf(`http://${req.headers.host ?? ""}`), hostnames)) {
+  if (!isAllowed(hostnameOf(`http://${requestHost(req) ?? ""}`), hostnames)) {
     return {
       status: 403,
       reason:
@@ -370,6 +377,23 @@ function hostRejectionFor(
     };
   }
   return undefined;
+}
+
+/**
+ * HTTP/1 sends Host. HTTP/2 sends :authority and often omits Host; App Platform's h2c path is
+ * the latter. Either value is the name the client used to reach this origin.
+ */
+function requestHost(req: IncomingMessage): string | undefined {
+  const headers = req.headers;
+  return headerValue(headers.host) ?? headerValue(headers[":authority"]);
+}
+
+function headerValue(
+  value: string | readonly string[] | undefined,
+): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const trimmed = raw?.trim();
+  return trimmed === undefined || trimmed === "" ? undefined : trimmed;
 }
 
 function isLoopbackHost(host: string | undefined): boolean {

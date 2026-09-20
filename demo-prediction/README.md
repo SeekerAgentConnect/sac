@@ -30,6 +30,7 @@ can see would be a publisher that argues with itself.
 | File | What it is |
 | --- | --- |
 | [`cmd/prediction`](cmd/prediction) | The publisher: markets it discovered itself, served by the bundled `jupiter.prediction` plugin |
+| [`cmd/prediction-admin`](cmd/prediction-admin) | Password-gated HTML UI (SEE-138). A client of `/v1`, not a second writer |
 | [`cmd/publishctl`](cmd/publishctl) | The operator's tool: a three-line main over the shared client |
 | [`internal/jupiter`](internal/jupiter) | The provider: two endpoints, paced, and the only file here that names its host |
 | [`internal/discovery`](internal/discovery) | What a filter means, and what one cycle does |
@@ -140,7 +141,7 @@ It carries no secret, so it can go in a README, a QR code or a public post.
 
 The build context is the repository root, because this module's `go.mod` replaces the shared library
 with `../publisher-support` and the build needs that directory too. It needs nothing else:
-`demo-copytrading/` is never copied in, so no signal-writing API, no trader UI and no CopyTrading
+`demo-copytrading/` is never copied in, so no swap-writing API, no CopyTrading trader UI and no CopyTrading
 binary exists anywhere in this image.
 
 ```sh
@@ -279,6 +280,14 @@ docker compose run --rm ctl show <proposal id>
 # and the demonstration that this API takes no signal at all
 docker compose run --rm ctl create --in 2h   # 403 written_by_discovery
 ```
+
+### The admin UI
+
+`cmd/prediction-admin` is a password-gated HTML client of the same `/v1` API (SEE-138). It lists
+signals already published to subscribers, searches the provider listing with typed filters, and
+asks discovery to publish a selected market. It is a client, not a second writer: `POST /v1/requests`
+stays 403. Side and stake stay on the phone. App Platform serves it at `/trader`; Compose starts it
+only with `--profile admin`.
 
 The same calls over plain HTTP, which is all the CLI does:
 

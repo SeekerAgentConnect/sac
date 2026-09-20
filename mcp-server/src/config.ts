@@ -75,6 +75,11 @@ export interface SidecarConfig {
   readonly solanaRpcTimeoutMs?: number;
   /** Cleartext HTTP/2 update listener for loopback development (SIDECAR_UPDATE_PORT). */
   readonly updatePort?: number;
+  /**
+   * Main listener is HTTP/2 cleartext (h2c) and advertises SIDECAR_PUBLIC_URL as the update
+   * origin. For a TLS-terminating HTTP/2 reverse proxy (App Platform `protocol: HTTP2`).
+   */
+  readonly h2c?: boolean;
   /** PEM identity for the production HTTP/2 + HTTP/1.1 TLS listener. */
   readonly tlsCertificatePath?: string;
   readonly tlsPrivateKeyPath?: string;
@@ -256,6 +261,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     65_535,
     problems,
   );
+  const h2c = flag(env, "SIDECAR_H2C", problems);
   const tlsCertificatePath = env.SIDECAR_TLS_CERT_PATH?.trim() || undefined;
   const tlsPrivateKeyPath = env.SIDECAR_TLS_KEY_PATH?.trim() || undefined;
   const fcmProjectId = firebaseProjectId(env, problems);
@@ -272,6 +278,14 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
       "SIDECAR_UPDATE_PORT is the loopback development listener and cannot be combined with the production TLS listener.",
     );
   }
+  if (h2c && tlsCertificatePath !== undefined) {
+    problems.push(
+      "SIDECAR_H2C is the reverse-proxy HTTP/2 listener and cannot be combined with the production TLS listener.",
+    );
+  }
+  if (h2c && updatePort !== undefined) {
+    problems.push("SIDECAR_H2C cannot be combined with SIDECAR_UPDATE_PORT.");
+  }
   if (
     tlsCertificatePath !== undefined &&
     tlsPrivateKeyPath !== undefined &&
@@ -281,6 +295,14 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     if (url.protocol !== "https:") {
       problems.push(
         "SIDECAR_PUBLIC_URL must use https:// when the production TLS listener is configured.",
+      );
+    }
+  }
+  if (h2c && publicUrl !== undefined) {
+    const url = new URL(publicUrl);
+    if (url.protocol !== "https:") {
+      problems.push(
+        "SIDECAR_PUBLIC_URL must use https:// when SIDECAR_H2C is true.",
       );
     }
   }
@@ -316,6 +338,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     solanaRpcUrl,
     solanaRpcTimeoutMs,
     ...(updatePort === undefined ? {} : { updatePort }),
+    ...(h2c ? { h2c: true } : {}),
     ...(tlsCertificatePath === undefined ? {} : { tlsCertificatePath }),
     ...(tlsPrivateKeyPath === undefined ? {} : { tlsPrivateKeyPath }),
     ...(fcmProjectId === undefined ? {} : { fcmProjectId }),

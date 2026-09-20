@@ -100,6 +100,12 @@ func predicting(t *testing.T, fake *fakeGateway, listing *provider) *template {
 		plan.Authorship = support.ByDiscovery
 		plan.Markets = held.Store
 		plan.Cycles = demoapi.Cycles{Reconciler: reconciler}
+		held.Wrap = func(next http.Handler) http.Handler {
+			return demoapi.Overlay(next, token, reconciler, func(ctx context.Context) error {
+				_, err := held.Drainer.Pass(ctx)
+				return err
+			})
+		}
 	})
 }
 

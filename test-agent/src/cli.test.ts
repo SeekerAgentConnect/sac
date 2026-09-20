@@ -708,6 +708,7 @@ describe("pnpm agent", () => {
         "vault_get_address",
         "vault_get_request",
         "vault_cancel_request",
+        "vault_create_pairing_link",
       ],
     );
   });

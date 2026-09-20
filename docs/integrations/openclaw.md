@@ -54,7 +54,8 @@ openclaw mcp set seeker_vault '{
     "vault_transfer",
     "vault_request_ack",
     "vault_get_request",
-    "vault_cancel_request"
+    "vault_cancel_request",
+    "vault_create_pairing_link"
   ]}
 }'
 ```

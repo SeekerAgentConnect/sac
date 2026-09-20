@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { request } from "node:http";
+import { connect as http2Connect } from "node:http2";
 import { after, before, describe, it } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -40,6 +41,33 @@ function isConnectError(code: Code): (error: unknown) => boolean {
 }
 
 /** A raw POST to /mcp, so tests control every header, including Host. */
+function postMcpH2(
+  target: Sidecar,
+  headers: Record<string, string>,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const client = http2Connect(target.url);
+    client.once("error", reject);
+    const req = client.request({
+      ":method": "POST",
+      ":path": "/mcp",
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${MCP_TOKEN}`,
+      ...headers,
+    });
+    req.once("response", (responseHeaders) => {
+      req.resume();
+      req.once("end", () => {
+        client.close();
+        resolve(Number(responseHeaders[":status"] ?? 0));
+      });
+    });
+    req.once("error", reject);
+    req.end(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }));
+  });
+}
+
 function postMcp(
   headers: Record<string, string>,
   target: Sidecar = sidecar,
@@ -263,6 +291,7 @@ describe("sidecar", () => {
           "vault_get_address",
           "vault_get_request",
           "vault_cancel_request",
+          "vault_create_pairing_link",
         ],
       );
       let settled = false;
@@ -503,6 +532,34 @@ describe("sidecar", () => {
       assert.equal(await postMcp(headers), 403); // not allowed without the setting
     } finally {
       await vpn.close();
+    }
+  });
+
+  it("accepts an MCP_ALLOWED_HOSTS name in HTTP/2 :authority when Host is absent", async () => {
+    const h2c = await startSidecar(
+      {
+        host: "127.0.0.1",
+        port: 0,
+        mcpToken: MCP_TOKEN,
+        phoneToken: PHONE_TOKEN,
+        liveCommandTimeoutSeconds: 1,
+        databasePath: ":memory:",
+        requestTtlSeconds: 86_400,
+        pendingLimit: 100,
+        h2c: true,
+        publicUrl: "https://vault.example.com",
+        mcpAllowedHosts: ["vault.example.com"],
+      },
+      { log: () => undefined },
+    );
+    try {
+      assert.notEqual(
+        await postMcpH2(h2c, { ":authority": "vault.example.com" }),
+        403,
+      );
+      assert.equal(await postMcpH2(h2c, { ":authority": "evil.example" }), 403);
+    } finally {
+      await h2c.close();
     }
   });
 

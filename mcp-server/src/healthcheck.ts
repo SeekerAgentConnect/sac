@@ -1,5 +1,6 @@
-/** The container readiness probe for both the cleartext and native-TLS listeners. */
+/** The container readiness probe for HTTP/1, h2c, and native-TLS listeners. */
 import { request as httpRequest } from "node:http";
+import { connect as http2Connect } from "node:http2";
 import { request as httpsRequest } from "node:https";
 import { resolve } from "node:path";
 import { rootCertificates } from "node:tls";
@@ -37,6 +38,12 @@ export async function checkHealth(
     );
   }
   const secure = certificate !== undefined;
+  const h2c = env.SIDECAR_H2C?.trim().toLowerCase() === "true";
+  if (h2c && secure) {
+    throw new Error(
+      "SIDECAR_H2C cannot be combined with SIDECAR_TLS_CERT_PATH",
+    );
+  }
   const publicUrl = secure ? tlsPublicUrl(env.SIDECAR_PUBLIC_URL) : undefined;
   const caPath = env.SIDECAR_HEALTH_CA_CERT_PATH?.trim() || undefined;
   if (!secure && caPath !== undefined) {
@@ -49,64 +56,74 @@ export async function checkHealth(
     throw new Error("the health-check timeout must be a positive whole number");
   }
 
-  const body = await new Promise<string>((resolveBody, reject) => {
-    const abort = new AbortController();
-    const timer = setTimeout(() => {
-      abort.abort(new Error(`health check timed out after ${timeoutMs} ms`));
-    }, timeoutMs);
-    timer.unref();
-    const request = (secure ? httpsRequest : httpRequest)(
-      {
-        hostname: "127.0.0.1",
-        port,
-        path: "/healthz",
-        method: "GET",
-        headers: {
-          Host: secure ? (publicUrl?.host ?? "") : `127.0.0.1:${String(port)}`,
-        },
-        signal: abort.signal,
-        ...(secure
-          ? {
-              servername: publicUrl?.hostname,
-              rejectUnauthorized: true,
-              ...(caPath === undefined
-                ? {}
-                : { ca: [...rootCertificates, readTlsTrustAnchor(caPath)] }),
-            }
-          : {}),
-      },
-      (response) => {
-        const chunks: Buffer[] = [];
-        let bytes = 0;
-        response.on("data", (chunk: Buffer) => {
-          bytes += chunk.byteLength;
-          if (bytes > MAX_BODY_BYTES) {
-            response.destroy(new Error("health response exceeded 1024 bytes"));
-            return;
-          }
-          chunks.push(chunk);
-        });
-        response.once("error", reject);
-        response.once("end", () => {
+  const body = h2c
+    ? await checkH2cHealth(port, timeoutMs)
+    : await new Promise<string>((resolveBody, reject) => {
+        const abort = new AbortController();
+        const timer = setTimeout(() => {
+          abort.abort(
+            new Error(`health check timed out after ${timeoutMs} ms`),
+          );
+        }, timeoutMs);
+        timer.unref();
+        const request = (secure ? httpsRequest : httpRequest)(
+          {
+            hostname: "127.0.0.1",
+            port,
+            path: "/healthz",
+            method: "GET",
+            headers: {
+              Host: secure
+                ? (publicUrl?.host ?? "")
+                : `127.0.0.1:${String(port)}`,
+            },
+            signal: abort.signal,
+            ...(secure
+              ? {
+                  servername: publicUrl?.hostname,
+                  rejectUnauthorized: true,
+                  ...(caPath === undefined
+                    ? {}
+                    : {
+                        ca: [...rootCertificates, readTlsTrustAnchor(caPath)],
+                      }),
+                }
+              : {}),
+          },
+          (response) => {
+            const chunks: Buffer[] = [];
+            let bytes = 0;
+            response.on("data", (chunk: Buffer) => {
+              bytes += chunk.byteLength;
+              if (bytes > MAX_BODY_BYTES) {
+                response.destroy(
+                  new Error("health response exceeded 1024 bytes"),
+                );
+                return;
+              }
+              chunks.push(chunk);
+            });
+            response.once("error", reject);
+            response.once("end", () => {
+              clearTimeout(timer);
+              if (response.statusCode !== 200) {
+                reject(
+                  new Error(
+                    `health endpoint returned HTTP ${String(response.statusCode ?? 0)}`,
+                  ),
+                );
+                return;
+              }
+              resolveBody(Buffer.concat(chunks).toString("utf8"));
+            });
+          },
+        );
+        request.once("error", (error) => {
           clearTimeout(timer);
-          if (response.statusCode !== 200) {
-            reject(
-              new Error(
-                `health endpoint returned HTTP ${String(response.statusCode ?? 0)}`,
-              ),
-            );
-            return;
-          }
-          resolveBody(Buffer.concat(chunks).toString("utf8"));
+          reject(error);
         });
-      },
-    );
-    request.once("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    request.end();
-  });
+        request.end();
+      });
 
   let parsed: unknown;
   try {
@@ -122,6 +139,52 @@ export async function checkHealth(
   ) {
     throw new Error('health endpoint did not return {"status":"ok"}');
   }
+}
+
+function checkH2cHealth(port: number, timeoutMs: number): Promise<string> {
+  return new Promise((resolveBody, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`health check timed out after ${timeoutMs} ms`));
+    }, timeoutMs);
+    timer.unref();
+    const client = http2Connect(`http://127.0.0.1:${String(port)}`);
+    const fail = (error: Error) => {
+      clearTimeout(timer);
+      client.close();
+      reject(error);
+    };
+    client.once("error", fail);
+    const request = client.request({
+      ":method": "GET",
+      ":path": "/healthz",
+      ":authority": `127.0.0.1:${String(port)}`,
+    });
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    request.on("data", (chunk: Buffer) => {
+      bytes += chunk.byteLength;
+      if (bytes > MAX_BODY_BYTES) {
+        request.close();
+        fail(new Error("health response exceeded 1024 bytes"));
+      } else {
+        chunks.push(chunk);
+      }
+    });
+    request.once("error", fail);
+    request.once("response", (headers) => {
+      const status = Number(headers[":status"] ?? 0);
+      request.once("end", () => {
+        clearTimeout(timer);
+        client.close();
+        if (status !== 200) {
+          reject(new Error(`health endpoint returned HTTP ${String(status)}`));
+          return;
+        }
+        resolveBody(Buffer.concat(chunks).toString("utf8"));
+      });
+    });
+    request.end();
+  });
 }
 
 function portOf(raw: string | undefined): number {

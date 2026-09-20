@@ -413,6 +413,7 @@ A `sign_message` request is the one wallet action with no transaction: it produc
 | `vault_get_capabilities` | SAW-016 | Nothing | What this sidecar serves: `approval`, `signing`, `operations`, `wallet_connected`, and the limits |
 | `vault_get_request` | SAW-010 | `request_id` | The request as it is now |
 | `vault_cancel_request` | SAW-010 | `request_id` | The request, CANCELLED |
+| `vault_create_pairing_link` | hosted operator convenience | Nothing | `pairing_uri` (`seekervault://pair` deep link), `https_url` (`https://<origin>/pair` landing page), `server_url`, `expires_at`, optional `replaces` |
 
 - **A creation tool answers at once,** with the request ID and PENDING. Unlike `vault_display_command`, it never waits for the user. A stored request isn't an approved one.
 - **`vault_request_ack` is served only with `MCP_DEMO_TOOLS=true`.** Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The other tools are always served.
@@ -484,10 +485,12 @@ Every Connect error from `PairingService` and `RequestService` carries a `Reques
 
 The operator shows the phone a pairing code, and the phone exchanges the code's token for a connection (SAW-011). [`docs/security.md`](security.md#pairing) explains the model. This section is the format.
 
-**The pairing code** is a URI. `pnpm pair` shows it as a QR code and as text:
+**The pairing code** is a URI. `pnpm pair` and `vault_create_pairing_link` show it as a QR/text
+deep link and as an HTTPS landing page with the same query:
 
 ```text
 seekervault://pair?v=1&url=https%3A%2F%2Fmac.tailnet.ts.net&server=9fda5035-f3b4-4ec3-a68a-5e6caa02397a&token=Lq3v7Yk2Qm9XwTzR4bN8cJ1dH6fG0sA5eP-uV_iKoLw
+https://mac.tailnet.ts.net/pair?v=1&url=https%3A%2F%2Fmac.tailnet.ts.net&server=9fda5035-f3b4-4ec3-a68a-5e6caa02397a&token=Lq3v7Yk2Qm9XwTzR4bN8cJ1dH6fG0sA5eP-uV_iKoLw
 ```
 
 | Parameter | Meaning | Rules |
@@ -665,9 +668,10 @@ Each credential opens one role:
 | `UpdateService.Subscribe`, `UpdateService.Sync` (from SAW-049) | `unauthenticated` | `unauthenticated` | Yes, for its own connection | `unauthenticated` | `unauthenticated` |
 | `LiveCommandService`: `WatchCommands`, `AcknowledgeCommand` (Stage 1) | `unauthenticated` | `unauthenticated` | `unauthenticated` | Yes | `unauthenticated` |
 
-- **Only the paired phone can prepare, review, or answer a request, publish a wallet, or register an FCM target,** and only for its own connection. No MCP tool pairs, prepares, approves, submits a result, registers a target, revokes, or changes the wallet, so an agent can't act as the phone. `vault_sign_message` only stores a request for the owner to decide; `vault_get_address` and `vault_get_capabilities` only read.
+- **Only the paired phone can prepare, review, or answer a request, publish a wallet, or register an FCM target,** and only for its own connection. No MCP tool prepares, approves, submits a result, registers a target, revokes, or changes the wallet, so an agent can't act as the phone. `vault_create_pairing_link` issues the same one-use code as the operator CLI; the owner still confirms on the phone, and whoever uses the code first becomes the paired phone. `vault_sign_message` only stores a request for the owner to decide; `vault_get_address` and `vault_get_capabilities` only read.
 - **`PHONE_TOKEN` is the Stage 1 development credential.** It opens the live diagnostic and nothing else.
 - **`GET /healthz` needs no credential.**
+- **`GET /pair` needs no credential.** It is the HTTPS landing page for a pairing code; the secret is the token in the query, the same as the QR.
 - `mcp-server/src/pairing/roles.test.ts` checks every cell, and every new RPC or tool joins that test.
 
 ### Compatibility with Stage 1

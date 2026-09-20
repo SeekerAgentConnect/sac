@@ -46,6 +46,28 @@ class PairingCodeTest {
     }
 
     @Test
+    fun readsTheHttpsLandingPageAsTheSameCode() {
+        val landing =
+            "https://vault.example.com/pair?v=1&url=${URLEncoder.encode("https://vault.example.com", Charsets.UTF_8)}" +
+                "&server=$serverId&token=$token"
+        assertEquals(
+            PairingCode("https://vault.example.com", serverId, token),
+            codeOf(landing, release),
+        )
+        assertEquals(
+            PairingCode("http://127.0.0.1:8080", serverId, token),
+            codeOf(
+                "http://127.0.0.1:8080/pair?v=1&url=${URLEncoder.encode("http://127.0.0.1:8080", Charsets.UTF_8)}" +
+                    "&server=$serverId&token=$token",
+            ),
+        )
+        assertEquals(
+            PairingCodeProblem.NotSeekerVault,
+            problemOf("https://vault.example.com/invite?v=1&url=https%3A%2F%2Fvault.example.com"),
+        )
+    }
+
+    @Test
     fun acceptsPlainHttpOnlyToLoopbackAndOnlyWherethePlatformAllowsIt() {
         assertEquals("http://127.0.0.1:8080", codeOf(uri("http://127.0.0.1:8080")).serverUrl)
         assertEquals("http://localhost:8080", codeOf(uri("http://localhost:8080")).serverUrl)

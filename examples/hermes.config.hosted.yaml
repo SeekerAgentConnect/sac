@@ -45,6 +45,7 @@ mcp_servers:
           vault_transfer,
           vault_get_request,
           vault_cancel_request,
+          vault_create_pairing_link,
         ]
       resources: false
       prompts: false

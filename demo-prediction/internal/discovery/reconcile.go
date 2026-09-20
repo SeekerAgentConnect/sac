@@ -186,7 +186,7 @@ func (r *Reconciler) Pass(ctx context.Context) (markets.Cycle, error) {
 		}
 	}
 
-	found, fault, err := r.walk(ctx, &cycle, now)
+	found, fault, err := r.collect(ctx, r.filters, &cycle, now, 0)
 	if err != nil {
 		return cycle, err
 	}
@@ -245,15 +245,16 @@ func (r *Reconciler) Pass(ctx context.Context) (markets.Cycle, error) {
 	return recorded, nil
 }
 
-// walk reads the listing, bucket by bucket and page by page, and returns the markets that matched.
+// collect reads the listing, bucket by bucket and page by page, and returns the markets that
+// matched [filters]. A cycle uses the deployment's filters; an operator search uses the query's.
 //
 // It stops at the first failure rather than trying the next bucket. A provider that rate-limited
 // one call will rate-limit the next, and a cycle that kept going would turn one refusal into a
 // dozen: what was read is used, the cycle is recorded as partial, and the next one starts again.
-func (r *Reconciler) walk(ctx context.Context, cycle *markets.Cycle, now time.Time) (
+func (r *Reconciler) collect(ctx context.Context, filters Filters, cycle *markets.Cycle, now time.Time, limit int) (
 	[]candidate, *jupiter.Fault, error,
 ) {
-	buckets := r.filters.Categories
+	buckets := filters.Categories
 	if len(buckets) == 0 {
 		// One walk, with no bucket at all: whatever the provider's default listing is.
 		buckets = []string{""}
@@ -264,14 +265,14 @@ func (r *Reconciler) walk(ctx context.Context, cycle *markets.Cycle, now time.Ti
 	// two proposals.
 	already := map[string]bool{}
 	for _, bucket := range buckets {
-		for page := 0; page < r.filters.MostPages; page++ {
-			start := page * r.filters.PageSize
+		for page := 0; page < filters.MostPages; page++ {
+			start := page * filters.PageSize
 			answer, err := r.source.Events(ctx, jupiter.Query{
-				Source:   r.filters.Source,
+				Source:   filters.Source,
 				Category: bucket,
-				Filter:   r.filters.Filter,
+				Filter:   filters.Filter,
 				Start:    start,
-				End:      start + r.filters.PageSize,
+				End:      start + filters.PageSize,
 			})
 			if err != nil {
 				var fault *jupiter.Fault
@@ -284,18 +285,21 @@ func (r *Reconciler) walk(ctx context.Context, cycle *markets.Cycle, now time.Ti
 			cycle.Events += len(answer.Events)
 			for _, event := range answer.Events {
 				for _, market := range event.Markets {
-					market = r.named(market, event)
+					market = named(market, event, filters.Source)
 					name := market.Provider + "/" + market.MarketID
 					if already[name] {
 						continue
 					}
 					cycle.Considered++
-					if reason := r.filters.Match(event, market, now); reason != "" {
+					if reason := filters.Match(event, market, now); reason != "" {
 						cycle.Reasons[reason]++
 						continue
 					}
 					already[name] = true
 					found = append(found, candidate{event: event, market: market})
+					if limit > 0 && len(found) >= limit {
+						return found, nil, nil
+					}
 				}
 			}
 			if !answer.HasNext || len(answer.Events) == 0 {
@@ -315,12 +319,12 @@ type candidate struct {
 
 // named fills in what a market inside an event leaves implicit. A provider that stops repeating
 // itself in nested records must not turn one market into two rows.
-func (r *Reconciler) named(market jupiter.Market, event jupiter.Event) jupiter.Market {
+func named(market jupiter.Market, event jupiter.Event, source string) jupiter.Market {
 	if market.EventID == "" {
 		market.EventID = event.EventID
 	}
 	if market.Provider == "" {
-		market.Provider = r.filters.Source
+		market.Provider = source
 	}
 	if market.Provider == "" {
 		market.Provider = "unknown"
