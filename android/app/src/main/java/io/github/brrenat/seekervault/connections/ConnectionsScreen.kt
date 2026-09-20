@@ -455,19 +455,23 @@ private fun Connection.toHomeServerState(
     support: ServerSupport?,
     formatTime: (Instant) -> String,
 ): HomeServerState {
+    val liveState = directTransport(live)
+    val feedState = feedTransport(feed)
     val disconnected =
         revokedAt != null ||
             (mode == ConnectionMode.Direct && !hasCredential) ||
-            live == ForegroundConnectionState.Revoked
+            liveState == ForegroundConnectionState.Revoked
     val unreachable =
         !disconnected &&
             (support?.executable == false ||
-                feed is FeedListenerState.Unreachable ||
-                feed is FeedListenerState.Refused ||
-                feed is FeedListenerState.Reconnecting ||
-                live is ForegroundConnectionState.Unreachable ||
-                live is ForegroundConnectionState.Unsupported ||
-                (live == null && lastCheck?.outcome?.let { it != CheckOutcome.Ok } == true))
+                feedState is FeedListenerState.Unreachable ||
+                feedState is FeedListenerState.Refused ||
+                feedState is FeedListenerState.Reconnecting ||
+                liveState is ForegroundConnectionState.Unreachable ||
+                liveState is ForegroundConnectionState.Unsupported ||
+                (mode == ConnectionMode.Direct &&
+                    liveState == null &&
+                    lastCheck?.outcome?.let { it != CheckOutcome.Ok } == true))
     val rowState =
         when {
             disconnected -> ServerRowState.Disconnected
@@ -479,7 +483,7 @@ private fun Connection.toHomeServerState(
             ServerRowState.Disconnected -> HomeCopy.Disconnected
             ServerRowState.Unreachable ->
                 if (mode == ConnectionMode.GatewayFeed) {
-                    if (feed is FeedListenerState.Reconnecting) {
+                    if (feedState is FeedListenerState.Reconnecting) {
                         "${HomeCopy.Reconnecting} · $pending pending"
                     } else {
                         "${HomeCopy.Unreachable} · $pending pending"

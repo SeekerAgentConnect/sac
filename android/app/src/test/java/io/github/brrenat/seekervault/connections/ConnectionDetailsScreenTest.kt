@@ -102,7 +102,12 @@ class ConnectionDetailsScreenTest {
                 server = ServerRecord.Known(manifest),
             )
 
-        show(feed, support = ServerSupport.Supported, feed = FeedListenerState.Live(1))
+        show(
+            feed,
+            live = ForegroundConnectionState.Revoked,
+            support = ServerSupport.Supported,
+            feed = FeedListenerState.Live(1),
+        )
 
         compose
             .onNodeWithTag(ConnectionsTags.STATUS)
@@ -115,12 +120,77 @@ class ConnectionDetailsScreenTest {
         compose
             .onNodeWithTag(ConnectionsTags.field("plugins"))
             .assertTextContains("jupiter.prediction")
+        assertEquals(
+            false,
+            hasProblem(
+                feed,
+                live = ForegroundConnectionState.Revoked,
+                support = ServerSupport.Supported,
+                feed = FeedListenerState.Live(1),
+            ),
+        )
         compose
             .onNodeWithTag(ConnectionsTags.REFRESH)
             .performScrollTo()
             .assertIsEnabled()
             .performClick()
         assertEquals(listOf("refresh"), calls)
+    }
+
+    @Test
+    fun aFeedConnectingIsNotADirectRevocation() {
+        assertFeedHeadline(
+            FeedListenerState.Connecting,
+            R.string.connection_status_connecting,
+            false,
+        )
+    }
+
+    @Test
+    fun aFeedReconnectingIsNotADirectRevocation() {
+        assertFeedHeadline(
+            FeedListenerState.Reconnecting(2),
+            R.string.connection_status_reconnecting,
+            false,
+        )
+    }
+
+    @Test
+    fun aFeedWithNoStreamIsNotADirectRevocation() {
+        assertFeedHeadline(
+            FeedListenerState.NoStream,
+            R.string.connection_status_feed_available,
+            false,
+        )
+    }
+
+    @Test
+    fun aFeedUnreachableIsAProblemWithoutInheritingDirectRevokedCopy() {
+        assertFeedHeadline(
+            FeedListenerState.Unreachable(CheckOutcome.Unreachable),
+            R.string.connection_status_unreachable,
+            true,
+        )
+    }
+
+    private fun assertFeedHeadline(listener: FeedListenerState, status: Int, problem: Boolean) {
+        val connection = feed(setOf(PluginEnvironment.Production))
+        show(
+            connection,
+            live = ForegroundConnectionState.Revoked,
+            support = ServerSupport.Supported,
+            feed = listener,
+        )
+        compose.onNodeWithTag(ConnectionsTags.STATUS).assertTextEquals(context.getString(status))
+        assertEquals(
+            problem,
+            hasProblem(
+                connection,
+                live = ForegroundConnectionState.Revoked,
+                support = ServerSupport.Supported,
+                feed = listener,
+            ),
+        )
     }
 
     /** A feed of HOME's, whose publisher serves [served] (SEE-97). */
