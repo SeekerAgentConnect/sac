@@ -21,9 +21,9 @@ import org.junit.runner.RunWith
  * (docs/testing/transaction-fixtures.md).
  *
  * This is what makes the phone's review independent rather than merely separate: every case is a
- * real transaction produced by `mcp-server/src/solana/`, and the phone has to reach the same verdict
- * about it from the bytes alone — including for the cases that are valid transactions and simply
- * are not the one the owner was asked to approve.
+ * real transaction produced by `mcp-server/src/solana/`, and the phone has to reach the same
+ * verdict about it from the bytes alone — including for the cases that are valid transactions and
+ * simply are not the one the owner was asked to approve.
  */
 @RunWith(AndroidJUnit4::class)
 class TransactionFixturesTest {

@@ -67,9 +67,9 @@ internal val REQUEST_INVALIDATION_DATA =
     )
 
 /**
- * The feed hint, as the gateway's relay sends it (feed-gateway/internal/relay/relay.go). The two sides
- * agree by being pinned on both: a test on this side reads that file and fails if the kind or the
- * version drifts apart, because a mismatch would be silence rather than an error.
+ * The feed hint, as the gateway's relay sends it (feed-gateway/internal/relay/relay.go). The two
+ * sides agree by being pinned on both: a test on this side reads that file and fails if the kind or
+ * the version drifts apart, because a mismatch would be silence rather than an error.
  */
 internal val FEED_INVALIDATION_DATA =
     mapOf(

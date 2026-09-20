@@ -26,7 +26,9 @@ command/arguments entry: npm starts a long-running HTTP server, not a child proc
 
 ## Add the HTTP server
 
-Store the agent credential outside the registry entry:
+Store the agent credential outside the registry entry. The following source-start example reads the
+root `.env`; for Compose read `deploy/mcp/.env`, and for npm read the `config.env` passed to the
+executable:
 
 ```sh
 mkdir -p ~/.openclaw

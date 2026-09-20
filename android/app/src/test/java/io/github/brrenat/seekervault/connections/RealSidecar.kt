@@ -7,10 +7,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * The real MCP server from this repository (`node mcp-server/src/cli.ts start`) on a free loopback port with a
- * throwaway database and tokens, plus the operator's `pnpm pair` commands against it. It serves the
- * demo tool `vault_request_ack` (MCP_DEMO_TOOLS), and [stop] and [start] restart it on the same
- * port and database. Needs Node 24 on PATH and `pnpm install`.
+ * The real MCP server from this repository (`node mcp-server/src/cli.ts start`) on a free loopback
+ * port with a throwaway database and tokens, plus the operator's `pnpm pair` commands against it.
+ * It serves the demo tool `vault_request_ack` (MCP_DEMO_TOOLS), and [stop] and [start] restart it
+ * on the same port and database. Needs Node 24 on PATH and `pnpm install`.
  */
 class RealSidecar(private val productionUpdates: Boolean = false) : AutoCloseable {
     private val sidecarDir =

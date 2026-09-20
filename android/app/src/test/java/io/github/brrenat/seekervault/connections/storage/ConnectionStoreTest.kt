@@ -16,6 +16,7 @@ import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
 import java.io.File
 import java.time.Instant
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -121,6 +122,62 @@ class ConnectionStoreTest {
         assertEquals(ConnectionMode.Direct, restored.mode)
         assertEquals(ServerRecord.Unknown, restored.server)
         assertTrue(restored.usable)
+    }
+
+    @Test
+    fun upgradesAPreEnvironmentFeedFixtureWithoutLosingItsSubscription() {
+        // A literal version 2 public-feed record, from before the owner's environment choice was
+        // stored. It must remain the same anonymous gateway/channel subscription and take the old
+        // production meaning, then survive a current-version rewrite (SEE-136).
+        val manifest =
+            JSONObject()
+                .put("serverId", SERVER_B)
+                .put("protocolVersion", SERVER_PROTOCOL)
+                .put("settingsRevision", 1)
+                .put("mode", "gateway_feed")
+                .put("gatewayUrl", GATEWAY)
+                .put("channel", channelFor(SERVER_B))
+                .put(
+                    "required",
+                    JSONArray()
+                        .put(
+                            JSONObject()
+                                .put("id", "jupiter.prediction")
+                                .put("least", 1)
+                                .put("most", 1)
+                        ),
+                )
+                .put("environments", JSONArray().put("production"))
+                .put("name", "Prediction feed")
+        dir.mkdirs()
+        File(dir, "${b.id}.json")
+            .writeText(
+                JSONObject()
+                    .put("version", 2)
+                    .put("id", b.id)
+                    .put("label", "Saved prediction feed")
+                    .put("serverUrl", GATEWAY)
+                    .put("serverId", SERVER_B)
+                    .put("deviceName", "")
+                    .put("pairedAt", b.pairedAt.toString())
+                    .put("mode", "gateway_feed")
+                    .put(
+                        "server",
+                        JSONObject().put("state", "known").put("manifest", manifest),
+                    )
+                    .toString()
+            )
+
+        val upgraded = checkNotNull(store.get(b.id))
+        val known = upgraded.server as ServerRecord.Known
+
+        assertEquals(ConnectionMode.GatewayFeed, upgraded.mode)
+        assertEquals(PluginEnvironment.Production, upgraded.environment)
+        assertEquals(ServerReference.Feed(GATEWAY, channelFor(SERVER_B)), known.manifest.reference)
+        assertFalse(upgraded.hasCredential)
+        store.put(upgraded)
+        assertEquals(5, JSONObject(File(dir, "${b.id}.json").readText()).getInt("version"))
+        assertEquals(upgraded, ConnectionStore(dir).get(b.id))
     }
 
     @Test

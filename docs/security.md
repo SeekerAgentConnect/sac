@@ -398,8 +398,14 @@ The portable server in [`deploy/mcp`](../deploy/mcp) is host-loopback by default
 [`deploy/ingress/direct/Caddyfile`](../deploy/ingress/direct/Caddyfile) belongs to a separate Compose
 project, so a domain and certificate cannot become an application default by omission.
 
-- **Only named endpoints exist on the public interface.** `/mcp` and the phone's pairing, request, and update services are forwarded. `/healthz`, the Stage 1 `LiveCommandService` diagnostic, and every other path are refused at the gateway and never reach the sidecar. A request for a host the deployment does not serve is closed rather than answered.
-- **The health endpoint is the operator's.** In the public configuration it binds the network namespace's loopback address, so Compose cannot publish it to the host at all: the health check and the test agent reach it, nothing outside does.
+- **Only named endpoints exist on the public interface.** `/mcp`, OAuth metadata, and the phone's
+  unary pairing and request services are forwarded. `/healthz`, the Stage 1 `LiveCommandService`
+  diagnostic, the production `UpdateService`, and every other path are refused at the ingress and
+  never reach the application. A request for a host the deployment does not serve is closed rather
+  than answered.
+- **The health endpoint stays operator-local.** The application preset publishes it only on the
+  host's loopback mapping. The public ingress has no `/healthz` route, although its private Docker
+  health check can reach the application over the external ingress network.
 - **Credentials pass through untouched.** The gateway never inserts an `Authorization` header and never strips one, so each service still takes only its own credential ([roles](protocol.md#roles)). It does not rewrite `Host` either, which is what keeps `/mcp`'s DNS-rebinding check real; the public deployment puts its own domain in `MCP_ALLOWED_HOSTS` instead.
 - **Requests are bounded before they reach the sidecar.** Each route caps a request body at 64 KiB, the same limit the sidecar enforces itself, so an oversized body is refused one hop earlier.
 - **No credential reaches the access log.** Caddy redacts `Authorization`, `Cookie`, `Set-Cookie`, and `Proxy-Authorization` unless `log_credentials` is turned on, and it is not turned on in either file. Turning it on would put every agent token, phone credential, and pairing token into the log at once. Pairing codes never travel as a URL or a header — they are shown to the phone and sent in a request body, which is not logged.
@@ -415,7 +421,10 @@ An optional profile lets a hosted MCP client reach `/mcp` on a person's authoriz
 - **Only asymmetric signatures.** `RS*`, `PS*`, `ES*`, and `EdDSA` are accepted; a shared secret is not an algorithm this endpoint honours, and `none` never was. Opaque tokens are refused with an error that says so: there is no introspection call, so nothing is asked of the authorization server at request time.
 - **A token is never passed on.** It authorizes the MCP call and stops there. Nothing downstream ever sees it, and the sidecar has no upstream API to present it to.
 - **Scopes are a refusal, not a capability.** `MCP_OAUTH_SCOPE` names what a token must carry; a valid token without it is refused with `403` and `insufficient_scope`, which is how a client learns what to ask for. A scope grants nothing on its own — the tools an access token reaches are exactly the tools `MCP_TOKEN` reaches.
-- **There is no second way in.** While OAuth is on, `MCP_TOKEN` opens `/mcp` only under a loopback `Host`: that is the stack's own private endpoint inside the container's network namespace, which Compose cannot publish, and the public gateway closes any connection claiming a host it does not serve. A hosted client cannot fall back to it, and neither can anyone else.
+- **The two authentication profiles do not overlap on the public host.** While OAuth is on, a static
+  `MCP_TOKEN` remains accepted only with a loopback `Host`. The application preset's loopback host
+  mapping is an operator-local endpoint; the public ingress accepts only its declared domain. A
+  hosted client therefore cannot use the static token against the public OAuth resource.
 - **Revocation is bounded by the token's lifetime.** A signed token is not checked against the authorization server on each call, so revoking a grant stops the *next* token rather than the current one. Short access-token lifetimes are the answer, and removing `MCP_OAUTH_ISSUER` refuses every access token at once.
 - **The discovery document is public on purpose.** A client reads it before it has any credential. It names the authorization server, this resource, and the scope — no owner, no request, no connection, and no token.
 

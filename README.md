@@ -1,10 +1,19 @@
 # Seeker Agent Connect
 
-Seeker Agent Connect is an Android app for the Solana Seeker that acts as a control center for private requests and public feed signals. The repository also contains the self-hosted server and broadcast software the app talks to. Developers create one versioned request envelope through a private or feed adapter. The owner reviews each request on the phone and approves it through the wallet. The full plan is in [`RFC.md`](RFC.md).
+Seeker Agent Connect is an Android app for the Solana Seeker that acts as a control center for private requests and public feed signals. The repository also contains the independently runnable direct MCP server, reusable Direct Server SDK, shared public-feed gateway, and two optional feed demos. There are exactly two connection modes: private direct connections and public feeds through the gateway. The owner reviews each request on the phone and approves it through the wallet. The full plan is in [`RFC.md`](RFC.md).
 
 The checked-in [approved SEE-64 v4 design](docs/design/README.md), including the [dark/light interactive reference](docs/design/Seeker%20Agent%20Connect%20v4%20%28offline%29.html) and [screen flow](docs/design/Seeker%20Agent%20Connect%20v4%20-%20Flow%20Map%20%28offline%29.html), governs Android presentation.
 
 ## Current milestone
+
+**SEE-128 two-mode architecture.** SEE-130 removed gateway-private routing; SEE-131 through SEE-135
+then packaged the Direct Server SDK and MCP application, isolated the feed gateway and demos, and
+established independent deployment boundaries. SEE-136 reconciles the operator docs and joined
+verification. Docker-backed, live broker/Redis/TLS, current Hermes/OpenClaw, live Firebase, and
+physical-device checks unavailable on the final verification host are recorded **NOT RUN**, never
+as passes. Because required live acceptance remains unevidenced, parent SEE-128 remains In Progress.
+See [`docs/architecture.md`](docs/architecture.md) and the
+[`SEE-136 verification record`](docs/testing/see-136.md).
 
 **Stage 5.3: Optional FCM wake-up and request notifications.** SAW-054 opened the optional Firebase deployment boundary, SAW-055 gave each paired connection one authenticated rotating Firebase Installation ID, SAW-056 sends content-free invalidation hints after durable request changes, SAW-057 hands them to bounded authoritative Sync without competing with healthy foreground streams, SAW-058 presents only newly synchronized pending requests through a private Android channel and read-only tap route, and SAW-059 closes automated acceptance plus the physical Seeker runbook. SEE-105 gives both request and feed alerts a recognizable SAC icon and native type/source/summary hierarchy derived from the authoritative local cache. A ping itself still carries no request identity or content and authorizes nothing.
 
@@ -14,6 +23,8 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 
 | Task | Status |
 | --- | --- |
+| SEE-136: final two-mode documentation and verification | Active docs now describe only Direct and Public feed modes and the final SDK/MCP/gateway/demo boundaries. Isolated exact-tarball tests and native cross-component, restart, outbox, notification, upgrade, and path-boundary checks pass. Unavailable Docker-daemon, live broker/Redis/TLS, Hermes/OpenClaw, Firebase, and physical-device checks are **NOT RUN**; therefore SEE-128 remains In Progress. See [`docs/testing/see-136.md`](docs/testing/see-136.md). |
+| SEE-131 through SEE-134: package and isolate runtime components | The Direct Server SDK and executable MCP artifacts pack and install outside the workspace without publishing; the public gateway is its own module; `publisher-support` is non-deployable; and CopyTrading and Prediction are independently buildable/runnable demos. See [`docs/testing/see-131.md`](docs/testing/see-131.md), [`docs/testing/see-132.md`](docs/testing/see-132.md), [`docs/testing/see-133.md`](docs/testing/see-133.md), and [`docs/testing/see-134.md`](docs/testing/see-134.md). |
 | SEE-135: portable deployment boundaries | Done in canonical composition, operator guidance, and daemon-free verification. `deploy/feed`, `deploy/mcp`, `deploy/copytrading`, and `deploy/prediction` are independent projects; optional ingress and Tailscale/Funnel examples have separate lifecycles and no service-namespace or host networking. SQLite volume/file identities and old lineages are explicit, while Centrifugo Redis is relocatable by URL/auth/TLS configuration. Docker runtime and physical-device checks are **NOT RUN** on this host; see [`deploy/README.md`](deploy/README.md) and [`docs/testing/see-135.md`](docs/testing/see-135.md). |
 | SEE-130: retire gateway-private routing | Done in code and automated verification. Direct pairing/results and public feed publication/subscription remain the only active paths. Invitation/device/private publisher RPCs, the third listener, SDK adapters/examples, generated bindings, proxy routes and Android network/UI branches are removed; identifiers are permanently reserved/deny-listed. Broadcast schema v3 transactionally drops private routing data while preserving public bytes and outbox state. Android rewrites old private records to an inert explanation, deletes credentials, settles unfinished delivery as undeliverable, and offers fresh direct pairing without conversion. Physical-device verification is **NOT RUN** by ticket constraint; see [`docs/testing/see-130.md`](docs/testing/see-130.md). |
 | SEE-122: library-composed sheets | Wallet hand-off, Connection detail, connection rules, Global rules, add/edit asset, and add address now use six stateless `:designsystem` compositions with thin app adapters preserving the existing behavior. Their six committed Roborazzi fixtures pair with design-flow references 7–12 with an empty difference list, including stacked blur and pinned sheet chrome. See [`docs/wiki/library-sheets.md`](docs/wiki/library-sheets.md) and the [visual review](docs/reviews/see-122/README.md). Physical Seeker verification remains **NOT RUN**. |
@@ -117,7 +128,7 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 
 | Path | Contents |
 | --- | --- |
-| `android/` | Kotlin/Compose/Material 3 app with one `app` module: the connection screens (pairing, details) and the live-test screen, with their Connect clients; see [`docs/development/android.md`](docs/development/android.md) |
+| `android/` | Kotlin/Compose Android project with `app` and `designsystem` modules: the two connection modes, review/wallet flows, reusable UI and previews; see [`docs/development/android.md`](docs/development/android.md) |
 | `server-sdk/` | Embeddable TypeScript Direct Server SDK: durable lifecycle, pairing, phone APIs, updates and public package exports; see [`server-sdk/README.md`](server-sdk/README.md) and [`docs/development/server-sdk.md`](docs/development/server-sdk.md) |
 | `mcp-server/` | Self-hosted TypeScript/Node MCP product: one source/npm/Docker CLI, `/mcp`, `/healthz`, direct phone APIs, provider adapters, stable external state and artifact verification, consuming only the public SDK API; see its [`README`](mcp-server/README.md) and [`docs/development/mcp-server.md`](docs/development/mcp-server.md) |
 | `proto/` | Protobuf contract (a Buf module) and cross-runtime fixtures in `proto/fixtures`; see [`docs/protocol.md`](docs/protocol.md) |
@@ -140,7 +151,7 @@ To go from a fresh MacBook to "Hello Seeker" on the phone, follow [`docs/guides/
 
 ## Self-hosting
 
-To run the server half properly — in containers, on your own machine or a VPS you own — follow [`docs/guides/self-hosting.md`](docs/guides/self-hosting.md). It is numbered from a clean checkout to a first request waiting on the phone, for [your own machine](docs/guides/self-hosting.md#deploy-it-on-your-own-machine) and for [a Linux VPS](docs/guides/self-hosting.md#deploy-it-on-a-linux-vps) with HTTPS on a domain you control, and it covers what comes after the first start: [logs, credential rotation, re-pairing, updates, and backups](docs/guides/self-hosting.md#operating-it), and [what recovery can and cannot do](docs/guides/self-hosting.md#what-recovery-can-and-cannot-do).
+To run the direct MCP server in containers, on your own machine or a VPS you own, follow [`docs/guides/self-hosting.md`](docs/guides/self-hosting.md). It covers the [local portable deployment](docs/guides/self-hosting.md#local-portable-deployment), [optional public ingress](docs/guides/self-hosting.md#optional-public-ingress), [data identity and backup](docs/guides/self-hosting.md#data-identity-and-backup), replacement/rollback, and troubleshooting.
 
 Everything builds from this checkout, and nothing in the path is ours. It does need things from other people — a domain and a certificate authority to go public, somebody's Solana RPC endpoint for transfers, an authorization server for a hosted client — and [What this needs from outside](docs/guides/self-hosting.md#what-this-needs-from-outside) is the full list. Connecting an agent is [Hermes](docs/integrations/hermes.md) by default, or [Claude over OAuth](docs/integrations/claude.md) as an option.
 
@@ -182,14 +193,15 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | Command | What it does | Status |
 | --- | --- | --- |
 | `pnpm install --frozen-lockfile` | Installs exactly what the committed lockfile specifies | Works |
-| `pnpm check` | Runs Prettier, `buf format`, ESLint, `buf lint`, TypeScript type checks, and the MCP-server tests without changing any files | Works |
+| `pnpm check` | Runs Prettier, `buf format`, ESLint, `buf lint`, the SDK build, and every pnpm workspace's type checks and tests without changing files | Works |
 | `pnpm check:android` | Rejects raw production colour/dimension/type literals outside `:designsystem`, runs Spotless (ktfmt), Android unit tests and both modules' lint, and builds the debug APK and instrumentation test APK | Works |
-| `pnpm check:feed-gateway` | Checks the feed gateway (SEE-90): `gofmt`, `go vet`, and its Go tests. Needs Go; no other check does | Works |
+| `pnpm check:feed-gateway` | Checks the feed gateway (SEE-90): `gofmt`, `go vet`, and its Go tests. Needs Go; demo, integration, and load checks do too | Works |
 | `pnpm check:deployments` | Resolves all eight portable/ingress/operator Compose presets and checks their service, network, route, Redis, and volume boundaries without contacting the Docker daemon | Works |
 | `pnpm check:demos` | Checks the shared library and both public-feed demos (SEE-95, SEE-96, SEE-134): `gofmt`, `go vet`, and the Go tests, **one module at a time** — including the two that run the **real** gateway as a separate process, which it builds for you. `pnpm check:publisher-support`, `pnpm check:copytrading` and `pnpm check:prediction` run one of them. The test that reads the live prediction provider is opt-in (`SEEKERVAULT_JUPITER=1`) and is not in it. Needs Go | Works |
 | `docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --build` | Builds and starts the feed gateway, Centrifugo, and Redis on the portable reference topology | NOT RUN: Docker daemon socket permission denied |
 | `pnpm build` | Compiles the SDK, MCP server and test agent; the SDK runtime and declarations go to `server-sdk/dist`, and the staged self-contained MCP package goes to `mcp-server/package` | Works |
 | `pnpm test:server-sdk-package` | Runs real `npm pack --dry-run` and `npm pack`, audits the tarball, installs it outside the workspace, type-checks its public exports, verifies import has no side effects, and exercises pairing/lifecycle/restart/idempotency | Works; never publishes |
+| `pnpm test:mcp-server-package` | Builds the exact executable MCP tarball, audits its vendored SDK and dependencies, exercises local/global-style/transient installs, then drives health, pairing, MCP discovery, phone result, restart persistence, reinstall, and competing-store refusal outside the workspace | Works; never publishes |
 | `docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --build` | Builds and starts only the direct MCP server on host loopback ([self-hosting](docs/guides/self-hosting.md)) | NOT RUN: Docker daemon socket permission denied |
 | `pnpm dev:mcp-server` | Starts the MCP server with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. `pnpm dev:sidecar` is a migration alias. | Works |
 | `pnpm pair [status \| revoke]` | Shows a one-use pairing code for the phone, as a QR code and as text. `status` shows the paired phone, and `revoke` revokes it. See [`docs/development/mcp-server.md`](docs/development/mcp-server.md#pairing-a-phone), and for the app, [`docs/guides/pairing.md`](docs/guides/pairing.md). | Works |
@@ -199,7 +211,7 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm agent ack <text>`, `get <id>`, `cancel <id>` | Queues an acknowledgement for the owner, reads a request back, or withdraws one, through the durable MCP tools. Each prints the request as JSON. See [`test-agent/README.md`](test-agent/README.md). | Works; needs a paired phone, and `ack` needs `MCP_DEMO_TOOLS=true` |
 | `pnpm agent address` | Prints the wallet the owner connected on their phone, and its network, through `vault_get_address`. See [`docs/guides/wallet-setup.md`](docs/guides/wallet-setup.md). | Works; exits 9 with `WALLET_NOT_CONNECTED` until the owner connects one |
 | `pnpm agent sign <text>` | Asks the owner's wallet to sign the text, through `vault_sign_message`. It prints the request as PENDING; the owner approves it on the phone, and `pnpm agent get <id>` reads the signature back and verifies it. See [`docs/guides/message-signing.md`](docs/guides/message-signing.md). | Works; needs a connected wallet |
-| `pnpm agent transfer <to> <amount>` | Asks the owner to send `<amount>` base units to `<to>`, through `vault_transfer`; `--mint <address>` sends an SPL token instead of SOL. It prints the request as PENDING, and builds, signs, and sends nothing. See [`docs/guides/transfers.md`](docs/guides/transfers.md). | Works; needs a connected wallet and `SOLANA_RPC_URL` |
+| `pnpm agent transfer <to> <amount> --wallet <address> --network <name>` | Asks the named owner wallet to send `<amount>` base units to `<to>`, through `vault_transfer`; `--mint <address>` sends a classic SPL token instead of SOL. It prints the request as PENDING, and builds, signs, and sends nothing. See [`docs/guides/transfers.md`](docs/guides/transfers.md). | Works; needs a connected wallet and `SOLANA_RPC_URL` |
 | `pnpm agent capabilities` | Prints what the sidecar serves, through `vault_get_capabilities`: manual approval, the operations it implements, and the limits. | Works |
 | `pnpm test:hello` | Runs the Stage 1 acceptance suite on a simulated device: the real CLI, the sidecar as a separate process, and a test client as the phone. With `--device`, it runs the round trip on the attached device or emulator instead: the app's UI test taps OK while the CLI sends over MCP. See [`docs/testing/stage-1.md`](docs/testing/stage-1.md). | Works; `--device` needs a device or an emulator |
 | `pnpm test:queue` | Runs the Stage 2 acceptance scenario: the real CLI, two sidecars as separate processes that restart, and a test client as the phone. See [`docs/testing/stage-2.md`](docs/testing/stage-2.md#the-acceptance-scenario-saw-014). | Works |
@@ -237,7 +249,7 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 
 `.github/workflows/ci.yml` runs on pull requests and on pushes to `master` and `develop`:
 
-- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check`, `pnpm test:hello`, `pnpm test:queue`, `pnpm check:generated`, and `pnpm build`
+- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check:deployments`, `pnpm check`, `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer`, both exact package tests, `pnpm check:generated`, and `pnpm build`
 - **Feed gateway:** `pnpm check:feed-gateway`, with the Go version read from `feed-gateway/go.mod`
 - **Publisher support:** `pnpm check:publisher-support`, with the Go version read from `publisher-support/go.mod`
 - **CopyTrading demo:** `pnpm check:copytrading` and its own `docker build`, from `demo-copytrading/go.mod`

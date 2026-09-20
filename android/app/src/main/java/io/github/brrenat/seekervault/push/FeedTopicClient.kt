@@ -12,10 +12,9 @@ import com.google.firebase.messaging.FirebaseMessaging
  * reason [FcmRegistrationClient] exists beside it.
  *
  * **Membership is Firebase's, not ours.** Nothing on this phone keeps a list of subscriptions on
- * disk, and no server of ours is told about one: the feed gateway names a topic when it is
- * asked ([io.github.brrenat.seekervault.feeds.FeedTopics]) and is never told whether anybody
- * joined. That is also why the manager above reconciles rather than remembers — see
- * [FeedTopicManager].
+ * disk, and no server of ours is told about one: the feed gateway names a topic when it is asked
+ * ([io.github.brrenat.seekervault.feeds.FeedTopics]) and is never told whether anybody joined. That
+ * is also why the manager above reconciles rather than remembers — see [FeedTopicManager].
  */
 interface FeedTopicClient {
     suspend fun subscribe(topic: String)

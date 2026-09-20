@@ -357,8 +357,8 @@ class SeekerVaultApplication : Application() {
     }
 
     /**
-     * The feed gateway a feed is read from, and the stream it is listened to on (SEE-91). Both
-     * are replaced in tests, which is why they are factories rather than singletons.
+     * The feed gateway a feed is read from, and the stream it is listened to on (SEE-91). Both are
+     * replaced in tests, which is why they are factories rather than singletons.
      */
     var feeds: () -> ConnectFeedGateway = { ConnectFeedGateway(httpClient) }
 

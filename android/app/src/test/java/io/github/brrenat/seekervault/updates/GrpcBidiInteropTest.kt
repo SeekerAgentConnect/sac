@@ -178,7 +178,7 @@ class GrpcBidiInteropTest {
             }
         private val process =
             ProcessBuilder("node", "src/testing/grpc-bidi-proof-server.ts")
-                .directory(File(repoRoot, "sidecar"))
+                .directory(File(repoRoot, "mcp-server"))
                 .redirectErrorStream(true)
                 .apply {
                     environment()

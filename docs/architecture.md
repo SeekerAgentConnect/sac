@@ -14,7 +14,7 @@ Compatibility reservations and one-way migration readers may still name the reti
 | --- | --- | --- |
 | SAC Android app | Connections, Inbox, owner inputs, inspection, rules, manual approval, wallet invocation and local history | User's phone |
 | Shared protocol | Request identity, lifecycle, action capabilities, manifests and transport contracts | Implemented by compatible clients and servers |
-| Server SDK | Help developers implement the supported direct or feed integration; expose only capabilities actually implemented | Developer's backend |
+| Direct Server SDK | Embed the supported private direct-server lifecycle, persistence and phone services in a TypeScript backend | Developer's backend |
 | Independent server | Business logic and request creation; private results for direct connections, or common publications for public feeds | Developer/user-operated host |
 | Feed gateway | Accept a publication once; store and distribute it to subscribers | Shared infrastructure |
 | Bundled client plugins | Prepare and inspect supported actions, such as Jupiter operations | Compiled into SAC |
@@ -23,12 +23,12 @@ Compatibility reservations and one-way migration readers may still name the reti
 
 An independent server is a role, not an extra service that every developer must install beside their backend. The existing MCP server is one implementation of that role. The historical name `sidecar` does not imply another required component.
 
-The existing publisher client remains in `demo-copytrading/sdk/`, and the publication engine both
-feed demos are built on is `publisher-support/`, a source library with no command, no image and no
-deployment of its own. The reusable TypeScript direct-server engine now lives in `server-sdk/` and
-the current MCP host consumes only its public package exports; moving and packaging that MCP
-application remains SEE-132 work. The Android build currently has `:app` and `:designsystem`; a
-separately packaged Android SDK remains future work.
+The CopyTrading demo's API client remains in `demo-copytrading/sdk/`. The publication engine both
+feed demos use is `publisher-support/`, a source library with no command, image or deployment of
+its own. The reusable TypeScript direct-server engine lives in `server-sdk/`; the independently
+packaged `mcp-server/` application consumes only its public exports. Feed publishers use the
+gateway's ordinary publication API rather than this Direct Server SDK. The Android build currently
+has `:app` and `:designsystem`; a separately packaged Android SDK remains future work.
 
 ## Two connection modes
 
@@ -130,28 +130,26 @@ Optional FCM wake-ups initiate authoritative reads; they do not contain an appro
 
 See [Firebase](guides/firebase.md) and [feed gateway](wiki/feed-gateway.md).
 
-## Repository naming and deployment cleanup
+## Final repository and deployment layout
 
-Current directory names describe historical implementation choices and are not the desired product vocabulary:
+These are the canonical post-refactor boundaries:
 
-| Current path | What it actually contains | Cleanup direction |
+| Path | Responsibility | Boundary |
 | --- | --- | --- |
-| `android/` | SAC app and design system | Keep the application boundary clear |
-| `proto/` | Shared direct/feed contracts plus compatibility reservations | Keep direct/feed contracts; never reuse retired private-gateway identifiers |
-| `server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Keep as an embeddable library with explicit initialization and no MCP/product configuration |
-| `mcp-server/` | The self-hosted MCP host, executable operator CLI, provider implementations and standalone Docker/npm packaging | Consumes `server-sdk/` through its public API; the npm artifact vendors that unpublished runtime |
-| `deploy/mcp/`, `deploy/ingress/direct/` | Portable direct server and separately managed TLS/OAuth ingress | Keep application and ingress lifecycles independent |
-| `feed-gateway/` | Shared Go feed gateway with public read and publisher listeners, a storage contract, and local SQLite implementation | Canonical public-feed service isolated in SEE-133 |
-| `publisher-support/` | The Go source library both feed demos share: generated publication bindings, document rules, manifest, store, gateway client, API and operator CLI. No command, image or deployment of its own | Non-deployable library split out in SEE-134 |
-| `demo-copytrading/` | The CopyTrading application: commands, admin UI, SDK, image | Independent preset in `deploy/copytrading/` |
-| `demo-prediction/` | The Prediction application: command, provider client, discovery cycle, image | Independent preset in `deploy/prediction/` |
-| `deploy/` | Portable feed/MCP/demo presets, separate ingress, isolated operator examples | Canonical orchestration with explicit volume identities |
-| `test-agent/` | Developer MCP client | Keep as a test/development tool |
+| `android/` | SAC app and design system | No server implementation |
+| `proto/` | Shared direct/feed contracts plus compatibility reservations | Retired private-gateway identifiers stay reserved |
+| `server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Embeddable library; no MCP/product configuration |
+| `mcp-server/` | Self-hosted MCP host, executable CLI, providers and standalone Docker/npm packaging | Consumes only the Direct Server SDK's public API; the npm artifact vendors the unpublished runtime |
+| `deploy/mcp/`, `deploy/ingress/direct/` | Portable direct server and separately managed TLS/OAuth ingress | Application and ingress have independent lifecycles |
+| `feed-gateway/` | Shared Go feed gateway with public-read and publisher listeners, storage contract and local SQLite implementation | The only shared public-feed service |
+| `publisher-support/` | Go source library shared by both feed demos: publication bindings, document rules, manifest, store, gateway client, API and operator CLI | No command, image or deployment of its own |
+| `demo-copytrading/` | CopyTrading application: commands, admin UI, SDK and image | Independent preset in `deploy/copytrading/` |
+| `demo-prediction/` | Prediction application: command, provider client, discovery cycle and image | Independent preset in `deploy/prediction/` |
+| `deploy/` | Portable feed/MCP/demo presets, separate ingress and isolated operator examples | Canonical orchestration with explicit volume identities |
+| `test-agent/` | Developer MCP client | Development and verification only |
 
 **There is one shared feed gateway.** Direct MCP traffic stays out of it; optional direct and feed
 ingress projects are separate from their applications and from each other.
-
-The cleanup task must settle and apply the final directory names consistently across code imports, generated code, build commands, Docker images, Compose, CI, scripts, examples and documentation. Directory renaming alone is not architectural cleanup.
 
 The base shared deployment must run without either demo or the direct server. Both feed demos can run independently. The direct MCP server must run without the shared feed gateway, Centrifugo or Redis. Renaming deployment services must preserve existing direct pairing data, credentials, databases and volumes through an explicit migration.
 
@@ -167,5 +165,7 @@ pairing remain. Stored gateway-private connections become explicit inert retirem
 require a fresh direct pairing; no credential, origin or identity is converted. Local Activity
 history and unaffected Direct/Feed data remain.
 
-SEE-130 completed the runtime removal and migration described here. Packaging, module extraction and
-directory renames remain separate later children of [SEE-128](https://linear.app/seekeragentwallet/issue/SEE-128/simplify-architecture-to-direct-public-feed-remove-private-gateway).
+SEE-130 completed the runtime removal and migration described here. SEE-131 through SEE-135 then
+packaged the Direct Server SDK and MCP application, isolated the gateway and demos, and established
+the canonical deployment boundaries. The final joined verification and its explicitly unavailable
+live checks are recorded in [`docs/testing/see-136.md`](testing/see-136.md).

@@ -36,8 +36,8 @@ import kotlin.time.Duration.Companion.seconds
 import okhttp3.OkHttpClient
 
 /**
- * What a phone reads from a feed gateway, the permission it asks for to listen (SEE-91), and
- * where it is told hints arrive (SEE-92).
+ * What a phone reads from a feed gateway, the permission it asks for to listen (SEE-91), and where
+ * it is told hints arrive (SEE-92).
  *
  * Three reads, one grant and one name, all unauthenticated: a feed is a broadcast, its reference
  * can be printed in a README, and holding one grants nothing. Nothing about this phone goes the

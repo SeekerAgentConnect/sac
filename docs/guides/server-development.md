@@ -116,7 +116,7 @@ The four settings that decide whether phones can read you at all: `BROADCAST_PUB
 A publisher exists only because an operator made one. There is no signup endpoint, no self-registration, and no way to do this over a network — the tool writes to the gateway's database directly:
 
 ```sh
-# in feed-gateway/, or `docker compose run --rm ctl …` against the packaged stack
+# in feed-gateway/, or `docker compose ... --profile operator run --rm gateway-ctl …`
 go run ./cmd/feed-gatewayctl register --database ./broadcast.db \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label "copy trading"
 ```
@@ -148,6 +148,7 @@ The other commands an operator has are `rotate` (add a second credential so the 
 `demo-copytrading/` and `demo-prediction/` are each a **Go module of its own**, not a command inside the gateway, precisely so that one can be copied out and still build. What travels with a demo is `publisher-support/`, the source library the two share: it has no command, no image and no deployment of its own, and each demo's `go.mod` resolves it with a `replace` pointing at the directory next door.
 
 ```sh
+mkdir -p ~/my-signals
 cp -R demo-copytrading publisher-support ~/my-signals
 cd ~/my-signals/demo-copytrading
 go build ./... && go test ./...
@@ -178,7 +179,7 @@ Then configure it. `cp .env.example .env` and fill it in; the file documents eve
 
 Those last two are different things and confusing them is the first mistake to avoid. `BROADCAST_CREDENTIAL` is how the gateway knows you; `PUBLISHER_API_TOKEN` is how your own strategy process, or your own hand at a terminal, is allowed to tell your template what to say. Either may be a file instead of a value (`BROADCAST_CREDENTIAL_FILE`, `PUBLISHER_API_TOKEN_FILE`) for a deployment that mounts secrets; setting both a value and a file is a configuration error, because then there would be two answers and no way to tell which was used.
 
-One more is worth setting deliberately: `PUBLISHER_PUBLISH_URL`. Empty means `PUBLISHER_GATEWAY_URL`, which is right when the gateway's proxy serves its APIs on one origin — the packaged deployment does. Set it when the gateway runs with separate loopback listeners (feeds on 8090 and publications on 8091), or when its operator keeps publishing off the internet and you reach it over a tunnel. Getting it wrong is the one mistake the gateway cannot report: a read origin has no handler that could write anything, so a publication gets a 404. The template says so at startup and names the variable.
+One more is worth setting deliberately: `PUBLISHER_PUBLISH_URL`. Empty means `PUBLISHER_GATEWAY_URL`, which is right only when an operator's independent ingress serves both APIs on one origin. The canonical `deploy/feed` preset keeps separate loopback listeners (feeds on 8090 and publications on 8091), so its demo presets name 8091 explicitly. Also set it when an operator keeps publishing off the internet and you reach it over a tunnel. Getting it wrong is the one mistake the gateway cannot report: a read origin has no handler that could write anything, so a publication gets a 404. The template says so at startup and names the variable.
 
 **Both `.env` examples ship as sandbox deployments**, so copying one and running it demonstrates the whole path without anybody's money. Promoting to production is a deliberate edit of one line ([step 11](#11-sandbox-and-production)).
 
@@ -199,7 +200,9 @@ PUBLISHER_API_TOKEN=$(openssl rand -base64 32) \
 go run ./cmd/copytrading
 ```
 
-Or, packaged: `docker compose up -d --build` in the copied directory, which publishes the API on `127.0.0.1:8092` and puts a proxy in front of it.
+For the repository's packaged route, use `deploy/copytrading/compose.yaml`; it publishes the
+application's own API on `127.0.0.1:8092` and starts no proxy. A copied-out source module contains
+no Compose or ingress assets unless you copy and adapt that deployment preset too.
 
 Three log lines and one bare line of text:
 
@@ -220,7 +223,7 @@ If it was refused, nobody can subscribe to you at all, and the template says so 
 seekervault://feed?v=1&gateway=<the gateway's origin, percent-encoded>&server=<your server ID>
 ```
 
-Ask for it again at any time with `publishctl reference`, or read it out of `GET /v1/manifest`. **It carries no secret**, because there is nothing to authenticate to: holding one grants the ability to read a public broadcast, which is what a broadcast is. You can print it in a README, put it on a web page, or turn it into a QR code. The app accepts the QR or pasted text in [step 5](#5-connect-the-app).
+Ask for it again at any time with `go run ./cmd/publishctl reference`, or read it out of `GET /v1/manifest`. **It carries no secret**, because there is nothing to authenticate to: holding one grants the ability to read a public broadcast, which is what a broadcast is. You can print it in a README, put it on a web page, or turn it into a QR code. The app accepts the QR or pasted text in [step 5](#5-connect-the-app).
 
 ## 5. Connect the app
 
@@ -259,7 +262,7 @@ Two ways in, and they are the same way: the CLI is an HTTP client for the templa
 
 ```sh
 export PUBLISHER_API_TOKEN=…
-publishctl create \
+go run ./cmd/publishctl create \
   --term input_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
   --term input_decimals=6 --term input_symbol=USDC \
   --term output_mint=So11111111111111111111111111111111111111112 \
@@ -356,8 +359,8 @@ Run a cycle now rather than at the next interval, and read back exactly what it 
 
 ```sh
 export PUBLISHER_API_URL=http://127.0.0.1:8094 PUBLISHER_API_TOKEN=…
-publishctl poll
-publishctl discovery
+go run ./cmd/publishctl poll
+go run ./cmd/publishctl discovery
 ```
 
 ```json
@@ -400,7 +403,7 @@ For the Prediction template, expiry is the market's own close time, or first-see
 ### Updating
 
 ```sh
-publishctl update dcf362cb-647b-4e8f-9506-fb3dc72a3fba \
+go run ./cmd/publishctl update dcf362cb-647b-4e8f-9506-fb3dc72a3fba \
   --term input_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v --term input_decimals=6 \
   --term output_mint=So11111111111111111111111111111111111111112 --term output_decimals=9 \
   --term max_slippage_bps=30 --in 90m --note "Tightening the slippage cap to 0.3%."
@@ -412,7 +415,7 @@ An update replaces the **whole** statement; it is never a merge, so a term you l
 ### Withdrawal
 
 ```sh
-publishctl cancel 277e94f7-c510-488f-97e8-29e4b721b66f
+go run ./cmd/publishctl cancel 277e94f7-c510-488f-97e8-29e4b721b66f
 # signal 277e94f7-c510-488f-97e8-29e4b721b66f revision 2 cancelled, publication published
 ```
 
@@ -437,7 +440,7 @@ signal c8f01feb-7c64-494e-a03f-bcc17932eb40 revision 1 open, publication pending
   it is stored here and will be published when the gateway answers
 ```
 
-The template's own drainer retries with a doubling backoff from one second to a minute (the log says `"this signal will be published again","in":"1s"`, then `2s`, and so on), and `publishctl status` counts what is outstanding as `pending`. `publishctl retry <id>` nudges one by hand, which is also the only way out of a *permanent* refusal — a restart does not clear one, on purpose. What is retried is the **identical document**, which the gateway answers `unchanged` if it did arrive, so a slow gateway costs a delay and never a duplicate signal.
+The template's own drainer retries with a doubling backoff from one second to a minute (the log says `"this signal will be published again","in":"1s"`, then `2s`, and so on), and `go run ./cmd/publishctl status` counts what is outstanding as `pending`. `go run ./cmd/publishctl retry <id>` nudges one by hand, which is also the only way out of a *permanent* refusal — a restart does not clear one, on purpose. What is retried is the **identical document**, which the gateway answers `unchanged` if it did arrive, so a slow gateway costs a delay and never a duplicate signal.
 
 ### When the source is not there
 

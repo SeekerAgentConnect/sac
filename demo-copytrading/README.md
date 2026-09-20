@@ -148,7 +148,7 @@ In summary:
 | `BROADCAST_CREDENTIAL` | yes | — | The credential the gateway issued this source |
 | `PUBLISHER_API_TOKEN` | yes | — | The grant to call this demo's own API; at least 32 characters |
 | `PUBLISHER_PUBLISH_URL` | no | the gateway URL | Where publications are *sent*, when that differs from where phones read |
-| `PUBLISHER_DATABASE_PATH` | no | `/data/publisher.db` | This demo's SQLite file |
+| `PUBLISHER_DATABASE_PATH` | yes from source | Compose/image: `/data/publisher.db` | This demo's SQLite file |
 | `PUBLISHER_API_ADDRESS` | no | `127.0.0.1:8092` | Where its API listens from source; Compose uses the container wildcard address |
 | `PUBLISHER_DISPLAY_NAME` | no | — | A default label for a connection; never verified |
 | `PUBLISHER_PUBLISH_TIMEOUT_SECONDS` | no | `10` | How long one publication may take before it is retried |

@@ -10,10 +10,10 @@ the public gateway is shaped the way it is;
 [`docs/guides/server-development.md`](../guides/server-development.md) is what a developer does with
 it, in order.
 
-**It is not `gateway/`.** That directory is one owner's private deployment — Caddy in front of their
-own sidecar (SAW-035), run by the owner, serving one paired phone. This is a shared service, run by
-whoever hosts the broadcast, serving everyone. Where the two could be confused this page says
-"feed gateway" and "reverse proxy".
+**It is not the optional direct ingress.** [`deploy/ingress/direct/`](../../deploy/ingress/direct)
+is one owner's independently managed edge in front of their MCP server, serving that direct
+connection. This is a shared service, run by whoever hosts the public feed, serving every
+subscriber. Where the two could be confused this page says "feed gateway" and "direct ingress".
 
 ## What it is for
 

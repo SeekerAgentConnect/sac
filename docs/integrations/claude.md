@@ -173,7 +173,8 @@ back to being the way in.
 
 ## When it does not work
 
-The refusal says which check failed, both in the response and in `docker compose logs sidecar`.
+The refusal says which check failed, both in the response and in
+`docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml logs mcp-server`.
 None of these ever quotes the token.
 
 | What you see | What it means |

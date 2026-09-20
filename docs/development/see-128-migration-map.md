@@ -5,9 +5,10 @@ Status: SEE-129 baseline, recorded from `superset/feat/see-128` at
 
 Implementation status: SEE-130 applied the step-2 retirement, SEE-131 extracted the reusable
 TypeScript Direct Server SDK, SEE-132 relocated and packaged the self-hosted MCP application,
-SEE-133 isolated the public feed gateway, and SEE-134 split `publisher/` into `publisher-support/`
-and the two independent demos, on the same branch and PR. Direct and gateway-feed remain the only
-active modes. Deployment and documentation work remains owned by SEE-135 and SEE-136.
+SEE-133 isolated the public feed gateway, SEE-134 split `publisher/` into `publisher-support/`
+and two independent demos, and SEE-135 established the canonical deployment projects. Direct and
+gateway-feed are the only active modes. SEE-136 reconciles the final documentation and joined
+verification; unavailable live checks remain explicitly NOT RUN in its evidence record.
 
 Authority: [SEE-128](https://linear.app/seekeragentwallet/issue/SEE-128/refactor-sac-into-a-typescript-server-sdk-self-hosted-mcp-public-feeds),
 [SEE-129](https://linear.app/seekeragentwallet/issue/SEE-129/18-establish-the-architecture-baseline-and-exact-migration-map),

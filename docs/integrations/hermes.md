@@ -7,7 +7,7 @@ server's Streamable HTTP endpoint, for two kinds of tool:
 - **Durable requests, from Stage 2 on.** Hermes creates a request and gets its ID at once. You answer on the phone whenever you next open the app, and Hermes reads the result later; see [queued requests](#4-queued-requests-create-now-read-the-result-later).
 
 It covers Hermes on the Mac, Hermes on a VPS, and Hermes against the
-[packaged server](#9-hermes-against-the-packaged-stack).
+[packaged server](#9-hermes-against-the-packaged-server).
 
 > **Compatibility target and evidence.** These instructions target Hermes Agent
 > [v0.21.3 / v2026.9.14](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.14).
@@ -29,8 +29,11 @@ It covers Hermes on the Mac, Hermes on a VPS, and Hermes against the
 - Start the MCP server by one supported source, Docker, or npm-tarball route in
   [`mcp-server/README.md`](../../mcp-server/README.md). Keep it running; Hermes connects to its URL.
 - Hermes is installed and works on its own. Its MCP support is part of the standard install.
-- You need the `MCP_TOKEN` value from the sidecar's `.env`. It's the agent's token; the phone's `PHONE_TOKEN` won't work here.
-- For the durable tools, the phone is paired with the sidecar ([`pairing.md`](../guides/pairing.md)), and the sidecar's `.env` has `MCP_DEMO_TOOLS=true`, as `.env.example` does.
+- You need the `MCP_TOKEN` used by the chosen start: root `.env` for source,
+  `deploy/mcp/.env` for Compose, or the explicit npm `config.env`. It is the agent credential; the
+  phone credential does not work here.
+- For the durable tools, the phone is paired with the server ([`pairing.md`](../guides/pairing.md)).
+  The optional acknowledgement demo additionally needs `MCP_DEMO_TOOLS=true` in that same config.
 
 ## 1. Add the server entry
 
@@ -67,13 +70,15 @@ mcp_servers:
       prompts: false
 ```
 
-3. Put the token in `~/.hermes/.env`, not in `config.yaml`. From the repository root, this appends it without printing it:
+3. Put the token in `~/.hermes/.env`, not in `config.yaml`. For a source start from the repository
+   root, this appends it without printing it:
 
    ```bash
    printf 'MCP_SEEKER_VAULT_API_KEY=%s\n' "$(grep '^MCP_TOKEN=' .env | cut -d= -f2)" >> ~/.hermes/.env
    chmod 600 ~/.hermes/.env
    ```
 
+   For Compose, read `deploy/mcp/.env`; for npm, read the `config.env` passed to the executable.
    If `~/.hermes/.env` already has a `MCP_SEEKER_VAULT_API_KEY` line, edit that line instead.
 
 What each setting does:
@@ -485,7 +490,7 @@ These are real results from Hermes v0.21.1. "The model sees" is the tool result 
 
 For problems on the phone or the Mac, see [`troubleshooting.md`](../guides/troubleshooting.md).
 
-## 9. Hermes against the packaged stack
+## 9. Hermes against the packaged server
 
 Sections 1 to 7 apply unchanged to the source, standalone Docker, and executable npm-tarball starts
 in [`mcp-server/README.md`](../../mcp-server/README.md). Start
@@ -494,50 +499,50 @@ not put `npm exec`, `npx`, or the executable in Hermes command/arguments fields:
 an HTTP server and does not implement MCP stdio. The baseline is always two independently started
 processes: the server, then Hermes connecting with the HTTP `url` configuration above.
 
-The older Stage 7 stack ([`self-hosting.md`](../guides/self-hosting.md)) runs the same application
-behind a gateway. Hermes reaches it with the same tools, header and answers; only the URL and token
-file change.
+The canonical container deployment ([`self-hosting.md`](../guides/self-hosting.md)) runs the same
+application as one `mcp-server` service. An optional HTTPS edge is an independently managed
+`deploy/ingress/direct` project, not a mandatory sidecar or gateway.
 
 **Keep your own `~/.hermes/config.yaml`.** Everything in section 1 still holds: back it up, merge
 the one `seeker_vault` entry into `mcp_servers`, and remove nothing else.
 
-### On the machine that runs the stack
+### On the machine that runs the application
 
-The stack publishes the gateway on the host's loopback address, so the entry from
-[`examples/hermes.config.yaml`](../../examples/hermes.config.yaml) works unchanged — the default
-`GATEWAY_PORT` is 8080, the port that entry already names. Two differences from a development
-sidecar:
+The `deploy/mcp` preset publishes the application on host loopback, so the entry from
+[`examples/hermes.config.yaml`](../../examples/hermes.config.yaml) works unchanged when
+`MCP_SERVER_PORT` keeps its default 8080. Two details differ from a source start:
 
-- The token is the `MCP_TOKEN` in `gateway/.env`, not the repository root's `.env`.
+- The token is the `MCP_TOKEN` in `deploy/mcp/.env`, not the repository root's `.env`.
 - `vault_request_ack` exists only if that deployment sets `MCP_DEMO_TOOLS=true`, which a deployment
   normally does not. `hermes mcp test seeker_vault` lists what is actually served.
 
 ### On another machine, over the public endpoint
 
-With the public overlay the stack answers on the operator's own domain over HTTPS. Use
+With the independent direct ingress the server answers on the operator's own domain over HTTPS. Use
 [`examples/hermes.config.hosted.yaml`](../../examples/hermes.config.hosted.yaml), which is the same
-entry with `url: "https://vault.example.com/mcp"` and a shorter tool list: the public gateway does
-not forward the Stage 1 `LiveCommandService`, so `vault_display_command` cannot work there, and a
-deployment leaves the demo tool off.
+entry with `url: "https://vault.example.com/mcp"` and a conservative production tool list. The
+ingress forwards the MCP endpoint; it deliberately does not expose health, the phone's Stage 1
+live diagnostic service, or the production update stream.
 
 Three things have to be true before it connects, and each has its own failure:
 
 | | What it means |
 | --- | --- |
-| The certificate is a real one | Hermes refuses an untrusted certificate, and that refusal is correct. Fix the name, the DNS record, or the port, and let the gateway issue one. Nothing here tells anyone to ignore a certificate warning. |
-| The domain is in `MCP_ALLOWED_HOSTS` | The public overlay sets it from `GATEWAY_DOMAIN`. Without it the sidecar answers 403 and logs `the Host header is not a loopback address or an MCP_ALLOWED_HOSTS entry` — the same DNS-rebinding check as [over a VPN](#over-a-vpn-you-already-use). |
-| The OAuth profile is off | Hermes sends a fixed bearer token. With [OAuth](claude.md) on, the public endpoint takes only access tokens from the configured authorization server, and a static token opens just the stack's own private endpoint, which nothing outside the stack can reach. A deployment serves one or the other. |
+| The certificate is a real one | Hermes refuses an untrusted certificate, and that refusal is correct. Fix the name, DNS record or port and let the ingress issue one. Nothing here tells anyone to ignore a certificate warning. |
+| The domain is in `MCP_ALLOWED_HOSTS` | Set the MCP application's value to the same host as `DIRECT_DOMAIN`. Without it the server answers 403 and logs `the Host header is not a loopback address or an MCP_ALLOWED_HOSTS entry` — the same DNS-rebinding check as [over a VPN](#over-a-vpn-you-already-use). |
+| The chosen authentication profile matches | The example sends the fixed `MCP_TOKEN`. With [OAuth](claude.md) on, the endpoint instead takes access tokens from the configured authorization server. Configure one profile deliberately; a static bearer is not an OAuth access token. |
 
 Anyone who reaches that URL with the token can queue requests for you to answer, so treat it as
 [the password it is](#keeping-the-token-safe), and prefer a VPN or a tunnel to a public port when
 the only agent is your own.
 
-### The test agent alongside it
+### Compare with the repository test agent
 
-The stack carries [`test-agent`](../../test-agent/README.md) in the `agent` profile, which is the
-quickest way to tell a Hermes problem from a stack problem: `docker compose run --rm test-agent
-capabilities` uses the same MCP interface from inside the stack. If that works and Hermes does not,
-the entry or the token is what to look at.
+The portable project intentionally starts no test client. From a checkout, point the separately
+started [`test-agent`](../../test-agent/README.md) at the same reachable MCP URL and token, then run
+`pnpm agent capabilities`. If that works and Hermes does not, inspect the Hermes registry entry,
+environment loading and transport selection. This comparison does not replace the real Hermes
+request/result walkthrough.
 
 ## Keeping the token safe
 

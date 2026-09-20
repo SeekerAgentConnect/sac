@@ -20,10 +20,9 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * The real transport against the MCP server, without a device: runs
- * `node mcp-server/src/cli.ts start`
- * and sends text through its MCP endpoint with the MCP SDK, checking the Android client's HTTP/1.1
- * streaming, headers, and error mapping. Needs Node 24 on PATH and `pnpm install`.
+ * The real transport against the MCP server, without a device: runs `node mcp-server/src/cli.ts
+ * start` and sends text through its MCP endpoint with the MCP SDK, checking the Android client's
+ * HTTP/1.1 streaming, headers, and error mapping. Needs Node 24 on PATH and `pnpm install`.
  */
 class ConnectLiveCommandTransportTest {
     private val sidecarDir =

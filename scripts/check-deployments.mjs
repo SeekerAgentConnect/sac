@@ -131,6 +131,16 @@ for (const path of yamlFiles) {
   assert.doesNotMatch(source, /\bnetwork_mode:\s*host\b/, relative(ROOT, path));
 }
 
+for (const retiredRoot of ["sidecar", "broadcast", "publisher", "gateway"]) {
+  if (existsSync(join(ROOT, retiredRoot))) {
+    assert.deepEqual(
+      filesBelow(join(ROOT, retiredRoot)),
+      [],
+      `${retiredRoot}/ contains no tracked implementation files`,
+    );
+  }
+}
+
 for (const retired of [
   "gateway/compose.yaml",
   "feed-gateway/compose.yaml",
@@ -141,6 +151,53 @@ for (const retired of [
 ]) {
   assert.equal(existsSync(join(ROOT, retired)), false, `${retired} is retired`);
 }
+
+const activeLayoutDocs = [
+  "README.md",
+  "RFC.md",
+  "docs/architecture.md",
+  "docs/development/feed-gateway.md",
+  "docs/development/mcp-server.md",
+  "docs/guides/server-development.md",
+  "docs/guides/troubleshooting.md",
+  "docs/integrations/hermes.md",
+  "docs/wiki/feed-gateway.md",
+  "docs/wiki/mcp-adapter.md",
+  "examples/hermes.config.yaml",
+  "examples/hermes.config.hosted.yaml",
+];
+for (const path of activeLayoutDocs) {
+  const source = readFileSync(join(ROOT, path), "utf8");
+  for (const retiredInstruction of [
+    "gateway/.env",
+    "gateway/compose.yaml",
+    "deploy/server/compose.yaml",
+    "docker compose logs sidecar",
+  ]) {
+    assert.doesNotMatch(
+      source,
+      new RegExp(retiredInstruction.replaceAll(".", "\\.")),
+      `${path} does not instruct operators to use ${retiredInstruction}`,
+    );
+  }
+}
+
+const mcpPackageEnvironment = readFileSync(
+  join(ROOT, "mcp-server/.env.example"),
+  "utf8",
+);
+assert.match(mcpPackageEnvironment, /^SIDECAR_HOST=127\.0\.0\.1$/m);
+assert.match(mcpPackageEnvironment, /^SIDECAR_PORT=8080$/m);
+
+const androidSources = [
+  ...filesBelow(join(ROOT, "android/app/src/main")),
+  ...filesBelow(join(ROOT, "android/app/src/test")),
+]
+  .filter((path) => extname(path) === ".kt")
+  .map((path) => readFileSync(path, "utf8"))
+  .join("\n");
+assert.doesNotMatch(androidSources, /File\(repoRoot,\s*"sidecar"\)/);
+assert.doesNotMatch(androidSources, /resolve\(\s*"sidecar"\s*\)/);
 
 for (const preset of presets) {
   const resolved = compose(preset.args, preset.environment);

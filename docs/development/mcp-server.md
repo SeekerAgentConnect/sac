@@ -15,12 +15,12 @@ trusted TLS endpoint; see [`docs/security.md`](../security.md#transport-security
 ## Configuration
 
 `pnpm dev:mcp-server` reads the git-ignored root `.env`; start from `.env.example`. Variables
-already set in the environment take precedence over `.env`. `pnpm dev:mcp-server` remains an explicit
-migration alias. The executable package additionally accepts `--config <absolute-path>`,
+already set in the environment take precedence over `.env`. The historical `pnpm dev:sidecar`
+command remains an explicit migration alias. The executable package additionally accepts `--config <absolute-path>`,
 `MCP_SERVER_CONFIG`, or the optional `<MCP_SERVER_DATA_DIR>/config.env`; see the product
 [`README`](../../mcp-server/README.md) for source, Docker and npm starts.
 
-`MCP_ENABLED`, `MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `MCP_OAUTH_ISSUER`, `MCP_OAUTH_RESOURCE`, `MCP_OAUTH_JWKS_URL`, `MCP_OAUTH_SCOPE`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, `SOLANA_RPC_TIMEOUT_MS`, and `FCM_PROJECT_ID` are optional, and an empty one counts as unset. The others are required.
+`MCP_ENABLED`, `MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `MCP_OAUTH_ISSUER`, `MCP_OAUTH_RESOURCE`, `MCP_OAUTH_JWKS_URL`, `MCP_OAUTH_SCOPE`, `MCP_SERVER_DATA_DIR`, `MCP_SERVER_CONFIG`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, `SOLANA_RPC_TIMEOUT_MS`, and `FCM_PROJECT_ID` are optional, and an empty one counts as unset. The others are required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
@@ -146,7 +146,7 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | --- | --- | --- | --- |
 | `GET /healthz` | Anything on the machine | None | Liveness check: `{"status":"ok"}` |
 | `GET /.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` | A hosted MCP client, before it has a credential | None | RFC 9728 protected-resource metadata, naming the authorization server for `/mcp`. Served only while `MCP_OAUTH_ISSUER` is set; 404 otherwise (SAW-036) |
-| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>`, or an OAuth access token when `MCP_OAUTH_ISSUER` is set | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, the durable tools `vault_sign_message`, `vault_get_capabilities`, `vault_get_address`, `vault_get_request`, and `vault_cancel_request`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
+| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>`, or an OAuth access token when `MCP_OAUTH_ISSUER` is set | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, the durable tools `vault_sign_message`, `vault_transfer` (when a Solana provider is configured), `vault_get_capabilities`, `vault_get_address`, `vault_get_request`, and `vault_cancel_request`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
 | `/seekervault.live.v1.LiveCommandService/WatchCommands` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect server stream of live commands |
 | `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
 | `/seekervault.request.v1.PairingService/Pair` | A phone that's pairing | `Authorization: Bearer <pairing token>`, from `pnpm pair` | Exchanges the pairing token for a connection and its credential |
@@ -344,7 +344,7 @@ store.
 - **Run one MCP server per database file.** A second launch is rejected even if it chooses another
   listener. Switch source, Docker, or npm formats only while the old process is stopped.
 
-These are the tables at schema version 5:
+These are the tables at schema version 6:
 
 | Table | Holds |
 | --- | --- |

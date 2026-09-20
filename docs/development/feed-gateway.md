@@ -5,8 +5,9 @@ public-feed API. SEE-130 removed the former invitation/device API for private se
 [`docs/wiki/feed-gateway.md`](../wiki/feed-gateway.md) is why it is shaped the way it is;
 this page is how to run it, what its settings do, and where its code and tests are.
 
-It is not the reverse proxy in [`gateway/`](../../gateway), which is one owner's own deployment in
-front of their own sidecar. Different service, different operator, different directory.
+It is not the optional direct ingress in [`deploy/ingress/direct/`](../../deploy/ingress/direct),
+which is one owner's independently managed edge in front of their MCP server. Different service,
+different operator, different deployment.
 
 ## Running it
 

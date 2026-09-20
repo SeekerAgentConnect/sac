@@ -451,26 +451,27 @@ Look the signature up on an explorer to see what it actually is, and check your 
 history for your transfer. Treat it as a problem with the wallet app, and do not send a
 replacement until you know what happened.
 
-## Running the packaged stack
+## Running the packaged MCP server
 
-The stack is the same sidecar in a container, so most of this page still applies once you find the
-log: `docker compose logs sidecar` instead of the terminal you started it in. Three differences are
-worth knowing before they surprise you.
+The portable project runs the same application as a single `mcp-server` container. From the
+repository root, inspect it with:
 
-### The port that answers is the gateway's
+```sh
+docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml ps
+docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml logs mcp-server
+curl --fail http://127.0.0.1:8080/healthz
+```
 
-`curl http://127.0.0.1:8080/healthz` reaches the **gateway**, which passes it to the sidecar. The
-sidecar's own port is not reachable from the host at all — not merely unmapped — because the two
-containers share one network namespace and the sidecar binds its loopback inside it. A refused
-connection on 8080 means the stack is not running, not that the sidecar is unhealthy; `docker
-compose ps` says which.
+The default host mapping is the application's own loopback port; there is no mandatory gateway,
+sidecar container or shared network namespace. A refused connection means the MCP project is not
+running or its configured `MCP_SERVER_BIND`/`MCP_SERVER_PORT` differs.
 
-### The configuration lives in `gateway/.env`, not the repository root
+### The configuration lives in `deploy/mcp/.env`
 
-The root `.env` belongs to `pnpm dev:sidecar`. A deployment reads `gateway/.env`, and the two are
-deliberately separate files with different defaults — `MCP_DEMO_TOOLS=true` in one and `false` in
-the other, for instance. Editing the wrong one is the commonest reason a change appears to do
-nothing. After editing, `docker compose up -d` recreates the containers that need it.
+The root `.env` belongs to the source start. The portable container reads `deploy/mcp/.env`, copied
+from its adjacent example. After editing it, rerun the exact Compose command from the deployment
+guide so the service is recreated. The optional public edge in `deploy/ingress/direct/` is a
+separate project with its own lifecycle; it is never required for a loopback or VPN-only start.
 
 ### A database from a newer sidecar is refused
 
@@ -481,7 +482,7 @@ the database has schema version 6, newer than this sidecar's 5; run a newer side
 ```
 
 That is the guard working. Go back to the newer images, or restore the backup you took before
-updating ([Backing up and restoring](self-hosting.md#backing-up-and-restoring)).
+updating ([Data identity, backup and restore](self-hosting.md#data-identity-backup-and-restore)).
 
 ## Reporting a problem
 

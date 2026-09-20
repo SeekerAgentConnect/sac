@@ -122,10 +122,11 @@ go run ./cmd/copytrading
 `PUBLISHER_PUBLISH_URL` is needed **only** in this shape, and it is the one setting worth
 understanding before the first start. Run natively, the gateway has separate loopback listeners —
 feeds on 8090 and publications on 8091 — so the origin a phone reads from is not the address a
-publication goes to. Run through the gateway's own compose stack, one proxy serves them on one
-origin and this setting can be left empty. Get it wrong and the publication gets a 404 from a
-listener that has no handler which could write anything; the demo says so at startup, because
-nothing else would.
+publication goes to. The canonical `deploy/feed` preset preserves those separate listeners, so its
+demo presets set the private publisher URL explicitly. An operator may instead add the independent
+feed ingress and deliberately route both APIs on one origin. Get it wrong and the publication gets
+a 404 from a listener that has no handler which could write anything; the demo says so at startup,
+because nothing else would.
 
 A publication then looks like this, and the demo prints the feed reference on stdout at startup:
 
@@ -170,8 +171,8 @@ go run ./cmd/prediction
 It is a **second publisher**, so it needs its own server ID, its own credential and its own database.
 Sharing a database is refused at startup, which is the point of the stamp in it. `PUBLISHER_API_ADDRESS`
 is set explicitly above because its default, `127.0.0.1:8092`, is the one the CopyTrading demo would
-take as well; the packaged stack publishes its proxy on `127.0.0.1:${PREDICTION_PORT:-8094}` for the
-same reason.
+take as well; the packaged preset publishes the application's own port on
+`127.0.0.1:${PREDICTION_PORT:-8094}` for the same reason.
 
 Then, to see what it is doing rather than waiting five minutes for the timer:
 
@@ -181,11 +182,11 @@ go run ./cmd/publishctl poll | jq '.cycle'
 go run ./cmd/publishctl discovery | jq '{filters, markets: [.markets[].market_id]}'
 ```
 
-In Docker it is its own stack in its own directory, for the same reason it is its own everything
+In Docker it is its own preset in its own deployment directory, for the same reason it is its own everything
 else:
 
 ```sh
-cd demo-prediction
+cd deploy/prediction
 cp .env.example .env
 docker compose up -d --build
 docker compose run --rm ctl discovery
@@ -506,9 +507,10 @@ client, no discovery and no prediction binary exists anywhere in the CopyTrading
 signal-writing API, no trader UI and no CopyTrading binary exists anywhere in the Prediction one.
 Both builds take the repository root as their context, because each module's `go.mod` replaces the
 shared library with `../publisher-support` and the build needs that directory too; neither copies the
-other demo in. The project names, the volume names and the database file names are unchanged from the
-single combined stack these were split out of, so an existing installation upgrades into the same
-data rather than a fresh identity.
+other demo in. The canonical projects use explicit physical volume and database-file identities.
+Those identities differ from some historical combined-stack names, so operators must follow the
+mapping and backup procedure in [`deploy/README.md`](../../deploy/README.md) instead of assuming a
+new project automatically reuses old data.
 
 Two things differ from the gateway's assets, and each for a reason:
 
@@ -516,12 +518,10 @@ Two things differ from the gateway's assets, and each for a reason:
   gateway is somebody else's HTTPS endpoint, and so is the prediction provider — so a publisher that
   could not verify them would be publishing to, and reading from, whatever answered. The gateway's
   own image shipped none until it gained an outbound call of its own.
-- **The CopyTrading public overlay carries a warning rather than a recommendation.** What it puts on
-  the internet is a write API whose token is the whole grant to publish as this server, which is a
-  different thing from the gateway's public read port, where everything served is a document somebody
-  published for everyone. A deployment whose signals are written locally should stay on the base file
-  and be reached over a tunnel.
+- **Neither demo bundles public ingress.** Its API is a write surface whose token is the grant to
+  direct that source. A deployment whose signals are written locally should keep the default
+  loopback bind and use a tunnel or separately managed private network when remote access is needed.
 
-`docker compose config` validates every compose file and `caddy validate` every Caddyfile without a
-daemon — which is how they were checked here
+`pnpm check:deployments` resolves every canonical Compose file without starting a daemon and checks
+the ingress route boundaries — which is how they were checked here
 ([`docs/changelog/2026-09-17.md`](../changelog/2026-09-17.md)).
