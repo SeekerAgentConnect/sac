@@ -3,7 +3,6 @@ package io.github.brrenat.seekervault.ui
 import android.graphics.drawable.ColorDrawable
 import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -90,14 +89,16 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
+import io.github.brrenat.seekervault.designsystem.LocalSheetStackBack
+import io.github.brrenat.seekervault.designsystem.LocalSheetStackHosted
+import io.github.brrenat.seekervault.designsystem.SheetMotion
 import io.github.brrenat.seekervault.designsystem.StackedSheetUnderlay
+import io.github.brrenat.seekervault.designsystem.sheetStackContentColor
+import io.github.brrenat.seekervault.designsystem.sheetStackSurfaceColor
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-private val SheetEnterEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-private val SheetExitEasing = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
 
 private enum class SheetSwipe {
     Shown,
@@ -480,35 +481,34 @@ fun SeekerBottomBar(
 
 @Composable
 fun SeekerSheet(
-    depth: Int,
+    index: Int,
+    back: Int,
     motionKey: Any? = Unit,
     visible: Boolean = true,
-    promoteFromBackplate: Boolean = false,
     onDismiss: () -> Unit,
-    onBackplateClick: (() -> Unit)? = null,
+    onPeekClick: (() -> Unit)? = null,
     chrome: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val activeTop = SeekerTheme.dimensions.dp150
+    val topInset =
+        (SeekerTheme.dimensions.dp100 - SeekerTheme.dimensions.dp14 * back.toFloat()).coerceAtLeast(
+            SeekerTheme.dimensions.dp30
+        )
+    val bottomInset = SeekerTheme.dimensions.dp12 * back.toFloat()
     val transition =
-        remember(motionKey) {
-            MutableTransitionState(promoteFromBackplate).apply { targetState = visible }
-        }
+        remember(motionKey) { MutableTransitionState(false).apply { targetState = visible } }
     LaunchedEffect(visible) { transition.targetState = visible }
-    var promoted by
-        remember(motionKey) { androidx.compose.runtime.mutableStateOf(!promoteFromBackplate) }
-    LaunchedEffect(promoteFromBackplate) { promoted = true }
     val animatedTop by
         animateDpAsState(
-            if (promoted) activeTop else activeTop - SeekerTheme.dimensions.dp14,
-            tween(300, easing = SheetEnterEasing),
+            topInset,
+            tween(SheetMotion.StackMs, easing = SheetMotion.EnterEasing),
             label = "activeSheetTop",
         )
     val animatedBottom by
         animateDpAsState(
-            if (promoted) SeekerTheme.dimensions.dp0 else SeekerTheme.dimensions.dp12,
-            tween(300, easing = SheetEnterEasing),
+            bottomInset,
+            tween(SheetMotion.StackMs, easing = SheetMotion.EnterEasing),
             label = "activeSheetBottom",
         )
     val swipe = remember(motionKey) { AnchoredDraggableState(SheetSwipe.Shown) }
@@ -528,13 +528,11 @@ fun SeekerSheet(
         if (swipe.settledValue == SheetSwipe.Hidden) dismiss.value()
     }
     val scope = rememberCoroutineScope()
-    val settleSpec = tween<Float>(240, easing = SheetExitEasing)
+    val settleSpec = tween<Float>(SheetMotion.ExitMs, easing = SheetMotion.ExitEasing)
     val density = LocalDensity.current
     val dismissVelocityPx =
         with(density) {
-            (SeekerTheme.dimensions.dp80 +
-                    SeekerTheme.dimensions.dp40 +
-                    SeekerTheme.dimensions.dp5)
+            (SeekerTheme.dimensions.dp80 + SeekerTheme.dimensions.dp40 + SeekerTheme.dimensions.dp5)
                 .toPx()
         }
     val settleSwipe: (Float) -> Unit = { velocity ->
@@ -553,6 +551,7 @@ fun SeekerSheet(
     val nestedScroll = remember(swipe) { sheetSwipeNestedScroll(swipe, settleSwipe) }
     val sheetFling =
         AnchoredDraggableDefaults.flingBehavior(state = swipe, animationSpec = settleSpec)
+    val interactive = visible && back == 0
     val swipeModifier =
         Modifier.fillMaxWidth()
             .onSizeChanged { sheetHeightPx = it.height.toFloat() }
@@ -564,13 +563,12 @@ fun SeekerSheet(
             .anchoredDraggable(
                 state = swipe,
                 orientation = Orientation.Vertical,
-                enabled = visible && sheetHeightPx > 0f,
+                enabled = interactive && sheetHeightPx > 0f,
                 flingBehavior = sheetFling,
             )
-    Box(modifier.fillMaxSize().zIndex(10f + depth)) {
-        // Max height is 150dp from the top. The sheet wraps content and slides by its
-        // own height. The full-size host is not animated, so a short sheet does not
-        // travel the whole screen.
+    Box(modifier.fillMaxSize().zIndex(10f + index)) {
+        // Max height is 100dp from the top, minus 14dp per stacked sheet (floor 30dp).
+        // The sheet wraps content and slides by its own height.
         Box(
             Modifier.fillMaxSize().padding(top = animatedTop, bottom = animatedBottom),
             contentAlignment = Alignment.BottomCenter,
@@ -579,61 +577,94 @@ fun SeekerSheet(
                 visibleState = transition,
                 enter =
                     slideInVertically(
-                        animationSpec = tween(260, easing = SheetEnterEasing),
+                        animationSpec =
+                            tween(SheetMotion.EnterMs, easing = SheetMotion.EnterEasing),
                         initialOffsetY = { it },
                     ),
                 exit =
                     slideOutVertically(
-                        animationSpec = tween(240, easing = SheetExitEasing),
+                        animationSpec = tween(SheetMotion.ExitMs, easing = SheetMotion.ExitEasing),
                         targetOffsetY = { it },
                     ),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                if (chrome) {
-                    Surface(
-                        modifier =
-                            swipeModifier.then(
-                                if (onBackplateClick == null) Modifier
-                                else
-                                    Modifier.clickable(
-                                        indication = null,
-                                        interactionSource =
-                                            remember { MutableInteractionSource() },
-                                        onClick = onBackplateClick,
-                                    )
-                            ),
-                        shape =
-                            RoundedCornerShape(
-                                topStart = SeekerTheme.dimensions.dp28,
-                                topEnd = SeekerTheme.dimensions.dp28,
-                            ),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        shadowElevation = SeekerTheme.dimensions.dp0,
-                        tonalElevation = SeekerTheme.dimensions.dp0,
-                    ) {
-                        Column {
-                            Box(
-                                Modifier.fillMaxWidth().height(SeekerTheme.dimensions.dp22),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Box(
-                                    Modifier.size(
-                                            width = SeekerTheme.dimensions.dp32,
-                                            height = SeekerTheme.dimensions.dp4,
-                                        )
-                                        .background(
-                                            MaterialTheme.colorScheme.outlineVariant,
-                                            RoundedCornerShape(SeekerTheme.dimensions.dp2),
-                                        )
-                                )
+                CompositionLocalProvider(
+                    LocalSheetStackBack provides back,
+                    LocalSheetStackHosted provides true,
+                ) {
+                    val peek = onPeekClick.takeIf { back > 0 && visible }
+                    val exitGuard =
+                        if (visible) Modifier
+                        else
+                            Modifier.pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent(PointerEventPass.Initial)
+                                            .changes
+                                            .forEach { it.consume() }
+                                    }
+                                }
                             }
-                            Box(Modifier.fillMaxWidth()) { content() }
-                        }
+                    StackedSheetUnderlay(back = back, modifier = swipeModifier.then(exitGuard)) {
+                        SheetLayer(chrome = chrome, peek = peek, content = content)
                     }
-                } else {
-                    Box(swipeModifier) { content() }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SheetLayer(
+    chrome: Boolean,
+    peek: (() -> Unit)?,
+    content: @Composable () -> Unit,
+) {
+    Box(Modifier.fillMaxWidth()) {
+        if (chrome) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape =
+                    RoundedCornerShape(
+                        topStart = SeekerTheme.dimensions.dp28,
+                        topEnd = SeekerTheme.dimensions.dp28,
+                    ),
+                color = sheetStackSurfaceColor(),
+                contentColor = sheetStackContentColor(),
+                shadowElevation = SeekerTheme.dimensions.dp0,
+                tonalElevation = SeekerTheme.dimensions.dp0,
+            ) {
+                Column {
+                    Box(
+                        Modifier.fillMaxWidth().height(SeekerTheme.dimensions.dp22),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier.size(
+                                    width = SeekerTheme.dimensions.dp32,
+                                    height = SeekerTheme.dimensions.dp4,
+                                )
+                                .background(
+                                    MaterialTheme.colorScheme.outlineVariant,
+                                    RoundedCornerShape(SeekerTheme.dimensions.dp2),
+                                )
+                        )
+                    }
+                    Box(Modifier.fillMaxWidth()) { content() }
+                }
+            }
+        } else {
+            content()
+        }
+        if (peek != null) {
+            Box(
+                Modifier.matchParentSize()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = peek,
+                    )
+            )
         }
     }
 }
@@ -654,75 +685,6 @@ fun SheetInputBarrier(modifier: Modifier = Modifier) {
             }
         }
     )
-}
-
-@Composable
-fun SheetBackplate(depth: Int, title: String, onClick: () -> Unit) {
-    val back = depth.coerceAtLeast(1)
-    var stacked by remember { androidx.compose.runtime.mutableStateOf(false) }
-    LaunchedEffect(Unit) { stacked = true }
-    val top by
-        animateDpAsState(
-            if (stacked) {
-                (SeekerTheme.dimensions.dp150 - SeekerTheme.dimensions.dp14 * back.toFloat())
-                    .coerceAtLeast(SeekerTheme.dimensions.dp30)
-            } else {
-                SeekerTheme.dimensions.dp150
-            },
-            tween(300, easing = SheetEnterEasing),
-            label = "sheetBackplateTop",
-        )
-    val bottom by
-        animateDpAsState(
-            if (stacked) SeekerTheme.dimensions.dp12 * back.toFloat()
-            else SeekerTheme.dimensions.dp0,
-            tween(300, easing = SheetEnterEasing),
-            label = "sheetBackplateBottom",
-        )
-    StackedSheetUnderlay(
-        modifier =
-            Modifier.fillMaxWidth()
-                .fillMaxHeight()
-                .padding(top = top, bottom = bottom)
-                .zIndex(10f - back)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() },
-                    onClick = onClick,
-                )
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = SeekerTheme.colors.dim,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            shape =
-                RoundedCornerShape(
-                    topStart = SeekerTheme.dimensions.dp28,
-                    topEnd = SeekerTheme.dimensions.dp28,
-                ),
-            shadowElevation = SeekerTheme.dimensions.dp0,
-            tonalElevation = SeekerTheme.dimensions.dp0,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(SeekerTheme.dimensions.dp9))
-                Box(
-                    Modifier.size(
-                            width = SeekerTheme.dimensions.dp32,
-                            height = SeekerTheme.dimensions.dp4,
-                        )
-                        .background(
-                            MaterialTheme.colorScheme.outline,
-                            RoundedCornerShape(SeekerTheme.dimensions.dp2),
-                        )
-                )
-                Text(
-                    title,
-                    modifier = Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
-                    style = MaterialTheme.typography.titleLarge,
-                )
-            }
-        }
-    }
 }
 
 /** Opaque replacement for modal scrims: the background is a solid token, never an alpha layer. */

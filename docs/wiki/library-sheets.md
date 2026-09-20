@@ -13,8 +13,8 @@ storage, transport, request, or wallet implementation type. Exact design copy li
 
 `SheetScaffold` owns the drag handle, header, close action, scrolling body, and pinned footer or
 header action. Every sheet sizes to its content, capped by the host in
-[`design/motion.md`](../../design/motion.md). `StackedSheetUnderlay` applies the shared scale,
-blur, and clipping treatment to the preserved parent sheet.
+[`design/motion.md`](../../design/motion.md). The app host keeps each pushed sheet mounted;
+`StackedSheetUnderlay` applies scale, blur, and dimming to the sheets underneath.
 
 The application adapters retain all existing behavior:
 

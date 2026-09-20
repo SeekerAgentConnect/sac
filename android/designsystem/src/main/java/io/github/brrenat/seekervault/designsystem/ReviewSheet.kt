@@ -17,9 +17,11 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.RssFeed
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -143,113 +145,118 @@ fun ReviewSheet(
             mutableStateOf(false)
         }
     val primaryEnabled = state.primaryAction.enabled && (!requiresConfirmation || confirmed)
+    val surface = sheetStackSurfaceColor()
+    val ink = sheetStackContentColor()
 
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(SeekerTheme.radii.sheet))
-                .background(SeekerTheme.colors.surface2)
-    ) {
-        ReviewSheetGrabber()
-        ReviewSheetTitle(title = state.title, onClose = onClose)
+    CompositionLocalProvider(LocalContentColor provides ink) {
         Column(
             modifier =
-                Modifier.fillMaxWidth()
-                    .padding(
-                        start = SeekerTheme.spacing.xl,
-                        top = SeekerTheme.spacing.xs,
-                        end = SeekerTheme.spacing.xl,
-                        bottom = SeekerTheme.spacing.xxxl,
-                    ),
-            verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
+                modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(SeekerTheme.radii.sheet))
+                    .background(surface)
         ) {
-            ReviewSheetHeader(state)
-            state.sandboxNotice?.let {
-                NoticeCard(kind = NoticeCardKind.Sandbox, message = it)
-            }
-            state.yourPart?.let {
-                OwnerInputCard(
-                    kind = it.kind,
-                    state = it.state,
-                    summary = it.summary,
-                    onChooseOrEdit = onChoose,
-                )
-            }
-            VerdictCard(
-                verdict = if (hasWarnings) VerdictCardVerdict.Warning else VerdictCardVerdict.Ok,
-                warnings =
-                    state.verdict.warnings.map {
-                        VerdictWarning(
-                            message = it.message,
-                            scopeLabel = it.sourceLabel,
-                            kind = it.kind,
-                            scope = it.source,
-                        )
-                    },
-                onRulesClick = onRules,
-                additionalContext = state.verdict.additionalContext,
-            )
-            state.dailySpend?.let { ReviewSheetDailySpend(it) }
-            state.infoBlocks.forEach { ReviewSheetInfoBlock(it) }
-            state.factRows.forEach {
-                FactRow(label = it.label, value = it.value, valueStyle = it.valueStyle)
-            }
-            state.note?.let { ReviewSheetNote(it) }
-            Text(
-                text = "Expires ${state.expiry}.",
-                modifier = Modifier.padding(horizontal = SeekerTheme.spacing.xs),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        Column(
-            modifier =
-                Modifier.fillMaxWidth()
-                    .padding(
-                        start = SeekerTheme.spacing.xl,
-                        top = SeekerTheme.spacing.lg,
-                        end = SeekerTheme.spacing.xl,
-                        bottom = SeekerTheme.spacing.xxl,
-                    ),
-            verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus),
-        ) {
-            state.confirmationCheckbox?.let { label ->
-                CheckRow(
-                    label = label,
-                    state = if (confirmed) CheckRowState.Checked else CheckRowState.Unchecked,
-                    onStateChange = { confirmed = it == CheckRowState.Checked },
-                    contentKind = CheckRowContentKind.WarningAcknowledgement,
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+            ReviewSheetGrabber()
+            ReviewSheetTitle(title = state.title, onClose = onClose)
+            Column(
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(
+                            start = SeekerTheme.spacing.xl,
+                            top = SeekerTheme.spacing.xs,
+                            end = SeekerTheme.spacing.xl,
+                            bottom = SeekerTheme.spacing.xxxl,
+                        ),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
             ) {
-                SeekerButton(
-                    label = state.primaryAction.label,
-                    onClick = onPrimary,
-                    variant =
-                        if (primaryEnabled) SeekerButtonVariant.Filled
-                        else SeekerButtonVariant.Disabled,
-                    size = SeekerButtonSize.Lg,
-                    modifier = Modifier.weight(1f),
+                ReviewSheetHeader(state)
+                state.sandboxNotice?.let {
+                    NoticeCard(kind = NoticeCardKind.Sandbox, message = it)
+                }
+                state.yourPart?.let {
+                    OwnerInputCard(
+                        kind = it.kind,
+                        state = it.state,
+                        summary = it.summary,
+                        onChooseOrEdit = onChoose,
+                    )
+                }
+                VerdictCard(
+                    verdict =
+                        if (hasWarnings) VerdictCardVerdict.Warning else VerdictCardVerdict.Ok,
+                    warnings =
+                        state.verdict.warnings.map {
+                            VerdictWarning(
+                                message = it.message,
+                                scopeLabel = it.sourceLabel,
+                                kind = it.kind,
+                                scope = it.source,
+                            )
+                        },
+                    onRulesClick = onRules,
+                    additionalContext = state.verdict.additionalContext,
                 )
-                SeekerButton(
-                    label = state.secondaryAction.label,
-                    onClick = onSecondary,
-                    variant =
-                        if (state.secondaryAction.enabled) SeekerButtonVariant.Neutral
-                        else SeekerButtonVariant.Disabled,
-                    size = SeekerButtonSize.Lg,
+                state.dailySpend?.let { ReviewSheetDailySpend(it) }
+                state.infoBlocks.forEach { ReviewSheetInfoBlock(it) }
+                state.factRows.forEach {
+                    FactRow(label = it.label, value = it.value, valueStyle = it.valueStyle)
+                }
+                state.note?.let { ReviewSheetNote(it) }
+                Text(
+                    text = "Expires ${state.expiry}.",
+                    modifier = Modifier.padding(horizontal = SeekerTheme.spacing.xs),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Text(
-                text = state.footerCaption,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.spacing.xs),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Column(
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(
+                            start = SeekerTheme.spacing.xl,
+                            top = SeekerTheme.spacing.lg,
+                            end = SeekerTheme.spacing.xl,
+                            bottom = SeekerTheme.spacing.xxl,
+                        ),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus),
+            ) {
+                state.confirmationCheckbox?.let { label ->
+                    CheckRow(
+                        label = label,
+                        state = if (confirmed) CheckRowState.Checked else CheckRowState.Unchecked,
+                        onStateChange = { confirmed = it == CheckRowState.Checked },
+                        contentKind = CheckRowContentKind.WarningAcknowledgement,
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+                ) {
+                    SeekerButton(
+                        label = state.primaryAction.label,
+                        onClick = onPrimary,
+                        variant =
+                            if (primaryEnabled) SeekerButtonVariant.Filled
+                            else SeekerButtonVariant.Disabled,
+                        size = SeekerButtonSize.Lg,
+                        modifier = Modifier.weight(1f),
+                    )
+                    SeekerButton(
+                        label = state.secondaryAction.label,
+                        onClick = onSecondary,
+                        variant =
+                            if (state.secondaryAction.enabled) SeekerButtonVariant.Neutral
+                            else SeekerButtonVariant.Disabled,
+                        size = SeekerButtonSize.Lg,
+                    )
+                }
+                Text(
+                    text = state.footerCaption,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.spacing.xs),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
     }
 }
