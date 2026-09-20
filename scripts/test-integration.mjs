@@ -26,9 +26,13 @@ import { parseArgs } from "node:util";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FEED_GATEWAY = join(ROOT, "feed-gateway");
-const PUBLISHER = join(ROOT, "publisher");
+// The two demos are two modules and two images (SEE-134). This harness builds both because it is
+// about what happens when two independent sources publish to one gateway; nothing here makes one
+// demo's build depend on the other's.
+const COPYTRADING = join(ROOT, "demo-copytrading");
+const PREDICTION = join(ROOT, "demo-prediction");
 
-// The version both go.mod files require, and the one docs/development/toolchain.md records as
+// The version every go.mod requires, and the one docs/development/toolchain.md records as
 // tested. A newer Go builds them too; this is the message for a machine that has none.
 const GO = "1.27.1";
 
@@ -76,13 +80,13 @@ try {
 
 const built = mkdtempSync(join(tmpdir(), "seeker-vault-integration-"));
 try {
-  console.log("Building the gateway, both templates and their CLIs…\n");
+  console.log("Building the gateway, both demos and their CLIs…\n");
   for (const [module, command] of [
     [FEED_GATEWAY, "feed-gateway"],
     [FEED_GATEWAY, "feed-gatewayctl"],
-    [PUBLISHER, "copytrading"],
-    [PUBLISHER, "prediction"],
-    [PUBLISHER, "publishctl"],
+    [COPYTRADING, "copytrading"],
+    [COPYTRADING, "publishctl"],
+    [PREDICTION, "prediction"],
   ]) {
     execFileSync(
       "go",

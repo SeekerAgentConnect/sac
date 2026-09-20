@@ -16,7 +16,7 @@
 # whole grant to publish as this server, so a deployment that does not need a
 # remote strategy engine should not run this overlay at all. What TLS adds is
 # that the token cannot be read off the wire — it does not make holding one
-# safer (publisher/README.md).
+# safer (demo-copytrading/README.md).
 {
 	admin off
 	# Where the certificate authority sends expiry and problem notices.

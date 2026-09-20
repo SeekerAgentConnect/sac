@@ -23,10 +23,12 @@ Compatibility reservations and one-way migration readers may still name the reti
 
 An independent server is a role, not an extra service that every developer must install beside their backend. The existing MCP server is one implementation of that role. The historical name `sidecar` does not imply another required component.
 
-The existing publisher client remains in `publisher/sdk/`. The reusable TypeScript direct-server
-engine now lives in `server-sdk/` and the current MCP host consumes only its public package exports;
-moving and packaging that MCP application remains SEE-132 work. The Android build currently has
-`:app` and `:designsystem`; a separately packaged Android SDK remains future work.
+The existing publisher client remains in `demo-copytrading/sdk/`, and the publication engine both
+feed demos are built on is `publisher-support/`, a source library with no command, no image and no
+deployment of its own. The reusable TypeScript direct-server engine now lives in `server-sdk/` and
+the current MCP host consumes only its public package exports; moving and packaging that MCP
+application remains SEE-132 work. The Android build currently has `:app` and `:designsystem`; a
+separately packaged Android SDK remains future work.
 
 ## Two connection modes
 
@@ -140,7 +142,9 @@ Current directory names describe historical implementation choices and are not t
 | `mcp-server/` | The self-hosted MCP host, executable operator CLI, provider implementations and standalone Docker/npm packaging | Consumes `server-sdk/` through its public API; the npm artifact vendors that unpublished runtime |
 | `gateway/` | Deployment assets and reverse proxy for the direct server, including TLS/OAuth configuration | Move/name as direct-server deployment infrastructure |
 | `feed-gateway/` | Shared Go feed gateway with public read and publisher listeners, a storage contract, and local SQLite implementation | Canonical public-feed service isolated in SEE-133 |
-| `publisher/` | Demo server implementations plus reusable Go Server SDK | Clearly separate SDK code from examples in layout and documentation |
+| `publisher-support/` | The Go source library both feed demos share: generated publication bindings, document rules, manifest, store, gateway client, API and operator CLI. No command, image or deployment of its own | Non-deployable library split out in SEE-134 |
+| `demo-copytrading/` | The CopyTrading demo, whole: its commands, its admin UI, the Go create-request client for its own API in `sdk/`, and its own image and compose stack | Independent deployable demo isolated in SEE-134 |
+| `demo-prediction/` | The Prediction demo, whole: its command, its Jupiter provider client and discovery cycle, and its own image and compose stack | Independent deployable demo isolated in SEE-134 |
 | `deploy/server/` | Shared infrastructure, optional demo overlay and optional direct-server overlay | Preserve independent deployment with consistent names |
 | `test-agent/` | Developer MCP client | Keep as a test/development tool |
 

@@ -1,4 +1,4 @@
-package main
+package publisherctl
 
 import (
 	"encoding/json"
@@ -14,7 +14,7 @@ import (
 
 // The CLI is a client, so its tests are about what it sends: the method, the path, the headers and
 // the body. What the template does with them is the API's own tests
-// (internal/api), and the two meeting for real is `internal/publish/gateway_test.go`.
+// (publisher-support/api), and the two meeting for real is `publisher-support/publish/gateway_test.go`.
 type recorded struct {
 	method  string
 	path    string
@@ -73,7 +73,7 @@ func TestCreateSendsTheStatementAndAnIdempotencyKey(t *testing.T) {
 
 	arguments := append([]string{"create", "--url", address, "--token", token,
 		"--in", "2h", "--note", "trimming SOL into USDC"}, swapTerms...)
-	if err := run(arguments, stdout, messages); err != nil {
+	if err := Run(arguments, stdout, messages); err != nil {
 		t.Fatal(err)
 	}
 	if held.method != http.MethodPost || held.path != "/v1/requests" {
@@ -131,7 +131,7 @@ func TestAKeyThatWasGivenIsTheKeyThatIsSent(t *testing.T) {
 	stdout, messages := out(t)
 	arguments := append([]string{"create", "--url", address, "--token", token,
 		"--expires", "2026-09-17T21:00:00Z", "--key", "desk-1-sol-usdc"}, swapTerms...)
-	if err := run(arguments, stdout, messages); err != nil {
+	if err := Run(arguments, stdout, messages); err != nil {
 		t.Fatal(err)
 	}
 	if held.key != "desk-1-sol-usdc" {
@@ -158,7 +158,7 @@ func TestTermsMayComeFromAFile(t *testing.T) {
 	held := &recorded{}
 	address := serve(t, held)
 	stdout, messages := out(t)
-	if err := run([]string{"create", "--url", address, "--token", token, "--in", "30m",
+	if err := Run([]string{"create", "--url", address, "--token", token, "--in", "30m",
 		"--terms-file", path, "--term", "max_slippage_bps=80"}, stdout, messages); err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestEveryCommandIsOneCall(t *testing.T) {
 			address := serve(t, held)
 			stdout, messages := out(t)
 			arguments := append(one.arguments, "--url", address, "--token", token)
-			if err := run(arguments, stdout, messages); err != nil {
+			if err := Run(arguments, stdout, messages); err != nil {
 				t.Fatal(err)
 			}
 			if held.method != one.method || held.path != one.path {
@@ -219,7 +219,7 @@ func TestTheReferenceIsPrintedAlone(t *testing.T) {
 	}}
 	address := serve(t, held)
 	stdout, messages := out(t)
-	if err := run([]string{"reference", "--url", address, "--token", token}, stdout,
+	if err := Run([]string{"reference", "--url", address, "--token", token}, stdout,
 		messages); err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestWhatTheToolRefusesToSend(t *testing.T) {
 			if len(arguments) > 0 {
 				arguments = append(arguments, "--url", address, "--token", token)
 			}
-			err := run(arguments, stdout, messages)
+			err := Run(arguments, stdout, messages)
 			if err == nil {
 				t.Fatalf("it was sent: %s", stdout)
 			}
@@ -278,7 +278,7 @@ func TestWhatTheToolRefusesToSend(t *testing.T) {
 func TestTheTokenIsRequired(t *testing.T) {
 	stdout, messages := out(t)
 	t.Setenv("PUBLISHER_API_TOKEN", "")
-	if err := run([]string{"status", "--url", "http://127.0.0.1:8092"}, stdout,
+	if err := Run([]string{"status", "--url", "http://127.0.0.1:8092"}, stdout,
 		messages); err == nil || !strings.Contains(err.Error(), "PUBLISHER_API_TOKEN") {
 		t.Fatalf("%v", err)
 	}
@@ -297,7 +297,7 @@ func TestARefusalIsReportedAndIsNotSuccess(t *testing.T) {
 	stdout, messages := out(t)
 	arguments := append([]string{"create", "--url", address, "--token", token, "--in", "1h"},
 		swapTerms...)
-	err := run(arguments, stdout, messages)
+	err := Run(arguments, stdout, messages)
 	if err == nil {
 		t.Fatal("a refused create was reported as success")
 	}
@@ -322,7 +322,7 @@ func TestAPendingPublicationIsSaidOutLoud(t *testing.T) {
 	stdout, messages := out(t)
 	arguments := append([]string{"create", "--url", address, "--token", token, "--in", "1h"},
 		swapTerms...)
-	if err := run(arguments, stdout, messages); err != nil {
+	if err := Run(arguments, stdout, messages); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(messages.String(), "will be published when the gateway answers") {
@@ -333,7 +333,7 @@ func TestAPendingPublicationIsSaidOutLoud(t *testing.T) {
 // A template that is not there is a message about the address, not a stack trace.
 func TestATemplateThatIsNotThereIsNamed(t *testing.T) {
 	stdout, messages := out(t)
-	err := run([]string{"status", "--url", "http://127.0.0.1:1", "--token", token}, stdout,
+	err := Run([]string{"status", "--url", "http://127.0.0.1:1", "--token", token}, stdout,
 		messages)
 	if err == nil || !strings.Contains(err.Error(), "127.0.0.1:1") {
 		t.Fatalf("%v", err)

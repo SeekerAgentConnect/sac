@@ -36,7 +36,7 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 	binary := os.Getenv("SEEKERVAULT_FEED_GATEWAY")
 	if binary == "" {
 		t.Skip("set SEEKERVAULT_FEED_GATEWAY to a built feed-gateway binary to run this " +
-			"(see docs/development/publisher.md)")
+			"(see docs/development/demos.md)")
 	}
 	running := publishertest.RunGateway(t, binary, "the prediction template's own test")
 

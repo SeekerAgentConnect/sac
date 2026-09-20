@@ -1,21 +1,24 @@
-# The Prediction publisher template's stack (SEE-96). Run it from this directory:
-#   cp .env.prediction.example .env.prediction
-#   docker compose --env-file .env.prediction -f compose.prediction.yaml up -d --build
-#   docker compose --env-file .env.prediction -f compose.prediction.yaml run --rm ctl discovery
+# The Prediction demo's stack (SEE-96, SEE-134). Run it from this directory:
+#   cp .env.example .env
+#   docker compose up -d --build
+#   docker compose run --rm ctl discovery
 #
-# It is a **separate stack** rather than a service added to compose.yaml, and
-# that is the whole point: the two templates are two deployments. Each has its
-# own server ID, its own credential from the gateway, its own database and its
-# own environment, and a publisher running both is running two publishers. They
-# share one image (publisher/Dockerfile) and nothing else — this file names the
-# other binary in it.
+# It is a **separate module** as well as a separate stack, and that is the whole
+# point: the two demos are two deployments. Each has its own server ID, its own
+# credential from the gateway, its own database, its own environment and now its
+# own image built from its own module — a publisher running both is running two
+# publishers, and starting this one needs nothing from the other
+# (demo-copytrading/ is never copied into this image).
 #
-# What starts: the template, and the proxy in front of it. No broker, no Redis,
-# no push credential: delivery to phones is the shared gateway's (SEE-91,
-# SEE-92). Nothing here is internet-facing either — the API is on the host's
-# loopback address, and this template's API is read-only anyway, because its
-# signals are written by its own discovery and not by callers
+# What starts: this demo, and the proxy in front of it. No broker, no Redis, no
+# push credential: delivery to phones is the shared gateway's (SEE-91, SEE-92).
+# Nothing here is internet-facing either — the API is on the host's loopback
+# address, and this demo's API is read-only anyway, because its signals are
+# written by its own discovery and not by callers
 # (docs/wiki/prediction-template.md).
+#
+# The one thing it needs that is not here is a reachable feed gateway, which is
+# somebody's deployment of `feed-gateway/`, and the prediction provider it polls.
 
 name: seeker-prediction
 
@@ -23,23 +26,19 @@ services:
   prediction:
     build:
       context: ..
-      dockerfile: publisher/Dockerfile
-    image: seeker-publisher/copytrading:local
-    # The other binary in the same image. Everything else about the two
-    # templates is shared; the kind each registers, and who writes its signals,
-    # is not.
-    entrypoint: ["/prediction"]
+      dockerfile: demo-prediction/Dockerfile
+    image: seeker-prediction/prediction:local
     restart: unless-stopped
 
     ports:
       - "${PREDICTION_BIND:-127.0.0.1}:${PREDICTION_PORT:-8094}:8095"
 
     environment:
-      # --- the publisher's own half, which both templates share ------------
-      PUBLISHER_SERVER_ID: ${PUBLISHER_SERVER_ID:?set PUBLISHER_SERVER_ID in .env.prediction - the lowercase UUID this publisher was registered with}
-      PUBLISHER_GATEWAY_URL: ${PUBLISHER_GATEWAY_URL:?set PUBLISHER_GATEWAY_URL in .env.prediction - the shared gateway's origin, for example https://feeds.example.com}
+      # --- the publisher's own half, which both demos read the same way ----
+      PUBLISHER_SERVER_ID: ${PUBLISHER_SERVER_ID:?set PUBLISHER_SERVER_ID in demo-prediction/.env - the lowercase UUID this publisher was registered with}
+      PUBLISHER_GATEWAY_URL: ${PUBLISHER_GATEWAY_URL:?set PUBLISHER_GATEWAY_URL in demo-prediction/.env - the shared gateway's origin, for example https://feeds.example.com}
       PUBLISHER_PUBLISH_URL: ${PUBLISHER_PUBLISH_URL:-}
-      PUBLISHER_ENVIRONMENT: ${PUBLISHER_ENVIRONMENT:?set PUBLISHER_ENVIRONMENT in .env.prediction - production or sandbox}
+      PUBLISHER_ENVIRONMENT: ${PUBLISHER_ENVIRONMENT:?set PUBLISHER_ENVIRONMENT in demo-prediction/.env - production or sandbox}
       BROADCAST_CREDENTIAL: ${BROADCAST_CREDENTIAL:-}
       BROADCAST_CREDENTIAL_FILE: ${BROADCAST_CREDENTIAL_FILE:-}
       PUBLISHER_API_TOKEN: ${PUBLISHER_API_TOKEN:-}
@@ -109,7 +108,7 @@ services:
     depends_on:
       - prediction
     volumes:
-      - ./Caddyfile.prediction:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - proxy-data:/data
       - proxy-config:/config
     healthcheck:
@@ -133,13 +132,13 @@ services:
   #
   # `create`, `update` and `cancel` answer 403 here: this template's signals are
   # its own, and the way to change what it publishes is to change what it looks
-  # for (internal/api).
+  # for (publisher-support/api).
   ctl:
     profiles: ["ctl"]
     build:
       context: ..
-      dockerfile: publisher/Dockerfile
-    image: seeker-publisher/copytrading:local
+      dockerfile: demo-prediction/Dockerfile
+    image: seeker-prediction/prediction:local
     entrypoint: ["/publishctl"]
     network_mode: "service:prediction"
     environment:

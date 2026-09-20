@@ -14,8 +14,8 @@ services:
   copytrading:
     build:
       context: ../..
-      dockerfile: publisher/Dockerfile
-    image: ${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}
+      dockerfile: demo-copytrading/Dockerfile
+    image: ${COPYTRADING_IMAGE:-${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}}
     restart: unless-stopped
     env_file:
       - ${COPYTRADING_ENV_FILE:-.env.copytrading}
@@ -79,8 +79,8 @@ services:
     profiles: ["operator"]
     build:
       context: ../..
-      dockerfile: publisher/Dockerfile
-    image: ${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}
+      dockerfile: demo-copytrading/Dockerfile
+    image: ${COPYTRADING_IMAGE:-${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}}
     entrypoint: ["/publishctl"]
     network_mode: "service:copytrading"
     environment:
@@ -100,8 +100,8 @@ services:
   copytrading-admin:
     build:
       context: ../..
-      dockerfile: publisher/Dockerfile
-    image: ${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}
+      dockerfile: demo-copytrading/Dockerfile
+    image: ${COPYTRADING_IMAGE:-${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}}
     entrypoint: ["/copytrading-admin"]
     restart: unless-stopped
     network_mode: "service:copytrading"
@@ -136,8 +136,8 @@ services:
     profiles: ["operator"]
     build:
       context: ../..
-      dockerfile: publisher/Dockerfile
-    image: ${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}
+      dockerfile: demo-copytrading/Dockerfile
+    image: ${COPYTRADING_IMAGE:-${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}}
     entrypoint: ["/copytrading-admin"]
     cap_drop:
       - ALL
@@ -147,9 +147,8 @@ services:
   prediction:
     build:
       context: ../..
-      dockerfile: publisher/Dockerfile
-    image: ${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}
-    entrypoint: ["/prediction"]
+      dockerfile: demo-prediction/Dockerfile
+    image: ${PREDICTION_IMAGE:-seeker-prediction/prediction:local}
     restart: unless-stopped
     env_file:
       - ${PREDICTION_ENV_FILE:-.env.prediction}
@@ -206,8 +205,8 @@ services:
     profiles: ["operator"]
     build:
       context: ../..
-      dockerfile: publisher/Dockerfile
-    image: ${PUBLISHER_IMAGE:-seeker-publisher/copytrading:local}
+      dockerfile: demo-prediction/Dockerfile
+    image: ${PREDICTION_IMAGE:-seeker-prediction/prediction:local}
     entrypoint: ["/publishctl"]
     network_mode: "service:prediction"
     environment:

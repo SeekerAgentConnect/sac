@@ -880,7 +880,7 @@ fact about execution, and a stale signal shows as a closed market rather than as
 fails. The side and the stake are the owner's, and neither is in the document
 ([`wiki/jupiter-prediction.md`](wiki/jupiter-prediction.md)).
 
-From SEE-96 these terms have a publisher: `publisher/cmd/prediction` discovers markets through its
+From SEE-96 these terms have a publisher: `demo-prediction/cmd/prediction` discovers markets through its
 operator's filters and writes exactly this set, with the provider's own five-dollar minimum already
 raised into `least_deposit` so that the document says what will be enforced
 ([`wiki/prediction-template.md`](wiki/prediction-template.md)).
@@ -906,8 +906,9 @@ no publisher client is compiled for it.
 Authenticated with `Authorization: Bearer <credential>`, which says which server the caller
 publishes as. Every document is checked against that rather than against what the document claims.
 The first thing to call it is the CopyTrading template (SEE-95,
-[`development/publisher.md`](development/publisher.md)); nothing about the contract is specific to
-it, and an opt-in test in that module runs the real gateway to keep the two honest about it.
+[`development/demos.md`](development/demos.md)); nothing about the contract is specific to
+it, and an opt-in test in the library both demos share ([`publisher-support/`](../publisher-support))
+runs the real gateway to keep the two honest about it.
 
 | Method | What it does | Rules |
 | --- | --- | --- |

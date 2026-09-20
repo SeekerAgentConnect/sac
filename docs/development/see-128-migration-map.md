@@ -4,9 +4,10 @@ Status: SEE-129 baseline, recorded from `superset/feat/see-128` at
 `a4feaa1551d974d4f23e6e5ea2a6301a79078035` on 2026-09-19 through 2026-09-20.
 
 Implementation status: SEE-130 applied the step-2 retirement, SEE-131 extracted the reusable
-TypeScript Direct Server SDK, and SEE-132 relocated and packaged the self-hosted MCP application on
-the same branch and PR. Direct and gateway-feed remain the only active modes. Later gateway, demo
-and deployment work remains owned by SEE-133 through SEE-136.
+TypeScript Direct Server SDK, SEE-132 relocated and packaged the self-hosted MCP application,
+SEE-133 isolated the public feed gateway, and SEE-134 split `publisher/` into `publisher-support/`
+and the two independent demos, on the same branch and PR. Direct and gateway-feed remain the only
+active modes. Deployment and documentation work remains owned by SEE-135 and SEE-136.
 
 Authority: [SEE-128](https://linear.app/seekeragentwallet/issue/SEE-128/refactor-sac-into-a-typescript-server-sdk-self-hosted-mcp-public-feeds),
 [SEE-129](https://linear.app/seekeragentwallet/issue/SEE-129/18-establish-the-architecture-baseline-and-exact-migration-map),
@@ -497,6 +498,59 @@ Redis belongs only to Centrifugo and is never gateway storage. Exact evidence is
 The next owner is SEE-134. It may extract the demos and their smallest shared support boundary, but
 must not perform SEE-135's portable deployment redesign or weaken the feed gateway's public-only
 and durable-storage boundaries.
+
+### SEE-134 implementation record
+
+SEE-134 replaced the single `publisher/` module with three root modules: the non-deployable source
+library `publisher-support/`, and the independently buildable, imageable and runnable
+`demo-copytrading/` and `demo-prediction/`. Each demo's `go.mod` requires the library and resolves
+it in a repository checkout through a checked-in `replace` to `../publisher-support`; a copy taken
+out of the repository brings that directory or pins an explicit revision, which each demo's README
+documents. Neither demo imports, builds or starts the other, and each demo's own
+`internal/boundary` package asserts it over that module's source.
+
+Three deviations from §5's one-line sketch were recorded rather than forced, and each is stated in
+the code where it applies:
+
+1. **The market/discovery store extension stayed in `publisher-support/store`.** `markets.go`
+   writes the market row and the signal in one transaction through the durable engine's own
+   unexported `createIn`/`updateIn`/`cancelIn`. Moving it into `demo-prediction` would have meant
+   either duplicating that engine or giving up the atomicity the code exists to guarantee, both of
+   which SEE-134 forbids. A new `publisher-support/markets` package holds only the persisted record
+   types, so nothing about a provider reaches the library or the CopyTrading image; the filters,
+   the reconciler and the Jupiter client are `demo-prediction`'s.
+2. **The business-API frame stayed shared, in `publisher-support/api`.** Both demos serve the same
+   authorization, routing, strict decoding and refusal shape; copying roughly a thousand lines into
+   each would be the duplication step 2 forbids. What differs is who writes a demo's signals, which
+   the existing `Authorship` seam already models, and the frame no longer imports the provider or
+   the reconciler: `Cycles.Filters()` answers a described map. Each demo still owns its listener,
+   its token, its identity, its credential, its database and its authorship declaration.
+3. **The operator CLI's implementation moved to `publisher-support/publisherctl`**, with a
+   three-line `main` in each demo, because both demos answer the same API and neither may import
+   the other. The library ships no command of its own.
+
+`internal/publish` split into `gateway/` (the authenticated Connect client) and `publish/` (the
+durable drainer), as §5 describes. Generated code moved to `publisher-support/gen`, regenerated
+rather than rewritten, from the renamed `buf.gen.publisher-support.yaml`. The two exported test
+packages `publishertest` and `demotest` replaced three separate fake gateways and two harnesses; no
+command imports them, and a boundary test fails if one does.
+
+Identities and durable data were preserved rather than renamed. `demo-copytrading` keeps the
+Compose project `seeker-publisher`, the `publisher-data` volume and `/data/publisher.db`;
+`demo-prediction` keeps `seeker-prediction`, `prediction-data` and `/data/prediction.db`;
+`deploy/server` keeps `seeker-agent-wallet-server`, `copytrading-data`, `prediction-data` and the
+`/data/copytrading.db` and `/data/prediction.db` paths, and reads `COPYTRADING_IMAGE` with
+`PUBLISHER_IMAGE` as its fallback so an existing `.env` keeps working. No publisher ID, environment
+stamp, credential or revision is regenerated because a directory changed.
+
+`pnpm check:publisher` became `pnpm check:publisher-support`, `pnpm check:copytrading` and
+`pnpm check:prediction` (with `pnpm check:demos` for all three, one module at a time), and CI's one
+publisher job became three, each demo's job also building that demo's image. Exact evidence is in
+[`docs/testing/see-134.md`](../testing/see-134.md).
+
+The next owner is SEE-135. It may separate portable orchestration from optional ingress and
+host-specific configuration, but must not reset a volume, make a demo or MCP mandatory, move SQLite
+onto a network, or keep mandatory network-namespace sharing.
 
 ## 10. Ordered child ownership and handoff
 

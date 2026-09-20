@@ -29,7 +29,9 @@ sidecar/       TypeScript/Node: MCP, Connect API, queue, transaction building
 android/       Kotlin/Compose: connections, policies, requests, MWA, history
 gateway/       Docker Compose, TLS, OAuth/MCP gateway configuration
 feed-gateway/     The shared feed gateway (Go): the publication and feed-read API
-publisher/     Go publisher templates and the common create-request SDK
+publisher-support/  Go library the two feed demos share: publication, store, manifest, API
+demo-copytrading/   Go feed demo: a trader's own signals, plus the create-request SDK for its API
+demo-prediction/    Go feed demo: the Jupiter Prediction markets it discovers itself
 test-agent/    Minimal MCP client for testing and demos
 docs/          Architecture, protocol, policies, setup, and integrations
 ```

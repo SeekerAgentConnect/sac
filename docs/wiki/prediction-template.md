@@ -1,11 +1,12 @@
 # The Prediction publisher template (SEE-96)
 
-The second publisher template, in the same module as the first: a Go service in
-[`publisher/`](../../publisher) that **discovers** Jupiter Prediction markets, applies the filters
-its operator configured, and publishes one proposal per market that matches. Every subscribed phone
-reads the same document; each owner then chooses a side and a stake on their own device and places
-the order through the bundled `jupiter.prediction` plugin (SEE-94). To deploy one rather than
-understand it, follow [`docs/guides/server-development.md`](../guides/server-development.md).
+The second publisher template, built on the same shared library as the first: a Go service in
+[`demo-prediction/`](../../demo-prediction) that **discovers** Jupiter Prediction markets, applies
+the filters its operator configured, and publishes one proposal per market that matches. Every
+subscribed phone reads the same document; each owner then chooses a side and a stake on their own
+device and places the order through the bundled `jupiter.prediction` plugin (SEE-94). To deploy one
+rather than understand it, follow
+[`docs/guides/server-development.md`](../guides/server-development.md).
 
 **There is no model in it.** No YES/NO recommendation, no probability of its own, no personalised
 selection, no order placed on the server, no position watched, no settlement and no payout. A signal
@@ -13,7 +14,7 @@ says *this market exists, it is open until this instant, and I am following it*.
 for how much, is the owner's judgement — made against the market's own state as their phone reads it
 at the moment they look.
 
-## One module, two templates
+## One library, two templates
 
 |  | `cmd/copytrading` (SEE-95) | **`cmd/prediction` (SEE-96)** |
 | --- | --- | --- |
@@ -24,10 +25,12 @@ at the moment they look.
 | Holds | signals, and what the gateway confirmed | **the same, plus the markets it is tracking** |
 
 Everything else is shared, and deliberately: the configuration, the store, the outbox, the drainer,
-the manifest and the API are the module's core, and a template is a `main` that registers one kind
-and says who writes its signals. Neither can be turned into the other by configuration, and
-[a test over the two mains](../../publisher/internal/api/boundary_test.go) fails if either stops
-saying which it is.
+the manifest and the API are [`publisher-support/`](../../publisher-support), a source library that
+is deployed nowhere itself, and a template is a `main` — in its own Go module, in its own image
+since SEE-134 — that registers one kind and says who writes its signals. Neither can be turned into
+the other by configuration, and each module's own boundary test fails if its main stops saying
+which it is ([`demo-prediction`](../../demo-prediction/internal/boundary/boundary_test.go),
+[`demo-copytrading`](../../demo-copytrading/internal/boundary/boundary_test.go)).
 
 ## Where publication ends, and execution begins
 
@@ -36,7 +39,7 @@ flowchart TB
     subgraph provider["Jupiter Prediction (public)"]
         Listing["GET /prediction/v1/events<br>GET /prediction/v1/markets/{id}"]
     end
-    subgraph publisher["the publisher — publisher/ (SEE-96)"]
+    subgraph publisher["the publisher — demo-prediction/ (SEE-96)"]
         Listing -- "bounded polling" --> Cycle["a discovery cycle:<br>filter, then reconcile"]
         Cycle -- "PublishProposal, once per market" --> Gateway
     end
@@ -63,7 +66,7 @@ orders, positions, history and profiles are not in this module at all.
 
 The terms are `jupiter.prediction`'s, in
 [`PredictionTerms.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/PredictionTerms.kt)
-and [`prediction.go`](../../publisher/internal/signals/prediction.go), and the contract is in
+and [`prediction.go`](../../publisher-support/signals/prediction.go), and the contract is in
 [protocol.md](../protocol.md#a-prediction-markets-terms-see-94):
 
 | Term | What this template publishes |
@@ -229,9 +232,9 @@ treated as an answer: the walk stops, the cycle is partial, and the next one sta
 that means here is that a field this template cannot read is a market it skips, with a line in the
 log naming it — never a crash, and never a proposal built from half an answer. The shapes it is
 written against are committed as real captured answers in
-[`publisher/internal/jupiter/testdata`](../../publisher/internal/jupiter/testdata), and an opt-in
-test reads the live provider to notice when they change
-([development/publisher.md](../development/publisher.md)).
+[`demo-prediction/internal/jupiter/testdata`](../../demo-prediction/internal/jupiter/testdata), and
+an opt-in test reads the live provider to notice when they change
+([development/demos.md](../development/demos.md)).
 
 ## Sandbox and production
 
@@ -240,8 +243,8 @@ other template: one deployment serves one environment, and the database is stamp
 copied compose file pointed at an existing volume is refused at startup. A sandbox deployment
 discovers the same live markets from the same provider — nothing about a publisher is simulated,
 because nothing about a publisher executes anything. What changes is what a phone does with what it
-publishes (SEE-97, [environments.md](environments.md)), and `.env.prediction.example` is a sandbox
-for that reason.
+publishes (SEE-97, [environments.md](environments.md)), and `demo-prediction/.env.example` is a
+sandbox for that reason.
 
 One filter has a rule about it attached: **`PREDICTION_STATE=any` is refused in production.**
 Publishing markets the provider will not take an order for is a deliberate sandbox exercise — the
@@ -251,11 +254,11 @@ it reaches production is a copied `.env`.
 ## A complete example
 
 The gateway's operator registers this publisher and gives its owner a credential. Then, in
-`publisher/`:
+`demo-prediction/`:
 
 ```console
-$ cp .env.prediction.example .env.prediction
-$ $EDITOR .env.prediction
+$ cp .env.example .env
+$ $EDITOR .env
 ```
 
 ```dotenv
@@ -274,8 +277,8 @@ PREDICTION_NOTE=Markets I follow. Not advice.
 ```
 
 ```console
-$ docker compose --env-file .env.prediction -f compose.prediction.yaml up -d --build
-$ docker compose --env-file .env.prediction -f compose.prediction.yaml logs -f prediction
+$ docker compose up -d --build
+$ docker compose logs -f prediction
 {"msg":"publishing as this server","channel":"server/3f1b2c4d-…","markets":0,"pending":0}
 {"msg":"looking for markets","provider":"https://lite-api.jup.ag","filters":{…}}
 seekervault://feed?v=1&gateway=https%3A%2F%2Ffeeds.example.com&server=3f1b2c4d-…
@@ -324,4 +327,4 @@ Related: [copytrading-template.md](copytrading-template.md) ·
 [jupiter-prediction.md](jupiter-prediction.md) · [feed-gateway.md](feed-gateway.md) ·
 [integrations/jupiter.md](../integrations/jupiter.md) ·
 [integrations/signal-api.md](../integrations/signal-api.md) ·
-[development/publisher.md](../development/publisher.md)
+[development/demos.md](../development/demos.md)

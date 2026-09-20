@@ -41,7 +41,7 @@ type Drainer struct {
 	serverID string
 	// The manifest at a given revision, rebuilt from the settings this process was started with.
 	// Rebuilding is deterministic, which is what lets a retry send identical bytes without storing
-	// them (internal/store).
+	// them (publisher-support/store).
 	manifest func(revision uint64) *serverv1.ServerManifest
 	log      *slog.Logger
 	now      func() time.Time

@@ -72,26 +72,39 @@ git pull --ff-only
 cd deploy/server
 ```
 
-With a checkout, Compose builds the unchanged `feed-gateway/Dockerfile` and `publisher/Dockerfile`.
-The pinned `feed-gateway/centrifugo.yaml` and the two publisher Caddy allow-lists are mounted through
-symlinks in this directory (`centrifugo.yaml`, `Caddyfile.copytrading`, `Caddyfile.prediction`), so
-there is one copy of each.
+With a checkout, Compose builds `feed-gateway/Dockerfile` and the two demos' own Dockerfiles,
+`demo-copytrading/Dockerfile` and `demo-prediction/Dockerfile`. Since SEE-134 the demos are two Go
+modules over one shared source library, `publisher-support/`, and each ships as its own image, so
+neither image carries the other demo's code; both builds take the repository root as their context,
+because each module's `go.mod` replaces that library with `../publisher-support`. The pinned
+`feed-gateway/centrifugo.yaml` and the two demo Caddy allow-lists are mounted through symlinks in
+this directory — `centrifugo.yaml` to `../../feed-gateway/centrifugo.yaml`, `Caddyfile.copytrading`
+to `../../demo-copytrading/Caddyfile` and `Caddyfile.prediction` to
+`../../demo-prediction/Caddyfile` — so there is one copy of each.
 
 ### Without a checkout: published images and this folder alone
 
-A small server need not clone or build anything. Build both images for the server's architecture
-on any machine with Docker — the compiler runs natively and cross-compiles, so an Apple silicon Mac
-produces `linux/amd64` without emulation — and push them as tags of one repository:
+A small server need not clone or build anything. Build the three images for the server's
+architecture on any machine with Docker — the compiler runs natively and cross-compiles, so an
+Apple silicon Mac produces `linux/amd64` without emulation — and push them as tags of one
+repository:
 
 ```sh
 # from the repository root
 docker buildx build --platform linux/amd64 -f feed-gateway/Dockerfile \
   -t YOUR-USER/seeker-agent-connect:broadcast-v1 --load .
-docker buildx build --platform linux/amd64 -f publisher/Dockerfile \
-  -t YOUR-USER/seeker-agent-connect:publisher-v1 --load .
+docker buildx build --platform linux/amd64 -f demo-copytrading/Dockerfile \
+  -t YOUR-USER/seeker-agent-connect:copytrading-v1 --load .
+docker buildx build --platform linux/amd64 -f demo-prediction/Dockerfile \
+  -t YOUR-USER/seeker-agent-connect:prediction-v1 --load .
 docker push YOUR-USER/seeker-agent-connect:broadcast-v1
-docker push YOUR-USER/seeker-agent-connect:publisher-v1
+docker push YOUR-USER/seeker-agent-connect:copytrading-v1
+docker push YOUR-USER/seeker-agent-connect:prediction-v1
 ```
+
+The two demo tags are needed only where Part 2 runs. The dot at the end of both demo commands is
+the repository root on purpose: each demo module's `go.mod` replaces the shared
+`publisher-support/` library with `../publisher-support`, so the build needs that directory too.
 
 Copy this directory with `-L`, which turns the three symlinks into real files; `--exclude` keeps a
 later re-sync from touching the server's own state:
@@ -101,13 +114,18 @@ rsync -avL --exclude '.env*' --exclude tls --exclude secrets --exclude backups \
   deploy/server/ SERVER:seeker-agent-connect/
 ```
 
-On the server, `docker login` if the repository is private, set the two tags in `.env`, and use
+On the server, `docker login` if the repository is private, set the three tags in `.env`, and use
 `pull` and `--no-build` wherever this guide says `build` or `--build`:
 
 ```dotenv
 BROADCAST_IMAGE=docker.io/YOUR-USER/seeker-agent-connect:broadcast-v1
-PUBLISHER_IMAGE=docker.io/YOUR-USER/seeker-agent-connect:publisher-v1
+COPYTRADING_IMAGE=docker.io/YOUR-USER/seeker-agent-connect:copytrading-v1
+PREDICTION_IMAGE=docker.io/YOUR-USER/seeker-agent-connect:prediction-v1
 ```
+
+`PUBLISHER_IMAGE` is still read as CopyTrading's fallback when `COPYTRADING_IMAGE` is unset, so an
+`.env` written before SEE-134 keeps working unchanged. Prediction has no such fallback: it takes
+`PREDICTION_IMAGE`, or the local default built from a checkout.
 
 ```sh
 docker compose -f compose.yaml pull
@@ -118,8 +136,9 @@ A plain `rsync -a` or a copy that keeps symlinks leaves three dangling links, an
 the mount; `ls -l centrifugo.yaml` on the server must show a regular file. The `grpcurl` stream
 check in Part 2 reads protos from `third_party/`, so run it from a machine that has the checkout.
 
-No public broadcast or publisher image is assumed. The default tags are local and are built from
-the checked-out source:
+No public broadcast, CopyTrading or Prediction image is assumed. The default tags are local —
+`seeker-publisher/copytrading:local` and `seeker-prediction/prediction:local` for the two demos —
+and are built from the checked-out source:
 
 ```sh
 docker compose build feed gateway-ctl
@@ -425,10 +444,11 @@ sudo tailscale funnel --tcp=443 tcp://localhost:9443 off
 
 # Part 2: Deploy the demo servers
 
-Part 2 assumes Part 1 is healthy. It starts the existing two binaries from `publisher/Dockerfile`;
-it adds no trading logic. Both examples are explicitly `sandbox`: proposals and live Prediction
-market discovery are real data, but execution on the phone is simulated. Sandbox is not Jupiter
-devnet, and none of these commands signs a transaction or spends funds.
+Part 2 assumes Part 1 is healthy. It starts the two demos, each from its own module and its own
+image — `demo-copytrading/Dockerfile` and `demo-prediction/Dockerfile` — and adds no trading
+logic. Both examples are explicitly `sandbox`: proposals and live Prediction market discovery are
+real data, but execution on the phone is simulated. Sandbox is not Jupiter devnet, and none of
+these commands signs a transaction or spends funds.
 
 ## 1. Create two identities and the CopyTrading secrets
 
@@ -757,8 +777,9 @@ Stopping only `copytrading-admin` leaves feeds and the CopyTrading API running. 
 stop the UI, rotate `secrets/copytrading/api-token` and the password file, then recreate the
 publisher pair so the new token is loaded.
 
-Update only the publisher image and recreate only demo containers. Recreate publisher + proxy +
-trader UI together:
+Update only the two demo images and recreate only demo containers. The demos are two modules and
+two images, so one can be rebuilt and recreated without touching the other; the `build` below names
+both. Recreate publisher + proxy + trader UI together:
 
 ```sh
 docker compose -f compose.yaml -f compose.demos.yaml build \
@@ -770,7 +791,11 @@ docker compose -f compose.yaml -f compose.demos.yaml up -d --no-deps \
 ```
 
 Their identities, idempotency records, discovery state and publication outboxes remain in the two
-separate volumes. A restart republishes only pending identical documents; it does not mint a new
+separate volumes. Splitting the one publisher image into two changed none of that: the Compose
+project is still `seeker-agent-wallet-server`, the volumes are still `copytrading-data`,
+`prediction-data` and the two Caddy pairs, and the databases are still `/data/copytrading.db` and
+`/data/prediction.db`, so an installation that upgrades from the combined image finds its own data
+where it left it. A restart republishes only pending identical documents; it does not mint a new
 manifest revision merely because it restarted. Back up each volume while its own service is
 stopped, then start that service again. The infrastructure need not stop.
 
@@ -797,6 +822,6 @@ stopped, then start that service again. The infrastructure need not stop.
 | Port bind fails | Only gateway 80/443, demo host loopback 8092/8094 and optional sidecar loopback 8443/public TCP 10000 are intended. Stop older standalone stacks that own those host ports. |
 
 Further contract and security detail: [broadcast](../../docs/development/feed-gateway.md),
-[publisher templates](../../docs/development/publisher.md),
+[the two demo publishers](../../docs/development/demos.md),
 [Firebase](../../docs/guides/firebase.md), and
 [the Stage 7.1 environment model](../../docs/wiki/environments.md).

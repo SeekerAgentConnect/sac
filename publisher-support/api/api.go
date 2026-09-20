@@ -2,10 +2,10 @@
 // it what to publish (SEE-95, docs/integrations/signal-api.md).
 //
 // It is plain JSON over HTTP on purpose. The document this template publishes is protobuf through
-// Connect (internal/publish), because that is the contract the phone reads; what a strategy engine
+// Connect (publisher-support/publish), because that is the contract the phone reads; what a strategy engine
 // sends *here* is this template's own affair, and something that can be written with `curl` in a
 // line is something a trading system in any language can call without generating anything. The CLI
-// in cmd/publishctl is a client of this API and nothing more, which is how the API stays the one
+// in demo-copytrading/cmd/publishctl is a client of this API and nothing more, which is how the API stays the one
 // path in: one place validates, mints an identity, settles a revision and publishes.
 //
 // # What it will not take
@@ -22,7 +22,7 @@
 // One token, presented as `Authorization: Bearer <token>`, compared in constant time, required on
 // everything but `/healthz`. It is the whole of the grant: a caller that holds it can say anything
 // this publisher can say, which is why it has a floor under its length and why the API binds
-// loopback unless a deployment deliberately moves it (publisher/README.md).
+// loopback unless a deployment deliberately moves it (docs/development/demos.md).
 //
 // # Who writes the signals
 //
@@ -31,7 +31,7 @@
 // (SEE-95). The Prediction template's are written by its own discovery, so those three answer 403
 // and say why, and two endpoints are added that show what discovery is doing: a template whose
 // proposals have two authors would be a template where a cycle silently undoes what somebody
-// posted (SEE-96, internal/discovery).
+// posted (SEE-96, demo-prediction/internal/discovery).
 package api
 
 import (

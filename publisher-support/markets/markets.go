@@ -65,7 +65,7 @@ type Market struct {
 //
 // It is derived rather than random on purpose. A cycle that is interrupted between reading the
 // listing and storing the signal leaves nothing behind, and the next cycle derives the same key —
-// so a market cannot become two proposals, whatever happens in between (internal/store).
+// so a market cannot become two proposals, whatever happens in between (publisher-support/store).
 func (m Market) Key() string {
 	return "market:" + m.Provider + ":" + m.MarketID + ":" + itoa(m.Generation)
 }

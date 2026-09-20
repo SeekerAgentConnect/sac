@@ -4,7 +4,7 @@
 //
 // It calls exactly one service, `PublisherService`, at the address its operator configured. There
 // is no client for the read API here and none is compiled for this module at all
-// (buf.gen.publisher.yaml), so a template cannot read a feed, subscribe to one, or learn anything
+// (buf.gen.publisher-support.yaml), so a template cannot read a feed, subscribe to one, or learn anything
 // about who is subscribed: it publishes and stops. Streaming and push delivery are the gateway's
 // (SEE-91, SEE-92), and a phone is never contacted from here.
 //

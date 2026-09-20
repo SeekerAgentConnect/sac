@@ -31,9 +31,9 @@ services:
 
   proxy:
     environment:
-      PUBLISHER_DOMAIN: ${PUBLISHER_DOMAIN:?set PUBLISHER_DOMAIN in publisher/.env - the public domain name, for example signals.example.com}
+      PUBLISHER_DOMAIN: ${PUBLISHER_DOMAIN:?set PUBLISHER_DOMAIN in demo-copytrading/.env - the public domain name, for example signals.example.com}
       # Where the certificate authority sends expiry and problem notices.
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in publisher/.env - the address your certificate authority should contact}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in demo-copytrading/.env - the address your certificate authority should contact}
     volumes:
       # Replaces the development Caddyfile mounted by the base file.
       - ./Caddyfile.public:/etc/caddy/Caddyfile:ro

@@ -1,4 +1,4 @@
-# A publisher template's stack (SEE-95). Run it from this directory:
+# The CopyTrading demo's stack (SEE-95, SEE-134). Run it from this directory:
 #   cp .env.example .env
 #   docker compose up -d --build
 #   docker compose run --rm ctl status
@@ -16,22 +16,25 @@
 # **Think before running that one.** The token on this API is the whole grant to
 # publish as this server: whoever holds it can say anything this publisher can
 # say, to everybody subscribed. A publisher that writes its own signals locally
-# should stay on the base file (publisher/README.md).
+# should stay on the base file (demo-copytrading/README.md).
 #
-# What starts: the template, and the proxy in front of it. Nothing else — no
-# broker, no Redis, no push credential. Delivery to phones is the shared
-# gateway's (SEE-91, SEE-92), and this template submits one document per thing it
-# has to say and is done.
+# What starts: this demo, and the proxy in front of it. Nothing else — no
+# broker, no Redis, no push credential, and above all not the Prediction demo.
+# Delivery to phones is the shared gateway's (SEE-91, SEE-92), and this demo
+# submits one document per thing it has to say and is done.
+#
+# The one thing it needs that is not here is a reachable feed gateway, which is
+# somebody's deployment of `feed-gateway/` — possibly yours, possibly not.
 
 name: seeker-publisher
 
 services:
-  # The template owns the network namespace the proxy joins, so it is declared
+  # The demo owns the network namespace the proxy joins, so it is declared
   # first and carries the published port.
   copytrading:
     build:
       context: ..
-      dockerfile: publisher/Dockerfile
+      dockerfile: demo-copytrading/Dockerfile
     image: seeker-publisher/copytrading:local
     restart: unless-stopped
 
@@ -45,19 +48,20 @@ services:
       # Who this publisher is. It is the UUID the gateway's operator registered,
       # and the gateway checks every document against the credential rather than
       # against what the document claims.
-      PUBLISHER_SERVER_ID: ${PUBLISHER_SERVER_ID:?set PUBLISHER_SERVER_ID in publisher/.env - the lowercase UUID this publisher was registered with}
+      PUBLISHER_SERVER_ID: ${PUBLISHER_SERVER_ID:?set PUBLISHER_SERVER_ID in demo-copytrading/.env - the lowercase UUID this publisher was registered with}
       # The shared gateway's own origin: its BROADCAST_PUBLIC_URL, exactly.
-      PUBLISHER_GATEWAY_URL: ${PUBLISHER_GATEWAY_URL:?set PUBLISHER_GATEWAY_URL in publisher/.env - the shared gateway's origin, for example https://feeds.example.com}
+      PUBLISHER_GATEWAY_URL: ${PUBLISHER_GATEWAY_URL:?set PUBLISHER_GATEWAY_URL in demo-copytrading/.env - the shared gateway's origin, for example https://feeds.example.com}
       # Where publications are sent, when that is not the origin above. Empty is
       # right for a gateway whose proxy serves both APIs on one origin, which is
       # what feed-gateway/compose.yaml does.
       PUBLISHER_PUBLISH_URL: ${PUBLISHER_PUBLISH_URL:-}
       # production or sandbox. One deployment serves one of them, and the
-      # database remembers which (internal/store).
-      PUBLISHER_ENVIRONMENT: ${PUBLISHER_ENVIRONMENT:?set PUBLISHER_ENVIRONMENT in publisher/.env - production or sandbox}
+      # database remembers which (publisher-support/store).
+      PUBLISHER_ENVIRONMENT: ${PUBLISHER_ENVIRONMENT:?set PUBLISHER_ENVIRONMENT in demo-copytrading/.env - production or sandbox}
       # The credential the gateway's operator issued this publisher, and the
-      # token a caller of this template's API presents. Both are secrets; both
-      # may be a file instead (see .env.example).
+      # token a caller of this demo's API presents. Both are secrets; both may
+      # be a file instead (see .env.example). They are this demo's own: the
+      # Prediction demo is registered separately and holds neither of them.
       BROADCAST_CREDENTIAL: ${BROADCAST_CREDENTIAL:-}
       BROADCAST_CREDENTIAL_FILE: ${BROADCAST_CREDENTIAL_FILE:-}
       PUBLISHER_API_TOKEN: ${PUBLISHER_API_TOKEN:-}
@@ -73,6 +77,12 @@ services:
       # in the image: a signal is stored before it is published, so this file is
       # what makes a retry after a crash send the same document rather than a
       # second one.
+      #
+      # The volume and the file keep the names the combined stack used, so an
+      # operator upgrading to the split modules mounts the same data and finds
+      # the same publisher identity, revisions and pending publications rather
+      # than an empty database (demo-copytrading/README.md). It is never shared
+      # with the Prediction demo, which has its own.
       - publisher-data:/data
       # A secret as a file instead of a value: mount it read-only and point
       # BROADCAST_CREDENTIAL_FILE or PUBLISHER_API_TOKEN_FILE at it here.
@@ -84,8 +94,8 @@ services:
     stop_grace_period: 20s
     stop_signal: SIGTERM
 
-    # The template holds no key, signs nothing, and calls one address: the
-    # gateway its operator configured.
+    # This demo holds no key, signs nothing, and calls one address: the gateway
+    # its operator configured.
     cap_drop:
       - ALL
     security_opt:
@@ -94,14 +104,14 @@ services:
   proxy:
     image: caddy:2.10-alpine
     restart: unless-stopped
-    # The namespace share is what lets the template keep its loopback bind while
+    # The namespace share is what lets this demo keep its loopback bind while
     # still being reachable by something. It also means the proxy has no route to
-    # the template that anything else could take.
+    # it that anything else could take.
     network_mode: "service:copytrading"
     depends_on:
-      # A scratch image has no shell to probe itself with, so the template
-      # declares no healthcheck of its own and the proxy's covers both: it goes
-      # through the published listener and out the other side.
+      # A scratch image has no shell to probe itself with, so this demo declares
+      # no healthcheck of its own and the proxy's covers both: it goes through
+      # the published listener and out the other side.
       - copytrading
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -132,12 +142,12 @@ services:
   #   docker compose run --rm ctl cancel <proposal id>
   #
   # It reaches the API over the proxy's published listener like any other client:
-  # there is no privileged path into the store for it (internal/api).
+  # there is no privileged path into the store for it (publisher-support/api).
   ctl:
     profiles: ["ctl"]
     build:
       context: ..
-      dockerfile: publisher/Dockerfile
+      dockerfile: demo-copytrading/Dockerfile
     image: seeker-publisher/copytrading:local
     entrypoint: ["/publishctl"]
     network_mode: "service:copytrading"

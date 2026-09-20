@@ -13,9 +13,6 @@ mcp-server/package/
 .env
 .env.*
 !.env.example
-# The Prediction template's own example, which is a second deployment's
-# (publisher/.env.prediction.example, SEE-96).
-!.env.prediction.example
 # deploy/server ships its settings template under this name.
 !.env.template
 local.properties
@@ -27,13 +24,14 @@ google-services.json
 *.pem
 *.key
 
-# Go binaries built in place by `go build` in feed-gateway/, publisher/ and loadtest/
+# Go binaries built in place by `go build` in feed-gateway/, the two demos and loadtest/
 /feed-gateway/feed-gateway
 /feed-gateway/feed-gatewayctl
-/publisher/copytrading
-/publisher/prediction
-/publisher/publishctl
-/publisher/copytrading-admin
+/demo-copytrading/copytrading
+/demo-copytrading/copytrading-admin
+/demo-copytrading/publishctl
+/demo-prediction/prediction
+/demo-prediction/publishctl
 /loadtest/loadtest
 
 # Local databases

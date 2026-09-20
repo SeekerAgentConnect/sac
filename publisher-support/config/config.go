@@ -70,7 +70,7 @@ type Config struct {
 	DatabasePath string
 	// Where this template's own API listens. Loopback by default: the token on it is the whole
 	// grant to publish, so reaching it should be a deliberate act of the deployment
-	// (publisher/README.md).
+	// (docs/development/demos.md).
 	APIAddress string
 	// The token a caller of that API presents.
 	APIToken string
@@ -365,7 +365,7 @@ func Origin(raw string) (string, error) {
 // tunnel — that no phone ever sees and nothing compares. So any host may be named over plain HTTP
 // here, and the reason to say so out loud is that it is a weaker rule: what keeps the credential off
 // the network is the network it is on, which is the deployment's job and is documented as such
-// (publisher/README.md). The gateway applies the same distinction to its broker's address
+// (docs/development/demos.md). The gateway applies the same distinction to its broker's address
 // (feed-gateway/internal/config).
 //
 // Still no path, query, fragment or user information: this is an origin the client appends its own

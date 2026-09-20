@@ -1,7 +1,7 @@
 // publisher-support is the demos' shared source library, and nothing else: it has no command, no
 // main package, no Dockerfile, no listener and no deployment of its own. It exists so that
 // demo-copytrading and demo-prediction share one durable publication engine rather than two
-// subtly different copies of it (SEE-134, docs/development/publisher-support.md).
+// subtly different copies of it (SEE-134, docs/development/demos.md).
 //
 // It is deliberately not a published "feed publisher client" product. Its gateway package is an
 // ordinary authenticated HTTP/Connect call to the gateway's documented publication API, which any

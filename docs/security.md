@@ -213,11 +213,14 @@ from a direct sidecar; neither its old origin nor its credential is converted. S
 
 ### A publisher template holds no subscriber either (SEE-95)
 
-The template in [`publisher/`](../publisher) is the other new server in this stage, and it is the
-one a stranger runs: a developer's or a trader's own process, publishing signals everybody
-subscribed will read ([`wiki/copytrading-template.md`](wiki/copytrading-template.md)). What matters
-about it is the same thing that matters about the gateway — not what it does, but what it has no way
-to do.
+The template in [`demo-copytrading/`](../demo-copytrading) is the other new server in this stage,
+and it is the one a stranger runs: a developer's or a trader's own process, publishing signals
+everybody subscribed will read ([`wiki/copytrading-template.md`](wiki/copytrading-template.md)).
+What matters about it is the same thing that matters about the gateway — not what it does, but what
+it has no way to do. Since SEE-134 the second template is its own module,
+[`demo-prediction/`](../demo-prediction), and both are built on
+[`publisher-support/`](../publisher-support) — a source library with no command, no listener and no
+deployment of its own — so each claim below is made about each of them separately.
 
 - **It has nowhere to put anything about a subscriber.** Six tables: the deployment's own stamp, its
   manifest's revision, its signals, the idempotency keys callers created them with, and — for the
@@ -231,8 +234,9 @@ to do.
   not know, so `wallet` or `amount` cannot arrive disguised as one. Both halves are tested with
   every word.
 - **It never learns that a phone exists.** It reads no feed — and the way that is true is that no
-  feed client is compiled for the module at all ([`buf.gen.publisher.yaml`](../buf.gen.publisher.yaml)
-  generates the publisher API and the two documents, and nothing else), so there is no code in it
+  feed client is compiled for either module at all
+  ([`buf.gen.publisher-support.yaml`](../buf.gen.publisher-support.yaml) generates the publisher API
+  and the two documents into the library the two share, and nothing else), so there is no code in it
   that could ask who is subscribed even if somebody wanted to.
 - **And it was checked by looking, not only by arguing.** SEE-98's integration run publishes from
   both templates, reads both feeds from two subscribers, answers an agent's private request on the

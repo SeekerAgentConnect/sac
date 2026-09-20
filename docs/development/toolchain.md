@@ -36,28 +36,36 @@ dependency version syntax. `@firebase/util`'s script can read `FIREBASE_WEBAPP_C
 Firebase endpoint, and write web-app defaults; the sidecar uses runtime Admin SDK credentials
 instead, so installation remains deterministic and credential-independent.
 
-### The Go side (SEE-90, SEE-95, SEE-99)
+### The Go side (SEE-90, SEE-95, SEE-99, SEE-134)
 
-Three Go modules, and nothing in any of them is shared with the Node or Android sides: the shared
-gateway in [`feed-gateway/`](../../feed-gateway), the publisher templates in
-[`publisher/`](../../publisher), and the load harness in [`loadtest/`](../../loadtest).
-`pnpm check:feed-gateway`, `pnpm check:publisher` and `pnpm check:loadtest` run their checks and CI
-runs the first two; installing Go is not needed for `pnpm check`.
+Five Go modules, and nothing in any of them is shared with the Node or Android sides: the shared
+gateway in [`feed-gateway/`](../../feed-gateway), the public-feed demos' source library in
+[`publisher-support/`](../../publisher-support), the two demos themselves in
+[`demo-copytrading/`](../../demo-copytrading) and [`demo-prediction/`](../../demo-prediction), and
+the load harness in [`loadtest/`](../../loadtest). `pnpm check:feed-gateway`,
+`pnpm check:publisher-support`, `pnpm check:copytrading`, `pnpm check:prediction` (or
+`pnpm check:demos` for those three at once) and `pnpm check:loadtest` run their checks; CI runs the
+first four, each as its own job reading that module's own `go.mod`. Installing Go is not needed for
+`pnpm check`.
 
-They are separate modules on purpose. A template is meant to be copyable out of this repository, and
-the harness holds both ends of a feed at once — the publisher API, the client API and the broker's
-own client schema — which nothing that ships is allowed to hold together, so keeping it out of
-`feed-gateway/` is what keeps the gateway's dependency list at three. Each has its own `go.mod`, and
-the versions below are the same in all of them. Where that could drift, a test in `publisher/` reads
-the gateway's own source rather than trusting the match
-(`internal/signals/contract_test.go`).
+They are separate modules on purpose. Each demo is meant to be copyable out of this repository and
+to build, test, image and run without the other — which is why they are checked one module at a
+time rather than together (SEE-134, [`demos.md`](demos.md)) — and the harness holds both ends of a
+feed at once — the publisher API, the client API and the broker's own client schema — which nothing
+that ships is allowed to hold together, so keeping it out of `feed-gateway/` is what keeps the
+gateway's dependency list at three. Each has its own `go.mod`, and the versions below are the same
+in all of them; the two demos reach the library through
+`replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../publisher-support`, so they
+inherit its pins rather than choosing their own. Where the gateway and a publisher could drift, a
+test in `publisher-support/` reads the gateway's own source rather than trusting the match
+(`signals/contract_test.go`).
 
 | Tool | Version | Pinned in |
 | --- | --- | --- |
-| Go | 1.27.1 | the `go` line in `feed-gateway/go.mod`, `publisher/go.mod` and `loadtest/go.mod`, which `actions/setup-go` reads through `go-version-file` |
-| `connectrpc.com/connect`, the Connect runtime for all three | 1.21.0 | every `go.mod`; it must match the `connectrpc/go` generator |
+| Go | 1.27.1 | the `go` line in `feed-gateway/go.mod`, `publisher-support/go.mod`, `demo-copytrading/go.mod`, `demo-prediction/go.mod` and `loadtest/go.mod`, which `actions/setup-go` reads through `go-version-file` |
+| `connectrpc.com/connect`, the Connect runtime for all of them | 1.21.0 | every `go.mod`; it must match the `connectrpc/go` generator |
 | `google.golang.org/protobuf`, the message runtime | 1.36.12 | every `go.mod`; it must match the `protocolbuffers/go` generator |
-| `modernc.org/sqlite`, the pure-Go SQLite driver | 1.59.0 | `feed-gateway/go.mod` and `publisher/go.mod`; the harness holds no database |
+| `modernc.org/sqlite`, the pure-Go SQLite driver | 1.59.0 | `feed-gateway/go.mod` and `publisher-support/go.mod`, from which both demos take it; the harness holds no database |
 
 The harness's own dependency list is those two libraries and nothing else. It speaks gRPC to the
 broker without grpc-go: connect-go does the protocol, and since Go 1.24 the standard library opens
@@ -145,7 +153,7 @@ before the tests.
 | `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0, with its OkHttp transport and lite codec at the same version |
 | `buf.build/protocolbuffers/go:v1.36.12`, `paths=source_relative` (in `buf.gen.feed-gateway.yaml`) | `feed-gateway/internal/gen` | `google.golang.org/protobuf` 1.36.12 |
 | `buf.build/connectrpc/go:v1.21.0`, `paths=source_relative` (in `buf.gen.feed-gateway.yaml`) | `feed-gateway/internal/gen` | `connectrpc.com/connect` 1.21.0 |
-| the same two Go plugins (in `buf.gen.publisher.yaml`) | `publisher/internal/gen` | the same two runtimes, pinned in `publisher/go.mod` |
+| the same two Go plugins (in `buf.gen.publisher-support.yaml`) | `publisher-support/gen` | the same two runtimes, pinned in `publisher-support/go.mod`, which both demos inherit |
 | the same three Kotlin plugins (in `buf.gen.centrifugo.yaml`) | `android/app/src/main/generated/centrifugo` | the vendored broker schema, for the phone alone |
 | the same two Go plugins (in `buf.gen.loadtest.yaml`), over `proto/` **and** the vendored schema | `loadtest/internal/gen` | the same two runtimes, pinned in `loadtest/go.mod` |
 
@@ -154,11 +162,14 @@ before the tests.
   only the proposal fixture contract with the MCP host. None generates
   `seekervault/gateway/v1/publish.proto` for the phone or direct server — neither is a publisher.
   `buf.gen.feed-gateway.yaml` writes the gateway's Go for the three packages it speaks;
-  `buf.gen.publisher.yaml` writes the publisher templates' Go for a fourth subset — the publisher
-  API, its problem detail and the two documents a publisher writes, and **no feed client at all**,
-  because a publisher publishes and never reads a feed (SEE-95); `buf.gen.centrifugo.yaml` writes
-  Kotlin for the vendored broker schema, into its own directory and keeping its own package name,
-  because only the phone speaks that protocol and only one file in it may (SEE-91); and
+  `buf.gen.publisher-support.yaml` writes the public-feed demos' Go for a fourth subset — the
+  publisher API, its problem detail and the documents a publisher writes, and **no feed client at
+  all**, because a publisher publishes and never reads a feed (SEE-95). It writes them **once**,
+  into the library both demos share, because the two publish the same documents through the same
+  API and two generated copies of one contract would be two contracts (SEE-134);
+  `buf.gen.centrifugo.yaml` writes Kotlin for the vendored broker schema, into its own directory and
+  keeping its own package name, because only the phone speaks that protocol and only one file in it
+  may (SEE-91); and
   `buf.gen.loadtest.yaml` writes the load harness's Go from `proto/` **and** that vendored schema,
   which is the only place both ends of a feed and the broker's own client protocol are compiled
   together — measuring a publication's journey means holding all three ends of it, and nothing that
@@ -201,9 +212,10 @@ The existing pins already support the production update protocol, so SAW-048 add
    export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
    ```
 
-5. **Go, for the feed gateway (SEE-90):** `brew install go`, or the installer from
-   <https://go.dev/dl/>. It is needed only for `pnpm check:feed-gateway` and for working in
-   `feed-gateway/`; the Node and Android checks do not use it.
+5. **Go, for the gateway and the public-feed demos (SEE-90, SEE-134):** `brew install go`, or the
+   installer from <https://go.dev/dl/>. It is needed only for `pnpm check:feed-gateway`,
+   `pnpm check:demos` and `pnpm check:loadtest`, and for working in the five Go modules; the Node
+   and Android checks do not use it.
 6. **First build:** run `pnpm install --frozen-lockfile && pnpm check:android`. The first time, Gradle downloads the pinned Temurin 21 into `~/.gradle/jdks`.
 
 ## How Android Studio and the terminal stay compatible

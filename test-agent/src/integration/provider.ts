@@ -1,9 +1,9 @@
 /**
  * The prediction provider, as this integration run serves it (SEE-98): the real captured answers in
- * `publisher/internal/jupiter/testdata/`, served back over loopback to the template's own HTTP
+ * `demo-prediction/internal/jupiter/testdata/`, served back over loopback to the template's own HTTP
  * client.
  *
- * Those seven answers are the ones `publisher/internal/jupiter`'s tests already hold the client to,
+ * Those seven answers are the ones `demo-prediction/internal/jupiter`'s tests already hold the client to,
  * captured from the live keyless API by `scripts/capture-jupiter.mjs`. Serving them to the template
  * **binary** is the one step those tests do not take: `PREDICTION_PROVIDER_URL` accepts any
  * loopback origin, so the shipped `prediction` binary — its real client, its real pacing, its real
@@ -36,7 +36,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const TESTDATA = fileURLToPath(
-  new URL("../../../publisher/internal/jupiter/testdata/", import.meta.url),
+  new URL(
+    "../../../demo-prediction/internal/jupiter/testdata/",
+    import.meta.url,
+  ),
 );
 
 /** The market the captured listing's first event opens with, and the one the suite follows. */

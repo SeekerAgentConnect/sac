@@ -6,10 +6,10 @@
 # API is something an operator reads rather than something a strategy engine
 # writes to (docs/wiki/prediction-template.md).
 #
-# The proxy shares the template's network namespace (compose.prediction.yaml),
+# The proxy shares the template's network namespace (compose.yaml),
 # so the API is reachable here and nowhere else. Nothing here authenticates
 # anything: the token is checked by the template, in one place, in constant time
-# (publisher/internal/api), and this proxy neither adds nor removes an
+# (publisher-support/api), and this proxy neither adds nor removes an
 # Authorization header.
 {
 	admin off

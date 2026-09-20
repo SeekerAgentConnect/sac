@@ -42,21 +42,48 @@ no `feed-publisher-client/` module.
 
 ## Ordered steps
 
-- [ ] 1. Create `publisher-support/` module; `git mv` the shared packages and rewrite import paths.
-- [ ] 2. Split `discovery.go` into `publisher-support/markets` (records) and the prediction half.
-- [ ] 3. Split `publish` into `gateway/` (client) and `publish/` (drainer).
-- [ ] 4. Export the env `Reader` from `publisher-support/config` so the prediction loader can reuse it.
-- [ ] 5. Decouple `publisher-support/api` from `jupiter`/reconciler (`Cycles.Filters() map[string]any`).
-- [ ] 6. Convert the api + gateway test harnesses into exported `publisher-support/publishertest`.
-- [ ] 7. Create `demo-copytrading/` module: commands, admin UI, publishctl, sdk, tests.
-- [ ] 8. Create `demo-prediction/` module: command, jupiter, discovery, config, api wiring, tests.
-- [ ] 9. Per-demo Dockerfile, compose, Caddyfile, `.env.example`, health/build/start commands.
-- [ ] 10. Per-demo README + full deployment guide against the parent's 11-point checklist.
-- [ ] 11. Update `scripts/`, `.github/workflows/ci.yml`, `buf.gen.publisher.yaml`, `package.json`,
+- [x] 1. Create `publisher-support/` module; `git mv` the shared packages and rewrite import paths.
+- [x] 2. Split `discovery.go` into `publisher-support/markets` (records) and the prediction half.
+- [x] 3. Split `publish` into `gateway/` (client) and `publish/` (drainer).
+- [x] 4. Export the env `Reader` from `publisher-support/config` so the prediction loader can reuse it.
+- [x] 5. Decouple `publisher-support/api` from `jupiter`/reconciler (`Cycles.Filters() map[string]any`).
+- [x] 6. Convert the api + gateway test harnesses into exported `publisher-support/publishertest`.
+- [x] 7. Create `demo-copytrading/` module: commands, admin UI, publishctl, sdk, tests.
+- [x] 8. Create `demo-prediction/` module: command, jupiter, discovery, config, api wiring, tests.
+- [x] 9. Per-demo Dockerfile, compose, Caddyfile, `.env.example`, health/build/start commands.
+- [x] 10. Per-demo README + full deployment guide against the parent's 11-point checklist.
+- [x] 11. Update `scripts/`, `.github/workflows/ci.yml`, `buf.gen.publisher-support.yaml`, `package.json`,
       `deploy/`, `CODEBASE.md`, active docs and the changelog. Retire `publisher/`.
-- [ ] 12. Verify: independent build/test/vet per module, independent Docker builds, HTTP publication
+- [x] 12. Verify: independent build/test/vet per module, independent Docker builds, HTTP publication
       against a real feed gateway, per-source isolation and restart evidence.
 
 ## Review
 
-(filled in at the end)
+**What changed.** `publisher/` is gone. `publisher-support/` holds the one durable
+publication/outbox engine, the gateway HTTP/Connect client, the feed document rules, the shared
+business-API frame, the operator CLI's implementation and the shared test support — and it has no
+command, no image, no listener and no deployment. `demo-copytrading/` and `demo-prediction/` are
+independent modules with their own Dockerfile, Compose stack, Caddy front door, `.env.example`,
+database, publisher identity, gateway credential and complete step-by-step guide.
+
+**Five deviations from the step-1 sketch, each recorded in the code and in the migration map:**
+the market/discovery store extension stayed with the durable engine (one transaction, one engine);
+the API frame stayed shared but was decoupled from the provider; a new `markets` package holds only
+the persisted record types so no provider code reaches the CopyTrading image; `publish` split into
+`gateway/` + `publish/`; and the operator CLI became a library with a three-line `main` in each
+demo, because both demos answer the same API and neither may import the other.
+
+**Two things worth knowing for the next ticket.** The generated protobuf descriptors embed their Go
+import path, so `publisher-support/gen` had to be *regenerated*, not rewritten — a `sed` over the
+`.pb.go` files corrupts the length-prefixed raw descriptor and every test panics at init. And the
+two cross-root source tests (`publisher-support/signals/contract_test.go`,
+`publisher-support/environment/environment_test.go`) skip silently when their target is missing, so
+moving a module one directory shallower had turned them into no-ops; their `../../..` prefixes are
+now `../..` and both assert again.
+
+**Verified.** `pnpm check`, `pnpm check:demos`, `pnpm check:generated`, `pnpm check:loadtest`,
+`pnpm test:integration --no-android`, both opt-in real-gateway tests, `docker compose config` for
+all three stacks, and an isolated-tree build proving each demo compiles and tests with only
+`publisher-support/` beside it. Image builds are **NOT RUN** (no reachable Docker daemon); the live
+provider and physical device remain opt-in and unrun. Evidence:
+[`docs/testing/see-134.md`](../../docs/testing/see-134.md).

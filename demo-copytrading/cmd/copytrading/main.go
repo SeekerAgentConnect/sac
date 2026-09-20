@@ -200,7 +200,7 @@ func run(log *slog.Logger) error {
 	}
 
 	// Stop accepting, let what is in flight finish, and leave what is unpublished in the file: it
-	// is durable, and the next start finds the same two revisions (internal/store).
+	// is durable, and the next start finds the same two revisions (publisher-support/store).
 	log.Info("stopping")
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -180,6 +180,29 @@ func TestNoServiceAddressIsCompiledIn(t *testing.T) {
 	}
 }
 
+// The operator CLI is a client of the business API and nothing else. There is no second way to
+// store a signal, so validation, the identity, the revision and the publication cannot be gone
+// around — and this tool has no privileged access of its own to go around them with.
+func TestTheCLIIsOnlyAClient(t *testing.T) {
+	cli, found := shipped(t)["publisherctl/publisherctl.go"]
+	if !found {
+		t.Fatal("the operator CLI is not in the library")
+	}
+	for _, forbidden := range []string{
+		"publisher-support/store", "publisher-support/publish", "publisher-support/gateway",
+		"publisher-support/signals\"", "publisher-support/config",
+	} {
+		if strings.Contains(cli, forbidden) {
+			t.Fatalf("the CLI imports %s. It is a client of the API and nothing else, which is "+
+				"what makes the API the one path in", forbidden)
+		}
+	}
+	// It does reach the API over HTTP, like any other caller.
+	if !strings.Contains(cli, "http.NewRequest") {
+		t.Fatal("the CLI does not call the API over HTTP")
+	}
+}
+
 // The test support is not shipped. It serves the gateway's own procedures and starts real
 // processes, so a command that imported it would be a publisher that can answer a publication — and
 // the reason it is ordinary code rather than a `_test.go` file is only that another module's tests

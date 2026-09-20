@@ -20,7 +20,7 @@
 //
 // Every row carries two revisions: the one the signal is at, and the one the gateway has confirmed
 // it holds. Anything where the first is above the second is work to do, which the drainer finds by
-// asking for exactly that (internal/publish). There is no second table to keep in step with the
+// asking for exactly that (publisher-support/publish). There is no second table to keep in step with the
 // first, so there is no state in which a signal exists and its publication does not — and a
 // restart resumes from the same two numbers, which is why a template that was killed mid-publish
 // republishes the identical document rather than inventing a new one.
@@ -240,7 +240,7 @@ CREATE TABLE idempotency (
 `
 
 // Version 2: what a template that discovers its own signals has to remember (SEE-96,
-// internal/discovery).
+// demo-prediction/internal/discovery).
 //
 // A tracked market and the proposal published for it are one fact, which is why the row points at
 // the signal and the index is UNIQUE: one market is one live proposal, said as a constraint rather
@@ -503,7 +503,7 @@ func (s *Store) Create(ctx context.Context, key, request string, signal signals.
 //
 // It is a function rather than a method because there is a second caller: the reconciler stores a
 // signal and the market row it was derived from in one write, and the two have to be one
-// transaction or neither (markets.go, internal/discovery).
+// transaction or neither (markets.go, demo-prediction/internal/discovery).
 func createIn(
 	ctx context.Context,
 	transaction *sql.Tx,
@@ -747,7 +747,7 @@ func (s *Store) Pending(ctx context.Context) (int, error) {
 // The detail is usually empty. It carries one line in one case — a withdrawal the gateway had
 // nothing to apply, because the publication it would have withdrawn never arrived — because
 // "published" and "there was never anything to publish" are both settled and are not the same
-// thing to read in an answer (internal/publish).
+// thing to read in an answer (publisher-support/publish).
 func (s *Store) Published(ctx context.Context, id string, revision uint64, detail string) error {
 	_, err := s.writer.ExecContext(ctx,
 		`UPDATE signal SET confirmed_revision = ?, attempts = 0, problem = '', detail = ?

@@ -45,22 +45,29 @@ produces `linux/amd64` without emulation.
 ```sh
 docker buildx build --platform linux/amd64 -f feed-gateway/Dockerfile \
   -t brenat/seeker-agent-connect:broadcast-v1 --load .
-docker buildx build --platform linux/amd64 -f publisher/Dockerfile \
-  -t brenat/seeker-agent-connect:publisher-v1 --load .
+docker buildx build --platform linux/amd64 -f demo-copytrading/Dockerfile \
+  -t brenat/seeker-agent-connect:copytrading-v1 --load .
+docker buildx build --platform linux/amd64 -f demo-prediction/Dockerfile \
+  -t brenat/seeker-agent-connect:prediction-v1 --load .
 docker buildx build --platform linux/amd64 -f mcp-server/Dockerfile \
   -t brenat/seeker-agent-connect:sidecar-v1 --load .
 docker push brenat/seeker-agent-connect:broadcast-v1
-docker push brenat/seeker-agent-connect:publisher-v1
+docker push brenat/seeker-agent-connect:copytrading-v1
+docker push brenat/seeker-agent-connect:prediction-v1
 docker push brenat/seeker-agent-connect:sidecar-v1
 ```
 
-One repository, one tag per part. Bump the suffix (`-v2`) for a release you want to be able to roll
-back from; re-pushing the same tag is fine for a fix.
+One repository, one tag per image. The two demos are two images since SEE-134: two Go modules over
+one shared source library, `publisher-support/`, so each is built from the repository root — that
+is what the trailing dot is — and neither carries the other demo's code. Bump the suffix (`-v2`)
+for a release you want to be able to roll back from; re-pushing the same tag is fine for a fix.
 
 ## 2. On the Mac: copy this folder to the server
 
-`-L` turns the three symlinks (`centrifugo.yaml`, `Caddyfile.copytrading`, `Caddyfile.prediction`)
-into real files. The excludes make a later re-sync safe: the server's own state is never touched.
+`-L` turns the three symlinks into real files: `centrifugo.yaml` to
+`../../feed-gateway/centrifugo.yaml`, `Caddyfile.copytrading` to
+`../../demo-copytrading/Caddyfile` and `Caddyfile.prediction` to `../../demo-prediction/Caddyfile`.
+The excludes make a later re-sync safe: the server's own state is never touched.
 
 ```sh
 rsync -avL --exclude '.env*' --exclude tls --exclude secrets --exclude backups \
@@ -115,12 +122,16 @@ GATEWAY_HTTP_BIND=127.0.0.1:9080
 GATEWAY_HTTPS_BIND=127.0.0.1:9443
 GATEWAY_PUBLIC_PORT=8443
 BROADCAST_IMAGE=docker.io/brenat/seeker-agent-connect:broadcast-v1
-PUBLISHER_IMAGE=docker.io/brenat/seeker-agent-connect:publisher-v1
+COPYTRADING_IMAGE=docker.io/brenat/seeker-agent-connect:copytrading-v1
+PREDICTION_IMAGE=docker.io/brenat/seeker-agent-connect:prediction-v1
 ```
 
-`9443` and `9080` are any free loopback ports other than the sidecar's `8443`. Optional feed push:
-install the same kind of key as `secrets/feed-gateway/fcm-service-account.json` (uid 10001, `0400`)
-and set `BROADCAST_PUSH_CREDENTIALS=/run/secrets/fcm-service-account.json` and
+The two demo tags are read only where step 8 runs. A `.env` written before SEE-134 keeps working:
+`PUBLISHER_IMAGE` is still CopyTrading's fallback when `COPYTRADING_IMAGE` is unset, while
+Prediction takes `PREDICTION_IMAGE` alone. `9443` and `9080` are any free loopback ports other than
+the sidecar's `8443`. Optional feed push: install the same kind of key as
+`secrets/feed-gateway/fcm-service-account.json` (uid 10001, `0400`) and set
+`BROADCAST_PUSH_CREDENTIALS=/run/secrets/fcm-service-account.json` and
 `BROADCAST_PUSH_ENVIRONMENT=sandbox`.
 
 ## 5. Certificate, then start
@@ -238,8 +249,12 @@ docker compose -f compose.yaml -f compose.tailscale.yaml -f compose.demos.yaml \
 update does not rebuild them. `gateway-proxy` is recreated with `broadcast` because it shares that
 container's network namespace. Recreate each publisher with its proxy, never alone (step 8).
 Without the demo lines, `copytrading` and `prediction` keep the image they started with even when
-`publisher-v1` was rebuilt and pushed. Volumes are kept; the services migrate their own schemas
-forward. Never add `-v` to a `down` during an update.
+`copytrading-v1` or `prediction-v1` was rebuilt and pushed. They are two images, so rebuilding and
+pulling one leaves the other on the tag it already ran. Volumes are kept; the services migrate
+their own schemas forward — including the upgrade from the single publisher image, which moved no
+data: project `seeker-agent-wallet-server`, volumes `copytrading-data` and `prediction-data`, and
+the databases `/data/copytrading.db` and `/data/prediction.db` are all unchanged. Never add `-v` to
+a `down` during an update.
 
 ## Removing everything from the server
 
@@ -284,7 +299,8 @@ up").
    ```sh
    docker image rm \
      brenat/seeker-agent-connect:broadcast-v1 \
-     brenat/seeker-agent-connect:publisher-v1 \
+     brenat/seeker-agent-connect:copytrading-v1 \
+     brenat/seeker-agent-connect:prediction-v1 \
      brenat/seeker-agent-connect:sidecar-v1 \
      caddy:2.10-alpine centrifugo/centrifugo:v6.9.6 redis:8.2-alpine
    ```

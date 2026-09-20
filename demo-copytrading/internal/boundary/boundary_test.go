@@ -149,27 +149,27 @@ func TestNoServiceAddressIsCompiledIn(t *testing.T) {
 	}
 }
 
-// The API is the one path in. There is no second way to store a signal, so validation, the
-// identity, the revision and the publication cannot be gone around — and the CLI is a client of
-// this, with no privileged access of its own.
-func TestTheCLIIsOnlyAClient(t *testing.T) {
+// This demo ships the operator CLI, and the command it ships is a main and nothing more. The
+// implementation is the shared library's, because both demos answer the same API; what this module
+// owns is the binary (publisher-support/publisherctl).
+func TestTheCLICommandIsOnlyAMain(t *testing.T) {
 	files := shipped(t)
 	cli, found := files["cmd/publishctl/main.go"]
 	if !found {
-		t.Fatal("the CLI is not in the module")
+		t.Fatal("the CLI command is not in the module")
 	}
+	if !strings.Contains(cli, "publisher-support/publisherctl") {
+		t.Fatal("cmd/publishctl no longer uses the shared client. Two copies of one client of " +
+			"one API would be two clients of it")
+	}
+	// Quoted, so that "publisher-support/publisherctl" is not read as the drainer.
 	for _, forbidden := range []string{
-		"publisher-support/store", "publisher-support/publish", "publisher-support/signals\"",
-		"publisher-support/config",
+		`publisher-support/store"`, `publisher-support/publish"`, `publisher-support/api"`,
 	} {
 		if strings.Contains(cli, forbidden) {
-			t.Fatalf("the CLI imports %s. It is a client of the API and nothing else, which is "+
-				"what makes the API the one path in", forbidden)
+			t.Fatalf("the CLI command imports %s. It is a client of the API over HTTP and "+
+				"nothing else, which is what makes the API the one path in", forbidden)
 		}
-	}
-	// It does reach the API over HTTP, like any other caller.
-	if !strings.Contains(cli, "http.NewRequest") {
-		t.Fatal("the CLI does not call the API over HTTP")
 	}
 }
 

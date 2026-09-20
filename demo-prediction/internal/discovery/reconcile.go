@@ -28,7 +28,7 @@ type Source interface {
 // Each of these writes the market row and the signal in one transaction, because the two are one
 // fact: a market this template is tracking *is* a proposal it is publishing, and a state in which
 // one exists without the other would be either a market nobody hears about or a proposal nothing
-// maintains (internal/store).
+// maintains (publisher-support/store).
 type Documents interface {
 	// Every market this template is tracking, with the signal published for each.
 	Markets(ctx context.Context) ([]markets.Tracked, error)
@@ -76,7 +76,7 @@ type Reconciler struct {
 	now   func() time.Time
 	newID func() string
 	// Asks the drainer for a pass, when a cycle changed anything. Publication is the drainer's
-	// (internal/publish): one path to the gateway, one place that decides what a failure was.
+	// (publisher-support/publish): one path to the gateway, one place that decides what a failure was.
 	wake func()
 	// One cycle at a time.
 	running sync.Mutex
@@ -239,7 +239,7 @@ func (r *Reconciler) Pass(ctx context.Context) (markets.Cycle, error) {
 	}
 	if changed {
 		// Publication is the drainer's, and it happens whether or not this cycle is the thing that
-		// asked for it: what is unpublished is in the file (internal/store).
+		// asked for it: what is unpublished is in the file (publisher-support/store).
 		r.wake()
 	}
 	return recorded, nil

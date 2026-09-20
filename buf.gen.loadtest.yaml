@@ -9,7 +9,7 @@ clean: true
 # publish-to-receive latency means holding all three, so all three are generated here — and
 # nowhere else, because nothing that ships is allowed to hold them together. The gateway never
 # reads a feed (buf.gen.feed-gateway.yaml), a publisher template never reads one either
-# (buf.gen.publisher.yaml), and the phone never publishes (buf.gen.yaml).
+# (buf.gen.publisher-support.yaml), and the phone never publishes (buf.gen.yaml).
 managed:
   enabled: true
   override:
@@ -20,7 +20,7 @@ managed:
       value: github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen
 plugins:
   # Messages. The runtime library in loadtest/go.mod must match this version, and it is the version
-  # feed-gateway/go.mod and publisher/go.mod pin: a harness that measured a different wire format from
+  # feed-gateway/go.mod and publisher-support/go.mod pin: a harness that measured a different wire format from
   # the one the gateway speaks would be measuring itself (docs/development/toolchain.md).
   - remote: buf.build/protocolbuffers/go:v1.36.12
     out: loadtest/internal/gen

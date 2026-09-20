@@ -11,7 +11,7 @@
 # single published entry point.
 #
 # Nothing here authenticates anything. The token is checked by the template, in
-# one place, in constant time (publisher/internal/api), and this proxy neither
+# one place, in constant time (publisher-support/api), and this proxy neither
 # adds nor removes an Authorization header: a proxy that could add one would be a
 # second place that decides who may publish.
 {
