@@ -36,6 +36,21 @@
 		reverse_proxy feed-gateway:8091
 	}
 
+	# The operator's admin page (SEE-141), on the gateway's own third listener. It answers only
+	# after a session cookie from its own login form; an anonymous request is sent to that form,
+	# and a publisher credential is not an administrator credential anywhere.
+	#
+	# The operator can delete this block: the page is then reachable only over a tunnel, a VPN or
+	# an SSH forward to 127.0.0.1:8092, and nothing else changes. Keep the path in step with
+	# BROADCAST_ADMIN_PATH, which defaults to /admin.
+	@admin path /admin /admin/*
+	handle @admin {
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy feed-gateway:8092
+	}
+
 	@stream path /centrifugal.centrifugo.unistream.CentrifugoUniStream/Consume
 	handle @stream {
 		reverse_proxy h2c://centrifugo:11000 {
@@ -49,6 +64,8 @@
 	}
 
 	# No health, operator CLI, broker API/admin, Redis, SQLite, or demo control route is public.
+	# The gateway's own admin page above is the one authenticated exception, and it is a route the
+	# operator opted into rather than one that appeared.
 	handle {
 		abort
 	}

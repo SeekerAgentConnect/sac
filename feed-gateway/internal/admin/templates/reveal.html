@@ -1,0 +1,58 @@
+{{template "head" .}}
+{{$r := .Registration}}{{$n := .Connection}}
+<h1>{{if eq .Action "registered"}}Registered {{$r.Label}}{{else}}New credential for {{$r.Label}}{{end}}</h1>
+
+<div class="card once">
+  <h2>Publisher credential</h2>
+  <p class="warn-line"><strong>This is shown once.</strong> The gateway stores only its hash and
+  cannot show it again. Copy it now and hand it to the developer over a channel you trust; if it is
+  lost, add another credential and revoke this one.</p>
+  <div class="secret">
+    <code id="secret">{{.Secret}}</code>
+    <button class="copy" type="button" data-copy="{{.Secret}}">Copy</button>
+  </div>
+  <p class="hint">Credential ID <code class="id">{{.CredentialID}}</code> — that is the handle you
+  revoke it by. It is not the credential and cannot be turned back into one.</p>
+</div>
+
+{{if .Generated}}
+<p class="problem" role="alert">This server ID was generated here. The publisher must use
+<em>exactly</em> this ID in its own configuration and in its manifest — the gateway cannot assign it
+to them, and a publication that names a different ID is refused.</p>
+{{end}}
+
+<h2>What the developer configures</h2>
+<p class="hint">These belong in the publisher's own backend. Adding a publisher here needed no
+gateway restart and no change to the gateway's environment; how that backend loads its own
+configuration is the developer's choice.</p>
+<table class="facts">
+  <tr><th>Server ID</th><td><code class="id">{{$n.ServerID}}</code>
+      <button class="copy" type="button" data-copy="{{$n.ServerID}}">Copy</button>
+      <span class="sub">who the publisher is</span></td></tr>
+  <tr><th>Credential</th><td><span class="sub">the value above, as its
+      <code>BROADCAST_CREDENTIAL</code> / bearer token — what authenticates a publication</span></td></tr>
+  <tr><th>Public gateway origin</th><td><code class="id">{{$n.GatewayURL}}</code>
+      <button class="copy" type="button" data-copy="{{$n.GatewayURL}}">Copy</button>
+      <span class="sub">what the manifest must name, character for character, and what a phone
+      compares</span></td></tr>
+  <tr><th>Publisher API</th><td><code class="id">{{$n.PublisherURL}}</code>
+      <button class="copy" type="button" data-copy="{{$n.PublisherURL}}">Copy</button>
+      <span class="sub">where the backend sends publications — outbound only; the gateway never
+      calls the publisher</span></td></tr>
+  <tr><th>Channel / feed</th><td><code class="id">{{$n.Channel}}</code>
+      <button class="copy" type="button" data-copy="{{$n.Channel}}">Copy</button>
+      <span class="sub">the public feed reference; it carries no secret and may be shared</span></td></tr>
+  {{with $r.Host}}<tr><th>Host recorded</th><td><a href="{{.}}" rel="noreferrer noopener external">{{.}}</a>
+      <span class="sub">your note about this developer; not an address anything contacts</span></td></tr>{{end}}
+</table>
+
+<h2>The first two calls</h2>
+<p class="hint">Ordinary authenticated HTTP. No SDK, no inbound port and no phone-facing server is
+needed — see the developer walkthrough in <code>docs/guides/server-development.md</code>.</p>
+<pre class="calls"><code>POST {{$n.ManifestCall}}
+POST {{$n.PublishCall}}
+Content-Type: application/json
+Authorization: Bearer &lt;the credential above&gt;</code></pre>
+
+<p><a class="button" href="{{at "/servers/"}}{{$n.ServerID}}">Done — open this publisher</a></p>
+{{template "foot" .}}

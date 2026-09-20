@@ -1,0 +1,34 @@
+{{define "head"}}<!-- The page frame. The stylesheet and the script are the gateway's own files,
+served from this same route; nothing is loaded from anywhere else. -->
+<title>Feed gateway administration</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="{{at "/assets/admin.css"}}">
+<script src="{{at "/assets/admin.js"}}" defer></script>
+<header class="bar">
+  <div>
+    <strong>Feed gateway</strong>
+    {{with .GatewayURL}}<span class="origin">{{.}}</span>{{end}}
+  </div>
+  {{if .LoggedIn}}
+  <form method="post" action="{{at "/logout"}}">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="plain">Log out</button>
+  </form>
+  {{end}}
+</header>
+<main>
+{{end}}
+
+{{define "flash"}}
+{{with .Problem}}<p class="problem" role="alert">{{.}}</p>{{end}}
+{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{end}}
+
+{{define "foot"}}
+</main>
+<footer>
+  <p>Administration is this gateway only. A publisher configures its own server ID, gateway URL
+  and credential in its own backend; nothing here can change another server's settings or restart
+  it.</p>
+</footer>
+{{end}}

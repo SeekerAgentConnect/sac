@@ -7,8 +7,9 @@
 // per-channel sequence, publisher credential hashes, and pending fan-out notices. Those tables
 // still have no subscriber column and a public read still writes nothing.
 //
-// Schema version 3 removes the retired gateway-private routing tables. The six public tables above
-// remain the complete live schema, and a boundary test pins that whole.
+// Schema version 3 removes the retired gateway-private routing tables; version 4 adds a
+// publisher's developer-supplied host as a column on the registration it belongs to (SEE-141). The
+// six public tables above remain the complete live schema, and a boundary test pins that whole.
 //
 // # Why SQLite
 //
@@ -49,7 +50,7 @@ import (
 // Version is the schema this build writes and reads. There is one, and a file from a later version
 // is refused rather than guessed at: an old binary reading a new file could silently ignore a
 // column that a rule depends on.
-const Version = 3
+const Version = 4
 
 // ErrNewerSchema is returned by Open when the file was written by a later version of the gateway.
 var ErrNewerSchema = errors.New("the database was written by a newer gateway")
@@ -182,6 +183,8 @@ func (s *Store) migrate(ctx context.Context) error {
 					return fmt.Errorf("retire gateway-private manifests: %w", err)
 				}
 				migration = schemaV3
+			case 4:
+				migration = schemaV4
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -378,6 +381,20 @@ const schemaV3 = `
 DROP TABLE private_request;
 DROP TABLE invitation;
 DROP TABLE device_binding;
+`
+
+// Version 4 adds the developer-supplied host of a publisher's own backend (SEE-141). It is a
+// column rather than a table on purpose: the live schema stays the six public-feed tables a
+// boundary test pins, and a host is one more fact about a registration rather than a new kind of
+// state.
+//
+// It is administrative metadata and nothing more. The gateway never fetches it, no phone is ever
+// told to contact it, and it is not what authenticates a publication — the credential is. Every
+// registration made before this version keeps the empty default, which is why the column is NOT
+// NULL with one rather than nullable: "no host was given" and "the host is nothing" are the same
+// fact, and two spellings of it would be two branches in every reader.
+const schemaV4 = `
+ALTER TABLE publisher ADD COLUMN host TEXT NOT NULL DEFAULT '';
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

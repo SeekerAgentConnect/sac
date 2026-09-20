@@ -84,10 +84,23 @@ something.
 | `BROADCAST_TICKET_MINUTES`, `BROADCAST_MAX_CHANNELS` | 60, 32 | How long a listener's ticket lasts, and how many channels one grants |
 | `BROADCAST_PUSH_CREDENTIALS`, `BROADCAST_PUSH_ENDPOINT`, `BROADCAST_PUSH_ENVIRONMENT` | unset | The push relay (SEE-92): the service account file, the push API, and `production` or `sandbox`. All three or none |
 | `BROADCAST_PUSH_RATE`, `BROADCAST_PUSH_BURST` | 0.1, 5 | Hints per topic per second, and the burst. Above it a hint is dropped rather than queued |
+| `BROADCAST_ADMIN_PASSWORD_HASH` | unset | The operator's password, as `feed-gatewayctl password` prints it (SEE-141). Setting it is the only thing that builds the admin surface; without it there is no listener and no route |
+| `BROADCAST_ADMIN_ADDRESS` | `127.0.0.1:8092` | Where the admin page listens. It must differ from the read and publisher addresses |
+| `BROADCAST_ADMIN_PATH` | `/admin` | The route prefix it is served under. Canonical: absolute, no trailing slash, no query, no relative segment |
+| `BROADCAST_ADMIN_SESSION_MINUTES` | 60, range 5–1440 | How long a login lasts, absolutely |
+| `BROADCAST_ADMIN_LOGIN_RATE`, `BROADCAST_ADMIN_LOGIN_BURST` | 0.1, 5 | Login attempts per second per caller, and the burst |
+| `BROADCAST_ADMIN_PUBLISHER_URL` | `BROADCAST_PUBLIC_URL` | The publisher API address the admin page hands a developer, when publications arrive somewhere other than the public origin |
 
-**There is no credential in the configuration.** A publisher's credential is created by
-`feed-gatewayctl` and kept as a SHA-256, so there is nothing in the environment, a process list or a
-compose file for one to leak from. SEE-92's push credential is the one thing that has to be usable
+The admin group is all-or-nothing like the stream and the relay: a setting with no password behind
+it is a startup problem rather than a line that does nothing, with one exception — declaring
+`BROADCAST_ADMIN_PASSWORD_HASH` and leaving it **empty** keeps the whole group inert, which is what
+lets a deployment template write the group down where an operator can see it and turn it on with one
+secret (`deploy/feed/compose.yaml`, `deploy/seeker-gateway.yaml`).
+
+**There is no publishing credential in the configuration.** A publisher's credential is created by
+`feed-gatewayctl` or by the admin page and kept as a SHA-256, so there is nothing in the environment,
+a process list or a compose file for one to leak from. The operator's own password is the one secret
+the environment carries, and it carries it as a PBKDF2 hash that cannot be turned back into it. SEE-92's push credential is the one thing that has to be usable
 rather than compared, and it is still not in the environment: what is configured is a **path**, the
 file is mounted read-only into the gateway alone (`deploy/feed/compose.push.yaml`), and it is read once at
 startup — a missing or malformed one stops the process with a message that names the field and no
@@ -103,20 +116,52 @@ with a path is refused at startup.
 ## The operator's tool
 
 `feed-gatewayctl` is local, and registering a publisher is the one act that grants the ability to
-publish. There is no administrative API to authenticate against.
+publish. There is still no publisher- or phone-facing API to authenticate against; since SEE-141 the
+operator has a **second** surface for the same operations, [the admin page](#the-operators-admin-page),
+and the two share this store and these semantics rather than shelling out to each other.
 
 | Command | What it does |
 | --- | --- |
-| `register --server <uuid> [--label]` | Registers a publisher and prints one credential, once |
+| `register --server <uuid> --label <note> [--host <url>]` | Registers a publisher and prints one credential, once. Refuses an identity that is already registered |
 | `rotate --server <uuid> [--label]` | Adds a second credential, so the first can be retired without an outage |
 | `revoke --credential <id>` | Ends one credential, named by the handle `list` prints |
 | `revoke --server <uuid> --all` | Ends every credential a publisher holds. Its documents stay |
 | `list [--server <uuid>]` | What is registered, or one publisher's credentials |
 | `forget --server <uuid> --yes` | Removes a publisher and everything it published |
+| `password [--password <text>]` | Reads a password from standard input and prints the hash to configure as `BROADCAST_ADMIN_PASSWORD_HASH`. Touches no database, so it works before one exists |
 
 `--database`, or `BROADCAST_DATABASE_PATH`, must be the file the gateway reads: pointing the two at
 different files is the one mistake that looks like a credential that does not work. The tool can run
-while the gateway is up.
+while the gateway is up, and what it changes the admin page sees immediately, because there is one
+file and one set of rules.
+
+`--host` records the developer's own base URL beside a registration. It is administrative metadata:
+the gateway never fetches it, no phone is told to contact it, and claiming a host grants nothing.
+
+## The operator's admin page
+
+[`internal/admin`](../../feed-gateway/internal/admin), on its own listener, off unless
+`BROADCAST_ADMIN_PASSWORD_HASH` is set. [`docs/wiki/feed-gateway.md`](../wiki/feed-gateway.md#the-operators-admin-page)
+is why; this is what it is made of.
+
+| File | What is in it |
+| --- | --- |
+| `admin.go` | The routes, the guard that authenticates and checks CSRF before any handler runs, and the five actions — register, rotate, revoke one, revoke all, forget |
+| `session.go` | Server-side sessions: an opaque random token in the cookie, stored as its SHA-256, absolute expiry, a bounded count, real logout, and the one-shot hold a new credential is revealed from |
+| `pages.go` | The view models and the embedded templates. `PublisherRow.Credentials()` and `.Published()` are the only place the operator-facing state words are decided |
+| `host.go` | What may be recorded as a publisher's host, and what may be rendered as a link |
+| `templates/`, `assets/` | The pages, one stylesheet and one script, all compiled into the binary |
+
+It takes `Limiter` and `Caller` as injected seams rather than importing `internal/gateway`, which
+would be a cycle: the gateway builds this surface and supplies its own token bucket and its own
+trusted-proxy policy, so a login is counted against the same caller identity a read is.
+
+Two things live outside it because more than one surface needs them:
+[`internal/credential`](../../feed-gateway/internal/credential) is the one place a publishing
+credential is minted, hashed and named **and** the one place a password is stretched (PBKDF2-HMAC-SHA256,
+`crypto/pbkdf2`, encoded dot-separated so a `$` is never eaten by Compose's interpolation); and
+`storage.PublisherAdminStore` is the one administration boundary, which the CLI and the page both
+call.
 
 ## Code
 
@@ -127,8 +172,10 @@ while the gateway is up.
 | `internal/config` | The environment, validated, and the canonical form of a gateway origin |
 | `internal/rules` | What the gateway accepts, as pure functions: the document rules, the ordering rules, and what a withdrawal leaves behind. The phone's own rules, on this side |
 | `internal/storage` | The durable contracts used by publication, reads, delivery, maintenance, and the local operator tool. Business code depends on these interfaces and contains no SQL or SQLite import |
-| `internal/storage/sqlite` | The only place that speaks SQL: the six public publication/configuration/outbox tables, transaction ownership, and the one-way schema-v3 retirement migration |
-| `internal/gateway` | Public feed and authenticated publisher handlers; credential interceptors, limiters, cursors, the strict JSON codec and boundary tests |
+| `internal/storage/sqlite` | The only place that speaks SQL: the six public publication/configuration/outbox tables, transaction ownership, the one-way schema-v3 retirement migration, and v4's added publisher host column |
+| `internal/gateway` | Public feed and authenticated publisher handlers; credential interceptors, limiters, cursors, the strict JSON codec and boundary tests. It also composes the admin surface and opens its listener when one is configured |
+| `internal/admin` | The operator's browser administration (SEE-141): routes, sessions, CSRF, the pages and the two assets. Built only when a password is configured |
+| `internal/credential` | Minting, hashing and naming a publishing credential, and hashing and verifying the operator's password. One algorithm, so the CLI and the page cannot drift |
 | `internal/dispatch` | The outbox drainer, its backoff, `Dispatcher`, and the event envelope every subscriber receives |
 | `internal/stream` | The broker (SEE-91): publishing an event over its server API, and minting the ticket a listener connects with. One of the two packages that open a connection, and it takes the address from the operator |
 | `internal/relay` | The push relay (SEE-92): one content-free hint per changed feed, the topic it goes to, the quota that bounds how often a feed's subscribers are woken, and the service-account grant it is sent with. The other package that opens a connection, and it takes both addresses from its operator — one from the environment, one from the credential document |
@@ -149,8 +196,10 @@ hosted invitation route is absent from both surviving listeners.
 | File | What it holds |
 | --- | --- |
 | `internal/rules/rules_test.go` | Every document rule with its own answer, what a revision means, that a document is rebuilt rather than relayed, and that the environments a server ID published cannot move while the order they were written in does not matter (SEE-97) |
-| `internal/storage/sqlite/store_test.go` | The schema, credentials and rotation, a publication and its notice committing together, a notice surviving a stop, paging order, retention, forgetting a publisher, and the restart-safe schema-v2-to-v3 retirement that preserves every public table while dropping private routing rows |
-| `internal/config/config_test.go` | The two settings with no default, the ranges, and what cannot be an origin |
+| `internal/storage/sqlite/store_test.go` | The schema, credentials and rotation, a publication and its notice committing together, a notice surviving a stop, paging order, retention, forgetting a publisher, the restart-safe schema-v2-to-v3 retirement that preserves every public table while dropping private routing rows, and the v3-to-v4 host column added to a database written before it without losing a row |
+| `internal/config/config_test.go` | The two settings with no default, the ranges, what cannot be an origin, and the admin group: off without a password, inert when the password is declared empty, and every way it can be misconfigured |
+| `internal/admin/admin_test.go` | Who is refused — an anonymous visitor, a real publishing credential, a form with no token, a cross-site post, an expired session — and what an operator can do: register, the one-time reveal, a refused duplicate that writes nothing, additive rotation, revocation, destructive removal behind a typed confirmation, the security headers, the assets, and that nothing outside the prefix exists |
+| `internal/gateway/admin_test.go` | The wiring, against the running service: a publisher registered in the browser publishes on its next request with nothing restarted, the CLI and the page see the same registrations, a revocation is enforced immediately while another publisher keeps publishing, the route is absent from both other listeners, and an unconfigured gateway has no surface at all |
 | `internal/dispatch/dispatch_test.go` | Delivery, failure and retry, duplicate delivery after a sent-but-unacknowledged notice, a publication landing mid-flight, a document swept while its notice waited, and backoff |
 | `internal/gateway/publish_test.go` | Two publishers that cannot reach each other, credentials and rotation, refusing a redirection, refusing a promotion to production (SEE-97) while what a subscriber reads stays as it was, retries and conflicts, withdrawal, the channel bound, rate limits, and a restart that still owes a fan-out |
 | `internal/gateway/publisher_storage_test.go` | A fully evaluated publication whose storage commit fails answers failure, wakes no fan-out, and leaves neither document nor notice visible |
@@ -207,9 +256,11 @@ Three details matter:
   push connection is the only runtime support file.
 - **There is no healthcheck in the gateway's container**, because a scratch image has no shell to
   probe itself with. The optional ingress checks the private read listener.
-- **The optional ingress routes two upstreams**: `FeedService` to the public read listener and
-  `PublisherService` to the backend listener. An operator may keep publisher RPCs private while
-  exposing public feed reads.
+- **The optional ingress routes two upstreams, or three**: `FeedService` to the public read listener,
+  `PublisherService` to the backend listener, and — when the operator keeps the block — `/admin*` to
+  the admin listener. An operator may keep publisher RPCs private while exposing public feed reads,
+  and may delete the admin block entirely and reach the page over a tunnel instead. Nothing answers
+  on the admin upstream until a password is configured.
 
 `pnpm check:deployments` resolves every canonical Compose preset without a Docker daemon. A Caddy
 runtime can additionally validate the ingress configuration without starting applications.

@@ -7,11 +7,14 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
 
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/admin"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/config"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/credential"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/dispatch"
 	gatewayv1connect "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1/gatewayv1connect"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
@@ -32,11 +35,14 @@ const (
 	drainTimeout  = 15 * time.Second
 )
 
-// Gateway is the whole service: its isolated feed and publisher handlers, the fan-out drainer,
-// and the retention sweep.
+// Gateway is the whole service: its isolated feed and publisher handlers, the operator's
+// administration when one is configured, the fan-out drainer, and the retention sweep.
 type Gateway struct {
 	Read    http.Handler
 	Publish http.Handler
+	// Admin is nil unless the deployment configured an operator password. A nil handler means no
+	// listener is opened and no administrative route exists anywhere in this process (SEE-141).
+	Admin   http.Handler
 	Drainer *dispatch.Drainer
 
 	config  *config.Config
@@ -51,6 +57,7 @@ type Gateway struct {
 func Build(
 	settings *config.Config,
 	from storage.GatewayStore,
+	administers storage.PublisherAdminStore,
 	to dispatch.Dispatcher,
 	grants Grants,
 	topics Topics,
@@ -95,15 +102,84 @@ func Build(
 	))
 	publishMux.HandleFunc("/healthz", healthz)
 
+	// The operator's administration, on a third listener of its own and only when a password hash
+	// is configured. A deployment that configured none has no administrative surface at all: not a
+	// disabled route, not a setup page — nothing is built, so there is nothing to reach.
+	var administration http.Handler
+	if settings.Admin.Enabled() {
+		built, err := buildAdmin(settings, administers, from, log, now)
+		if err != nil {
+			// Refusing to serve is the only safe answer: an administrative surface that half
+			// exists is worse than one that does not, and the configuration was already validated,
+			// so this is a programming error rather than an operator's mistake.
+			log.Error("the operator's administration could not be built", "error", err)
+		} else {
+			administration = built
+			log.Info("serving operator administration",
+				"address", settings.Admin.Address,
+				"path", settings.Admin.Path,
+				"session_minutes", int(settings.Admin.SessionLifetime.Minutes()))
+		}
+	} else {
+		log.Info("no operator password is configured: there is no administrative surface, " +
+			"and publishers are registered with feed-gatewayctl")
+	}
+
 	return &Gateway{
 		Read:    readMux,
 		Publish: publishMux,
+		Admin:   administration,
 		Drainer: drainer,
 		config:  settings,
 		storage: from,
 		log:     log,
 		now:     now,
 	}
+}
+
+// buildAdmin assembles the operator's surface from the same store the feed is served from, the
+// gateway's own rate limiter, and the deployment's own trusted-proxy policy — so a login is
+// counted against the same caller identity a read is.
+func buildAdmin(
+	settings *config.Config,
+	administers storage.PublisherAdminStore,
+	from storage.GatewayStore,
+	log *slog.Logger,
+	now func() time.Time,
+) (http.Handler, error) {
+	if administers == nil {
+		return nil, errors.New("no publisher administration store")
+	}
+	password, err := credential.ParsePassword(settings.Admin.PasswordHash)
+	if err != nil {
+		return nil, err
+	}
+	return admin.New(admin.Options{
+		Path:            settings.Admin.Path,
+		Password:        password,
+		SessionLifetime: settings.Admin.SessionLifetime,
+		// The cookie is marked Secure exactly when this deployment is served over HTTPS. A
+		// loopback development gateway over plain HTTP could not keep a cookie that demanded it.
+		Secure:       strings.HasPrefix(settings.PublicURL, "https://"),
+		PublicURL:    settings.PublicURL,
+		PublisherURL: settings.Admin.PublisherURL,
+		Store:        adminStore{PublisherAdminStore: administers, FeedStore: from},
+		Logins:       NewLimiter(settings.Admin.LoginRate, settings.Admin.LoginBurst, now),
+		Caller: func(request *http.Request) string {
+			return caller(request.RemoteAddr, request.Header.Get("X-Forwarded-For"),
+				settings.TrustedProxies)
+		},
+		Log: log,
+		Now: now,
+	})
+}
+
+// adminStore joins the publisher administration boundary with the two authoritative reads the
+// operator's pages make — what a publisher's manifest says and how much its channel holds. Both
+// halves are the storage contract rather than the SQLite implementation.
+type adminStore struct {
+	storage.PublisherAdminStore
+	storage.FeedStore
 }
 
 // Run serves both APIs, drains the outbox and sweeps retention until ctx is done, and then shuts
@@ -136,15 +212,40 @@ func (g *Gateway) Run(ctx context.Context) error {
 		_ = reading.Close()
 		return err
 	}
-	g.log.Info("feed gateway listening",
+	servers := []*http.Server{read, publish}
+	listeners := []net.Listener{reading, publishing}
+	fields := []any{
 		"read", reading.Addr().String(),
 		"publish", publishing.Addr().String(),
 		"origin", g.config.PublicURL,
-		"database", g.config.DatabasePath)
+		"database", g.config.DatabasePath,
+	}
+	if g.Admin != nil {
+		administration := &http.Server{
+			Addr:              g.config.Admin.Address,
+			Handler:           g.Admin,
+			ReadHeaderTimeout: headerTimeout,
+			ReadTimeout:       readTimeout,
+			WriteTimeout:      writeTimeout,
+			IdleTimeout:       idleTimeout,
+			MaxHeaderBytes:    16 * 1024,
+		}
+		administering, err := net.Listen("tcp", administration.Addr)
+		if err != nil {
+			_ = reading.Close()
+			_ = publishing.Close()
+			return err
+		}
+		servers = append(servers, administration)
+		listeners = append(listeners, administering)
+		fields = append(fields, "admin", administering.Addr().String()+g.config.Admin.Path)
+	}
+	g.log.Info("feed gateway listening", fields...)
 
-	failed := make(chan error, 2)
-	go func() { failed <- serve(read, reading) }()
-	go func() { failed <- serve(publish, publishing) }()
+	failed := make(chan error, len(servers))
+	for at, server := range servers {
+		go func() { failed <- serve(server, listeners[at]) }()
+	}
 
 	background, stop := context.WithCancel(ctx)
 	defer stop()
@@ -159,7 +260,10 @@ func (g *Gateway) Run(ctx context.Context) error {
 	closing, cancel := context.WithTimeout(context.WithoutCancel(ctx), drainTimeout)
 	defer cancel()
 	// The listeners first, so nothing new arrives while the drainer makes its last pass.
-	shutdown := errors.Join(read.Shutdown(closing), publish.Shutdown(closing))
+	var shutdown error
+	for _, server := range servers {
+		shutdown = errors.Join(shutdown, server.Shutdown(closing))
+	}
 	stop()
 	return errors.Join(reason, shutdown)
 }

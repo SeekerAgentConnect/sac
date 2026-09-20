@@ -1,0 +1,175 @@
+/* The admin surface's whole appearance. It ships in the gateway image: no font service, no CDN,
+   nothing loaded from anywhere but this route, which is what lets the content policy be
+   `default-src 'none'`. */
+
+:root {
+  color-scheme: light dark;
+  --ink: #16191d;
+  --muted: #5b6470;
+  --line: #d8dde4;
+  --ground: #f6f7f9;
+  --card: #ffffff;
+  --accent: #1f5fbf;
+  --good: #1c6b3f;
+  --warn: #8a5300;
+  --danger: #a32218;
+  --danger-ground: #fdf3f2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e7eaee;
+    --muted: #9aa4b1;
+    --line: #333a44;
+    --ground: #14171b;
+    --card: #1b1f25;
+    --accent: #79a9f2;
+    --good: #66c28e;
+    --warn: #d9a441;
+    --danger: #f08a80;
+    --danger-ground: #2a1a19;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .85rem 1.25rem;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+
+.bar .origin { color: var(--muted); margin-left: .6rem; font-size: .9em; }
+
+main { max-width: 62rem; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+
+footer {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 0 1.25rem 2.5rem;
+  color: var(--muted);
+  font-size: .87em;
+}
+
+h1 { font-size: 1.45rem; margin: 0 0 1rem; }
+h2 { font-size: 1.15rem; margin: 2rem 0 .6rem; }
+h3 { font-size: 1rem; margin: 0 0 .4rem; }
+h2.destructive { color: var(--danger); }
+
+a { color: var(--accent); }
+
+.crumb { margin: 0 0 .75rem; font-size: .9em; }
+.sub { color: var(--muted); font-size: .87em; display: inline-block; }
+.hint { color: var(--muted); font-size: .87em; margin: .3rem 0 .9rem; }
+.aside { color: var(--muted); font-size: .87em; max-width: 34rem; }
+.empty { color: var(--muted); padding: 1rem 0; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.1rem;
+  margin: 0 0 1rem;
+}
+
+.card.narrow { max-width: 24rem; }
+.card.destructive { border-color: var(--danger); background: var(--danger-ground); }
+.card.once { border-color: var(--warn); }
+
+.actions { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); }
+
+label { display: block; font-weight: 600; margin: .8rem 0 .25rem; }
+label.check { font-weight: 400; display: flex; gap: .5rem; align-items: baseline; }
+
+input[type=text], input[type=password], input:not([type]) {
+  width: 100%;
+  padding: .5rem .6rem;
+  font: inherit;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+button {
+  font: inherit;
+  padding: .5rem .9rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  margin-top: .6rem;
+}
+
+button.plain { background: transparent; color: var(--accent); }
+button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+button.copy { margin: 0 0 0 .5rem; padding: .15rem .5rem; font-size: .8em; }
+a.button { display: inline-block; text-decoration: none; padding: .5rem .9rem;
+           border-radius: 6px; background: var(--accent); color: #fff; }
+
+form.inline { display: inline; margin: 0; }
+form.inline button { margin: 0; }
+
+table { border-collapse: collapse; width: 100%; }
+table.list { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+table.list th, table.list td { text-align: left; padding: .6rem .75rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.list tbody tr:last-child td { border-bottom: 0; }
+table.facts th { text-align: left; width: 11rem; padding: .45rem .75rem .45rem 0; vertical-align: top; color: var(--muted); font-weight: 600; }
+table.facts td { padding: .45rem 0; vertical-align: top; }
+
+code.id {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: .87em;
+  word-break: break-all;
+}
+
+.state { display: inline-block; font-size: .85em; margin-right: .5rem; }
+.state.good { color: var(--good); }
+.state.warn { color: var(--warn); }
+
+.problem, .notice {
+  padding: .7rem .9rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  margin: 0 0 1rem;
+}
+.problem { border-color: var(--danger); color: var(--danger); background: var(--danger-ground); }
+.warn-line { color: var(--warn); }
+
+.secret {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  padding: .7rem .8rem;
+  background: var(--ground);
+  border: 1px dashed var(--warn);
+  border-radius: 8px;
+}
+.secret code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  word-break: break-all;
+  user-select: all;
+}
+
+pre.calls {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .8rem;
+  overflow-x: auto;
+  font-size: .85em;
+}

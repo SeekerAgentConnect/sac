@@ -21,6 +21,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/credential"
 )
 
 // Config is the validated deployment.
@@ -53,6 +55,8 @@ type Config struct {
 	Stream Stream
 	// The push relay that hints to phones nobody is looking at, when one is configured (SEE-92).
 	Relay Relay
+	// The operator's browser administration, when one is configured (SEE-141).
+	Admin Admin
 }
 
 // Stream is the fan-out, and an empty URL is a complete answer: the gateway holds the documents,
@@ -101,6 +105,41 @@ type Relay struct {
 	Burst int
 }
 
+// Admin is the operator's password-protected administration, and an empty password hash is a
+// complete answer in the same way an empty broker URL is: the listener is not opened, no route
+// exists, and the gateway says at startup that it has no administrative surface. There is
+// deliberately no unconfigured setup page — a first-run endpoint that grants administration to
+// whoever finds it is the worst failure mode this surface could have, and not building it is the
+// only way to be sure it is not reachable.
+//
+// The password hash is configuration rather than database state on purpose. It is what makes the
+// documented recovery work: a deployment that lost its SQLite file still has an operator who can
+// log in and register its publishers again, without a database console (SEE-141).
+type Admin struct {
+	// Where the admin UI listens. A third socket, for the same reason the publisher API is a
+	// second one: a deployment can keep it off the internet entirely, and no routing mistake can
+	// expose an administrative mutation through a feed read.
+	Address string
+	// The route prefix it is served under, so an ingress can forward one prefix and the pages can
+	// link to themselves correctly behind it. It has no trailing slash.
+	Path string
+	// The operator's password, as internal/admin encodes one. Setting it is what turns the admin
+	// surface on; nothing else here does anything without it.
+	PasswordHash string
+	// How long a login lasts. It is absolute rather than sliding.
+	SessionLifetime time.Duration
+	// Login attempts per second per caller, and the burst above it. Deliberately slow: there is one
+	// password and one operator, and a person logging in takes seconds rather than milliseconds.
+	LoginRate  float64
+	LoginBurst int
+	// The publisher API origin an external publisher can actually reach, which is what the admin
+	// hands a developer. It defaults to PublicURL, because that is where both packaged ingresses
+	// and the App Platform edge route PublisherService; an operator who keeps the publisher
+	// listener on a private network sets it to the address they will give out. It is never a
+	// container-local hostname unless the operator says so.
+	PublisherURL string
+}
+
 // Defaults every setting that has one. They are deliberately modest: a gateway is a shared service,
 // and a publisher that needs a higher rate is a conversation with its operator rather than a
 // number that was set high enough to never come up.
@@ -129,6 +168,17 @@ const (
 	// conversation rather than one set high enough never to come up.
 	DefaultPushRate  = 0.1
 	DefaultPushBurst = 5
+	// The admin surface. The address is loopback like the other two, the route is the one the
+	// ticket names, and an hour is the same bound a listener's ticket gets: long enough that an
+	// operator finishes a registration without logging in twice, short enough that a session left
+	// open stops mattering on its own.
+	DefaultAdminAddress  = "127.0.0.1:8092"
+	DefaultAdminPath     = "/admin"
+	DefaultAdminLifetime = time.Hour
+	// One attempt every ten seconds with five in hand. A person who mistypes a password twice
+	// notices nothing; something working through a list gets 300 tries a day.
+	DefaultAdminLoginRate  = 0.1
+	DefaultAdminLoginBurst = 5
 )
 
 // Lookup is os.LookupEnv, injected so the tests configure a gateway without touching the process.
@@ -291,10 +341,112 @@ func Load(lookup Lookup) (*Config, []string) {
 	relay.Burst = int(number("BROADCAST_PUSH_BURST", DefaultPushBurst, 1, 1000))
 	config.Relay = relay
 
+	// The admin surface, on the same all-or-nothing terms as the two above (SEE-141). The password
+	// hash is the switch: without it nothing is built, and with it everything else is checked here
+	// rather than discovered by an operator who cannot log in.
+	admin := Admin{
+		Address:         text("BROADCAST_ADMIN_ADDRESS", DefaultAdminAddress),
+		Path:            text("BROADCAST_ADMIN_PATH", DefaultAdminPath),
+		PasswordHash:    text("BROADCAST_ADMIN_PASSWORD_HASH", ""),
+		SessionLifetime: DefaultAdminLifetime,
+		LoginRate:       DefaultAdminLoginRate,
+		LoginBurst:      DefaultAdminLoginBurst,
+		PublisherURL:    text("BROADCAST_ADMIN_PUBLISHER_URL", ""),
+	}
+	if admin.PasswordHash != "" {
+		if _, err := credential.ParsePassword(admin.PasswordHash); err != nil {
+			note("BROADCAST_ADMIN_PASSWORD_HASH %v", err)
+		}
+		path, err := AdminPath(admin.Path)
+		if err != nil {
+			note("BROADCAST_ADMIN_PATH %v", err)
+		} else {
+			admin.Path = path
+		}
+		for _, other := range []struct{ name, address string }{
+			{"BROADCAST_READ_ADDRESS", config.ReadAddress},
+			{"BROADCAST_PUBLISHER_ADDRESS", config.PublisherAddress},
+		} {
+			if admin.Address == other.address {
+				note("BROADCAST_ADMIN_ADDRESS and %s must be different: "+
+					"administration is a third listener, so a deployment can keep it off the "+
+					"internet and no routing mistake can reach it through a feed read", other.name)
+			}
+		}
+		switch {
+		case admin.PublisherURL != "":
+			canonical, err := reachable(admin.PublisherURL)
+			if err != nil {
+				note("BROADCAST_ADMIN_PUBLISHER_URL %v", err)
+			} else {
+				admin.PublisherURL = canonical
+			}
+		default:
+			// Where both packaged ingresses and the App Platform edge route PublisherService.
+			admin.PublisherURL = config.PublicURL
+		}
+		admin.SessionLifetime = time.Duration(number("BROADCAST_ADMIN_SESSION_MINUTES",
+			DefaultAdminLifetime.Minutes(), 5, 24*60)) * time.Minute
+		admin.LoginRate = number("BROADCAST_ADMIN_LOGIN_RATE", DefaultAdminLoginRate, 0.001, 100)
+		admin.LoginBurst = int(number("BROADCAST_ADMIN_LOGIN_BURST", DefaultAdminLoginBurst, 1, 1000))
+	} else if _, declared := lookup("BROADCAST_ADMIN_PASSWORD_HASH"); !declared {
+		// A setting with no password behind it does nothing, and silently doing nothing is how an
+		// operator comes to believe a surface is protected differently than it is.
+		//
+		// Declaring the hash and leaving it empty is the deliberate exception, and it is what a
+		// deployment template does: the whole group is written down where an operator can see it,
+		// the surface stays off, and turning it on is one secret rather than a second edit
+		// somewhere else (deploy/feed/compose.yaml, deploy/seeker-gateway.yaml).
+		for _, name := range []string{
+			"BROADCAST_ADMIN_ADDRESS", "BROADCAST_ADMIN_PATH", "BROADCAST_ADMIN_SESSION_MINUTES",
+			"BROADCAST_ADMIN_LOGIN_RATE", "BROADCAST_ADMIN_LOGIN_BURST",
+			"BROADCAST_ADMIN_PUBLISHER_URL",
+		} {
+			if value, set := lookup(name); set && strings.TrimSpace(value) != "" {
+				note("%s is set but BROADCAST_ADMIN_PASSWORD_HASH is not: "+
+					"without it there is no administrative surface at all, and this setting "+
+					"would do nothing", name)
+			}
+		}
+	}
+	config.Admin = admin
+
 	if len(problems) > 0 {
 		return nil, problems
 	}
 	return config, nil
+}
+
+// Enabled says whether this deployment has an administrative surface at all.
+func (a Admin) Enabled() bool { return a.PasswordHash != "" }
+
+// AdminPath is the canonical form of the route prefix the admin UI is served under: one absolute
+// path, no trailing slash, no query and no fragment. It is a prefix rather than a host so that an
+// existing ingress can forward it without a second certificate or a second name.
+func AdminPath(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	switch {
+	case !strings.HasPrefix(value, "/"):
+		return "", fmt.Errorf("must be an absolute path, for example /admin")
+	case strings.ContainsAny(value, "?#"):
+		return "", fmt.Errorf("must be a path with no query or fragment")
+	case strings.Contains(value, "//"):
+		return "", fmt.Errorf("must have no empty segment")
+	}
+	value = strings.TrimRight(value, "/")
+	if value == "" {
+		return "", fmt.Errorf("must not be the whole site: " +
+			"a route boundary is what keeps administration apart from everything else")
+	}
+	for _, segment := range strings.Split(strings.TrimPrefix(value, "/"), "/") {
+		if segment == "." || segment == ".." {
+			return "", fmt.Errorf("must have no relative segment")
+		}
+		if escaped := url.PathEscape(segment); escaped != segment {
+			return "", fmt.Errorf("must be made of ordinary path characters")
+		}
+	}
+	return value, nil
 }
 
 var loopback = map[string]bool{"127.0.0.1": true, "localhost": true, "::1": true}

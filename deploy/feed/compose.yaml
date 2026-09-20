@@ -29,9 +29,22 @@ services:
       BROADCAST_PUSH_ENVIRONMENT: ${BROADCAST_PUSH_ENVIRONMENT:-}
       BROADCAST_PUSH_RATE: ${BROADCAST_PUSH_RATE:-}
       BROADCAST_PUSH_BURST: ${BROADCAST_PUSH_BURST:-}
+      # The operator's admin page (SEE-141). It exists only when a password hash is set, and the
+      # two below are set together with it: an empty hash means no listener and no route at all.
+      # `feed-gatewayctl password` prints the hash; the password itself is never configured.
+      BROADCAST_ADMIN_PASSWORD_HASH: ${BROADCAST_ADMIN_PASSWORD_HASH:-}
+      BROADCAST_ADMIN_ADDRESS: ${BROADCAST_ADMIN_ADDRESS:-}
+      BROADCAST_ADMIN_PATH: ${BROADCAST_ADMIN_PATH:-}
+      BROADCAST_ADMIN_SESSION_MINUTES: ${BROADCAST_ADMIN_SESSION_MINUTES:-}
+      BROADCAST_ADMIN_LOGIN_RATE: ${BROADCAST_ADMIN_LOGIN_RATE:-}
+      BROADCAST_ADMIN_LOGIN_BURST: ${BROADCAST_ADMIN_LOGIN_BURST:-}
+      BROADCAST_ADMIN_PUBLISHER_URL: ${BROADCAST_ADMIN_PUBLISHER_URL:-}
     ports:
       - "${BROADCAST_BIND:-127.0.0.1}:${BROADCAST_PORT:-8090}:8090"
       - "${BROADCAST_PUBLISH_BIND:-127.0.0.1}:${BROADCAST_PUBLISH_PORT:-8091}:8091"
+      # Published on host loopback like the other two. Nothing answers here until the hash above
+      # is set; reaching it from another machine is the ingress project's job, not this one's.
+      - "${BROADCAST_ADMIN_BIND:-127.0.0.1}:${BROADCAST_ADMIN_PORT:-8092}:8092"
     networks:
       - feed-ingress
       - feed-private

@@ -1,0 +1,63 @@
+{{template "head" .}}
+<h1>Registered publisher servers</h1>
+{{template "flash" .}}
+
+{{if .Publishers}}
+<table class="list">
+  <thead>
+    <tr><th>Publisher</th><th>Server ID</th><th>Credentials</th><th>Feed</th><th>Registered</th></tr>
+  </thead>
+  <tbody>
+  {{range .Publishers}}
+    <tr>
+      <td>
+        <a href="{{at "/servers/"}}{{.ServerID}}">{{.Label}}</a>
+        {{with .DisplayName}}<span class="sub">published as “{{.}}”</span>{{end}}
+        {{with .Host}}<span class="sub"><a href="{{.}}" rel="noreferrer noopener external">{{.}}</a></span>{{end}}
+      </td>
+      <td><code class="id">{{.ServerID}}</code></td>
+      <td><span class="state {{if gt .Active 0}}good{{else}}warn{{end}}">{{.Credentials}}</span></td>
+      <td><span class="sub">{{.Published}}</span><br><code class="id">{{.Channel}}</code></td>
+      <td><span class="sub">{{instant .Created}}</span></td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="empty">No publisher servers are registered yet. Add one below — it takes effect
+immediately, and the gateway is not restarted.</p>
+{{end}}
+
+<h2 id="add">Add server</h2>
+<form method="post" action="{{at "/servers"}}" class="card">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+  <label for="server">Server ID</label>
+  <input id="server" name="server" value="{{.Form.ServerID}}" spellcheck="false"
+         autocomplete="off" placeholder="the UUID this publisher already uses">
+  <p class="hint">The publisher's existing server UUID. It is the identity its manifest and every
+  publication of its own must name.</p>
+
+  <label class="check">
+    <input type="checkbox" name="generate" value="on" {{if .Form.Generate}}checked{{end}}>
+    This publisher has no server ID yet — generate one
+  </label>
+  <p class="hint">A generated ID is shown once on the next page. The publisher must then use
+  <em>exactly</em> that ID in its own configuration and manifest; the gateway cannot change it
+  for them.</p>
+
+  <label for="label">Label</label>
+  <input id="label" name="label" value="{{.Form.Label}}" maxlength="64" required
+         placeholder="what you call this publisher">
+  <p class="hint">Your own note. It is never served to a phone or to the publisher.</p>
+
+  <label for="host">Host / base URL <span class="sub">(optional)</span></label>
+  <input id="host" name="host" value="{{.Form.Host}}" spellcheck="false" autocomplete="off"
+         placeholder="https://example.com">
+  <p class="hint">Descriptive metadata only: which developer this registration belongs to. The
+  gateway never fetches it, no phone contacts it, and knowing a host grants no access — the
+  credential does that.</p>
+
+  <button type="submit">Add server</button>
+</form>
+{{template "foot" .}}

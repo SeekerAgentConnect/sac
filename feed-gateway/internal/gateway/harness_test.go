@@ -37,6 +37,7 @@ import (
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/proposal/v1"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/sqlite"
 )
 
@@ -161,6 +162,7 @@ type harness struct {
 	logs       *captured
 	read       *httptest.Server
 	publish    *httptest.Server
+	admin      *httptest.Server
 	feed       gatewayv1connect.FeedServiceClient
 	drainer    *dispatch.Drainer
 	path       string
@@ -243,14 +245,22 @@ func built(
 	if relaying {
 		topics = one.topics
 	}
-	service := gateway.Build(settings, documents, one.dispatcher, grants, topics, log, one.now)
+	service := gateway.Build(settings, documents, documents, one.dispatcher, grants, topics, log, one.now)
 	one.drainer = service.Drainer
 	one.read = httptest.NewServer(service.Read)
 	one.publish = httptest.NewServer(service.Publish)
 	one.feed = gatewayv1connect.NewFeedServiceClient(one.read.Client(), one.read.URL)
+	// The operator's surface, on its own server the way it is on its own listener, and only when
+	// this deployment configured a password (SEE-141).
+	if service.Admin != nil {
+		one.admin = httptest.NewServer(service.Admin)
+	}
 	t.Cleanup(func() {
 		one.read.Close()
 		one.publish.Close()
+		if one.admin != nil {
+			one.admin.Close()
+		}
 		_ = documents.Close()
 	})
 	return one
@@ -269,8 +279,12 @@ func (h *harness) at(moment time.Time) {
 	h.clock = moment
 }
 
-// register grants a publisher the ability to publish, the way feed-gatewayctl does: a credential is
-// created, and only its hash is stored.
+// register grants a publisher the ability to publish, the way feed-gatewayctl and the operator's
+// admin page both do: a credential is created, and only its hash is stored.
+//
+// Called twice for the same server it rotates rather than registering again, which is what both
+// surfaces do — registering an identity that exists is refused, and adding a credential to one is
+// rotation. Several tests want a publisher holding two credentials at once.
 func (h *harness) register(serverID string) string {
 	h.t.Helper()
 	raw := make([]byte, 32)
@@ -279,8 +293,12 @@ func (h *harness) register(serverID string) string {
 	}
 	credential := base64.RawURLEncoding.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(credential))
-	if err := h.documents.Register(context.Background(), serverID, "test",
-		sum[:], h.now()); err != nil {
+	_, err := h.documents.Register(context.Background(),
+		sqlite.Registration{ServerID: serverID, Label: "test"}, sum[:], h.now())
+	if errors.Is(err, storage.ErrPublisherExists) {
+		_, err = h.documents.AddCredential(context.Background(), serverID, "test", sum[:], h.now())
+	}
+	if err != nil {
 		h.t.Fatal(err)
 	}
 	return credential

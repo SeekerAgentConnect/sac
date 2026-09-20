@@ -257,3 +257,119 @@ func TestThePushRelayIsAllOfItOrNoneOfIt(t *testing.T) {
 		}
 	}
 }
+
+// The administrative surface is off unless a password hash configures it, and everything else
+// about it is checked at startup rather than discovered by an operator who cannot log in
+// (SEE-141).
+func TestTheAdminSurfaceIsOffUntilAPasswordConfiguresIt(t *testing.T) {
+	settings, problems := Load(environment(complete()))
+	if len(problems) > 0 {
+		t.Fatalf("a gateway with no admin settings had problems: %v", problems)
+	}
+	if settings.Admin.Enabled() {
+		t.Fatal("an unconfigured gateway has an administrative surface")
+	}
+
+	values := complete()
+	values["BROADCAST_ADMIN_PASSWORD_HASH"] = adminHash
+	settings, problems = Load(environment(values))
+	if len(problems) > 0 {
+		t.Fatalf("a configured admin surface had problems: %v", problems)
+	}
+	if !settings.Admin.Enabled() {
+		t.Fatal("a configured password did not enable the surface")
+	}
+	if settings.Admin.Address != DefaultAdminAddress || settings.Admin.Path != DefaultAdminPath {
+		t.Fatalf("the defaults are %q and %q", settings.Admin.Address, settings.Admin.Path)
+	}
+	// The publisher API a developer is handed defaults to the public origin, which is where both
+	// packaged ingresses route it. It is never a container-local address by accident.
+	if settings.Admin.PublisherURL != settings.PublicURL {
+		t.Fatalf("the publisher URL defaulted to %q", settings.Admin.PublisherURL)
+	}
+	if settings.Admin.SessionLifetime != DefaultAdminLifetime {
+		t.Fatalf("the session lifetime is %v", settings.Admin.SessionLifetime)
+	}
+}
+
+// An admin setting with no password behind it would do nothing, and silently doing nothing is how
+// an operator ends up believing a surface is protected differently than it is.
+func TestAnAdminSettingWithoutAPasswordIsAProblem(t *testing.T) {
+	for _, name := range []string{
+		"BROADCAST_ADMIN_ADDRESS", "BROADCAST_ADMIN_PATH", "BROADCAST_ADMIN_SESSION_MINUTES",
+		"BROADCAST_ADMIN_LOGIN_RATE", "BROADCAST_ADMIN_PUBLISHER_URL",
+	} {
+		values := complete()
+		values[name] = "127.0.0.1:9999"
+		_, problems := Load(environment(values))
+		if len(problems) != 1 || !strings.Contains(problems[0], name) {
+			t.Fatalf("%s alone gave %v", name, problems)
+		}
+	}
+}
+
+// Declaring the hash and leaving it empty is how a deployment template writes the whole group
+// down without turning the surface on. It is the one way an admin setting may sit unused.
+func TestADeclaredButEmptyPasswordLeavesTheGroupInertRatherThanWrong(t *testing.T) {
+	values := complete()
+	values["BROADCAST_ADMIN_PASSWORD_HASH"] = ""
+	values["BROADCAST_ADMIN_ADDRESS"] = "0.0.0.0:8092"
+	values["BROADCAST_ADMIN_PATH"] = "/admin"
+	settings, problems := Load(environment(values))
+	if len(problems) > 0 {
+		t.Fatalf("a declared but empty password gave %v", problems)
+	}
+	if settings.Admin.Enabled() {
+		t.Fatal("an empty password hash enabled the administrative surface")
+	}
+}
+
+func TestWhatCannotConfigureTheAdminSurface(t *testing.T) {
+	for _, one := range []struct{ name, value, named string }{
+		{"BROADCAST_ADMIN_PASSWORD_HASH", "not-a-hash", "BROADCAST_ADMIN_PASSWORD_HASH"},
+		{"BROADCAST_ADMIN_PASSWORD_HASH", "pbkdf2-sha256.10.c2FsdA.aGFzaA",
+			"BROADCAST_ADMIN_PASSWORD_HASH"},
+		{"BROADCAST_ADMIN_PATH", "admin", "BROADCAST_ADMIN_PATH"},
+		{"BROADCAST_ADMIN_PATH", "/", "BROADCAST_ADMIN_PATH"},
+		{"BROADCAST_ADMIN_PATH", "/admin?x=1", "BROADCAST_ADMIN_PATH"},
+		{"BROADCAST_ADMIN_PATH", "/admin/../x", "BROADCAST_ADMIN_PATH"},
+		// The admin listener is a third one, so a routing mistake cannot reach it through a read.
+		{"BROADCAST_ADMIN_ADDRESS", DefaultReadAddress, "BROADCAST_ADMIN_ADDRESS"},
+		{"BROADCAST_ADMIN_ADDRESS", DefaultPublisherAddress, "BROADCAST_ADMIN_ADDRESS"},
+		{"BROADCAST_ADMIN_PUBLISHER_URL", "https://example.com/publish",
+			"BROADCAST_ADMIN_PUBLISHER_URL"},
+		{"BROADCAST_ADMIN_SESSION_MINUTES", "1", "BROADCAST_ADMIN_SESSION_MINUTES"},
+	} {
+		values := complete()
+		values["BROADCAST_ADMIN_PASSWORD_HASH"] = adminHash
+		values[one.name] = one.value
+		_, problems := Load(environment(values))
+		if len(problems) == 0 || !strings.Contains(strings.Join(problems, "\n"), one.named) {
+			t.Fatalf("%s=%q gave %v", one.name, one.value, problems)
+		}
+	}
+}
+
+func TestAnAdminPathIsCanonical(t *testing.T) {
+	for raw, want := range map[string]string{
+		"/admin":          "/admin",
+		"/admin/":         "/admin",
+		"  /operations  ": "/operations",
+		"/a/b/c":          "/a/b/c",
+	} {
+		got, err := AdminPath(raw)
+		if err != nil || got != want {
+			t.Fatalf("AdminPath(%q) = %q, %v", raw, got, err)
+		}
+	}
+	for _, raw := range []string{"", "/", "admin", "//admin", "/admin?x", "/admin#x", "/a/../b"} {
+		if got, err := AdminPath(raw); err == nil {
+			t.Fatalf("AdminPath(%q) was accepted as %q", raw, got)
+		}
+	}
+}
+
+// One real hash, so the tests exercise the same parse a deployment's does. It is for
+// "a-long-enough-operator-password" and protects nothing: the surface it would unlock exists only
+// in a test process with a temporary database.
+const adminHash = "pbkdf2-sha256.600000.AAECAwQFBgcICQoLDA0ODw.NRmRbsgnhpQ6PSECNLWXDtn5wAhq5ZbeBnMdCof_kME"

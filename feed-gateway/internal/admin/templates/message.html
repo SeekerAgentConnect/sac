@@ -1,0 +1,5 @@
+{{template "head" .}}
+<h1>{{.Title}}</h1>
+<p>{{.Body}}</p>
+{{if .Back}}<p><a href="{{if .Link}}{{.Link}}{{else}}{{at "/"}}{{end}}">Back</a></p>{{end}}
+{{template "foot" .}}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/credential"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 )
 
@@ -18,39 +19,57 @@ type Publisher = storage.Publisher
 // the hash, which is what the operator names to revoke one.
 type Credential = storage.Credential
 
-// ErrNoPublisher is returned when a server ID has not been registered.
-var ErrNoPublisher = storage.ErrNoPublisher
+// Registration is what registering a publisher says: an identity, an operator's label, and the
+// developer's own host when they gave one.
+type Registration = storage.Registration
 
-// CredentialID is the operator's handle for one credential: the first four bytes of its hash, in
-// hex. It is not the credential and cannot be turned back into one, and it is short enough to type
-// into a revocation.
-func CredentialID(hash []byte) string {
-	if len(hash) < 4 {
-		return ""
-	}
-	return hex.EncodeToString(hash[:4])
-}
+var (
+	// ErrNoPublisher is returned when a server ID has not been registered.
+	ErrNoPublisher = storage.ErrNoPublisher
+	// ErrPublisherExists is returned when one already has been.
+	ErrPublisherExists = storage.ErrPublisherExists
+)
 
-// Register adds a publisher if it is new and gives it a credential. It is the one operation that
-// grants the ability to publish, it is not reachable over any network, and the caller — cmd/
-// feed-gatewayctl — is the only thing that calls it.
-func (s *Store) Register(ctx context.Context, serverID, label string, hash []byte, at time.Time) error {
-	return s.write(ctx, func(tx *Tx) error {
+// CredentialID is the operator's handle for one credential. The derivation lives in
+// internal/credential, so the CLI, the admin surface and this store all name a credential the same
+// way; this is the store's own spelling of it.
+func CredentialID(hash []byte) string { return credential.ID(hash) }
+
+// Register adds a publisher and gives it its first credential, in one transaction, and answers
+// with that credential's ID.
+//
+// A server ID that is already registered is refused rather than merged into. Adding a credential
+// to an existing publisher is rotation, which is AddCredential and says so; doing it under the
+// name "register" would let a second registration of the same identity quietly hand out the
+// ability to publish as an existing publisher (SEE-141).
+func (s *Store) Register(ctx context.Context, registration Registration, hash []byte, at time.Time) (string, error) {
+	err := s.write(ctx, func(tx *Tx) error {
+		known, err := tx.PublisherExists(ctx, registration.ServerID)
+		if err != nil {
+			return err
+		}
+		if known {
+			return fmt.Errorf("%w: %s", ErrPublisherExists, registration.ServerID)
+		}
 		if _, err := tx.tx.ExecContext(ctx,
-			`INSERT INTO publisher (server_id, label, created_at_ms) VALUES (?, ?, ?)
-			 ON CONFLICT (server_id) DO NOTHING`,
-			serverID, label, milliseconds(at)); err != nil {
+			`INSERT INTO publisher (server_id, label, host, created_at_ms) VALUES (?, ?, ?, ?)`,
+			registration.ServerID, registration.Label, registration.Host,
+			milliseconds(at)); err != nil {
 			return fmt.Errorf("register publisher: %w", err)
 		}
-		return tx.addCredential(ctx, serverID, label, hash, at)
+		return tx.addCredential(ctx, registration.ServerID, registration.Label, hash, at)
 	})
+	if err != nil {
+		return "", err
+	}
+	return CredentialID(hash), nil
 }
 
 // AddCredential is a rotation: the publisher keeps publishing with what it has while the new
 // credential is deployed, and the old one is revoked afterwards. Both work in between, which is
 // the whole point of rotation being two steps rather than one.
-func (s *Store) AddCredential(ctx context.Context, serverID, label string, hash []byte, at time.Time) error {
-	return s.write(ctx, func(tx *Tx) error {
+func (s *Store) AddCredential(ctx context.Context, serverID, label string, hash []byte, at time.Time) (string, error) {
+	err := s.write(ctx, func(tx *Tx) error {
 		known, err := tx.PublisherExists(ctx, serverID)
 		if err != nil {
 			return err
@@ -60,6 +79,10 @@ func (s *Store) AddCredential(ctx context.Context, serverID, label string, hash 
 		}
 		return tx.addCredential(ctx, serverID, label, hash, at)
 	})
+	if err != nil {
+		return "", err
+	}
+	return CredentialID(hash), nil
 }
 
 func (t *Tx) addCredential(ctx context.Context, serverID, label string, hash []byte, at time.Time) error {
@@ -166,7 +189,7 @@ func (s *Store) PublisherFor(ctx context.Context, hash []byte) (string, error) {
 // Publishers lists what is registered, for the operator's tool.
 func (s *Store) Publishers(ctx context.Context) ([]Publisher, error) {
 	rows, err := s.reader.QueryContext(ctx,
-		`SELECT p.server_id, p.label, p.created_at_ms,
+		`SELECT p.server_id, p.label, p.host, p.created_at_ms,
 		        (SELECT COUNT(*) FROM publisher_credential c
 		          WHERE c.server_id = p.server_id AND c.revoked_at_ms IS NULL)
 		   FROM publisher p ORDER BY p.created_at_ms, p.server_id`)
@@ -178,13 +201,46 @@ func (s *Store) Publishers(ctx context.Context) ([]Publisher, error) {
 	for rows.Next() {
 		var publisher Publisher
 		var created int64
-		if err := rows.Scan(&publisher.ServerID, &publisher.Label, &created, &publisher.Active); err != nil {
+		if err := rows.Scan(&publisher.ServerID, &publisher.Label, &publisher.Host, &created,
+			&publisher.Active); err != nil {
 			return nil, fmt.Errorf("list publishers: %w", err)
 		}
 		publisher.CreatedAt = instant(created)
 		publishers = append(publishers, publisher)
 	}
 	return publishers, rows.Err()
+}
+
+// Publisher is one registration, or nil when the server has not been registered.
+func (s *Store) Publisher(ctx context.Context, serverID string) (*Publisher, error) {
+	var publisher Publisher
+	var created int64
+	err := s.reader.QueryRowContext(ctx,
+		`SELECT p.server_id, p.label, p.host, p.created_at_ms,
+		        (SELECT COUNT(*) FROM publisher_credential c
+		          WHERE c.server_id = p.server_id AND c.revoked_at_ms IS NULL)
+		   FROM publisher p WHERE p.server_id = ?`, serverID).
+		Scan(&publisher.ServerID, &publisher.Label, &publisher.Host, &created, &publisher.Active)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, nil
+	case err != nil:
+		return nil, fmt.Errorf("read publisher: %w", err)
+	}
+	publisher.CreatedAt = instant(created)
+	return &publisher, nil
+}
+
+// Publications is how many documents a channel currently holds, which is the durable evidence the
+// operator's view has that a publisher has published at all. It counts rows and reads none of
+// them: nothing about who subscribed is knowable here, because nothing about it is stored.
+func (s *Store) Publications(ctx context.Context, channel string) (int, error) {
+	var count int
+	if err := s.reader.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM proposal WHERE channel = ?`, channel).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count publications: %w", err)
+	}
+	return count, nil
 }
 
 // Credentials lists one publisher's credentials, revoked ones included.
