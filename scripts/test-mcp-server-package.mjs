@@ -186,11 +186,22 @@ try {
   assert.match(duplicate.output(), /direct store is already in use/);
   await waitForHealth(port);
 
-  await stopServer(running);
+  running.child.kill("SIGKILL");
+  const killed = await waitForExit(running, 10_000);
+  assert.equal(killed.signal, "SIGKILL", running.output());
   running = undefined;
   assert.ok(existsSync(join(dataDirectory, "direct-server.db")));
   assert.ok(
-    !existsSync(join(dataDirectory, "direct-server.db.mcp-server.lock")),
+    existsSync(join(dataDirectory, "direct-server.db.mcp-server-owner.sqlite")),
+  );
+  assert.deepEqual(
+    JSON.parse(
+      readFileSync(
+        join(dataDirectory, "direct-server.db.mcp-server.lock"),
+        "utf8",
+      ),
+    ),
+    { format: "sqlite-owner-v1" },
   );
 
   rmSync(localPrefix, { recursive: true, force: true });
@@ -256,7 +267,7 @@ try {
     );
   }
   assert.ok(
-    !existsSync(join(dataDirectory, "direct-server.db.mcp-server.lock")),
+    existsSync(join(dataDirectory, "direct-server.db.mcp-server-owner.sqlite")),
   );
 
   console.log(`PASS npm pack dry-run and real artifact: ${basename(tarball)}`);
@@ -267,7 +278,7 @@ try {
     `PASS packaged pairing, health, MCP discovery, phone acknowledgement, and replay`,
   );
   console.log(
-    `PASS changed cwd, reinstall persistence, clean shutdown, and duplicate-store refusal`,
+    `PASS SIGKILL recovery, changed cwd, reinstall persistence, clean shutdown, and duplicate-store refusal`,
   );
 } finally {
   if (running !== undefined) {
@@ -475,6 +486,7 @@ function cleanEnvironment() {
     "SIDECAR_UPDATE_PORT",
     "SIDECAR_TLS_CERT_PATH",
     "SIDECAR_TLS_KEY_PATH",
+    "SIDECAR_HEALTH_CA_CERT_PATH",
     "MCP_TOKEN",
     "PHONE_TOKEN",
     "MCP_ENABLED",

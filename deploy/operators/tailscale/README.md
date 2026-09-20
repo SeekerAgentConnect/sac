@@ -20,18 +20,21 @@ downgraded. The proxy has no publisher, broker API, Redis, health, operator, or 
 
 ## Direct server with production updates
 
-Use the MCP server's native TLS listener, not the HTTP reverse-proxy example. Put the Tailscale PEM
-files in a host directory, set `TAILSCALE_TLS_DIR` to its absolute path, set
-`SIDECAR_PUBLIC_URL=https://<node-name>` and `MCP_SERVER_PORT=8443` in `deploy/mcp/.env`, then add the
-overlay:
+Use the MCP server's generic native-TLS overlay, not the HTTP reverse-proxy example. Put the
+Tailscale certificate and key in a host directory as `fullchain.pem` and `privkey.pem`, respectively,
+with the UID/GID and modes from the canonical guide. In `deploy/mcp/.env`, set `MCP_TLS_DIR` to its absolute
+path, `SIDECAR_PUBLIC_URL=https://<node-name>`, `MCP_ALLOWED_HOSTS=<node-name>`,
+`MCP_SERVER_BIND=127.0.0.1`, and `MCP_SERVER_PORT=8443`, then add the portable overlay:
 
 ```sh
 docker compose --env-file deploy/mcp/.env \
   -f deploy/mcp/compose.yaml \
-  -f deploy/operators/tailscale/compose.direct.yaml up -d mcp-server
+  -f deploy/mcp/compose.tls.yaml up -d mcp-server
 tailscale funnel --bg --tcp=443 tcp://localhost:8443
 ```
 
 The raw TCP hop preserves the server's own TLS identity and HTTP/2 UpdateService stream. Certificate
 renewal is an operator job: renew the two PEMs, verify ownership/readability, and replace only
-`mcp-server`. Nothing here uses host networking.
+`mcp-server`. The same overlay works without Tailscale by publishing the configured host port
+directly; the canonical commands and permission requirements are in [`../../README.md`](../../README.md).
+Nothing here uses host networking or a Tailscale-specific application setting.

@@ -64,9 +64,9 @@ Write down four values before going on:
 ### 1. Have the public endpoint first
 
 OAuth runs over HTTPS on a real domain: the redirect URIs, the token request, and the MCP calls
-themselves. Set up the optional direct ingress in
-[`docs/guides/self-hosting.md`](../guides/self-hosting.md#optional-public-ingress) and check it works
-before adding any of this.
+themselves. Set up the generic native-TLS direct endpoint in the canonical
+[`deploy/README.md`](../../deploy/README.md#3-direct-mcp-over-native-https-and-http2) and check it
+works before adding any of this.
 
 ### 2. Tell the sidecar about the authorization server
 

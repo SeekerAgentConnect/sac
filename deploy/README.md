@@ -1,179 +1,409 @@
-# Portable deployments
+# Deploy Seeker Agent Connect
 
-`deploy/` is the only Compose entry point. Application orchestration, public ingress, and
-operator-specific networking are separate layers:
+This is the canonical clean-host deployment guide for the repository. It covers three supported
+shapes: the direct MCP server only, public feeds only, or all four independently managed
+applications on one host. There is no all-in-one Compose project and no Tailscale dependency.
 
-| Preset | Starts | Does not start |
+The repository builds local images. It does not publish npm packages or container images, so keep
+this checkout on the deployment host or replace the local image names with artifacts you operate.
+
+## 1. Choose a deployment
+
+| Shape | Projects to run | Public address |
 | --- | --- | --- |
-| [`feed/compose.yaml`](feed/compose.yaml) | feed gateway, Centrifugo, Redis, local gateway operator CLI profile | MCP, demos, Caddy |
-| [`mcp/compose.yaml`](mcp/compose.yaml) | one owner's direct MCP server | feed services, demos, Caddy |
-| [`copytrading/compose.yaml`](copytrading/compose.yaml) | CopyTrading and its operator CLI profile | feed services, Prediction, MCP, Caddy |
-| [`prediction/compose.yaml`](prediction/compose.yaml) | Prediction and its operator CLI profile | feed services, CopyTrading, MCP, Caddy |
-| [`ingress/feed/compose.yaml`](ingress/feed/compose.yaml) | optional public feed HTTPS/HTTP2 Caddy | applications and dependencies |
-| [`ingress/direct/compose.yaml`](ingress/direct/compose.yaml) | optional public MCP/unary-phone HTTPS Caddy | the direct server |
-| [`operators/tailscale/`](operators/tailscale/README.md) | optional Funnel/certificate examples | portable defaults |
+| Direct only | `deploy/mcp` plus its native-TLS overlay | `https://direct.example.com:8443` |
+| Feeds only | `deploy/feed` plus `deploy/ingress/feed`; demos optional | `https://feeds.example.com` |
+| Everything | feed, feed ingress, MCP, CopyTrading, Prediction | the two origins above |
 
-There is deliberately no second all-in-one application stack. Starting the four portable projects
-is the full-demo convenience:
+Each project owns its process, credentials, database, volume, restart, and rollback. Starting or
+replacing one must not recreate another.
+
+On a single public IP the feed Caddy project owns host ports 80 and 443. The direct application
+therefore uses native TLS on 8443. To put both origins on 443, provide a second IP address or an
+explicit HTTP/2-capable SNI/L4 router in front of them. Never bind two projects to the same port,
+and never put the UpdateService behind an HTTP/1 reverse proxy.
+
+## 2. Prepare the host
+
+Install Git, OpenSSL, Docker Engine, and Docker Compose v2. Building and repository checks also use
+Node.js 24.21.0, pnpm 12.3.4, and Go 1.27.1. Run every command below from the repository root.
+
+DNS must resolve `direct.example.com` and `feeds.example.com` to the host before public startup.
+Allow inbound TCP 80, 443, and 8443 for the combined example. The feed proxy uses 80/443 for ACME
+and HTTPS; direct uses 8443. The following host ports are collision-free:
+
+| Host port | Owner | Container port | Reachability |
+| --- | --- | --- | --- |
+| 80, 443 | feed Caddy | 80, 443 | public |
+| 8443 | MCP native TLS | 8080 | public |
+| 8090 | feed read API | 8090 | loopback |
+| 8091 | feed publisher API | 8091 | loopback |
+| 8092 | CopyTrading API | 8092 | loopback |
+| 8094 | Prediction API | 8092 | loopback |
+| 8096 | optional CopyTrading admin | 8096 | loopback |
+
+Centrifugo ports 8000/11000 and Redis 6379 are private container-network ports and are not
+published on the host. Use these addresses for each role; a container's `127.0.0.1` is never an
+address for a different project:
+
+| Role | Address to configure | Used by |
+| --- | --- | --- |
+| Agent MCP transport | `https://direct.example.com:8443/mcp` | Hermes/OpenClaw |
+| Paired phone origin | `https://direct.example.com:8443` (`SIDECAR_PUBLIC_URL`) | SAC pairing, unary calls, UpdateService |
+| Public feed origin | `https://feeds.example.com` (`BROADCAST_PUBLIC_URL`, each demo's `PUBLISHER_GATEWAY_URL`) | SAC snapshots and stream; advertised in feed references |
+| Private combined publish target | `http://feed-gateway:8091` (injected by each combined overlay) | CopyTrading and Prediction containers only |
+| Standalone publish target | a reachable authenticated publisher origin, normally `https://feeds.example.com` | A demo on another host/network |
+| Feed-to-broker API | `http://centrifugo:8000` (`BROADCAST_STREAM_URL`) | Feed gateway only |
+| Broker-to-Redis | `redis://redis:6379` (`CENTRIFUGO_REDIS_URL`) | Centrifugo only |
+| CopyTrading operator API | `http://copytrading:8092` inside its project; host `127.0.0.1:8092` | `publishctl` or a local operator |
+| Prediction operator API | `http://prediction:8092` inside its project; host `127.0.0.1:8094` | `publishctl` or a local operator |
+
+Copy the configuration templates and restrict them before inserting secrets:
 
 ```sh
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --build
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --build
-docker compose --env-file deploy/copytrading/.env -f deploy/copytrading/compose.yaml up -d --build
-docker compose --env-file deploy/prediction/.env -f deploy/prediction/compose.yaml up -d --build
-```
-
-Each command is an independent Compose project. Stop, replace, or roll back one without recreating
-the other three. A demo publishes to the authenticated URL in `PUBLISHER_PUBLISH_URL`; that may be
-the optional public feed ingress or another privately reachable gateway. It never imports or starts
-the gateway.
-
-## Secrets and read-only mounts
-
-The copied `.env` files are git-ignored but contain live tokens; set mode `0600`, do not bake them
-into images, and give every service a distinct credential. The base examples pass their small
-runtime secrets as environment variables. The application-level `*_FILE` alternatives remain
-available for operator overlays that mount a secret directory read-only; they are not silently
-mapped to a host path by the portable base.
-
-The supplied mounts with host paths are deliberately opt-in: `deploy/feed/compose.push.yaml` mounts
-one Firebase JSON into the gateway only, the CopyTrading `admin` profile mounts its password/token/
-session directory into the admin only, and the Tailscale examples mount PEMs into the process that
-terminates TLS. None of those directories is a shared data volume, and `deploy/**/secrets`,
-`deploy/**/tls`, and `deploy/**/backups` are ignored by Git. Application data uses only the explicit
-named volumes described below.
-
-## Local reference feed
-
-```sh
+cp deploy/mcp/.env.example deploy/mcp/.env
 cp deploy/feed/.env.example deploy/feed/.env
-# replace the two Centrifugo secrets
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --build
-curl --fail http://127.0.0.1:8080/healthz
+cp deploy/ingress/feed/.env.example deploy/ingress/feed/.env
+cp deploy/copytrading/.env.example deploy/copytrading/.env
+cp deploy/prediction/.env.example deploy/prediction/.env
+chmod 600 deploy/mcp/.env deploy/feed/.env deploy/ingress/feed/.env \
+  deploy/copytrading/.env deploy/prediction/.env
+openssl rand -hex 32
 ```
 
-The gateway read listener is host-loopback `8080`; the authenticated publisher listener is
-host-loopback `8091`. Centrifugo's API, its unidirectional gRPC listener, and Redis have no host
-ports. The local stack has no proxy or domain. A production phone uses the optional feed ingress,
-which is where the read API and the one allowed gRPC stream procedure share a trusted HTTPS origin.
+Run the last command once for every credential. Do not reuse an MCP token, phone bootstrap token,
+Centrifugo key, publisher credential, or demo operator token. The `.env` files, `deploy/**/tls`,
+`deploy/**/secrets`, and `deploy/**/backups` are ignored by Git.
 
-The proxyless default is deliberately snapshot-only: leave `BROADCAST_STREAM_URL` empty because the
-raw read and broker listeners do not share an origin. When the feed ingress below is running, set
-`BROADCAST_STREAM_URL=http://centrifugo:8000`, copy `CENTRIFUGO_API_KEY` to
-`BROADCAST_STREAM_API_KEY`, copy `CENTRIFUGO_TOKEN_KEY` to `BROADCAST_STREAM_TOKEN_KEY`, and set
-`BROADCAST_PUBLIC_URL` to its HTTPS origin. Then restart only `feed-gateway`. It can now mint honest
-stream tickets for the same origin.
+The containers run as UID/GID `10001:10001`. Named volumes are created with suitable ownership by
+the images. A manually restored file must retain that ownership.
 
-SQLite is the authoritative local file on `broadcast-data`. Redis is a nonpersistent recovery
-cache. `CENTRIFUGO_REDIS_URL` belongs to Centrifugo and accepts `redis://` credentials or `rediss://`
-TLS as documented by Centrifugo; changing it relocates Redis without changing the gateway or its
-database. Optional `CENTRIFUGO_REDIS_TLS_SERVER_CA_PEM` and
-`CENTRIFUGO_REDIS_TLS_SERVER_NAME` configure certificate verification; optional
-`CENTRIFUGO_REDIS_TLS_CERT_PEM`/`CENTRIFUGO_REDIS_TLS_KEY_PEM` configure a client identity. Each PEM
-setting accepts Centrifugo v6's raw PEM, base64 PEM, or mounted file path forms. Never set an
-insecure TLS skip flag.
+## 3. Direct MCP over native HTTPS and HTTP/2
 
-## Public feed ingress
+The production direct path terminates TLS in the Node application. That preserves ALPN `h2` for
+the bidirectional UpdateService stream while serving Streamable HTTP MCP, pairing, and unary phone
+RPCs on the same origin. The secure listener intentionally omits the Stage 1 LiveCommandService and
+allows `/healthz` only from loopback.
 
-The application project creates the private named network that the independent ingress project
-joins. Start the feed first, then:
+Obtain a normally trusted certificate for `direct.example.com` with the host's ACME client. Keep
+issuance and renewal outside this repository and image. If feed Caddy already owns port 80, use
+your DNS provider's ACME challenge or another operator-managed challenge that does not take that
+port. Copy only the deployed identity into a dedicated directory with the exact names and
+container UID/GID:
 
 ```sh
-cp deploy/ingress/feed/.env.example deploy/ingress/feed/.env
-docker compose --env-file deploy/ingress/feed/.env \
-  -f deploy/ingress/feed/compose.yaml up -d
+sudo install -d -o 10001 -g 10001 -m 0700 /srv/seeker-direct-tls
+sudo install -o 10001 -g 10001 -m 0644 /path/from/acme/fullchain.pem \
+  /srv/seeker-direct-tls/fullchain.pem
+sudo install -o 10001 -g 10001 -m 0600 /path/from/acme/privkey.pem \
+  /srv/seeker-direct-tls/privkey.pem
 ```
 
-DNS must already resolve and ports 80/443 must reach the host. Caddy exposes only the anonymous
-feed RPCs, the authenticated publisher RPCs, and
-`/centrifugal.centrifugo.unistream.CentrifugoUniStream/Consume`. It exposes no gateway operator
-command, Centrifugo HTTP API/health/admin route, Redis, database, demo control API, or `/healthz`.
-Restarting either Compose project leaves the other running.
+Run those two `install` commands and the MCP restart command below from the ACME client's
+successful renewal/deploy hook. Do not mount the client's account/state directory into the
+application container. Then set these values in `deploy/mcp/.env`:
 
-`BROADCAST_TRUSTED_PROXIES` is the exact CIDR of the private ingress network, not a global
-forwarded-header switch. The gateway trusts `X-Forwarded-For` only from loopback or that explicit
-CIDR, so Caddy preserves per-reader rate limits without letting arbitrary peers choose a bucket.
-Change it together with `FEED_INGRESS_SUBNET` if the default subnet conflicts with the host.
+```dotenv
+MCP_TOKEN=<random agent token>
+PHONE_TOKEN=<different random bootstrap token>
+MCP_ALLOWED_HOSTS=direct.example.com
+SIDECAR_PUBLIC_URL=https://direct.example.com:8443
+MCP_TLS_DIR=/srv/seeker-direct-tls
+MCP_SERVER_BIND=0.0.0.0
+MCP_SERVER_PORT=8443
+```
 
-Before enabling tickets, update `deploy/feed/.env`:
+For a private test CA, also put its CA PEM in the mounted directory and set
+`SIDECAR_HEALTH_CA_CERT_PATH=/run/tls/ca.pem`. Leave that setting empty for a public CA. The health
+program always verifies the configured public hostname and trust chain; there is no insecure mode.
+
+Start and inspect the server:
+
+```sh
+docker compose --env-file deploy/mcp/.env \
+  -f deploy/mcp/compose.yaml -f deploy/mcp/compose.tls.yaml up -d --build
+docker compose --env-file deploy/mcp/.env \
+  -f deploy/mcp/compose.yaml -f deploy/mcp/compose.tls.yaml ps
+docker inspect --format '{{json .State.Health}}' seeker-agent-connect-mcp-mcp-server-1
+docker compose --env-file deploy/mcp/.env \
+  -f deploy/mcp/compose.yaml -f deploy/mcp/compose.tls.yaml exec mcp-server \
+  node mcp-server/dist/healthcheck.js
+curl --http2 -sS -o /dev/null -w '%{http_code}\n' https://direct.example.com:8443/healthz
+```
+
+The `ps`/inspect output must say `healthy`, the internal command exits zero, and the public curl
+prints `404`; a public health endpoint would leak deployment state. Confirm that TLS negotiated h2:
+
+```sh
+curl --http2 -sS -o /dev/null -w '%{http_version}\n' \
+  https://direct.example.com:8443/seekervault.request.v1.UpdateService/Sync
+```
+
+It must print `2`. Pair the phone from the same container and add the resulting code in SAC:
+
+```sh
+docker compose --env-file deploy/mcp/.env \
+  -f deploy/mcp/compose.yaml -f deploy/mcp/compose.tls.yaml exec mcp-server \
+  node mcp-server/dist/cli.js pair
+```
+
+The phone should show the connection as Live. That is the deployed bidirectional UpdateService
+check; an HTTP/1 downgrade can pass an ordinary HTTPS request but cannot produce this state.
+
+For an agent, configure Hermes or OpenClaw with
+`https://direct.example.com:8443/mcp` and the MCP bearer token. Follow the exact client steps in
+[`docs/integrations/hermes.md`](../docs/integrations/hermes.md) or
+[`docs/integrations/openclaw.md`](../docs/integrations/openclaw.md). Exercise the full durable path:
+
+1. Discover the MCP tools and create a request.
+2. Read it in SAC, then approve or dismiss it.
+3. Read the terminal result from the agent.
+4. Create a second request and cancel it from the agent.
+
+For local development only, omit `compose.tls.yaml`, keep the loopback defaults, and check
+`http://127.0.0.1:8080/healthz`. Cleartext is not a remote deployment path.
+
+## 4. Public feed gateway
+
+Set two distinct random values in `deploy/feed/.env`, then configure the public origin and stream:
 
 ```dotenv
 BROADCAST_PUBLIC_URL=https://feeds.example.com
+CENTRIFUGO_API_KEY=<random Centrifugo API key>
+CENTRIFUGO_TOKEN_KEY=<different random ticket key>
 BROADCAST_STREAM_URL=http://centrifugo:8000
 BROADCAST_STREAM_API_KEY=<same value as CENTRIFUGO_API_KEY>
 BROADCAST_STREAM_TOKEN_KEY=<same value as CENTRIFUGO_TOKEN_KEY>
+BROADCAST_PORT=8090
+BROADCAST_PUBLISH_PORT=8091
 ```
 
-Then replace only `feed-gateway`; Centrifugo, Redis, and Caddy stay up.
+Set `FEED_DOMAIN=feeds.example.com` and a real `ACME_EMAIL` in
+`deploy/ingress/feed/.env`. Start the application before the independently managed ingress:
 
-## Persistent identities and upgrades
+```sh
+docker compose --env-file deploy/feed/.env \
+  -f deploy/feed/compose.yaml up -d --build
+docker compose --env-file deploy/ingress/feed/.env \
+  -f deploy/ingress/feed/compose.yaml up -d
+curl --fail http://127.0.0.1:8090/healthz
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml ps
+docker compose --env-file deploy/ingress/feed/.env -f deploy/ingress/feed/compose.yaml ps
+```
 
-Every durable volume has an explicit physical `volume.name`. The clean defaults preserve the
-current standalone projects. An existing combined or older direct deployment is a different real
-deployment, not something to auto-merge. Inventory every candidate before choosing one:
+The curl response is `{"status":"ok"}`; both Compose projects must report their services up and
+the ingress container healthy.
+
+Caddy exposes only the anonymous feed RPCs, the authenticated publisher RPCs, and the exact
+Centrifugo unidirectional HTTP/2 stream. It exposes no health, operator, Centrifugo API/admin,
+Redis, database, or demo control route. `BROADCAST_TRUSTED_PROXIES` must remain the exact feed
+ingress subnet; publishers never join that trusted-proxy network.
+
+The gateway starts with no publisher. Register each source once with a different lowercase UUID:
+
+```sh
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
+  --profile operator run --rm gateway-ctl register \
+  --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label 'copy trading'
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
+  --profile operator run --rm gateway-ctl register \
+  --server 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d --label prediction
+```
+
+Each command prints its bearer credential once. Store it in only that demo's `.env`.
+
+## 5. Combined host: feed, direct server, and both demos
+
+For the combined shape, start the feed with its publication-network overlay. The overlay adds a
+private network for demo-to-gateway writes; it does not join publishers to the ingress network.
+
+```sh
+docker compose --env-file deploy/feed/.env \
+  -f deploy/feed/compose.yaml -f deploy/feed/compose.combined.yaml up -d --build
+docker compose --env-file deploy/ingress/feed/.env \
+  -f deploy/ingress/feed/compose.yaml up -d
+docker compose --env-file deploy/mcp/.env \
+  -f deploy/mcp/compose.yaml -f deploy/mcp/compose.tls.yaml up -d --build
+```
+
+After registering both UUIDs in step 4, set the corresponding credential and operator token in
+each demo file. Keep the advertised gateway public and the write path private:
+
+```dotenv
+PUBLISHER_GATEWAY_URL=https://feeds.example.com
+PUBLISHER_PUBLISH_URL=https://feeds.example.com
+PUBLISHER_ENVIRONMENT=sandbox
+```
+
+The combined Compose overlays replace the runtime publish URL with
+`http://feed-gateway:8091`; the public value remains what the manifest and phone compare. Start the
+demos independently:
+
+```sh
+docker compose --env-file deploy/copytrading/.env \
+  -f deploy/copytrading/compose.yaml -f deploy/copytrading/compose.combined.yaml up -d --build
+docker compose --env-file deploy/prediction/.env \
+  -f deploy/prediction/compose.yaml -f deploy/prediction/compose.combined.yaml up -d --build
+docker compose --env-file deploy/copytrading/.env \
+  -f deploy/copytrading/compose.yaml -f deploy/copytrading/compose.combined.yaml \
+  --profile operator run --rm ctl status
+docker compose --env-file deploy/prediction/.env \
+  -f deploy/prediction/compose.yaml -f deploy/prediction/compose.combined.yaml \
+  --profile operator run --rm ctl status
+```
+
+Print each public feed reference, then paste or scan it in SAC's **Add connection** flow:
+
+```sh
+docker compose --env-file deploy/copytrading/.env \
+  -f deploy/copytrading/compose.yaml -f deploy/copytrading/compose.combined.yaml \
+  --profile operator run --rm ctl reference
+docker compose --env-file deploy/prediction/.env \
+  -f deploy/prediction/compose.yaml -f deploy/prediction/compose.combined.yaml \
+  --profile operator run --rm ctl reference
+```
+
+Exercise CopyTrading create, update, and cancel through its operator profile:
+
+```sh
+docker compose --env-file deploy/copytrading/.env \
+  -f deploy/copytrading/compose.yaml -f deploy/copytrading/compose.combined.yaml \
+  --profile operator run --rm ctl create --in 2h --note 'deployment check' \
+  --key deployment-check \
+  --term input_mint=So11111111111111111111111111111111111111112 \
+  --term input_decimals=9 \
+  --term output_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
+  --term output_decimals=6 --term max_slippage_bps=50
+docker compose --env-file deploy/copytrading/.env \
+  -f deploy/copytrading/compose.yaml -f deploy/copytrading/compose.combined.yaml \
+  --profile operator run --rm ctl update <proposal-id> --in 4h --note 'updated check' \
+  --term input_mint=So11111111111111111111111111111111111111112 \
+  --term input_decimals=9 \
+  --term output_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
+  --term output_decimals=6 --term max_slippage_bps=50
+docker compose --env-file deploy/copytrading/.env \
+  -f deploy/copytrading/compose.yaml -f deploy/copytrading/compose.combined.yaml \
+  --profile operator run --rm ctl cancel <proposal-id>
+```
+
+Verify each revision and withdrawal appears in SAC. For Prediction, configure filters in its `.env`
+and run one discovery cycle:
+
+```sh
+docker compose --env-file deploy/prediction/.env \
+  -f deploy/prediction/compose.yaml -f deploy/prediction/compose.combined.yaml \
+  --profile operator run --rm ctl poll
+docker compose --env-file deploy/prediction/.env \
+  -f deploy/prediction/compose.yaml -f deploy/prediction/compose.combined.yaml \
+  --profile operator run --rm ctl discovery
+```
+
+Provider, Firebase, OAuth, and alternate Redis configuration are optional boundaries, not clean-host
+prerequisites. See the [prediction guide](../demo-prediction/README.md),
+[Firebase guide](../docs/guides/firebase.md), [OAuth guide](../docs/integrations/claude.md), and
+[feed gateway guide](../feed-gateway/README.md) when enabling them.
+
+## 6. Restart and recovery acceptance
+
+Record `pair status`, both demo `status` outputs, and the two feed references. Then restart one
+project at a time:
+
+```sh
+docker compose --env-file deploy/mcp/.env \
+  -f deploy/mcp/compose.yaml -f deploy/mcp/compose.tls.yaml restart mcp-server
+docker compose --env-file deploy/feed/.env \
+  -f deploy/feed/compose.yaml -f deploy/feed/compose.combined.yaml restart feed-gateway
+docker compose --env-file deploy/copytrading/.env \
+  -f deploy/copytrading/compose.yaml -f deploy/copytrading/compose.combined.yaml restart copytrading
+docker compose --env-file deploy/prediction/.env \
+  -f deploy/prediction/compose.yaml -f deploy/prediction/compose.combined.yaml restart prediction
+```
+
+The MCP server ID, pairing, requests, and results must survive. Feed publications must survive.
+Each demo's ID, proposals, revisions, and outbox must survive independently. A restarted stream may
+reconcile from the authoritative snapshot without duplicating a request.
+
+MCP ownership is enforced by an operating-system SQLite lock in the same local volume as the main
+database. Its persistent `*.mcp-server-owner.sqlite` file is normal and must not be deleted. After
+`SIGKILL`, a host restart, or a container replacement, the kernel releases the lock and the one new
+owner starts immediately. A second live owner fails closed. Use local Docker volumes; SQLite locks
+on NFS/SMB or other network filesystems are unsupported.
+
+To add a component later, copy only its `.env`, register only its identity if needed, and start only
+its Compose project. Do not reset an existing volume or recreate the other projects.
+
+## 7. Back up, replace, and roll back
+
+Inventory before changing an existing deployment:
 
 ```sh
 docker volume ls
 docker volume inspect <exact-volume-name>
 ```
 
-Stop its writer and make a cold archive before changing an image or path. Substitute one exact
-volume name after inspecting it; do not use a command substitution, wildcard, `down -v`,
-`--remove-orphans`, or a broad prune:
+Stop the one writer and archive one explicit volume. Do not use a wildcard, broad prune,
+`down -v`, or `--remove-orphans` to resolve a naming warning:
 
 ```sh
 mkdir -p backups
-docker run --rm -v <exact-volume-name>:/from:ro -v "$PWD/backups":/backup \
-  alpine:3.22 sh -c 'cd /from && tar czf /backup/volume-before-see-135.tgz .'
+docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml stop mcp-server
+docker run --rm -v seeker-agent-connect-mcp_mcp-data:/from:ro \
+  -v "$PWD/backups:/backup" alpine:3.22 \
+  sh -c 'cd /from && tar czf /backup/mcp-before-upgrade.tgz .'
+docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml start mcp-server
 ```
 
-Select a zero-copy lineage by putting both the physical volume and, where shown, the database file
-in that preset's `.env`:
+Use the actual selected volume if it differs. Restore only while the writer is stopped, retain
+UID/GID `10001:10001`, run SQLite `PRAGMA integrity_check`, and verify the stable identity before
+resuming traffic. Rollback means the old image plus its matching pre-upgrade archive; never point an
+older binary at a schema a newer binary migrated.
 
-| Owner | Existing physical volume | Canonical variables |
+| Owner | Existing physical volume | Canonical selection |
 | --- | --- | --- |
-| direct, old `gateway/` | `seeker-agent-wallet_sidecar-data` | `MCP_VOLUME_NAME=seeker-agent-wallet_sidecar-data`, `DATABASE_PATH=/data/sidecar.db` |
-| direct, standalone MCP | `seeker-agent-connect-mcp_mcp-data` | defaults |
-| direct, old combined server | `seeker-agent-wallet-server_sidecar-data` | `MCP_VOLUME_NAME=seeker-agent-wallet-server_sidecar-data`, `DATABASE_PATH=/data/sidecar.db` |
-| feed, standalone | `seeker-broadcast_broadcast-data` | defaults |
-| feed, old combined server | `seeker-agent-wallet-server_broadcast-data` | `BROADCAST_VOLUME_NAME=seeker-agent-wallet-server_broadcast-data` |
-| CopyTrading, standalone | `seeker-publisher_publisher-data`, `/data/publisher.db` | defaults |
-| CopyTrading, old combined server | `seeker-agent-wallet-server_copytrading-data`, `/data/copytrading.db` | set `COPYTRADING_VOLUME_NAME` **and** `PUBLISHER_DATABASE_PATH=/data/copytrading.db` |
-| Prediction, standalone | `seeker-prediction_prediction-data` | defaults |
-| Prediction, old combined server | `seeker-agent-wallet-server_prediction-data` | `PREDICTION_VOLUME_NAME=seeker-agent-wallet-server_prediction-data` |
+| MCP, current | `seeker-agent-connect-mcp_mcp-data` | default |
+| MCP, retired `gateway/` | `seeker-agent-wallet_sidecar-data` | `MCP_VOLUME_NAME=...`, `DATABASE_PATH=/data/sidecar.db` |
+| MCP, retired combined | `seeker-agent-wallet-server_sidecar-data` | same variables |
+| feed, current | `seeker-broadcast_broadcast-data` | default |
+| feed, retired combined | `seeker-agent-wallet-server_broadcast-data` | `BROADCAST_VOLUME_NAME=...` |
+| CopyTrading, current | `seeker-publisher_publisher-data` | default, `/data/publisher.db` |
+| CopyTrading, retired combined | `seeker-agent-wallet-server_copytrading-data` | set volume and `/data/copytrading.db` |
+| Prediction, current | `seeker-prediction_prediction-data` | default |
+| Prediction, retired combined | `seeker-agent-wallet-server_prediction-data` | `PREDICTION_VOLUME_NAME=...` |
 
-If two non-empty candidates exist, stop: they are separate identities. Back up both and choose the
-one the operator intends; never combine SQLite files or let Compose guess. The containers run as
-UID/GID `10001:10001`. A copied restore must retain that ownership. Restore only while its service
-is stopped, verify `PRAGMA integrity_check`, the schema version, and the stable server/publisher ID,
-then start exactly one writer. Rollback means the old image plus its matching pre-upgrade archive;
-never point an older binary at a schema a newer binary migrated.
+Feed Caddy's current certificate volumes are `seeker-broadcast_proxy-data` and
+`seeker-broadcast_proxy-config`. The older combined lineage used
+`seeker-agent-wallet-server_gateway-caddy-data` and
+`seeker-agent-wallet-server_gateway-caddy-config`. The optional unary direct-ingress project uses
+`seeker-agent-wallet_gateway-data` and `seeker-agent-wallet_gateway-config`. Select old certificate
+volumes explicitly only after inspection; they are ACME identities, not application data.
 
-Caddy certificate volumes are parameterized too. The feed ingress defaults to
-`seeker-broadcast_proxy-data`/`seeker-broadcast_proxy-config`; direct ingress defaults to
-`seeker-agent-wallet_gateway-data`/`seeker-agent-wallet_gateway-config`. Old combined feed ingress
-used `seeker-agent-wallet-server_gateway-caddy-data`/
-`seeker-agent-wallet-server_gateway-caddy-config`. Select those names explicitly when keeping that
-ACME identity.
+If two non-empty candidates exist, they are two identities. Back up both and choose one; never
+merge SQLite files. Before the first SEE-137 MCP start, stop every pre-SEE-137 server that could
+open the database. The one-time compatibility guard then makes rollback binaries refuse instead of
+silently becoming a second writer.
 
-## Backup and component replacement
+Replace only the intended service with `up -d --build --no-deps <service>`. Removing a container
+with `docker compose down` leaves its explicitly named volume intact.
 
-SQLite stays on the local named volume, one writer only. For a cold backup:
+## 8. Troubleshooting and completion record
 
-```sh
-docker compose --env-file <preset>/.env -f <preset>/compose.yaml stop <service>
-# archive the one exact volume as above
-docker compose --env-file <preset>/.env -f <preset>/compose.yaml start <service>
-```
+- `address already in use`: compare the port table with `docker compose config`; direct is 8443
+  and feed read is 8090 in the combined layout.
+- unhealthy MCP container: run `node mcp-server/dist/healthcheck.js` inside it. Check the public
+  hostname, certificate chain, mounted key, and optional health CA path.
+- MCP works but the phone never becomes Live: confirm native TLS negotiated h2 and that no HTTP/1
+  proxy terminates the direct origin.
+- demo publication gets 404: use the combined overlay, or point `PUBLISHER_PUBLISH_URL` at the
+  authenticated publisher listener rather than a read-only address.
+- feed snapshot works but Live does not: compare the three `BROADCAST_STREAM_*` values and inspect
+  Centrifugo health/logs.
+- `database is already owned`: find and stop the other live process/container. Do not delete the
+  ownership database; a crash-stale PID file is no longer used.
+- a volume warning appears: stop and inspect both exact volumes before choosing. Never delete one
+  merely to silence Compose.
 
-For an update, build or pull the replacement and target only its service:
-
-```sh
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --no-deps feed-gateway
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --no-deps mcp-server
-```
-
-A gateway replacement keeps SQLite publications and pending outbox rows. A Centrifugo or Redis
-replacement may cost listeners their recovery cache; phones then read the authoritative snapshot.
-Replacing MCP keeps pairings and requests. Replacing one demo keeps only that demo's identity,
-revision and outbox state. None of these operations restarts an ingress project.
+For every production deployment, record DNS and certificate validation, resolved Compose config,
+container health, h2 negotiation, MCP create/result/cancel, feed create/update/cancel, Prediction
+poll, SAC subscription, and the restart checks above. Automated and local evidence for SEE-137 is
+kept in [`docs/testing/see-137.md`](../docs/testing/see-137.md); unavailable live checks remain
+**NOT RUN** with their concrete blocker.

@@ -15,6 +15,10 @@ The same application entry point has three supported starts:
 image from SEE-132 is published to a registry. The commands below build local artifacts. They do
 not publish or upload either package.
 
+For a clean-host container deployment, use the canonical numbered
+[`deploy/README.md`](../deploy/README.md). It covers direct-only, feeds-only, and combined hosting,
+including generic native HTTPS/HTTP/2 without requiring Tailscale.
+
 ## Requirements and boundaries
 
 Source and local package creation require Node `24.21.0` and pnpm `12.3.4`. The installed npm CLI
@@ -64,6 +68,7 @@ file, or set environment variables. Existing `SIDECAR_*` names remain stable for
 | `SOLANA_RPC_TIMEOUT_MS` | `10000` | Per-call provider timeout, 1000–20000. |
 | `FCM_PROJECT_ID` | off | Optional notification invalidations; credentials come from ADC. |
 | `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH` | off; both or neither | PEM identity for the HTTP/2 + HTTP/1.1 production listener. |
+| `SIDECAR_HEALTH_CA_CERT_PATH` | system trust | Optional CA PEM used only by the container health probe, in addition to Node's system roots. Hostname and chain verification remain enabled. |
 | `SIDECAR_UPDATE_PORT` | off | Loopback-only cleartext HTTP/2 development listener; cannot accompany TLS. |
 | `MCP_OAUTH_ISSUER` | off | Enables OAuth validation for `/mcp`; requires an external issuer. |
 | `MCP_OAUTH_RESOURCE` | public URL + `/mcp` | Required token audience override. |
@@ -76,8 +81,18 @@ OAuth configuration, Firebase service-account credential, and wallet authorizati
 in the database or packaged assets.
 
 One running server owns a database. A second launch against the same canonical file is refused even
-on another port; a crashed process leaves a lock that is reclaimed after its PID is gone. Pairing
-commands intentionally remain usable while the server is running.
+on another port or from another container mounting the volume. The owner holds an exclusive SQLite
+transaction in `direct-server.db.mcp-server-owner.sqlite`; the kernel releases that filesystem lock
+on graceful exit, SIGKILL, or container loss, so PID reuse and Docker PID 1 require no stale-file
+cleanup. The file itself remains normally and is not proof of a live owner. Pairing commands use the
+application database rather than the ownership file and intentionally remain usable while the
+server is running.
+
+The application database and ownership database require a local filesystem with working SQLite
+locks, such as a Docker named volume or local bind mount. NFS/SMB volumes with unreliable locking
+are unsupported. A one-time upgrade from the pre-SEE-137 PID/nonce format replaces only a recognized
+legacy record with a compatibility guard; stop every older source/npm/container process before that
+upgrade. Old and new binaries must never overlap.
 
 ## Option 1: source
 
@@ -210,7 +225,8 @@ a retry, restart, update notification, restore, or UNKNOWN result never signs or
 ## Updates, backup, restore, upgrade, and rollback
 
 Stop source/npm with SIGINT or SIGTERM. The Docker stop sends SIGTERM. The process stops accepting,
-drains active responses, closes MCP sessions and SQLite, releases its instance lock, and exits.
+drains active responses, closes MCP sessions and the application database, closes the ownership
+transaction, and exits. An uncatchable exit releases the same ownership transaction in the kernel.
 
 For a consistent hot backup while the server is up, use SQLite `VACUUM INTO` from a second read-only
 connection, or stop it and copy the database plus no stale `-wal`/`-shm` files. Protect backups as
@@ -260,7 +276,11 @@ status, served operations and optional integrations. They do not print bearer to
 credentials, requests, notes, RPC URLs, Firebase targets or TLS key bytes.
 
 - `Invalid MCP server configuration`: fix every named variable; values are not echoed.
-- `the direct store is already in use`: stop the other MCP server. Pairing commands may still run.
+- `the direct store is already in use`: stop the other MCP server. Do not delete the persistent
+  ownership database; its live transaction is the owner. Pairing commands may still run.
+- `legacy direct store ownership file is not a recognized PID lock`: keep the file, inspect why it
+  is not the exact old PID/nonce shape, and restore it if it was operator data. The server fails
+  closed rather than deleting an unknown file.
 - `EADDRINUSE`: another process owns the listener; choose a different port or stop it.
 - health works but an agent fails: confirm `/mcp`, the exact bearer token, Streamable HTTP, and
   `MCP_ALLOWED_HOSTS` for the hostname used.

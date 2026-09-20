@@ -196,18 +196,19 @@ async function serve(
     const core = direct.requests;
     const mcp = mcpAdapter(config, direct.liveCommands, core, log);
     let updateUrl: string | undefined;
-    const updatesConfigured =
-      config.updatePort !== undefined ||
-      (config.tlsCertificatePath !== undefined &&
-        config.tlsPrivateKeyPath !== undefined);
-    const routes = (includeUpdates: boolean) =>
+    const secure =
+      config.tlsCertificatePath !== undefined &&
+      config.tlsPrivateKeyPath !== undefined;
+    const updatesConfigured = config.updatePort !== undefined || secure;
+    const routes = (includeUpdates: boolean, includeLegacy: boolean) =>
       direct.phoneHandler({
-        legacyPhoneToken: config.phoneToken,
+        ...(includeLegacy ? { legacyPhoneToken: config.phoneToken } : {}),
         updateUrl: () => updateUrl,
         includeUpdates,
       });
     const phoneApi = routes(
       updatesConfigured && config.updatePort === undefined,
+      !secure,
     );
 
     const handler = (req: MainRequest, res: MainResponse) => {
@@ -222,7 +223,7 @@ async function serve(
         return;
       }
       if (path === "/healthz") {
-        health(req, res);
+        health(req, res, secure);
       } else if (PROTECTED_RESOURCE_PATHS.includes(path)) {
         protectedResource(req, res, config.oauth);
       } else if (path === "/mcp") {
@@ -246,9 +247,6 @@ async function serve(
         phoneApi(req, res);
       }
     };
-    const secure =
-      config.tlsCertificatePath !== undefined &&
-      config.tlsPrivateKeyPath !== undefined;
     const server: HttpServer | Http2SecureServer = secure
       ? createSecureServer(
           {
@@ -271,7 +269,7 @@ async function serve(
     listeningUrl = url;
     let updateServer: Http2Server | undefined;
     if (config.updatePort !== undefined) {
-      const updateApi = routes(true);
+      const updateApi = routes(true, false);
       updateServer = createHttp2Server(updateApi);
       trackSessions(updateServer, updateSessions);
       updateServer.listen(config.updatePort, config.host);
@@ -292,8 +290,13 @@ async function serve(
     // phone keeps what it cached.
     const manifest = direct.manifest;
     log(
-      `listening on ${url}: ${mcp === undefined ? "no MCP endpoint (MCP_ENABLED=false)" : `MCP at ${url}/mcp`}, phone API at ${url}/${LiveCommandService.typeName}`,
+      `listening on ${url}: ${mcp === undefined ? "no MCP endpoint (MCP_ENABLED=false)" : `MCP at ${url}/mcp`}, ${secure ? "production phone APIs on the same origin" : `phone API at ${url}/${LiveCommandService.typeName}`}`,
     );
+    if (secure) {
+      log(
+        "native TLS serves pairing, request, and update APIs; the legacy LiveCommandService diagnostic is not served",
+      );
+    }
     log(
       updateUrl === undefined
         ? "production updates are not configured"
@@ -413,8 +416,17 @@ type MainRequest = IncomingMessage | Http2ServerRequest;
 type MainResponse = ServerResponse | Http2ServerResponse;
 type ListenableServer = HttpServer | Http2Server | Http2SecureServer;
 
-function health(req: MainRequest, res: MainResponse): void {
+function health(req: MainRequest, res: MainResponse, secure: boolean): void {
   const response = res as ServerResponse;
+  // A native-TLS listener can be forwarded byte-for-byte to the public internet. Its readiness
+  // route exists only for a probe connecting inside the process/container; public peers get the
+  // same answer as an undeclared route. Cleartext deployments keep health on their private Docker
+  // network/host-loopback mapping so the separately managed Caddy container can probe it.
+  if (secure && !isLoopbackAddress(req.socket.remoteAddress)) {
+    response.writeHead(404, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ error: "not_found" }));
+    return;
+  }
   if (req.method !== "GET" && req.method !== "HEAD") {
     response.writeHead(405, { Allow: "GET, HEAD" }).end();
     return;
@@ -422,6 +434,13 @@ function health(req: MainRequest, res: MainResponse): void {
   response.writeHead(200, { "Content-Type": "application/json" });
   if (req.method === "GET") response.end(JSON.stringify({ status: "ok" }));
   else response.end();
+}
+
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (address === undefined) return false;
+  if (address === "::1") return true;
+  const ipv4 = address.startsWith("::ffff:") ? address.slice(7) : address;
+  return ipv4.startsWith("127.");
 }
 
 /**

@@ -380,12 +380,12 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 
 ## Transport security
 
-- **The sidecar listens on loopback only.** `SIDECAR_HOST` can't be anything else. It uses plain HTTP by default; setting both TLS identity paths starts the production secure listener instead.
+- **The sidecar binds loopback by default.** A container may bind its internal wildcard only with an explicit public URL. Plain HTTP is for loopback/private proxying; setting both TLS identity paths starts the production secure listener instead.
 - **Production updates terminate TLS at the sidecar's HTTP/2 listener.** `SIDECAR_TLS_CERT_PATH` and `SIDECAR_TLS_KEY_PATH` name its PEM identity, and `SIDECAR_PUBLIC_URL` must be HTTPS. The certificate is publicly trusted and matches the public host. The listener negotiates `h2` for gRPC and `http/1.1` for existing clients. A pass-through or gRPC-aware proxy may expose the loopback listener only if HTTP/2 reaches it intact.
 - **Loopback development may use a separate cleartext HTTP/2 port.** `SIDECAR_UPDATE_PORT` is for `adb reverse` on the same machine, never for a LAN or public listener. It cannot be combined with the TLS identity.
 - **The app keeps Android's normal certificate and host name checks,** with no certificate pinning, custom CA, or trust-all.
 - **`SIDECAR_PUBLIC_URL` is the URL that pairing codes carry.** It must be `https://`, with one exception: `http://` on `127.0.0.1`, `localhost`, or `[::1]`, for development over `adb reverse`. That's the default, and it's the Stage 1 loopback exception. The debug build allows cleartext to `127.0.0.1` and `localhost` only, and release builds allow none. The URL can have a path, but no user name, password, query, or fragment.
-- **The secure listener preserves every existing route, `/mcp` included.** `/mcp` still refuses a public host name unless `MCP_ALLOWED_HOSTS` lists it, and it always needs `MCP_TOKEN`. The paired phone credential opens production updates; every other role is refused.
+- **The secure listener serves the production routes, `/mcp` included.** `/mcp` still refuses a public host name unless `MCP_ALLOWED_HOSTS` lists it, and it always needs `MCP_TOKEN`. The paired phone credential opens production updates; every other role is refused. The legacy Stage 1 `LiveCommandService` is absent on native TLS, and `/healthz` answers only to a loopback peer. The container health program connects over loopback while verifying the configured public hostname and certificate chain; an optional private CA extends trust but never disables it.
 - **Optional direct ingress terminates TLS separately from the MCP deployment,** with a certificate it obtains and renews for a domain the operator owns. It adds no authentication and removes none, so every boundary below is still the MCP server's own. Optional OAuth changes nothing about that: the MCP server validates the access token.
 
 ### Optional direct ingress (SAW-035, SEE-135)
@@ -397,6 +397,11 @@ gateway of SEE-90 above: different service, different operator, different deploy
 The portable server in [`deploy/mcp`](../deploy/mcp) is host-loopback by default. The public
 [`deploy/ingress/direct/Caddyfile`](../deploy/ingress/direct/Caddyfile) belongs to a separate Compose
 project, so a domain and certificate cannot become an application default by omission.
+
+This HTTP reverse-proxy profile remains useful for MCP and unary phone calls, but it does not carry
+the UpdateService stream. The generic complete direct deployment instead uses the application's
+native-TLS overlay in [`deploy/mcp/compose.tls.yaml`](../deploy/mcp/compose.tls.yaml); the canonical
+commands are in [`deploy/README.md`](../deploy/README.md).
 
 - **Only named endpoints exist on the public interface.** `/mcp`, OAuth metadata, and the phone's
   unary pairing and request services are forwarded. `/healthz`, the Stage 1 `LiveCommandService`
@@ -444,10 +449,10 @@ The following older examples remain suitable for the Stage 1 diagnostic and unar
 Only devices on the tailnet can reach this endpoint.
 
 **Caddy,** on a machine with a public DNS name and ports 80 and 443 open. The configured unary form
-is the independent [`deploy/ingress/direct`](../deploy/ingress/direct) project, described in
-[self-hosting](guides/self-hosting.md#optional-public-ingress). Set
+is the independent [`deploy/ingress/direct`](../deploy/ingress/direct) project. Set
 `SIDECAR_PUBLIC_URL=https://vault.example.com`. For the production update stream, use the native
-TLS listener and a raw TCP/VPN forward so HTTP/2 remains end to end.
+TLS listener using the generic [native-TLS deployment](../deploy/README.md#3-direct-mcp-over-native-https-and-http2)
+so HTTP/2 remains end to end.
 
 Don't use a self-signed certificate. The phone rightly refuses it, and the only way around that is weakening its checks. The automated production-listener test trusts a throwaway local certificate only inside the test process; no such trust configuration ships.
 

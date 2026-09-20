@@ -1,0 +1,13 @@
+# Combined-host overlay. The feed project must already have created this external network.
+services:
+  copytrading:
+    environment:
+      PUBLISHER_PUBLISH_URL: http://feed-gateway:8091
+    networks:
+      egress:
+      feed-publish:
+
+networks:
+  feed-publish:
+    external: true
+    name: ${FEED_PUBLISH_NETWORK:-seeker-feed-publish}

@@ -6,6 +6,10 @@ The gateway never routes a private request, holds a subscriber decision, or cont
 Portable orchestration lives under [`deploy/feed/`](../deploy/feed); optional public routing lives
 separately under [`deploy/ingress/feed/`](../deploy/ingress/feed).
 
+Use the canonical numbered [`deploy/README.md`](../deploy/README.md) for a clean-host feeds-only or
+combined deployment, including the collision-free ports, public stream, publisher registration,
+and restart checks.
+
 The runtime is intentionally small:
 
 - Go 1.27.1 with Connect 1.21.0 and protobuf 1.36.12;
@@ -92,7 +96,7 @@ repository root:
 cp deploy/feed/.env.example deploy/feed/.env
 docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --build
 docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml ps
-curl --fail "http://127.0.0.1:${BROADCAST_PORT:-8080}/healthz"
+curl --fail "http://127.0.0.1:${BROADCAST_PORT:-8090}/healthz"
 ```
 
 The proxyless stack starts the gateway, Centrifugo, and colocated Redis—no MCP server or demo.
@@ -289,7 +293,7 @@ Useful checks:
 docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml ps
 docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml logs --tail=100 feed-gateway centrifugo redis
 docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml run --rm gateway-ctl list
-curl --fail "http://127.0.0.1:${BROADCAST_PORT:-8080}/healthz"
+curl --fail "http://127.0.0.1:${BROADCAST_PORT:-8090}/healthz"
 ```
 
 An outbox entry remains pending when Centrifugo is unavailable and is retried after restart. Logs
@@ -311,7 +315,7 @@ docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml start fee
 The Compose project remains `seeker-broadcast` and defaults to the physical volume
 `seeker-broadcast_broadcast-data`, so the current standalone lineage reuses its data. The combined
 server lineage is selected explicitly with `BROADCAST_VOLUME_NAME`; see
-[`deploy/README.md`](../deploy/README.md#persistent-identities-and-upgrades). On first open, the
+[`deploy/README.md`](../deploy/README.md#7-back-up-replace-and-roll-back). On first open, the
 gateway transactionally migrates schema v2 to v3, preserving all public manifests, feed items,
 publisher credentials, sequences, and pending notices while retiring the removed private-routing
 tables. Take the backup before upgrading.

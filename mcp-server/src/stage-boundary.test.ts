@@ -1,8 +1,9 @@
 /**
  * Stage boundaries on the Node side (AGENTS.md). Nothing creates keys and nothing signs. The
- * Direct Server SDK stores durable requests (SAW-010): only server-sdk/src/storage/ imports the
- * file system or SQLite, and only it runs SQL. SAW-019 lets the host read a chain, and only from
- * mcp-server/src/solana/, to build a
+ * Direct Server SDK stores durable requests (SAW-010): only storage packages import the file
+ * system or SQLite, and only the SDK storage package runs durable SQL. SEE-137 gives the MCP
+ * process one separate SQLite ownership transaction. SAW-019 lets the host read a chain, and only
+ * from mcp-server/src/solana/, to build a
  * transfer the owner reviews; it still sends nothing. SAW-048 authorizes an HTTP/2 listener and
  * UpdateService only in server.ts and the SDK's updates package, while durable cursors and
  * snapshots still go through the SDK's storage package. SAW-054 allows Firebase Admin only in
@@ -139,14 +140,17 @@ describe("stage boundary", () => {
     );
   });
 
-  it("runs SQL only in the SDK storage package", () => {
-    // Statements, queries, and transactions stay in storage's modules; the rest of the sidecar
-    // calls their APIs.
+  it("runs durable SQL only in the SDK storage package", () => {
+    // Statements, queries, and application transactions stay in the SDK storage modules. The MCP
+    // process's one exception is the separate ownership database: it holds exactly one transaction
+    // and has no schema or data, so pairing commands can keep using the application database.
     const sql = /\.prepare\(|\btransaction\(|\.exec\(\s*["'`]/;
+    const ownership = join(SRC, "storage/instance-lock.ts");
     const outside = [...shippedSources(), ...sdkSources()].filter((file) => {
       const path = relative(ROOT, file);
       return (
         !path.startsWith("server-sdk/src/storage/") &&
+        file !== ownership &&
         sql.test(readFileSync(file, "utf8"))
       );
     });
@@ -159,6 +163,13 @@ describe("stage boundary", () => {
       sql,
       "the request store runs its SQL in storage",
     );
+    const owner = readFileSync(ownership, "utf8");
+    assert.equal(owner.match(/\.exec\(\s*["'`]/g)?.length, 2);
+    assert.match(owner, /ownership\.exec\("BEGIN EXCLUSIVE"\)/);
+    assert.match(owner, /ownership\s*\.prepare\("PRAGMA application_id"\)/);
+    assert.match(owner, /ownership\.exec\(`PRAGMA application_id =/);
+    assert.equal(owner.match(/\.prepare\(/g)?.length, 1);
+    assert.doesNotMatch(owner, /\b(?:CREATE|SELECT|INSERT|UPDATE|DELETE)\s/);
   });
 
   it("keeps the production update transport in its server and updates packages", () => {

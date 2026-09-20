@@ -1,130 +1,68 @@
-# Self-host the direct MCP server
+# Self-host Seeker Agent Connect
 
-The direct server is one owner's MCP endpoint and paired-phone request service. Its portable Docker
-deployment is [`deploy/mcp/compose.yaml`](../../deploy/mcp/compose.yaml). It starts only
-`mcp-server`: no feed gateway, Redis, demo, reverse proxy, domain, certificate, OAuth issuer, or
-Tailscale process is bundled with it.
+The one step-by-step deployment runbook is [`deploy/README.md`](../../deploy/README.md). Start there
+for direct MCP only, public feeds only, or the collision-free combined-host setup. It includes
+native HTTPS/HTTP/2 updates, credentials, publisher registration, SAC verification, restarts,
+backup, rollback, and troubleshooting.
 
-For source and npm-package starts, every application setting, agent-client example, request flow,
-and recovery procedure, use the [`mcp-server` guide](../../mcp-server/README.md). This page covers
-the deployment boundary and safe Docker operations.
+This page is a boundary reference. It deliberately does not duplicate commands from the canonical
+runbook.
 
-## Local portable deployment
+## Deployment boundaries
 
-Requirements are Docker with Compose v2 and a repository checkout. From the repository root:
+- [`deploy/mcp`](../../deploy/mcp) starts one owner's direct MCP server and database. The generic
+  [`compose.tls.yaml`](../../deploy/mcp/compose.tls.yaml) overlay mounts operator-managed PEM files
+  and preserves HTTP/2 to UpdateService without requiring Tailscale.
+- [`deploy/feed`](../../deploy/feed) starts the shared public-feed gateway, Centrifugo, Redis, and a
+  local operator profile. [`deploy/ingress/feed`](../../deploy/ingress/feed) is its separately
+  managed public HTTPS edge.
+- [`deploy/copytrading`](../../deploy/copytrading) and
+  [`deploy/prediction`](../../deploy/prediction) each start one demo and one database. Neither owns
+  or imports the gateway or the other demo.
+- [`deploy/operators/tailscale`](../../deploy/operators/tailscale) is optional operator-specific
+  routing. It is not the generic production path.
+- [`deploy/ingress/direct`](../../deploy/ingress/direct) is an independent optional Caddy project
+  for MCP and unary phone calls. It is not the complete production path because it does not carry
+  the bidirectional UpdateService stream.
 
-```sh
-cp deploy/mcp/.env.example deploy/mcp/.env
-# replace MCP_TOKEN and PHONE_TOKEN with different random values
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --build
-curl --fail http://127.0.0.1:8080/healthz
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml exec mcp-server \
-  node mcp-server/dist/cli.js pair
-```
+Every application remains an independent Compose project. The combined overlays add only one
+private demo-to-gateway publication network; publishers do not gain ingress/trusted-proxy status.
 
-The default host bind is `127.0.0.1:8080`. The application listens on `0.0.0.0:8080` only inside
-its container. Its MCP endpoint is `http://127.0.0.1:8080/mcp`; the direct phone API shares that
-listener. A physical phone cannot reach the host's loopback address, so use a real HTTPS origin for
-a remote phone. Never restore the retired private gateway routing or disable TLS verification.
+## What this needs from outside
 
-The portable project creates the internal network named by `DIRECT_INGRESS_NETWORK`, but nothing is
-published on that network unless an independent ingress is started. `MCP_ALLOWED_HOSTS` controls
-accepted MCP Host/Origin values; it is not a reachability or TLS setting.
+A public deployment needs resources the repository does not issue or operate:
 
-## Optional public ingress
+- DNS names and normally trusted certificates for the origins the phone uses;
+- public TCP reachability for the ports selected in the canonical guide;
+- a Solana RPC provider only when direct transfer preparation/confirmation is enabled;
+- a prediction provider for the Prediction demo (the documented keyless default is sufficient);
+- an external authorization server only when optional MCP OAuth is enabled; and
+- an operator-supplied Firebase project/credential only when optional wake-up hints are enabled.
 
-The independent [`deploy/ingress/direct`](../../deploy/ingress/direct) project can publish MCP,
-OAuth resource metadata, pairing, and unary request calls through a normal domain:
+The repository supplies no hosted service, certificate authority, OAuth issuer, Firebase project,
+wallet key, npm release, or public container image.
 
-```sh
-cp deploy/ingress/direct/.env.example deploy/ingress/direct/.env
-docker compose --env-file deploy/ingress/direct/.env \
-  -f deploy/ingress/direct/compose.yaml up -d
-```
+## Security and data rules
 
-DNS must resolve to the host and ports 80 and 443 must reach it. Set `SIDECAR_PUBLIC_URL` in
-`deploy/mcp/.env` to the same HTTPS origin and replace only `mcp-server`. The ingress has its own
-Compose project and lifecycle; restarting it does not recreate the application or its data.
+The direct server holds no wallet key and cannot approve or sign. Agent, phone, publisher, and
+operator credentials are distinct. Public-feed publishers never learn subscribers, owner choices,
+approvals, signatures, or outcomes.
 
-That HTTP reverse-proxy example deliberately does not advertise the production UpdateService
-stream. Production updates require HTTP/2 end to end. Terminate TLS in the application and use a
-raw TCP/VPN forward, as in the isolated
-[`deploy/operators/tailscale`](../../deploy/operators/tailscale/README.md) example. The portable
-deployment contains no tailnet, Funnel, certificate path, or host-specific networking.
+SQLite files and the MCP ownership database belong on local storage with working filesystem locks.
+NFS/SMB is unsupported. A persistent MCP `*.mcp-server-owner.sqlite` file is normal: the live
+exclusive transaction, not file presence or a PID, establishes ownership. Never delete it to
+recover from a crash.
 
-No public form exposes `/healthz`, the legacy live diagnostic, an admin surface, a database, or a
-credential endpoint. OAuth remains validation against an external authorization server; this
-repository does not add an identity provider.
+The current and legacy physical volume mapping, one-time ownership upgrade rule, exact cold-backup
+procedure, and restore/rollback constraints are maintained only in
+[`deploy/README.md`](../../deploy/README.md#7-back-up-replace-and-roll-back).
 
-## Data identity and backup
+## Application references
 
-SQLite remains local to the MCP server. The default Compose project is
-`seeker-agent-connect-mcp`, the explicit physical volume is
-`seeker-agent-connect-mcp_mcp-data`, and the file is `/data/sidecar.db`. The container runs as
-UID/GID `10001:10001`.
-
-Older installations have separate valid identities. The direct deployment in retired `gateway/`
-used `seeker-agent-wallet_sidecar-data`; the old combined server used
-`seeker-agent-wallet-server_sidecar-data`. To keep either lineage, set `MCP_VOLUME_NAME` to that
-exact inspected volume and keep `DATABASE_PATH=/data/sidecar.db`. The complete mapping and migration
-rules are in [`deploy/README.md`](../../deploy/README.md#persistent-identities-and-upgrades).
-
-Never delete an unknown volume, run Compose's volume-removing down command to silence a warning, or
-merge two non-empty SQLite files. Inventory and inspect first:
-
-```sh
-docker volume ls
-docker volume inspect <exact-volume-name>
-```
-
-For a cold backup, stop the sole writer and archive only the chosen exact volume:
-
-```sh
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml stop mcp-server
-mkdir -p backups
-docker run --rm \
-  -v seeker-agent-connect-mcp_mcp-data:/from:ro \
-  -v "$PWD/backups:/to" alpine:3.22 \
-  sh -c 'cd /from && tar czf /to/mcp-data.tgz .'
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml start mcp-server
-```
-
-If `MCP_VOLUME_NAME` selects a legacy volume, substitute that one exact physical name in the backup
-command. Restores happen only while the server is stopped, retain UID/GID ownership, and must be
-followed by an integrity check plus verification of the stable server ID and pairing status.
-
-## Replace, roll back, and remove
-
-Build or pull a replacement, take a backup, then target only the MCP service:
-
-```sh
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml \
-  up -d --build --no-deps mcp-server
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml ps
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml logs --tail=100 mcp-server
-```
-
-Pairing, credentials, server identity, requests, results, and update state remain in SQLite. An
-older binary must not open a schema migrated by a newer binary; rollback means the old image plus
-its matching pre-upgrade archive.
-
-Stopping or removing the container does not require removing its volume:
-
-```sh
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml down
-```
-
-The data stays available for a later start. Delete a volume only as a separate, explicit operator
-decision after its exact identity and backup have been verified.
-
-## Troubleshooting
-
-- A local agent receives 401: use `MCP_TOKEN`, not the phone or pairing credential.
-- A phone cannot connect: confirm `SIDECAR_PUBLIC_URL` is the phone-reachable HTTPS origin and that
-  the certificate is normally trusted.
-- Pairing fails after a restore: verify the selected physical volume, `/data/sidecar.db`, file
-  ownership, and the stable server ID before creating a new pairing.
-- MCP works but production updates do not: the phone path lost HTTP/2; use native TLS plus a raw
-  TCP/VPN forward.
-- Compose warns about another volume: stop and inspect both. Do not remove either to hide the
-  warning.
+- Direct application settings and source/npm starts: [`mcp-server/README.md`](../../mcp-server/README.md)
+- Hermes: [`docs/integrations/hermes.md`](../integrations/hermes.md)
+- OpenClaw: [`docs/integrations/openclaw.md`](../integrations/openclaw.md)
+- Feed operation and publisher registration: [`feed-gateway/README.md`](../../feed-gateway/README.md)
+- Feed publisher development: [`docs/guides/server-development.md`](server-development.md)
+- Optional Firebase: [`docs/guides/firebase.md`](firebase.md)
+- General troubleshooting: [`docs/guides/troubleshooting.md`](troubleshooting.md)

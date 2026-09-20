@@ -7,6 +7,11 @@ export interface TlsIdentity {
   readonly key: Buffer;
 }
 
+/** Reads an optional operator-supplied trust anchor for the local readiness probe. */
+export function readTlsTrustAnchor(path: string): Buffer {
+  return readFileSync(path);
+}
+
 export function readTlsIdentity(
   certificatePath: string,
   privateKeyPath: string,

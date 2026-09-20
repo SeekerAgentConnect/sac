@@ -450,7 +450,10 @@ The sidecar accepts tunnelled requests because their `Host` is still a loopback 
 
 The tunnel lasts only as long as the SSH session. When it drops, calls fail with the errors below. Start it again, then run `/reload-mcp` if Hermes parked the server.
 
-In every case, the sidecar itself stays on the Mac's loopback address: never set `SIDECAR_HOST` to a public address, and never expose port 8080 to the internet. The sidecar speaks plain HTTP. The public gateway that terminates TLS in front of it is [section 9](#9-hermes-against-the-packaged-stack).
+In these source-start tunnel examples, the sidecar stays on the Mac's loopback address: never
+expose its cleartext port 8080 to the internet. Container production can instead use the native-TLS
+listener from the canonical [deployment guide](../../deploy/README.md#3-direct-mcp-over-native-https-and-http2),
+which preserves the phone's HTTP/2 update stream and also serves Hermes at `/mcp`.
 
 ### Over a VPN you already use
 
@@ -499,9 +502,10 @@ not put `npm exec`, `npx`, or the executable in Hermes command/arguments fields:
 an HTTP server and does not implement MCP stdio. The baseline is always two independently started
 processes: the server, then Hermes connecting with the HTTP `url` configuration above.
 
-The canonical container deployment ([`self-hosting.md`](../guides/self-hosting.md)) runs the same
-application as one `mcp-server` service. An optional HTTPS edge is an independently managed
-`deploy/ingress/direct` project, not a mandatory sidecar or gateway.
+The canonical container deployment ([`deploy/README.md`](../../deploy/README.md)) runs the same
+application as one `mcp-server` service. For a complete public direct deployment, use its generic
+native-TLS overlay. The older independent `deploy/ingress/direct` HTTP reverse proxy remains an
+MCP/unary option but cannot carry the phone's bidirectional UpdateService stream.
 
 **Keep your own `~/.hermes/config.yaml`.** Everything in section 1 still holds: back it up, merge
 the one `seeker_vault` entry into `mcp_servers`, and remove nothing else.
@@ -518,18 +522,18 @@ The `deploy/mcp` preset publishes the application on host loopback, so the entry
 
 ### On another machine, over the public endpoint
 
-With the independent direct ingress the server answers on the operator's own domain over HTTPS. Use
+With native TLS the server answers on the operator's own domain over HTTPS and HTTP/2. Use
 [`examples/hermes.config.hosted.yaml`](../../examples/hermes.config.hosted.yaml), which is the same
 entry with `url: "https://vault.example.com/mcp"` and a conservative production tool list. The
-ingress forwards the MCP endpoint; it deliberately does not expose health, the phone's Stage 1
-live diagnostic service, or the production update stream.
+secure application listener serves MCP and production phone APIs, while remote health and the
+phone's Stage 1 live diagnostic service are deliberately absent.
 
 Three things have to be true before it connects, and each has its own failure:
 
 | | What it means |
 | --- | --- |
-| The certificate is a real one | Hermes refuses an untrusted certificate, and that refusal is correct. Fix the name, DNS record or port and let the ingress issue one. Nothing here tells anyone to ignore a certificate warning. |
-| The domain is in `MCP_ALLOWED_HOSTS` | Set the MCP application's value to the same host as `DIRECT_DOMAIN`. Without it the server answers 403 and logs `the Host header is not a loopback address or an MCP_ALLOWED_HOSTS entry` — the same DNS-rebinding check as [over a VPN](#over-a-vpn-you-already-use). |
+| The certificate is a real one | Hermes refuses an untrusted certificate, and that refusal is correct. Fix the name, DNS record, mounted certificate or port. Nothing here tells anyone to ignore a certificate warning. |
+| The domain is in `MCP_ALLOWED_HOSTS` | Set the MCP application's value to the host in `SIDECAR_PUBLIC_URL`. Without it the server answers 403 and logs `the Host header is not a loopback address or an MCP_ALLOWED_HOSTS entry` — the same DNS-rebinding check as [over a VPN](#over-a-vpn-you-already-use). |
 | The chosen authentication profile matches | The example sends the fixed `MCP_TOKEN`. With [OAuth](claude.md) on, the endpoint instead takes access tokens from the configured authorization server. Configure one profile deliberately; a static bearer is not an OAuth access token. |
 
 Anyone who reaches that URL with the token can queue requests for you to answer, so treat it as

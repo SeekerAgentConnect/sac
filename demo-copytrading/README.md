@@ -12,6 +12,9 @@ demos share a source library — [`publisher-support/`](../publisher-support), w
 no image and no deployment of its own — and nothing else: not a database, not a credential, not a
 container, not a lifecycle. Restarting or cancelling here does nothing to the other demo's source.
 
+For a clean-host deployment beside the gateway or all four applications, follow the canonical
+numbered [`deploy/README.md`](../deploy/README.md). This guide remains the application/API reference.
+
 **Nothing comes back.** This server never learns who is subscribed, what anyone chose, whether they
 went ahead, or what came of it. There is no table for any of that, no field in its API that would
 accept it, and no endpoint that would answer about it. Devices subscribe to the gateway, never to
@@ -191,7 +194,7 @@ Those are the standalone deployment's established identities. The old combined s
 `seeker-agent-wallet-server_copytrading-data` and `/data/copytrading.db`; preserving it requires
 setting **both** `COPYTRADING_VOLUME_NAME` and `PUBLISHER_DATABASE_PATH`. Inspect and back up the
 exact volume first; never merge two non-empty SQLite lineages or delete an unfamiliar volume. The
-full mapping is in [`deploy/README.md`](../deploy/README.md#persistent-identities-and-upgrades).
+full mapping is in [`deploy/README.md`](../deploy/README.md#7-back-up-replace-and-roll-back).
 This data is never shared with Prediction.
 
 ## 8. Health and a first request

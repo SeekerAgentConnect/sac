@@ -107,16 +107,16 @@ const presets = [
     services: ["feed-ingress"],
   },
   {
-    name: "Tailscale direct TLS overlay",
+    name: "generic direct TLS overlay",
     args: [
       "--env-file",
       "deploy/mcp/.env.example",
       "-f",
       "deploy/mcp/compose.yaml",
       "-f",
-      "deploy/operators/tailscale/compose.direct.yaml",
+      "deploy/mcp/compose.tls.yaml",
     ],
-    environment: { TAILSCALE_TLS_DIR: "/tmp/seeker-tailscale-certificates" },
+    environment: { MCP_TLS_DIR: "/tmp/seeker-direct-certificates" },
     services: ["mcp-server"],
   },
 ];
@@ -151,6 +151,11 @@ for (const retired of [
 ]) {
   assert.equal(existsSync(join(ROOT, retired)), false, `${retired} is retired`);
 }
+assert.equal(
+  existsSync(join(ROOT, "deploy/operators/tailscale/compose.direct.yaml")),
+  false,
+  "Tailscale reuses the generic MCP TLS overlay",
+);
 
 const activeLayoutDocs = [
   "README.md",
@@ -247,6 +252,7 @@ const feed = compose(presets[0].args);
 const mcp = compose(presets[1].args);
 const copytrading = compose(presets[2].args);
 const prediction = compose(presets[3].args);
+const directTls = compose(presets[7].args, presets[7].environment);
 assert.match(feed, /host_ip: 127\.0\.0\.1/);
 assert.doesNotMatch(feed, /target: (?:6379|8000)/);
 assert.match(feed, /BROADCAST_STREAM_URL: ""/);
@@ -255,6 +261,54 @@ assert.match(feed, /BROADCAST_STREAM_TOKEN_KEY: ""/);
 assert.match(mcp, /name: seeker-agent-connect-mcp_mcp-data/);
 assert.match(copytrading, /name: seeker-publisher_publisher-data/);
 assert.match(prediction, /name: seeker-prediction_prediction-data/);
+assert.match(directTls, /SIDECAR_TLS_CERT_PATH: \/run\/tls\/fullchain\.pem/);
+assert.match(directTls, /SIDECAR_TLS_KEY_PATH: \/run\/tls\/privkey\.pem/);
+assert.match(directTls, /source: \/tmp\/seeker-direct-certificates/);
+assert.match(directTls, /read_only: true/);
+
+const mcpDockerfile = readFileSync(join(ROOT, "mcp-server/Dockerfile"), "utf8");
+assert.match(
+  mcpDockerfile,
+  /CMD \["node", "mcp-server\/dist\/healthcheck\.js"\]/,
+);
+assert.doesNotMatch(mcpDockerfile, /fetch\(['"]http:\/\/127\.0\.0\.1/);
+
+const combinedFeedArgs = [
+  "--env-file",
+  "deploy/feed/.env.example",
+  "-f",
+  "deploy/feed/compose.yaml",
+  "-f",
+  "deploy/feed/compose.combined.yaml",
+];
+const combinedCopyArgs = [
+  "--env-file",
+  "deploy/copytrading/.env.example",
+  "-f",
+  "deploy/copytrading/compose.yaml",
+  "-f",
+  "deploy/copytrading/compose.combined.yaml",
+];
+const combinedPredictionArgs = [
+  "--env-file",
+  "deploy/prediction/.env.example",
+  "-f",
+  "deploy/prediction/compose.yaml",
+  "-f",
+  "deploy/prediction/compose.combined.yaml",
+];
+const combinedFeed = compose(combinedFeedArgs);
+const combinedCopy = compose(combinedCopyArgs);
+const combinedPrediction = compose(combinedPredictionArgs);
+assert.match(combinedFeed, /name: seeker-feed-publish/);
+assert.match(combinedFeed, /published: "8090"/);
+assert.match(combinedCopy, /PUBLISHER_PUBLISH_URL: http:\/\/feed-gateway:8091/);
+assert.match(combinedCopy, /name: seeker-feed-publish/);
+assert.match(
+  combinedPrediction,
+  /PUBLISHER_PUBLISH_URL: http:\/\/feed-gateway:8091/,
+);
+assert.match(combinedPrediction, /name: seeker-feed-publish/);
 
 const externalRedis = compose(presets[0].args, {
   CENTRIFUGO_REDIS_URL:

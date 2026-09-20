@@ -13,7 +13,7 @@ import { DISPLAY_COMMAND_TOOL } from "./mcp-endpoint.ts";
 import { REQUEST_ACK_TOOL } from "./requests/mcp-tools.ts";
 import { FcmSender } from "./push/fcm.ts";
 import { FCM_INVALIDATION_DATA } from "../../server-sdk/src/push/invalidation.ts";
-import { startSidecar, type Sidecar } from "./server.ts";
+import { isLoopbackAddress, startSidecar, type Sidecar } from "./server.ts";
 import {
   callTool,
   connectAgent,
@@ -538,6 +538,26 @@ describe("sidecar", () => {
       (await fetch(`${sidecar.url}/healthz`, { method: "POST" })).status,
       405,
     );
+  });
+
+  it("recognizes only loopback peers for native-TLS readiness", () => {
+    for (const address of [
+      "127.0.0.1",
+      "127.12.0.9",
+      "::1",
+      "::ffff:127.0.0.1",
+    ]) {
+      assert.equal(isLoopbackAddress(address), true, address);
+    }
+    for (const address of [
+      undefined,
+      "0.0.0.0",
+      "10.0.0.2",
+      "::ffff:10.0.0.2",
+      "2001:db8::1",
+    ]) {
+      assert.equal(isLoopbackAddress(address), false, String(address));
+    }
   });
 
   it("never logs a token or command text", () => {

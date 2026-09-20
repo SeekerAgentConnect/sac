@@ -30,6 +30,7 @@ import {
 } from "@seeker-vault/server-sdk/protocol";
 import {
   ListPendingResponseSchema,
+  LiveCommandService,
   PairingService,
   RequestService,
 } from "@seeker-vault/server-sdk/protocol";
@@ -212,6 +213,11 @@ describe("production updates over gRPC HTTP/2", () => {
       assert.equal(capability.updates?.protocolVersion, 1);
       assert.equal(capability.updates?.grpcUrl, f.sidecar.url);
       assert.equal(await health(f.sidecar.url), 200);
+      await assert.rejects(
+        liveClient(f.sidecar.url, PHONE_TOKEN).acknowledgeCommand({}),
+        (error) =>
+          error instanceof ConnectError && error.code === Code.Unimplemented,
+      );
       const initialized = await mcpRequest(f.sidecar.url, {
         jsonrpc: "2.0",
         id: 1,
@@ -767,6 +773,18 @@ function pairingClient(baseUrl: string, token: string) {
 function requestClient(baseUrl: string, token: string) {
   return createClient(
     RequestService,
+    createConnectTransport({
+      baseUrl,
+      httpVersion: "1.1",
+      nodeOptions: baseUrl.startsWith("https:") ? { ca: certificate } : {},
+      interceptors: [authorization(token)],
+    }),
+  );
+}
+
+function liveClient(baseUrl: string, token: string) {
+  return createClient(
+    LiveCommandService,
     createConnectTransport({
       baseUrl,
       httpVersion: "1.1",

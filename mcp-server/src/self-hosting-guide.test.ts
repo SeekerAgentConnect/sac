@@ -11,13 +11,17 @@ const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const GUIDE_PATH = "docs/guides/self-hosting.md";
 const GUIDE_DIRECTORY = "docs/guides";
 const COMPOSE_PATH = "deploy/mcp/compose.yaml";
+const DEPLOYMENT_PATH = "deploy/README.md";
 
 const guide = readFileSync(join(ROOT, GUIDE_PATH), "utf8");
 const compose = readFileSync(join(ROOT, COMPOSE_PATH), "utf8");
+const deployment = readFileSync(join(ROOT, DEPLOYMENT_PATH), "utf8");
 
 describe("the direct self-hosting guide", () => {
   it("uses the canonical portable MCP deployment", () => {
-    assert.match(guide, /deploy\/mcp\/compose\.yaml/);
+    assert.match(guide, /deploy\/README\.md/);
+    assert.match(guide, /one step-by-step deployment runbook/);
+    assert.match(deployment, /deploy\/mcp\/compose\.yaml/);
     assert.match(compose, /^name: seeker-agent-connect-mcp$/m);
     assert.match(compose, /^ {2}mcp-server:$/m);
     assert.doesNotMatch(
@@ -32,12 +36,9 @@ describe("the direct self-hosting guide", () => {
       compose,
       /\$\{MCP_SERVER_BIND:-127\.0\.0\.1\}:\$\{MCP_SERVER_PORT:-8080\}:8080/,
     );
-    assert.match(guide, /default host bind is `127\.0\.0\.1:8080`/);
-    assert.match(
-      guide,
-      /physical phone cannot reach the host's loopback address/,
-    );
-    assert.match(guide, /production updates require HTTP\/2 end to end/i);
+    assert.match(deployment, /loopback defaults/);
+    assert.match(deployment, /native HTTPS and HTTP\/2/);
+    assert.match(deployment, /preserves ALPN `h2`/i);
   });
 
   it("documents the exact durable identity without destructive shortcuts", () => {
@@ -49,17 +50,16 @@ describe("the direct self-hosting guide", () => {
       compose,
       /DATABASE_PATH: \$\{DATABASE_PATH:-\/data\/sidecar\.db\}/,
     );
-    assert.match(guide, /seeker-agent-wallet_sidecar-data/);
-    assert.match(guide, /seeker-agent-wallet-server_sidecar-data/);
-    assert.match(guide, /Never delete an unknown volume/);
-    assert.doesNotMatch(guide, /down -v/);
-    assert.doesNotMatch(guide, /--remove-orphans/);
+    assert.match(deployment, /seeker-agent-wallet_sidecar-data/);
+    assert.match(deployment, /seeker-agent-wallet-server_sidecar-data/);
+    assert.match(deployment, /Do not use.*down -v.*--remove-orphans/is);
   });
 
   it("keeps ingress and host-specific networking optional", () => {
-    assert.match(guide, /independent.*deploy\/ingress\/direct/is);
+    assert.match(guide, /deploy\/ingress\/direct/);
+    assert.match(guide, /independent optional Caddy project/i);
     assert.match(guide, /deploy\/operators\/tailscale/);
-    assert.match(guide, /portable\s+deployment contains no tailnet/i);
+    assert.match(deployment, /no Tailscale dependency/i);
     assert.doesNotMatch(guide, /gateway-private/);
   });
 

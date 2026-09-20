@@ -482,7 +482,7 @@ the database has schema version 6, newer than this sidecar's 5; run a newer side
 ```
 
 That is the guard working. Go back to the newer images, or restore the backup you took before
-updating ([Data identity, backup and restore](self-hosting.md#data-identity-backup-and-restore)).
+updating ([Back up, replace, and roll back](../../deploy/README.md#7-back-up-replace-and-roll-back)).
 
 ## Reporting a problem
 

@@ -322,27 +322,34 @@ The call is cancelled when the agent cancels it (`notifications/cancelled`) or w
 
 Durable requests and production update state live in one SQLite file, `DATABASE_PATH` (by default
 `~/.seeker-agent-connect/mcp-server/direct-server.db`). While the server runs, SQLite keeps `-wal`
-and `-shm` files next to it. `.gitignore` covers all three (`*.db`, `*.db-*`). A process lock beside
-the database refuses a second application owner; operator pairing commands can still open the
-store.
+and `-shm` files next to it. `.gitignore` covers all three (`*.db`, `*.db-*`). A separate sibling
+SQLite file holds one exclusive ownership transaction and refuses a second application owner;
+operator pairing commands still open only the application store. The ownership file persists, but
+its OS/VFS transaction disappears with the process even after SIGKILL or container loss, so no PID
+or timeout decides liveness. Local filesystems and Docker named volumes are supported; network
+filesystems whose SQLite locking is unreliable are not.
 
 ### How requests are stored
 
 - **The driver is Node's built-in `node:sqlite`,** so there's no native build and no extra dependency.
 - **The database runs in WAL mode with `synchronous = FULL`,** so a commit is on disk before it returns.
 - **Each operation is one transaction (`BEGIN IMMEDIATE`) that commits before the sidecar answers.** The agent's tool result and the phone's RPC response never report a change that a crash could still lose. Operations are synchronous, so two never interleave.
-- **Only `server-sdk/src/storage/` touches SQLite and runs SQL.** `request-store.ts` and
+- **Only storage packages touch SQLite; only `server-sdk/src/storage/` runs durable application
+  SQL.** `request-store.ts` and
   `pairing-store.ts` commit lifecycle changes, while `update-store.ts` appends their complete
   revisioned forms, bounds replay to 512 events per connection, and freezes paginated snapshots on
-  disk behind a renewable two-minute inactivity lease. The host's separate
-  `mcp-server/src/storage/tls.ts` reads only the configured PEM bytes. `stage-boundary.test.ts` checks
-  both boundaries.
+  disk behind a renewable two-minute inactivity lease. The host's
+  `mcp-server/src/storage/instance-lock.ts` validates its dedicated file and holds only `BEGIN
+  EXCLUSIVE`; `tls.ts` reads only configured PEM bytes. `stage-boundary.test.ts` checks these exact
+  exceptions.
 - **Publication is part of the source transaction.** Creation, cancellation, expiry, accepted owner/wallet results, confirmation attempts/results, wallet-binding cancellations, and revocation append only if their request/connection update commits. Duplicate/idempotent calls append nothing.
 - **A cursor is process- and connection-bound.** A restart, malformed cursor, another connection, or a cursor older than retained replay requires `Sync`. The stream registers before taking its barrier, so mutations committed after the barrier are replayed or delivered live rather than falling between snapshot and subscription.
 - **Sync pages do not drift.** Page one freezes every current PENDING request plus the named nonterminal Activity records in SQLite. Later mutations do not rewrite remaining pages; every valid page renews the token's two-minute inactivity lease, while an idle token expires and a process restart invalidates every token. Only `UpdateService` responses are capped at 65,536 encoded bytes, so the established `RequestService.ListPending` page contract remains intact; the shared listener still rejects any phone request above that bound. Sync responses shrink below the response cap, and no unbounded request list is retained in heap memory.
 - **Confirmation is bounded observation.** Of the supplied SUBMITTED/UNKNOWN transfers, each Sync checks at most four concurrently through `ConfirmationTracker`; the durable rotation moves deferred records into later runs. It uses the same cluster and approved-byte verification as Check status and can only record that result. It never prepares, signs, simulates, sends, or resubmits.
 - **Run one MCP server per database file.** A second launch is rejected even if it chooses another
-  listener. Switch source, Docker, or npm formats only while the old process is stopped.
+  listener or another PID namespace. Switch source, Docker, or npm formats only while the old
+  process is stopped. A pre-SEE-137 PID/nonce lock is migrated only after that offline stop; the
+  retained compatibility guard makes an older binary fail closed rather than compete on rollback.
 
 These are the tables at schema version 6:
 
@@ -536,6 +543,9 @@ contract they implement is in [`docs/protocol.md`](../protocol.md#stage-2-durabl
 - **`mcp-server/src/restart.test.ts`** runs `src/cli.ts start` as a real process. It stops the process
   with SIGTERM and then with SIGKILL during a command, and checks that the original caller fails and
   nothing is replayed after the restart.
+- **`src/storage/instance-lock.test.ts`** holds ownership in real child processes, proves live
+  contention, SIGKILL recovery without file deletion, PID-record migration, unknown-file refusal,
+  and exactly one winner among simultaneous recovery attempts.
 - **`src/storage/request-store.test.ts`** tests the request store on an in-memory database with a controlled clock. It covers:
   - creation and validation
   - idempotent retries and conflicts
@@ -567,7 +577,10 @@ contract they implement is in [`docs/protocol.md`](../protocol.md#stage-2-durabl
   - `src/solana/rpc.test.ts`: what the client reads, and how it reports a JSON-RPC error, an HTTP error, an answer that isn't JSON or isn't the right shape, and a timeout — none of which ever names the endpoint
   - `src/solana/transfer.test.ts`: SOL and token amounts, decimals, the created token account and its rent, the fee and the blockhash window, and every refusal (wrong network, Token-2022, NFT, missing or frozen accounts, a recipient that is a token account, too small a balance, a bad address, a zero or overflowing amount, and an endpoint that stopped answering). Each case deserializes the built transaction and checks its fee payer, signer set, and instructions.
   - `src/requests/transfers.test.ts`: the tool and `PrepareRequest` end to end against a fake chain — a new version per preparation, an old approval refused, no submission, and a failed preparation that leaves the request as it was
-- **`src/stage-boundary.test.ts`** checks that there's no wallet package beyond the chain client, no key generation and no signing, no tool the stage doesn't serve, and that nothing outside `src/storage/` imports the file system or SQLite or runs SQL, and nothing outside `src/solana/` imports the chain client.
+- **`src/stage-boundary.test.ts`** checks that there's no wallet package beyond the chain client, no
+  key generation and no signing, no tool the stage doesn't serve, that only storage packages import
+  the file system or SQLite, that the host's ownership file runs only its two lock pragmas while all
+  durable SQL remains in SDK storage, and that nothing outside `src/solana/` imports the chain client.
 
 `pnpm test:queue` runs the Stage 2 acceptance scenario (SAW-014) with two sidecar processes that restart; see [`docs/testing/stage-2.md`](../testing/stage-2.md#the-acceptance-scenario-saw-014), which also holds its report. `src/testing/process.ts` starts the processes, with `MCP_DEMO_TOOLS` if asked. `src/testing/clock.ts`, loaded with `--import`, runs a restarted process's clock ahead, for time that passed while it was down.
 

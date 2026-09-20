@@ -1,0 +1,13 @@
+# Generic native-TLS overlay for the direct MCP server. Certificate issuance and renewal belong to
+# the host/operator; the application receives only a read-only PEM mount. This listener preserves
+# HTTP/2 end to end for UpdateService and also serves authenticated MCP and unary phone calls.
+services:
+  mcp-server:
+    environment:
+      SIDECAR_TLS_CERT_PATH: /run/tls/fullchain.pem
+      SIDECAR_TLS_KEY_PATH: /run/tls/privkey.pem
+    volumes:
+      - type: bind
+        source: ${MCP_TLS_DIR:?set MCP_TLS_DIR to the absolute certificate directory}
+        target: /run/tls
+        read_only: true
