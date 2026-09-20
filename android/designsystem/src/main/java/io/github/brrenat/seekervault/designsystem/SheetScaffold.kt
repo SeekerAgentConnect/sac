@@ -17,10 +17,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -54,8 +56,11 @@ fun SheetScaffold(
     closeTag: String? = null,
     bodySpacing: Dp? = null,
 ) {
+    val hosted = LocalSheetStackHosted.current
+    val surface = sheetStackSurfaceColor()
+    val ink = sheetStackContentColor()
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
-        if (variant == SheetScaffoldVariant.StackedOverBlurred) {
+        if (variant == SheetScaffoldVariant.StackedOverBlurred && !hosted) {
             Box(
                 modifier =
                     Modifier.fillMaxWidth()
@@ -89,89 +94,93 @@ fun SheetScaffold(
                 )
             }
         }
-        Column(
-            modifier =
-                Modifier.fillMaxWidth()
-                    .then(
-                        if (expandToAvailableHeight) Modifier
-                        else Modifier.padding(top = SeekerTheme.spacing.xxxl)
-                    )
-                    .clip(RoundedCornerShape(SeekerTheme.radii.sheet))
-                    .background(SeekerTheme.colors.surface2)
-        ) {
-            Box(
+        CompositionLocalProvider(LocalContentColor provides ink) {
+            Column(
                 modifier =
                     Modifier.fillMaxWidth()
-                        .padding(
-                            top = SeekerTheme.spacing.lg,
-                            bottom = SeekerTheme.spacing.xs,
-                        ),
-                contentAlignment = Alignment.Center,
+                        .then(
+                            if (expandToAvailableHeight) Modifier
+                            else Modifier.padding(top = SeekerTheme.spacing.xxxl)
+                        )
+                        .clip(RoundedCornerShape(SeekerTheme.radii.sheet))
+                        .background(surface)
             ) {
                 Box(
                     modifier =
-                        Modifier.width(SeekerTheme.spacing.jumbo)
-                            .height(SeekerTheme.spacing.xs)
-                            .clip(RoundedCornerShape(SeekerTheme.radii.xs))
-                            .background(MaterialTheme.colorScheme.outline)
-                )
-            }
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .height(SeekerTheme.spacing.huge * SheetHeaderHeightUnits)
-                        .padding(start = SeekerTheme.spacing.xl, end = SeekerTheme.spacing.md),
-                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (header == null) {
-                    Text(
-                        text = title,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.headlineSmall,
+                        Modifier.fillMaxWidth()
+                            .padding(
+                                top = SeekerTheme.spacing.lg,
+                                bottom = SeekerTheme.spacing.xs,
+                            ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier =
+                            Modifier.width(SeekerTheme.spacing.jumbo)
+                                .height(SeekerTheme.spacing.xs)
+                                .clip(RoundedCornerShape(SeekerTheme.radii.xs))
+                                .background(MaterialTheme.colorScheme.outline)
                     )
-                    headerAction?.invoke(this)
-                    OrganismIconAction(
-                        icon = Icons.Outlined.Close,
-                        contentDescription = "Close",
-                        onClick = onClose,
-                        size = OrganismIconActionSize.Large,
-                        style = OrganismIconActionStyle.Transparent,
-                        modifier = if (closeTag == null) Modifier else Modifier.testTag(closeTag),
-                    )
-                } else {
-                    header.invoke(this)
                 }
-            }
-            Column(
-                modifier =
-                    Modifier.weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
-                        .padding(
-                            start = SeekerTheme.spacing.xl,
-                            top = SeekerTheme.spacing.xs,
-                            end = SeekerTheme.spacing.xl,
-                            bottom = SeekerTheme.spacing.xxxl,
-                        ),
-                verticalArrangement = Arrangement.spacedBy(bodySpacing ?: SeekerTheme.spacing.lg),
-                content = body,
-            )
-            actions?.let {
                 Row(
                     modifier =
                         Modifier.fillMaxWidth()
+                            .height(SeekerTheme.spacing.huge * SheetHeaderHeightUnits)
+                            .padding(start = SeekerTheme.spacing.xl, end = SeekerTheme.spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (header == null) {
+                        Text(
+                            text = title,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.headlineSmall,
+                        )
+                        headerAction?.invoke(this)
+                        OrganismIconAction(
+                            icon = Icons.Outlined.Close,
+                            contentDescription = "Close",
+                            onClick = onClose,
+                            size = OrganismIconActionSize.Large,
+                            style = OrganismIconActionStyle.Transparent,
+                            modifier =
+                                if (closeTag == null) Modifier else Modifier.testTag(closeTag),
+                        )
+                    } else {
+                        header.invoke(this)
+                    }
+                }
+                Column(
+                    modifier =
+                        Modifier.weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState())
                             .padding(
                                 start = SeekerTheme.spacing.xl,
-                                top = SeekerTheme.spacing.lg,
+                                top = SeekerTheme.spacing.xs,
                                 end = SeekerTheme.spacing.xl,
-                                bottom = SeekerTheme.spacing.xxl,
+                                bottom = SeekerTheme.spacing.xxxl,
                             ),
-                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
-                    verticalAlignment = Alignment.CenterVertically,
-                    content = it,
+                    verticalArrangement =
+                        Arrangement.spacedBy(bodySpacing ?: SeekerTheme.spacing.lg),
+                    content = body,
                 )
+                actions?.let {
+                    Row(
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .padding(
+                                    start = SeekerTheme.spacing.xl,
+                                    top = SeekerTheme.spacing.lg,
+                                    end = SeekerTheme.spacing.xl,
+                                    bottom = SeekerTheme.spacing.xxl,
+                                ),
+                        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = it,
+                    )
+                }
             }
         }
     }
