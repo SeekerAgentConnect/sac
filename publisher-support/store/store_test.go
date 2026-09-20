@@ -2,8 +2,13 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -610,4 +615,130 @@ func TestSignalsAreListedNewestFirst(t *testing.T) {
 			t.Fatalf("signal %d was created after the one before it", index)
 		}
 	}
+}
+
+// A database written before titles joined the idempotent statement still replays the same create
+// after this build migrates it. The stored digest is the original create, so an edit of the signal
+// afterwards must not be treated as a new request under that key (SEE-143).
+func TestAPreUpgradeIdempotencyKeyStillReplaysAfterTitleMigration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "publisher.db")
+	ctx := context.Background()
+	created := swap()
+	created.Title = ""
+	legacy := preUpgradeStatement(created)
+	if signals.Statement(created) != legacy {
+		t.Fatal("Statement must still match the pre-upgrade digest for an untitled create")
+	}
+
+	earlier, err := open(path, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := earlier.ExecContext(ctx, schemaV1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := earlier.ExecContext(ctx, schemaV2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := earlier.ExecContext(ctx,
+		`INSERT INTO deployment (id, schema_version, server_id, environment, gateway_url,
+		                         created_at_ms)
+		 VALUES (1, 2, ?, 'production', 'https://feeds.example.com', ?)`,
+		server, now.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	terms, err := json.Marshal(created.Terms)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := signals.Fingerprint(server, created)
+	if _, err := earlier.ExecContext(ctx,
+		`INSERT INTO signal (proposal_id, revision, status, operation, plugin_id, created_at_ms,
+		                     updated_at_ms, expires_at_ms, note, terms, fingerprint,
+		                     confirmed_revision, attempts, due_at_ms, problem, detail)
+		 VALUES (?, 1, 'open', ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, '', '')`,
+		created.ProposalID, created.Operation, created.PluginID, now.UnixMilli(), now.UnixMilli(),
+		created.ExpiresAt.UnixMilli(), created.Note, string(terms), fingerprint,
+		now.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := earlier.ExecContext(ctx,
+		`INSERT INTO idempotency (key, proposal_id, request, created_at_ms) VALUES (?, ?, ?, ?)`,
+		"key-1", created.ProposalID, legacy, now.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if err := earlier.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	documents, err := Open(path, stamp())
+	if err != nil {
+		t.Fatalf("a version-2 database could not be opened: %v", err)
+	}
+	t.Cleanup(func() { _ = documents.Close() })
+
+	var version int
+	if err := documents.reader.QueryRowContext(ctx,
+		`SELECT schema_version FROM deployment WHERE id = 1`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != Version {
+		t.Fatalf("the file is still at version %d", version)
+	}
+
+	unchanged, held, err := documents.Create(ctx, "key-1", signals.Statement(created), created)
+	if err != nil || !held {
+		t.Fatalf("unchanged replay: held %v (%v)", held, err)
+	}
+	if unchanged.Signal.ProposalID != created.ProposalID {
+		t.Fatalf("the retry created %s beside %s", unchanged.Signal.ProposalID, created.ProposalID)
+	}
+
+	edited := created
+	edited.Note = "a later edit of the published signal"
+	if _, changed, err := documents.Update(ctx, created.ProposalID, edited, now.Add(time.Minute)); err != nil || !changed {
+		t.Fatalf("edit: changed %v (%v)", changed, err)
+	}
+	afterEdit, held, err := documents.Create(ctx, "key-1", signals.Statement(created), created)
+	if err != nil || !held {
+		t.Fatalf("replay after edit: held %v (%v)", held, err)
+	}
+	if afterEdit.Signal.ProposalID != created.ProposalID {
+		t.Fatal("the original key resolved to another signal after the edit")
+	}
+	if afterEdit.Signal.Note != edited.Note {
+		t.Fatalf("the stored signal was %q, not the edited note", afterEdit.Signal.Note)
+	}
+
+	different := created
+	different.Note = "a different create payload"
+	if _, _, err := documents.Create(ctx, "key-1", signals.Statement(different), different); !errors.Is(err, ErrKeyReused) {
+		t.Fatalf("expected ErrKeyReused, got %v", err)
+	}
+
+	titled := swap()
+	titled.ProposalID = "1e2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b"
+	titled.Title = "Will SOL close above $200?"
+	if _, held, err := documents.Create(ctx, "key-2", signals.Statement(titled), titled); err != nil || held {
+		t.Fatalf("titled create: held %v (%v)", held, err)
+	}
+	otherTitle := titled
+	otherTitle.Title = "Will SOL close above $300?"
+	if _, _, err := documents.Create(ctx, "key-2", signals.Statement(otherTitle), otherTitle); !errors.Is(err, ErrKeyReused) {
+		t.Fatalf("different titles must reuse the key: %v", err)
+	}
+}
+
+func preUpgradeStatement(signal signals.Signal) string {
+	keys := make([]string, 0, len(signal.Terms))
+	for key := range signal.Terms {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	digest := sha256.New()
+	fmt.Fprintf(digest, "%s\n%s\n", signal.ExpiresAt.UTC().Format(time.RFC3339), signal.Note)
+	for _, key := range keys {
+		fmt.Fprintf(digest, "%s=%s\n", key, signal.Terms[key])
+	}
+	return hex.EncodeToString(digest.Sum(nil))
 }

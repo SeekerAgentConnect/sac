@@ -1,6 +1,10 @@
 package signals
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -167,6 +171,42 @@ func TestARequestUsesTheSourceTitleWithoutAddingAnAppPrefix(t *testing.T) {
 	if Statement(signal) == Statement(withoutTitle) {
 		t.Fatal("the source title was absent from the idempotent statement")
 	}
+}
+
+func TestAnEmptyTitleKeepsThePreUpgradeDigest(t *testing.T) {
+	untitled := Signal{
+		ExpiresAt: now.Add(time.Hour),
+		Note:      "trimming SOL into USDC",
+		Terms:     swapTerms(),
+	}
+	if Statement(untitled) != preUpgradeStatement(untitled) {
+		t.Fatal("an empty title must replay as the pre-upgrade expiry-and-note digest")
+	}
+	titled := untitled
+	titled.Title = "Will SOL close above $200?"
+	if Statement(titled) == Statement(untitled) {
+		t.Fatal("a non-empty title must change the statement")
+	}
+	other := titled
+	other.Title = "Will SOL close above $300?"
+	if Statement(titled) == Statement(other) {
+		t.Fatal("different titles must be different statements")
+	}
+}
+
+// preUpgradeStatement is expiry + note + terms, the digest stored before schema v3 added title.
+func preUpgradeStatement(signal Signal) string {
+	keys := make([]string, 0, len(signal.Terms))
+	for key := range signal.Terms {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	digest := sha256.New()
+	fmt.Fprintf(digest, "%s\n%s\n", signal.ExpiresAt.UTC().Format(time.RFC3339), signal.Note)
+	for _, key := range keys {
+		fmt.Fprintf(digest, "%s=%s\n", key, signal.Terms[key])
+	}
+	return hex.EncodeToString(digest.Sum(nil))
 }
 
 // The fingerprint is the content, and the two fields that are not content are left out of it: the
