@@ -4,7 +4,7 @@ One script posts session status to the Grok bot webhook. Claude, Codex, Grok, an
 
 ## Contract
 
-Set both env vars in the Superset workspace (usually via root `.env` copied by `.superset/setup.sh`):
+Set both env vars on the machine / agent session:
 
 - `SEE_SUPERSET_HOOK` — POST URL
 - `SEE_SUPERSET_TOKEN` — bearer token
@@ -50,6 +50,5 @@ bash scripts/superset-hook.sh stuck "waiting on wallet device"
 | `.claude/settings.json` `hooks` | Claude Code and GLM CLIs that read Claude settings |
 | `.codex/hooks.json` | Codex |
 | `.grok/hooks/superset.json` | Grok |
-| `.superset/config.json` / `setup.sh` | copies `.env` into the worktree |
 
 Do not put the token or hook URL in git.
