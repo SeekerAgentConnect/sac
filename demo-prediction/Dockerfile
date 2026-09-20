@@ -5,16 +5,16 @@
 # The context is the repository root for one documented reason: this module's
 # go.mod replaces the shared source library with ../publisher-support, so the
 # build needs that directory as well as this one. It needs nothing else — and
-# demo-copytrading/ is never copied in, so no signal-writing API, no trader UI
-# and no CopyTrading binary exists anywhere in this image (SEE-134).
+# demo-copytrading/ is never copied in, so no swap-writing API, no CopyTrading
+# trader UI and no CopyTrading binary exists anywhere in this image (SEE-134).
 #
 # This is none of the other images. `feed-gateway/` is the shared service this
 # publishes to (SEE-90); `mcp-server/` is one owner's own direct server
 # (SEE-132). This one discovers Jupiter Prediction markets and publishes those
 # (SEE-96, docs/wiki/prediction-template.md).
 #
-# Two binaries. `/prediction` is the entrypoint; `/publishctl` is the operator's
-# client of its read-only API.
+# Three binaries. `/prediction` is the entrypoint; `/publishctl` is the operator's
+# client of its API; `/prediction-admin` is the password-gated HTML UI (SEE-138).
 
 # Pinned to the version demo-prediction/go.mod requires, so a build from a clean
 # checkout uses the toolchain the tests were run with
@@ -44,10 +44,11 @@ COPY demo-prediction/ /src/demo-prediction/
 ENV CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH
 RUN go build -trimpath -ldflags="-s -w" -o /out/prediction ./cmd/prediction \
  && go build -trimpath -ldflags="-s -w" -o /out/publishctl ./cmd/publishctl \
+ && go build -trimpath -ldflags="-s -w" -o /out/prediction-admin ./cmd/prediction-admin \
  && mkdir /out/data
 
 # --- runtime ----------------------------------------------------------------
-# The two binaries, a CA bundle, and nothing else. No shell and no package
+# The three binaries, a CA bundle, and nothing else. No shell and no package
 # manager.
 #
 # The bundle is here because this service calls out over TLS twice: the shared
@@ -70,7 +71,7 @@ ENV PUBLISHER_DATABASE_PATH=/data/prediction.db
 # directly on host loopback; no proxy is bundled with this demo.
 ENV PUBLISHER_API_ADDRESS=127.0.0.1:8092
 
-COPY --from=build /out/prediction /out/publishctl /
+COPY --from=build /out/prediction /out/publishctl /out/prediction-admin /
 # /data has to exist in the image, owned by the account below: Docker gives a
 # new named volume the ownership of the directory it is mounted over, and a path
 # the image lacks becomes root's, where uid 10001 cannot create the database.

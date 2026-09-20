@@ -62,6 +62,9 @@ type Template struct {
 	ForceIDs  []string
 	NowValue  time.Time
 	PathValue string
+	// Wrap, if set during the discovering callback, is applied around the API handler before the
+	// test server starts. The Prediction demo uses it to overlay discovery search and select.
+	Wrap func(http.Handler) http.Handler
 }
 
 // Start is a CopyTrading-shaped demo: its signals are written by its callers.
@@ -157,7 +160,11 @@ func StartWith(
 	if discovering != nil {
 		discovering(held, &plan)
 	}
-	held.API = httptest.NewServer(api.New(plan).Handler())
+	handler := api.New(plan).Handler()
+	if held.Wrap != nil {
+		handler = held.Wrap(handler)
+	}
+	held.API = httptest.NewServer(handler)
 	t.Cleanup(held.API.Close)
 	return held
 }

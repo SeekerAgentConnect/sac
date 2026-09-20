@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
+import { createServer as createHttp2Server } from "node:http2";
 import { createServer as createHttpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -35,7 +36,12 @@ execFileSync(
   { stdio: "ignore" },
 );
 
-type TestServer = ReturnType<typeof createHttpServer>;
+type TestServer = {
+  listen(port: number, host: string, listening: () => void): unknown;
+  close(callback: (error?: Error) => void): unknown;
+  address(): AddressInfo | string | null;
+  once(event: "error", listener: (error: Error) => void): unknown;
+};
 
 async function listen(server: TestServer): Promise<number> {
   await new Promise<void>((resolve, reject) => {
@@ -59,6 +65,20 @@ function healthEnvironment(
 }
 
 describe("MCP container health check", () => {
+  it("accepts the exact HTTP/2 cleartext readiness response", async () => {
+    const server = createHttp2Server((_request, response) => {
+      response
+        .writeHead(200, { "Content-Type": "application/json" })
+        .end('{"status":"ok"}');
+    });
+    const port = await listen(server);
+    try {
+      await checkHealth(healthEnvironment(port, { SIDECAR_H2C: "true" }));
+    } finally {
+      await close(server);
+    }
+  });
+
   it("accepts the exact HTTP readiness response", async () => {
     const server = createHttpServer((_request, response) => {
       response

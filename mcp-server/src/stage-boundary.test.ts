@@ -176,11 +176,14 @@ describe("stage boundary", () => {
     const sources = shippedSources();
     const http2 = /from "node:http2"/;
     const updateProtocol = /gen\/seekervault\/update\/v1\/update_pb\.js/;
-    const http2OutsideServer = sources.filter(
-      (file) =>
-        relative(SRC, file) !== "server.ts" &&
-        http2.test(readFileSync(file, "utf8")),
-    );
+    const http2OutsideServer = sources.filter((file) => {
+      const path = relative(SRC, file);
+      return (
+        path !== "server.ts" &&
+        path !== "healthcheck.ts" &&
+        http2.test(readFileSync(file, "utf8"))
+      );
+    });
     const protocolOutsideUpdates = sources.filter((file) => {
       const path = relative(SRC, file);
       return (
@@ -291,9 +294,11 @@ describe("stage boundary", () => {
     // the package root's AgentRequests interface, so it cannot reach around idempotency,
     // validation, the lifecycle or the pending limit — and a second adapter has one named surface
     // rather than a new set of reach-ins.
-    const adapters = ["mcp-endpoint.ts", "requests/mcp-tools.ts"].map((path) =>
-      join(SRC, path),
-    );
+    const adapters = [
+      "mcp-endpoint.ts",
+      "requests/mcp-tools.ts",
+      "pairing/mcp-tool.ts",
+    ].map((path) => join(SRC, path));
     for (const file of adapters) assert.ok(existsSync(file), file);
     const collaborators =
       /\b(RequestStore|TransactionPreparer|ConfirmationTracker)\b/;
@@ -368,6 +373,7 @@ describe("stage boundary", () => {
       "REQUEST_ACK_TOOL",
       "GET_REQUEST_TOOL",
       "CANCEL_REQUEST_TOOL",
+      "CREATE_PAIRING_LINK_TOOL",
     ];
     const registered = shippedSources().flatMap((file) =>
       [

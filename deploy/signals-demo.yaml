@@ -1,0 +1,107 @@
+alerts:
+- rule: DEPLOYMENT_FAILED
+- rule: DOMAIN_FAILED
+features:
+- buildpack-stack=ubuntu-22
+ingress:
+  rules:
+  - component:
+      name: copytrading-admin
+      preserve_path_prefix: true
+    match:
+      path:
+        prefix: /trader
+  - component:
+      name: copytrading
+    match:
+      path:
+        prefix: /
+name: seeker-signals-demo
+region: ams
+services:
+- envs:
+  - key: PUBLISHER_SERVER_ID
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:+6OF53owCOsp5fbK4i3w1+tOlbgCk8ul:0b8YsYuQjWpMDIkMglUO6x7Sffq8iR6oPCvqT+rqawAr1/QjwdDR8AczGgvsAToWI0FW2w==]
+  - key: PUBLISHER_GATEWAY_URL
+    scope: RUN_AND_BUILD_TIME
+    value: https://seeker-gateway-sg8g3.ondigitalocean.app
+  - key: PUBLISHER_PUBLISH_URL
+    scope: RUN_AND_BUILD_TIME
+    value: https://seeker-gateway-sg8g3.ondigitalocean.app
+  - key: PUBLISHER_ENVIRONMENT
+    scope: RUN_AND_BUILD_TIME
+    value: sandbox
+  - key: PUBLISHER_DISPLAY_NAME
+    scope: RUN_AND_BUILD_TIME
+    value: CopyTrading
+  - key: BROADCAST_CREDENTIAL
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:DFlbaDtfncM6M0cBnW10JemJU1AWMvcf:2wDdXWvqhE6oYR2oCQfe93HV53HDogLqvtbDHIzq6+EyLAFndF59dTcZcX4p3RH60OZYVZhiz8O/eco=]
+  - key: PUBLISHER_API_TOKEN
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:hw38AEA39mKn1O2HDfpslTD31y7PFseq:rzUSn8Z5HvS4leNh21d976LuY06p5CuR3fxwNFfS+UEeCkytVUJ6nutbdgj5M7eD35Xk9eoj+wlp1s7P]
+  - key: PUBLISHER_API_ADDRESS
+    scope: RUN_AND_BUILD_TIME
+    value: 0.0.0.0:8092
+  - key: PUBLISHER_DATABASE_PATH
+    scope: RUN_AND_BUILD_TIME
+    value: /data/publisher.db
+  health_check:
+    failure_threshold: 9
+    http_path: /healthz
+    period_seconds: 10
+    success_threshold: 1
+    timeout_seconds: 1
+  http_port: 8092
+  image:
+    registry: brenat
+    registry_credentials: EV[1:+b3wgFKOQcIPJ+Pjl7asQw8bWuBpw5EL:qOwr0iZDhd+JxbB2pft0yOl5JyeKKY8VZw+ovScFD4xfz/8zjVkqjfgZQsbbnkmL2h5DtFbw5UBrqNU=]
+    registry_type: DOCKER_HUB
+    repository: seeker-agent-connect
+    tag: copytrading-0.1.2
+  instance_count: 1
+  instance_size_slug: apps-s-1vcpu-0.5gb
+  name: copytrading
+- envs:
+  - key: ADMIN_LISTEN_ADDRESS
+    scope: RUN_AND_BUILD_TIME
+    value: 0.0.0.0:8096
+  - key: ADMIN_PUBLIC_PATH
+    scope: RUN_AND_BUILD_TIME
+    value: /trader
+  - key: ADMIN_API_URL
+    scope: RUN_AND_BUILD_TIME
+    value: http://${copytrading.PRIVATE_DOMAIN}:8092
+  - key: PUBLISHER_API_TOKEN
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:RGXM16TdHo1AaDOkqjKTgmCkN4HLXNfF:yA/B9C6/j5B521gvuldIEG0WOsK/mDIEUVTLSlXD+6P580rApWHSkpfhe5SWsUW5XREdy5Eb0MvawFVX]
+  - key: ADMIN_SESSION_SECRET
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:uhbToCYWttgcaU5MuY8Ba1ZHpf1Eoz1C:zFDzAKeEqgYo64EL9hDTwF+ewwhxP/UnK5j6YArtXD0aOKat2XN+BXxWOivXUYVFGdm3D+Dv6qsmkUg=]
+  - key: ADMIN_PASSWORDS
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:MA5cWVykv6fDv1jID4e2Ty5NWI7OQLmn:FdtMYLGjrGO64ZhX8FU49/5kQ5EwbonUgO2PKo1c6666iFxP0Z3I74gxIjm0vi8LortpCPHswq2XG0c7+7WLuZ0xTiVHGJ86ZmWoIQCTMEQbZg==]
+  health_check:
+    failure_threshold: 9
+    http_path: /healthz
+    period_seconds: 10
+    success_threshold: 1
+    timeout_seconds: 1
+  http_port: 8096
+  image:
+    registry: brenat
+    registry_credentials: EV[1:+b3wgFKOQcIPJ+Pjl7asQw8bWuBpw5EL:qOwr0iZDhd+JxbB2pft0yOl5JyeKKY8VZw+ovScFD4xfz/8zjVkqjfgZQsbbnkmL2h5DtFbw5UBrqNU=]
+    registry_type: DOCKER_HUB
+    repository: seeker-agent-connect
+    tag: copytrading-0.1.2
+  instance_count: 1
+  instance_size_slug: apps-s-1vcpu-0.5gb
+  name: copytrading-admin
+  run_command: /copytrading-admin

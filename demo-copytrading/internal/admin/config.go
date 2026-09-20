@@ -48,8 +48,19 @@ func Load(lookup config.Lookup) (*Config, []string) {
 	} else if _, err := config.Reachable(settings.APIURL); err != nil {
 		read.note("ADMIN_API_URL %v", err)
 	}
-	if settings.PasswordsFile == "" {
-		read.note("ADMIN_PASSWORDS_FILE must be the path of the named bcrypt password file")
+	passwords := read.text("ADMIN_PASSWORDS", "")
+	switch {
+	case passwords != "" && settings.PasswordsFile != "":
+		read.note("ADMIN_PASSWORDS and ADMIN_PASSWORDS_FILE must not both be set: name the file contents or the file, not both")
+	case settings.PasswordsFile == "" && passwords == "":
+		read.note("ADMIN_PASSWORDS_FILE must be the path of the named bcrypt password file, or ADMIN_PASSWORDS the file's contents")
+	case passwords != "":
+		path, err := writePasswords(passwords)
+		if err != nil {
+			read.note("ADMIN_PASSWORDS cannot be written: %v", err)
+		} else {
+			settings.PasswordsFile = path
+		}
 	}
 	settings.APIToken = read.secret("PUBLISHER_API_TOKEN")
 	switch {
@@ -110,6 +121,18 @@ func (r *reader) secret(name string) string {
 	default:
 		return value
 	}
+}
+
+func writePasswords(contents string) (string, error) {
+	dir := "/data"
+	if _, err := os.Stat(dir); err != nil {
+		dir = os.TempDir()
+	}
+	path := dir + "/admin-passwords"
+	if err := os.WriteFile(path, []byte(contents+"\n"), 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func headerSafe(value string) bool {

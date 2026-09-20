@@ -145,8 +145,9 @@ Revoked connection de03846e-d435-4705-b2e3-ec67da539f12 ("Seeker"), paired 2026-
 | Path | Caller | Authentication | Purpose |
 | --- | --- | --- | --- |
 | `GET /healthz` | Anything on the machine | None | Liveness check: `{"status":"ok"}` |
+| `GET /pair` | The owner's browser or the phone | None; the pairing token is in the query | Landing page for a pairing code: 302 to the `seekervault://pair` deep link |
 | `GET /.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` | A hosted MCP client, before it has a credential | None | RFC 9728 protected-resource metadata, naming the authorization server for `/mcp`. Served only while `MCP_OAUTH_ISSUER` is set; 404 otherwise (SAW-036) |
-| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>`, or an OAuth access token when `MCP_OAUTH_ISSUER` is set | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, the durable tools `vault_sign_message`, `vault_transfer` (when a Solana provider is configured), `vault_get_capabilities`, `vault_get_address`, `vault_get_request`, and `vault_cancel_request`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
+| `/mcp` | Agents | `Authorization: Bearer <MCP_TOKEN>`, or an OAuth access token when `MCP_OAUTH_ISSUER` is set | MCP Streamable HTTP with sessions: the live tool `vault_display_command`, the durable tools `vault_sign_message`, `vault_transfer` (when a Solana provider is configured), `vault_get_capabilities`, `vault_get_address`, `vault_get_request`, `vault_cancel_request`, and `vault_create_pairing_link`, plus `vault_request_ack` with `MCP_DEMO_TOOLS=true` |
 | `/seekervault.live.v1.LiveCommandService/WatchCommands` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect server stream of live commands |
 | `/seekervault.live.v1.LiveCommandService/AcknowledgeCommand` | The live-test screen | `Authorization: Bearer <PHONE_TOKEN>` | Connect unary call that acknowledges a command |
 | `/seekervault.request.v1.PairingService/Pair` | A phone that's pairing | `Authorization: Bearer <pairing token>`, from `pnpm pair` | Exchanges the pairing token for a connection and its credential |
@@ -183,7 +184,7 @@ the phone reads as the legacy-direct path: no manifest, and behaviour exactly as
 
 ### Production update listener
 
-An update endpoint is opt-in. Without either configuration below, `PairResponse.updates` and `GetConnectionCapabilitiesResponse.updates` are absent, and the existing manual/unary workflow remains available.
+An update endpoint is opt-in. Without one of the configurations below, `PairResponse.updates` and `GetConnectionCapabilitiesResponse.updates` are absent, and the existing manual/unary workflow remains available.
 
 For production, put a publicly trusted PEM identity on the sidecar host and configure one secure listener:
 
@@ -204,7 +205,18 @@ SIDECAR_PORT=8080
 SIDECAR_UPDATE_PORT=8081
 ```
 
-The main server stays at `http://127.0.0.1:8080`; the advertised update origin is `http://127.0.0.1:8081` and accepts h2c. With a USB-connected phone, reverse both ports (`adb reverse tcp:8080 tcp:8080` and `adb reverse tcp:8081 tcp:8081`). Cleartext HTTP/2 is never a remote deployment option.
+The main server stays at `http://127.0.0.1:8080`; the advertised update origin is `http://127.0.0.1:8081` and accepts h2c. With a USB-connected phone, reverse both ports (`adb reverse tcp:8080 tcp:8080` and `adb reverse tcp:8081 tcp:8081`).
+
+Behind a TLS-terminating HTTP/2 reverse proxy (DigitalOcean App Platform `protocol: HTTP2`), put h2c on the main port instead of native TLS:
+
+```dotenv
+SIDECAR_HOST=0.0.0.0
+SIDECAR_PORT=8080
+SIDECAR_PUBLIC_URL=https://app.example
+SIDECAR_H2C=true
+```
+
+The phone still calls the HTTPS origin; the proxy forwards HTTP/2 cleartext to the container. Pairing advertises that HTTPS origin as the update endpoint. An HTTP/1-only reverse proxy cannot carry `Subscribe`. App Platform HTTP health checks stay HTTP/1.1 and will fail against h2c; use a TCP check.
 
 The bearer credential is still the connection's phone token. The MCP token, pairing token, Stage 1 token, a revoked token, and another connection ID cannot open `Subscribe` or `Sync`. A second subscription for the same connection cancels the first. Pairing replacement and explicit revocation publish the terminal revocation event and close the stream; shutdown cancels all streams and destroys their HTTP/2 sessions.
 

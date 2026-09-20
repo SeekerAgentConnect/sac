@@ -77,3 +77,15 @@ EXPOSE 8090 8091
 # shutdown needs — stop accepting, finish what is in flight, make one last
 # fan-out pass, close the database.
 ENTRYPOINT ["/feed-gateway"]
+
+# App Platform Console execs /bin/sh. Scratch has none, so that tab cannot
+# attach and feed-gatewayctl cannot run against the live SQLite file. The
+# default image is this stage: the same binaries plus static busybox as
+# /bin/sh. Compose can still build scratch with --target runtime.
+#
+#   docker buildx build --platform linux/amd64 --push \
+#     -f feed-gateway/Dockerfile -t brenat/seeker-agent-connect:gateway-0.1.2 .
+FROM runtime AS console
+USER 0
+COPY --from=busybox:1.37.0-uclibc /bin/busybox /bin/sh
+USER 10001:10001

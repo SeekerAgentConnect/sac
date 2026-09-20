@@ -230,6 +230,7 @@ const MCP_METHODS: ReadonlyArray<{
     "vault_request_ack",
     "vault_get_request",
     "vault_cancel_request",
+    "vault_create_pairing_link",
   ].map((tool, index) => ({
     name: `tools/call ${tool}`,
     body: {
@@ -363,6 +364,7 @@ describe("roles", () => {
       assert.ok(
         tools.every(
           (tool) =>
+            tool.name === "vault_create_pairing_link" ||
             !/approve|prepare|submit|result|pair|revoke/.test(tool.name),
         ),
       );

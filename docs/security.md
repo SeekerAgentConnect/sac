@@ -14,7 +14,7 @@ Each credential opens one role, and the sidecar accepts it in one place only:
 | Phone credential (`phone_token`) | The paired phone | The `Pair` response, once | `RequestService`, `UpdateService`, and authenticated `PairingService` operations for its own connection | Its SHA-256 hash |
 | `PHONE_TOKEN` | The Stage 1 live-test screen | The operator, in `.env` | `LiveCommandService` only | The value, in `.env` |
 
-- **Only the paired phone can prepare, review, and answer requests or register an FCM target.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool pairs, prepares, submits a result, registers a target, or revokes. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `mcp-server/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
+- **Only the paired phone can prepare, review, and answer requests or register an FCM target.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool prepares, submits a result, registers a target, or revokes. `vault_create_pairing_link` issues the operator pairing code (deep link plus HTTPS landing page); it does not complete pairing. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `mcp-server/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
 - **An access token is an agent's credential and no more.** When `MCP_OAUTH_ISSUER` is configured, `/mcp` also accepts a token issued by that authorization server for this deployment. It opens `/mcp` and nothing else — the same refusals as `MCP_TOKEN` apply to every phone RPC — and it authorizes asking, never answering: a request still waits for the owner's hand on the wallet. See [The authorization boundary](#the-authorization-boundary-saw-036).
 - **`PHONE_TOKEN` is the Stage 1 development exception, and it stays with the live diagnostic.** It can watch and acknowledge display-only live commands, and nothing else. It can't pair, and `RequestService` refuses it.
 - **The phone credential exists only on the phone.** The sidecar returns it once, in the `Pair` response, and stores only its hash. The database, its backups, and the log can't give it away.
@@ -32,7 +32,7 @@ has no subscriber credential, binding, invitation, private-request route or resu
 
 ### The operator's account
 
-Anyone who can run `pnpm pair` or write the sidecar's database acts as the operator. They could pair a phone of their own, which would revoke the owner's. So an agent must never run as the sidecar's user or have access to its files. Connect it over MCP only, as [`docs/integrations/hermes.md`](integrations/hermes.md) does, including when Hermes runs on another machine.
+Anyone who can run `pnpm pair`, call `vault_create_pairing_link`, or write the sidecar's database acts as the operator. They could pair a phone of their own, which would revoke the owner's. Treat `MCP_TOKEN` as that operator secret when this tool is served. An agent must never run as the sidecar's user or have access to its files. Connect it over MCP only, as [`docs/integrations/hermes.md`](integrations/hermes.md) does, including when Hermes runs on another machine.
 
 ## Pairing
 

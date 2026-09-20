@@ -1,0 +1,11 @@
+# The feed broker image: official Centrifugo with this module's pinned config.
+# App Platform cannot bind-mount centrifugo.yaml, so the file is copied in.
+# Secrets stay in the environment (CENTRIFUGO_HTTP_API_KEY,
+# CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY, CENTRIFUGO_ENGINE_REDIS_ADDRESS).
+#
+# Build from feed-gateway/:
+#   docker buildx build --platform linux/amd64 -f Dockerfile.centrifugo \
+#     -t brenat/seeker-agent-connect:centrifugo-0.1.1 .
+FROM centrifugo/centrifugo:v6.9.6
+COPY --chown=1000:1000 centrifugo.yaml /centrifugo/config.yaml
+CMD ["centrifugo", "-c", "/centrifugo/config.yaml"]

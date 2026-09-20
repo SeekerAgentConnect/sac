@@ -71,5 +71,7 @@ export type { PairedPhone } from "./storage/pairing-store.ts";
 export {
   invalidServerUrlReason,
   normalizeServerUrl,
+  pairingHttpsUrl,
+  pairingUri,
   parsePairingUri,
 } from "./pairing/uri.ts";

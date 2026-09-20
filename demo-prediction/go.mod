@@ -12,6 +12,7 @@ go 1.27.1
 require (
 	connectrpc.com/connect v1.21.0
 	github.com/BrRenat/SeekerAgentWallet/publisher-support v0.0.0
+	golang.org/x/crypto v0.42.0
 )
 
 require (

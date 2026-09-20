@@ -9,7 +9,11 @@
  * pairing code is the one place a token is shown, because showing it is how pairing works.
  */
 import { renderUnicodeCompact } from "uqr";
-import { openDirectServer, type PairedPhone } from "@seeker-vault/server-sdk";
+import {
+  openDirectServer,
+  pairingHttpsUrl,
+  type PairedPhone,
+} from "@seeker-vault/server-sdk";
 
 import { ConfigError, loadSidecarConfig } from "../config.ts";
 
@@ -77,6 +81,9 @@ export async function runPairingCommand(
       "",
       "Or enter the code by hand:",
       uri,
+      "",
+      "HTTPS landing page (opens the same deep link):",
+      pairingHttpsUrl(issued),
       "",
     ];
     if (new URL(issued.serverUrl).protocol === "http:") {

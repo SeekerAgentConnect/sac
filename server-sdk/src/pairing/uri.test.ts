@@ -5,6 +5,7 @@ import {
   invalidServerUrlReason,
   isSecret,
   normalizeServerUrl,
+  pairingHttpsUrl,
   pairingUri,
   parsePairingUri,
 } from "./uri.ts";
@@ -145,5 +146,34 @@ describe("pairing URIs", () => {
       reason:
         "the server URL must use HTTPS; plain HTTP is allowed only on loopback, for development",
     });
+  });
+
+  it("reads the HTTPS landing page as the same code as the deep link", () => {
+    const code = {
+      serverUrl: "https://vault.example.com",
+      serverId: SERVER_ID,
+      token: TOKEN,
+    };
+    const httpsUrl = pairingHttpsUrl(code);
+    assert.equal(
+      httpsUrl,
+      `https://vault.example.com/pair?v=1&url=https%3A%2F%2Fvault.example.com&server=${SERVER_ID}&token=${TOKEN}`,
+    );
+    assert.deepEqual(parsePairingUri(httpsUrl), { ok: true, code });
+    const withSlash = new URL(httpsUrl);
+    withSlash.pathname = "/pair/";
+    assert.deepEqual(parsePairingUri(withSlash.toString()), { ok: true, code });
+    assert.deepEqual(
+      parsePairingUri(
+        pairingHttpsUrl({
+          ...code,
+          serverUrl: "http://127.0.0.1:8080",
+        }),
+      ),
+      {
+        ok: true,
+        code: { ...code, serverUrl: "http://127.0.0.1:8080" },
+      },
+    );
   });
 });

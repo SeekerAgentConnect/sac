@@ -460,6 +460,44 @@ describe("loadSidecarConfig", () => {
     );
   });
 
+  it("configures cleartext HTTP/2 on the main listener for a TLS HTTP/2 reverse proxy", () => {
+    const config = loadSidecarConfig({
+      ...validEnv,
+      SIDECAR_PUBLIC_URL: "https://seeker-mcp.example",
+      SIDECAR_H2C: "true",
+    });
+    assert.equal(config.h2c, true);
+    assert.equal(config.publicUrl, "https://seeker-mcp.example");
+    assert.deepEqual(
+      problemsFor({
+        ...validEnv,
+        SIDECAR_H2C: "true",
+      }),
+      ["SIDECAR_PUBLIC_URL must use https:// when SIDECAR_H2C is true."],
+    );
+    assert.deepEqual(
+      problemsFor({
+        ...validEnv,
+        SIDECAR_PUBLIC_URL: "https://seeker-mcp.example",
+        SIDECAR_H2C: "true",
+        SIDECAR_UPDATE_PORT: "8081",
+      }),
+      ["SIDECAR_H2C cannot be combined with SIDECAR_UPDATE_PORT."],
+    );
+    assert.deepEqual(
+      problemsFor({
+        ...validEnv,
+        SIDECAR_PUBLIC_URL: "https://seeker-mcp.example",
+        SIDECAR_H2C: "true",
+        SIDECAR_TLS_CERT_PATH: "cert.pem",
+        SIDECAR_TLS_KEY_PATH: "key.pem",
+      }),
+      [
+        "SIDECAR_H2C is the reverse-proxy HTTP/2 listener and cannot be combined with the production TLS listener.",
+      ],
+    );
+  });
+
   it("refuses an RPC endpoint that isn't an HTTP URL, without echoing it", () => {
     for (const url of [
       "wss://rpc.example.com/?api-key=s3cret",

@@ -44,6 +44,10 @@ describe("seeker-agent-connect-mcp pair", () => {
     const parsed = parsePairingUri(uri ?? "");
     assert.ok(parsed.ok, "the printed URI is a valid pairing code");
     assert.equal(parsed.code.serverUrl, "https://vault.example.ts.net");
+    assert.match(
+      stdout,
+      /https:\/\/vault\.example\.ts\.net\/pair\?v=1&url=https%3A%2F%2Fvault\.example\.ts\.net/,
+    );
     // The printed token is the one the sidecar will accept.
     const db = openDatabase(databasePath);
     try {

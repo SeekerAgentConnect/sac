@@ -67,15 +67,36 @@ export function isSecret(token: string): boolean {
   return SECRET.test(token);
 }
 
-/** The pairing URI: `seekervault://pair?v=1&url=<server URL>&server=<server ID>&token=<token>`. */
-export function pairingUri(code: PairingCode): string {
-  const query = new URLSearchParams({
+/** Query shared by the app deep link and the HTTPS landing page. */
+function pairingQuery(code: PairingCode): string {
+  return new URLSearchParams({
     v: PAIRING_URI_VERSION,
     url: code.serverUrl,
     server: code.serverId,
     token: code.token,
-  });
-  return `seekervault://pair?${query.toString()}`;
+  }).toString();
+}
+
+/** The pairing URI: `seekervault://pair?v=1&url=<server URL>&server=<server ID>&token=<token>`. */
+export function pairingUri(code: PairingCode): string {
+  return `seekervault://pair?${pairingQuery(code)}`;
+}
+
+/**
+ * HTTPS (or loopback HTTP) landing page for the same code: `<origin>/pair?<query>`.
+ * Opening it in a browser redirects to {@link pairingUri}.
+ */
+export function pairingHttpsUrl(code: PairingCode): string {
+  return `${new URL(normalizeServerUrl(code.serverUrl)).origin}/pair?${pairingQuery(code)}`;
+}
+
+/** The custom-scheme deep link, or this server's `/pair` landing page with the same query. */
+function isPairingLink(uri: URL): boolean {
+  if (uri.protocol === "seekervault:" && uri.hostname === "pair") return true;
+  const path = uri.pathname.replace(/\/+$/, "") || "/";
+  if (path !== "/pair") return false;
+  if (uri.protocol === "https:") return true;
+  return uri.protocol === "http:" && LOOPBACK_HOSTS.has(uri.hostname);
 }
 
 /** Reads a pairing URI the way the phone does, and says why it can't be used when it can't. */
@@ -86,7 +107,7 @@ export function parsePairingUri(text: string): ParsedPairingUri {
   } catch {
     return failure("this isn't a pairing code");
   }
-  if (uri.protocol !== "seekervault:" || uri.hostname !== "pair") {
+  if (!isPairingLink(uri)) {
     return failure("this isn't a Seeker Agent Connect pairing code");
   }
   const query = uri.searchParams;

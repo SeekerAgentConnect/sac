@@ -32,6 +32,7 @@ import { temporaryDatabasePath } from "../testing/process.ts";
 import { testWallet } from "../../../server-sdk/src/testing/wallet.ts";
 import { decodeBase58 } from "../../../server-sdk/src/requests/action.ts";
 import { verifySignature } from "../../../server-sdk/src/requests/signature.ts";
+import { CREATE_PAIRING_LINK_TOOL } from "../pairing/mcp-tool.ts";
 import {
   CANCEL_REQUEST_TOOL,
   GET_ADDRESS_TOOL,
@@ -167,6 +168,7 @@ describe("durable requests over MCP and Connect", () => {
       tools.map((tool) => tool.name).sort(),
       [
         CANCEL_REQUEST_TOOL,
+        CREATE_PAIRING_LINK_TOOL,
         "vault_display_command",
         GET_ADDRESS_TOOL,
         GET_CAPABILITIES_TOOL,
@@ -192,6 +194,7 @@ describe("durable requests over MCP and Connect", () => {
         tools.map((tool) => tool.name).sort(),
         [
           CANCEL_REQUEST_TOOL,
+          CREATE_PAIRING_LINK_TOOL,
           "vault_display_command",
           GET_ADDRESS_TOOL,
           GET_CAPABILITIES_TOOL,

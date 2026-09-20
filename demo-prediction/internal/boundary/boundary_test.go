@@ -104,7 +104,8 @@ func TestOnlyThisDemosOwnMainBuildsTheProvider(t *testing.T) {
 		}
 		switch path {
 		case "cmd/prediction/main.go", "internal/discovery/discovery.go",
-			"internal/discovery/reconcile.go", "internal/config/config.go":
+			"internal/discovery/reconcile.go", "internal/discovery/search.go",
+			"internal/config/config.go":
 		default:
 			t.Fatalf("%s imports the provider's package. The provider is read in one place and "+
 				"turned into this demo's own documents; everything else is written against a "+

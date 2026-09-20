@@ -20,9 +20,13 @@ at the moment they look.
 | --- | --- | --- |
 | Kind | `signals.Swap` → `jupiter.swap` | **`signals.Prediction` → `jupiter.prediction`** |
 | Who writes the signals | a trader, a script, a strategy engine | **the template itself, from a provider's listing** |
-| Its API | create, update, cancel, read | **read only; the three writing endpoints answer 403** |
+| Its API | create, update, cancel, read | **read only for callers; the three writing endpoints answer 403. Operators may `GET /v1/discovery/markets` and `POST /v1/discovery/select` (SEE-138)** |
 | Reads anything outside | no | **yes: the provider's public listing** |
 | Holds | signals, and what the gateway confirmed | **the same, plus the markets it is tracking** |
+
+`cmd/prediction-admin` (SEE-138) is a password-gated HTML client of that API: it lists the signals
+already on the feed, searches the provider listing with typed filters, and asks discovery to publish
+a named market. Callers still cannot `POST /v1/requests`. Side and stake stay on the phone.
 
 Everything else is shared, and deliberately: the configuration, the store, the outbox, the drainer,
 the manifest and the API are [`publisher-support/`](../../publisher-support), a source library that

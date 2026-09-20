@@ -190,7 +190,7 @@ func run(log *slog.Logger) error {
 
 	service := &http.Server{
 		Addr: settings.APIAddress,
-		Handler: api.New(api.Plan{
+		Handler: demoapi.Overlay(api.New(api.Plan{
 			Documents: documents,
 			Drainer:   drainer,
 			Kind:      kind,
@@ -199,13 +199,17 @@ func run(log *slog.Logger) error {
 			Log:       log,
 			Now:       time.Now,
 			// Nobody may write a signal here: they are this template's own, and a caller's would
-			// be undone by the next cycle (internal/api).
+			// be undone by the next cycle (internal/api). Selecting a market is discovery writing,
+			// not a caller posting a request (SEE-138).
 			Authorship: api.ByDiscovery,
 			Markets:    documents,
 			// The reconciler, described: what this demo looks for is a provider's vocabulary, and
 			// the shared frame renders it without knowing what any of it means (internal/api).
 			Cycles: demoapi.Cycles{Reconciler: reconciler},
-		}).Handler(),
+		}).Handler(), settings.APIToken, reconciler, func(ctx context.Context) error {
+			_, err := drainer.Pass(ctx)
+			return err
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
