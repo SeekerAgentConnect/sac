@@ -46,7 +46,7 @@ function instructionsFor(demoTools: boolean, transfers: boolean): string {
     "Every request waits for the owner to approve it by hand; vault_get_capabilities says what this sidecar actually serves.",
     "vault_display_command is a live diagnostic: it shows text on the open live-test screen and waits for the owner's OK.",
     "vault_get_address reads the wallet the owner connected, and vault_sign_message asks that wallet to sign a message, returning at once with a request_id.",
-    "vault_create_pairing_link issues a one-use seekervault://pair deep link and an https://…/pair landing page; the owner still confirms on the phone.",
+    "vault_create_pairing_link issues a one-use pairing code: show https_url as Connect your phone (it opens a page; the page's button opens the app) and pairing_uri as the copy/paste fallback; always display any warning with the link. The owner still confirms on the phone.",
     ...(demoTools
       ? [
           "vault_request_ack, a development and demo tool, queues text for the owner to acknowledge later, and returns at once with a request_id.",

@@ -7,7 +7,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
-import { pairingHttpsUrl, type IssuedPairing } from "@seeker-vault/server-sdk";
+import type { IssuedPairing } from "@seeker-vault/server-sdk";
+
+import { pairingLandingUrl, REPLACEMENT_WARNING } from "./fragment.ts";
 
 export const CREATE_PAIRING_LINK_TOOL = "vault_create_pairing_link";
 
@@ -17,18 +19,19 @@ export interface PairingLinkView {
   readonly server_url: string;
   readonly expires_at: string;
   readonly replaces?: string;
+  readonly warning?: string;
 }
 
 const PAIRING_LINK_SCHEMA = {
   pairing_uri: z
     .string()
     .describe(
-      "The seekervault://pair deep link. Open it on the phone or paste it under Add connection.",
+      "The seekervault://pair deep link. Copy/paste fallback if the HTTPS page's button does not open the app. Paste it under Add connection.",
     ),
   https_url: z
     .string()
     .describe(
-      "The same code as an https://…/pair link. Opening it in a browser opens the app.",
+      "Primary Connect-your-phone link: https://<origin>/pair#<fragment>. Opens a pairing page on this server. The page's button opens the app. This is not Android App Link configuration, and the app is not guaranteed to open in every browser.",
     ),
   server_url: z
     .string()
@@ -42,17 +45,26 @@ const PAIRING_LINK_SCHEMA = {
     .string()
     .optional()
     .describe(
-      "The currently paired connection this code would replace, if a phone is paired now.",
+      "The currently paired connection this code would replace, if a phone is paired now. Issuing or opening the link does not disconnect it.",
+    ),
+  warning: z
+    .string()
+    .optional()
+    .describe(
+      "Show this replacement warning together with the link when a phone is already paired. Creating or opening the link does not disconnect that phone.",
     ),
 };
 
 const PAIRING_LINK_DESCRIPTION =
   "Issues a one-use pairing code for Seeker Agent Connect, the same code the operator CLI " +
-  "prints. Returns pairing_uri (the seekervault://pair deep link) and https_url (this " +
-  "server's /pair landing page, which opens that deep link). The code works once, for a " +
-  "few minutes, and a newer code voids an unused one. Whoever opens it first becomes the " +
-  "paired phone and revokes the phone paired now. It does not pair by itself: the owner " +
-  "still confirms on the phone. Keep the links private; they carry the pairing token.";
+  "prints. Returns https_url (this server's /pair page; show it as Connect your phone) and " +
+  "pairing_uri (the seekervault://pair copy/paste fallback). The HTTPS link opens a page; " +
+  "the page's button opens the app. Do not promise automatic Android App Link behaviour. " +
+  "Always display any warning field together with the link. The code works once, expires at " +
+  "expires_at, and must be kept private. A newer code voids an unused one. Whoever completes " +
+  "pairing first becomes the paired phone and revokes the phone paired now; creating or " +
+  "opening the link does not disconnect it. It does not pair by itself: the owner still " +
+  "confirms on the phone.";
 
 export function registerPairingLinkTool(
   server: McpServer,
@@ -76,19 +88,44 @@ export function registerPairingLinkTool(
     (): CallToolResult => {
       const issued = issue();
       log("pairing link issued");
+      const expiresAt = new Date(issued.expiresAtMs).toISOString();
+      const replacing = issued.replaces;
       const view: PairingLinkView = {
         pairing_uri: issued.uri,
-        https_url: pairingHttpsUrl(issued),
+        https_url: pairingLandingUrl(issued),
         server_url: issued.serverUrl,
-        expires_at: new Date(issued.expiresAtMs).toISOString(),
-        ...(issued.replaces === undefined
+        expires_at: expiresAt,
+        ...(replacing === undefined
           ? {}
-          : { replaces: issued.replaces.connectionId }),
+          : {
+              replaces: replacing.connectionId,
+              warning: REPLACEMENT_WARNING,
+            }),
       };
       return {
-        content: [{ type: "text", text: JSON.stringify(view) }],
+        content: [{ type: "text", text: humanPairingLink(view) }],
         structuredContent: { ...view },
       };
     },
   );
+}
+
+export function humanPairingLink(view: PairingLinkView): string {
+  const lines = [
+    "Connect your phone",
+    "",
+    "Open this HTTPS link on the phone. It opens a pairing page on this server. The page's button opens Seeker Agent Connect. Opening the app is not guaranteed in every browser.",
+    "",
+    view.https_url,
+    "",
+    "If the app does not open, copy this pairing code and paste it under Add connection:",
+    "",
+    view.pairing_uri,
+    "",
+    `This code works once and expires at ${view.expires_at}. Keep it private; it carries the pairing token. Sharing the link shares the code. The fragment keeps the token out of the initial HTTP request, but the link is still a secret.`,
+  ];
+  if (view.warning !== undefined) {
+    lines.push("", view.warning);
+  }
+  return lines.join("\n");
 }

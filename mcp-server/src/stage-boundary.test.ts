@@ -126,6 +126,8 @@ describe("stage boundary", () => {
       return (
         !path.startsWith("mcp-server/src/storage/") &&
         !path.startsWith("server-sdk/src/storage/") &&
+        // Bundled /pair page bytes only. This file does not open SQLite.
+        path !== "mcp-server/src/pairing/link.ts" &&
         STORAGE_IMPORT.test(readFileSync(file, "utf8"))
       );
     });
