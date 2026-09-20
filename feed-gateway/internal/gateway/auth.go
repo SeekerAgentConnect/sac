@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"net"
+	"net/netip"
 	"regexp"
 	"strings"
 
@@ -68,22 +69,21 @@ func unauthenticated() *connect.Error {
 }
 
 // caller is who a rate limit counts against: the address the request came from, or — when the
-// request came from a proxy on this machine — the address the proxy says it came from.
+// request came from a configured proxy — the address the proxy says it came from.
 //
-// The forwarded address is trusted only from loopback, and that is what makes trusting it safe: a
-// remote client cannot make its own connection appear to come from 127.0.0.1, and the deployment
-// this gateway ships with puts Caddy in front of it on the same host (feed-gateway/Caddyfile). Without
-// the rule, every read in that deployment would count against one address and the limit would be a
-// limit on the gateway rather than on a client.
+// Loopback is always trusted. An ordinary container proxy must be in one of the deployment's
+// explicit prefixes; forwarded headers from every other peer are ignored. Without that condition,
+// every read behind Caddy would count against one address. Without the allow-list, any container or
+// remote client could choose its own rate-limit identity.
 //
 // It is still only a backstop. A reverse proxy sees a client before the gateway does and is where
 // a serious limit belongs; this one bounds what one address can cost the store.
-func caller(peer string, forwarded string) string {
+func caller(peer string, forwarded string, trusted []netip.Prefix) string {
 	host := peer
 	if parsed, _, err := net.SplitHostPort(peer); err == nil {
 		host = parsed
 	}
-	if !isLoopback(host) || forwarded == "" {
+	if !isTrustedProxy(host, trusted) || forwarded == "" {
 		return host
 	}
 	// The last entry is the one this hop received the request from, which is the only one that
@@ -97,6 +97,22 @@ func caller(peer string, forwarded string) string {
 		return parsed
 	}
 	return last
+}
+
+func isTrustedProxy(host string, trusted []netip.Prefix) bool {
+	if isLoopback(host) {
+		return true
+	}
+	address, err := netip.ParseAddr(strings.Trim(host, "[]"))
+	if err != nil {
+		return false
+	}
+	for _, prefix := range trusted {
+		if prefix.Contains(address) {
+			return true
+		}
+	}
+	return false
 }
 
 func isLoopback(host string) bool {

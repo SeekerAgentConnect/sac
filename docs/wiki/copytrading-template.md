@@ -249,7 +249,7 @@ two phones is the owner's device run
 ## The demo trader page (SEE-126)
 
 `cmd/copytrading-admin` is a **client** of this API, not a second write path. It serves a
-password-gated HTML page on `/trader` for hackathon judges: create, list, cancel and retry sandbox
-swap signals. The publisher token never enters the browser. The one-server deployment attaches that
-page to the existing gateway origin; `/v1` stays on host loopback. See
-[`deploy/server/README.md`](../../deploy/server/README.md).
+password-gated HTML page for hackathon judges: create, list, cancel and retry sandbox swap signals.
+The publisher token never enters the browser. `deploy/copytrading` makes the page an opt-in
+host-loopback profile; neither it nor `/v1` is placed on the public feed ingress. See
+[`deploy/README.md`](../../deploy/README.md).

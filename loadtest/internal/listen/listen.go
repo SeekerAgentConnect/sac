@@ -115,7 +115,7 @@ type Client struct {
 //
 // `streamURL` is where the transport is: the broker's own unidirectional gRPC port in a native run,
 // or a deployment's public origin, where the proxy forwards exactly this one procedure and nothing
-// else (feed-gateway/Caddyfile). Plain HTTP means prior-knowledge HTTP/2, because gRPC needs HTTP/2
+// else (deploy/ingress/feed/Caddyfile). Plain HTTP means prior-knowledge HTTP/2, because gRPC needs HTTP/2
 // and without TLS there is no negotiation to discover it with — the same pair the phone keeps.
 func Dial(streamURL string) *Client {
 	transport := &http.Transport{

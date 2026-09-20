@@ -140,17 +140,16 @@ Current directory names describe historical implementation choices and are not t
 | `proto/` | Shared direct/feed contracts plus compatibility reservations | Keep direct/feed contracts; never reuse retired private-gateway identifiers |
 | `server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Keep as an embeddable library with explicit initialization and no MCP/product configuration |
 | `mcp-server/` | The self-hosted MCP host, executable operator CLI, provider implementations and standalone Docker/npm packaging | Consumes `server-sdk/` through its public API; the npm artifact vendors that unpublished runtime |
-| `gateway/` | Deployment assets and reverse proxy for the direct server, including TLS/OAuth configuration | Move/name as direct-server deployment infrastructure |
+| `deploy/mcp/`, `deploy/ingress/direct/` | Portable direct server and separately managed TLS/OAuth ingress | Keep application and ingress lifecycles independent |
 | `feed-gateway/` | Shared Go feed gateway with public read and publisher listeners, a storage contract, and local SQLite implementation | Canonical public-feed service isolated in SEE-133 |
 | `publisher-support/` | The Go source library both feed demos share: generated publication bindings, document rules, manifest, store, gateway client, API and operator CLI. No command, image or deployment of its own | Non-deployable library split out in SEE-134 |
-| `demo-copytrading/` | The CopyTrading demo, whole: its commands, its admin UI, the Go create-request client for its own API in `sdk/`, and its own image and compose stack | Independent deployable demo isolated in SEE-134 |
-| `demo-prediction/` | The Prediction demo, whole: its command, its Jupiter provider client and discovery cycle, and its own image and compose stack | Independent deployable demo isolated in SEE-134 |
-| `deploy/server/` | Shared infrastructure, optional demo overlay and optional direct-server overlay | Preserve independent deployment with consistent names |
+| `demo-copytrading/` | The CopyTrading application: commands, admin UI, SDK, image | Independent preset in `deploy/copytrading/` |
+| `demo-prediction/` | The Prediction application: command, provider client, discovery cycle, image | Independent preset in `deploy/prediction/` |
+| `deploy/` | Portable feed/MCP/demo presets, separate ingress, isolated operator examples | Canonical orchestration with explicit volume identities |
 | `test-agent/` | Developer MCP client | Keep as a test/development tool |
 
-**There is one shared feed gateway.** `gateway/` is not a duplicate implementation of
-`feed-gateway/`: it contains reverse-proxy/deployment configuration for the direct server. Private
-direct traffic stays out of the public feed gateway.
+**There is one shared feed gateway.** Direct MCP traffic stays out of it; optional direct and feed
+ingress projects are separate from their applications and from each other.
 
 The cleanup task must settle and apply the final directory names consistently across code imports, generated code, build commands, Docker images, Compose, CI, scripts, examples and documentation. Directory renaming alone is not architectural cleanup.
 

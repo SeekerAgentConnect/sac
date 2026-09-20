@@ -1,0 +1,91 @@
+name: seeker-publisher
+
+services:
+  copytrading:
+    build:
+      context: ../..
+      dockerfile: demo-copytrading/Dockerfile
+    image: ${COPYTRADING_IMAGE:-seeker-publisher/copytrading:local}
+    restart: unless-stopped
+    environment:
+      PUBLISHER_SERVER_ID: ${PUBLISHER_SERVER_ID:?set PUBLISHER_SERVER_ID in deploy/copytrading/.env}
+      PUBLISHER_GATEWAY_URL: ${PUBLISHER_GATEWAY_URL:?set PUBLISHER_GATEWAY_URL in deploy/copytrading/.env}
+      PUBLISHER_PUBLISH_URL: ${PUBLISHER_PUBLISH_URL:?set PUBLISHER_PUBLISH_URL in deploy/copytrading/.env}
+      PUBLISHER_ENVIRONMENT: ${PUBLISHER_ENVIRONMENT:-sandbox}
+      PUBLISHER_DISPLAY_NAME: ${PUBLISHER_DISPLAY_NAME:-CopyTrading}
+      BROADCAST_CREDENTIAL: ${BROADCAST_CREDENTIAL:?set BROADCAST_CREDENTIAL in deploy/copytrading/.env}
+      PUBLISHER_API_TOKEN: ${PUBLISHER_API_TOKEN:?set PUBLISHER_API_TOKEN in deploy/copytrading/.env}
+      PUBLISHER_API_ADDRESS: 0.0.0.0:8092
+      PUBLISHER_DATABASE_PATH: ${PUBLISHER_DATABASE_PATH:-/data/publisher.db}
+      PUBLISHER_PUBLISH_TIMEOUT_SECONDS: ${PUBLISHER_PUBLISH_TIMEOUT_SECONDS:-}
+      PUBLISHER_CREATE_LIMIT: ${PUBLISHER_CREATE_LIMIT:-}
+    ports:
+      - "${PUBLISHER_BIND:-127.0.0.1}:${PUBLISHER_PORT:-8092}:8092"
+    networks: [egress]
+    volumes:
+      - publisher-data:/data
+    read_only: true
+    stop_grace_period: 20s
+    stop_signal: SIGTERM
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  ctl:
+    profiles: [operator]
+    build:
+      context: ../..
+      dockerfile: demo-copytrading/Dockerfile
+    image: ${COPYTRADING_IMAGE:-seeker-publisher/copytrading:local}
+    entrypoint: ["/publishctl"]
+    environment:
+      PUBLISHER_API_URL: http://copytrading:8092
+      PUBLISHER_API_TOKEN: ${PUBLISHER_API_TOKEN:?set PUBLISHER_API_TOKEN in deploy/copytrading/.env}
+    networks: [egress]
+    depends_on: [copytrading]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  copytrading-admin:
+    profiles: [admin]
+    build:
+      context: ../..
+      dockerfile: demo-copytrading/Dockerfile
+    image: ${COPYTRADING_IMAGE:-seeker-publisher/copytrading:local}
+    entrypoint: ["/copytrading-admin"]
+    restart: unless-stopped
+    environment:
+      ADMIN_LISTEN_ADDRESS: 0.0.0.0:8096
+      ADMIN_PUBLIC_PATH: /
+      ADMIN_API_URL: http://copytrading:8092
+      PUBLISHER_API_TOKEN_FILE: /run/secrets/api-token
+      ADMIN_PASSWORDS_FILE: /run/secrets/admin-passwords
+      ADMIN_SESSION_SECRET_FILE: /run/secrets/admin-session-secret
+    ports:
+      - "${COPYTRADING_ADMIN_BIND:-127.0.0.1}:${COPYTRADING_ADMIN_PORT:-8096}:8096"
+    networks: [egress]
+    depends_on: [copytrading]
+    volumes:
+      - type: bind
+        source: ${COPYTRADING_ADMIN_SECRETS_DIR:-./secrets}
+        target: /run/secrets
+        read_only: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  copytrading-pass:
+    profiles: [operator]
+    build:
+      context: ../..
+      dockerfile: demo-copytrading/Dockerfile
+    image: ${COPYTRADING_IMAGE:-seeker-publisher/copytrading:local}
+    entrypoint: ["/copytrading-admin"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  egress:
+
+volumes:
+  publisher-data:
+    name: ${COPYTRADING_VOLUME_NAME:-seeker-publisher_publisher-data}

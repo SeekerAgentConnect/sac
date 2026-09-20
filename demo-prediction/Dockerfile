@@ -65,9 +65,9 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifica
 # demo's alone: the CopyTrading demo has its own file, its own volume and its own
 # publisher identity (SEE-134).
 ENV PUBLISHER_DATABASE_PATH=/data/prediction.db
-# The API binds loopback *inside this container*, which is where the proxy in
-# front of it reaches it. It is not published to the host by the compose file;
-# that is the proxy's job.
+# The image's safe standalone default is loopback. The portable Compose preset
+# overrides it with an explicit container-network bind and publishes the API
+# directly on host loopback; no proxy is bundled with this demo.
 ENV PUBLISHER_API_ADDRESS=127.0.0.1:8092
 
 COPY --from=build /out/prediction /out/publishctl /

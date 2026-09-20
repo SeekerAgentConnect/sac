@@ -1,0 +1,10 @@
+services:
+  mcp-server:
+    environment:
+      SIDECAR_TLS_CERT_PATH: /run/tls/fullchain.pem
+      SIDECAR_TLS_KEY_PATH: /run/tls/privkey.pem
+    volumes:
+      - type: bind
+        source: ${TAILSCALE_TLS_DIR:?set TAILSCALE_TLS_DIR to the absolute certificate directory}
+        target: /run/tls
+        read_only: true

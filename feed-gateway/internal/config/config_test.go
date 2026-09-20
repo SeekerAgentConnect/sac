@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -64,6 +65,33 @@ func TestTheTwoListenersMustBeTwo(t *testing.T) {
 	_, problems := Load(environment(values))
 	if len(problems) != 1 || !strings.Contains(problems[0], "separate listeners") {
 		t.Fatalf("one socket served both APIs: %v", problems)
+	}
+}
+
+func TestTrustedProxiesAreExplicitAddressesOrPrefixes(t *testing.T) {
+	values := complete()
+	values["BROADCAST_TRUSTED_PROXIES"] = "172.30.135.0/24, 192.0.2.10"
+	settings, problems := Load(environment(values))
+	if problems != nil {
+		t.Fatal(problems)
+	}
+	want := []netip.Prefix{
+		netip.MustParsePrefix("172.30.135.0/24"),
+		netip.MustParsePrefix("192.0.2.10/32"),
+	}
+	if len(settings.TrustedProxies) != len(want) {
+		t.Fatalf("trusted proxies are %v", settings.TrustedProxies)
+	}
+	for i := range want {
+		if settings.TrustedProxies[i] != want[i] {
+			t.Fatalf("trusted proxy %d is %v, expected %v", i, settings.TrustedProxies[i], want[i])
+		}
+	}
+
+	values["BROADCAST_TRUSTED_PROXIES"] = "not-a-network"
+	settings, problems = Load(environment(values))
+	if settings != nil || len(problems) != 1 || !strings.Contains(problems[0], "BROADCAST_TRUSTED_PROXIES") {
+		t.Fatalf("an invalid trusted proxy was accepted: %v", problems)
 	}
 }
 

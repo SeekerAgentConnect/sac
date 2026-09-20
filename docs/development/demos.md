@@ -57,7 +57,7 @@ a dependency of that.
 | Written by | its callers, through the API | itself, from the provider's listing |
 | Its API | create, update, cancel, read | read only; the three writing endpoints answer 403 |
 | Its binaries | `copytrading`, `copytrading-admin`, `publishctl` | `prediction`, `publishctl` |
-| Its stack | `compose.yaml`, plus a `compose.public.yaml` overlay | `compose.yaml`, and no public overlay |
+| Its portable preset | `deploy/copytrading/compose.yaml` | `deploy/prediction/compose.yaml` |
 | Why it is shaped so | [copytrading-template.md](../wiki/copytrading-template.md) | [prediction-template.md](../wiki/prediction-template.md) |
 
 That single line — who writes the signals — is `api.Authorship` in the shared frame, and it is the
@@ -139,13 +139,12 @@ go run ./cmd/publishctl create --in 2h --note "trimming SOL into USDC" \
   --term max_slippage_bps=50
 ```
 
-In Docker, from `demo-copytrading/`: `cp .env.example .env && docker compose up -d --build`, then
-`docker compose run --rm ctl status`. The build context is the repository root, because the `replace`
-line needs `../publisher-support`; the compose file already says so, and
+In Docker, copy `deploy/copytrading/.env.example` to `.env` beside it, then start
+`deploy/copytrading/compose.yaml`. The build context is the repository root, because the `replace`
+line needs `../publisher-support`; the canonical Compose file already says so, and
 [`demo-copytrading/README.md`](../../demo-copytrading/README.md#4-build-and-run-the-image) has the
-plain `docker build` form. The internet-facing overlay is a separate command, and worth thinking
-about first — what it publishes is a write API, not the gateway's public read port:
-`docker compose -f compose.yaml -f compose.public.yaml up -d --build`.
+plain `docker build` form. There is no bundled public ingress: what it publishes is a write API,
+not the gateway's public read port.
 
 ### The Prediction demo
 
@@ -317,7 +316,7 @@ an absolute one. The answer is JSON on stdout so it can be piped; what a person 
 | `internal/admin` | That UI's implementation: named bcrypt file, sessions, CSRF, pages, its own rate limits |
 | `internal/boundary` | What this module is, as tests over its own source |
 | `sdk/` | A small Go client of this demo's request API |
-| `Dockerfile`, `compose.yaml`, `compose.public.yaml`, `Caddyfile`, `Caddyfile.public`, `.env.example` | This demo's image and stacks, and only this demo's |
+| `Dockerfile`, `.env.example` | This demo's image and application configuration; its portable preset is `deploy/copytrading` |
 
 ### demo-prediction
 
@@ -489,20 +488,18 @@ node scripts/capture-jupiter.mjs --events
 
 ## Deployment
 
-Each demo carries its own deployment assets in its own directory — the ones SAW-035 established and
-`feed-gateway/` follows — and each demo's README is the deployment guide for it, end to end:
+Each demo has an independent canonical preset under `deploy/`, and each demo's README is the
+deployment guide for it, end to end:
 identity and credential, the image, the stack, every setting, the persistent volume, health, the
 first publication, logs, common errors, backup, upgrade, rollback, and copying the demo out of the
 repository.
 
-- **[`demo-copytrading/README.md`](../../demo-copytrading/README.md)** — a `Dockerfile`, a base
-  `compose.yaml` with a `Caddyfile` on loopback, a `compose.public.yaml` overlay with a
-  `Caddyfile.public` that terminates TLS for a domain, and an `.env.example`. Compose project
-  `seeker-publisher`, volume `publisher-data`.
-- **[`demo-prediction/README.md`](../../demo-prediction/README.md)** — a `Dockerfile`, a
-  `compose.yaml` with a `Caddyfile` on loopback, and an `.env.example`. No public overlay, because
-  its signals are written by its own discovery and its API is something an operator reads. Compose
-  project `seeker-prediction`, volume `prediction-data`.
+- **[`demo-copytrading/README.md`](../../demo-copytrading/README.md)** — application image and
+  configuration plus `deploy/copytrading`: Compose project `seeker-publisher`, explicit physical
+  volume `seeker-publisher_publisher-data`.
+- **[`demo-prediction/README.md`](../../demo-prediction/README.md)** — application image and
+  configuration plus `deploy/prediction`: Compose project `seeker-prediction`, explicit physical
+  volume `seeker-prediction_prediction-data`.
 
 **Two images, not one.** Each demo's Dockerfile builds only that demo's binaries, so no provider
 client, no discovery and no prediction binary exists anywhere in the CopyTrading image, and no

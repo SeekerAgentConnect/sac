@@ -366,7 +366,7 @@ to anything, and nothing in this build treats it as one.
 The credential, and any way to choose a topic.
 
 The Firebase service account belongs to the deployment. It is a file mounted read-only into the
-gateway's container and nothing else (`feed-gateway/compose.push.yaml`), read once at startup, and no
+gateway's container and nothing else (`deploy/feed/compose.push.yaml`), read once at startup, and no
 part of it appears in an answer, an error or a log line. A publisher publishes to the gateway, as it
 always did, and the gateway is what holds this — which is the whole reason the relay is here rather
 than in each publisher's own deployment.

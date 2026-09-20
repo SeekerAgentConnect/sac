@@ -386,22 +386,24 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 - **The app keeps Android's normal certificate and host name checks,** with no certificate pinning, custom CA, or trust-all.
 - **`SIDECAR_PUBLIC_URL` is the URL that pairing codes carry.** It must be `https://`, with one exception: `http://` on `127.0.0.1`, `localhost`, or `[::1]`, for development over `adb reverse`. That's the default, and it's the Stage 1 loopback exception. The debug build allows cleartext to `127.0.0.1` and `localhost` only, and release builds allow none. The URL can have a path, but no user name, password, query, or fragment.
 - **The secure listener preserves every existing route, `/mcp` included.** `/mcp` still refuses a public host name unless `MCP_ALLOWED_HOSTS` lists it, and it always needs `MCP_TOKEN`. The paired phone credential opens production updates; every other role is refused.
-- **The Stage 7 gateway terminates TLS in front of the sidecar,** with a certificate it obtains and renews itself for a domain the operator owns. It adds no authentication and removes none, so every boundary below is still the sidecar's own. The optional OAuth profile (SAW-036) changes nothing about that: it is the sidecar, as the MCP server, that validates an access token.
+- **Optional direct ingress terminates TLS separately from the MCP deployment,** with a certificate it obtains and renews for a domain the operator owns. It adds no authentication and removes none, so every boundary below is still the MCP server's own. Optional OAuth changes nothing about that: the MCP server validates the access token.
 
-### The gateway (SAW-035)
+### Optional direct ingress (SAW-035, SEE-135)
 
-This is the deployment's reverse proxy in front of one owner's sidecar, and not the shared broadcast
-gateway of SEE-90 above: different service, different operator, different directory
+This is the optional reverse proxy in front of one owner's direct server, and not the shared feed
+gateway of SEE-90 above: different service, different operator, different deployment
 ([`feed-gateway/README.md`](../feed-gateway/README.md)).
 
-[`gateway/Caddyfile`](../gateway/Caddyfile) and [`gateway/Caddyfile.public`](../gateway/Caddyfile.public) are two configurations, not one with a switch: the first is plain HTTP on a loopback address for local work, and the second is the internet-facing one, reached through [`gateway/compose.public.yaml`](../gateway/compose.public.yaml). Making a deployment public is a different command, so loopback HTTP cannot become the public default by omission.
+The portable server in [`deploy/mcp`](../deploy/mcp) is host-loopback by default. The public
+[`deploy/ingress/direct/Caddyfile`](../deploy/ingress/direct/Caddyfile) belongs to a separate Compose
+project, so a domain and certificate cannot become an application default by omission.
 
 - **Only named endpoints exist on the public interface.** `/mcp` and the phone's pairing, request, and update services are forwarded. `/healthz`, the Stage 1 `LiveCommandService` diagnostic, and every other path are refused at the gateway and never reach the sidecar. A request for a host the deployment does not serve is closed rather than answered.
 - **The health endpoint is the operator's.** In the public configuration it binds the network namespace's loopback address, so Compose cannot publish it to the host at all: the health check and the test agent reach it, nothing outside does.
 - **Credentials pass through untouched.** The gateway never inserts an `Authorization` header and never strips one, so each service still takes only its own credential ([roles](protocol.md#roles)). It does not rewrite `Host` either, which is what keeps `/mcp`'s DNS-rebinding check real; the public deployment puts its own domain in `MCP_ALLOWED_HOSTS` instead.
 - **Requests are bounded before they reach the sidecar.** Each route caps a request body at 64 KiB, the same limit the sidecar enforces itself, so an oversized body is refused one hop earlier.
 - **No credential reaches the access log.** Caddy redacts `Authorization`, `Cookie`, `Set-Cookie`, and `Proxy-Authorization` unless `log_credentials` is turned on, and it is not turned on in either file. Turning it on would put every agent token, phone credential, and pairing token into the log at once. Pairing codes never travel as a URL or a header — they are shown to the phone and sent in a request body, which is not logged.
-- **The admin API is off.** `admin off` in both files means Caddy opens no configuration port for anything to reconfigure it through.
+- **The admin API is off.** `admin off` means Caddy opens no configuration port for anything to reconfigure it through.
 - **The live update stream is not carried.** `Subscribe` is gRPC over HTTP/2 and terminates at the sidecar's own TLS listener. Behind this gateway the sidecar speaks HTTP/1.1, no update endpoint is configured, and pairing therefore advertises none: nothing is promised that the endpoint cannot deliver.
 
 ### The authorization boundary (SAW-036)
@@ -432,7 +434,11 @@ The following older examples remain suitable for the Stage 1 diagnostic and unar
 
 Only devices on the tailnet can reach this endpoint.
 
-**Caddy,** on a machine with a public DNS name and ports 80 and 443 open. The configured form of this is the Stage 7 stack: `docker compose -f compose.yaml -f compose.public.yaml up -d --build`, described in [self-hosting](guides/self-hosting.md#going-public-tls-dns-and-ports). Outside that stack the one-liner `caddy reverse-proxy --from vault.example.com --to 127.0.0.1:8080` does the same job for the unary path, with none of the endpoint separation above. Either way, set `SIDECAR_PUBLIC_URL=https://vault.example.com`.
+**Caddy,** on a machine with a public DNS name and ports 80 and 443 open. The configured unary form
+is the independent [`deploy/ingress/direct`](../deploy/ingress/direct) project, described in
+[self-hosting](guides/self-hosting.md#optional-public-ingress). Set
+`SIDECAR_PUBLIC_URL=https://vault.example.com`. For the production update stream, use the native
+TLS listener and a raw TCP/VPN forward so HTTP/2 remains end to end.
 
 Don't use a self-signed certificate. The phone rightly refuses it, and the only way around that is weakening its checks. The automated production-listener test trusts a throwaway local certificate only inside the test process; no such trust configuration ships.
 

@@ -84,7 +84,7 @@ type Gateway struct {
 type Options struct {
 	// The gateway's canonical origin (config.Origin). It is where a phone reads the feed, and the
 	// publisher API is usually behind the same proxy on a route of its own
-	// (feed-gateway/Caddyfile) — but an operator who keeps publishing off the internet points this
+	// (deploy/ingress/feed/Caddyfile) — but an operator who keeps publishing off the internet points this
 	// at the private address instead, which is why it is its own setting and not derived.
 	URL string
 	// The credential the gateway issued, sent as `Authorization: Bearer <credential>` and never

@@ -1,13 +1,5 @@
 /**
- * The self-hosting guide against the files it describes (SAW-038).
- *
- * A deployment guide is only as good as its smallest detail: a variable renamed here and not there
- * costs an operator an evening. These checks read `docs/guides/self-hosting.md` and hold every
- * name in it to the shipped files — the settings, the Compose services and profiles, the files each
- * command names, the ports, the paths inside the image, and every relative link on the page.
- *
- * They live in the sidecar package because that is where this workspace's Node tests run;
- * `stage-boundary.test.ts` reads repository-wide files for the same reason.
+ * Keep the direct self-hosting guide tied to the canonical portable deployment.
  */
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -18,206 +10,66 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const GUIDE_PATH = "docs/guides/self-hosting.md";
 const GUIDE_DIRECTORY = "docs/guides";
-const GATEWAY = join(ROOT, "gateway");
+const COMPOSE_PATH = "deploy/mcp/compose.yaml";
 
 const guide = readFileSync(join(ROOT, GUIDE_PATH), "utf8");
-const composeFiles = [
-  "compose.yaml",
-  "compose.public.yaml",
-  "compose.oauth.yaml",
-].map((name) => readFileSync(join(GATEWAY, name), "utf8"));
-const compose = composeFiles.join("\n");
+const compose = readFileSync(join(ROOT, COMPOSE_PATH), "utf8");
 
-/** The services `compose.yaml` declares, and the profiles it puts them behind. */
-const SERVICES = ["sidecar", "gateway", "test-agent"];
-const PROFILES = ["agent"];
-
-/** Shell commands, taken from the guide's fenced blocks. */
-function commandLines(): string[] {
-  return [...guide.matchAll(/```(?:sh|console|bash)\n([\s\S]*?)```/g)]
-    .flatMap((block) => (block[1] ?? "").split("\n"))
-    .map((line) => line.replace(/^\$ /, "").trim())
-    .filter((line) => line !== "");
-}
-
-describe("the self-hosting guide", () => {
-  it("names only settings the deployment actually reads", () => {
-    // The deployment's own namespace, which is what an operator types into gateway/.env. Error
-    // codes and protocol words are not settings and are not checked here.
-    const configured = new Set(
-      [
-        readFileSync(join(GATEWAY, ".env.example"), "utf8"),
-        readFileSync(join(ROOT, ".env.example"), "utf8"),
-        compose,
-      ]
-        .join("\n")
-        .match(
-          /\b(?:MCP|SIDECAR|GATEWAY|ACME|PHONE|AGENT|SOLANA|FCM|REQUEST|PAIRING|DATABASE|LIVE)_[A-Z0-9_]+\b/g,
-        ) ?? [],
+describe("the direct self-hosting guide", () => {
+  it("uses the canonical portable MCP deployment", () => {
+    assert.match(guide, /deploy\/mcp\/compose\.yaml/);
+    assert.match(compose, /^name: seeker-agent-connect-mcp$/m);
+    assert.match(compose, /^ {2}mcp-server:$/m);
+    assert.doesNotMatch(
+      compose,
+      /^ {2}(?:feed-gateway|redis|copytrading|prediction|gateway):$/m,
     );
-    assert.ok(configured.size > 10, "found the deployment's settings");
-
-    const named = new Set(
-      guide.match(
-        /\b(?:MCP|SIDECAR|GATEWAY|ACME|PHONE|AGENT|SOLANA|FCM|REQUEST|PAIRING|DATABASE|LIVE)_[A-Z0-9_]+\b/g,
-      ) ?? [],
-    );
-    assert.ok(named.size > 10, "the guide names the settings");
-    assert.deepEqual(
-      [...named].filter((name) => !configured.has(name)).sort(),
-      [],
-      "every setting the guide names is one the stack reads",
-    );
+    assert.doesNotMatch(compose, /network_mode:/);
   });
 
-  it("runs only Compose files, services, and profiles that exist", () => {
-    const lines = commandLines().filter((line) =>
-      line.startsWith("docker compose"),
-    );
-    assert.ok(lines.length > 10, "found the guide's compose commands");
-
-    for (const line of lines) {
-      const tokens = line.split(/\s+/).slice(2);
-      // Compose's own options come before the subcommand; -f after it is somebody else's flag,
-      // such as `logs -f`. Walk the leading options, then read the subcommand and its arguments.
-      let index = 0;
-      while (tokens[index]?.startsWith("-") === true) {
-        const option = tokens[index] ?? "";
-        const value = tokens[index + 1] ?? "";
-        if (option === "-f" || option === "--file") {
-          assert.ok(
-            existsSync(join(GATEWAY, value)),
-            `${line}: gateway/${value} does not exist`,
-          );
-        }
-        if (option === "--profile") {
-          assert.ok(PROFILES.includes(value), `${line}: no such profile`);
-        }
-        index += option.includes("=") ? 1 : 2;
-      }
-      const subcommand = tokens[index] ?? "";
-      // The subcommand's own options, and the ones that take a value: `run --user root` names a
-      // user, not a service. Skipping those values is what leaves the service itself.
-      const takesValue = new Set([
-        "--user",
-        "-u",
-        "--entrypoint",
-        "--workdir",
-        "-w",
-        "--env",
-        "-e",
-        "--volume",
-        "-v",
-        "--publish",
-        "-p",
-        "--label",
-        "-l",
-        "--name",
-      ]);
-      let cursor = index + 1;
-      while (tokens[cursor]?.startsWith("-") === true) {
-        cursor += takesValue.has(tokens[cursor] ?? "") ? 2 : 1;
-      }
-      const argument = tokens[cursor] ?? "";
-
-      if (
-        ["exec", "run", "logs", "stop", "start", "restart"].includes(subcommand)
-      ) {
-        assert.ok(
-          SERVICES.includes(argument),
-          `${line}: ${argument} is not a service of this stack`,
-        );
-      }
-      if (subcommand === "cp") {
-        for (const token of tokens.slice(index + 1)) {
-          const service = /^([a-z][a-z-]*):\//.exec(token)?.[1];
-          if (service !== undefined) {
-            assert.ok(SERVICES.includes(service), `${line}: no such service`);
-          }
-        }
-      }
-      if (subcommand === "--profile" || subcommand === "-f") {
-        assert.fail(`${line}: unparsed option`);
-      }
-    }
-  });
-
-  it("names the ports the stack actually publishes", () => {
-    const base = composeFiles[0] ?? "";
-    const publicOverlay = composeFiles[1] ?? "";
-    // The host port forwards to the gateway's 8081, never to the sidecar's 8080.
+  it("publishes only the application on host loopback by default", () => {
     assert.match(
-      base,
-      /\$\{GATEWAY_BIND:-127\.0\.0\.1\}:\$\{GATEWAY_PORT:-8080\}:8081/,
+      compose,
+      /\$\{MCP_SERVER_BIND:-127\.0\.0\.1\}:\$\{MCP_SERVER_PORT:-8080\}:8080/,
     );
-    assert.match(guide, /`GATEWAY_PORT` \(default `8080`\) is the host port/);
-    assert.match(guide, /127\.0\.0\.1:8080\/healthz/);
-    // The private endpoint inside the namespace, which the guide tells operators to reach.
-    assert.match(guide, /127\.0\.0\.1:8081\/healthz/);
-    // The public overlay's two ports, and nothing else.
-    assert.match(publicOverlay, /- "80:80"/);
-    assert.match(publicOverlay, /- "443:443"/);
-    assert.match(guide, /\*\*Open exactly two ports\.\*\* 80 and 443/);
+    assert.match(guide, /default host bind is `127\.0\.0\.1:8080`/);
     assert.match(
       guide,
-      /\*\*Do not open 8080\*\*/,
-      "the guide says which port not to open",
+      /physical phone cannot reach the host's loopback address/,
     );
+    assert.match(guide, /production updates require HTTP\/2 end to end/i);
   });
 
-  it("uses the paths the image and the stack really have", () => {
-    const dockerfile = readFileSync(
-      join(ROOT, "mcp-server/Dockerfile"),
-      "utf8",
+  it("documents the exact durable identity without destructive shortcuts", () => {
+    assert.match(
+      compose,
+      /name: \$\{MCP_VOLUME_NAME:-seeker-agent-connect-mcp_mcp-data\}/,
     );
-    // `docker compose exec sidecar node mcp-server/dist/cli.js pair` is relative to WORKDIR.
-    assert.match(dockerfile, /^WORKDIR \/app$/m);
-    assert.match(dockerfile, /mcp-server\/dist\/cli\.js/);
-    assert.ok(
-      existsSync(join(ROOT, "mcp-server/src/pairing/cli.ts")),
-      "the pairing CLI the guide runs is a real entry point",
+    assert.match(
+      compose,
+      /DATABASE_PATH: \$\{DATABASE_PATH:-\/data\/sidecar\.db\}/,
     );
-    for (const command of commandLines()) {
-      const path = /node (mcp-server\/dist\/cli\.js)/.exec(command)?.[1];
-      if (path !== undefined) {
-        const source = path.replace("dist/", "src/").replace(/\.js$/, ".ts");
-        assert.ok(existsSync(join(ROOT, source)), `${command}: no ${source}`);
-      }
-    }
-    // The database path the guide backs up is the one compose gives the sidecar, and the volume
-    // name is the project name plus the volume's.
-    assert.match(compose, /DATABASE_PATH: \/data\/sidecar\.db/);
-    assert.match(compose, /^name: seeker-agent-wallet$/m);
-    assert.match(compose, /^ {2}sidecar-data:$/m);
     assert.match(guide, /seeker-agent-wallet_sidecar-data/);
+    assert.match(guide, /seeker-agent-wallet-server_sidecar-data/);
+    assert.match(guide, /Never delete an unknown volume/);
+    assert.doesNotMatch(guide, /down -v/);
+    assert.doesNotMatch(guide, /--remove-orphans/);
+  });
+
+  it("keeps ingress and host-specific networking optional", () => {
+    assert.match(guide, /independent.*deploy\/ingress\/direct/is);
+    assert.match(guide, /deploy\/operators\/tailscale/);
+    assert.match(guide, /portable\s+deployment contains no tailnet/i);
+    assert.doesNotMatch(guide, /gateway-private/);
   });
 
   it("links only to files that exist", () => {
     const links = [...guide.matchAll(/\]\((\.[^)#]*)(?:#[^)]*)?\)/g)].map(
       (match) => match[1] ?? "",
     );
-    assert.ok(links.length > 10, "found the guide's links");
-    const missing = links.filter(
-      (link) => !existsSync(join(ROOT, GUIDE_DIRECTORY, link)),
-    );
-    assert.deepEqual(missing, []);
-  });
-
-  it("links only to headings that exist on its own page", () => {
-    const anchors = new Set(
-      [...guide.matchAll(/^#{2,3} (.+)$/gm)].map((match) =>
-        (match[1] ?? "")
-          .toLowerCase()
-          .replace(/[^a-z0-9 -]/g, "")
-          .replace(/ /g, "-"),
-      ),
-    );
-    const used = [...guide.matchAll(/\]\(#([a-z0-9-]+)\)/g)].map(
-      (match) => match[1] ?? "",
-    );
-    assert.ok(used.length > 5, "found the guide's own-page links");
+    assert.ok(links.length >= 5, "found the guide's local links");
     assert.deepEqual(
-      used.filter((anchor) => !anchors.has(anchor)),
+      links.filter((link) => !existsSync(join(ROOT, GUIDE_DIRECTORY, link))),
       [],
     );
   });

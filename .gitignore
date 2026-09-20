@@ -13,8 +13,9 @@ mcp-server/package/
 .env
 .env.*
 !.env.example
-# deploy/server ships its settings template under this name.
-!.env.template
+deploy/**/secrets/
+deploy/**/backups/
+deploy/**/tls/
 local.properties
 *.jks
 *.keystore

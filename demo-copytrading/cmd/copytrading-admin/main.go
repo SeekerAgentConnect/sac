@@ -3,7 +3,7 @@
 // It is a client of the template's existing JSON API: judges log in with named bcrypt passwords,
 // this process presents PUBLISHER_API_TOKEN to loopback /v1, and the browser never sees that token.
 // Serve it behind the gateway's existing HTTPS origin on /trader — not as a public /v1, not on the
-// sidecar Funnel port, and not through compose.public.yaml.
+// sidecar Funnel port, and not through the public feed ingress.
 //
 //	copytrading-admin
 //	copytrading-admin hash judge1   # prints name:bcrypt to stdout; append that line to the file

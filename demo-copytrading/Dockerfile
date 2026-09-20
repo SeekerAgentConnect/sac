@@ -74,9 +74,9 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifica
 # /data/copytrading.db and moves the file once, deliberately
 # (demo-copytrading/README.md).
 ENV PUBLISHER_DATABASE_PATH=/data/publisher.db
-# The API binds loopback *inside this container*, which is where the proxy in
-# front of it reaches it. It is not published to the host by the compose file;
-# that is the proxy's job.
+# The image's safe standalone default is loopback. The portable Compose preset
+# overrides it with an explicit container-network bind and publishes the API
+# directly on host loopback; no proxy is bundled with this demo.
 ENV PUBLISHER_API_ADDRESS=127.0.0.1:8092
 
 COPY --from=build /out/copytrading /out/publishctl /out/copytrading-admin /

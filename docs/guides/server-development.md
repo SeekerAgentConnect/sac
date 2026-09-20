@@ -68,30 +68,39 @@ In `gateway_feed` mode the phone calls nothing of yours, so there is no path for
 
 **Three roles, and they are usually three people.** The **gateway operator** runs the shared service and decides who may publish. The **publisher developer** — you — runs a template and says what is proposed. The **phone owner** subscribes, decides, and approves. This guide is written for the second role and tells you exactly what to ask the first for.
 
-**One naming trap, once.** This repository has two directories with "gateway" in their description and they are different services with different operators. `feed-gateway/` is the **shared feed gateway**: what you publish to, what phones read from. `gateway/` is **one owner's reverse proxy in front of their own private sidecar** and has nothing to do with publishing. In the docs, "gateway" means the first when it is next to *broadcast*, *shared* or *feed*, and the second next to *reverse proxy* or *deployment*.
+**One naming trap, once.** `feed-gateway/` is the shared feed application: what you publish to and
+what phones read from. Its portable project and optional public ingress are separate directories
+under `deploy/`. The direct MCP server is a different service and operator.
 
 ## 1. Get a gateway to publish to
 
 If somebody already runs one, skip to [step 2](#2-be-registered-as-a-publisher); what you need from them is its **origin** (`https://feeds.example.com`, character for character) and a **credential**.
 
-To run your own, the deployment is already packaged — extend it rather than inventing another. From `feed-gateway/`:
+To run your own, use the packaged portable feed from the repository root:
 
 ```sh
-cd feed-gateway
-cp .env.example .env          # then generate the two broker secrets it asks for
-docker compose up -d --build
+cp deploy/feed/.env.example deploy/feed/.env
+# generate the two broker secrets it asks for
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --build
 ```
 
-That is the local-development configuration: plain HTTP, published on your loopback address only. The internet-facing one is the same file plus an overlay that terminates TLS for a domain you own, and the push relay is a third:
+That is the local reference configuration: the read and authenticated publisher listeners are
+plain HTTP on host loopback. Public ingress is an independent project; the optional push mount is
+an application overlay:
 
 ```sh
-docker compose -f compose.yaml -f compose.public.yaml up -d --build                      # HTTPS
-docker compose -f compose.yaml -f compose.public.yaml -f compose.push.yaml up -d --build  # and hints
+docker compose --env-file deploy/ingress/feed/.env -f deploy/ingress/feed/compose.yaml up -d
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
+  -f deploy/feed/compose.push.yaml up -d --build
 ```
 
-Four services start: the gateway, the broker that fans publications out, the Redis the broker keeps its recovery cache in, and the proxy in front of all of it. Only the proxy's port is ever published. **Starting the stack creates no publisher and accepts no publication** — that takes step 2, which is a deliberate local act with no network surface at all.
+The portable base starts three services: the gateway, Centrifugo, and Redis. It starts no proxy,
+demo, or MCP server. **Starting it creates no publisher** — that takes step 2, a deliberate local
+act through the operator profile with no network surface.
 
-What to read rather than have repeated here: [`feed-gateway/README.md`](../../feed-gateway/README.md) for the stack itself, [`docs/development/feed-gateway.md#configuration`](../development/feed-gateway.md#configuration) for every variable with its default and range, and [`docs/development/feed-gateway.md#deployment`](../development/feed-gateway.md#deployment) for the three ways this stack differs from the sidecar's. The TLS, DNS and port mechanics are the same ones the sidecar's deployment uses, and they are written out once in [`docs/guides/self-hosting.md#going-public-tls-dns-and-ports`](self-hosting.md#going-public-tls-dns-and-ports) — the domain must already resolve to the host and ports 80 and 443 must be reachable before the first start, because that is how the proxy obtains a certificate.
+What to read rather than have repeated here: [`feed-gateway/README.md`](../../feed-gateway/README.md)
+and [`deploy/README.md`](../../deploy/README.md). A public domain must already resolve to the host
+and ports 80 and 443 must be reachable before the optional ingress obtains a certificate.
 
 Without Docker, the same thing as two processes and a broker:
 
@@ -501,7 +510,11 @@ That is the whole payload. No proposal, no revision, no sequence, no publisher, 
 
 **Bounds.** One hint per topic per ten seconds with five in hand (`BROADCAST_PUSH_RATE`, `BROADCAST_PUSH_BURST`); over the quota a hint is dropped rather than queued, because the next one wakes a phone that reads everything anyway. One collapse key for every feed, so a phone that was off for an hour is woken once. Five-minute expiry. Nothing about a hint is retried, and a hint that fails never fails the publication — a hint is a hint, and the stream and the periodic read are what the app actually relies on.
 
-For a deployment that wants the relay on, the operator's side is `compose.push.yaml` and the walkthrough in [`docs/guides/firebase.md#the-broadcast-relay-and-feed-topics-see-92`](firebase.md#the-broadcast-relay-and-feed-topics-see-92). Note that `BROADCAST_PUSH_ENVIRONMENT` is a label the operator chooses for their topic names and decides nothing — it is not the same thing as [step 11](#11-sandbox-and-production)'s environment, and sandbox and production publishers must not share a topic.
+For a deployment that wants the relay on, the operator's side is
+`deploy/feed/compose.push.yaml` and the walkthrough in
+[`docs/guides/firebase.md#the-broadcast-relay-and-feed-topics-see-92`](firebase.md#the-broadcast-relay-and-feed-topics-see-92).
+`BROADCAST_PUSH_ENVIRONMENT` is a topic label, not [step 11](#11-sandbox-and-production)'s
+environment, and sandbox and production publishers must not share one.
 
 ## 10. A build that does not have your plugin
 

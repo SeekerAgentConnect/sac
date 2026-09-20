@@ -29,6 +29,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check:deployments
       - run: pnpm check
       - run: pnpm test:hello
       # The Stage 2 acceptance scenario: two sidecar processes with throwaway databases.

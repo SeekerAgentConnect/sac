@@ -230,7 +230,7 @@ export function createMcpEndpoint(
    * Which credential opens the endpoint. Without OAuth it is MCP_TOKEN, as it has always been.
    * With OAuth it is an access token the configured authorization server issued for this
    * deployment, and MCP_TOKEN is accepted only under a loopback Host: that is the stack's own
-   * private endpoint inside the container's network namespace (gateway/Caddyfile.public), which
+   * private endpoint inside the deployment network (deploy/ingress/direct/Caddyfile), which
    * is published nowhere, and the public gateway closes any connection that claims it.
    */
   async function authorize(

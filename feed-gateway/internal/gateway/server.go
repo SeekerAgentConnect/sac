@@ -70,7 +70,7 @@ func Build(
 		connect.WithInterceptors(
 			reporting(log),
 			Limiting(reads, func(_ context.Context, request connect.AnyRequest) string {
-				return caller(request.Peer().Addr, request.Header().Get("X-Forwarded-For"))
+				return caller(request.Peer().Addr, request.Header().Get("X-Forwarded-For"), settings.TrustedProxies)
 			}),
 		),
 	))

@@ -3,9 +3,9 @@
 # The context is the root because the service compiles the generated protocol code
 # in feed-gateway/internal/gen, which is generated from proto/ and committed.
 #
-# This is not the `gateway/` directory's image. That one is Caddy in front of one
-# owner's private sidecar (SAW-035). This is the shared service a developer's
-# publisher publishes to and every subscribed phone reads from (SEE-90).
+# This is the shared service a developer's publisher publishes to and every
+# subscribed phone reads from (SEE-90). Portable orchestration and optional
+# ingress are separate under deploy/ (SEE-135).
 
 # Pinned to the version feed-gateway/go.mod requires, so a build from a clean
 # checkout uses the toolchain the tests were run with
@@ -54,8 +54,9 @@ FROM scratch AS runtime
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 # The publications and the publisher configuration. It is the only writable path.
 ENV BROADCAST_DATABASE_PATH=/data/broadcast.db
-# Both listeners bind loopback inside the network namespace shared with Caddy.
-# Neither is published to the host by the compose file; that is the proxy's job.
+# The image's safe standalone default is loopback. The portable Compose preset
+# overrides these with explicit container-network binds and publishes only its
+# chosen host-loopback ports; optional Caddy ingress has a separate lifecycle.
 ENV BROADCAST_READ_ADDRESS=127.0.0.1:8090
 ENV BROADCAST_PUBLISHER_ADDRESS=127.0.0.1:8091
 

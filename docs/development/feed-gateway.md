@@ -57,10 +57,10 @@ curl -sS http://127.0.0.1:8090/seekervault.gateway.v1.FeedService/ListRequests \
 `PublishRequest`/`CancelRequest` and `ListRequests`/`GetRequest` are the primary SEE-108
 operations. The proposal operations remain compatibility adapters over the same rows and sequence.
 
-In Docker, from `feed-gateway/`: `cp .env.example .env && docker compose up -d --build`, then
-`docker compose run --rm ctl register --server <uuid>`. The internet-facing overlay is a separate
-command, so plain HTTP cannot become the public default by omission:
-`docker compose -f compose.yaml -f compose.public.yaml up -d --build`.
+In Docker, copy `deploy/feed/.env.example` to `deploy/feed/.env`, start
+`deploy/feed/compose.yaml`, then register through the `gateway-ctl` operator profile. Public HTTPS
+is the separate `deploy/ingress/feed` project, so plain HTTP cannot become the public default by
+omission. The exact commands are in [`feed-gateway/README.md`](../../feed-gateway/README.md).
 
 ## Configuration
 
@@ -88,7 +88,7 @@ something.
 `feed-gatewayctl` and kept as a SHA-256, so there is nothing in the environment, a process list or a
 compose file for one to leak from. SEE-92's push credential is the one thing that has to be usable
 rather than compared, and it is still not in the environment: what is configured is a **path**, the
-file is mounted read-only into the gateway alone (`compose.push.yaml`), and it is read once at
+file is mounted read-only into the gateway alone (`deploy/feed/compose.push.yaml`), and it is read once at
 startup — a missing or malformed one stops the process with a message that names the field and no
 part of its contents.
 
@@ -197,20 +197,18 @@ left after them is the device run: a real phone, a real certificate, one origin
 
 ## Deployment
 
-The assets are the ones SAW-035 established, in this service's own directory: a `Dockerfile`, a
-base `compose.yaml` with a `Caddyfile` on loopback, a `compose.public.yaml` overlay with a
-`Caddyfile.public` that terminates TLS for a domain, and an `.env.example`.
+The application image remains in this module. Canonical orchestration is in `deploy/feed`; optional
+public HTTPS/HTTP2 is a separately operated `deploy/ingress/feed` project.
 
-Three things differ from `gateway/`'s, and each for a reason:
+Three details matter:
 
 - **The runtime image is minimal.** The binary is static; the CA bundle added for SEE-92's optional
   push connection is the only runtime support file.
 - **There is no healthcheck in the gateway's container**, because a scratch image has no shell to
-  probe itself with. The proxy's healthcheck goes through the published listener and out the other
-  side, which proves more than a self-probe would.
-- **The proxy routes two upstreams**: `FeedService` to the public read listener and
+  probe itself with. The optional ingress checks the private read listener.
+- **The optional ingress routes two upstreams**: `FeedService` to the public read listener and
   `PublisherService` to the backend listener. An operator may keep publisher RPCs private while
   exposing public feed reads.
 
-`docker compose config` validates both files, and `caddy validate` both Caddyfiles, without a
-daemon — which is how they were checked here (`docs/changelog/2026-09-17.md`).
+`pnpm check:deployments` resolves every canonical Compose preset without a Docker daemon. A Caddy
+runtime can additionally validate the ingress configuration without starting applications.

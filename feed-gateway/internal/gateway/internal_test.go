@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/base64"
 	"fmt"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -138,6 +139,7 @@ func TestALimiterStaysBoundedAndForgetsTheQuietOnes(t *testing.T) {
 }
 
 func TestWhoACallIsCountedAgainst(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("172.30.135.0/24")}
 	for _, one := range []struct {
 		name      string
 		peer      string
@@ -149,6 +151,8 @@ func TestWhoACallIsCountedAgainst(t *testing.T) {
 		{"a chain of proxies", "127.0.0.1:51234", "198.51.100.1, 203.0.113.7", "203.0.113.7"},
 		{"a forwarded address with a port", "127.0.0.1:51234", "203.0.113.7:443", "203.0.113.7"},
 		{"a proxy on this machine over IPv6", "[::1]:51234", "203.0.113.7", "203.0.113.7"},
+		{"an allowed container proxy", "172.30.135.10:51234", "203.0.113.7", "203.0.113.7"},
+		{"an unlisted container claiming to be a proxy", "172.30.136.10:51234", "198.51.100.9", "172.30.136.10"},
 		// The rule that makes trusting the header safe at all: a remote caller cannot make its own
 		// connection appear to come from loopback, so its claim about who it is is ignored.
 		{"a remote caller claiming to be a proxy", "203.0.113.7:51234", "198.51.100.9", "203.0.113.7"},
@@ -157,7 +161,7 @@ func TestWhoACallIsCountedAgainst(t *testing.T) {
 		{"something that is not an address at all", "unix", "", "unix"},
 	} {
 		t.Run(one.name, func(t *testing.T) {
-			if got := caller(one.peer, one.forwarded); got != one.expected {
+			if got := caller(one.peer, one.forwarded, trusted); got != one.expected {
 				t.Fatalf("%s was counted against %q, expected %q", one.name, got, one.expected)
 			}
 		})

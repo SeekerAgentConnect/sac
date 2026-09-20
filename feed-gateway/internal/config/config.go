@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -45,6 +46,9 @@ type Config struct {
 	// Publications per second and the burst above it, per publisher.
 	PublishRate  float64
 	PublishBurst int
+	// Proxies whose X-Forwarded-For value may identify the caller for read-rate limiting. Loopback
+	// is always trusted; ordinary container networks must opt in to their exact CIDR.
+	TrustedProxies []netip.Prefix
 	// The broker that fans publications out, when one is configured (SEE-91).
 	Stream Stream
 	// The push relay that hints to phones nobody is looking at, when one is configured (SEE-92).
@@ -199,6 +203,22 @@ func Load(lookup Lookup) (*Config, []string) {
 	config.ReadBurst = int(number("BROADCAST_READ_BURST", DefaultReadBurst, 1, 100000))
 	config.PublishRate = number("BROADCAST_PUBLISH_RATE", DefaultPublishRate, 0.1, 10000)
 	config.PublishBurst = int(number("BROADCAST_PUBLISH_BURST", DefaultPublishBurst, 1, 100000))
+	for _, raw := range strings.Split(text("BROADCAST_TRUSTED_PROXIES", ""), ",") {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil {
+			address, addressErr := netip.ParseAddr(value)
+			if addressErr != nil {
+				note("BROADCAST_TRUSTED_PROXIES must contain only IP addresses or CIDR prefixes")
+				continue
+			}
+			prefix = netip.PrefixFrom(address, address.BitLen())
+		}
+		config.TrustedProxies = append(config.TrustedProxies, prefix.Masked())
+	}
 
 	// The stream, all of it or none of it. A URL with no keys would start a gateway that cannot
 	// publish to its broker and cannot grant a listener, and the first sign of it would be an

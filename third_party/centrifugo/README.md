@@ -33,6 +33,6 @@ adapter (SEE-91). `FeedBoundaryTest` fails if a second file imports them.
 3. `pnpm generate`, then read the diff of the generated Kotlin: a field number that moved or a
    message that disappeared is a wire break, and `FeedStreamContractTest` pins the fields the
    adapter depends on so the build says so.
-4. Update the pinned server version in `feed-gateway/compose.yaml`, `docs/development/toolchain.md`
+4. Update the pinned server version in `deploy/feed/compose.yaml`, `docs/development/toolchain.md`
    and `docs/wiki/feed-gateway.md` in the same commit — a client schema from one release and a
    server from another is exactly the mismatch this directory exists to prevent.

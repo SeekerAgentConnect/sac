@@ -78,8 +78,8 @@ where the deployment names it:
 
 | Service | Version | Pinned in |
 | --- | --- | --- |
-| Centrifugo | 6.9.6 | `feed-gateway/compose.yaml` (`centrifugo/centrifugo:v6.9.6`), and the schema in `third_party/centrifugo` is that release's |
-| Redis | 8.2 (alpine) | `feed-gateway/compose.yaml`; it holds a bounded recovery cache and nothing durable |
+| Centrifugo | 6.9.6 | `deploy/feed/compose.yaml` (`centrifugo/centrifugo:v6.9.6`), and the schema in `third_party/centrifugo` is that release's |
+| Redis | 8.2 (alpine) | `deploy/feed/compose.yaml`; it holds a bounded recovery cache and nothing durable |
 
 Neither is vendored, so the checks that need them take a path instead: `SEEKERVAULT_CENTRIFUGO` and
 `SEEKERVAULT_REDIS`, which `feed-gateway/internal/stream/broker_test.go`,

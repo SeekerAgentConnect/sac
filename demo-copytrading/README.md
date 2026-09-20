@@ -26,8 +26,8 @@ this process.
 | [`internal/boundary`](internal/boundary) | What this demo is, as tests over its own source |
 | [`sdk`](sdk) | A small Go client of this demo's request API |
 | [`Dockerfile`](Dockerfile) | This demo's image, and only this demo's |
-| [`compose.yaml`](compose.yaml) | The stack: this demo and a proxy on loopback. `ctl` sits behind a profile and does not start |
-| [`compose.public.yaml`](compose.public.yaml) | The internet-facing overlay — read the warning in it first |
+| [`../deploy/copytrading/compose.yaml`](../deploy/copytrading/compose.yaml) | The portable stack: this demo on host loopback. Operator tools and the admin UI are opt-in profiles |
+| [`../deploy/copytrading/.env.example`](../deploy/copytrading/.env.example) | Deployment-only settings and the explicit durable volume name |
 | [`.env.example`](.env.example) | Every setting, with its default and what it means. Copy to `.env` here, which git ignores |
 
 Everything durable — the signals, their revisions, their idempotency keys and the outbox that gets
@@ -56,8 +56,9 @@ lowercase UUID for this source and ask whoever runs the gateway to register it �
 if you run both:
 
 ```sh
-# on the gateway's host
-docker compose run --rm ctl register \
+# from the repository root, on the gateway's host
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
+  --profile operator run --rm gateway-ctl register \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
   --label "copy trading"
 ```
@@ -114,24 +115,30 @@ docker buildx build --platform linux/amd64 -f demo-copytrading/Dockerfile \
   -t demo-copytrading:local --load .
 ```
 
-The packaged stack — this demo and a proxy in front of it, and nothing else:
+The packaged stack starts this demo and nothing else:
 
 ```sh
-cd demo-copytrading
-cp .env.example .env     # fill in PUBLISHER_SERVER_ID, PUBLISHER_GATEWAY_URL,
-                         # PUBLISHER_ENVIRONMENT, BROADCAST_CREDENTIAL and a
-                         # PUBLISHER_API_TOKEN of your own
-docker compose up -d --build
-docker compose run --rm ctl status
+cp deploy/copytrading/.env.example deploy/copytrading/.env
+# fill in PUBLISHER_SERVER_ID, PUBLISHER_GATEWAY_URL, PUBLISHER_PUBLISH_URL,
+# BROADCAST_CREDENTIAL and a PUBLISHER_API_TOKEN of your own
+docker compose --env-file deploy/copytrading/.env \
+  -f deploy/copytrading/compose.yaml up -d --build
+docker compose --env-file deploy/copytrading/.env \
+  -f deploy/copytrading/compose.yaml --profile operator run --rm ctl status
 ```
+
+For the remaining Compose snippets, run from `deploy/copytrading`; Compose then reads the local
+`compose.yaml` and `.env` automatically. The base preset has no ingress, domain, certificate, feed,
+MCP server, or Prediction process.
 
 There is no image published anywhere. `seeker-publisher/copytrading:local` is a local tag that
 `docker compose up --build` produces; nothing pulls it from a registry.
 
 ## 5. Configuration
 
-Every setting, its default and what it means is in [`.env.example`](.env.example), which is the
-authority. In summary:
+Application settings are documented in [`.env.example`](.env.example); deployment-only settings
+and their examples are in [`../deploy/copytrading/.env.example`](../deploy/copytrading/.env.example).
+In summary:
 
 | Variable | Required | Default | What it is |
 | --- | --- | --- | --- |
@@ -142,12 +149,11 @@ authority. In summary:
 | `PUBLISHER_API_TOKEN` | yes | — | The grant to call this demo's own API; at least 32 characters |
 | `PUBLISHER_PUBLISH_URL` | no | the gateway URL | Where publications are *sent*, when that differs from where phones read |
 | `PUBLISHER_DATABASE_PATH` | no | `/data/publisher.db` | This demo's SQLite file |
-| `PUBLISHER_API_ADDRESS` | no | `127.0.0.1:8092` | Where its API listens |
+| `PUBLISHER_API_ADDRESS` | no | `127.0.0.1:8092` | Where its API listens from source; Compose uses the container wildcard address |
 | `PUBLISHER_DISPLAY_NAME` | no | — | A default label for a connection; never verified |
 | `PUBLISHER_PUBLISH_TIMEOUT_SECONDS` | no | `10` | How long one publication may take before it is retried |
 | `PUBLISHER_CREATE_LIMIT` | no | unlimited | New signals accepted per rolling hour |
-| `PUBLISHER_PORT` / `PUBLISHER_BIND` | no | `8092` / `127.0.0.1` | Where the stack publishes the proxy on the host |
-| `PUBLISHER_DOMAIN` / `ACME_EMAIL` | only with the public overlay | — | The domain to get a certificate for, and the contact address |
+| `PUBLISHER_PORT` / `PUBLISHER_BIND` | no | `8092` / `127.0.0.1` | Where Compose publishes the API directly on the host |
 
 `BROADCAST_CREDENTIAL` and `PUBLISHER_API_TOKEN` each accept a `…_FILE` form instead, naming a file
 to read the secret from. Set one or the other, never both.
@@ -160,13 +166,13 @@ Three addresses are easy to confuse, and two of them are not interchangeable:
   against its own `BROADCAST_PUBLIC_URL` character for character, and the phone compares it with the
   feed reference the feed was added from.
 - **`PUBLISHER_PUBLISH_URL`** is where a publication is *sent*. Leave it empty when the gateway's
-  proxy serves both APIs on one origin, which is what `feed-gateway/compose.yaml` does. Point it at a
-  private address — a tunnel, a VPN, the gateway's second port — when an operator keeps publishing
-  off the internet. Getting this one wrong is the mistake with no error on the gateway's side: a read
-  origin answers 404 to a publication, because that listener has no handler that could write.
+  public feed ingress serves both APIs on one origin. Point it at a private address — a tunnel, a
+  VPN, or the gateway's publisher port — when an operator keeps publishing off the internet. Getting
+  this one wrong is the mistake with no error on the gateway's side: a read-only origin answers 404
+  to a publication, because that listener has no handler that could write.
 - **`PUBLISHER_API_ADDRESS`** is this demo's *own* business API, which is nobody's but its operator's
-  and whoever writes its signals. It binds loopback, and the packaged stack publishes the proxy in
-  front of it on `127.0.0.1:${PUBLISHER_PORT:-8092}`.
+  and whoever writes its signals. The container listens on its network address; Compose publishes
+  the API directly on `127.0.0.1:${PUBLISHER_PORT:-8092}` by default.
 
 Phones never reach `PUBLISHER_API_ADDRESS`. They do not know this process exists.
 
@@ -181,10 +187,12 @@ In the packaged stack it is the named volume `publisher-data` under the Compose 
 `seeker-publisher`, mounted at `/data`, owned by uid/gid 10001:10001. The rest of the image is
 read-only.
 
-The volume, the project and the file name are unchanged from the combined stack this module was
-split out of, so an operator upgrading mounts the same data and finds the same publisher identity,
-revisions and pending publications rather than an empty database. **It is never shared with the
-Prediction demo**, which has its own file, its own volume, its own identity and its own credential.
+Those are the standalone deployment's established identities. The old combined server instead used
+`seeker-agent-wallet-server_copytrading-data` and `/data/copytrading.db`; preserving it requires
+setting **both** `COPYTRADING_VOLUME_NAME` and `PUBLISHER_DATABASE_PATH`. Inspect and back up the
+exact volume first; never merge two non-empty SQLite lineages or delete an unfamiliar volume. The
+full mapping is in [`deploy/README.md`](../deploy/README.md#persistent-identities-and-upgrades).
+This data is never shared with Prediction.
 
 ## 8. Health and a first request
 
@@ -271,22 +279,17 @@ client, not a second writer: it holds the API token and calls the same endpoints
 identity, the revision and the publication cannot be gone around through it. It is optional, it is
 started only where a deployment asks for it, and it has its own passwords file and session secret.
 
-## 9. Optional: HTTPS and the internet-facing overlay
+## 9. Optional operator access
 
 The base stack is plain HTTP on the host's loopback address, which is right for a demo whose signals
 are written on the same machine — by a person, a cron job or a strategy process beside it — and for
 a server reached over a VPN or an SSH tunnel.
 
-The internet-facing form is the base file plus an overlay, which gets a certificate for a domain you
-own:
-
-```sh
-docker compose -f compose.yaml -f compose.public.yaml up -d --build
-```
-
-**Read [`compose.public.yaml`](compose.public.yaml) before running that.** The token on this API is
-the whole grant to publish as this source: whoever holds it can say anything this publisher can say,
-to everybody subscribed. TLS keeps the token off the wire; nothing makes holding one safer.
+There is no bundled public ingress for the demo. Reach it over an SSH tunnel or private network, or
+operate a separate authenticated TLS ingress when remote strategy software genuinely needs it. The
+token is the whole grant to publish as this source, so exposing the API is a deliberate operator
+decision rather than a portable default. The optional admin UI is also a host-loopback Compose
+profile; it is never placed on the public feed ingress.
 
 There is no FCM, OAuth or provider configuration here. Push is the gateway's
 ([`docs/guides/firebase.md`](../docs/guides/firebase.md)), OAuth belongs to the direct server, and
@@ -296,7 +299,7 @@ this demo has no provider at all.
 
 ```sh
 docker compose ps
-docker compose logs --tail=100 copytrading proxy
+docker compose logs --tail=100 copytrading
 docker compose run --rm ctl list
 curl --fail "http://127.0.0.1:${PUBLISHER_PORT:-8092}/healthz"
 ```
@@ -326,11 +329,12 @@ docker run --rm \
 docker compose start copytrading
 ```
 
-To upgrade, take that backup, then `docker compose up -d --build`. The Compose project is still
-`seeker-publisher` and the durable volume still `publisher-data`, so an existing installation reuses
-its data across the split into separate modules; no identity is regenerated because a directory
-changed. To roll back, stop the service, restore the archive into the same empty volume, and start
-the previous image. Never point an older binary at a newer database file.
+To upgrade, take that backup, then `docker compose up -d --build`. The default Compose project is
+still `seeker-publisher` and its physical volume is explicitly
+`seeker-publisher_publisher-data`. If migrating an old combined installation, configure its exact
+volume and database path using the mapping in `deploy/README.md`; do not remove volumes to silence
+Compose warnings. To roll back, stop the service, restore the archive into the same empty volume,
+and start the previous image. Never point an older binary at a newer database file.
 
 Restarting, upgrading or rolling back this demo does nothing to the Prediction demo or to the
 gateway: three processes, three lifecycles, three sets of durable state.

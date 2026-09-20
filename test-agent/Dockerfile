@@ -4,7 +4,7 @@
 # lockfile and catalog resolve this package's dependencies.
 #
 # This is a CLI, not a service. It runs one command and exits; it holds no key,
-# and it is not an LLM. Nothing here starts on its own — see gateway/compose.yaml,
+# and it is not an LLM. Nothing here starts on its own — see deploy/mcp/compose.yaml,
 # where it sits behind the `agent` profile.
 
 ARG NODE_VERSION=24.21.0

@@ -3,8 +3,8 @@
 `feed-gateway/` is the independently buildable shared public-feed service. Authenticated publisher
 backends publish public manifests and feed documents once; anonymous clients read those documents.
 The gateway never routes a private request, holds a subscriber decision, or contacts a publisher.
-The similarly named [`gateway/`](../gateway) is a private sidecar reverse proxy and is not this
-service.
+Portable orchestration lives under [`deploy/feed/`](../deploy/feed); optional public routing lives
+separately under [`deploy/ingress/feed/`](../deploy/ingress/feed).
 
 The runtime is intentionally small:
 
@@ -84,20 +84,23 @@ docker run --rm --name feed-gateway \
   seeker-feed-gateway/gateway:local
 ```
 
-This direct `docker run` is a loopback-only development example. For the packaged stack, copy
-`.env.example` to `.env`, create the two Centrifugo secrets it requests, then run from this
-directory:
+This direct `docker run` is a loopback-only development example. For the portable reference stack,
+copy the deployment environment, create the two Centrifugo secrets it requests, then run from the
+repository root:
 
 ```sh
-docker compose up -d --build
-docker compose ps
+cp deploy/feed/.env.example deploy/feed/.env
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --build
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml ps
 curl --fail "http://127.0.0.1:${BROADCAST_PORT:-8080}/healthz"
 ```
 
-The stack starts the gateway, Caddy, Centrifugo, and Redis. Caddy is the only published listener;
-the gateway sockets, broker API, and Redis remain inside the deployment. There is no published
-remote image assumed by this repository: `seeker-feed-gateway/gateway:local` is built locally.
-Use `compose.public.yaml` only when deploying HTTPS on a domain you control.
+The proxyless stack starts the gateway, Centrifugo, and colocated Redis—no MCP server or demo.
+Gateway read and authenticated publication ports bind host loopback; the broker API/stream and
+Redis have no host port. There is no published remote image assumed by this repository:
+`seeker-feed-gateway/gateway:local` is built locally. The independent
+[`deploy/ingress/feed/`](../deploy/ingress/feed) project adds a domain, certificates, and the
+same-origin HTTPS/HTTP2 stream without coupling proxy and application lifecycle.
 
 The image is `FROM scratch`, runs as uid/gid `10001`, and writes only `/data`. A bind mount must be
 created and owned by that identity before start:
@@ -115,8 +118,8 @@ authority. Redis is Centrifugo's disposable recovery cache and is never gateway 
 published manifest. It must be public HTTPS, except that loopback HTTP is accepted for development.
 It has no path, query, fragment, or credentials.
 
-A publisher may reach the same deployment by another address. For example, the combined demo stack
-uses `PUBLISHER_PUBLISH_URL=http://feed-gateway:8082`, while manifests still contain the external
+A publisher may reach the same deployment by another address. `PUBLISHER_PUBLISH_URL` is the actual
+authenticated endpoint it can reach, while manifests still contain the external
 `https://feeds.example.com`. Never put `feed-gateway`, another Compose hostname, `localhost` from a
 different container, or the private publication address in a manifest.
 
@@ -138,6 +141,7 @@ The process reads these variables. Empty optional values use the stated default.
 | `BROADCAST_MAX_PROPOSALS` | `200`, range 1–10000 | Maximum held feed items per publisher channel |
 | `BROADCAST_READ_RATE` / `BROADCAST_READ_BURST` | `20` / `60` | Read requests per second and burst per caller |
 | `BROADCAST_PUBLISH_RATE` / `BROADCAST_PUBLISH_BURST` | `2` / `20` | Publications per second and burst per publisher |
+| `BROADCAST_TRUSTED_PROXIES` | empty | Exact IP/CIDR allow-list whose forwarded client address may key read limiting; loopback is always trusted |
 | `BROADCAST_STREAM_URL` | empty/off | Internal Centrifugo HTTP API origin |
 | `BROADCAST_STREAM_API_KEY` | required with stream URL | Key used only to publish to Centrifugo |
 | `BROADCAST_STREAM_TOKEN_KEY` | required with stream URL | HMAC key used to mint listener tickets |
@@ -148,9 +152,11 @@ The process reads these variables. Empty optional values use the stated default.
 | `BROADCAST_PUSH_ENVIRONMENT` | required with push | `production` or `sandbox`, included in topic scope |
 | `BROADCAST_PUSH_RATE` / `BROADCAST_PUSH_BURST` | `0.1` / `5` | Content-free hints per topic per second and burst |
 
-The Compose files additionally use `BROADCAST_BIND`, `BROADCAST_PORT`, `BROADCAST_DOMAIN`,
-`ACME_EMAIL`, `CENTRIFUGO_API_KEY`, `CENTRIFUGO_TOKEN_KEY`, `REDIS_MAX_MEMORY`, and the host-side
-`BROADCAST_PUSH_CREDENTIALS_FILE`; [`.env.example`](.env.example) documents each one.
+The portable Compose files additionally use the host bind/port and physical volume/network names,
+`CENTRIFUGO_API_KEY`, `CENTRIFUGO_TOKEN_KEY`, `CENTRIFUGO_REDIS_URL`, its supported Redis TLS trust
+and client-identity settings, `REDIS_MAX_MEMORY`, and the optional host-side push credential. The exact contract is
+[`deploy/feed/.env.example`](../deploy/feed/.env.example). Redis authentication belongs in its
+`redis://`/`rediss://` URL; no Redis port is published.
 
 ## Register a publisher
 
@@ -166,10 +172,10 @@ Registration is deliberately not an RPC. Run the operator tool against the same 
 It prints one bearer credential once and stores only its SHA-256 hash. In the packaged stack:
 
 ```sh
-docker compose run --rm ctl register \
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml run --rm gateway-ctl register \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
   --label "example publisher"
-docker compose run --rm ctl list
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml run --rm gateway-ctl list
 ```
 
 Use `rotate --server …` before changing a publisher secret, then
@@ -265,6 +271,12 @@ API key, and token key are all required. Centrifugo is external to the gateway p
 wired to Centrifugo, not imported or contacted by the gateway. The broker contains only evictable
 recovery history. A listener that cannot recover reads the SQLite-backed snapshot.
 
+The proxyless preset intentionally leaves the stream URL empty: its raw read and broker ports are
+not one origin. Enable tickets only after the optional feed ingress is running, then use the
+internal `http://centrifugo:8000` API URL while `BROADCAST_PUBLIC_URL` remains the external HTTPS
+feed/stream origin. Copy the Centrifugo API and token secrets into the gateway's corresponding
+`BROADCAST_STREAM_*` settings at that point. This avoids issuing a ticket for an unrouted stream.
+
 Push is similarly off until all of `BROADCAST_PUSH_CREDENTIALS`, `BROADCAST_PUSH_ENDPOINT`, and
 `BROADCAST_PUSH_ENVIRONMENT` are configured. The credential is mounted read-only into the gateway
 only. Hints contain no document or subscriber identity; topic membership remains Firebase's.
@@ -274,9 +286,9 @@ only. Hints contain no document or subscriber identity; topic membership remains
 Useful checks:
 
 ```sh
-docker compose ps
-docker compose logs --tail=100 feed-gateway proxy centrifugo redis
-docker compose run --rm ctl list
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml ps
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml logs --tail=100 feed-gateway centrifugo redis
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml run --rm gateway-ctl list
 curl --fail "http://127.0.0.1:${BROADCAST_PORT:-8080}/healthz"
 ```
 
@@ -288,16 +300,18 @@ For a consistent backup, stop the writer, archive the existing named volume, and
 
 ```sh
 mkdir -p backups
-docker compose stop feed-gateway
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml stop feed-gateway
 docker run --rm \
   -v seeker-broadcast_broadcast-data:/from:ro \
   -v "$PWD/backups:/to" alpine:3.22 \
   tar -C /from -czf /to/feed-gateway-data.tgz .
-docker compose start feed-gateway
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml start feed-gateway
 ```
 
-The Compose project remains `seeker-broadcast` and its durable volume remains `broadcast-data`, so
-an existing installation reuses its data after the directory/service rename. On first open, the
+The Compose project remains `seeker-broadcast` and defaults to the physical volume
+`seeker-broadcast_broadcast-data`, so the current standalone lineage reuses its data. The combined
+server lineage is selected explicitly with `BROADCAST_VOLUME_NAME`; see
+[`deploy/README.md`](../deploy/README.md#persistent-identities-and-upgrades). On first open, the
 gateway transactionally migrates schema v2 to v3, preserving all public manifests, feed items,
 publisher credentials, sequences, and pending notices while retiring the removed private-routing
 tables. Take the backup before upgrading.

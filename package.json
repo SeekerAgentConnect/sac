@@ -21,6 +21,7 @@
     "check:publisher-support": "node scripts/check-demos.mjs publisher-support",
     "check:copytrading": "node scripts/check-demos.mjs demo-copytrading",
     "check:prediction": "node scripts/check-demos.mjs demo-prediction",
+    "check:deployments": "node scripts/check-deployments.mjs",
     "design:capture": "npm --prefix design/tools run capture --",
     "check:android": "android/gradlew -p android spotlessCheck checkDesignSystemLiterals :designsystem:verifyRoborazziDebug :app:verifyRoborazziDebug :designsystem:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest",
     "check:format": "prettier --check . && buf format --diff --exit-code",

@@ -1,0 +1,133 @@
+name: seeker-broadcast
+
+services:
+  feed-gateway:
+    build:
+      context: ../..
+      dockerfile: feed-gateway/Dockerfile
+    image: ${BROADCAST_IMAGE:-seeker-feed-gateway/gateway:local}
+    restart: unless-stopped
+    environment:
+      BROADCAST_PUBLIC_URL: ${BROADCAST_PUBLIC_URL:-http://127.0.0.1:8080}
+      BROADCAST_READ_ADDRESS: 0.0.0.0:8090
+      BROADCAST_PUBLISHER_ADDRESS: 0.0.0.0:8091
+      BROADCAST_DATABASE_PATH: ${BROADCAST_DATABASE_PATH:-/data/broadcast.db}
+      BROADCAST_RETENTION_HOURS: ${BROADCAST_RETENTION_HOURS:-}
+      BROADCAST_MAX_PROPOSALS: ${BROADCAST_MAX_PROPOSALS:-}
+      BROADCAST_READ_RATE: ${BROADCAST_READ_RATE:-}
+      BROADCAST_READ_BURST: ${BROADCAST_READ_BURST:-}
+      BROADCAST_PUBLISH_RATE: ${BROADCAST_PUBLISH_RATE:-}
+      BROADCAST_PUBLISH_BURST: ${BROADCAST_PUBLISH_BURST:-}
+      BROADCAST_TRUSTED_PROXIES: ${BROADCAST_TRUSTED_PROXIES:-172.30.135.0/24}
+      BROADCAST_STREAM_URL: ${BROADCAST_STREAM_URL:-}
+      BROADCAST_STREAM_API_KEY: ${BROADCAST_STREAM_API_KEY:-}
+      BROADCAST_STREAM_TOKEN_KEY: ${BROADCAST_STREAM_TOKEN_KEY:-}
+      BROADCAST_TICKET_MINUTES: ${BROADCAST_TICKET_MINUTES:-}
+      BROADCAST_MAX_CHANNELS: ${BROADCAST_MAX_CHANNELS:-}
+      BROADCAST_PUSH_CREDENTIALS: ${BROADCAST_PUSH_CREDENTIALS:-}
+      BROADCAST_PUSH_ENDPOINT: ${BROADCAST_PUSH_ENDPOINT:-}
+      BROADCAST_PUSH_ENVIRONMENT: ${BROADCAST_PUSH_ENVIRONMENT:-}
+      BROADCAST_PUSH_RATE: ${BROADCAST_PUSH_RATE:-}
+      BROADCAST_PUSH_BURST: ${BROADCAST_PUSH_BURST:-}
+    ports:
+      - "${BROADCAST_BIND:-127.0.0.1}:${BROADCAST_PORT:-8080}:8090"
+      - "${BROADCAST_PUBLISH_BIND:-127.0.0.1}:${BROADCAST_PUBLISH_PORT:-8091}:8091"
+    networks:
+      - feed-ingress
+      - feed-private
+      - egress
+    depends_on:
+      centrifugo:
+        condition: service_healthy
+    volumes:
+      - broadcast-data:/data
+    read_only: true
+    stop_grace_period: 30s
+    stop_signal: SIGTERM
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  centrifugo:
+    image: centrifugo/centrifugo:v6.9.6
+    restart: unless-stopped
+    command: ["centrifugo", "-c", "/etc/centrifugo/centrifugo.yaml"]
+    environment:
+      CENTRIFUGO_HTTP_API_KEY: ${CENTRIFUGO_API_KEY:?set CENTRIFUGO_API_KEY in deploy/feed/.env}
+      CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_KEY:?set CENTRIFUGO_TOKEN_KEY in deploy/feed/.env}
+      CENTRIFUGO_ENGINE_REDIS_ADDRESS: ${CENTRIFUGO_REDIS_URL:-redis://redis:6379}
+      CENTRIFUGO_ENGINE_REDIS_PREFIX: ${CENTRIFUGO_REDIS_PREFIX:-seekervault}
+      CENTRIFUGO_ENGINE_REDIS_TLS_SERVER_CA_PEM: ${CENTRIFUGO_REDIS_TLS_SERVER_CA_PEM:-}
+      CENTRIFUGO_ENGINE_REDIS_TLS_SERVER_NAME: ${CENTRIFUGO_REDIS_TLS_SERVER_NAME:-}
+      CENTRIFUGO_ENGINE_REDIS_TLS_CERT_PEM: ${CENTRIFUGO_REDIS_TLS_CERT_PEM:-}
+      CENTRIFUGO_ENGINE_REDIS_TLS_KEY_PEM: ${CENTRIFUGO_REDIS_TLS_KEY_PEM:-}
+    volumes:
+      - ../../feed-gateway/centrifugo.yaml:/etc/centrifugo/centrifugo.yaml:ro
+    networks:
+      - feed-ingress
+      - feed-private
+      - egress
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    stop_grace_period: 35s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  redis:
+    image: redis:8.2-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - ${REDIS_MAX_MEMORY:-256mb}
+      - --maxmemory-policy
+      - allkeys-lru
+    networks:
+      - feed-private
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  gateway-ctl:
+    profiles: [operator]
+    build:
+      context: ../..
+      dockerfile: feed-gateway/Dockerfile
+    image: ${BROADCAST_IMAGE:-seeker-feed-gateway/gateway:local}
+    entrypoint: ["/feed-gatewayctl"]
+    environment:
+      BROADCAST_DATABASE_PATH: ${BROADCAST_DATABASE_PATH:-/data/broadcast.db}
+    volumes:
+      - broadcast-data:/data
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  feed-ingress:
+    name: ${FEED_INGRESS_NETWORK:-seeker-feed-ingress}
+    internal: true
+    ipam:
+      config:
+        - subnet: ${FEED_INGRESS_SUBNET:-172.30.135.0/24}
+  feed-private:
+    name: ${FEED_PRIVATE_NETWORK:-seeker-feed-private}
+    internal: true
+  egress:
+
+volumes:
+  broadcast-data:
+    name: ${BROADCAST_VOLUME_NAME:-seeker-broadcast_broadcast-data}

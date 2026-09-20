@@ -34,7 +34,8 @@ can see would be a publisher that argues with itself.
 | [`internal/api`](internal/api) | How its discovery joins the shared API frame |
 | [`internal/boundary`](internal/boundary) | What this demo is, as tests over its own source |
 | [`Dockerfile`](Dockerfile) | This demo's image, and only this demo's |
-| [`compose.yaml`](compose.yaml) | The stack: this demo and a proxy on loopback. `ctl` sits behind a profile and does not start |
+| [`../deploy/prediction/compose.yaml`](../deploy/prediction/compose.yaml) | The portable stack: only this demo on host loopback. `ctl` is an opt-in profile |
+| [`../deploy/prediction/.env.example`](../deploy/prediction/.env.example) | Deployment-only settings and the explicit durable volume name |
 | [`.env.example`](.env.example) | Every setting, with its default and what it means. Copy to `.env` here, which git ignores |
 
 Everything durable — the market rows, the signals, their revisions, their idempotency keys and the
@@ -91,8 +92,9 @@ source is registered **separately from the CopyTrading demo**, under its own UUI
 credential:
 
 ```sh
-# on the gateway's host
-docker compose run --rm ctl register \
+# from the repository root, on the gateway's host
+docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
+  --profile operator run --rm gateway-ctl register \
   --server 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d \
   --label "prediction"
 ```
@@ -147,25 +149,31 @@ docker buildx build --platform linux/amd64 -f demo-prediction/Dockerfile \
   -t demo-prediction:local --load .
 ```
 
-The packaged stack — this demo and a proxy in front of it, and nothing else:
+The packaged stack starts this demo and nothing else:
 
 ```sh
-cd demo-prediction
-cp .env.example .env     # fill in PUBLISHER_SERVER_ID, PUBLISHER_GATEWAY_URL,
-                         # PUBLISHER_ENVIRONMENT, BROADCAST_CREDENTIAL and a
-                         # PUBLISHER_API_TOKEN of your own
-docker compose up -d --build
-docker compose run --rm ctl status
+cp deploy/prediction/.env.example deploy/prediction/.env
+# fill in PUBLISHER_SERVER_ID, PUBLISHER_GATEWAY_URL, PUBLISHER_PUBLISH_URL,
+# BROADCAST_CREDENTIAL and a PUBLISHER_API_TOKEN of your own
+docker compose --env-file deploy/prediction/.env \
+  -f deploy/prediction/compose.yaml up -d --build
+docker compose --env-file deploy/prediction/.env \
+  -f deploy/prediction/compose.yaml --profile operator run --rm ctl status
 ```
+
+For the remaining Compose snippets, run from `deploy/prediction`; Compose then reads the local
+`compose.yaml` and `.env` automatically. The base preset has no ingress, domain, certificate, feed,
+MCP server, or CopyTrading process.
 
 There is no image published anywhere. `seeker-prediction/prediction:local` is a local tag that
 `docker compose up --build` produces; nothing pulls it from a registry.
 
 ## 5. Configuration
 
-Every setting, its default and what it means is in [`.env.example`](.env.example), which is the
-authority. The publisher's own half is read by exactly the same code as the other demo's; the
-`PREDICTION_*` half is this demo's alone.
+Application settings are documented in [`.env.example`](.env.example); deployment-only settings
+and their examples are in [`../deploy/prediction/.env.example`](../deploy/prediction/.env.example).
+The publisher's own half is read by exactly the same code as the other demo's; the `PREDICTION_*`
+half is this demo's alone.
 
 | Variable | Required | Default | What it is |
 | --- | --- | --- | --- |
@@ -176,7 +184,7 @@ authority. The publisher's own half is read by exactly the same code as the othe
 | `PUBLISHER_API_TOKEN` | yes | — | The grant to call this demo's own API; at least 32 characters |
 | `PUBLISHER_PUBLISH_URL` | no | the gateway URL | Where publications are *sent*, when that differs from where phones read |
 | `PUBLISHER_DATABASE_PATH` | no | `/data/prediction.db` | This demo's SQLite file |
-| `PUBLISHER_API_ADDRESS` | no | `127.0.0.1:8092` | Where its API listens |
+| `PUBLISHER_API_ADDRESS` | no | `127.0.0.1:8092` | Where its API listens from source; Compose uses the container wildcard address |
 | `PUBLISHER_DISPLAY_NAME` | no | — | A default label for a connection; never verified |
 | `PUBLISHER_PUBLISH_TIMEOUT_SECONDS` | no | `10` | How long one publication may take before it is retried |
 | `PREDICTION_PROVIDER_URL` | no | `https://lite-api.jup.ag` | The provider; empty is the keyless host |
@@ -199,7 +207,7 @@ authority. The publisher's own half is read by exactly the same code as the othe
 | `PREDICTION_DEPOSIT_MINT` | no | USDC | The deposit token: USDC or JupUSD, and nothing else |
 | `PREDICTION_LEAST_DEPOSIT` / `PREDICTION_MOST_DEPOSIT` | no | provider minimum / none | The bounds every signal carries, in base units |
 | `PREDICTION_NOTE` | no | — | One line of the operator's prose, at most 400 bytes |
-| `PREDICTION_PORT` / `PREDICTION_BIND` | no | `8094` / `127.0.0.1` | Where the stack publishes the proxy on the host |
+| `PREDICTION_PORT` / `PREDICTION_BIND` | no | `8094` / `127.0.0.1` | Where Compose publishes the API directly on the host |
 
 `BROADCAST_CREDENTIAL`, `PUBLISHER_API_TOKEN` and `PREDICTION_API_KEY` each accept a `…_FILE` form
 instead, naming a file to read the secret from. Set one or the other, never both.
@@ -211,11 +219,11 @@ not collide with it.
 
 - **`PUBLISHER_GATEWAY_URL`** is what phones read and what the manifest names. The gateway checks it
   against its own `BROADCAST_PUBLIC_URL` character for character.
-- **`PUBLISHER_PUBLISH_URL`** is where a publication is *sent*. Leave it empty when the gateway's
-  proxy serves both APIs on one origin. Getting it wrong is the mistake with no error on the
-  gateway's side: a read origin answers 404 to a publication.
-- **`PUBLISHER_API_ADDRESS`** is this demo's own operator API. It binds loopback, and the packaged
-  stack publishes the proxy in front of it on `127.0.0.1:${PREDICTION_PORT:-8094}`.
+- **`PUBLISHER_PUBLISH_URL`** is where a publication is *sent*. It can be an authenticated public
+  feed ingress or a privately reachable publisher listener. Getting it wrong is the mistake with
+  no error on the gateway's side: a read-only origin answers 404 to a publication.
+- **`PUBLISHER_API_ADDRESS`** is this demo's own operator API. The container listens on its network
+  address; Compose publishes it directly on `127.0.0.1:${PREDICTION_PORT:-8094}` by default.
 
 Phones never reach `PUBLISHER_API_ADDRESS`. They do not know this process exists.
 
@@ -231,11 +239,12 @@ In the packaged stack it is the named volume `prediction-data` under the Compose
 `seeker-prediction`, mounted at `/data`, owned by uid/gid 10001:10001. The rest of the image is
 read-only.
 
-The volume, the project and the file name are unchanged from the stack this module was split out of,
-so an operator upgrading mounts the same data and finds the same publisher identity, discovery
-state, tracked markets and pending publications rather than an empty database. **It is never shared
-with the CopyTrading demo**, which has its own file, its own volume, its own identity and its own
-credential.
+Those are the standalone deployment's established identities. The old combined server instead used
+`seeker-agent-wallet-server_prediction-data`; preserve that lineage by setting
+`PREDICTION_VOLUME_NAME` after inspecting and backing up the exact volume. Never merge two non-empty
+SQLite lineages or delete an unfamiliar volume. The full mapping is in
+[`deploy/README.md`](../deploy/README.md#persistent-identities-and-upgrades). This data is never
+shared with CopyTrading.
 
 ## 8. Health and a first publication
 
@@ -306,7 +315,7 @@ There is no internet-facing overlay for this demo and it needs none: its signals
 own discovery, so its API is something an operator reads rather than something a strategy engine
 writes to. Keep it on loopback, or reach it over a VPN or an SSH tunnel. If a deployment genuinely
 needs it published, put it behind an ingress of the deployment's own — see
-[`deploy/`](../deploy) — and remember that the token on it is still a grant.
+[`deploy/README.md`](../deploy/README.md) — and remember that the token on it is still a grant.
 
 The only optional credential here is `PREDICTION_API_KEY`, described in [§1](#1-what-it-needs).
 There is no FCM and no OAuth: push is the gateway's
@@ -316,7 +325,7 @@ There is no FCM and no OAuth: push is the gateway's
 
 ```sh
 docker compose ps
-docker compose logs --tail=100 prediction proxy
+docker compose logs --tail=100 prediction
 docker compose run --rm ctl discovery
 curl --fail "http://127.0.0.1:${PREDICTION_PORT:-8094}/healthz"
 ```
@@ -345,11 +354,12 @@ docker run --rm \
 docker compose start prediction
 ```
 
-To upgrade, take that backup, then `docker compose up -d --build`. The Compose project is still
-`seeker-prediction` and the durable volume still `prediction-data`, so an existing installation
-reuses its data across the split into separate modules; no identity is regenerated because a
-directory changed. To roll back, stop the service, restore the archive into the same empty volume,
-and start the previous image. Never point an older binary at a newer database file.
+To upgrade, take that backup, then `docker compose up -d --build`. The default Compose project is
+still `seeker-prediction` and its physical volume is explicitly
+`seeker-prediction_prediction-data`. If migrating an old combined installation, configure its exact
+volume using the mapping in `deploy/README.md`; do not remove volumes to silence Compose warnings.
+To roll back, stop the service, restore the archive into the same empty volume, and start the
+previous image. Never point an older binary at a newer database file.
 
 Restarting, upgrading or rolling back this demo does nothing to the CopyTrading demo or to the
 gateway: three processes, three lifecycles, three sets of durable state.

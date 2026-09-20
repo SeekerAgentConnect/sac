@@ -109,11 +109,11 @@ The build uses the repository root only to compile the declared MCP package and 
 ```sh
 docker build -f mcp-server/Dockerfile \
   -t seeker-agent-connect/mcp-server:local .
-cp mcp-server/.env.example mcp-server/.env
+cp deploy/mcp/.env.example deploy/mcp/.env
 # replace the tokens; keep the local public URL for host-loopback development
-docker compose -f mcp-server/compose.yaml up -d --build
+docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --build
 curl --fail http://127.0.0.1:8080/healthz
-docker compose -f mcp-server/compose.yaml exec mcp-server \
+docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml exec mcp-server \
   node mcp-server/dist/cli.js pair
 ```
 
@@ -241,7 +241,17 @@ application does not provide login, client registration, consent, accounts, or a
 
 TLS, domains, Caddy and Tailscale/Funnel are separate deployment layers. For the phone's live update
 stream, use the server's TLS listener with a trusted PEM identity and preserve HTTP/2, or forward raw
-TCP. The older gateway-private routing is retired and is not a reachability solution.
+TCP. [`deploy/ingress/direct/`](../deploy/ingress/direct) is the separately managed Caddy example
+for MCP and unary phone calls; it deliberately does not claim to proxy the production update
+stream. [`deploy/operators/tailscale/`](../deploy/operators/tailscale) shows the native-TLS/raw-TCP
+layout without host networking. The older gateway-private routing is retired and is not a
+reachability solution.
+
+The portable project mounts the explicitly named `MCP_VOLUME_NAME` at `/data`. Its clean default
+preserves `seeker-agent-connect-mcp_mcp-data`; older `gateway/` and combined-server lineages are
+selected explicitly and backed up first using the mapping in [`deploy/README.md`](../deploy/README.md).
+Replace only `mcp-server` with `up -d --no-deps mcp-server`; ingress and every feed component stay
+running.
 
 ## Logs and troubleshooting
 

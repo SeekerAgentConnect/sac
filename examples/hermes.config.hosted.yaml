@@ -12,7 +12,7 @@
 #
 # Before this works:
 #   - the stack runs with the public overlay, and its certificate is a real one
-#     (`docker compose -f compose.yaml -f compose.public.yaml up -d --build`);
+#     (`deploy/mcp` plus the independently managed `deploy/ingress/direct` project);
 #   - the deployment's MCP_ALLOWED_HOSTS carries the domain, which the overlay
 #     sets from GATEWAY_DOMAIN, or the sidecar answers 403;
 #   - the OAuth profile is **off**. Hermes sends a fixed bearer token, and with

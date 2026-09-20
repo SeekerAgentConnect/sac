@@ -538,19 +538,24 @@ command imports them, and a boundary test fails if one does.
 Identities and durable data were preserved rather than renamed. `demo-copytrading` keeps the
 Compose project `seeker-publisher`, the `publisher-data` volume and `/data/publisher.db`;
 `demo-prediction` keeps `seeker-prediction`, `prediction-data` and `/data/prediction.db`;
-`deploy/server` keeps `seeker-agent-wallet-server`, `copytrading-data`, `prediction-data` and the
-`/data/copytrading.db` and `/data/prediction.db` paths, and reads `COPYTRADING_IMAGE` with
-`PUBLISHER_IMAGE` as its fallback so an existing `.env` keeps working. No publisher ID, environment
-stamp, credential or revision is regenerated because a directory changed.
+SEE-135 replaced `deploy/server` with independent portable projects. It does not silently rename
+the old combined data: `deploy/README.md` maps `seeker-agent-wallet-server_copytrading-data` together
+with `/data/copytrading.db`, `seeker-agent-wallet-server_prediction-data`,
+`seeker-agent-wallet-server_broadcast-data`, and `seeker-agent-wallet-server_sidecar-data` to the
+new presets as explicit operator choices. Standalone defaults retain their established physical
+volume names. No publisher ID, environment stamp, credential, pairing, or revision is regenerated
+because orchestration moved.
 
 `pnpm check:publisher` became `pnpm check:publisher-support`, `pnpm check:copytrading` and
 `pnpm check:prediction` (with `pnpm check:demos` for all three, one module at a time), and CI's one
 publisher job became three, each demo's job also building that demo's image. Exact evidence is in
 [`docs/testing/see-134.md`](../testing/see-134.md).
 
-The next owner is SEE-135. It may separate portable orchestration from optional ingress and
-host-specific configuration, but must not reset a volume, make a demo or MCP mandatory, move SQLite
-onto a network, or keep mandatory network-namespace sharing.
+SEE-135 now owns the canonical `deploy/` boundary: four independent application presets, separate
+feed/direct ingress projects, and isolated Tailscale/Funnel examples. No preset uses
+`network_mode`, Redis is relocatable through Centrifugo configuration, and every SQLite owner stays
+local with an explicit volume/file identity. Runtime Docker and physical-device evidence remains
+outside this host's available checks and is recorded in `docs/testing/see-135.md`.
 
 ## 10. Ordered child ownership and handoff
 
