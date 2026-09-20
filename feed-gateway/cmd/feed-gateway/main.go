@@ -8,9 +8,11 @@
 // owner's private sidecar (SAW-035); this is a service of its own, run by whoever hosts the
 // public feed, with its own compose stack in feed-gateway/.
 //
-// Configuration is the environment (internal/config). There is no credential in it: a publisher's
-// credential is created by feed-gatewayctl and kept as a hash, so nothing that could publish appears
-// in a process list or a compose file.
+// Configuration is the environment (internal/config). There is no publishing credential in it: a
+// publisher's credential is created by feed-gatewayctl or by the operator's admin surface and kept
+// as a hash, so nothing that could publish appears in a process list or a compose file. The one
+// secret the environment does carry is the operator's own password, and it carries it as a hash
+// too (SEE-141).
 package main
 
 import (
@@ -130,7 +132,7 @@ func main() {
 		dispatcher = dispatch.Logger{Log: log}
 	}
 
-	service := gateway.Build(settings, documents, dispatcher, grants, topics, log, time.Now)
+	service := gateway.Build(settings, documents, documents, dispatcher, grants, topics, log, time.Now)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

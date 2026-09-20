@@ -1,0 +1,91 @@
+{{template "head" .}}
+{{$c := .CSRF}}{{$p := .Publisher}}
+<p class="crumb"><a href="{{at "/"}}">← All publishers</a></p>
+<h1>{{$p.Label}}</h1>
+{{template "flash" .}}
+
+<table class="facts">
+  <tr><th>Server ID</th><td><code class="id">{{$p.ServerID}}</code>
+      <button class="copy" type="button" data-copy="{{$p.ServerID}}">Copy</button></td></tr>
+  <tr><th>Channel</th><td><code class="id">{{$p.Channel}}</code>
+      <button class="copy" type="button" data-copy="{{$p.Channel}}">Copy</button></td></tr>
+  <tr><th>Host</th><td>{{if $p.Host}}<a href="{{$p.Host}}" rel="noreferrer noopener external">{{$p.Host}}</a>
+      <span class="sub">administrative metadata; never contacted by the gateway</span>
+      {{else}}<span class="sub">none recorded</span>{{end}}</td></tr>
+  <tr><th>Published name</th><td>{{if $p.DisplayName}}{{$p.DisplayName}}
+      <span class="sub">from its manifest, {{instant $p.ManifestAt}}</span>
+      {{else}}<span class="sub">no manifest received</span>{{end}}</td></tr>
+  <tr><th>Registered</th><td>{{instant $p.Created}}</td></tr>
+  <tr><th>State</th><td>
+      <span class="state {{if gt $p.Active 0}}good{{else}}warn{{end}}">{{$p.Credentials}}</span>
+      <span class="state">{{$p.Published}}</span></td></tr>
+  <tr><th>Feed sequence</th><td>{{$p.Sequence}}
+      <span class="sub">how many publications this channel has accepted</span></td></tr>
+</table>
+
+<h2>Credentials</h2>
+<p class="hint">A credential is shown once, when it is created, and only its hash is stored. There
+is no way to read an existing one back — rotate instead.</p>
+{{if .Credentials}}
+<table class="list">
+  <thead><tr><th>ID</th><th>Label</th><th>Created</th><th>State</th><th></th></tr></thead>
+  <tbody>
+  {{range .Credentials}}
+    <tr>
+      <td><code class="id">{{.ID}}</code></td>
+      <td>{{.Label}}</td>
+      <td><span class="sub">{{instant .Created}}</span></td>
+      <td><span class="state {{if .Revoked}}warn{{else}}good{{end}}">{{.State}}</span></td>
+      <td>{{if not .Revoked}}
+        <form method="post" action="{{at "/servers/"}}{{$p.ServerID}}/revoke" class="inline">
+          <input type="hidden" name="csrf" value="{{$c}}">
+          <input type="hidden" name="credential" value="{{.ID}}">
+          <button type="submit" class="danger"
+                  data-confirm="Revoke credential {{.ID}}? Publishing with it is refused from the next request.">Revoke</button>
+        </form>
+      {{end}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="empty">This publisher holds no credentials.</p>
+{{end}}
+
+<div class="actions">
+  <form method="post" action="{{at "/servers/"}}{{$p.ServerID}}/rotate" class="card">
+    <input type="hidden" name="csrf" value="{{$c}}">
+    <h3>Add a credential (rotation)</h3>
+    <p class="hint">The new credential works immediately and the existing ones keep working, so the
+    publisher can switch without downtime. Revoke the old one once it has.</p>
+    <label for="rotate-label">Label <span class="sub">(optional)</span></label>
+    <input id="rotate-label" name="label" maxlength="64" placeholder="why this one exists">
+    <button type="submit">Add credential</button>
+  </form>
+
+  <form method="post" action="{{at "/servers/"}}{{$p.ServerID}}/revoke" class="card">
+    <input type="hidden" name="csrf" value="{{$c}}">
+    <input type="hidden" name="all" value="on">
+    <h3>Revoke every credential</h3>
+    <p class="hint">This publisher stops being able to publish from the next request. Its manifest
+    and the feed items it already published stay on the feed — revocation ends publishing, it does
+    not withdraw what was published.</p>
+    <button type="submit" class="danger"
+            data-confirm="Revoke every credential of {{$p.ServerID}}? It will not be able to publish again until a new one is issued.">Revoke all</button>
+  </form>
+</div>
+
+<h2 class="destructive">Forget publisher</h2>
+<form method="post" action="{{at "/servers/"}}{{$p.ServerID}}/forget" class="card destructive">
+  <input type="hidden" name="csrf" value="{{$c}}">
+  <p>This removes the registration, its credentials, its manifest and every feed item this gateway
+  holds for it. It is not a rotation and it is not a revocation: the public feed for this channel
+  stops existing.</p>
+  <p class="hint">Phones that already read its feed items keep their own copies until their owners
+  remove the feed. This clears what the gateway holds, not what a device decided.</p>
+  <label for="confirm">Type <code class="id">{{$p.ServerID}}</code> to confirm</label>
+  <input id="confirm" name="confirm" spellcheck="false" autocomplete="off" required>
+  <button type="submit" class="danger"
+          data-confirm="Forget {{$p.ServerID}} and delete everything it published on this gateway?">Forget this publisher</button>
+</form>
+{{template "foot" .}}

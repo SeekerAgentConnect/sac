@@ -451,6 +451,7 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 			PublishBurst: 1000,
 		},
 		documents,
+		documents,
 		dispatch.Logger{Log: slog.New(slog.NewTextHandler(io.Discard, nil))},
 		nil,
 		nil,

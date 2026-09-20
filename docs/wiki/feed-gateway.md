@@ -56,6 +56,11 @@ mutation. A boundary test holds both directions of that separation and requires 
 and onboarding path to return 404
 ([`boundary_test.go`](../../feed-gateway/internal/gateway/boundary_test.go)).
 
+Since SEE-141 there is a third listener when a deployment configures one: the operator's admin page,
+on `BROADCAST_ADMIN_ADDRESS`, under `BROADCAST_ADMIN_PATH`. It is not an API — it serves HTML to one
+operator behind one password — and it is absent from both listeners above, which answer 404 for its
+route whether or not it is configured. See [the operator's admin page](#the-operators-admin-page).
+
 SAC has no publisher service client. It is generated only for the public-feed contract it calls.
 
 ## What a publisher may say
@@ -466,16 +471,25 @@ removes the feed (SEE-89); retention is only about how long the gateway keeps an
 
 ## Registering a publisher
 
-There is no administrative API, no account system and no invitation flow. Registering a publisher is
-the one act that grants the ability to publish, and it has no network surface at all: the operator
-runs [`feed-gatewayctl`](../../feed-gateway/cmd/feed-gatewayctl) on the host that holds the database, and the
-gateway itself has no method that could add a publisher however a request were authenticated.
+Registering a publisher is the one act that grants the ability to publish. There is still no account
+system, no signup and no invitation flow, and neither the feed API nor the publisher API has a method
+that could register anything however a request were authenticated. What there is, is one authority —
+the SQLite file — reached by two surfaces the operator owns.
 
 ```sh
 docker compose run --rm ctl register --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label "copy trading"
 docker compose run --rm ctl rotate --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
 docker compose run --rm ctl revoke --credential d7baec00
 ```
+
+[`feed-gatewayctl`](../../feed-gateway/cmd/feed-gatewayctl) is the first: the operator runs it on the
+host that holds the database, and it needs no listener, no password and no browser. That is why it
+stays after SEE-141 rather than being replaced — it is the recovery path, and the right tool for a
+deployment that never exposes an administrative route.
+
+The second is [the admin page](#the-operators-admin-page), which does the same operations through
+the same store in a browser. Registering the same server ID twice is refused on both, rather than
+quietly adding a credential to an existing publisher under a new label.
 
 A credential is 32 random bytes, shown once, and stored only as its SHA-256 — the same thing the
 sidecar does with a phone's credential (SAW-011). Losing one means rotating it, not recovering it.
@@ -487,6 +501,55 @@ that removes a publisher and everything it published.
 The answer to an unauthenticated call says nothing about which way it failed. No credential, a
 credential that was never issued, and a revoked one all get the same refusal: a caller learns that it
 may not publish, and never whether the thing it presented used to work.
+
+## The operator's admin page
+
+SEE-141 added a second surface for the paragraph above, because "the operator runs a command on the
+host that holds the database" stops being reasonable the moment the host is a container on somebody
+else's platform. It is deliberately the smallest thing that removes that requirement, and it is
+[`internal/admin`](../../feed-gateway/internal/admin): server-rendered HTML, one stylesheet and one
+script out of the image, no framework, no CDN, and no browser-side secret of any kind.
+
+**It exists only when it is configured.** `BROADCAST_ADMIN_PASSWORD_HASH` is the switch. Without it
+the handler is never built, the listener is never opened, and there is no route anywhere in the
+process — not a disabled one, not a setup page waiting for whoever finds the address first, which is
+the worst failure mode an administrative surface can have. The gateway says which of the two it did,
+once, at startup.
+
+**It is a third listener**, for the same reason the publisher API is a second one. Two sockets rather
+than one service with a check per method make the separation survive a routing mistake; a third
+makes it survive one more. A deployment can keep the page off the internet entirely and reach it
+through a tunnel, and the shipped ingress routes one prefix to it or the operator deletes that block.
+
+**The password is configuration, not a row.** That is what makes the documented recovery work: the
+demo's SQLite file can be replaced by a redeployment, and the operator can still log in to the
+replacement and register the publishers again, with no database console involved. It is stretched
+with PBKDF2-HMAC-SHA256 from Go's own `crypto/pbkdf2`, which keeps the module list at the three it
+has had since SEE-90, and `feed-gatewayctl password` is what prints one.
+
+**A publishing credential is never an administrator credential.** They are different kinds of secret
+resolved by different code: 32 random bytes compared by SHA-256 on one side, a chosen password
+stretched and compared in constant time on the other. Neither is accepted where the other belongs,
+and a test presents a real, valid publishing credential to every administrative route to say so.
+
+**Sessions are held in the process.** A random token in an `HttpOnly`, `SameSite=Strict` cookie
+scoped to the admin path, stored as its SHA-256, with an absolute lifetime. That is a deliberate
+choice over a signed cookie: a signed cookie cannot be withdrawn, so logging out would only ask the
+browser to forget something that still verifies. Here logout is a real revocation and a restart ends
+every session. The cost is one more login after a restart.
+
+**Every mutation is a POST carrying its session's own CSRF token**, compared in constant time, and
+the browser's `Sec-Fetch-Site` is checked before the token is even looked at. Logins are rate limited
+per caller under the same trusted-proxy policy read limiting uses.
+
+**The raw credential is shown once**, on a page the session may read exactly once: the secret never
+travels in a URL, a redirect target or a referrer, and a reload cannot mint a second one. Afterwards
+it is nowhere — not in the list, not in the detail page, not in the log.
+
+**It reports what the store can prove, and nothing else.** "Publishing enabled" means a credential
+exists that would be accepted. There is no "connected" and no subscriber count, because a publisher
+calls an HTTP API when it has something to say and holds no connection in between, and no row in this
+database names a subscriber. A page that said otherwise would be inventing it.
 
 ## Rate limits and bounds
 
@@ -580,5 +643,12 @@ and `TestAFileFromALaterVersionIsRefused` pins the rollback guard.
 - **Nothing was run in Docker.** No daemon is reachable on the machine these checks ran on, so the
   compose and Caddy configurations were validated statically and every binary — the gateway, the
   broker, Redis — was run natively instead (`docs/changelog/2026-09-17.md`).
+- **The operator can administer publishers in a browser** (SEE-141), when the deployment configures a
+  password for it. It is the CLI's operations through the CLI's store, on a third listener, behind
+  one password, and it is off entirely in a deployment that configures none.
+- **It does not make the demo's storage durable.** On the current App Platform deployment the SQLite
+  file can go with a replaced container, taking the registrations and credential hashes with it. The
+  admin page is what makes recovering from that a login and a few forms rather than a console
+  session; it is not a claim that the data will be there.
 - Not a user-account platform, not an execution-result database, not an order processor, not a
   message broker of its own, and no financial endpoint of any kind.

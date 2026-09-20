@@ -28,8 +28,10 @@ No client SDK is required. The published contract is ordinary Connect JSON over 
 | Path | Responsibility |
 | --- | --- |
 | `cmd/feed-gateway` | Starts the read and publication listeners, outbox drainer, and retention sweep |
-| `cmd/feed-gatewayctl` | Local-only publisher registration, rotation, revocation, listing, and removal |
+| `cmd/feed-gatewayctl` | Local publisher registration, rotation, revocation, listing and removal, and the operator's password hash |
 | `internal/gateway` | Public read and authenticated publication business rules and Connect handlers |
+| `internal/admin` | The operator's password-protected browser administration, on its own listener; off unless a password is configured |
+| `internal/credential` | The one place a publishing credential is minted, hashed and named, and the one place a password is stretched |
 | `internal/storage` | Focused durable contracts used by business and delivery code; contains no SQL |
 | `internal/storage/sqlite` | The local SQLite implementation, schema, migrations, and transaction ownership |
 | `internal/dispatch` | Durable outbox draining after a successful commit; delivery is at least once |
@@ -155,6 +157,12 @@ The process reads these variables. Empty optional values use the stated default.
 | `BROADCAST_PUSH_ENDPOINT` | required with push | Push API origin |
 | `BROADCAST_PUSH_ENVIRONMENT` | required with push | `production` or `sandbox`, included in topic scope |
 | `BROADCAST_PUSH_RATE` / `BROADCAST_PUSH_BURST` | `0.1` / `5` | Content-free hints per topic per second and burst |
+| `BROADCAST_ADMIN_PASSWORD_HASH` | empty/off | The operator's password, hashed by `feed-gatewayctl password`. Setting it is the only thing that brings the admin page into existence |
+| `BROADCAST_ADMIN_ADDRESS` | `127.0.0.1:8092` | Admin listener; must differ from read and publisher |
+| `BROADCAST_ADMIN_PATH` | `/admin` | Route prefix the admin page is served under |
+| `BROADCAST_ADMIN_SESSION_MINUTES` | `60`, range 5–1440 | Absolute login lifetime |
+| `BROADCAST_ADMIN_LOGIN_RATE` / `BROADCAST_ADMIN_LOGIN_BURST` | `0.1` / `5` | Login attempts per second and burst per caller |
+| `BROADCAST_ADMIN_PUBLISHER_URL` | `BROADCAST_PUBLIC_URL` | The publisher API address the admin page hands a developer |
 
 The portable Compose files additionally use the host bind/port and physical volume/network names,
 `CENTRIFUGO_API_KEY`, `CENTRIFUGO_TOKEN_KEY`, `CENTRIFUGO_REDIS_URL`, its supported Redis TLS trust
@@ -164,7 +172,20 @@ and client-identity settings, `REDIS_MAX_MEMORY`, and the optional host-side pus
 
 ## Register a publisher
 
-Registration is deliberately not an RPC. Run the operator tool against the same SQLite file:
+There are two surfaces and one authority. Both write through the same SQLite file with the same
+transactional semantics, each sees the other's work immediately, and neither is an API a publisher
+or a phone can reach: there is still no RPC on either public listener that could register anything,
+however a request is authenticated.
+
+- **`feed-gatewayctl`**, below. It needs no listener, no password and no browser — only the file —
+  so it is the recovery path and the right tool for a deployment that never exposes an
+  administrative route.
+- **The admin page**, further down. It is the same operations in a browser, for the routine case
+  where the operator is not on the host that holds the database.
+
+### With the operator tool
+
+Run it against the same SQLite file:
 
 ```sh
 ./bin/feed-gatewayctl register \
@@ -182,9 +203,74 @@ docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml run --rm 
 docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml run --rm gateway-ctl list
 ```
 
+`register` refuses a server ID that is already registered, rather than quietly adding a credential
+to it: a second registration of one identity is either a mistake or somebody claiming an identity
+that is in use. Adding a credential to an existing publisher is `rotate`, which says so.
+
+`--host <url>` records the developer's own base URL beside the registration. It is administrative
+metadata: the gateway never fetches it, no phone is told to contact it, and knowing or claiming a
+host grants nothing — the credential authenticates a publication and the server UUID identifies the
+publisher.
+
 Use `rotate --server …` before changing a publisher secret, then
 `revoke --credential …`. `forget --server … --yes` removes that publisher and its public documents;
 it is not a normal credential rotation.
+
+### With the admin page
+
+The page does not exist until an operator password is configured. Make the hash first — it needs no
+database, so it works before one exists:
+
+```sh
+printf '%s' 'the password you chose' | ./bin/feed-gatewayctl password
+# pbkdf2-sha256.600000.<salt>.<hash>
+```
+
+Set that line as `BROADCAST_ADMIN_PASSWORD_HASH`, set `BROADCAST_ADMIN_ADDRESS` to an address the
+ingress can reach (`0.0.0.0:8092` in the packaged stack), and restart the gateway. The startup log
+says which of the two it did:
+
+```
+"msg":"serving operator administration","address":"0.0.0.0:8092","path":"/admin"
+"msg":"no operator password is configured: there is no administrative surface, …"
+```
+
+With no hash there is no third listener, no route and no setup page — not a disabled one, none. The
+hash is deliberately deployment configuration rather than a row in the database: when the demo's
+storage is replaced, the operator can still log in and register the publishers again without a
+database console.
+
+Then open `https://feeds.example.com/admin` and log in. The page lists every registered publisher
+with the state the store can actually prove — `Publishing enabled` or `No active credentials`, and
+whether a manifest and feed items have arrived — and offers:
+
+| | What it does |
+| --- | --- |
+| **Add server** | Registers a publisher and issues its first credential in one transaction, or registers nothing. Takes the publisher's existing server UUID, or generates one the publisher must then use exactly. Shows the raw credential once, with the server ID, public gateway origin, publisher API URL and channel beside it |
+| **Add credential** | The same additive rotation as `rotate`: the existing credential keeps working until it is revoked, so the publisher switches without downtime |
+| **Revoke** | Ends one credential, or all of a publisher's. Enforced from the next publication. The manifest and feed items it already published stay on the feed |
+| **Forget publisher** | The destructive one, behind typing the publisher's own server ID back. Removes the registration, its credentials, its manifest and every feed item this gateway holds. Phones that already read them keep their own copies |
+
+None of that restarts the gateway or changes its environment. A publisher registered in the browser
+can publish on its next request.
+
+The page never claims a publisher is "connected" or "online", and counts no subscribers. A publisher
+calls an HTTP API when it has something to say and holds no connection in between, and no row in
+this database names a subscriber — so there is nothing to report and nothing to invent.
+
+**What protects it.** One configured password, hashed with PBKDF2-HMAC-SHA256 (`crypto/pbkdf2`) and
+compared in constant time; server-side sessions in an `HttpOnly`, `SameSite=Strict` cookie scoped to
+the admin path, with an absolute lifetime and a logout that actually revokes; a per-session CSRF
+token on every mutation plus the browser's own `Sec-Fetch-Site`; login rate limiting under the same
+trusted-proxy policy as read limiting; and `Content-Security-Policy: default-src 'none'` with the
+stylesheet and script served from the image. A publishing credential is never an administrator
+credential, and an administrator session is never a publishing credential.
+
+**What it does not survive.** Sessions live in the process, so a restart ends every one of them —
+one more login, and nothing else. On the DigitalOcean App Platform demo the SQLite file itself does
+not survive container replacement: the registrations and credential hashes go with it, and the
+documented recovery is to log in and register the publishers again. Lost publisher secrets cannot be
+recovered from hashes, and this page does not make storage durable.
 
 ## Publish with plain HTTP and Connect JSON
 
@@ -294,7 +380,12 @@ docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml ps
 docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml logs --tail=100 feed-gateway centrifugo redis
 docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml run --rm gateway-ctl list
 curl --fail "http://127.0.0.1:${BROADCAST_PORT:-8090}/healthz"
+# The admin page, when one is configured. Anonymous requests are sent to its login form.
+curl -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:${BROADCAST_ADMIN_PORT:-8092}/admin/"
 ```
+
+Administrative actions are logged as `admin action` with the action, the publisher and the outcome.
+No password, session, publishing credential or form body is ever written to the log.
 
 An outbox entry remains pending when Centrifugo is unavailable and is retried after restart. Logs
 report pending work and classified failures without document values or credentials. SQLite is the
@@ -316,15 +407,24 @@ The Compose project remains `seeker-broadcast` and defaults to the physical volu
 `seeker-broadcast_broadcast-data`, so the current standalone lineage reuses its data. The combined
 server lineage is selected explicitly with `BROADCAST_VOLUME_NAME`; see
 [`deploy/README.md`](../deploy/README.md#7-back-up-replace-and-roll-back). On first open, the
-gateway transactionally migrates schema v2 to v3, preserving all public manifests, feed items,
-publisher credentials, sequences, and pending notices while retiring the removed private-routing
-tables. Take the backup before upgrading.
+gateway transactionally migrates the schema forward — v2 to v3 retires the removed private-routing
+tables; v3 to v4 adds a publisher's optional host as a column on its existing registration — while
+preserving all public manifests, feed items, publisher credentials, sequences, and pending notices.
+Registrations made before v4 keep an empty host and are otherwise untouched. Take the backup before
+upgrading.
 
 To roll back across a schema change, stop the gateway, restore the pre-upgrade archive into the
 same empty local volume, then start the previous image. Do not point an older binary at the newer
 file. A future remote SQL service is not enabled by the storage interfaces: it requires a new
 adapter, explicit transaction/consistency design, an operator data migration, and its own deployment
 work.
+
+**To hand a developer one link**, send them
+[`docs/guides/server-development.md`](../docs/guides/server-development.md): it is the canonical
+third-party walkthrough — the onboarding conversation, what each value the operator gives them
+means, publishing with nothing but an HTTP client, the lifecycle, every refusal the API can answer,
+how to share the feed without the credential, rotation, and what to do after the demo loses its
+data.
 
 For the deeper invariants and protocol rationale, see
 [`docs/wiki/feed-gateway.md`](../docs/wiki/feed-gateway.md). Developer internals and verification

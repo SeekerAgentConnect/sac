@@ -1,0 +1,13 @@
+{{template "head" .}}
+<h1>Log in</h1>
+{{template "flash" .}}
+<form method="post" action="{{at "/login"}}" class="card narrow">
+  <label for="password">Operator password</label>
+  <input id="password" name="password" type="password" autocomplete="current-password"
+         autofocus required>
+  <button type="submit">Log in</button>
+</form>
+<p class="aside">This password is configured in the gateway's own deployment secrets
+(<code>BROADCAST_ADMIN_PASSWORD_HASH</code>), not in its database — so it still works after the
+demo's storage has been replaced, and a publisher's credential is never accepted here.</p>
+{{template "foot" .}}

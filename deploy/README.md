@@ -212,6 +212,48 @@ docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
 
 Each command prints its bearer credential once. Store it in only that demo's `.env`.
 
+### Optional: administer publishers in a browser
+
+The gateway can also serve a password-protected admin page to its operator, on a third listener.
+It does not exist until a password is configured; nothing below is required, and a deployment that
+skips it keeps `gateway-ctl` and loses nothing.
+
+```sh
+# The hash. It touches no database, so this works before the stack is up.
+printf '%s' 'the password you chose' | docker compose --env-file deploy/feed/.env \
+  -f deploy/feed/compose.yaml --profile operator run --rm -T gateway-ctl password
+```
+
+Put the printed line in `deploy/feed/.env`, with the address the ingress can reach:
+
+```dotenv
+BROADCAST_ADMIN_PASSWORD_HASH=pbkdf2-sha256.600000.<salt>.<hash>
+BROADCAST_ADMIN_ADDRESS=0.0.0.0:8092
+```
+
+Recreate the gateway. Its startup log says which of the two states it is in — `serving operator
+administration` with the address and path, or `no operator password is configured`. The page is
+then at `https://feeds.example.com/admin` through the ingress project, whose Caddyfile carries an
+`/admin` block the operator may delete to keep the page private; without it, reach
+`127.0.0.1:8092` over SSH or a tunnel instead.
+
+The page does the same operations as `gateway-ctl` — register, additive rotation, revoke one or
+all, and the destructive `forget` behind typing the publisher's own ID back — through the same
+SQLite file, so the two see each other's work. A registration takes effect immediately: the gateway
+is not restarted and its environment does not change. A publishing credential is never accepted as
+the operator password, and no publisher or phone API can reach any of it.
+
+On the DigitalOcean App Platform app ([`deploy/seeker-gateway.yaml`](seeker-gateway.yaml)) the
+`gateway` service already declares `BROADCAST_ADMIN_ADDRESS=0.0.0.0:8092`, opens that internal
+port, and the `edge` Caddy already routes `/admin*` to it. `BROADCAST_ADMIN_PASSWORD_HASH` is
+declared **empty** there on purpose — no credential is committed — so turning the page on is one
+encrypted app-level secret and a redeploy.
+
+Ephemeral storage is not fixed by any of this. If a container replacement discards the gateway's
+SQLite file, the registrations and credential hashes go with it; the operator logs in to the
+replacement — the password is deployment configuration, not a database row — and registers the
+publishers again. Lost publisher secrets cannot be recovered from hashes.
+
 ## 5. Combined host: feed, direct server, and both demos
 
 For the combined shape, start the feed with its publication-network overlay. The overlay adds a

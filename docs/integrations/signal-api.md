@@ -15,7 +15,13 @@ of exactly these endpoints and has no privileged path of its own, so anything it
 can do.
 
 If you have not yet got a template running to call, start at
-[`docs/guides/server-development.md`](../guides/server-development.md).
+[`docs/guides/server-development.md`](../guides/server-development.md). **If you are not running a
+template at all** — a backend of your own in any language, publishing to somebody else's gateway —
+the whole path is
+[step 2 of that guide](../guides/server-development.md#publish-with-nothing-but-an-http-client): the
+operator registers you through their admin page, hands you five values, and your backend publishes
+with ordinary authenticated HTTP. This API is the template's convenience layer above that; it is not
+required to publish, and it is not what the gateway speaks.
 
 ## What this API is not for
 

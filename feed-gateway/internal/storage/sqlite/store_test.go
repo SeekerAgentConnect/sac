@@ -40,15 +40,15 @@ func openStore(t *testing.T) *Store {
 	return documents
 }
 
-func credential(of string) []byte {
+func hashOf(of string) []byte {
 	sum := sha256.Sum256([]byte("credential for " + of))
 	return sum[:]
 }
 
 func register(t *testing.T, documents *Store, serverID string) {
 	t.Helper()
-	if err := documents.Register(context.Background(), serverID, "test",
-		credential(serverID), published); err != nil {
+	if _, err := documents.Register(context.Background(),
+		Registration{ServerID: serverID, Label: "test"}, hashOf(serverID), published); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -115,7 +115,7 @@ func TestASchemaIsCreatedOnceAndReadBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = again.Close() }()
-	serverID, err := again.PublisherFor(context.Background(), credential(publisher))
+	serverID, err := again.PublisherFor(context.Background(), hashOf(publisher))
 	if err != nil || serverID != publisher {
 		t.Fatalf("the publisher did not survive a restart: %q %v", serverID, err)
 	}
@@ -182,9 +182,9 @@ func TestVersionTwoMigrationRetiresOnlyPrivateStateAndIsIdempotent(t *testing.T)
 		{`INSERT INTO publisher VALUES (?, ?, ?)`, []any{publisher, "feed", 1}},
 		{`INSERT INTO publisher VALUES (?, ?, ?)`, []any{stranger, "former private", 2}},
 		{`INSERT INTO publisher_credential VALUES (?, ?, ?, ?, NULL)`,
-			[]any{credential(publisher), publisher, "feed", 3}},
+			[]any{hashOf(publisher), publisher, "feed", 3}},
 		{`INSERT INTO publisher_credential VALUES (?, ?, ?, ?, NULL)`,
-			[]any{credential(stranger), stranger, "former private", 4}},
+			[]any{hashOf(stranger), stranger, "former private", 4}},
 		{`INSERT INTO manifest VALUES (?, ?, ?, ?)`,
 			[]any{publisher, 7, feedDocument, 5}},
 		{`INSERT INTO manifest VALUES (?, ?, ?, ?)`,
@@ -232,7 +232,7 @@ func TestVersionTwoMigrationRetiresOnlyPrivateStateAndIsIdempotent(t *testing.T)
 		t.Fatalf("legacy private manifest remained active: %v %v", held, err)
 	}
 	for _, serverID := range []string{publisher, stranger} {
-		if found, err := documents.PublisherFor(ctx, credential(serverID)); err != nil || found != serverID {
+		if found, err := documents.PublisherFor(ctx, hashOf(serverID)); err != nil || found != serverID {
 			t.Fatalf("publisher credential did not survive for %s: %q %v", serverID, found, err)
 		}
 	}
@@ -290,9 +290,9 @@ func TestACredentialIsRotatedWithoutAnOutageAndRevokedForGood(t *testing.T) {
 	ctx := context.Background()
 	register(t, documents, publisher)
 
-	first := credential(publisher)
-	second := credential(publisher + " rotated")
-	if err := documents.AddCredential(ctx, publisher, "rotated", second, published); err != nil {
+	first := hashOf(publisher)
+	second := hashOf(publisher + " rotated")
+	if _, err := documents.AddCredential(ctx, publisher, "rotated", second, published); err != nil {
 		t.Fatal(err)
 	}
 	// Both work while the new one is being deployed. That overlap is the whole reason rotation is
@@ -339,7 +339,7 @@ func TestACredentialIsRotatedWithoutAnOutageAndRevokedForGood(t *testing.T) {
 
 func TestACredentialCannotBeAddedToAPublisherThatIsNotThere(t *testing.T) {
 	documents := openStore(t)
-	err := documents.AddCredential(context.Background(), stranger, "x", credential(stranger), published)
+	_, err := documents.AddCredential(context.Background(), stranger, "x", hashOf(stranger), published)
 	if !errors.Is(err, ErrNoPublisher) {
 		t.Fatalf("a credential was created for an unregistered publisher: %v", err)
 	}
@@ -381,7 +381,8 @@ func TestANoticeSurvivesAProcessThatStopsBeforeSendingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if err := documents.Register(ctx, publisher, "test", credential(publisher), published); err != nil {
+	if _, err := documents.Register(ctx, Registration{ServerID: publisher, Label: "test"},
+		hashOf(publisher), published); err != nil {
 		t.Fatal(err)
 	}
 	put(t, documents, proposal(publisher, proposalA, 1, published.Add(time.Hour)))
@@ -582,7 +583,7 @@ func TestForgettingAPublisherTakesEverythingItPublished(t *testing.T) {
 	if held, _ := documents.Proposal(ctx, channelA, proposalA); held != nil {
 		t.Fatal("a proposal outlived the publisher")
 	}
-	if serverID, _ := documents.PublisherFor(ctx, credential(publisher)); serverID != "" {
+	if serverID, _ := documents.PublisherFor(ctx, hashOf(publisher)); serverID != "" {
 		t.Fatal("the credential outlived the publisher")
 	}
 	if sequence, _ := documents.Sequence(ctx, channelA); sequence != 0 {
@@ -598,7 +599,7 @@ func TestForgettingAPublisherTakesEverythingItPublished(t *testing.T) {
 }
 
 func TestACredentialIdIsAHandleAndNotACredential(t *testing.T) {
-	hash := credential(publisher)
+	hash := hashOf(publisher)
 	id := CredentialID(hash)
 	if len(id) != 8 {
 		t.Fatalf("a credential ID is %q", id)
@@ -607,5 +608,109 @@ func TestACredentialIdIsAHandleAndNotACredential(t *testing.T) {
 	// short enough to type into a revocation.
 	if fmt.Sprintf("%x", hash[:4]) != id {
 		t.Fatalf("a credential ID is not the hash's prefix: %q", id)
+	}
+}
+
+// Version 4 adds a publisher's host to the registration it belongs to (SEE-141). A database
+// written before it opens unchanged, keeps every row, and answers "no host was given" for the
+// registrations that predate the column.
+func TestTheHostColumnIsAddedWithoutLosingAnything(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broadcast.db")
+
+	// A database at version 3: the schema as it was, with a publisher, a credential and a
+	// publication in it.
+	older, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{schemaV1, schemaV2, schemaV3, `PRAGMA user_version = 3`} {
+		if _, err := older.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := older.Exec(
+		`INSERT INTO publisher (server_id, label, created_at_ms) VALUES (?, ?, ?)`,
+		publisher, "from an older gateway", milliseconds(published)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := older.Exec(
+		`INSERT INTO publisher_credential
+		   (credential_hash, server_id, label, created_at_ms, revoked_at_ms)
+		 VALUES (?, ?, ?, ?, NULL)`,
+		hashOf(publisher), publisher, "old", milliseconds(published)); err != nil {
+		t.Fatal(err)
+	}
+	if err := older.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	documents, err := Open(path)
+	if err != nil {
+		t.Fatalf("a version 3 database could not be opened: %v", err)
+	}
+	t.Cleanup(func() { _ = documents.Close() })
+	ctx := context.Background()
+
+	held, err := documents.Publisher(ctx, publisher)
+	if err != nil || held == nil {
+		t.Fatalf("the existing registration is gone: %v", err)
+	}
+	if held.Label != "from an older gateway" || held.Host != "" {
+		t.Fatalf("the migrated registration is %+v", held)
+	}
+	if resolved, err := documents.PublisherFor(ctx, hashOf(publisher)); err != nil ||
+		resolved != publisher {
+		t.Fatalf("the existing credential stopped resolving: %q, %v", resolved, err)
+	}
+
+	// And a host given now is kept across a restart on the same file, which is the whole of what
+	// durability means here: the records survive as long as the file does.
+	if _, err := documents.Register(ctx, Registration{
+		ServerID: stranger, Label: "new", Host: "https://example.com",
+	}, hashOf(stranger), published); err != nil {
+		t.Fatal(err)
+	}
+	if err := documents.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	publishers, err := reopened.Publishers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(publishers) != 2 {
+		t.Fatalf("a restart left %d publisher(s)", len(publishers))
+	}
+	back, err := reopened.Publisher(ctx, stranger)
+	if err != nil || back == nil || back.Host != "https://example.com" {
+		t.Fatalf("the host did not survive a restart: %+v, %v", back, err)
+	}
+}
+
+// Publications is the durable evidence the operator's view has that a publisher has said anything.
+// It counts rows and names none of them.
+func TestPublicationsCountsWhatAChannelHolds(t *testing.T) {
+	documents := openStore(t)
+	register(t, documents, publisher)
+	ctx := context.Background()
+	channel := channelA
+
+	count, err := documents.Publications(ctx, channel)
+	if err != nil || count != 0 {
+		t.Fatalf("an empty channel holds %d: %v", count, err)
+	}
+	put(t, documents, proposal(publisher, proposalA, 1, published.Add(time.Hour)))
+	put(t, documents, proposal(publisher, proposalB, 1, published.Add(time.Hour)))
+	if count, err = documents.Publications(ctx, channel); err != nil || count != 2 {
+		t.Fatalf("the channel holds %d: %v", count, err)
+	}
+	// A republication is an update rather than a second document.
+	put(t, documents, proposal(publisher, proposalA, 2, published.Add(time.Hour)))
+	if count, err = documents.Publications(ctx, channel); err != nil || count != 2 {
+		t.Fatalf("after a republication the channel holds %d: %v", count, err)
 	}
 }

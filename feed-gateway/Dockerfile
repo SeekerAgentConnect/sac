@@ -71,7 +71,11 @@ COPY --from=build --chown=10001:10001 /out/data /data
 USER 10001:10001
 VOLUME ["/data"]
 
-EXPOSE 8090 8091
+# 8092 is the operator's admin page, which exists only when BROADCAST_ADMIN_PASSWORD_HASH is
+# configured (SEE-141). It is deliberately not given a default address here: an address with no
+# password behind it is a configuration error the gateway refuses at startup, and the image must
+# stay startable with no administrative surface at all.
+EXPOSE 8090 8091 8092
 
 # Exec form: the binary is PID 1 and receives SIGTERM itself, which is what its
 # shutdown needs — stop accepting, finish what is in flight, make one last

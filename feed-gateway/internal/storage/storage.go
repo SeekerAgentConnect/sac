@@ -127,10 +127,15 @@ type GatewayStore interface {
 	MaintenanceStore
 }
 
-// Publisher and Credential are the non-secret records shown by the local operator CLI.
+// Publisher and Credential are the non-secret records the operator's surfaces show. Neither
+// carries a credential: the raw secret exists only in the answer that created it.
 type Publisher struct {
-	ServerID  string
-	Label     string
+	ServerID string
+	Label    string
+	// Host is the developer-supplied base URL of the publisher's own backend, when they gave one.
+	// It is administrative metadata and nothing else: it is not the authentication identity, the
+	// gateway never fetches it, and a registration made before SEE-141 has none.
+	Host      string
 	CreatedAt time.Time
 	Active    int
 }
@@ -143,16 +148,39 @@ type Credential struct {
 	RevokedAt *time.Time
 }
 
-var ErrNoPublisher = errors.New("no such publisher")
+// Registration is what registering a publisher says. It is a record rather than three strings in a
+// row because two of them are free text an operator types and the third is an identity, and a
+// caller that swapped a pair would be registering something nobody meant.
+type Registration struct {
+	ServerID string
+	Label    string
+	Host     string
+}
 
-// PublisherAdminStore is the local-only credential administration boundary. No network handler
-// accepts this interface.
+var (
+	ErrNoPublisher = errors.New("no such publisher")
+	// ErrPublisherExists is a registration that names an identity the gateway already holds. It is
+	// refused rather than merged: a second registration of the same server is either a mistake or
+	// somebody claiming an identity that is in use, and adding a credential to it silently would
+	// grant the ability to publish as an existing publisher (SEE-141).
+	ErrPublisherExists = errors.New("that publisher is already registered")
+)
+
+// PublisherAdminStore is the publisher administration boundary. It is reached by the operator's
+// CLI and, since SEE-141, by the operator's authenticated admin surface — both in the same process
+// space as the database, and neither through the publisher or feed APIs, which have no method that
+// could register anything however a request were authenticated.
+//
+// Register and AddCredential return the new credential's ID so the caller can name it back to the
+// operator without deriving it a second way.
 type PublisherAdminStore interface {
-	Register(context.Context, string, string, []byte, time.Time) error
-	AddCredential(context.Context, string, string, []byte, time.Time) error
+	Register(context.Context, Registration, []byte, time.Time) (string, error)
+	AddCredential(context.Context, string, string, []byte, time.Time) (string, error)
 	Revoke(context.Context, string, time.Time) (int64, error)
 	RevokeAll(context.Context, string, time.Time) (int64, error)
 	Forget(context.Context, string, string) error
 	Publishers(context.Context) ([]Publisher, error)
+	Publisher(context.Context, string) (*Publisher, error)
 	Credentials(context.Context, string) ([]Credential, error)
+	Publications(context.Context, string) (int, error)
 }

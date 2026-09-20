@@ -44,6 +44,17 @@ services:
     scope: RUN_AND_BUILD_TIME
     type: SECRET
     value: EV[1:bEz6DnyKkO72MSgmWCoNxzA3zfRlN/3G:nmr1Cc2v2wBY82WUbs6xn+E70GI4f9zIEyXvr1UabEg/DBqp4pHwcTf2bNFOziHCifFE7LoMuF9lGDs=]
+  # The operator's admin page (SEE-141). It is declared here and left empty on purpose: the
+  # surface stays off until this app's own settings carry a hash, and no credential is committed.
+  # Turn it on by setting this one value to the output of `feed-gatewayctl password` as an
+  # encrypted app-level secret; the address below already points the edge at it. The hash is
+  # dot-separated and needs no escaping in a console field, an env file or this YAML.
+  - key: BROADCAST_ADMIN_PASSWORD_HASH
+    scope: RUN_AND_BUILD_TIME
+    value: ""
+  - key: BROADCAST_ADMIN_ADDRESS
+    scope: RUN_AND_BUILD_TIME
+    value: 0.0.0.0:8092
   health_check:
     failure_threshold: 9
     http_path: /healthz
@@ -62,6 +73,7 @@ services:
   internal_ports:
   - 8090
   - 8091
+  - 8092
   name: gateway
 - health_check:
     failure_threshold: 9
@@ -80,8 +92,9 @@ services:
   name: edge
   run_command: sh -c 'printf "%s\n" ":8080 {" "handle /seekervault.gateway.v1.FeedService*
     {" "reverse_proxy gateway:8090" "}" "handle /seekervault.gateway.v1.PublisherService*
-    {" "reverse_proxy gateway:8091" "}" "handle /healthz {" "reverse_proxy gateway:8090"
-    "}" "}" > /tmp/Caddyfile && exec caddy run --config /tmp/Caddyfile --adapter caddyfile'
+    {" "reverse_proxy gateway:8091" "}" "handle /admin* {" "reverse_proxy gateway:8092"
+    "}" "handle /healthz {" "reverse_proxy gateway:8090" "}" "}" > /tmp/Caddyfile
+    && exec caddy run --config /tmp/Caddyfile --adapter caddyfile'
 - health_check:
     failure_threshold: 9
     period_seconds: 10

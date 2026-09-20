@@ -54,14 +54,15 @@ In `gateway_feed` mode the phone calls nothing of yours, so there is no path for
 
 **On your machine:**
 
-- **Go 1.27.1 or newer.** Every Go module here pins it (`publisher-support/go.mod`, `demo-copytrading/go.mod`, `demo-prediction/go.mod`, `feed-gateway/go.mod`). It is the only thing you strictly need to build and run a demo.
+- **Nothing at all, if you are writing your own backend.** A program in any language that can make an outbound HTTPS request is the whole requirement: no SDK, no phone-facing server, no sidecar, no inbound port. [Step 2](#publish-with-nothing-but-an-http-client) is that path end to end, with `curl`.
+- **Go 1.27.1 or newer**, to build and run one of the demo templates instead. Every Go module here pins it (`publisher-support/go.mod`, `demo-copytrading/go.mod`, `demo-prediction/go.mod`, `feed-gateway/go.mod`).
 - **Node 24.21.0 and pnpm**, if you want to run this repository's checks (`pnpm check:publisher-support`, `pnpm check:copytrading`, `pnpm check:prediction`, `pnpm test:integration`). Versions and setup are in [`docs/development/toolchain.md`](../development/toolchain.md).
 - **Docker Engine 24+ with Compose v2**, if you want the packaged deployment rather than a process you started yourself. Optional for everything in this guide, required for nothing.
 - `curl` and `openssl`, which every example below uses.
 
 **From other people:**
 
-- **A feed gateway to publish to**, and a credential it issued you. Either somebody runs one and gives you both, or you run your own ([step 1](#1-get-a-gateway-to-publish-to)).
+- **A feed gateway to publish to**, and a credential its operator issued you. Either somebody runs one and registers you ([step 2](#the-onboarding-conversation)), or you run your own ([step 1](#1-get-a-gateway-to-publish-to)).
 - **A domain and a certificate authority**, only if something off your own machine has to reach either service. Neither is needed for a local run.
 - **Nothing from us for push.** You are never given a Firebase project, service account, API key or device token, and there is no configuration on your side for any of it ([step 9](#9-topic-push)).
 - **Nothing from a provider for a first deployment.** Jupiter's keyless tier serves what the Prediction template reads; a key buys a higher rate limit and is your own business ([`docs/integrations/jupiter.md`](../integrations/jupiter.md#authentication-none-deliberately)).
@@ -113,15 +114,43 @@ The four settings that decide whether phones can read you at all: `BROADCAST_PUB
 
 ## 2. Be registered as a publisher
 
-A publisher exists only because an operator made one. There is no signup endpoint, no self-registration, and no way to do this over a network — the tool writes to the gateway's database directly:
+A publisher exists only because an operator made one. There is no signup endpoint and no
+self-registration: onboarding is a conversation with the operator, and only they can complete it.
+
+### The onboarding conversation
+
+1. **You contact the operator** and give them three things: the name you want the publisher known
+   by, your server's host or base URL if it has one, and your existing server UUID if you already
+   have one. A server ID is a lowercase UUID (`uuidgen | tr 'A-Z' 'a-z'`); if you have not chosen
+   one, say so and the operator can generate it for you — you then have to use **exactly** that ID,
+   because it is what your manifest and every publication of your own must name.
+2. **The operator registers you**, through the admin page or the tool. This is operator-mediated
+   onboarding. Nobody is registered automatically, and claiming a hostname grants nothing: the host
+   you give is a note that says which developer a registration belongs to. The gateway never fetches
+   it, no phone is told to contact it, and it is not what authenticates anything.
+3. **They hand you five values, securely**, and one of them is shown to them exactly once.
+4. **You configure those in your own backend** and publish with ordinary authenticated HTTP.
+5. **You verify acceptance and open the public feed in SAC.** Phones subscribe through the gateway.
+   They never connect to, pair with, or discover your host.
+
+### If you are the operator
+
+Either surface does the same thing through the same database, and each sees the other's work:
 
 ```sh
 # in feed-gateway/, or `docker compose ... --profile operator run --rm gateway-ctl …`
 go run ./cmd/feed-gatewayctl register --database ./broadcast.db \
-  --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label "copy trading"
+  --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label "copy trading" \
+  --host https://copytrading.example.com
 ```
 
-The server ID is a lowercase UUID you choose (`uuidgen | tr 'A-Z' 'a-z'`); it becomes your lasting identity. What comes back is shown once:
+or **Add server** on the gateway's admin page, when the deployment configured one
+([`feed-gateway/README.md`](../../feed-gateway/README.md#with-the-admin-page)). Registering takes
+effect immediately: the gateway is not restarted and none of its environment changes. Registering a
+server ID that already exists is refused on both surfaces rather than quietly adding a credential to
+it.
+
+What comes back is shown once:
 
 ```
 publisher   3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
@@ -141,7 +170,155 @@ Four things, and it is worth being clear about which is which:
 - **`credential`** — an 8-character handle for the secret, so an operator can revoke this one later without ever seeing it again. The gateway stores only a hash.
 - **the 43-character line** — the secret itself, sent as `Authorization: Bearer <credential>`. It is not recoverable: if you lose it, the operator runs `rotate` and gives you a new one.
 
+You also need two addresses from the operator, and they are different things:
+
+- **the public gateway origin** — `https://feeds.example.com`, character for character. Your
+  manifest must name exactly this, because each phone compares it with the reference the feed was
+  added from.
+- **the publisher API address** — where your backend actually sends publications. On the packaged
+  deployments this is the same origin; an operator who keeps publishing on a private network will
+  give you a different one. Never a container-local hostname: if what you were given is
+  `feed-gateway:8091` or `localhost` from somebody else's machine, go back and ask.
+
 The other commands an operator has are `rotate` (add a second credential so the first can be retired), `revoke --credential <id>`, `revoke --server <uuid> --all`, `list`, and `forget --server <uuid> --yes`, which removes a publisher and everything it published. Revoking stops future publications; it does not unpublish what is already there, and phones that already read your proposals keep their own copies until their owners remove the feed. The full table is [`docs/wiki/feed-gateway.md#registering-a-publisher`](../wiki/feed-gateway.md#registering-a-publisher).
+
+### Publish with nothing but an HTTP client
+
+The rest of this guide runs one of the two demo templates, which is the fastest way to a working
+publisher. You do not have to. **Everything the protocol needs is authenticated HTTP with a JSON
+body**, so a backend in any language that can make an outbound HTTPS request is enough. There is no
+Direct Server SDK to install, no phone-facing gRPC server to run, no sidecar, no inbound callback
+listener, and no port of yours that has to be reachable from anywhere. Publishing is outbound, and
+the gateway never calls you.
+
+Everything below was run against a live gateway; the responses are the real ones.
+
+```sh
+export PUBLIC_GATEWAY=https://feeds.example.com        # what your manifest names
+export PUBLISH_URL=https://feeds.example.com           # where you send publications
+export PUBLISHER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+export CHANNEL=server/$PUBLISHER_ID
+export PUBLISHER_CREDENTIAL='<the 43-character line, from your own secret store>'
+export PROPOSAL_ID=7c9e6679-7425-40de-944b-e07fc1f90ae7   # uuidgen, one per feed item
+```
+
+**Your manifest comes first.** A phone holds no feed without one, so this is the call that makes
+your feed exist:
+
+```sh
+curl -sS --fail-with-body "$PUBLISH_URL/seekervault.gateway.v1.PublisherService/PublishManifest" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PUBLISHER_CREDENTIAL" \
+  -d "{\"manifest\":{\"serverId\":\"$PUBLISHER_ID\",\"protocolVersion\":1,\"settingsRevision\":\"1\",
+       \"mode\":\"CONNECTION_MODE_GATEWAY_FEED\",\"environments\":[\"SERVER_ENVIRONMENT_SANDBOX\"],
+       \"displayName\":\"Example publisher\",
+       \"feed\":{\"gatewayUrl\":\"$PUBLIC_GATEWAY\",\"channel\":\"$CHANNEL\"}}}"
+# {"status":"PUBLISH_STATUS_STORED","settingsRevision":"1"}
+```
+
+**Then the first feed item**, at revision 1:
+
+```sh
+curl -sS --fail-with-body "$PUBLISH_URL/seekervault.gateway.v1.PublisherService/PublishProposal" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PUBLISHER_CREDENTIAL" \
+  -d "{\"proposal\":{\"serverId\":\"$PUBLISHER_ID\",\"channel\":\"$CHANNEL\",
+       \"proposalId\":\"$PROPOSAL_ID\",\"revision\":\"1\",
+       \"operation\":\"swap\",\"pluginId\":\"jupiter.swap\",
+       \"status\":\"PROPOSAL_STATUS_OPEN\",
+       \"createdAt\":\"2030-01-02T09:00:00Z\",\"updatedAt\":\"2030-01-02T09:00:00Z\",
+       \"expiresAt\":\"2030-01-03T09:00:00Z\",
+       \"publisherNote\":\"First item from a plain HTTP client.\",
+       \"values\":[{\"key\":\"published_price\",\"text\":\"139420000\"}]}}"
+# {"status":"PUBLISH_STATUS_STORED","revision":"1","snapshotSequence":"2"}
+```
+
+`snapshotSequence` is the channel's own counter after your publication. It is what a subscriber uses
+to tell whether anything has changed; it is not a document version, and it is not yours to choose.
+
+**Update it** by sending the complete document with a higher revision. The identity and `createdAt`
+stay fixed; any other change must advance `revision`. **Withdraw it** with the next revision again:
+
+```sh
+# … same body, "revision":"2", "updatedAt" moved, a different published_price
+# {"status":"PUBLISH_STATUS_STORED","revision":"2","snapshotSequence":"3"}
+
+curl -sS --fail-with-body "$PUBLISH_URL/seekervault.gateway.v1.PublisherService/CancelProposal" \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $PUBLISHER_CREDENTIAL" \
+  -d "{\"proposalId\":\"$PROPOSAL_ID\",\"revision\":\"3\"}"
+# {"status":"PUBLISH_STATUS_STORED","proposal":{…"status":"PROPOSAL_STATUS_CANCELLED"…},"snapshotSequence":"4"}
+```
+
+Withdrawal is final for that identity. A later publication under the same `proposalId` is refused;
+a new item is a new UUID.
+
+`PublishRequest` / `CancelRequest` take the newer common envelope at the same paths, and
+`ListRequests` / `GetRequest` read it back. `PublishProposal` is a compatibility adapter over the
+same row, revision gate, sequence and outbox, and is used here because its shape makes the lifecycle
+readable in one screen.
+
+### What the gateway answers when it refuses
+
+Every refusal is JSON with an HTTP status, a stable Connect `code`, a short `message`, and a
+`GatewayErrorDetail` naming the problem, the field, and — where it matters — the revision the
+gateway holds. Refused values are never echoed back.
+
+| What you did | Status, code | What it means |
+| --- | --- | --- |
+| Sent the same revision with byte-identical content | `200` `PUBLISH_STATUS_UNCHANGED` | A retry is not an event. Nothing was written and nobody was notified: safe after a timeout or a lost response |
+| Sent the held revision with different content | `400` `failed_precondition` `revision_conflict` | `heldRevision` says what the gateway has. Read it, decide, republish higher |
+| Sent a lower revision | `400` `failed_precondition` `stale_revision` | A late retry must not restore terms you have moved past |
+| Published under a withdrawn identity | `400` `failed_precondition` `cancelled` | Withdrawal is final. Use a new `proposalId` |
+| Sent a field the contract does not have | `400` `invalid_argument` `unknown field "amount"` | The JSON codec is strict on purpose: a field that was quietly dropped would be a client believing something that is not true |
+| Sent no credential, a wrong one, or a revoked one | `401` `unauthenticated` | All three answer the same thing. You learn that you may not publish, never whether what you presented used to work |
+| Named another publisher's server or channel | `403` `permission_denied` `other_server` | The credential says which server you are; the document is checked against that, not against what it claims |
+| Published faster than your rate | `429` `resource_exhausted` `too_many_requests` | Defaults are 2/s with 20 in hand, per publisher. Back off; a higher rate is a conversation with the operator |
+
+Retry transport failures and `unavailable`/`internal` with bounded exponential backoff. Fix
+`unauthenticated`, `permission_denied`, `invalid_argument` and `failed_precondition` before
+retrying — and **retry the same revision and the same content until you learn the outcome**. Never
+invent a higher revision because an HTTP response was lost; that is exactly what the idempotent
+`UNCHANGED` answer exists for.
+
+### Read it back, and share the feed
+
+The read side takes no credential at all, because a feed is a broadcast:
+
+```sh
+curl -sS "$PUBLIC_GATEWAY/seekervault.gateway.v1.FeedService/ListRequests" \
+  -H 'Content-Type: application/json' -d "{\"channel\":\"$CHANNEL\"}"
+```
+
+What you share with subscribers is the **feed reference**: the public gateway origin and the
+channel, `server/<your server ID>`. It carries no secret and is safe to put in a README, a QR code
+or a message. Two subscribers reading it get the same bytes from the same public source; what each
+of them then chooses, approves or executes stays on their own device and never reaches you or the
+gateway. Adding a feed in SAC is [`docs/wiki/feed-onboarding.md`](../wiki/feed-onboarding.md).
+
+### Keep the key, and rotate before it is revoked
+
+The credential belongs on your backend and nowhere else: not in a mobile or browser application, not
+in the feed reference, not in a repository. It is 32 random bytes; the gateway stores only its
+SHA-256 and cannot show it to you again.
+
+To rotate without downtime, ask the operator to **add** a credential first — both work at once —
+install the new one, confirm you are publishing with it, and only then ask them to revoke the old
+one. The reverse order is an outage. If you lose a credential, that is the same procedure: a new one
+added, the old one revoked.
+
+### The demo gateway's data is not durable, and what to do about it
+
+The public demo runs on ephemeral storage. If its container is replaced, the gateway's database can
+go with it — and with it every registration and every credential hash. Your feed then reads as
+unknown, and your publications are refused as unauthenticated.
+
+The recovery is the onboarding conversation again: the operator logs in, registers your server ID,
+and gives you a new credential. Keep your server UUID written down somewhere of your own, because
+re-registering under the same ID is what lets existing subscribers keep the feed they added. Nothing
+restores the old credential — it only ever existed as a hash — and your own backend's stored
+publications cannot put one back: an outbox replays documents to a gateway that already trusts you,
+it does not re-establish that trust. Your backend republishes its manifest and its open items once
+the new credential is installed.
 
 ## 3. Copy a template out
 

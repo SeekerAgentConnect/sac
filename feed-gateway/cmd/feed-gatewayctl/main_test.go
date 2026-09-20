@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/credential"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/sqlite"
 )
 
@@ -165,4 +166,90 @@ func fileText(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(content)
+}
+
+// SEE-141 gave the operator a second surface. The tool keeps every semantic it had, gains the two
+// things the surface needed — a host to record and a password hash to configure — and refuses the
+// one thing that used to be ambiguous.
+
+func TestRegisteringAnIdentityTwiceIsRefusedRatherThanRotated(t *testing.T) {
+	database := filepath.Join(t.TempDir(), "broadcast.db")
+	command(t, "register", "--database", database, "--server", publisher, "--label", "first")
+	err := refuses(t, "register", "--database", database, "--server", publisher, "--label", "second")
+	if !strings.Contains(err.Error(), "already registered") ||
+		!strings.Contains(err.Error(), "rotate") {
+		t.Fatalf("the refusal does not point at rotation: %v", err)
+	}
+	// Nothing was added: a second `register` must not hand out the ability to publish as an
+	// existing publisher under another name.
+	documents, err := sqlite.Open(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = documents.Close() }()
+	credentials, err := documents.Credentials(context.Background(), publisher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(credentials) != 1 {
+		t.Fatalf("the refused registration left %d credential(s)", len(credentials))
+	}
+	if held, err := documents.Publisher(context.Background(), publisher); err != nil ||
+		held.Label != "first" {
+		t.Fatalf("the existing registration was replaced: %+v", held)
+	}
+}
+
+// A host is a note about which developer a registration belongs to. It is recorded, canonicalized
+// and listed, and nothing ever fetches it.
+func TestAHostIsRecordedAsMetadata(t *testing.T) {
+	database := filepath.Join(t.TempDir(), "broadcast.db")
+	command(t, "register", "--database", database, "--server", publisher,
+		"--label", "copy trading", "--host", "https://Example.com/pub/")
+	listed := command(t, "list", "--database", database)
+	if !strings.Contains(listed, "host https://example.com/pub") {
+		t.Fatalf("the host is not listed:\n%s", listed)
+	}
+	for _, raw := range []string{"javascript:alert(1)", "example.com", "https://a:b@example.com"} {
+		if err := refuses(t, "register", "--database", filepath.Join(t.TempDir(), "x.db"),
+			"--server", publisher, "--label", "x", "--host", raw); !strings.Contains(
+			err.Error(), "--host") {
+			t.Fatalf("--host %q was refused as %v", raw, err)
+		}
+	}
+	// Rotation adds a credential and changes nothing else about a publisher.
+	if err := refuses(t, "rotate", "--database", database, "--server", publisher,
+		"--host", "https://elsewhere.example"); !strings.Contains(err.Error(), "--host belongs") {
+		t.Fatalf("rotate --host answered %v", err)
+	}
+}
+
+// The password command is the admin surface's bootstrap: it turns a password into the one line a
+// deployment configures, touches no database, and prints nothing that can be turned back into the
+// password.
+func TestThePasswordCommandPrintsAHashAndNothingElse(t *testing.T) {
+	const chosen = "a-long-enough-operator-password"
+	printed := command(t, "password", "--password", chosen)
+	if strings.Contains(printed, chosen) {
+		t.Fatal("the password itself was printed")
+	}
+	hash := strings.Fields(printed)[0]
+	parsed, err := credential.ParsePassword(hash)
+	if err != nil {
+		t.Fatalf("what was printed is not a password hash: %v", err)
+	}
+	if !parsed.Verify(chosen) {
+		t.Fatal("the printed hash does not verify the password it was made from")
+	}
+	if !strings.Contains(printed, "BROADCAST_ADMIN_PASSWORD_HASH") {
+		t.Fatal("the command does not say where the hash goes")
+	}
+	// It needs no database at all, which is what makes it usable before one exists.
+	if strings.Contains(printed, "database") {
+		t.Fatal("the password command mentions a database")
+	}
+	if err := refuses(t, "password", "--password", "short"); !strings.Contains(
+		err.Error(), "at least") {
+		t.Fatalf("a short password answered %v", err)
+	}
 }
