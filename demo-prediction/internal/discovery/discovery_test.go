@@ -37,18 +37,51 @@ func open() jupiter.Market {
 }
 
 func TestPredictionTitleUsesTheProviderQuestionAndFallsBackToItsMarketText(t *testing.T) {
-	if got := predictionTitle(event(), open()); got != "Fed Decision in October?" {
-		t.Fatalf("event title %q", got)
+	if got := predictionTitle(event(), open()); got != "Fed Decision in October? · 25 bps increase" {
+		t.Fatalf("event and market title %q", got)
 	}
 	withoutQuestion := event()
 	withoutQuestion.Title = ""
 	if got := predictionTitle(withoutQuestion, open()); got != "25 bps increase" {
 		t.Fatalf("market fallback %q", got)
 	}
+	withoutMarket := open()
+	withoutMarket.Title = ""
+	if got := predictionTitle(event(), withoutMarket); got != "Fed Decision in October?" {
+		t.Fatalf("event fallback %q", got)
+	}
+	complete := open()
+	complete.Title = "Fed Decision in October? 25 bps increase"
+	if got := predictionTitle(event(), complete); got != complete.Title {
+		t.Fatalf("complete market question %q", got)
+	}
+	same := open()
+	same.Title = "Fed Decision in October?"
+	if got := predictionTitle(event(), same); got != "Fed Decision in October?" {
+		t.Fatalf("identical titles %q", got)
+	}
 	nasty := event()
 	nasty.Title = "  Will\n rates\tmove?  "
-	if got := predictionTitle(nasty, open()); got != "Will rates move?" {
+	if got := predictionTitle(nasty, open()); got != "Will rates move? · 25 bps increase" {
 		t.Fatalf("folded title %q", got)
+	}
+	long := event()
+	long.Title = strings.Repeat("Will the FOMC move rates in October ", 4)
+	got := predictionTitle(long, open())
+	if !strings.HasSuffix(got, " · 25 bps increase") {
+		t.Fatalf("long question dropped the market: %q", got)
+	}
+	if len(got) > signals.MaxNameBytes {
+		t.Fatalf("title is %d bytes, bound is %d", len(got), signals.MaxNameBytes)
+	}
+	increase := open()
+	noChange := open()
+	noChange.Title = "No change"
+	decrease := open()
+	decrease.Title = "25 bps decrease"
+	if predictionTitle(event(), increase) == predictionTitle(event(), noChange) ||
+		predictionTitle(event(), increase) == predictionTitle(event(), decrease) {
+		t.Fatal("markets of one event must not share a title")
 	}
 }
 
