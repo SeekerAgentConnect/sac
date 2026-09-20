@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.connections
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginRegistry
 import io.github.brrenat.seekervault.servers.FeedReference
@@ -32,6 +33,8 @@ data class ConnectionsUiState(
     val message: ConnectionMessage? = null,
     /** Current transport liveness; last successful sync remains on each [Connection]. */
     val updates: ForegroundUpdatesState = ForegroundUpdatesState(),
+    /** Current shared-feed transport liveness, keyed by gateway origin. */
+    val feeds: ForegroundFeedsState = ForegroundFeedsState(),
     /**
      * Whether this build supports each connection's server, by connection ID (SEE-88). It is worked
      * out here from the manifest the connection caches and the plugins compiled into this build,
@@ -145,6 +148,7 @@ sealed interface ConnectionMessage {
 class ConnectionsViewModel(
     private val repository: ConnectionRepository,
     private val foregroundUpdates: StateFlow<ForegroundUpdatesState>? = null,
+    private val foregroundFeeds: StateFlow<ForegroundFeedsState>? = null,
     /** The bundled client plugins this build carries, which is what a manifest is matched to. */
     private val plugins: PluginRegistry = PluginRegistry.of(),
     /** A seam for the add flow's state tests; production always uses the repository method. */
@@ -173,6 +177,11 @@ class ConnectionsViewModel(
         foregroundUpdates?.let { updates ->
             viewModelScope.launch {
                 updates.collect { current -> _state.update { it.copy(updates = current) } }
+            }
+        }
+        foregroundFeeds?.let { feeds ->
+            viewModelScope.launch {
+                feeds.collect { current -> _state.update { it.copy(feeds = current) } }
             }
         }
         viewModelScope.launch {

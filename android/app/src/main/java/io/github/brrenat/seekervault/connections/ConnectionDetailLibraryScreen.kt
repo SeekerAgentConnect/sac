@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.designsystem.ConnectionDetailSheetState
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailStatus
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailStatusTone
 import io.github.brrenat.seekervault.designsystem.FactRowValueStyle
+import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerSupport
@@ -47,8 +48,9 @@ fun ConnectionDetailLibraryScreen(
     modifier: Modifier = Modifier,
     live: ForegroundConnectionState? = null,
     support: ServerSupport? = null,
+    feed: FeedListenerState? = null,
 ) {
-    val problem = hasProblem(connection, live, support)
+    val problem = hasProblem(connection, live, support, feed)
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(message, snackbar, onMessageShown)
     var renaming by rememberSaveable { mutableStateOf(false) }
@@ -67,7 +69,7 @@ fun ConnectionDetailLibraryScreen(
                     colourSupportingText = "marks this server everywhere",
                     status =
                         ConnectionDetailStatus(
-                            headline = statusText(connection, live, support),
+                            headline = statusText(connection, live, support, feed),
                             supportingText =
                                 connection.lastCheck?.let { "Checked ${formatInstant(it.at)}" },
                             tone =

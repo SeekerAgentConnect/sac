@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.HOME
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.VPS
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.policy.PolicyTags
@@ -50,6 +51,7 @@ class ConnectionDetailsScreenTest {
         refreshing: Boolean = false,
         live: ForegroundConnectionState? = null,
         support: ServerSupport? = null,
+        feed: FeedListenerState? = null,
         onEnvironment: ((PluginEnvironment) -> Unit)? = null,
     ) = compose.setContent {
         SeekerTheme {
@@ -71,13 +73,14 @@ class ConnectionDetailsScreenTest {
                 onRules = { calls += "rules" },
                 live = live,
                 support = support,
+                feed = feed,
                 onEnvironment = onEnvironment,
             )
         }
     }
 
     @Test
-    fun aSharedFeedSaysWhatItIsRatherThanThatItsCredentialIsMissing() {
+    fun aSharedFeedShowsItsLiveStateWithoutTheProminentSharedFeedNotice() {
         // A feed holds no credential and never did (SEE-88). Reading its absence as a fault would
         // put a warning on every feed the owner has.
         val manifest =
@@ -99,11 +102,16 @@ class ConnectionDetailsScreenTest {
                 server = ServerRecord.Known(manifest),
             )
 
-        show(feed, support = ServerSupport.Supported)
+        show(feed, support = ServerSupport.Supported, feed = FeedListenerState.Live(1))
 
         compose
             .onNodeWithTag(ConnectionsTags.STATUS)
-            .assertTextEquals(context.getString(R.string.connection_status_feed))
+            .assertTextEquals(context.getString(R.string.connection_status_live))
+        compose
+            .onNodeWithText(
+                "A shared feed. This phone reads it through the gateway and holds no credential for it."
+            )
+            .assertDoesNotExist()
         compose
             .onNodeWithTag(ConnectionsTags.field("plugins"))
             .assertTextContains("jupiter.prediction")

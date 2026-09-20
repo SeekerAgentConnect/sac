@@ -164,7 +164,7 @@
     <string name="feed_failed_no_gateway">This app build has no feed gateway client, so it cannot add feeds.</string>
     <string name="feed_failed_storage">This phone couldn\'t store the feed, so nothing was saved.</string>
     <!-- What kind of server a connection is, and whether this build supports it (SEE-88). -->
-    <string name="connection_status_feed">A shared feed. This phone reads it through the gateway and holds no credential for it.</string>
+    <string name="connection_status_feed_available">Feed available.</string>
     <string name="connection_status_gateway_private_retired">This gateway connection was retired. It cannot sync, open requests, or send results. Ask the operator for a fresh direct pairing code.</string>
     <string name="connection_status_unsupported_plugin">This app doesn\'t have a client plugin this server needs, so nothing from it can be approved.</string>
     <string name="connection_status_unsupported_version">This app has the client plugin this server needs, but not at a version it works with.</string>

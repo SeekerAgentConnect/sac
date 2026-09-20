@@ -4,18 +4,28 @@ import android.content.res.Configuration
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import io.github.brrenat.seekervault.designsystem.preview.DesignRef
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
@@ -31,6 +41,13 @@ data class RequestCarouselItem(
     val kind: RequestTileKind,
 )
 
+object RequestCarouselTags {
+    const val LIST = "requestCarouselList"
+    const val NEW_ITEMS = "requestCarouselNewItems"
+
+    fun item(id: String) = "requestCarouselItem:$id"
+}
+
 @Composable
 fun RequestCarousel(
     items: List<RequestCarouselItem>,
@@ -41,7 +58,8 @@ fun RequestCarousel(
 ) {
     val initialIndex = centredIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
     val carouselState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
-    val activeIndex by
+    val initialId = items.getOrNull(initialIndex)?.id
+    val activeId by
         remember(carouselState, state) {
             derivedStateOf {
                 val layout = carouselState.layoutInfo
@@ -58,46 +76,89 @@ fun RequestCarousel(
                             )
                         abs(item.offset - snapOffset)
                     }
-                    ?.index ?: initialIndex
+                    ?.key as? String ?: initialId
             }
         }
+    var anchorId by remember { mutableStateOf(initialId) }
+    var knownIds by remember { mutableStateOf(items.map(RequestCarouselItem::id).toSet()) }
+    var unseenIds by remember { mutableStateOf(emptySet<String>()) }
+    val itemIds = items.map(RequestCarouselItem::id)
 
-    LazyRow(
-        state = carouselState,
-        modifier = modifier.fillMaxWidth(),
-        contentPadding =
-            PaddingValues(
-                start = SeekerTheme.spacing.xl,
-                end = SeekerTheme.spacing.xl,
-                bottom = SeekerTheme.spacing.xs,
-            ),
-        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
-        flingBehavior = rememberSnapFlingBehavior(carouselState, RequestCarouselSnapPosition),
-    ) {
-        itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
-            RequestTile(
-                model = item.tile,
-                kind = item.kind,
-                railState =
-                    when (state) {
-                        RequestCarouselState.Rest ->
-                            if (index == activeIndex) {
-                                RequestTileRailState.Centred
-                            } else {
-                                RequestTileRailState.InRail
-                            }
-                    },
-                onClick = { onItemClick(item) },
+    LaunchedEffect(itemIds) {
+        val anchorIndex = anchorId?.let(itemIds::indexOf) ?: -1
+        val insertedBeforeAnchor =
+            if (anchorIndex < 0) emptySet()
+            else itemIds.take(anchorIndex).filterNot(knownIds::contains).toSet()
+        unseenIds = (unseenIds + insertedBeforeAnchor).intersect(itemIds.toSet())
+        knownIds = itemIds.toSet()
+    }
+    LaunchedEffect(activeId) { activeId?.let { anchorId = it } }
+    LaunchedEffect(carouselState) {
+        snapshotFlow {
+            carouselState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? String }.toSet()
+        }
+            .collect { visible -> unseenIds = unseenIds - visible }
+    }
+
+    Box(modifier.fillMaxWidth()) {
+        LazyRow(
+            state = carouselState,
+            modifier = Modifier.fillMaxWidth().testTag(RequestCarouselTags.LIST),
+            contentPadding =
+                PaddingValues(
+                    start = SeekerTheme.spacing.xl,
+                    end = SeekerTheme.spacing.xl,
+                    bottom = SeekerTheme.spacing.xs,
+                ),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
+            flingBehavior = rememberSnapFlingBehavior(carouselState, RequestCarouselSnapPosition),
+        ) {
+            itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
+                RequestTile(
+                    model = item.tile,
+                    kind = item.kind,
+                    railState =
+                        when (state) {
+                            RequestCarouselState.Rest ->
+                                if (item.id == activeId) {
+                                    RequestTileRailState.Centred
+                                } else {
+                                    RequestTileRailState.InRail
+                                }
+                        },
+                    onClick = { onItemClick(item) },
+                    modifier =
+                        Modifier.testTag(RequestCarouselTags.item(item.id))
+                            .size(
+                                width =
+                                    SeekerTheme.spacing.huge * RequestCarouselTileWidthHugeUnits +
+                                        SeekerTheme.spacing.xxl - SeekerTheme.spacing.xxs,
+                                height =
+                                    SeekerTheme.spacing.huge * RequestCarouselTileHeightHugeUnits +
+                                        SeekerTheme.spacing.xs,
+                            ),
+                )
+            }
+        }
+        if (unseenIds.isNotEmpty()) {
+            Surface(
                 modifier =
-                    Modifier.size(
-                        width =
-                            SeekerTheme.spacing.huge * RequestCarouselTileWidthHugeUnits +
-                                SeekerTheme.spacing.xxl - SeekerTheme.spacing.xxs,
-                        height =
-                            SeekerTheme.spacing.huge * RequestCarouselTileHeightHugeUnits +
-                                SeekerTheme.spacing.xs,
-                    ),
-            )
+                    Modifier.align(Alignment.TopStart)
+                        .padding(start = SeekerTheme.spacing.xl, top = SeekerTheme.spacing.xxs)
+                        .testTag(RequestCarouselTags.NEW_ITEMS),
+                shape = MaterialTheme.shapes.extraLarge,
+                tonalElevation = SeekerTheme.spacing.xxs,
+            ) {
+                Text(
+                    text = "← ${unseenIds.size} new",
+                    modifier =
+                        Modifier.padding(
+                            horizontal = SeekerTheme.spacing.md,
+                            vertical = SeekerTheme.spacing.xs,
+                        ),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
         }
     }
 }

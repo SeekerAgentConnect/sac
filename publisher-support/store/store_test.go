@@ -289,6 +289,7 @@ func TestAnUpdateThatChangesNothingMovesNoRevision(t *testing.T) {
 	}
 
 	moved := swap()
+	moved.Title = "Will SOL close above $200?"
 	moved.Terms[signals.MaxSlippageBps] = "80"
 	record, changed, err = documents.Update(ctx, created.Signal.ProposalID, moved,
 		now.Add(2*time.Minute))
@@ -300,6 +301,9 @@ func TestAnUpdateThatChangesNothingMovesNoRevision(t *testing.T) {
 	}
 	if record.Signal.Terms[signals.MaxSlippageBps] != "80" {
 		t.Fatalf("terms %v", record.Signal.Terms)
+	}
+	if record.Signal.Title != moved.Title {
+		t.Fatalf("title %q, expected %q", record.Signal.Title, moved.Title)
 	}
 	if !record.Signal.CreatedAt.Equal(now) {
 		t.Fatalf("the creation time moved to %s: it says when this proposal began, and a "+
@@ -528,7 +532,9 @@ func TestWhatIsHeldSurvivesARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	created, _, err := first.Create(ctx, "key-1", "request-1", swap())
+	createdSignal := swap()
+	createdSignal.Title = "Will SOL close above $200?"
+	created, _, err := first.Create(ctx, "key-1", "request-1", createdSignal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,6 +560,9 @@ func TestWhatIsHeldSurvivesARestart(t *testing.T) {
 	if held.Signal.Fingerprint != created.Signal.Fingerprint {
 		t.Fatal("the signal came back different")
 	}
+	if held.Signal.Title != createdSignal.Title {
+		t.Fatalf("title %q, expected %q", held.Signal.Title, createdSignal.Title)
+	}
 	if held.Signal.Revision != 1 || held.Publication.ConfirmedRevision != 0 {
 		t.Fatalf("revision %d, confirmed %d", held.Signal.Revision,
 			held.Publication.ConfirmedRevision)
@@ -563,7 +572,7 @@ func TestWhatIsHeldSurvivesARestart(t *testing.T) {
 	}
 	// The same idempotency key still resolves to the same signal, so a caller retrying across a
 	// restart is still safe.
-	replay, replayed, err := second.Create(ctx, "key-1", "request-1", swap())
+	replay, replayed, err := second.Create(ctx, "key-1", "request-1", createdSignal)
 	if err != nil || !replayed {
 		t.Fatalf("replayed %v (%v)", replayed, err)
 	}

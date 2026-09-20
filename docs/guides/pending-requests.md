@@ -29,7 +29,16 @@ Requests remain authoritative on the sidecar. The phone keeps the last complete 
 Home previews waiting requests in a horizontal carousel. Its first card begins at the left content
 edge. As you swipe, cards between the endpoints settle in the centre; the final card settles at the
 right content edge. The spacing and ordinary horizontal swipe gesture stay the same. The carousel
-only browses requests—tap a card to review it and answer on Request details.
+only browses requests—tap a card to review it and answer on Request details. If new cards arrive
+before the card you are reading, that card stays in place instead of jumping or flashing. A
+left-pointing **N new** marker remains inside the carousel until those newly arrived cards have been
+scrolled into view.
+
+Prediction cards use the provider's actual question as their title and name the venue in the
+footer. They do not add an app-authored “Prediction market” prefix. Under **Paired servers**, a
+public feed uses the same **N pending** wording as a direct server, counted from the open signals
+currently held for that feed. Live disconnect and reconnect changes appear there without treating
+the feed's intentional lack of a private credential as a disconnection.
 
 1. On **Connections**, tap **Pending requests**, the first row. Or open a connection and tap **Pending requests** there for only that connection's.
 2. The list has up to three parts:

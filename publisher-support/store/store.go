@@ -50,7 +50,7 @@ import (
 
 // Version is the schema this build writes and reads. A file from a later version is refused rather
 // than guessed at, and a file from an earlier one is brought forward (see [steps]).
-const Version = 2
+const Version = 3
 
 var (
 	// ErrNewerSchema is returned by Open when the file was written by a later version.
@@ -168,12 +168,11 @@ func (s *Store) Close() error {
 // steps are the schema, one version at a time: steps[0] is version 1, and a file at version N is
 // brought forward by applying the rest.
 //
-// There is a second one because the Prediction template needed two tables the CopyTrading template
-// does not use (SEE-96), and both templates are one module with one file format. A publisher who
-// has been running the first template since Stage 7.1 opens their database with a newer build and
-// keeps their signals: refusing it, or quietly creating a second file beside it, would both lose
-// the outbox that makes a restart safe.
-var steps = []string{schemaV1, schemaV2}
+// Later steps add Prediction discovery and its source-authored request title. Both templates are
+// one module with one file format. A publisher who has been running the first template since Stage
+// 7.1 opens their database with a newer build and keeps their signals: refusing it, or quietly
+// creating a second file beside it, would both lose the outbox that makes a restart safe.
+var steps = []string{schemaV1, schemaV2, schemaV3}
 
 const schemaV1 = `
 -- Whose file this is. One row, and it is checked on every open: a database is a publisher's
@@ -297,6 +296,12 @@ CREATE TABLE discovery (
   skipped        INTEGER NOT NULL,
   reasons        TEXT NOT NULL
 );
+`
+
+// Version 3 gives the request presentation its source-owned title (SEE-139). Existing signals keep
+// their operation fallback; newly discovered prediction markets persist the provider's question.
+const schemaV3 = `
+ALTER TABLE signal ADD COLUMN title TEXT NOT NULL DEFAULT '';
 `
 
 func (s *Store) migrate(ctx context.Context, stamp Stamp) error {
@@ -527,12 +532,12 @@ func createIn(
 	}
 	if _, err := transaction.ExecContext(ctx,
 		`INSERT INTO signal (proposal_id, revision, status, operation, plugin_id, created_at_ms,
-		                     updated_at_ms, expires_at_ms, note, terms, fingerprint,
+		                     updated_at_ms, expires_at_ms, title, note, terms, fingerprint,
 		                     confirmed_revision, attempts, due_at_ms, problem, detail)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, '', '')`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, '', '')`,
 		signal.ProposalID, signal.Revision, string(signal.Status), signal.Operation,
 		signal.PluginID, milliseconds(signal.CreatedAt), milliseconds(signal.UpdatedAt),
-		milliseconds(signal.ExpiresAt), signal.Note, string(terms), signal.Fingerprint,
+		milliseconds(signal.ExpiresAt), signal.Title, signal.Note, string(terms), signal.Fingerprint,
 		milliseconds(signal.CreatedAt),
 	); err != nil {
 		return signals.Record{}, false, err
@@ -613,6 +618,7 @@ func updateIn(
 	// time and the operation are not a caller's to move.
 	candidate := held.Signal
 	candidate.ExpiresAt = next.ExpiresAt
+	candidate.Title = next.Title
 	candidate.Note = next.Note
 	candidate.Terms = next.Terms
 	candidate.Fingerprint = signals.Fingerprint(serverID, candidate)
@@ -629,11 +635,11 @@ func updateIn(
 		return signals.Record{}, false, err
 	}
 	if _, err := transaction.ExecContext(ctx,
-		`UPDATE signal SET revision = ?, updated_at_ms = ?, expires_at_ms = ?, note = ?,
+		`UPDATE signal SET revision = ?, updated_at_ms = ?, expires_at_ms = ?, title = ?, note = ?,
 		                   terms = ?, fingerprint = ?, attempts = 0, due_at_ms = ?,
 		                   problem = '', detail = ''
 		 WHERE proposal_id = ?`,
-		revision, milliseconds(now), milliseconds(candidate.ExpiresAt), candidate.Note,
+		revision, milliseconds(now), milliseconds(candidate.ExpiresAt), candidate.Title, candidate.Note,
 		string(terms), candidate.Fingerprint, milliseconds(now), id,
 	); err != nil {
 		return signals.Record{}, false, err
@@ -809,7 +815,7 @@ func (s *Store) Refused(ctx context.Context, id string, problem, detail string) 
 
 const selectSignal = `
 SELECT proposal_id, revision, status, operation, plugin_id, created_at_ms, updated_at_ms,
-       expires_at_ms, note, terms, fingerprint, confirmed_revision, attempts, due_at_ms,
+       expires_at_ms, title, note, terms, fingerprint, confirmed_revision, attempts, due_at_ms,
        problem, detail
 FROM signal`
 
@@ -840,7 +846,7 @@ func scanOne(row scanner) (signals.Record, error) {
 	)
 	if err := row.Scan(&record.Signal.ProposalID, &record.Signal.Revision, &status,
 		&record.Signal.Operation, &record.Signal.PluginID, &created, &updated, &expires,
-		&record.Signal.Note, &terms, &record.Signal.Fingerprint,
+		&record.Signal.Title, &record.Signal.Note, &terms, &record.Signal.Fingerprint,
 		&record.Publication.ConfirmedRevision, &record.Publication.Attempts, &due,
 		&record.Publication.Problem, &record.Publication.Detail); err != nil {
 		return signals.Record{}, err

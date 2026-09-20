@@ -70,6 +70,9 @@ type Signal struct {
 	// The instant after which nothing is executed from it: absolute, required, and in the future
 	// when it is published, because a signal that has already expired proposes nothing.
 	ExpiresAt time.Time
+	// A source-authored short title. Discovery templates use the provider's actual question;
+	// callers that do not supply one retain the operation's generic title.
+	Title string
 	// The publisher's own prose, for a person to read. Unverified, shown apart from anything the
 	// phone established for itself, and optional.
 	Note string
@@ -321,6 +324,10 @@ func Request(serverID string, signal Signal) *requestv2.Request {
 	if signal.Status == Cancelled {
 		status = requestv2.RequestStatus_REQUEST_STATUS_CANCELLED
 	}
+	presentationTitle := signal.Title
+	if presentationTitle == "" {
+		presentationTitle = title(signal.Operation)
+	}
 	return &requestv2.Request{
 		ContractVersion: 1,
 		Identity: &requestv2.RequestIdentity{
@@ -333,7 +340,7 @@ func Request(serverID string, signal Signal) *requestv2.Request {
 			ExpiresAt: timestamppb.New(signal.ExpiresAt.UTC().Truncate(time.Second)),
 		},
 		Presentation: &requestv2.Presentation{
-			Title: title(signal.Operation), Description: signal.Note,
+			Title: presentationTitle, Description: signal.Note,
 			Category: requestv2.PresentationCategory_PRESENTATION_CATEGORY_SIGNAL,
 		},
 		Action: &requestv2.ActionCapability{
@@ -406,7 +413,8 @@ func Statement(signal Signal) string {
 	}
 	sort.Strings(keys)
 	digest := sha256.New()
-	fmt.Fprintf(digest, "%s\n%s\n", signal.ExpiresAt.UTC().Format(time.RFC3339), signal.Note)
+	fmt.Fprintf(digest, "%s\n%s\n%s\n", signal.ExpiresAt.UTC().Format(time.RFC3339), signal.Title,
+		signal.Note)
 	for _, key := range keys {
 		fmt.Fprintf(digest, "%s=%s\n", key, signal.Terms[key])
 	}

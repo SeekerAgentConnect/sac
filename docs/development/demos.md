@@ -70,6 +70,12 @@ These are neither of the other two services. [`feed-gateway/`](../../feed-gatewa
 gateway they publish *to*, run by whoever hosts the broadcast; [`mcp-server/`](../../mcp-server) is
 one owner's private server for their own phone. Three servers, three operators.
 
+Prediction discovery also supplies the common request presentation title from the provider's event
+question. It is folded to the protocol's 64-byte printable-title bound, persisted with the signal,
+and included in both its fingerprint and idempotent statement. The request therefore carries the
+provider's question unchanged across publication retries and process restarts; the operation's
+generic “Prediction market” title is only the compatibility fallback for a signal with no title.
+
 ## Running them
 
 The toolchain is Go alone — the version in
@@ -299,7 +305,7 @@ an absolute one. The answer is JSON on stdout so it can be piped; what a person 
 | `limit/` | The in-memory sliding window behind the optional rolling-hour create cap and the trader UI's own limits (SEE-126) |
 | `config/` | The base deployment: `Config` and `Load`, the exported `Reader` (`NewReader`/`Note`/`Text`/`Secret`/`Whole`/`List`/`Problems`), and the address rules `Origin`, `Reachable` and `HeaderSafe` |
 | `markets/` | The market records the store persists: `Market`, `Tracked`, `Cycle`, `ErrBusy`, and the `OK`/`Partial`/`Failed` outcomes. It knows no provider |
-| `store/` | The only place that speaks SQL: six tables, one writer, two revisions per row that are the whole of the outbox, the market rows, and a schema brought forward rather than refused |
+| `store/` | The only place that speaks SQL: six tables, one writer, two revisions per row that are the whole of the outbox, the market rows, and schema v3 brought forward rather than refused. Version 3 adds the source-authored request title while old rows retain their operation fallback. |
 | `gateway/` | The authenticated HTTP/Connect `PublisherService` client, and the classification of every refusal into retry or refuse |
 | `publish/` | The durable drainer: it publishes what the store says is pending, manifest first, because a phone holds no feed without one |
 | `api/` | The shared business-API frame both demos serve: its authorization, its strict decoding, `Authorship`, and the stage boundary in `boundary_test.go` |

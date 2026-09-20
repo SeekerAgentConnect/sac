@@ -143,6 +143,32 @@ func TestADocumentNamesItsOwnChannelAndNothingElse(t *testing.T) {
 	}
 }
 
+func TestARequestUsesTheSourceTitleWithoutAddingAnAppPrefix(t *testing.T) {
+	signal := Signal{
+		ProposalID: "8c9d0e1f-2a3b-4c5d-8e6f-7a8b9c0d1e2f",
+		Revision:   1,
+		Status:     Open,
+		Operation:  "prediction",
+		PluginID:   "jupiter.prediction",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		ExpiresAt:  now.Add(time.Hour),
+		Title:      "Will the Fed cut rates?",
+		Terms:      map[string]string{},
+	}
+	if title := Request(server, signal).GetPresentation().GetTitle(); title != signal.Title {
+		t.Fatalf("title %q, expected the provider's %q", title, signal.Title)
+	}
+	withoutTitle := signal
+	withoutTitle.Title = ""
+	if title := Request(server, withoutTitle).GetPresentation().GetTitle(); title != "Prediction market" {
+		t.Fatalf("fallback title %q", title)
+	}
+	if Statement(signal) == Statement(withoutTitle) {
+		t.Fatal("the source title was absent from the idempotent statement")
+	}
+}
+
 // The fingerprint is the content, and the two fields that are not content are left out of it: the
 // revision, which says the content changed, and the update time, which says when.
 func TestTheFingerprintIsTheContentAndNotTheRevision(t *testing.T) {
@@ -169,6 +195,7 @@ func TestTheFingerprintIsTheContentAndNotTheRevision(t *testing.T) {
 		apply func(*Signal)
 	}{
 		{"the note", func(s *Signal) { s.Note = "something else" }},
+		{"the title", func(s *Signal) { s.Title = "A source question" }},
 		{"the expiry", func(s *Signal) { s.ExpiresAt = now.Add(2 * time.Hour) }},
 		{"a term", func(s *Signal) { s.Terms[MaxSlippageBps] = "51" }},
 		{"the status", func(s *Signal) { s.Status = Cancelled }},

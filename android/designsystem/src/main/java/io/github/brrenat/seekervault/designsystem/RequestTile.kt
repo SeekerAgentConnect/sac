@@ -57,6 +57,8 @@ data class RequestTileModel(
     val warningCount: Int,
     val signatureByteCount: Int? = null,
     val assetSymbol: String? = null,
+    /** Optional source-owned footer copy; kinds use their safe default when absent. */
+    val footerText: String? = null,
 )
 
 @Composable
@@ -113,6 +115,7 @@ fun RequestTile(
         )
         RequestTileFooter(
             kind = kind,
+            text = model.footerText ?: kind.effect(),
             warningCount = model.warningCount,
             centred = centred,
             secondaryColor = tileColors.secondary,
@@ -226,6 +229,7 @@ private fun RequestTileHeadline(
 @Composable
 private fun RequestTileFooter(
     kind: RequestTileKind,
+    text: String,
     warningCount: Int,
     centred: Boolean,
     secondaryColor: Color,
@@ -236,7 +240,7 @@ private fun RequestTileFooter(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = kind.effect(),
+            text = text,
             modifier = Modifier.weight(1f),
             color = secondaryColor,
             maxLines = 1,

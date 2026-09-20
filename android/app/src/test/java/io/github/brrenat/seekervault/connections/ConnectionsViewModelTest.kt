@@ -4,6 +4,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.feeds.FeedListenerState
+import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -130,6 +132,25 @@ class ConnectionsViewModelTest {
             )
 
         assertEquals(updates.value, viewModel.state.value.updates)
+    }
+
+    @Test
+    fun publishesApplicationScopedFeedLivenessWithoutScreenRefresh() {
+        val feeds = MutableStateFlow(ForegroundFeedsState())
+        val viewModel =
+            ConnectionsViewModel(
+                repository,
+                foregroundFeeds = feeds,
+                cleartextPermitted = { it == "127.0.0.1" },
+            )
+
+        feeds.value =
+            ForegroundFeedsState(
+                foreground = true,
+                gateways = mapOf(GATEWAY to FeedListenerState.Live(2)),
+            )
+
+        assertEquals(feeds.value, viewModel.state.value.feeds)
     }
 
     @Test

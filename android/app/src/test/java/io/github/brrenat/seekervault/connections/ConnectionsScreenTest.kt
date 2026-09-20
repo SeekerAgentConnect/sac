@@ -17,7 +17,23 @@ import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.ServerRowModel
 import io.github.brrenat.seekervault.designsystem.ServerRowState
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.feeds.FeedListenerState
+import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.inbox.PendingItem
+import io.github.brrenat.seekervault.plugins.OperationId
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.proposals.PREDICTION
+import io.github.brrenat.seekervault.proposals.PROPOSAL_A
+import io.github.brrenat.seekervault.proposals.PROPOSAL_B
+import io.github.brrenat.seekervault.proposals.ProposalRecord
+import io.github.brrenat.seekervault.proposals.ProposalValue
+import io.github.brrenat.seekervault.proposals.proposal
+import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.SERVER_PROTOCOL
+import io.github.brrenat.seekervault.servers.ServerManifest
+import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.ServerReference
+import io.github.brrenat.seekervault.servers.channelFor
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -150,6 +166,102 @@ class ConnectionsScreenTest {
         assertEquals("Couldn’t reach the server · 9:48 PM", state.servers[1].model.statusText)
         assertEquals("Wallet", state.wallet.name)
         assertEquals(false, state.wallet.canCopy)
+    }
+
+    @Test
+    fun feedUsesLiveTransportAndCurrentOpenSignalsForStatusAndPredictionCopy() {
+        val feed =
+            HOME.copy(
+                id = "8d7c6b5a-4938-4271-a0b9-c8d7e6f5a4b3",
+                label = "Prediction feed",
+                serverUrl = "https://gateway.example.com",
+                hasCredential = false,
+                mode = ConnectionMode.GatewayFeed,
+                lastCheck = null,
+                server =
+                    ServerRecord.Known(
+                        ServerManifest(
+                            serverId = HOME.serverId,
+                            protocolVersion = SERVER_PROTOCOL,
+                            settingsRevision = 1,
+                            mode = ConnectionMode.GatewayFeed,
+                            reference =
+                                ServerReference.Feed(
+                                    "https://gateway.example.com",
+                                    channelFor(HOME.serverId),
+                                ),
+                            required = emptyList(),
+                            environments = setOf(PluginEnvironment.Production),
+                        )
+                    ),
+            )
+        val first = prediction(feed, PROPOSAL_A, "Will SOL close above \$200?", "polymarket")
+        val second = prediction(feed, PROPOSAL_B, "Will the Fed cut rates?", "jupiter-prediction")
+        val live =
+            homeScreenState(
+                connectionsState =
+                    ConnectionsUiState(
+                        connections = listOf(feed),
+                        loaded = true,
+                        feeds =
+                            ForegroundFeedsState(
+                                foreground = true,
+                                gateways = mapOf(feed.serverUrl to FeedListenerState.Live(1)),
+                            ),
+                    ),
+                inboxSummary = null,
+                wallet = null,
+                pendingItems = listOf(first, second),
+                requestAssessments = emptyMap(),
+            )
+
+        assertEquals(ServerRowState.Connected, live.servers.single().rowState)
+        assertEquals("Connected · 2 pending", live.servers.single().model.statusText)
+        assertEquals("Will SOL close above \$200?", live.pending.first().tile.title)
+        assertEquals("Polymarket", live.pending.first().tile.footerText)
+
+        val reconnecting =
+            homeScreenState(
+                connectionsState =
+                    ConnectionsUiState(
+                        connections = listOf(feed),
+                        loaded = true,
+                        feeds =
+                            ForegroundFeedsState(
+                                foreground = true,
+                                gateways =
+                                    mapOf(feed.serverUrl to FeedListenerState.Reconnecting(2)),
+                            ),
+                    ),
+                inboxSummary = null,
+                wallet = null,
+                pendingItems = listOf(second),
+                requestAssessments = emptyMap(),
+            )
+
+        assertEquals(ServerRowState.Unreachable, reconnecting.servers.single().rowState)
+        assertEquals("Reconnecting · 1 pending", reconnecting.servers.single().model.statusText)
+    }
+
+    private fun prediction(
+        feed: Connection,
+        id: String,
+        title: String,
+        provider: String,
+    ): PendingItem.Signal {
+        val base = proposal()
+        return PendingItem.Signal(
+            ProposalRecord(
+                connectionId = feed.id,
+                proposal =
+                    base.copy(
+                        key = base.key.copy(proposalId = id),
+                        title = title,
+                        operation = OperationId(PREDICTION),
+                        values = listOf(ProposalValue("provider", provider)),
+                    ),
+            )
+        )
     }
 
     private fun show(state: HomeScreenState) = compose.setContent {

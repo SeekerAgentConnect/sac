@@ -858,6 +858,7 @@ private fun ConnectionDetailsRoute(
         overrideCount = overrideCount,
         live = state.updates.connections[id],
         support = state.support[id],
+        feed = state.feeds.gateways[connection.serverUrl],
     )
 }
 
