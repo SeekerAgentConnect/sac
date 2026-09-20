@@ -48,9 +48,9 @@ automated checks PASS and the issue is In Review on PR #38.
 - [x] Run SDK/MCP regressions, workspace lint/type/build/generated checks, and record every required check as PASS, FAIL or NOT RUN.
 - [x] Record real Hermes, real OpenClaw and physical-device checks as PASS, FAIL or NOT RUN with the precise blocker; do not run/install Android on a real device.
 - [x] Update `mcp-server/README.md`, linked detail, migration map, canonical docs, `CODEBASE.md`, changelog and this plan's Review section.
-- [ ] Re-read SEE-128 and SEE-132 immediately before handoff.
-- [ ] Commit and push `superset/feat/see-128`, updating PR #38 without merging or completing SEE-128.
-- [ ] Move SEE-132 to In Review and comment with evidence if Linear access works.
+- [x] Re-read SEE-128 and SEE-132 immediately before handoff.
+- [x] Commit and push `superset/feat/see-128`, updating PR #38 without merging or completing SEE-128.
+- [x] Move SEE-132 to In Review and comment with evidence if Linear access works. The fallback task API moved the ticket and attached PR #38; the Linear MCP plugin still returned `401 invalid_token`, and the fallback exposes no comment operation, so no evidence comment could be posted.
 - [ ] POST the required `finished` webhook before stopping; do not start SEE-133.
 
 ## Review
@@ -73,3 +73,8 @@ RUN. Android CI was NOT RUN because no Android SDK path is configured. Two gener
 were stopped by the remote Buf registry's `resource_exhausted` limit; generated outputs have no
 diff, and CI remains the authoritative retry. No SDK/MCP artifact was published or uploaded, no
 publish credential/workflow was added, and SEE-133/SEE-134 were not started.
+
+Implementation commit `2d4c451` was pushed to `superset/feat/see-128`, updating open PR #38 without
+merging. SEE-132 is In Review with that PR attached; SEE-128 remains In Progress and was not
+completed. GitHub reported no checks for the branch, while Actions-run inspection was unavailable
+to the current token (`403 Resource not accessible by personal access token`).
