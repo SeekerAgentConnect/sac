@@ -135,16 +135,33 @@ All session metadata lives in the `.claude/` folder and should be tracked in Git
 
 ## Superset Hook
 
-When session runned in superset.sh and status changes (stuck, blocked, finished, failed — and optionally started), and `$SEE_SUPERSET_TOKEN` env exist: POST JSON to `$SEE_SUPERSET_HOOK` with header `Authorization: Bearer $SEE_SUPERSET_TOKEN`. Body:
+When a session runs in Superset (Claude, Codex, Grok, or GLM) and status changes (`working`, `stuck`, `blocked`, `finished`, `failed`), and `$SEE_SUPERSET_TOKEN` is set: POST JSON to `$SEE_SUPERSET_HOOK` with header `Authorization: Bearer $SEE_SUPERSET_TOKEN`.
+
+Use the shared script — do not invent a second payload:
+
+```bash
+bash scripts/superset-hook.sh                 # maps agent hook events automatically
+bash scripts/superset-hook.sh blocked "why"   # explicit status from the agent prompt
+```
+
+Body:
+
+```json
 {
   "ticket": "SEE-100",
-  "repo": "SeekerAgentWallet",
+  "repo": "SeekerAgentConnect",
   "branch": "superset/feat/see-100",
-  "status": "finished" | "stuck" | "blocked" | "failed" | "working",
+  "status": "finished",
   "message": "short human summary",
-  "pr": "https://github.com/..." // if any
+  "pr": "https://github.com/..."
 }
+```
 
+`status` is one of: `finished` | `stuck` | `blocked` | `failed` | `working`.
+
+Wiring: `.claude/settings.json` (Claude + GLM), `.codex/hooks.json`, `.grok/hooks/superset.json`. Details: `docs/development/superset-hooks.md`.
+
+If Linear is unreadable, STOP, run `bash scripts/superset-hook.sh blocked "ticket unreadable"`, and change nothing.
 
 ## PR Code Review
 
