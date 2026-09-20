@@ -141,6 +141,11 @@ A cycle reads the listing, then asks about the markets it is tracking that the l
 | --- | --- |
 | the market is in the listing and unchanged | nothing at all: no revision, no publication, no phone woken |
 | its close time, title or bucket moved | the statement moves, the revision moves once, and every subscriber re-reads it |
+
+The published request title is the provider's event and market text, not an app-added
+category or venue prefix. A multi-market event is `event · market` (for example
+`Fed Decision in October? · 25 bps increase`) so each binary market is distinct on the
+phone. The provider name stays in the card footer.
 | a matching market is not tracked yet | a proposal is published for it, unless the ceiling is reached |
 | it is **missing from the listing** | it is asked about directly, and only the answer decides |
 | …and the provider says closed, cancelled or settled | the proposal is withdrawn |

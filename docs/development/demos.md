@@ -70,10 +70,12 @@ These are neither of the other two services. [`feed-gateway/`](../../feed-gatewa
 gateway they publish *to*, run by whoever hosts the broadcast; [`mcp-server/`](../../mcp-server) is
 one owner's private server for their own phone. Three servers, three operators.
 
-Prediction discovery also supplies the common request presentation title from the provider's event
-question. It is folded to the protocol's 64-byte printable-title bound, persisted with the signal,
-and included in both its fingerprint and idempotent statement. The request therefore carries the
-provider's question unchanged across publication retries and process restarts; the operation's
+Prediction discovery also supplies the common request presentation title from the provider's own
+event and market text, joined as `event · market` when both are present and distinct, so cards of
+one multi-market event are not identical. It is folded to the protocol's 64-byte printable-title
+bound (the market is kept; a long event is shortened first), persisted with the signal, and a
+non-empty title is included in the idempotent statement. An empty title keeps the pre-upgrade
+expiry-and-note digest so an upgraded publisher still replays existing keys. The operation's
 generic “Prediction market” title is only the compatibility fallback for a signal with no title.
 
 ## Running them
