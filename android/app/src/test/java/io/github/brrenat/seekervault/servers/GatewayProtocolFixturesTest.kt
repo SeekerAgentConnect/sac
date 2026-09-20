@@ -20,12 +20,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * What the broadcast gateway answers, read by the phone that will be asking (SEE-90,
+ * What the feed gateway answers, read by the phone that will be asking (SEE-90,
  * proto/fixtures/seekervault/gateway/v1).
  *
  * The fixtures are not written for this test: the gateway's own Go tests run a scenario through the
  * real service and require each committed fixture to be exactly what it answered
- * (`broadcast/internal/gateway/fixtures_test.go`). This side then requires the phone's own
+ * (`feed-gateway/internal/gateway/fixtures_test.go`). This side then requires the phone's own
  * validators to accept what is in them. Neither runtime has to reach the other for that to mean
  * something — the transport is SEE-91 — and between them they say the thing that matters: the
  * documents the gateway serves are documents this build can use.

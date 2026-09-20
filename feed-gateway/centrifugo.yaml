@@ -1,0 +1,140 @@
+# The broker that fans a feed's publications out to the phones listening (SEE-91).
+#
+# It is deliberately the smallest Centrifugo a deployment can be: one transport, one namespace, no
+# way for a client to send anything, and no telemetry. Everything here that is off is off because
+# turning it on would let a listener do something a listener has no business doing.
+#
+# The secrets are not in this file. `http_api.key` and `client.token.hmac_secret_key` come from the
+# environment (CENTRIFUGO_HTTP_API_KEY, CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY), which compose
+# reads from .env — the same habit the sidecar has, and the reason this file is safe to read in a
+# pull request.
+#
+# Checked two ways: `centrifugo checkconfig -c centrifugo.yaml`, and by starting it. The second one
+# matters — checkconfig accepts a ping interval shorter than the pong timeout and the server then
+# refuses to start, so the compose stack is validated by coming up (docs/development/feed-gateway.md).
+
+# Where the API and the health endpoint listen. Private: the API key on this port can publish
+# anything to any channel, so nothing routes to it from outside the deployment. The one endpoint
+# that is public is the unidirectional gRPC one below, and Caddy exposes only its single path.
+http_server:
+  address: "0.0.0.0"
+  port: 8000
+
+log:
+  level: info
+
+# Redis is what makes two broker nodes one broker: a publication accepted by either reaches the
+# clients attached to both, and the channel history a reconnecting listener recovers from is shared
+# rather than per-node. It is a **recovery cache and not the source of truth** — the gateway's
+# SQLite file is that (SEE-90), and a listener that cannot be caught up from history reads the
+# authoritative snapshot over the gateway's unary API instead.
+engine:
+  type: redis
+  redis:
+    address:
+      - "redis://redis:6379"
+    prefix: seekervault
+
+client:
+  # No anonymous connection without a token, and no token that is not the gateway's: the only way
+  # to open a stream is a ticket the gateway minted (FeedService.GetStreamTicket). The ticket's
+  # subject is empty, which is an anonymous *identity* — that is allowed, and it is the point: the
+  # grant says which channels and nothing about who.
+  allow_anonymous_connect_without_token: false
+  disallow_anonymous_connection_tokens: false
+  token:
+    hmac_secret_key: ""
+  # What a slow listener costs. Past this many bytes queued for one connection, the broker closes
+  # it (`reason: slow`); it reconnects, recovers from history if it can and reads a snapshot if it
+  # cannot, which is the path every other disconnection takes.
+  #
+  # The number is small on purpose, and what was measured is worth knowing: a gRPC client that
+  # stops reading is buffered by the transport's own flow-control window first, so the queue only
+  # grows once that is full — a non-reading client survived several megabytes with this set to
+  # 256 KiB. So this bound protects the **broker**, and the effective per-client cost is this plus
+  # the transport's window. What protects a **phone** that falls behind is the gateway's publish
+  # rate limit per publisher (SEE-90), which is where a feed's rate is actually decided.
+  # 64 KiB is one maximum-size document plus headroom: a listener that cannot take one document at
+  # a time is not a listener.
+  queue_max_size: 65536
+  # One connection carries one phone's feeds, and the gateway grants at most 32 channels in a
+  # ticket. This is the same bound at the other end of the same rule.
+  channel_limit: 32
+  # How far back a reconnecting listener may be caught up from history in one go. Past it, recovery
+  # fails rather than truncating — which is the answer we want, because a truncated recovery looks
+  # like a complete one and a failed one sends the listener to the authoritative snapshot.
+  recovery_max_publication_limit: 300
+
+channel:
+  namespaces:
+    # Every feed channel is `feed:server/<server_id>`. The prefix is what scopes all of this to
+    # feeds and leaves every other channel name default-denied, and it has to match
+    # internal/stream.Namespace exactly — a publication into an unconfigured namespace is accepted
+    # and kept *without history*, so recovery would quietly stop working. Tests on both sides pin
+    # the name.
+    - name: feed
+      # The recovery cache. 256 publications or an hour, whichever runs out first: enough for a
+      # phone that was in a lift or asleep, and far too little to be a record of a channel — the
+      # documents are the gateway's, and this is a buffer.
+      history_size: 256
+      history_ttl: "1h"
+      # Positioning gives every publication an offset and every subscription an epoch, which is the
+      # cursor a listener reconnects with. force_recovery turns it on for the server-side
+      # subscriptions a ticket creates — without it a ticket's subscription is not recoverable at
+      # all, because a unidirectional client cannot ask for recovery itself. (Probed: with
+      # allow_recovery alone, the subscribe reply says `recoverable: false`.)
+      force_positioning: true
+      allow_recovery: true
+      force_recovery: true
+      # Nothing a client may do. It cannot subscribe itself (the transport has no way to ask, and
+      # the ticket is the only grant), it cannot publish, and it cannot read history or presence —
+      # the gateway's unary API is where a phone reads, and it answers the same to everyone.
+      allow_subscribe_for_anonymous: false
+      allow_subscribe_for_client: false
+      allow_publish_for_anonymous: false
+      allow_publish_for_client: false
+      allow_publish_for_subscriber: false
+      allow_history_for_anonymous: false
+      allow_history_for_client: false
+      allow_history_for_subscriber: false
+      allow_presence_for_anonymous: false
+      allow_presence_for_client: false
+      allow_presence_for_subscriber: false
+      # Who is listening is not something this deployment collects. Presence would be a list of
+      # connections per channel, and join/leave would announce one subscriber to another.
+      presence: false
+      join_leave: false
+
+# The server API, which only the gateway calls. The key is in the environment.
+http_api:
+  key: ""
+  insecure: false
+
+# The one transport. Unidirectional by choice: a client that cannot send cannot subscribe itself,
+# cannot publish, and cannot ask for history — so the grant in its ticket is the whole of what it
+# can do, and that is enforced by the shape of the connection rather than by a permission.
+uni_grpc:
+  enabled: true
+  address: "0.0.0.0"
+  port: 11000
+
+# Every other transport is off. A bidirectional one would give a connection commands to send, and
+# then the permissions above would be the only thing standing between a listener and a channel's
+# history; with none enabled, there is nothing to stand between.
+websocket:
+  disabled: true
+
+# Nothing about this deployment goes anywhere. Centrifugo's usage statistics are anonymous and sent
+# to its authors by default; a service that exists so that a developer's server never learns who is
+# subscribed to it should not be reporting its own shape to anyone either.
+usage_stats:
+  disabled: true
+
+# For the deployment's own health check. It says whether the process is up, and nothing else.
+health:
+  enabled: true
+
+# A graceful drain: on SIGTERM the broker stops accepting, closes the streams it holds with
+# `3001 shutdown` (which every listener treats as reconnect-and-recover), and exits.
+shutdown:
+  timeout: "30s"

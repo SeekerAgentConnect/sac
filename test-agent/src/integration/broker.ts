@@ -2,8 +2,8 @@
  * The pinned broker, when the machine running the integration suite has it (SEE-98).
  *
  * The transport the gateway fans out through is Centrifugo v6 with Redis as its engine
- * (`docs/wiki/broadcast-gateway.md#the-transport-and-what-it-cannot-do`), and the shipped
- * `broadcast/centrifugo.yaml` is the configuration this starts it with — unchanged, because a run
+ * (`docs/wiki/feed-gateway.md#the-transport-and-what-it-cannot-do`), and the shipped
+ * `feed-gateway/centrifugo.yaml` is the configuration this starts it with — unchanged, because a run
  * against a configuration nobody deploys proves nothing about the one they do. Only the engine is
  * overridden, to memory: Redis is what makes two nodes one broker, and one node accepting a
  * publication is what this leg is about. Two nodes, a shared history and a failover are
@@ -24,7 +24,7 @@ export const BROKER_API_KEY = "integration-api-key";
 export const BROKER_TOKEN_KEY = "integration-token-key";
 
 const CONFIG = fileURLToPath(
-  new URL("../../../broadcast/centrifugo.yaml", import.meta.url),
+  new URL("../../../feed-gateway/centrifugo.yaml", import.meta.url),
 );
 
 export interface Broker {

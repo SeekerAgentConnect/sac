@@ -42,7 +42,7 @@ run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast`,
 Centrifugo v6.9.6 (SHA-256 verified against the release checksums) and Redis 8.10.1 (built from the
 release tarball). Everything in this section was established by running them, and the design
 decisions that came out of it are in
-[`wiki/broadcast-gateway.md#the-transport-and-what-it-cannot-do`](../wiki/broadcast-gateway.md#the-transport-and-what-it-cannot-do).
+[`wiki/feed-gateway.md#the-transport-and-what-it-cannot-do`](../wiki/feed-gateway.md#the-transport-and-what-it-cannot-do).
 
 | What was asked | What happened |
 | --- | --- |

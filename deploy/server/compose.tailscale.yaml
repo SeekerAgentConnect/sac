@@ -12,7 +12,7 @@
 name: seeker-agent-wallet-server
 
 services:
-  broadcast:
+  feed-gateway:
     environment:
       # Funnel offers 443, 8443 and 10000. When 443 on the node already serves
       # something else, GATEWAY_PUBLIC_PORT names the one the forward uses; the

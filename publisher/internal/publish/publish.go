@@ -1,5 +1,5 @@
 // Package publish is the one thing in a publisher template that reaches out of the process: it
-// submits documents to the shared broadcast gateway and records what the gateway said (SEE-95,
+// submits documents to the shared feed gateway and records what the gateway said (SEE-95,
 // docs/wiki/copytrading-template.md).
 //
 // It calls exactly one service, `PublisherService`, at the address its operator configured. There
@@ -84,7 +84,7 @@ type Gateway struct {
 type Options struct {
 	// The gateway's canonical origin (config.Origin). It is where a phone reads the feed, and the
 	// publisher API is usually behind the same proxy on a route of its own
-	// (broadcast/Caddyfile) — but an operator who keeps publishing off the internet points this
+	// (feed-gateway/Caddyfile) — but an operator who keeps publishing off the internet points this
 	// at the private address instead, which is why it is its own setting and not derived.
 	URL string
 	// The credential the gateway issued, sent as `Authorization: Bearer <credential>` and never
@@ -222,7 +222,7 @@ func statusOf(status gatewayv1.PublishStatus) Status {
 // classify turns a failed publication into a [Refusal]: the gateway's own problem code where there
 // is one, and whether the identical document could ever be accepted.
 //
-// The grouping is the gateway's own (broadcast/internal/gateway/errors.go), read from the other
+// The grouping is the gateway's own (feed-gateway/internal/gateway/errors.go), read from the other
 // side:
 //
 //   - **unavailable, aborted, internal, unknown, deadline** — the gateway, a proxy or the network,
@@ -275,7 +275,7 @@ func problemOf(err *connect.Error) string {
 }
 
 // Backoff is the delay before a publication is tried again: doubling from a second to a minute,
-// which is the gateway's own fan-out backoff (broadcast/internal/dispatch.Backoff).
+// which is the gateway's own fan-out backoff (feed-gateway/internal/dispatch.Backoff).
 //
 // It is capped rather than unbounded because the thing being waited for is a service coming back,
 // and a minute is short enough that a signal published during an outage is broadcast promptly

@@ -6,10 +6,10 @@
 //	loadtest --profile hot --scenario steady --listeners 50 --measure 5s
 //	loadtest --report out/see-99.json    the evidence, as JSON
 //
-// It needs the gateway and `broadcastctl` built, and the pinned broker to run anything that
+// It needs the gateway and `feed-gatewayctl` built, and the pinned broker to run anything that
 // streams:
 //
-//	SEEKERVAULT_BROADCAST=…/broadcast SEEKERVAULT_BROADCASTCTL=…/broadcastctl \
+//	SEEKERVAULT_FEED_GATEWAY=…/feed-gateway SEEKERVAULT_FEED_GATEWAYCTL=…/feed-gatewayctl \
 //	SEEKERVAULT_CENTRIFUGO=…/centrifugo SEEKERVAULT_REDIS=…/redis-server loadtest
 //
 // `pnpm test:load` builds the two Go binaries and passes those four paths in, which is the way to
@@ -44,7 +44,7 @@ func main() {
 	measured := flag.Duration("measure", 0, "override the profile's measured window")
 	nodes := flag.Int("broker-nodes", 0, "override the number of broker nodes")
 	config := flag.String("broker-config", "",
-		"the broker configuration (default: broadcast/centrifugo.yaml, found by walking up)")
+		"the broker configuration (default: feed-gateway/centrifugo.yaml, found by walking up)")
 	out := flag.String("report", "", "write the JSON report here")
 	settle := flag.Duration("settle", 5*time.Second,
 		"how long to wait between scenarios, for the kernel's ephemeral ports to drain")
@@ -91,7 +91,7 @@ func main() {
 	summary.Versions = versions(binaries)
 
 	if binaries.Gateway == "" || binaries.Control == "" {
-		fail("SEEKERVAULT_BROADCAST and SEEKERVAULT_BROADCASTCTL must name the built binaries.\n" +
+		fail("SEEKERVAULT_FEED_GATEWAY and SEEKERVAULT_FEED_GATEWAYCTL must name the built binaries.\n" +
 			"Run `pnpm test:load`, which builds them, or see docs/development/load.md.")
 	}
 

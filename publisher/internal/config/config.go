@@ -1,6 +1,6 @@
 // Package config reads a publisher template's settings from the environment (SEE-95).
 //
-// It follows the rules the sidecar and the broadcast gateway follow, because an operator running
+// It follows the rules the sidecar and the feed gateway follow, because an operator running
 // any two of them should not have to learn two habits: every setting is one environment variable,
 // a problem names the variable rather than guessing a value, and every problem is reported at once
 // so a first start is fixed in one pass. Nothing here has a default that opens something — the API
@@ -11,7 +11,7 @@
 //
 // A template holds two, and mixing them up is the mistake worth designing against:
 //
-//   - `BROADCAST_CREDENTIAL` is the grant the **gateway** issued this publisher (`broadcastctl
+//   - `BROADCAST_CREDENTIAL` is the grant the **gateway** issued this publisher (`feed-gatewayctl
 //     register` prints it once). It says which server this template publishes as, and the gateway
 //     checks every document against it rather than against what the document claims.
 //   - `PUBLISHER_API_TOKEN` is who may call **this** template. It is the whole of the grant to
@@ -38,7 +38,7 @@ import (
 // Config is the validated deployment.
 type Config struct {
 	// The publisher's lasting ID: a lowercase UUID, and the one an operator registered with
-	// `broadcastctl register --server`. Its channel is "server/<this>", and it is the identity in
+	// `feed-gatewayctl register --server`. Its channel is "server/<this>", and it is the identity in
 	// the manifest and in every proposal.
 	ServerID string
 	// The shared gateway's canonical origin. Every manifest this template publishes has to name
@@ -52,7 +52,7 @@ type Config struct {
 	// question. The manifest names where *phones read*, which is public and compared character for
 	// character. This is where a publication *goes*, which may be a private address on a tunnel,
 	// on a VPN, or the gateway's own second port on a machine running both: an operator who keeps
-	// publishing off the internet deletes the proxy route and points this at it (broadcast/
+	// publishing off the internet deletes the proxy route and points this at it (feed-gateway/
 	// Caddyfile).
 	//
 	// Getting it wrong is the one mistake with no error message on the gateway's side: a read
@@ -92,7 +92,7 @@ const (
 	DefaultAPIAddress     = "127.0.0.1:8092"
 	DefaultPublishTimeout = 10 * time.Second
 	// The API token is the whole grant to publish through this template, so there is a floor under
-	// it. It is the length of what `broadcastctl` mints (32 random bytes as 43 base64url
+	// it. It is the length of what `feed-gatewayctl` mints (32 random bytes as 43 base64url
 	// characters), which is also what `openssl rand -base64 32` gives.
 	LeastTokenLength = 32
 )
@@ -174,7 +174,7 @@ func Load(lookup Lookup) (*Config, []string) {
 	switch {
 	case config.Credential == "":
 		note("BROADCAST_CREDENTIAL must be set to the credential the gateway's operator issued " +
-			"this publisher (`broadcastctl register --server <uuid>` prints it once), or " +
+			"this publisher (`feed-gatewayctl register --server <uuid>` prints it once), or " +
 			"BROADCAST_CREDENTIAL_FILE to the path of a file holding it")
 	case !isHeaderSafe(config.Credential):
 		// It is sent as `Authorization: Bearer <credential>`, so whitespace in it is not a typo to
@@ -356,7 +356,7 @@ func Origin(raw string) (string, error) {
 // here, and the reason to say so out loud is that it is a weaker rule: what keeps the credential off
 // the network is the network it is on, which is the deployment's job and is documented as such
 // (publisher/README.md). The gateway applies the same distinction to its broker's address
-// (broadcast/internal/config).
+// (feed-gateway/internal/config).
 //
 // Still no path, query, fragment or user information: this is an origin the client appends its own
 // procedure paths to, and a base URL carrying half a request would produce requests nobody meant.

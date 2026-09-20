@@ -1,11 +1,11 @@
 // Package deploy is the topology a run measures (SEE-99).
 //
 // Everything in it is the shipped thing: the `broadcast` binary on its own SQLite file, the pinned
-// Centrifugo release on `broadcast/centrifugo.yaml` unchanged, real Redis on the settings
-// `broadcast/compose.yaml` gives it, and `broadcastctl` as the only way a publisher comes to exist.
+// Centrifugo release on `feed-gateway/centrifugo.yaml` unchanged, real Redis on the settings
+// `feed-gateway/compose.yaml` gives it, and `feed-gatewayctl` as the only way a publisher comes to exist.
 // A load run against a stack assembled for the load run would measure the assembly.
 //
-// What is **not** here is the proxy. `broadcast/Caddyfile` is in front of all of this in a
+// What is **not** here is the proxy. `feed-gateway/Caddyfile` is in front of all of this in a
 // deployment, and there is no Docker daemon on the machine these runs were made on
 // (docs/testing/stage-7.md), so the hop is named as excluded in the report rather than folded into
 // a latency number. Nothing else in the path is stood in for except Firebase (push.go), which SEE-99
@@ -42,7 +42,7 @@ import (
 // services are not vendored and are named by the operator, which is the same arrangement every
 // other opt-in check in this repository uses.
 type Binaries struct {
-	// The built `broadcast` gateway, and `broadcastctl`.
+	// The built `feed-gateway`, and `feed-gatewayctl`.
 	Gateway string
 	Control string
 	// The pinned Centrifugo release. Empty means no stream: the gateway then keeps its documents,
@@ -53,7 +53,7 @@ type Binaries struct {
 	// is what makes two nodes one broker.
 	Redis string
 	// The broker configuration to start the nodes on. Empty means this checkout's own
-	// `broadcast/centrifugo.yaml`, which is the only file a measurement should be made against —
+	// `feed-gateway/centrifugo.yaml`, which is the only file a measurement should be made against —
 	// it is here for an operator running the harness from outside a checkout.
 	BrokerConfig string
 }
@@ -61,8 +61,8 @@ type Binaries struct {
 // FromEnvironment reads the four paths, on the variable names the rest of the repository uses.
 func FromEnvironment() Binaries {
 	return Binaries{
-		Gateway: os.Getenv("SEEKERVAULT_BROADCAST"),
-		Control: os.Getenv("SEEKERVAULT_BROADCASTCTL"),
+		Gateway: os.Getenv("SEEKERVAULT_FEED_GATEWAY"),
+		Control: os.Getenv("SEEKERVAULT_FEED_GATEWAYCTL"),
 		Broker:  os.Getenv("SEEKERVAULT_CENTRIFUGO"),
 		Redis:   os.Getenv("SEEKERVAULT_REDIS"),
 
@@ -92,7 +92,7 @@ type Options struct {
 	MaxProposals int
 	// Whether the push relay runs against the stand-in (push.go).
 	Push bool
-	// The broker configuration to start the nodes on. Empty means `broadcast/centrifugo.yaml`,
+	// The broker configuration to start the nodes on. Empty means `feed-gateway/centrifugo.yaml`,
 	// found by walking up from the working directory — the shipped one, which is the only one a
 	// measurement should be made against.
 	BrokerConfig string
@@ -153,7 +153,7 @@ func Start(ctx context.Context, options Options) (*Deployment, error) {
 	}
 	if options.Gateway == "" || options.Control == "" {
 		return nil, fmt.Errorf(
-			"deploy: the gateway and broadcastctl must be built — see docs/development/load.md")
+			"deploy: the gateway and feed-gatewayctl must be built — see docs/development/load.md")
 	}
 
 	dir, own := options.Dir, false
@@ -186,7 +186,7 @@ func Start(ctx context.Context, options Options) (*Deployment, error) {
 			redis, err := start(ctx, process{
 				What:    "redis",
 				Command: options.Redis,
-				// The settings broadcast/compose.yaml gives it: a cache, not a store. Nothing is
+				// The settings feed-gateway/compose.yaml gives it: a cache, not a store. Nothing is
 				// persisted, because everything in it can be rebuilt by the phones that read the
 				// gateway — and a Redis that survived a restart would be a second place a feed's
 				// history lived.
@@ -248,7 +248,7 @@ func Start(ctx context.Context, options Options) (*Deployment, error) {
 				Command: options.Broker,
 				// The shipped configuration, unchanged. Only the ports, the two secrets and the engine
 				// are overridden, because those are what a deployment sets from its own environment
-				// (broadcast/compose.yaml does exactly this).
+				// (feed-gateway/compose.yaml does exactly this).
 				Args: []string{"-c", brokerConfig},
 				Dir:  dir,
 				Environment: append(engine,
@@ -265,7 +265,7 @@ func Start(ctx context.Context, options Options) (*Deployment, error) {
 					"CENTRIFUGO_PROMETHEUS_ENABLED=true",
 				),
 				// Starting it is also how the configuration is checked: `checkconfig` accepts settings
-				// the server then refuses to run with (docs/development/broadcast.md).
+				// the server then refuses to run with (docs/development/feed-gateway.md).
 				Ready: healthy("http://127.0.0.1:" + strconv.Itoa(api) + "/health"),
 			})
 			if err != nil {
@@ -392,25 +392,25 @@ func (d *Deployment) Register(serverID, label string) (string, error) {
 	}
 	credential := credentialPattern.FindString(printed)
 	if credential == "" {
-		return "", fmt.Errorf("deploy: no credential in what broadcastctl printed:\n%s", printed)
+		return "", fmt.Errorf("deploy: no credential in what feed-gatewayctl printed:\n%s", printed)
 	}
 	return credential, nil
 }
 
 var credentialPattern = regexp.MustCompile(`(?m)^[A-Za-z0-9_-]{43}$`)
 
-// Control runs `broadcastctl` against this deployment's database. The database goes after the
+// Control runs `feed-gatewayctl` against this deployment's database. The database goes after the
 // subcommand, which is where the CLI's own examples put it.
 func (d *Deployment) Control(args ...string) (string, error) {
 	if len(args) == 0 {
-		return "", fmt.Errorf("deploy: broadcastctl needs a subcommand")
+		return "", fmt.Errorf("deploy: feed-gatewayctl needs a subcommand")
 	}
 	command := exec.Command(d.control, append(
 		[]string{args[0], "--database", d.Database}, args[1:]...)...)
 	command.Env = []string{"PATH=" + os.Getenv("PATH")}
 	output, err := command.CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("deploy: broadcastctl %s: %w: %s",
+		return string(output), fmt.Errorf("deploy: feed-gatewayctl %s: %w: %s",
 			strings.Join(args, " "), err, output)
 	}
 	return string(output), nil
@@ -466,7 +466,7 @@ func free() (int, error) {
 	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 
-// shippedConfig finds `broadcast/centrifugo.yaml` by walking up from the working directory.
+// shippedConfig finds `feed-gateway/centrifugo.yaml` by walking up from the working directory.
 //
 // It is deliberately not compiled in and not derived from the executable's path: `pnpm test:load`
 // builds the harness into a temporary directory, and a run against a configuration that was not
@@ -485,7 +485,7 @@ func shippedConfig() (string, error) {
 		parent := filepath.Dir(at)
 		if parent == at {
 			return "", fmt.Errorf(
-				"deploy: broadcast/centrifugo.yaml is not above %s — run this from the "+
+				"deploy: feed-gateway/centrifugo.yaml is not above %s — run this from the "+
 					"repository, or name the file with --broker-config", at)
 		}
 		at = parent

@@ -92,7 +92,7 @@ http://:8082 {
 }
 
 # Container health crosses the proxy and read socket but stays on loopback in
-# the broadcast network namespace.
+# the feed gateway's network namespace.
 http://127.0.0.1:8081 {
 	bind 127.0.0.1
 	log_skip /healthz

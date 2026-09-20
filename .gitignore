@@ -27,9 +27,9 @@ google-services.json
 *.pem
 *.key
 
-# Go binaries built in place by `go build` in broadcast/, publisher/ and loadtest/
-/broadcast/broadcast
-/broadcast/broadcastctl
+# Go binaries built in place by `go build` in feed-gateway/, publisher/ and loadtest/
+/feed-gateway/feed-gateway
+/feed-gateway/feed-gatewayctl
 /publisher/copytrading
 /publisher/prediction
 /publisher/publishctl

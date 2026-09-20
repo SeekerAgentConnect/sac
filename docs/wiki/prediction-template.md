@@ -40,7 +40,7 @@ flowchart TB
         Listing -- "bounded polling" --> Cycle["a discovery cycle:<br>filter, then reconcile"]
         Cycle -- "PublishProposal, once per market" --> Gateway
     end
-    Gateway["the broadcast gateway (SEE-90)"]
+    Gateway["the feed gateway (SEE-90)"]
     subgraph phones["each owner's own phone (SEE-89, SEE-94)"]
         Gateway -- "the same document" --> A["phone A<br>reads the market itself,<br>takes YES for $10"]
         Gateway -- "the same document" --> B["phone B<br>reads the market itself,<br>takes NO for $50"]
@@ -321,7 +321,7 @@ It publishes discovered markets and stops. There is, deliberately:
   talked into being one.
 
 Related: [copytrading-template.md](copytrading-template.md) ·
-[jupiter-prediction.md](jupiter-prediction.md) · [broadcast-gateway.md](broadcast-gateway.md) ·
+[jupiter-prediction.md](jupiter-prediction.md) · [feed-gateway.md](feed-gateway.md) ·
 [integrations/jupiter.md](../integrations/jupiter.md) ·
 [integrations/signal-api.md](../integrations/signal-api.md) ·
 [development/publisher.md](../development/publisher.md)

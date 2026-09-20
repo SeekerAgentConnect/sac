@@ -36,7 +36,7 @@ sequences, and pending notices remain. A newer schema is refused by an older bin
 Back up the SQLite volume before deploying the migration. Rollback means stopping the new gateway,
 restoring that v2 backup, and then starting the old binary; do not point the old binary at the v3
 file and do not recreate private rows from application logs. See
-[`broadcast-gateway.md`](broadcast-gateway.md#migration-and-rollback).
+[`feed-gateway.md`](feed-gateway.md#migration-and-rollback).
 
 Protocol numbers and names used by the removed mode remain reserved, and a compatibility test
 deny-lists every removed service, method request/response, result, invitation, and manifest type.

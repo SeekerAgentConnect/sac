@@ -2,7 +2,7 @@
 // docs/wiki/prediction-template.md).
 //
 // It reads Jupiter's prediction listing, applies the filters its operator configured, and publishes
-// one proposal per market that matches — once, to the shared broadcast gateway. Every phone
+// one proposal per market that matches — once, to the shared feed gateway. Every phone
 // subscribed to this publisher's channel reads the same document, and each owner then chooses a
 // side and a stake on their own device, approves it there, and places the order through the bundled
 // `jupiter.prediction` plugin. **None of that comes back here**: this process never learns who is

@@ -1,4 +1,4 @@
-# One public HTTPS/HTTP2 entry point for the Stage 7.1 broadcast gateway.
+# One public HTTPS/HTTP2 entry point for the Stage 7.1 feed gateway.
 # The gateway's feed and publisher APIs remain separate loopback listeners; this file exposes
 # reads and one unidirectional stream publicly, and publications only on the Docker-internal port
 # used by compose.demos.yaml.
@@ -92,7 +92,7 @@ http://:8082 {
 }
 
 # Container health crosses the proxy and read socket but stays on loopback in
-# the broadcast network namespace.
+# the feed gateway's network namespace.
 http://127.0.0.1:8081 {
 	bind 127.0.0.1
 	log_skip /healthz

@@ -15,7 +15,7 @@ for themselves, with their own amount, on their own phone.
 
 ## Three servers, and why this is the third
 
-| | `mcp-server/` (Node) | `broadcast/` (Go) | **`publisher/` (Go)** |
+| | `mcp-server/` (Node) | `feed-gateway/` (Go) | **`publisher/` (Go)** |
 | --- | --- | --- | --- |
 | Whose it is | the owner's own | whoever hosts the broadcast | **a developer's or a trader's** |
 | Who calls it | one paired phone | publishers, and every phone | **whoever writes the signals** |
@@ -23,7 +23,7 @@ for themselves, with their own amount, on their own phone.
 | Knows a subscriber | yes — the one it is paired with | no | **no; there is nobody to know** |
 | Speaks MCP | optionally (SEE-87) | never | **never** |
 
-It is a separate Go module rather than a command inside `broadcast/`, because the gateway's
+It is a separate Go module rather than a command inside `feed-gateway/`, because the gateway's
 operator and a publisher are different people: a template that compiled against the gateway's store
 would be a template nobody could copy out. What the two share is the protocol in
 [`proto/`](../../proto) and nothing else — and where that risks drift, a test reads the gateway's
@@ -45,7 +45,7 @@ flowchart TB
         Strategy["a trader, a script,<br>or a strategy engine"] -- "POST /v1/requests" --> Template["the template"]
         Template -- "PublishProposal, once" --> Gateway
     end
-    Gateway["the broadcast gateway (SEE-90)"]
+    Gateway["the feed gateway (SEE-90)"]
     subgraph phones["each owner's own phone (SEE-89, SEE-93)"]
         Gateway -- "the same document" --> A["phone A<br>chooses 2 SOL"]
         Gateway -- "the same document" --> B["phone B<br>chooses 0.1 SOL"]
@@ -62,7 +62,7 @@ approved, not the signature, not the outcome. The publisher does not learn that 
 
 A worked example, end to end, with nothing left out:
 
-1. **The gateway's operator registers the publisher.** `broadcastctl register --server <uuid>`
+1. **The gateway's operator registers the publisher.** `feed-gatewayctl register --server <uuid>`
    prints one credential, once. That is the only act that grants the ability to publish, and it has
    no network surface at all.
 2. **The template starts** with that credential, the gateway's origin, its own API token and an

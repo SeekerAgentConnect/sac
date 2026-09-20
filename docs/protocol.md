@@ -885,14 +885,14 @@ operator's filters and writes exactly this set, with the provider's own five-dol
 raised into `least_deposit` so that the document says what will be enforced
 ([`wiki/prediction-template.md`](wiki/prediction-template.md)).
 
-## The broadcast gateway (SEE-90)
+## The feed gateway (SEE-90)
 
 A publisher publishes to the shared gateway and every subscribed phone reads from it. That is a
 different relationship from the durable request above — nobody is addressed, and nothing comes back
 — so it is a separate package with two services in it:
 [`seekervault.gateway.v1`](../proto/seekervault/gateway/v1).
-[`docs/wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md) is the architecture page,
-[`docs/development/broadcast.md`](development/broadcast.md) is how to run one, and
+[`docs/wiki/feed-gateway.md`](wiki/feed-gateway.md) is the architecture page,
+[`docs/development/feed-gateway.md`](development/feed-gateway.md) is how to run one, and
 [`docs/guides/server-development.md`](guides/server-development.md) is the numbered walkthrough for
 a developer publishing to one; this section is the contract.
 
@@ -1011,7 +1011,7 @@ relays nothing answers `GATEWAY_PROBLEM_NO_PUSH`, which maps to `unimplemented` 
 `NO_STREAM` does.
 
 The phone asks instead of deriving the name, because a name worked out on both sides would drift
-into silence rather than into an error (`docs/wiki/broadcast-gateway.md#the-topic-and-why-the-gateway-names-it`).
+into silence rather than into an error (`docs/wiki/feed-gateway.md#the-topic-and-why-the-gateway-names-it`).
 
 **The payload is two constant fields**, `kind=feed_invalidation` and `version=1`, and the phone
 matches the map whole. It is the shape SAW-056 established for the private path, with its own kind;
@@ -1041,7 +1041,7 @@ migration behavior.
 | --- | --- | --- | --- |
 | TypeScript (direct SDK) | `server-sdk/src/gen`, as `.js` plus `.d.ts` | `protoc-gen-es` 2.14.1 through `buf.gen.server-sdk.yaml` | `@bufbuild/protobuf` 2.14.1 |
 | TypeScript (MCP host fixture) | `mcp-server/src/gen`, proposal only | `protoc-gen-es` 2.14.1 through `buf.gen.mcp-server.yaml` | `@bufbuild/protobuf` 2.14.1 |
-| Go (broadcast gateway) | `broadcast/internal/gen` | `protocolbuffers/go` 1.36.12 and `connectrpc/go` 1.21.0, from `buf.gen.go.yaml` | `google.golang.org/protobuf` 1.36.12, `connectrpc.com/connect` 1.21.0 |
+| Go (feed gateway) | `feed-gateway/internal/gen` | `protocolbuffers/go` 1.36.12 and `connectrpc/go` 1.21.0, from `buf.gen.feed-gateway.yaml` | `google.golang.org/protobuf` 1.36.12, `connectrpc.com/connect` 1.21.0 |
 | Kotlin (Android) | `android/app/src/main/generated/java` and `android/app/src/main/generated/kotlin` | `protocolbuffers/java` and `protocolbuffers/kotlin` v36.1 (lite), `connectrpc/kotlin` v0.9.0 | `protobuf-kotlin-lite` 4.36.1, `connect-kotlin` 0.9.0 |
 
 - **`pnpm generate`** regenerates code and binary fixtures from every configured template. Commit
@@ -1049,7 +1049,7 @@ migration behavior.
 - **Each runtime receives only the contracts it speaks.** `buf.gen.yaml` writes Android Kotlin;
   `buf.gen.server-sdk.yaml` writes the direct live/request/server/update TypeScript;
   `buf.gen.mcp-server.yaml` writes only the proposal fixture TypeScript retained by the current host;
-  and `buf.gen.go.yaml` writes the gateway's Go. The phone and direct server exclude the publisher
+  and `buf.gen.feed-gateway.yaml` writes the gateway's Go. The phone and direct server exclude the publisher
   API, and the gateway has never heard of a durable request, live command or production update.
 - **`pnpm check:generated`** generates into a temporary directory and fails if any committed file differs. CI runs it, and running generation twice produces no diff.
 - **`pnpm check`** includes `buf format` and `buf lint` with the STANDARD rules.
@@ -1063,7 +1063,7 @@ Each fixture case is a Protobuf JSON file at `proto/fixtures/<package path>/<Mes
 
 - **The sidecar tests** decode the JSON with protobuf-es, and require both the encoding and the decoding to match the `.binpb` byte for byte.
 - **The Android unit tests** build the same message in Kotlin, and require both parsing and serialization to match the same bytes.
-- **The gateway's Go tests** go the other way round for `seekervault/gateway/v1` (SEE-90): `broadcast/internal/gateway/fixtures_test.go` runs the scenario those fixtures describe through the real service and requires each committed file to be exactly what it answered, and `GatewayProtocolFixturesTest` then requires the phone's own validators to accept what is in them. The sidecar is not in that pair: it neither publishes a proposal nor subscribes to one.
+- **The gateway's Go tests** go the other way round for `seekervault/gateway/v1` (SEE-90): `feed-gateway/internal/gateway/fixtures_test.go` runs the scenario those fixtures describe through the real service and requires each committed file to be exactly what it answered, and `GatewayProtocolFixturesTest` then requires the phone's own validators to accept what is in them. The sidecar is not in that pair: it neither publishes a proposal nor subscribes to one.
 
 | Package | Sidecar test | Android test | Cases |
 | --- | --- | --- | --- |

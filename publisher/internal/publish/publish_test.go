@@ -80,7 +80,7 @@ func TestAWithdrawalOfSomethingNeverPublishedIsAbsentAndNotAnError(t *testing.T)
 
 // Every refusal the gateway can answer with, and whether retrying the identical document could
 // ever answer differently. The grouping is the gateway's own
-// (broadcast/internal/gateway/errors.go), read from this side — and it is the whole of the retry
+// (feed-gateway/internal/gateway/errors.go), read from this side — and it is the whole of the retry
 // policy, so each one is named rather than inferred.
 func TestEveryRefusalIsClassified(t *testing.T) {
 	for _, one := range []struct {

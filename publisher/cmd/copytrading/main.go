@@ -2,7 +2,7 @@
 // docs/wiki/copytrading-template.md).
 //
 // A trader — or a strategy system on their behalf — posts one signal here. The template publishes
-// it once to the shared broadcast gateway, and every phone subscribed to this publisher's channel
+// it once to the shared feed gateway, and every phone subscribed to this publisher's channel
 // reads the same document. Each owner then chooses their own amount on their own device, approves
 // it there, and executes it through the bundled `jupiter.swap` plugin. **None of that comes back
 // here**: this process never learns who is subscribed, what anyone chose, whether they went ahead,
@@ -16,7 +16,7 @@
 //	go run ./cmd/copytrading
 //
 // It is not `mcp-server/`, which is one owner's private server for their own phone,
-// and it is not the gateway in `broadcast/`, which is the shared service this publishes to. Three
+// and it is not the gateway in `feed-gateway/`, which is the shared service this publishes to. Three
 // different servers, three different operators (docs/wiki/mcp-adapter.md).
 package main
 

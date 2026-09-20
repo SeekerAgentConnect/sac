@@ -14,7 +14,7 @@
 // decision or an execution result, and the decoder refuses a field the contract does not have
 // rather than dropping it — so a caller that believes this template keeps execution records is
 // told that it does not, instead of being answered 200 and quietly ignored. It is the same strict
-// decoding the gateway uses for the same reason (broadcast/internal/gateway/codec.go), and
+// decoding the gateway uses for the same reason (feed-gateway/internal/gateway/codec.go), and
 // `boundary_test.go` tries all five words.
 //
 // # Authorization

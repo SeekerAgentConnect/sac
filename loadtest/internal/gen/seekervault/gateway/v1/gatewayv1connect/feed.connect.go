@@ -2,7 +2,7 @@
 //
 // Source: seekervault/gateway/v1/feed.proto
 
-// What a phone reads from the broadcast gateway (SEE-90, docs/wiki/broadcast-gateway.md).
+// What a phone reads from the feed gateway (SEE-90, docs/wiki/feed-gateway.md).
 //
 // This is the whole of the client API, and nothing on it changes a document. A phone asks what a
 // publisher says about itself, what it is currently proposing, what one of those proposals says,

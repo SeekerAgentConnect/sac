@@ -3,7 +3,7 @@
  * other, the privacy claim against what the run actually wrote, and the existing private agent
  * workflow proved unchanged while two public feeds are live.
  *
- * Every component here is the shipped one. The broadcast gateway, both publisher templates and
+ * Every component here is the shipped one. The feed gateway, both publisher templates and
  * their two operator CLIs are the binaries `pnpm test:integration` builds out of the two Go
  * modules; the sidecar is its own process with its own database; the agent is the real MCP client.
  * What is stood in for is only the world outside — the prediction provider
@@ -62,7 +62,7 @@ import {
   type Device,
 } from "./integration/feed.ts";
 import {
-  broadcastctl,
+  feedGatewayctl,
   publish,
   publishctl,
   register,
@@ -88,8 +88,8 @@ import {
 
 /** The binaries `pnpm test:integration` builds. The suite refuses to guess at them. */
 const BINARIES = {
-  gateway: named("SEEKERVAULT_BROADCAST"),
-  control: named("SEEKERVAULT_BROADCASTCTL"),
+  gateway: named("SEEKERVAULT_FEED_GATEWAY"),
+  control: named("SEEKERVAULT_FEED_GATEWAYCTL"),
   copytrading: named("SEEKERVAULT_COPYTRADING"),
   prediction: named("SEEKERVAULT_PREDICTION"),
   publishctl: named("SEEKERVAULT_PUBLISHCTL"),
@@ -416,7 +416,7 @@ describe("a manifest cannot move a subscriber anywhere", () => {
   });
 
   it("is refused with no credential, with an unknown one, and with a revoked one alike", async () => {
-    broadcastctl(BINARIES.control, gatewayDatabase, [
+    feedGatewayctl(BINARIES.control, gatewayDatabase, [
       "revoke",
       "--server",
       redirecting.id,
@@ -501,7 +501,7 @@ describe("a manifest cannot move a subscriber anywhere", () => {
       });
       await going.stop();
     }
-    broadcastctl(BINARIES.control, gatewayDatabase, [
+    feedGatewayctl(BINARIES.control, gatewayDatabase, [
       "forget",
       "--server",
       forgotten.id,

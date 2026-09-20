@@ -50,7 +50,7 @@ services:
       PUBLISHER_GATEWAY_URL: ${PUBLISHER_GATEWAY_URL:?set PUBLISHER_GATEWAY_URL in publisher/.env - the shared gateway's origin, for example https://feeds.example.com}
       # Where publications are sent, when that is not the origin above. Empty is
       # right for a gateway whose proxy serves both APIs on one origin, which is
-      # what broadcast/compose.yaml does.
+      # what feed-gateway/compose.yaml does.
       PUBLISHER_PUBLISH_URL: ${PUBLISHER_PUBLISH_URL:-}
       # production or sandbox. One deployment serves one of them, and the
       # database remembers which (internal/store).

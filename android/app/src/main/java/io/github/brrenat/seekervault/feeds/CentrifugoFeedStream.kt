@@ -190,7 +190,7 @@ class CentrifugoFeedStream(httpClient: OkHttpClient) : FeedStream {
                     serializationStrategy = GoogleJavaLiteProtobufStrategy(),
                     // gRPC, not Connect: this is the broker's own contract, and the broker speaks
                     // gRPC. The gateway's unary API next door speaks Connect, and both go through
-                    // one origin and one certificate (docs/wiki/broadcast-gateway.md#deployment).
+                    // one origin and one certificate (docs/wiki/feed-gateway.md#deployment).
                     networkProtocol = NetworkProtocol.GRPC,
                     // No stream deadline: a listener stays open for as long as the screen is on.
                     timeoutOracle = simpleTimeouts(unaryTimeout = 30.seconds, streamTimeout = null),

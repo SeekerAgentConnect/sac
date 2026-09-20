@@ -199,9 +199,9 @@ func TestWherePublicationsGoDefaultsToTheGatewaysOrigin(t *testing.T) {
 		canonical string
 	}{
 		{"the gateway's own second listener", "http://127.0.0.1:8091", "http://127.0.0.1:8091"},
-		{"a private host over plain HTTP", "http://broadcast.internal:8091",
-			"http://broadcast.internal:8091"},
-		{"a compose service name", "http://broadcast:8091", "http://broadcast:8091"},
+		{"a private host over plain HTTP", "http://feed-gateway.internal:8091",
+			"http://feed-gateway.internal:8091"},
+		{"a compose service name", "http://feed-gateway:8091", "http://feed-gateway:8091"},
 		// The case is canonicalized and a default port is kept: nothing compares this string, so
 		// there is nothing for a port to disagree with — unlike an origin, which a phone compares
 		// character for character.
@@ -225,10 +225,10 @@ func TestWherePublicationsGoDefaultsToTheGatewaysOrigin(t *testing.T) {
 		name string
 		raw  string
 	}{
-		{"a path", "http://broadcast.internal:8091/publish"},
-		{"a query", "http://broadcast.internal:8091?v=1"},
+		{"a path", "http://feed-gateway.internal:8091/publish"},
+		{"a query", "http://feed-gateway.internal:8091?v=1"},
 		{"no host", "http://"},
-		{"not HTTP at all", "tcp://broadcast.internal:8091"},
+		{"not HTTP at all", "tcp://feed-gateway.internal:8091"},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			environment := complete()

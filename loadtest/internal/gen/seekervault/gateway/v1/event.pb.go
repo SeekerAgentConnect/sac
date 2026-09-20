@@ -4,7 +4,7 @@
 // 	protoc        (unknown)
 // source: seekervault/gateway/v1/event.proto
 
-// What arrives on a feed's stream (SEE-91, docs/wiki/broadcast-gateway.md#the-stream).
+// What arrives on a feed's stream (SEE-91, docs/wiki/feed-gateway.md#the-stream).
 //
 // The gateway holds the documents and answers reads (feed.proto); this file is the other half of
 // the same story — what a subscriber is told when one of those documents changes, so that a phone

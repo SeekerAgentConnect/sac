@@ -116,10 +116,10 @@ wallet remains authoritative for keys. No shared gateway is in this path.
 2. `publisher/internal/publish` drains that durable state to the gateway's `PublisherService` on
    the publisher listener. `BROADCAST_CREDENTIAL` is the publisher credential; the gateway stores
    only its hash and scopes it to the publisher/server ID.
-3. `broadcast/internal/gateway` validates the manifest/common request and writes the public document,
+3. `feed-gateway/internal/gateway` validates the manifest/common request and writes the public document,
    sequence, and `notice` outbox record atomically to the gateway's local SQLite file. This database
    is the feed authority.
-4. `broadcast/internal/dispatch` sends an invalidation/document to Centrifugo using the HTTP API
+4. `feed-gateway/internal/dispatch` sends an invalidation/document to Centrifugo using the HTTP API
    configured by `BROADCAST_STREAM_URL` and `BROADCAST_STREAM_API_KEY`. Centrifugo, not the gateway,
    owns `CENTRIFUGO_ENGINE_REDIS_ADDRESS`; Redis supplies broker recovery/cache and is not durable
    feed authority. Optional FCM topic push is another content-free/public invalidation.
@@ -180,8 +180,8 @@ and operation/inbox policy handling. The focused tests include `GatewayInvitatio
   Legacy proposal aliases are handled by their owning migration child, not assumed private.
 - Publisher registration and hashed publisher credentials, authenticated public publish/cancel,
   public documents, channel sequence, and the `notice` outbox remain.
-- `broadcast/internal/{dispatch,stream,relay}` and the public branches of `gateway`, `rules`, and
-  `store` remain under `feed-gateway/`.
+- `feed-gateway/internal/{dispatch,stream,relay}` and the public branches of `gateway` and `rules`
+  remain alongside the storage contract and its SQLite adapter under `feed-gateway/`.
 - Android feed references, snapshots, cursor/recovery, optional topic hints, local proposals/common
   requests, plugins, owner review, local execution, and activity history remain.
 
@@ -469,8 +469,34 @@ owners while leaving the pairing operator command usable. Backup/upgrade/rollbac
 the complete evidence matrix are in [`mcp-server/README.md`](../../mcp-server/README.md) and
 [`docs/testing/see-132.md`](../testing/see-132.md).
 
-The next owner is SEE-133. It may isolate the public feed gateway, but must not move direct/MCP
-state or behavior into it, add subscriber identities/results, or begin the demo extraction.
+### SEE-133 implementation record
+
+SEE-133 moved the one shared public gateway from `broadcast/` to the canonical root
+`feed-gateway/` Go module, renamed its server/operator commands and generated-code/check/CI paths,
+and updated the existing demos and integration/load callers in place. It did not extract a demo,
+restore a gateway-private route, move direct/MCP behavior, or perform the portable deployment
+redesign assigned to later children.
+
+Business, RPC, cursor, and outbox delivery code now depend on the focused contracts in
+`internal/storage`; `internal/storage/sqlite` alone owns SQL, migrations, local connections, and
+transaction mechanics. The existing schema-v3 file, `/data/broadcast.db`, `broadcast-data` volume,
+`BROADCAST_*` variables, protocol packages, server/publisher identities, ports, and uid 10001 remain
+compatible. Publication decisions, document/sequence/outbox writes, and the success/fan-out boundary
+remain one durable transaction. Focused tests inject a failure after all writes but before commit,
+and a sent delivery whose notice acknowledgement is lost, proving rollback and safe duplicate
+replay.
+
+The independent Dockerfile and README describe source/image startup, health, publisher
+registration, raw Connect JSON manifest/create/update/withdraw/read calls, public versus internal
+origins, deterministic revision/error/retry rules, operator logs and all configuration, local file
+ownership, update/backup/restore/rollback, and the distinction between current single-host SQLite
+and a future adapter plus explicit data migration. Centrifugo remains an external delivery process;
+Redis belongs only to Centrifugo and is never gateway storage. Exact evidence is in
+[`docs/testing/see-133.md`](../testing/see-133.md).
+
+The next owner is SEE-134. It may extract the demos and their smallest shared support boundary, but
+must not perform SEE-135's portable deployment redesign or weaken the feed gateway's public-only
+and durable-storage boundaries.
 
 ## 10. Ordered child ownership and handoff
 

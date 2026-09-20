@@ -1,6 +1,6 @@
 // Generates the protocol code (buf.gen.yaml for the phone, the two TypeScript templates for the
-// direct SDK and the MCP server's remaining feed fixture, buf.gen.go.yaml for
-// the broadcast gateway, buf.gen.centrifugo.yaml for the phone's vendored broker schema,
+// direct SDK and the MCP server's remaining feed fixture, buf.gen.feed-gateway.yaml for
+// the feed gateway, buf.gen.centrifugo.yaml for the phone's vendored broker schema,
 // buf.gen.loadtest.yaml for the load harness) and the binary protobuf fixtures:
 // proto/fixtures/<package path>/<Message>/<case>.json → <case>.binpb, via `buf convert`.
 //
@@ -28,12 +28,12 @@ const generatedDirs = [
   "server-sdk/src/gen",
   "mcp-server/src/gen",
   "android/app/src/main/generated",
-  "broadcast/internal/gen",
+  "feed-gateway/internal/gen",
   "publisher/internal/gen",
   "loadtest/internal/gen",
 ];
 // One template per runtime pair. buf.gen.yaml writes the phone's Kotlin and the sidecar's
-// TypeScript; buf.gen.go.yaml writes the broadcast gateway's Go, which is a different subset of
+// TypeScript; buf.gen.feed-gateway.yaml writes the feed gateway's Go, which is a different subset of
 // the protocol (SEE-90); buf.gen.publisher.yaml writes the publisher templates' Go, which is a
 // third subset — it publishes and never reads a feed (SEE-95); buf.gen.centrifugo.yaml writes the
 // phone's client for the vendored broker schema, which none of the others speaks (SEE-91); and
@@ -45,7 +45,7 @@ const templates = [
   "buf.gen.yaml",
   "buf.gen.server-sdk.yaml",
   "buf.gen.mcp-server.yaml",
-  "buf.gen.go.yaml",
+  "buf.gen.feed-gateway.yaml",
   "buf.gen.publisher.yaml",
   "buf.gen.centrifugo.yaml",
   "buf.gen.loadtest.yaml",

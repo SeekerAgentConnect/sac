@@ -1,6 +1,6 @@
 # Optional private direct sidecar/MCP service (Stage 7, preserved by SEE-106).
 #
-# This is intentionally not routed through the broadcast gateway. Its own TLS
+# This is intentionally not routed through the feed gateway. Its own TLS
 # listener remains on host loopback for a raw TCP/Tailscale Funnel forward, so
 # pairing, private requests and UpdateService keep their original HTTP/2 path.
 

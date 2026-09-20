@@ -4,7 +4,7 @@
 // 	protoc        (unknown)
 // source: seekervault/gateway/v1/publish.proto
 
-// How a publisher publishes (SEE-90, docs/wiki/broadcast-gateway.md).
+// How a publisher publishes (SEE-90, docs/wiki/feed-gateway.md).
 //
 // A developer's server uses this authenticated API to publish public feed documents. A feed
 // publisher maintains no connection to any phone and learns nothing about who is subscribed.

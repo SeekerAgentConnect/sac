@@ -37,7 +37,7 @@ interface ProposalFeed {
      * the channel's count of accepted publications when the walk began, and a completed walk holds
      * every proposal that existed then and still exists at the end, plus any published during it.
      * It converges because every document carries its own revision and a lower one never wins
-     * (SEE-89, docs/wiki/broadcast-gateway.md#the-snapshot-boundary).
+     * (SEE-89, docs/wiki/feed-gateway.md#the-snapshot-boundary).
      *
      * Throws [GatewayException] if the gateway refused, couldn't be reached, or answered with
      * something unusable.

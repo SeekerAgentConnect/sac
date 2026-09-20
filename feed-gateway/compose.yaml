@@ -1,0 +1,271 @@
+# The feed gateway's stack (SEE-90). Run it from this directory:
+#   cp .env.example .env
+#   docker compose up -d --build
+#   docker compose run --rm ctl register --server <uuid>
+#
+# That is the local-development configuration: plain HTTP, published on the host's
+# loopback address. The internet-facing one is this file plus an overlay, which
+# terminates TLS for a domain you own:
+#
+#   docker compose -f compose.yaml -f compose.public.yaml up -d --build
+#
+# The push relay is a third file, for the deployments that want it:
+#
+#   docker compose -f compose.yaml -f compose.push.yaml up -d --build
+#
+# It is the same shape as `gateway/compose.yaml`, and it is a different thing.
+# That stack is one owner's private sidecar behind a reverse proxy, run by the
+# owner. This one is the shared service developers publish to and phones read
+# from, run by whoever hosts the broadcast — usually not either of them.
+#
+# What starts: the gateway, the broker that fans its publications out to the
+# phones listening, the Redis that broker keeps its recovery cache in, and the
+# proxy in front of all of it. Starting the stack creates no publisher, accepts
+# no publication and reaches nothing: a publisher can only publish once an
+# operator has registered it with `ctl`, which is a deliberate local act and has
+# no network surface at all.
+#
+# Only the proxy's port is ever published. The gateway's two listeners,
+# the broker's API and Redis are on an internal network with no route out of the
+# deployment (SEE-91).
+
+name: seeker-broadcast
+
+services:
+  # The gateway owns the network namespace the proxy joins, so it is declared
+  # first and carries the published port.
+  feed-gateway:
+    build:
+      context: ..
+      dockerfile: feed-gateway/Dockerfile
+    image: seeker-feed-gateway/gateway:local
+    restart: unless-stopped
+
+    # The one published port is the proxy's listener, which lives in this
+    # namespace. The gateway's own two ports bind 127.0.0.1 inside the namespace
+    # and are unreachable from the host and from every other container.
+    ports:
+      - "${BROADCAST_BIND:-127.0.0.1}:${BROADCAST_PORT:-8080}:8081"
+
+    environment:
+      # The origin phones use, which every published manifest has to name: the
+      # phone compares it with the feed reference it added the feed from, so a
+      # deployment that gets this wrong has a feed nobody can read. The default
+      # is the published port above, which is what a laptop reaches over
+      # `adb reverse`.
+      BROADCAST_PUBLIC_URL: ${BROADCAST_PUBLIC_URL:-http://127.0.0.1:${BROADCAST_PORT:-8080}}
+      BROADCAST_READ_ADDRESS: 127.0.0.1:8090
+      BROADCAST_PUBLISHER_ADDRESS: 127.0.0.1:8091
+      BROADCAST_DATABASE_PATH: /data/broadcast.db
+      # How long past its own expiry a proposal is still served. Empty means a
+      # week (docs/wiki/feed-gateway.md#retention).
+      BROADCAST_RETENTION_HOURS: ${BROADCAST_RETENTION_HOURS:-}
+      BROADCAST_MAX_PROPOSALS: ${BROADCAST_MAX_PROPOSALS:-}
+      BROADCAST_READ_RATE: ${BROADCAST_READ_RATE:-}
+      BROADCAST_READ_BURST: ${BROADCAST_READ_BURST:-}
+      BROADCAST_PUBLISH_RATE: ${BROADCAST_PUBLISH_RATE:-}
+      BROADCAST_PUBLISH_BURST: ${BROADCAST_PUBLISH_BURST:-}
+      # The broker, and the two secrets it shares with the gateway (SEE-91). The
+      # gateway publishes to its API with the first and signs a listener's ticket
+      # with the second; the broker verifies both. Unset all three and the
+      # gateway still works — it holds the documents, answers every read, and
+      # tells a phone that asks to listen that there is no stream here.
+      BROADCAST_STREAM_URL: ${BROADCAST_STREAM_URL:-http://centrifugo:8000}
+      BROADCAST_STREAM_API_KEY: ${CENTRIFUGO_API_KEY:?set CENTRIFUGO_API_KEY in feed-gateway/.env - see .env.example for how to generate one}
+      BROADCAST_STREAM_TOKEN_KEY: ${CENTRIFUGO_TOKEN_KEY:?set CENTRIFUGO_TOKEN_KEY in feed-gateway/.env - see .env.example for how to generate one}
+      # How long a listener's ticket lasts, and how many channels one grants.
+      BROADCAST_TICKET_MINUTES: ${BROADCAST_TICKET_MINUTES:-}
+      BROADCAST_MAX_CHANNELS: ${BROADCAST_MAX_CHANNELS:-}
+      # The push relay (SEE-92), which is off unless a credential is named. It
+      # is turned on by the compose.push.yaml overlay, because turning it on
+      # means mounting a credential into this container and that is a
+      # deliberate act with its own command. The quota is here either way: it
+      # bounds how often one feed's subscribers are woken, which is a cost paid
+      # on other people's phones.
+      BROADCAST_PUSH_CREDENTIALS: ${BROADCAST_PUSH_CREDENTIALS:-}
+      BROADCAST_PUSH_ENDPOINT: ${BROADCAST_PUSH_ENDPOINT:-}
+      BROADCAST_PUSH_ENVIRONMENT: ${BROADCAST_PUSH_ENVIRONMENT:-}
+      BROADCAST_PUSH_RATE: ${BROADCAST_PUSH_RATE:-}
+      BROADCAST_PUSH_BURST: ${BROADCAST_PUSH_BURST:-}
+
+    networks:
+      # `inside` reaches the broker and Redis; `outside` is what the proxy needs
+      # for certificates, since it shares this namespace — and, when the push
+      # relay is configured, what the gateway's own hints go out over (SEE-92).
+      - inside
+      - outside
+
+    depends_on:
+      # Ordering only. A gateway whose broker is not there yet commits its
+      # publications and keeps the fan-out pending, which is the same machinery
+      # that makes a crash between the two harmless (SEE-90) — so this is a
+      # convenience, not a requirement.
+      - centrifugo
+
+    volumes:
+      # The publications and the publisher configuration. This is the only state
+      # that must outlive a container, and the only writable path in the image.
+      - broadcast-data:/data
+
+    # Everything else is read-only, which a scratch image with one volume makes
+    # easy to mean literally. SQLite writes its journal beside the database on
+    # the volume and needs nothing in /tmp.
+    read_only: true
+
+    # main.go handles SIGTERM: it stops accepting, lets what is in flight finish,
+    # makes one last fan-out pass and closes the database. The grace period is
+    # longer than the drain window inside it.
+    stop_grace_period: 30s
+    stop_signal: SIGTERM
+
+    # The gateway holds no key, signs nothing and calls nobody.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    # The namespace share is what lets the gateway keep its loopback binds while
+    # still being reachable by something. It also means the proxy has no route to
+    # the gateway that anything else could take.
+    network_mode: "service:feed-gateway"
+    depends_on:
+      # A scratch image has no shell to probe itself with, so the gateway
+      # declares no healthcheck of its own and the proxy's covers both: it goes
+      # through the published listener and out the other side.
+      - feed-gateway
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+      - proxy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8081/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 15s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # The broker (SEE-91). It holds no documents: what it has is a bounded recovery
+  # cache per channel, so a listener that dropped off for a minute can be caught
+  # up without reading the whole feed again. The authority is the gateway's
+  # database, and a listener that cannot be caught up reads a snapshot from it.
+  #
+  # Its API port is on the internal network only. The key on that port can
+  # publish anything to any channel, so nothing routes to it from outside: the
+  # single public path is the one gRPC procedure a listener consumes, which the
+  # proxy forwards and nothing else.
+  centrifugo:
+    image: centrifugo/centrifugo:v6.9.6
+    restart: unless-stopped
+    command: ["centrifugo", "-c", "/etc/centrifugo/centrifugo.yaml"]
+    environment:
+      # The secrets, from .env. The configuration file itself holds neither, so
+      # it is safe to read in a pull request.
+      CENTRIFUGO_HTTP_API_KEY: ${CENTRIFUGO_API_KEY:?set CENTRIFUGO_API_KEY in feed-gateway/.env}
+      CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_KEY:?set CENTRIFUGO_TOKEN_KEY in feed-gateway/.env}
+      CENTRIFUGO_ENGINE_REDIS_ADDRESS: redis://redis:6379
+    volumes:
+      - ./centrifugo.yaml:/etc/centrifugo/centrifugo.yaml:ro
+    networks:
+      - inside
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    # Long enough for the drain the configuration asks for: on SIGTERM it stops
+    # accepting, closes its streams with a code every listener comes back from,
+    # and exits.
+    stop_grace_period: 35s
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # What makes two broker nodes one broker, and what the recovery cache lives in.
+  #
+  # It is deliberately not persisted. Everything in here can be rebuilt by the
+  # phones that read the gateway: losing it costs each listener one snapshot,
+  # which is a path they take on every first connection anyway. A Redis that
+  # survived a restart would be a second place a feed's history lived, and the
+  # first question after any inconsistency would be which one to believe.
+  redis:
+    image: redis:8.2-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - ${REDIS_MAX_MEMORY:-256mb}
+      # A cache, so eviction is correct behaviour rather than data loss: the
+      # oldest history goes first, and a listener that needed it reads a
+      # snapshot.
+      - --maxmemory-policy
+      - allkeys-lru
+    networks:
+      - inside
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # Not started by `docker compose up`, and not reachable over any network. This
+  # is the operator's own tool, and registering a publisher is the one act that
+  # grants the ability to publish:
+  #
+  #   docker compose run --rm ctl register --server <uuid> --label "copy trading"
+  #   docker compose run --rm ctl list
+  #   docker compose run --rm ctl rotate --server <uuid>
+  #   docker compose run --rm ctl revoke --credential <id>
+  #
+  # It writes to the same volume the gateway reads, and it can run while the
+  # gateway is up.
+  ctl:
+    profiles: ["ctl"]
+    build:
+      context: ..
+      dockerfile: feed-gateway/Dockerfile
+    image: seeker-feed-gateway/gateway:local
+    entrypoint: ["/feed-gatewayctl"]
+    environment:
+      BROADCAST_DATABASE_PATH: /data/broadcast.db
+    volumes:
+      - broadcast-data:/data
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  # No route out of the deployment: the broker needs none (its usage statistics
+  # are turned off in centrifugo.yaml) and Redis needs none ever.
+  inside:
+    internal: true
+  outside:
+
+volumes:
+  broadcast-data:
+  proxy-data:
+  proxy-config:

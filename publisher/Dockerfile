@@ -4,7 +4,7 @@
 # code in publisher/internal/gen, which is generated from proto/ and committed.
 #
 # This is neither of the other two images. `gateway/` is Caddy in front of one
-# owner's private sidecar (SAW-035); `broadcast/` is the shared service this
+# owner's private sidecar (SAW-035); `feed-gateway/` is the shared service this
 # publishes to (SEE-90). This is a developer's own publisher: it submits
 # documents to that gateway and serves its own small API to whoever writes the
 # signals (docs/wiki/copytrading-template.md).
@@ -55,7 +55,7 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/copytrading ./cmd/copytrading \
 # prediction provider — a publisher that could not verify either would be
 # publishing to, and believing, whatever answered. That is the difference from
 # the gateway's own image, which shipped none until it gained an outbound call of
-# its own (broadcast/Dockerfile).
+# its own (feed-gateway/Dockerfile).
 #
 # It is copied from the build image's Debian bundle, so it is the same set of
 # roots the toolchain was built against and it is pinned by GO_VERSION with

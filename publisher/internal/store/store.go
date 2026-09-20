@@ -29,7 +29,7 @@
 //
 // One file, transactional, no service to operate, and a pure-Go driver so the image has no libc
 // and the tests need nothing running. A template's load is a handful of documents at human rates.
-// It is the same choice the gateway made, for the same reasons (broadcast/internal/store).
+// It is the same choice the gateway made, for the same reasons (feed-gateway/internal/store).
 package store
 
 import (

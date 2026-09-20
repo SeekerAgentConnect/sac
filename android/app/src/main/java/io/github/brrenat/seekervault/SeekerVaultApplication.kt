@@ -217,7 +217,7 @@ class SeekerVaultApplication : Application() {
                 rules = policyStore,
                 // And so do the proposals a feed read (SEE-89). The owner's Activity outlives both.
                 proposals = proposalStore,
-                // A feed's settings are resolved through the shared broadcast gateway, never by
+                // A feed's settings are resolved through the shared feed gateway, never by
                 // contacting the publisher's own server (SEE-88, SEE-90).
                 feeds = feedGateway(),
                 deviceName = Build.MODEL,
@@ -357,7 +357,7 @@ class SeekerVaultApplication : Application() {
     }
 
     /**
-     * The broadcast gateway a feed is read from, and the stream it is listened to on (SEE-91). Both
+     * The feed gateway a feed is read from, and the stream it is listened to on (SEE-91). Both
      * are replaced in tests, which is why they are factories rather than singletons.
      */
     var feeds: () -> ConnectFeedGateway = { ConnectFeedGateway(httpClient) }

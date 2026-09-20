@@ -1,0 +1,102 @@
+# The feed gateway's front door — local development.
+#
+# Plain HTTP, reachable only on the host's loopback address through the port
+# compose publishes. Use this on a laptop, or on a server you reach over a VPN or
+# an SSH tunnel. It is NOT the internet-facing configuration: for that, use
+# `Caddyfile.public` through the `compose.public.yaml` overlay, which terminates
+# TLS for a real domain.
+#
+# The proxy shares the gateway's network namespace (see compose.yaml), so the two
+# listeners are reachable here at 127.0.0.1:8090 and :8091 and nowhere
+# else. This listener is the single published entry point.
+#
+# The two APIs stay separate through the whole path. A read goes to 8090, where
+# there is no handler that could change anything; a publication goes to 8091,
+# where the credential is resolved before any method runs. The routing below is
+# convenience — if it were wrong, a read port would answer 404 rather than serve
+# a write, because the separation is two sockets and not two rules
+# (feed-gateway/internal/gateway, docs/wiki/feed-gateway.md).
+{
+	# No admin API: nothing should be able to reconfigure the proxy at run time,
+	# and its port (2019) must never appear on a public interface.
+	admin off
+	log {
+		output stderr
+		format console
+	}
+	# `log_credentials` is deliberately absent. Without it Caddy redacts the
+	# Authorization, Cookie, Set-Cookie, and Proxy-Authorization headers from
+	# every request log, so no publisher credential is ever written down.
+}
+
+:8081 {
+	log {
+		output stderr
+		format console
+	}
+	# The compose healthcheck asks every 30 seconds and is not news.
+	log_skip /healthz
+	# Only the endpoints below exist. Everything else is refused at the door
+	# rather than forwarded.
+
+	# --- The client API: read-only, unauthenticated ---------------------------
+	# A feed is a broadcast, and its reference can be printed in a README. What
+	# the gateway learns from a read is which channel someone is interested in.
+	@feed path /seekervault.gateway.v1.FeedService/*
+	handle @feed {
+		# The same 64 KiB the gateway itself enforces, applied one hop earlier.
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy 127.0.0.1:8090
+	}
+
+	# --- The publisher API: authenticated, and a different socket -------------
+	# A developer's server publishes here. The proxy neither adds nor removes an
+	# Authorization header, so the credential check is the gateway's alone.
+	#
+	# To keep publishing off the network entirely — a deployment whose publishers
+	# reach it over a tunnel or a private interface — delete this block. Phones
+	# are unaffected: they never call it.
+	@publish path /seekervault.gateway.v1.PublisherService/*
+	handle @publish {
+		request_body {
+			max_size 64KiB
+		}
+		reverse_proxy 127.0.0.1:8091
+	}
+
+	# --- The stream: one gRPC procedure, and only that one (SEE-91) ----------
+	# The path is fixed by the protocol, so this is an allow-list of exactly one
+	# procedure: a listener consumes a stream of publications and can send
+	# nothing on it. The broker's API, its admin surface and Redis are on the
+	# internal network and have no route through here at all.
+	#
+	# h2c because gRPC is an HTTP/2 protocol and the hop behind this proxy is on a
+	# private network: TLS is terminated here, at the one address a phone ever
+	# learns — the gateway's own origin, which is also what a published manifest
+	# has to name (SEE-88). A ticket names no host for exactly that reason.
+	@stream path /centrifugal.centrifugo.unistream.CentrifugoUniStream/Consume
+	handle @stream {
+		reverse_proxy h2c://centrifugo:11000 {
+			# A listener stays open for as long as the screen is on. Nothing here
+			# may cut an idle stream: the transport sends no keep-alive of its
+			# own, and HTTP/2's pings are the phone's (feeds/CentrifugoFeedStream).
+			flush_interval -1
+			transport http {
+				versions h2c
+				read_timeout 0
+				write_timeout 0
+			}
+		}
+	}
+
+	# --- Health: unauthenticated, and says only {"status":"ok"} ---------------
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8090
+	}
+
+	handle {
+		abort
+	}
+}

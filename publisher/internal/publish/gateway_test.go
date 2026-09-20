@@ -24,16 +24,16 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher/internal/store"
 )
 
-// This template against the **real** broadcast gateway, as a separate process, with its own
+// This template against the **real** feed gateway, as a separate process, with its own
 // database and its own credential — the only test here that proves the two agree rather than
 // assuming it (SEE-95).
 //
 // Opt-in, like the phone's Centrifugo test and for the same reason: it needs a binary that is not
 // this module's.
 //
-//	cd broadcast && go build -o /tmp/broadcast ./cmd/broadcast \
-//	                        && go build -o /tmp/broadcastctl ./cmd/broadcastctl
-//	cd publisher && SEEKERVAULT_BROADCAST=/tmp/broadcast go test ./internal/publish/ -run Gateway
+//	cd feed-gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway \
+//	                        && go build -o /tmp/feed-gatewayctl ./cmd/feed-gatewayctl
+//	cd publisher && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./internal/publish/ -run Gateway
 //
 // What it proves, and what nothing else here can:
 //
@@ -46,9 +46,9 @@ import (
 //     retry or a restart notifies nobody;
 //   - a withdrawal is a transition the gateway writes, and the feed then serves it as cancelled.
 func TestGatewayAcceptsWhatThisTemplatePublishes(t *testing.T) {
-	binary := os.Getenv("SEEKERVAULT_BROADCAST")
+	binary := os.Getenv("SEEKERVAULT_FEED_GATEWAY")
 	if binary == "" {
-		t.Skip("set SEEKERVAULT_BROADCAST to a built broadcast binary to run this " +
+		t.Skip("set SEEKERVAULT_FEED_GATEWAY to a built feed-gateway binary to run this " +
 			"(see docs/development/publisher.md)")
 	}
 	running := runGateway(t, binary, "the publisher template's own test")
@@ -170,9 +170,9 @@ func TestGatewayAcceptsWhatThisTemplatePublishes(t *testing.T) {
 // no error message anywhere else: the phone would refuse the feed and the template would look
 // fine. Here it is the template that is told.
 func TestGatewayRefusesAManifestForAnotherGateway(t *testing.T) {
-	binary := os.Getenv("SEEKERVAULT_BROADCAST")
+	binary := os.Getenv("SEEKERVAULT_FEED_GATEWAY")
 	if binary == "" {
-		t.Skip("set SEEKERVAULT_BROADCAST to a built broadcast binary to run this")
+		t.Skip("set SEEKERVAULT_FEED_GATEWAY to a built feed-gateway binary to run this")
 	}
 	running := runGateway(t, binary, "a template pointed at the wrong gateway")
 
@@ -214,9 +214,9 @@ func TestGatewayRefusesAManifestForAnotherGateway(t *testing.T) {
 // It also proves the thing the ticket asks for last: after the source ends a market, the proposal
 // a phone can read is cancelled, so nothing new is executed from it.
 func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
-	binary := os.Getenv("SEEKERVAULT_BROADCAST")
+	binary := os.Getenv("SEEKERVAULT_FEED_GATEWAY")
 	if binary == "" {
-		t.Skip("set SEEKERVAULT_BROADCAST to a built broadcast binary to run this " +
+		t.Skip("set SEEKERVAULT_FEED_GATEWAY to a built feed-gateway binary to run this " +
 			"(see docs/development/publisher.md)")
 	}
 	running := runGateway(t, binary, "the prediction template's own test")
@@ -392,7 +392,7 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 	}
 }
 
-// gateway is the real broadcast gateway, running as its own process with its own database and a
+// gateway is the real feed gateway, running as its own process with its own database and a
 // credential it issued for this template.
 type gateway struct {
 	origin string
@@ -408,12 +408,12 @@ type gateway struct {
 // nobody meant.
 func runGateway(t *testing.T, binary, label string) gateway {
 	t.Helper()
-	control := os.Getenv("SEEKERVAULT_BROADCASTCTL")
+	control := os.Getenv("SEEKERVAULT_FEED_GATEWAYCTL")
 	if control == "" {
-		control = filepath.Join(filepath.Dir(binary), "broadcastctl")
+		control = filepath.Join(filepath.Dir(binary), "feed-gatewayctl")
 	}
 	if _, err := os.Stat(control); err != nil {
-		t.Skipf("broadcastctl is not beside the gateway (%v); set SEEKERVAULT_BROADCASTCTL", err)
+		t.Skipf("feed-gatewayctl is not beside the gateway (%v); set SEEKERVAULT_FEED_GATEWAYCTL", err)
 	}
 
 	directory := t.TempDir()
@@ -426,7 +426,7 @@ func runGateway(t *testing.T, binary, label string) gateway {
 	registered, err := exec.Command(control, "register", "--database", database,
 		"--server", server, "--label", label).CombinedOutput()
 	if err != nil {
-		t.Fatalf("broadcastctl register: %v\n%s", err, registered)
+		t.Fatalf("feed-gatewayctl register: %v\n%s", err, registered)
 	}
 	issued := credentialFrom(t, string(registered))
 
@@ -497,7 +497,7 @@ func readFeed(t *testing.T, origin, channel string, known map[string]any) string
 	return string(contents)
 }
 
-// credentialFrom reads the credential `broadcastctl register` printed. It is shown once and stored
+// credentialFrom reads the credential `feed-gatewayctl register` printed. It is shown once and stored
 // only as a hash, so this is the only chance to have it — which is exactly what an operator
 // experiences.
 func credentialFrom(t *testing.T, printed string) string {

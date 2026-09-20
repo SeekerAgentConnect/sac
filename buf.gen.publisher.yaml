@@ -1,7 +1,7 @@
 version: v2
 clean: true
 # Go for the publisher templates (SEE-95, SEE-96, docs/wiki/copytrading-template.md). A third
-# template, beside buf.gen.yaml and buf.gen.go.yaml, because a publisher speaks a third subset of
+# template, beside buf.gen.yaml and buf.gen.feed-gateway.yaml, because a publisher speaks a third subset of
 # the protocol: it writes manifests and common requests through the gateway's publisher API, and it never
 # reads a feed, never serves one, and has never heard of a durable private lifecycle or a live command.
 #
@@ -18,7 +18,7 @@ managed:
       value: github.com/BrRenat/SeekerAgentWallet/publisher/internal/gen
 plugins:
   # Messages. The runtime library in publisher/go.mod must match this version, and it is the same
-  # version broadcast/go.mod pins: the two speak the same wire format to each other
+  # version feed-gateway/go.mod pins: the two speak the same wire format to each other
   # (docs/development/toolchain.md).
   - remote: buf.build/protocolbuffers/go:v1.36.12
     out: publisher/internal/gen

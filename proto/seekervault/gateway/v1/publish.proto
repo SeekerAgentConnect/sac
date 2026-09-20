@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-// How a publisher publishes (SEE-90, docs/wiki/broadcast-gateway.md).
+// How a publisher publishes (SEE-90, docs/wiki/feed-gateway.md).
 //
 // A developer's server uses this authenticated API to publish public feed documents. A feed
 // publisher maintains no connection to any phone and learns nothing about who is subscribed.
@@ -25,7 +25,7 @@ import "seekervault/server/v1/manifest.proto";
 
 // PublisherService is the write API, served on its own listener with its own credential. A
 // deployment can publish the read port to the internet and keep this one on a private address, and
-// the Caddy configuration in broadcast/ routes them separately by default.
+// the Caddy configuration in feed-gateway/ routes them separately by default.
 service PublisherService {
   // Register or replace what this server says about itself. The manifest must name this gateway's
   // own origin and be a feed on the caller's own channel. A direct manifest carries a URL, and the

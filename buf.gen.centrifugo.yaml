@@ -10,7 +10,7 @@ managed:
     - file_option: java_package
       value: centrifugal.centrifugo.unistream
 plugins:
-  # Kotlin only, and into a directory of its own. The sidecar and the broadcast gateway are never
+  # Kotlin only, and into a directory of its own. The sidecar and the feed gateway are never
   # compiled against a client protocol neither of them speaks — the gateway publishes over the
   # broker's server API, and the sidecar has nothing to do with feeds at all. Same argument as
   # buf.gen.yaml's exclusion of publish.proto: a boundary that needs no test to hold.

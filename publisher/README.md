@@ -1,7 +1,7 @@
 # publisher
 
 The Go publisher templates (SEE-95, SEE-96, SEE-108): a developer's — or a trader's — own server. It publishes
-one feed request to the [shared broadcast gateway](../broadcast), every phone subscribed to its channel
+one feed request to the [shared feed gateway](../feed-gateway), every phone subscribed to its channel
 reads the same document, and each owner then chooses their own amount on their own device and
 approves it there.
 

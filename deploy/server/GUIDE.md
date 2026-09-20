@@ -8,7 +8,7 @@ What you end up with, on a node named `hermes.tail5e20a8.ts.net` (substitute you
 
 | Public address                          | Funnel forward                         | What answers                                                        |
 | --------------------------------------- | -------------------------------------- | ------------------------------------------------------------------- |
-| `https://hermes.tail5e20a8.ts.net:8443` | `--tcp=8443` → `localhost:9443`        | Caddy → broadcast gateway and the Centrifugo stream (public feeds). |
+| `https://hermes.tail5e20a8.ts.net:8443` | `--tcp=8443` → `localhost:9443`        | Caddy → feed gateway and the Centrifugo stream (public feeds). |
 | `https://hermes.tail5e20a8.ts.net:10000` | `--tcp=10000` → `localhost:8443`       | The direct sidecar's own TLS listener (pairing, MCP, live updates). |
 | `https://hermes.tail5e20a8.ts.net`      | whatever the node already serves there | Not touched. This is why the gateway is on 8443 and not 443.        |
 
@@ -43,7 +43,7 @@ From the repository root. The Go compiler runs natively and cross-compiles, so A
 produces `linux/amd64` without emulation.
 
 ```sh
-docker buildx build --platform linux/amd64 -f broadcast/Dockerfile \
+docker buildx build --platform linux/amd64 -f feed-gateway/Dockerfile \
   -t brenat/seeker-agent-connect:broadcast-v1 --load .
 docker buildx build --platform linux/amd64 -f publisher/Dockerfile \
   -t brenat/seeker-agent-connect:publisher-v1 --load .
@@ -119,7 +119,7 @@ PUBLISHER_IMAGE=docker.io/brenat/seeker-agent-connect:publisher-v1
 ```
 
 `9443` and `9080` are any free loopback ports other than the sidecar's `8443`. Optional feed push:
-install the same kind of key as `secrets/broadcast/fcm-service-account.json` (uid 10001, `0400`)
+install the same kind of key as `secrets/feed-gateway/fcm-service-account.json` (uid 10001, `0400`)
 and set `BROADCAST_PUSH_CREDENTIALS=/run/secrets/fcm-service-account.json` and
 `BROADCAST_PUSH_ENVIRONMENT=sandbox`.
 

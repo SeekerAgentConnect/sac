@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.Flow
  *    request, and the answer says — per channel — whether the broker could replay what was missed.
  *    That answer is the only continuity this transport offers; there is no way to ask again later.
  *    When it says no, the authoritative snapshot over the gateway's unary API is what fills the gap
- *    (docs/wiki/broadcast-gateway.md#the-stream).
+ *    (docs/wiki/feed-gateway.md#the-stream).
  */
 interface FeedStream {
     /**

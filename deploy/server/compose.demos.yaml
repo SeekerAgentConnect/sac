@@ -21,8 +21,8 @@ services:
       - ${COPYTRADING_ENV_FILE:-.env.copytrading}
     environment:
       # The manifest carries the public URL from the env file. Publications use
-      # this Docker-only route; `broadcast` is never leaked to a phone.
-      PUBLISHER_PUBLISH_URL: http://broadcast:8082
+      # this Docker-only route; `feed-gateway` is never leaked to a phone.
+      PUBLISHER_PUBLISH_URL: http://feed-gateway:8082
       PUBLISHER_API_ADDRESS: 127.0.0.1:8092
       PUBLISHER_DATABASE_PATH: /data/copytrading.db
       # Optional global create cap (SEE-126). 0 / unset is unlimited; the demo
@@ -154,7 +154,7 @@ services:
     env_file:
       - ${PREDICTION_ENV_FILE:-.env.prediction}
     environment:
-      PUBLISHER_PUBLISH_URL: http://broadcast:8082
+      PUBLISHER_PUBLISH_URL: http://feed-gateway:8082
       PUBLISHER_API_ADDRESS: 127.0.0.1:8092
       PUBLISHER_DATABASE_PATH: /data/prediction.db
     ports:

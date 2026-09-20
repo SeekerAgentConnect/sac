@@ -126,8 +126,8 @@ What each owner does about one is theirs, and it stays on their phone
 
 ### The public broadcast path holds no reader (SEE-90, SEE-91, SEE-92)
 
-The shared gateway in [`broadcast/`](../broadcast) is what a publisher publishes to and every
-subscribed phone reads from ([`wiki/broadcast-gateway.md`](wiki/broadcast-gateway.md)). It is a
+The shared gateway in [`feed-gateway/`](../feed-gateway) is what a publisher publishes to and every
+subscribed phone reads from ([`wiki/feed-gateway.md`](wiki/feed-gateway.md)). It is a
 third party in the middle of the stage's one public relationship, so what it is unable to do matters
 more than what it does.
 
@@ -388,7 +388,7 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 
 This is the deployment's reverse proxy in front of one owner's sidecar, and not the shared broadcast
 gateway of SEE-90 above: different service, different operator, different directory
-([`broadcast/README.md`](../broadcast/README.md)).
+([`feed-gateway/README.md`](../feed-gateway/README.md)).
 
 [`gateway/Caddyfile`](../gateway/Caddyfile) and [`gateway/Caddyfile.public`](../gateway/Caddyfile.public) are two configurations, not one with a switch: the first is plain HTTP on a loopback address for local work, and the second is the internet-facing one, reached through [`gateway/compose.public.yaml`](../gateway/compose.public.yaml). Making a deployment public is a different command, so loopback HTTP cannot become the public default by omission.
 

@@ -1296,7 +1296,7 @@ class StageBoundaryTest {
                 .filter { http.containsMatchIn(it.readText()) }
                 .map { it.name },
         )
-        // The sidecar transports, the broadcast gateway's feed transport, and the one client they
+        // The sidecar transports, the feed gateway's feed transport, and the one client they
         // share.
         // Nothing else. A new file here is a new host this app talks to, and has to be read as one:
         // the first three reach the owner's own sidecar, and the last two reach a shared gateway

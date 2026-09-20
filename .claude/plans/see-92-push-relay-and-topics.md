@@ -127,10 +127,10 @@ the relay carries a **content-free hint** and the phone reads the document from 
 
 ## Docs
 
-- [x] `docs/wiki/broadcast-gateway.md` — `## The push relay`.
+- [x] `docs/wiki/feed-gateway.md` — `## The push relay`.
 - [x] `docs/guides/firebase.md` — the relay, the topics, and what a topic name is not.
 - [x] `docs/protocol.md`, `docs/security.md`, `docs/architecture.md`.
-- [x] `broadcast/README.md`, `docs/development/broadcast.md`, `docs/development/android.md`.
+- [x] `broadcast/README.md`, `docs/development/feed-gateway.md`, `docs/development/android.md`.
 - [x] `docs/testing/stage-7-1.md` — what ran, what did not, and the force-stop limitation.
 - [x] `docs/changelog/2026-09-17.md`, `AGENTS.md`, `CODEBASE.md`.
 

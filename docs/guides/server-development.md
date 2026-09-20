@@ -23,7 +23,7 @@ to everybody subscribed, and stops there.
 Three parties, and each one does exactly one thing:
 
 1. **Your server publishes proposals.** One document per thing it has to say, submitted once, to its own channel. It never learns who reads it, holds no subscriber list, and has no endpoint anybody's phone could reach.
-2. **The shared gateway distributes them.** It holds the authoritative copy, answers reads from any phone, fans each publication out to the phones currently listening, and sends a content-free hint to the ones that are not ([`docs/wiki/broadcast-gateway.md`](../wiki/broadcast-gateway.md)).
+2. **The shared gateway distributes them.** It holds the authoritative copy, answers reads from any phone, fans each publication out to the phones currently listening, and sends a content-free hint to the ones that are not ([`docs/wiki/feed-gateway.md`](../wiki/feed-gateway.md)).
 3. **The app executes what its owner chose.** A bundled client plugin reads the proposal, asks the owner for the parts that are theirs — the amount, the side — fetches fresh execution data from the provider itself, shows the owner exactly what will be signed, and opens the wallet once. Then it stops.
 
 The consequence worth internalising before you write anything: **a proposal is common and a decision about it is not.** Every subscriber receives the same bytes. What each owner then does with it — the amount, the wallet, the approval, the result — happens on their phone and is not sent to you, to the gateway, or to each other ([`docs/wiki/shared-proposals.md`](../wiki/shared-proposals.md#nothing-goes-the-other-way)).
@@ -54,30 +54,30 @@ In `gateway_feed` mode the phone calls nothing of yours, so there is no path for
 
 **On your machine:**
 
-- **Go 1.27.1 or newer.** Both Go modules pin it (`publisher/go.mod`, `broadcast/go.mod`). It is the only thing you strictly need to build and run a template.
+- **Go 1.27.1 or newer.** Both Go modules pin it (`publisher/go.mod`, `feed-gateway/go.mod`). It is the only thing you strictly need to build and run a template.
 - **Node 24.21.0 and pnpm**, if you want to run this repository's checks (`pnpm check:publisher`, `pnpm test:integration`). Versions and setup are in [`docs/development/toolchain.md`](../development/toolchain.md).
 - **Docker Engine 24+ with Compose v2**, if you want the packaged deployment rather than a process you started yourself. Optional for everything in this guide, required for nothing.
 - `curl` and `openssl`, which every example below uses.
 
 **From other people:**
 
-- **A broadcast gateway to publish to**, and a credential it issued you. Either somebody runs one and gives you both, or you run your own ([step 1](#1-get-a-gateway-to-publish-to)).
+- **A feed gateway to publish to**, and a credential it issued you. Either somebody runs one and gives you both, or you run your own ([step 1](#1-get-a-gateway-to-publish-to)).
 - **A domain and a certificate authority**, only if something off your own machine has to reach either service. Neither is needed for a local run.
 - **Nothing from us for push.** You are never given a Firebase project, service account, API key or device token, and there is no configuration on your side for any of it ([step 9](#9-topic-push)).
 - **Nothing from a provider for a first deployment.** Jupiter's keyless tier serves what the Prediction template reads; a key buys a higher rate limit and is your own business ([`docs/integrations/jupiter.md`](../integrations/jupiter.md#authentication-none-deliberately)).
 
 **Three roles, and they are usually three people.** The **gateway operator** runs the shared service and decides who may publish. The **publisher developer** — you — runs a template and says what is proposed. The **phone owner** subscribes, decides, and approves. This guide is written for the second role and tells you exactly what to ask the first for.
 
-**One naming trap, once.** This repository has two directories with "gateway" in their description and they are different services with different operators. `broadcast/` is the **shared broadcast gateway**: what you publish to, what phones read from. `gateway/` is **one owner's reverse proxy in front of their own private sidecar** and has nothing to do with publishing. In the docs, "gateway" means the first when it is next to *broadcast*, *shared* or *feed*, and the second next to *reverse proxy* or *deployment*.
+**One naming trap, once.** This repository has two directories with "gateway" in their description and they are different services with different operators. `feed-gateway/` is the **shared feed gateway**: what you publish to, what phones read from. `gateway/` is **one owner's reverse proxy in front of their own private sidecar** and has nothing to do with publishing. In the docs, "gateway" means the first when it is next to *broadcast*, *shared* or *feed*, and the second next to *reverse proxy* or *deployment*.
 
 ## 1. Get a gateway to publish to
 
 If somebody already runs one, skip to [step 2](#2-be-registered-as-a-publisher); what you need from them is its **origin** (`https://feeds.example.com`, character for character) and a **credential**.
 
-To run your own, the deployment is already packaged — extend it rather than inventing another. From `broadcast/`:
+To run your own, the deployment is already packaged — extend it rather than inventing another. From `feed-gateway/`:
 
 ```sh
-cd broadcast
+cd feed-gateway
 cp .env.example .env          # then generate the two broker secrets it asks for
 docker compose up -d --build
 ```
@@ -91,13 +91,13 @@ docker compose -f compose.yaml -f compose.public.yaml -f compose.push.yaml up -d
 
 Four services start: the gateway, the broker that fans publications out, the Redis the broker keeps its recovery cache in, and the proxy in front of all of it. Only the proxy's port is ever published. **Starting the stack creates no publisher and accepts no publication** — that takes step 2, which is a deliberate local act with no network surface at all.
 
-What to read rather than have repeated here: [`broadcast/README.md`](../../broadcast/README.md) for the stack itself, [`docs/development/broadcast.md#configuration`](../development/broadcast.md#configuration) for every variable with its default and range, and [`docs/development/broadcast.md#deployment`](../development/broadcast.md#deployment) for the three ways this stack differs from the sidecar's. The TLS, DNS and port mechanics are the same ones the sidecar's deployment uses, and they are written out once in [`docs/guides/self-hosting.md#going-public-tls-dns-and-ports`](self-hosting.md#going-public-tls-dns-and-ports) — the domain must already resolve to the host and ports 80 and 443 must be reachable before the first start, because that is how the proxy obtains a certificate.
+What to read rather than have repeated here: [`feed-gateway/README.md`](../../feed-gateway/README.md) for the stack itself, [`docs/development/feed-gateway.md#configuration`](../development/feed-gateway.md#configuration) for every variable with its default and range, and [`docs/development/feed-gateway.md#deployment`](../development/feed-gateway.md#deployment) for the three ways this stack differs from the sidecar's. The TLS, DNS and port mechanics are the same ones the sidecar's deployment uses, and they are written out once in [`docs/guides/self-hosting.md#going-public-tls-dns-and-ports`](self-hosting.md#going-public-tls-dns-and-ports) — the domain must already resolve to the host and ports 80 and 443 must be reachable before the first start, because that is how the proxy obtains a certificate.
 
 Without Docker, the same thing as two processes and a broker:
 
 ```sh
-cd broadcast
-BROADCAST_PUBLIC_URL=http://127.0.0.1:8090 BROADCAST_DATABASE_PATH=./broadcast.db go run ./cmd/broadcast
+cd feed-gateway
+BROADCAST_PUBLIC_URL=http://127.0.0.1:8090 BROADCAST_DATABASE_PATH=./broadcast.db go run ./cmd/feed-gateway
 ```
 
 The four settings that decide whether phones can read you at all: `BROADCAST_PUBLIC_URL` is the origin every published manifest has to name — the phone compares it with the reference the feed was added from, so a deployment that gets it wrong has a feed nobody can read. `BROADCAST_READ_ADDRESS` (default `127.0.0.1:8090`) serves phones, `BROADCAST_PUBLISHER_ADDRESS` (default `127.0.0.1:8091`) accepts publications, and they are separate listeners on purpose: an operator who wants publishing kept off the internet deletes one route from the proxy's configuration. `BROADCAST_STREAM_URL` with its two keys turns the live stream on; without them the gateway still holds every document and answers every read, and tells a phone that asks to listen that there is no stream here.
@@ -107,8 +107,8 @@ The four settings that decide whether phones can read you at all: `BROADCAST_PUB
 A publisher exists only because an operator made one. There is no signup endpoint, no self-registration, and no way to do this over a network — the tool writes to the gateway's database directly:
 
 ```sh
-# in broadcast/, or `docker compose run --rm ctl …` against the packaged stack
-go run ./cmd/broadcastctl register --database ./broadcast.db \
+# in feed-gateway/, or `docker compose run --rm ctl …` against the packaged stack
+go run ./cmd/feed-gatewayctl register --database ./broadcast.db \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label "copy trading"
 ```
 
@@ -132,7 +132,7 @@ Four things, and it is worth being clear about which is which:
 - **`credential`** — an 8-character handle for the secret, so an operator can revoke this one later without ever seeing it again. The gateway stores only a hash.
 - **the 43-character line** — the secret itself, sent as `Authorization: Bearer <credential>`. It is not recoverable: if you lose it, the operator runs `rotate` and gives you a new one.
 
-The other commands an operator has are `rotate` (add a second credential so the first can be retired), `revoke --credential <id>`, `revoke --server <uuid> --all`, `list`, and `forget --server <uuid> --yes`, which removes a publisher and everything it published. Revoking stops future publications; it does not unpublish what is already there, and phones that already read your proposals keep their own copies until their owners remove the feed. The full table is [`docs/wiki/broadcast-gateway.md#registering-a-publisher`](../wiki/broadcast-gateway.md#registering-a-publisher).
+The other commands an operator has are `rotate` (add a second credential so the first can be retired), `revoke --credential <id>`, `revoke --server <uuid> --all`, `list`, and `forget --server <uuid> --yes`, which removes a publisher and everything it published. Revoking stops future publications; it does not unpublish what is already there, and phones that already read your proposals keep their own copies until their owners remove the feed. The full table is [`docs/wiki/feed-gateway.md#registering-a-publisher`](../wiki/feed-gateway.md#registering-a-publisher).
 
 ## 3. Copy a template out
 
@@ -643,8 +643,8 @@ pnpm test:integration    # the gateway, both templates, two subscribers, the sid
 To run one of the two opt-in tests against real things:
 
 ```sh
-cd broadcast && go build -o /tmp/broadcast ./cmd/broadcast && go build -o /tmp/broadcastctl ./cmd/broadcastctl
-cd ../publisher && SEEKERVAULT_BROADCAST=/tmp/broadcast go test ./internal/publish/ -run Gateway -v
+cd feed-gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway && go build -o /tmp/feed-gatewayctl ./cmd/feed-gatewayctl
+cd ../publisher && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./internal/publish/ -run Gateway -v
 SEEKERVAULT_JUPITER=1 go test ./internal/jupiter/ -run Live -v
 ```
 

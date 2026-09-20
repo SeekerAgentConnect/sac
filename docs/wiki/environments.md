@@ -60,7 +60,7 @@ A rehearsal **spends the proposal**, exactly as declining in the wallet does: on
 | Layer | File | What it holds |
 | --- | --- | --- |
 | Protocol | `proto/seekervault/server/v1/manifest.proto` | `ServerEnvironment`, and the `environments` a manifest names |
-| Gateway | `broadcast/internal/rules/manifest.go` | The environments may not change once published |
+| Gateway | `feed-gateway/internal/rules/manifest.go` | The environments may not change once published |
 | Publisher | `publisher/internal/environment/environment.go` | One type, one pair of words, shared by both templates |
 | Phone: the promise | `android/.../plugins/ActionPlugin.kt` | `PluginEnvironment`, and the environments a plugin serves |
 | Phone: the connection | `android/.../connections/Connection.kt` | Which one this connection keeps, and the direct-is-production invariant |
@@ -74,7 +74,7 @@ A rehearsal **spends the proposal**, exactly as declining in the wallet does: on
 
 Neither is this.
 
-- **`BROADCAST_PUSH_ENVIRONMENT`** is one label inside a push topic name — `feed.<environment>.<server_id>` — chosen by the operator of a gateway deployment so that one Firebase project can serve two deployments without a sandbox publication waking a production subscriber. The gateway decides nothing about what a server promises, and holds no opinion about it (`docs/wiki/broadcast-gateway.md`).
+- **`BROADCAST_PUSH_ENVIRONMENT`** is one label inside a push topic name — `feed.<environment>.<server_id>` — chosen by the operator of a gateway deployment so that one Firebase project can serve two deployments without a sandbox publication waking a production subscriber. The gateway decides nothing about what a server promises, and holds no opinion about it (`docs/wiki/feed-gateway.md`).
 - **A Solana cluster** — mainnet, devnet, testnet — is which chain a signature belongs to. See above: separate question, separate field, and it is on every record next to this one.
 
 ## Running it

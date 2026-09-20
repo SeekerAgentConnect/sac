@@ -2,12 +2,12 @@
 //
 //   pnpm check:publisher
 //
-// It is separate from `pnpm check` for the same reason `pnpm check:broadcast` and
+// It is separate from `pnpm check` for the same reason `pnpm check:feed-gateway` and
 // `pnpm check:android` are: it needs a toolchain the Node checks do not, and someone working on
 // the sidecar should not have to install Go to run them. CI runs all of them.
 //
 // One test in the module is opt-in, because it needs a binary this module does not build: the one
-// that runs the real broadcast gateway as a separate process. It is what proves that the two agree
+// that runs the real feed gateway as a separate process. It is what proves that the two agree
 // about a manifest, a channel and a republication rather than assuming it, so this script builds
 // the gateway and runs it — and says so, rather than quietly skipping the most interesting test in
 // the module (docs/development/publisher.md).
@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const publisher = fileURLToPath(new URL("../publisher", import.meta.url));
-const broadcast = fileURLToPath(new URL("../broadcast", import.meta.url));
+const feedGateway = fileURLToPath(new URL("../feed-gateway", import.meta.url));
 
 // The version publisher/go.mod requires, and the one docs/development/toolchain.md records as
 // tested. A newer Go builds it too; this is the message for a machine that has none.
@@ -63,19 +63,25 @@ go(publisher, "vet", "./...");
 const built = mkdtempSync(join(tmpdir(), "seeker-publisher-check-"));
 let gateway;
 try {
-  go(broadcast, "build", "-o", join(built, "broadcast"), "./cmd/broadcast");
   go(
-    broadcast,
+    feedGateway,
     "build",
     "-o",
-    join(built, "broadcastctl"),
-    "./cmd/broadcastctl",
+    join(built, "feed-gateway"),
+    "./cmd/feed-gateway",
   );
-  gateway = join(built, "broadcast");
+  go(
+    feedGateway,
+    "build",
+    "-o",
+    join(built, "feed-gatewayctl"),
+    "./cmd/feed-gatewayctl",
+  );
+  gateway = join(built, "feed-gateway");
 } catch (error) {
   console.warn(
     [
-      "The broadcast gateway could not be built, so the test that runs it is skipped:",
+      "The feed gateway could not be built, so the test that runs it is skipped:",
       `  ${error.message.split("\n")[0]}`,
       "Everything else in publisher/ is still checked.",
     ].join("\n"),
@@ -84,7 +90,7 @@ try {
 
 try {
   go(publisher, "test", "./...", {
-    ...(gateway ? { SEEKERVAULT_BROADCAST: gateway } : {}),
+    ...(gateway ? { SEEKERVAULT_FEED_GATEWAY: gateway } : {}),
   });
 } finally {
   rmSync(built, { recursive: true, force: true });

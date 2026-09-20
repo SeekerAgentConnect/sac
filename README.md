@@ -125,7 +125,7 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 | `gateway/` | Docker Compose, the TLS gateway, and the optional OAuth overlay for one owner's own deployment (Stage 7) |
 | `android/app/src/main/java/.../jupiter/` | The two bundled client plugins (Stage 7.1, SEE-93, SEE-94): `jupiter.swap` — a publisher's spot-swap signal, the owner's own amount, a route from the provider — and `jupiter.prediction` — a market a publisher pointed at, the owner's own side and stake, and a real order. Both read the bytes themselves before any wallet opens. See [`docs/wiki/jupiter-swap.md`](docs/wiki/jupiter-swap.md), [`docs/wiki/jupiter-prediction.md`](docs/wiki/jupiter-prediction.md) and [`docs/integrations/jupiter.md`](docs/integrations/jupiter.md) |
 | `android/app/src/main/java/.../solana/` | The app's only chain endpoint (Stage 7.1, SEE-94): one read-only call, used to resolve the address lookup tables a prediction order's transaction names. Provider-neutral, the application's own endpoint, and empty by default. See [`docs/security.md`](docs/security.md#resolving-a-lookup-table) |
-| `broadcast/` | The shared feed gateway in Go: public feeds are published once and read by every subscriber through isolated read and publisher listeners. A different service from `gateway/`, with a different operator; see [`docs/wiki/broadcast-gateway.md`](docs/wiki/broadcast-gateway.md) and [`docs/development/broadcast.md`](docs/development/broadcast.md) |
+| `feed-gateway/` | The shared feed gateway in Go: public feeds are published once and read by every subscriber through isolated read and publisher listeners. A different service from `gateway/`, with a different operator; see [`docs/wiki/feed-gateway.md`](docs/wiki/feed-gateway.md) and [`docs/development/feed-gateway.md`](docs/development/feed-gateway.md) |
 | `publisher/` | The Go publisher templates and their existing publishing client. `cmd/copytrading` publishes public swap signals; `cmd/prediction` discovers public prediction markets. Both template `.env` examples remain isolated **sandbox** public feeds. See [`docs/wiki/copytrading-template.md`](docs/wiki/copytrading-template.md), [`docs/wiki/prediction-template.md`](docs/wiki/prediction-template.md), and [`docs/development/publisher.md`](docs/development/publisher.md). |
 | `deploy/server/` | The single-Linux-server Stage 7.1 deployment (SEE-106): base gateway/delivery infrastructure, an optional two-publisher sandbox overlay, and the separately optional direct sidecar with its original persistent volume and HTTP/2 TLS path. See the [two-part operator guide](deploy/server/README.md). |
 | `examples/` | Configuration to merge into other tools: `hermes.config.yaml`; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md) |
@@ -165,7 +165,7 @@ corepack enable pnpm             # or: npm install --global pnpm
 pnpm install --frozen-lockfile
 pnpm check                       # formatting, lint, type checks, tests
 pnpm check:android               # design-literal guard, Kotlin formatting/tests/lint, debug APKs
-pnpm check:broadcast             # the broadcast gateway: gofmt, go vet, go test (needs Go)
+pnpm check:feed-gateway             # the feed gateway: gofmt, go vet, go test (needs Go)
 pnpm check:publisher             # the publisher templates: gofmt, go vet, go test (needs Go)
 pnpm test:integration            # the Stage 7.1 cross-component run (needs Go)
 pnpm check:loadtest              # the load harness: gofmt, go vet, go test (needs Go)
@@ -182,9 +182,9 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm install --frozen-lockfile` | Installs exactly what the committed lockfile specifies | Works |
 | `pnpm check` | Runs Prettier, `buf format`, ESLint, `buf lint`, TypeScript type checks, and the MCP-server tests without changing any files | Works |
 | `pnpm check:android` | Rejects raw production colour/dimension/type literals outside `:designsystem`, runs Spotless (ktfmt), Android unit tests and both modules' lint, and builds the debug APK and instrumentation test APK | Works |
-| `pnpm check:broadcast` | Checks the broadcast gateway (SEE-90): `gofmt`, `go vet`, and its Go tests. Needs Go; no other check does | Works |
+| `pnpm check:feed-gateway` | Checks the feed gateway (SEE-90): `gofmt`, `go vet`, and its Go tests. Needs Go; no other check does | Works |
 | `pnpm check:publisher` | Checks the publisher templates (SEE-95, SEE-96): `gofmt`, `go vet`, and their Go tests — including the two that run the **real** gateway as a separate process, which it builds for you. The test that reads the live prediction provider is opt-in (`SEEKERVAULT_JUPITER=1`) and is not in it. Needs Go | Works |
-| `docker compose up -d --build` (in `broadcast/`) | Builds and starts the broadcast gateway on a loopback address ([the gateway's own README](broadcast/README.md)) | NOT RUN: no Docker daemon was available |
+| `docker compose up -d --build` (in `feed-gateway/`) | Builds and starts the feed gateway on a loopback address ([the gateway's own README](feed-gateway/README.md)) | NOT RUN: no Docker daemon was available |
 | `pnpm build` | Compiles the SDK, MCP server and test agent; the SDK runtime and declarations go to `server-sdk/dist`, and the staged self-contained MCP package goes to `mcp-server/package` | Works |
 | `pnpm test:server-sdk-package` | Runs real `npm pack --dry-run` and `npm pack`, audits the tarball, installs it outside the workspace, type-checks its public exports, verifies import has no side effects, and exercises pairing/lifecycle/restart/idempotency | Works; never publishes |
 | `docker compose up -d --build` (in `gateway/`) | Builds and starts the self-hosted stack on a loopback address ([self-hosting](docs/guides/self-hosting.md)) | NOT RUN: no Docker daemon was available |
@@ -235,7 +235,7 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 `.github/workflows/ci.yml` runs on pull requests and on pushes to `master` and `develop`:
 
 - **Node:** `pnpm install --frozen-lockfile`, then `pnpm check`, `pnpm test:hello`, `pnpm test:queue`, `pnpm check:generated`, and `pnpm build`
-- **Broadcast gateway:** `pnpm check:broadcast`, with the Go version read from `broadcast/go.mod`
+- **Feed gateway:** `pnpm check:feed-gateway`, with the Go version read from `feed-gateway/go.mod`
 - **Publisher templates:** `pnpm check:publisher`, with the Go version read from `publisher/go.mod`
 - **Android:** `pnpm check:android` on Temurin 21
 - **Emulator:** `pnpm test:hello --device` on an Android 16 (API 36) emulator. An emulator run never counts as the physical Seeker check.

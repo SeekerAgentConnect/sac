@@ -1,5 +1,5 @@
 /**
- * The processes the Stage 7.1 integration run is made of (SEE-98): the real broadcast gateway, the
+ * The processes the Stage 7.1 integration run is made of (SEE-98): the real feed gateway, the
  * real publisher template binaries, and their two operator CLIs — each as its own process, on
  * loopback, with its own throwaway database.
  *
@@ -52,9 +52,9 @@ interface Process extends Running {
 }
 
 export interface GatewayOptions {
-  /** The built `broadcast` binary. */
+  /** The built `feed-gateway` binary. */
   readonly binary: string;
-  /** The built `broadcastctl` binary, which is the only way to register a publisher. */
+  /** The built `feed-gatewayctl` binary, which is the only way to register a publisher. */
   readonly control: string;
   /** Its SQLite file. Keeping it across a restart is how the suite proves documents survive one. */
   readonly databasePath: string;
@@ -92,7 +92,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         }),
   };
   const process = await started({
-    what: "the broadcast gateway",
+    what: "the feed gateway",
     command: options.binary,
     environment,
     healthUrl: `${origin}/healthz`,
@@ -105,10 +105,10 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
 }
 
 /**
- * Runs `broadcastctl` against the gateway's database, and returns what it printed. The database
+ * Runs `feed-gatewayctl` against the gateway's database, and returns what it printed. The database
  * goes after the subcommand, which is where the CLI's own examples put it.
  */
-export function broadcastctl(
+export function feedGatewayctl(
   control: string,
   databasePath: string,
   args: readonly string[],
@@ -121,7 +121,7 @@ export function broadcastctl(
   );
   if (answered.status !== 0) {
     throw new Error(
-      `broadcastctl ${args.join(" ")} exited with ${String(answered.status)}: ${answered.stderr}${answered.stdout}`,
+      `feed-gatewayctl ${args.join(" ")} exited with ${String(answered.status)}: ${answered.stderr}${answered.stdout}`,
     );
   }
   return answered.stdout;
@@ -138,7 +138,7 @@ export function register(
   serverId: string,
   label: string,
 ): string {
-  const printed = broadcastctl(control, databasePath, [
+  const printed = feedGatewayctl(control, databasePath, [
     "register",
     "--server",
     serverId,
@@ -147,7 +147,9 @@ export function register(
   ]);
   const credential = /^[A-Za-z0-9_-]{43}$/m.exec(printed)?.[0];
   if (credential === undefined) {
-    throw new Error(`no credential in what broadcastctl printed:\n${printed}`);
+    throw new Error(
+      `no credential in what feed-gatewayctl printed:\n${printed}`,
+    );
   }
   return credential;
 }

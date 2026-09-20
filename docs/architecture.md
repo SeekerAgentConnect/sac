@@ -126,7 +126,7 @@ Public feeds use gateway snapshots and Centrifugo streaming with revision checks
 
 Optional FCM wake-ups initiate authoritative reads; they do not contain an approval or authorize execution. No foreground stream, background worker, notification or retry may open a wallet or approve a request.
 
-See [Firebase](guides/firebase.md) and [broadcast gateway](wiki/broadcast-gateway.md).
+See [Firebase](guides/firebase.md) and [feed gateway](wiki/feed-gateway.md).
 
 ## Repository naming and deployment cleanup
 
@@ -139,12 +139,14 @@ Current directory names describe historical implementation choices and are not t
 | `server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Keep as an embeddable library with explicit initialization and no MCP/product configuration |
 | `mcp-server/` | The self-hosted MCP host, executable operator CLI, provider implementations and standalone Docker/npm packaging | Consumes `server-sdk/` through its public API; the npm artifact vendors that unpublished runtime |
 | `gateway/` | Deployment assets and reverse proxy for the direct server, including TLS/OAuth configuration | Move/name as direct-server deployment infrastructure |
-| `broadcast/` | Shared Go feed gateway with public read and publisher listeners | Establish one canonical feed-gateway name in SEE-133 |
+| `feed-gateway/` | Shared Go feed gateway with public read and publisher listeners, a storage contract, and local SQLite implementation | Canonical public-feed service isolated in SEE-133 |
 | `publisher/` | Demo server implementations plus reusable Go Server SDK | Clearly separate SDK code from examples in layout and documentation |
 | `deploy/server/` | Shared infrastructure, optional demo overlay and optional direct-server overlay | Preserve independent deployment with consistent names |
 | `test-agent/` | Developer MCP client | Keep as a test/development tool |
 
-**There is one shared feed gateway in the target architecture.** Today's `gateway/` folder is not a duplicate implementation of `broadcast/`: it contains reverse-proxy/deployment configuration for the direct server. Resolve the confusing naming by relocating or renaming those assets, not by deleting TLS/OAuth support or merging private direct traffic into the feed gateway.
+**There is one shared feed gateway.** `gateway/` is not a duplicate implementation of
+`feed-gateway/`: it contains reverse-proxy/deployment configuration for the direct server. Private
+direct traffic stays out of the public feed gateway.
 
 The cleanup task must settle and apply the final directory names consistently across code imports, generated code, build commands, Docker images, Compose, CI, scripts, examples and documentation. Directory renaming alone is not architectural cleanup.
 

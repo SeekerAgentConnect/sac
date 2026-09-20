@@ -4,7 +4,7 @@
 // 	protoc        (unknown)
 // source: seekervault/gateway/v1/problem.proto
 
-// Why the broadcast gateway refused something (SEE-90, docs/wiki/broadcast-gateway.md).
+// Why the feed gateway refused something (SEE-90, docs/wiki/feed-gateway.md).
 //
 // The gateway is the shared service a developer's publisher publishes to and every subscribed
 // phone reads from. It has two audiences and one vocabulary for saying no: a publisher that broke

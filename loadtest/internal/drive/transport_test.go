@@ -25,18 +25,18 @@ var (
 // The transport, end to end, on the smallest run there is (SEE-99).
 //
 // It is the test that says the harness is measuring the real path: the shipped gateway, the pinned
-// broker on the shipped configuration, a publisher `broadcastctl` registered, a ticket the gateway
+// broker on the shipped configuration, a publisher `feed-gatewayctl` registered, a ticket the gateway
 // minted, and one document arriving over the unidirectional gRPC stream. Every number in
 // `docs/testing/see-99.md` rests on this working, so it is a test rather than a note.
 //
 // It is opt-in on the binaries, like every other check in this repository that needs a service:
 //
-//	SEEKERVAULT_BROADCAST=… SEEKERVAULT_BROADCASTCTL=… SEEKERVAULT_CENTRIFUGO=… \
+//	SEEKERVAULT_FEED_GATEWAY=… SEEKERVAULT_FEED_GATEWAYCTL=… SEEKERVAULT_CENTRIFUGO=… \
 //	  go test ./internal/drive/ -run Transport -v
 func TestTransportDeliversWhatWasPublished(t *testing.T) {
 	binaries := deploy.FromEnvironment()
 	if binaries.Gateway == "" || binaries.Control == "" {
-		t.Skip("set SEEKERVAULT_BROADCAST and SEEKERVAULT_BROADCASTCTL to the built binaries")
+		t.Skip("set SEEKERVAULT_FEED_GATEWAY and SEEKERVAULT_FEED_GATEWAYCTL to the built binaries")
 	}
 	if binaries.Broker == "" {
 		t.Skip("set SEEKERVAULT_CENTRIFUGO to the pinned broker to run the stream")
@@ -199,7 +199,7 @@ func TestSyntheticFitsTheRules(t *testing.T) {
 	if proposal.GetUpdatedAt().AsTime().Before(proposal.GetCreatedAt().AsTime()) {
 		t.Fatal("it was updated before it was created")
 	}
-	if _, set := os.LookupEnv("SEEKERVAULT_BROADCAST"); !set {
+	if _, set := os.LookupEnv("SEEKERVAULT_FEED_GATEWAY"); !set {
 		t.Log("the gateway's own acceptance of these documents is TestTransport…, which is opt-in")
 	}
 }

@@ -19,7 +19,7 @@ import (
 // phone refuses, and the first sign of either would be a signal that nobody can see.
 //
 // It skips when the file is not there, which is what a copied-out template looks like.
-const gatewayRules = "../../../broadcast/internal/rules/rules.go"
+const gatewayRules = "../../../feed-gateway/internal/rules/rules.go"
 
 func TestTheBoundsAreTheGatewaysOwn(t *testing.T) {
 	source, err := os.ReadFile(gatewayRules)

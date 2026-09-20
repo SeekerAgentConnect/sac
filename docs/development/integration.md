@@ -1,6 +1,6 @@
 # The integration run
 
-`pnpm test:integration` is Stage 7.1's cross-component check (SEE-98): the real broadcast gateway,
+`pnpm test:integration` is Stage 7.1's cross-component check (SEE-98): the real feed gateway,
 both real publisher templates, two subscribers, the real sidecar and a real agent, in one command.
 
 ```sh
@@ -17,7 +17,7 @@ pair. Nothing in it is ever signed by a real wallet or sent to a cluster.
 
 | Leg | What it is |
 | --- | --- |
-| The cross-component run | `test-agent/src/stage71.acceptance.ts` against the five built binaries: the gateway, `broadcastctl`, both templates and `publishctl`, plus the sidecar as its own process and an MCP agent |
+| The cross-component run | `test-agent/src/stage71.acceptance.ts` against the five built binaries: the gateway, `feed-gatewayctl`, both templates and `publishctl`, plus the sidecar as its own process and an MCP agent |
 | The direct-mode acceptance suites | `test-agent/src/stage2.acceptance.ts` and `stage4.acceptance.ts`, unchanged, because "the private workflow still works" is a claim about the suites that already prove it |
 | The stream | The same cross-component run, with a real Centrifugo in front of the gateway. Opt-in: see below |
 | The phone's cross-component cases | A filtered `:app:testDebugUnitTest` — the feed transport, shared proposals, manifests, plugins, the wallet's binding, and the direct-mode suites that must still pass with all of it in the tree |
@@ -36,7 +36,7 @@ SEEKERVAULT_REDIS=/path/to/redis-server \
 ```
 
 - **`SEEKERVAULT_CENTRIFUGO`** runs the gateway with a real broker in front of it, on the shipped
-  `broadcast/centrifugo.yaml` with the memory engine. The run then checks that a listener is granted
+  `feed-gateway/centrifugo.yaml` with the memory engine. The run then checks that a listener is granted
   the channels this gateway hosts and that the publications actually reached the broker's channel.
   Without it the run checks the other half of the same contract — a gateway with no broker answers
   `no_stream` and says so in its log — and reports the stream leg as NOT RUN.
@@ -68,7 +68,7 @@ The harness is in `test-agent/src/integration/`:
 
 | File | What it holds |
 | --- | --- |
-| `processes.ts` | The gateway, the templates, `broadcastctl` and `publishctl`, each as a real process, with restarts |
+| `processes.ts` | The gateway, the templates, `feed-gatewayctl` and `publishctl`, each as a real process, with restarts |
 | `feed.ts` | A subscriber: one device reading the gateway's client API, and a record of every request it sent |
 | `provider.ts` | The deterministic provider, and what it was asked for |
 | `broker.ts` | The pinned Centrifugo, and a channel's position |

@@ -161,7 +161,7 @@
     <string name="feed_failed_unreachable">Couldn\'t reach %1$s. Check the connection and try again.</string>
     <string name="feed_failed_response">The gateway\'s answer wasn\'t valid, so nothing was saved.</string>
     <string name="feed_failed_other">The feed could not be added, so nothing was saved.</string>
-    <string name="feed_failed_no_gateway">This app build has no broadcast gateway client, so it cannot add feeds.</string>
+    <string name="feed_failed_no_gateway">This app build has no feed gateway client, so it cannot add feeds.</string>
     <string name="feed_failed_storage">This phone couldn\'t store the feed, so nothing was saved.</string>
     <!-- What kind of server a connection is, and whether this build supports it (SEE-88). -->
     <string name="connection_status_feed">A shared feed. This phone reads it through the gateway and holds no credential for it.</string>

@@ -1,7 +1,7 @@
 # The publisher templates
 
 The Go module in [`publisher/`](../../publisher) (SEE-95, SEE-96): a developer's or a trader's own
-server, which publishes signals to the shared broadcast gateway and stops there.
+server, which publishes signals to the shared feed gateway and stops there.
 [`docs/wiki/copytrading-template.md`](../wiki/copytrading-template.md) is why it is shaped the way
 it is and [`docs/integrations/signal-api.md`](../integrations/signal-api.md) is its API; this page
 is how to run it, what its settings do, and where its code and tests are. For a first deployment,
@@ -21,14 +21,14 @@ is how to run it, what its settings do, and where its code and tests are. For a 
 Everything else — the configuration, the store, the outbox, the drainer, the manifest and the API —
 is shared, so most of this page is about both.
 
-It is neither of the other two services. [`broadcast/`](../../broadcast) is the shared gateway this
+It is neither of the other two services. [`feed-gateway/`](../../feed-gateway) is the shared gateway this
 publishes *to*, run by whoever hosts the broadcast; [`mcp-server/`](../../mcp-server) is one owner's
 private server for their own phone. Three servers, three operators.
 
 ## Running it
 
 The toolchain is Go alone — the version in [`publisher/go.mod`](../../publisher/go.mod), which is
-the same one `broadcast/go.mod` pins ([`docs/development/toolchain.md`](toolchain.md)).
+the same one `feed-gateway/go.mod` pins ([`docs/development/toolchain.md`](toolchain.md)).
 
 ```sh
 cd publisher
@@ -37,7 +37,7 @@ go test ./...
 ```
 
 From the repository root, `pnpm check:publisher` runs the formatting check, `go vet` and the tests —
-the same command CI runs. It also builds the broadcast gateway into a temporary directory so the
+the same command CI runs. It also builds the feed gateway into a temporary directory so the
 opt-in test that runs the real thing is not skipped; a machine that cannot build it gets every other
 test and a warning saying so.
 
@@ -45,12 +45,12 @@ Two things have to exist before a template can publish: a gateway, and a credent
 operates it.
 
 ```sh
-# in broadcast/, once per publisher
-go run ./cmd/broadcastctl register --database ./broadcast.db \
+# in feed-gateway/, once per publisher
+go run ./cmd/feed-gatewayctl register --database ./broadcast.db \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label "copy trading"
 
 BROADCAST_PUBLIC_URL=http://127.0.0.1:8090 BROADCAST_DATABASE_PATH=./broadcast.db \
-go run ./cmd/broadcast
+go run ./cmd/feed-gateway
 ```
 
 Then, natively, with a database in the current directory:
@@ -62,7 +62,7 @@ PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
 PUBLISHER_ENVIRONMENT=sandbox \
 PUBLISHER_DATABASE_PATH=./publisher.db \
-BROADCAST_CREDENTIAL=<the credential broadcastctl printed> \
+BROADCAST_CREDENTIAL=<the credential feed-gatewayctl printed> \
 PUBLISHER_API_TOKEN=$(openssl rand -base64 32) \
 go run ./cmd/copytrading
 ```
@@ -101,7 +101,7 @@ is for.
 
 ```sh
 cd publisher
-PUBLISHER_SERVER_ID=0e1f2a3b-4c5d-4e6f-8a7b-8c9d0e1f2a3b PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 PUBLISHER_ENVIRONMENT=sandbox PUBLISHER_DATABASE_PATH=./prediction.db PUBLISHER_API_ADDRESS=127.0.0.1:8094 BROADCAST_CREDENTIAL=<the credential broadcastctl printed for *this* server> PUBLISHER_API_TOKEN=$(openssl rand -base64 32) PREDICTION_CATEGORIES=economics PREDICTION_KEYWORDS=fed PREDICTION_MOST_OPEN=5 go run ./cmd/prediction
+PUBLISHER_SERVER_ID=0e1f2a3b-4c5d-4e6f-8a7b-8c9d0e1f2a3b PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 PUBLISHER_ENVIRONMENT=sandbox PUBLISHER_DATABASE_PATH=./prediction.db PUBLISHER_API_ADDRESS=127.0.0.1:8094 BROADCAST_CREDENTIAL=<the credential feed-gatewayctl printed for *this* server> PUBLISHER_API_TOKEN=$(openssl rand -base64 32) PREDICTION_CATEGORIES=economics PREDICTION_KEYWORDS=fed PREDICTION_MOST_OPEN=5 go run ./cmd/prediction
 ```
 
 It is a **second publisher**, so it needs its own server ID, its own credential and its own
@@ -151,7 +151,7 @@ tell which was used.
 
 **Both credentials have to be usable rather than compared**, which is why they are configuration at
 all — the gateway keeps a publisher's credential as a SHA-256 and has none in its own environment
-(`broadcast/`). Neither is ever logged, no refusal quotes one, and a boundary test drives a series
+(`feed-gateway/`). Neither is ever logged, no refusal quotes one, and a boundary test drives a series
 of calls including refused ones and fails if either appears in a log line.
 
 `PUBLISHER_GATEWAY_URL` is canonicalized exactly as the gateway canonicalizes its own origin and the
@@ -272,7 +272,7 @@ than as a package.
 | `internal/discovery/reconcile_test.go` | The reconciler over the **real store**: a real listing becoming proposals, a second cycle publishing nothing, a restart publishing nothing, a postponed market moving one revision, **absence not being closure**, every way the source ends a market, an outage ending none, the ceiling, the round robin, and two cycles not running at once |
 | `internal/publish/publish_test.go` | The credential goes in a header and nowhere else, the same document again is unchanged, a withdrawal of nothing is not an error, **every refusal classified** with the reason, and that a publication is never redirected |
 | `internal/publish/drain_test.go` | The manifest first, a restart republishing identical bytes, a gateway that is down, a refusal that stops, a withdrawal before anything was published, and the drainer running on a wake-up |
-| `internal/publish/gateway_test.go` | The **real gateway**, as a separate process. Opt-in: `SEEKERVAULT_BROADCAST=/path/to/broadcast go test ./internal/publish/ -run Gateway` |
+| `internal/publish/gateway_test.go` | The **real gateway**, as a separate process. Opt-in: `SEEKERVAULT_FEED_GATEWAY=/path/to/feed-gateway go test ./internal/publish/ -run Gateway` |
 | `internal/api/api_test.go` | A signal published end to end, a retried create, a reused key, a create with no key, the token on every route, every malformed statement, a gateway that is down, a refusal and its retry, an update that changes nothing, a withdrawal being final, 404s, 405s, strict decoding, and the optional create cap (SEE-126) |
 | `internal/limit/limit_test.go` | Sliding window, unlimited zero, independent keys, undo freeing a slot |
 | `internal/admin/*_test.go` | Named bcrypt file, mtime revoke, session cookie flags, CSRF origin, `/v1` client, token never in HTML, login and create rate limits |
@@ -289,12 +289,12 @@ republication is answered with — and it is also the automated half of "two pho
 proposal":
 
 ```sh
-cd broadcast && go build -o /tmp/broadcast ./cmd/broadcast \
-             && go build -o /tmp/broadcastctl ./cmd/broadcastctl
-cd ../publisher && SEEKERVAULT_BROADCAST=/tmp/broadcast go test ./internal/publish/ -run Gateway -v
+cd feed-gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway \
+             && go build -o /tmp/feed-gatewayctl ./cmd/feed-gatewayctl
+cd ../publisher && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./internal/publish/ -run Gateway -v
 ```
 
-It registers a publisher with the real `broadcastctl`, starts the real gateway on isolated loopback
+It registers a publisher with the real `feed-gatewayctl`, starts the real gateway on isolated loopback
 ports, publishes a manifest and a signal, **reads the feed back twice with two independent clients
 and compares the bytes**, republishes the identical document and requires `UNCHANGED`, then
 withdraws and reads the withdrawal. `pnpm check:publisher` does all of that for you.
@@ -331,7 +331,7 @@ node scripts/capture-jupiter.mjs --events
 
 ## Deployment
 
-The assets are the ones SAW-035 established and `broadcast/` follows, in this service's own
+The assets are the ones SAW-035 established and `feed-gateway/` follows, in this service's own
 directory: a `Dockerfile`, a base `compose.yaml` with a `Caddyfile` on loopback, a
 `compose.public.yaml` overlay with a `Caddyfile.public` that terminates TLS for a domain, and an
 `.env.example`.

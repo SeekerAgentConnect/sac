@@ -39,30 +39,30 @@ instead, so installation remains deterministic and credential-independent.
 ### The Go side (SEE-90, SEE-95, SEE-99)
 
 Three Go modules, and nothing in any of them is shared with the Node or Android sides: the shared
-gateway in [`broadcast/`](../../broadcast), the publisher templates in
+gateway in [`feed-gateway/`](../../feed-gateway), the publisher templates in
 [`publisher/`](../../publisher), and the load harness in [`loadtest/`](../../loadtest).
-`pnpm check:broadcast`, `pnpm check:publisher` and `pnpm check:loadtest` run their checks and CI
+`pnpm check:feed-gateway`, `pnpm check:publisher` and `pnpm check:loadtest` run their checks and CI
 runs the first two; installing Go is not needed for `pnpm check`.
 
 They are separate modules on purpose. A template is meant to be copyable out of this repository, and
 the harness holds both ends of a feed at once — the publisher API, the client API and the broker's
 own client schema — which nothing that ships is allowed to hold together, so keeping it out of
-`broadcast/` is what keeps the gateway's dependency list at three. Each has its own `go.mod`, and
+`feed-gateway/` is what keeps the gateway's dependency list at three. Each has its own `go.mod`, and
 the versions below are the same in all of them. Where that could drift, a test in `publisher/` reads
 the gateway's own source rather than trusting the match
 (`internal/signals/contract_test.go`).
 
 | Tool | Version | Pinned in |
 | --- | --- | --- |
-| Go | 1.27.1 | the `go` line in `broadcast/go.mod`, `publisher/go.mod` and `loadtest/go.mod`, which `actions/setup-go` reads through `go-version-file` |
+| Go | 1.27.1 | the `go` line in `feed-gateway/go.mod`, `publisher/go.mod` and `loadtest/go.mod`, which `actions/setup-go` reads through `go-version-file` |
 | `connectrpc.com/connect`, the Connect runtime for all three | 1.21.0 | every `go.mod`; it must match the `connectrpc/go` generator |
 | `google.golang.org/protobuf`, the message runtime | 1.36.12 | every `go.mod`; it must match the `protocolbuffers/go` generator |
-| `modernc.org/sqlite`, the pure-Go SQLite driver | 1.59.0 | `broadcast/go.mod` and `publisher/go.mod`; the harness holds no database |
+| `modernc.org/sqlite`, the pure-Go SQLite driver | 1.59.0 | `feed-gateway/go.mod` and `publisher/go.mod`; the harness holds no database |
 
 The harness's own dependency list is those two libraries and nothing else. It speaks gRPC to the
 broker without grpc-go: connect-go does the protocol, and since Go 1.24 the standard library opens
 an unencrypted HTTP/2 connection by itself (`net/http.Protocols.SetUnencryptedHTTP2`), which is the
-same argument `broadcast/internal/stream` makes for using the broker's HTTP API rather than its gRPC
+same argument `feed-gateway/internal/stream` makes for using the broker's HTTP API rather than its gRPC
 one.
 
 The broker the gateway fans out through is a service rather than a dependency, and it is pinned
@@ -70,11 +70,11 @@ where the deployment names it:
 
 | Service | Version | Pinned in |
 | --- | --- | --- |
-| Centrifugo | 6.9.6 | `broadcast/compose.yaml` (`centrifugo/centrifugo:v6.9.6`), and the schema in `third_party/centrifugo` is that release's |
-| Redis | 8.2 (alpine) | `broadcast/compose.yaml`; it holds a bounded recovery cache and nothing durable |
+| Centrifugo | 6.9.6 | `feed-gateway/compose.yaml` (`centrifugo/centrifugo:v6.9.6`), and the schema in `third_party/centrifugo` is that release's |
+| Redis | 8.2 (alpine) | `feed-gateway/compose.yaml`; it holds a bounded recovery cache and nothing durable |
 
 Neither is vendored, so the checks that need them take a path instead: `SEEKERVAULT_CENTRIFUGO` and
-`SEEKERVAULT_REDIS`, which `broadcast/internal/stream/broker_test.go`,
+`SEEKERVAULT_REDIS`, which `feed-gateway/internal/stream/broker_test.go`,
 `feeds/CentrifugoStreamIntegrationTest`, `pnpm test:integration` and `pnpm test:load` all read.
 Verify a Centrifugo download against the release's own `centrifugo_<version>_checksums.txt` before
 using it. The versions actually run for SEE-99's measurements — and how they were obtained — are in
@@ -94,7 +94,7 @@ is a dependency to audit for a service whose whole point is holding nothing pers
 
 **The SQLite driver is pure Go, so `CGO_ENABLED=0` is what the image builds with.** That is what
 lets the runtime image be `FROM scratch` with no libc and no CA bundle in it
-([`broadcast/Dockerfile`](../../broadcast/Dockerfile)).
+([`feed-gateway/Dockerfile`](../../feed-gateway/Dockerfile)).
 
 **Formatting is `gofmt`**, which is not configurable and therefore not configured. `go vet` runs
 before the tests.
@@ -143,8 +143,8 @@ before the tests.
 | `buf.build/protocolbuffers/java:v36.1`, `lite` | `android/app/src/main/generated/java` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/protocolbuffers/kotlin:v36.1`, `lite` | `android/app/src/main/generated/kotlin` | `com.google.protobuf:protobuf-kotlin-lite` 4.36.1 |
 | `buf.build/connectrpc/kotlin:v0.9.0` | `android/app/src/main/generated/kotlin` | `com.connectrpc:connect-kotlin` 0.9.0, with its OkHttp transport and lite codec at the same version |
-| `buf.build/protocolbuffers/go:v1.36.12`, `paths=source_relative` (in `buf.gen.go.yaml`) | `broadcast/internal/gen` | `google.golang.org/protobuf` 1.36.12 |
-| `buf.build/connectrpc/go:v1.21.0`, `paths=source_relative` (in `buf.gen.go.yaml`) | `broadcast/internal/gen` | `connectrpc.com/connect` 1.21.0 |
+| `buf.build/protocolbuffers/go:v1.36.12`, `paths=source_relative` (in `buf.gen.feed-gateway.yaml`) | `feed-gateway/internal/gen` | `google.golang.org/protobuf` 1.36.12 |
+| `buf.build/connectrpc/go:v1.21.0`, `paths=source_relative` (in `buf.gen.feed-gateway.yaml`) | `feed-gateway/internal/gen` | `connectrpc.com/connect` 1.21.0 |
 | the same two Go plugins (in `buf.gen.publisher.yaml`) | `publisher/internal/gen` | the same two runtimes, pinned in `publisher/go.mod` |
 | the same three Kotlin plugins (in `buf.gen.centrifugo.yaml`) | `android/app/src/main/generated/centrifugo` | the vendored broker schema, for the phone alone |
 | the same two Go plugins (in `buf.gen.loadtest.yaml`), over `proto/` **and** the vendored schema | `loadtest/internal/gen` | the same two runtimes, pinned in `loadtest/go.mod` |
@@ -153,7 +153,7 @@ before the tests.
   `buf.gen.server-sdk.yaml` writes the direct TypeScript contracts and `buf.gen.mcp-server.yaml` keeps
   only the proposal fixture contract with the MCP host. None generates
   `seekervault/gateway/v1/publish.proto` for the phone or direct server — neither is a publisher.
-  `buf.gen.go.yaml` writes the gateway's Go for the three packages it speaks;
+  `buf.gen.feed-gateway.yaml` writes the gateway's Go for the three packages it speaks;
   `buf.gen.publisher.yaml` writes the publisher templates' Go for a fourth subset — the publisher
   API, its problem detail and the two documents a publisher writes, and **no feed client at all**,
   because a publisher publishes and never reads a feed (SEE-95); `buf.gen.centrifugo.yaml` writes
@@ -201,9 +201,9 @@ The existing pins already support the production update protocol, so SAW-048 add
    export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
    ```
 
-5. **Go, for the broadcast gateway (SEE-90):** `brew install go`, or the installer from
-   <https://go.dev/dl/>. It is needed only for `pnpm check:broadcast` and for working in
-   `broadcast/`; the Node and Android checks do not use it.
+5. **Go, for the feed gateway (SEE-90):** `brew install go`, or the installer from
+   <https://go.dev/dl/>. It is needed only for `pnpm check:feed-gateway` and for working in
+   `feed-gateway/`; the Node and Android checks do not use it.
 6. **First build:** run `pnpm install --frozen-lockfile && pnpm check:android`. The first time, Gradle downloads the pinned Temurin 21 into `~/.gradle/jdks`.
 
 ## How Android Studio and the terminal stay compatible

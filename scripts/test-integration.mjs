@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const BROADCAST = join(ROOT, "broadcast");
+const FEED_GATEWAY = join(ROOT, "feed-gateway");
 const PUBLISHER = join(ROOT, "publisher");
 
 // The version both go.mod files require, and the one docs/development/toolchain.md records as
@@ -62,7 +62,7 @@ const { values } = parseArgs({
 const legs = [];
 
 try {
-  execFileSync("go", ["version"], { cwd: BROADCAST, stdio: "pipe" });
+  execFileSync("go", ["version"], { cwd: FEED_GATEWAY, stdio: "pipe" });
 } catch {
   console.error(
     [
@@ -78,8 +78,8 @@ const built = mkdtempSync(join(tmpdir(), "seeker-vault-integration-"));
 try {
   console.log("Building the gateway, both templates and their CLIs…\n");
   for (const [module, command] of [
-    [BROADCAST, "broadcast"],
-    [BROADCAST, "broadcastctl"],
+    [FEED_GATEWAY, "feed-gateway"],
+    [FEED_GATEWAY, "feed-gatewayctl"],
     [PUBLISHER, "copytrading"],
     [PUBLISHER, "prediction"],
     [PUBLISHER, "publishctl"],
@@ -92,8 +92,8 @@ try {
   }
 
   const binaries = {
-    SEEKERVAULT_BROADCAST: join(built, "broadcast"),
-    SEEKERVAULT_BROADCASTCTL: join(built, "broadcastctl"),
+    SEEKERVAULT_FEED_GATEWAY: join(built, "feed-gateway"),
+    SEEKERVAULT_FEED_GATEWAYCTL: join(built, "feed-gatewayctl"),
     SEEKERVAULT_COPYTRADING: join(built, "copytrading"),
     SEEKERVAULT_PREDICTION: join(built, "prediction"),
     SEEKERVAULT_PUBLISHCTL: join(built, "publishctl"),

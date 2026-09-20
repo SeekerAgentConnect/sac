@@ -33,7 +33,7 @@ interface FeedHost {
      *
      * This is what runs whenever continuity cannot be proven, which is the whole reason the
      * gateway's unary API exists next to the stream: a broker's history is a recovery cache, and
-     * the documents are the gateway's (docs/wiki/broadcast-gateway.md).
+     * the documents are the gateway's (docs/wiki/feed-gateway.md).
      */
     suspend fun readFeed(connectionId: String, knownSequence: Long): Long?
 }

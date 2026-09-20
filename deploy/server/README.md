@@ -3,7 +3,7 @@
 This directory is the complete single-Linux-server entry point. It has two independently operable
 parts:
 
-1. **App infrastructure:** the shared broadcast gateway, Centrifugo, Redis, Firebase relay inside
+1. **App infrastructure:** the shared feed gateway, Centrifugo, Redis, Firebase relay inside
    the gateway, public HTTPS/HTTP2 entry point, and local operator CLI.
 2. **Demo servers:** the existing CopyTrading and Jupiter Prediction publisher templates.
 
@@ -38,7 +38,7 @@ The address layout is deliberate:
 | --- | --- |
 | `https://feeds.example.com:443` | Phones: public feed reads and the one Centrifugo unidirectional gRPC stream over HTTP/2. |
 | `https://feeds.example.com/trader` | Hackathon judges: password-gated CopyTrading trader HTML (SEE-126). Not `/v1`. Behind Funnel, the same path on the MagicDNS origin, including the Funnel port when it is not 443. |
-| `http://broadcast:8082` | Demo containers only: authenticated `PublisherService` on the private `publisher-ingress` Docker network. It never appears in a manifest. |
+| `http://feed-gateway:8082` | Demo containers only: authenticated `PublisherService` on the private `publisher-ingress` Docker network. It never appears in a manifest. |
 | `127.0.0.1:8092`, `127.0.0.1:8094` | Host operator only: CopyTrading and Prediction control APIs. Both require their own API token. The trader UI holds that token and calls loopback; the browser never sees it. |
 | `127.0.0.1:8443` / public TCP `:10000` | Optional direct sidecar: TLS terminates in the sidecar; a raw TCP forward preserves its private update stream. Do not put the trader UI on `:10000`. |
 
@@ -72,8 +72,8 @@ git pull --ff-only
 cd deploy/server
 ```
 
-With a checkout, Compose builds the unchanged `broadcast/Dockerfile` and `publisher/Dockerfile`.
-The pinned `broadcast/centrifugo.yaml` and the two publisher Caddy allow-lists are mounted through
+With a checkout, Compose builds the unchanged `feed-gateway/Dockerfile` and `publisher/Dockerfile`.
+The pinned `feed-gateway/centrifugo.yaml` and the two publisher Caddy allow-lists are mounted through
 symlinks in this directory (`centrifugo.yaml`, `Caddyfile.copytrading`, `Caddyfile.prediction`), so
 there is one copy of each.
 
@@ -85,7 +85,7 @@ produces `linux/amd64` without emulation — and push them as tags of one reposi
 
 ```sh
 # from the repository root
-docker buildx build --platform linux/amd64 -f broadcast/Dockerfile \
+docker buildx build --platform linux/amd64 -f feed-gateway/Dockerfile \
   -t YOUR-USER/seeker-agent-connect:broadcast-v1 --load .
 docker buildx build --platform linux/amd64 -f publisher/Dockerfile \
   -t YOUR-USER/seeker-agent-connect:publisher-v1 --load .
@@ -122,7 +122,7 @@ No public broadcast or publisher image is assumed. The default tags are local an
 the checked-out source:
 
 ```sh
-docker compose build broadcast gateway-ctl
+docker compose build feed gateway-ctl
 docker compose pull gateway-proxy centrifugo redis
 ```
 
@@ -172,7 +172,7 @@ key:
 
 ```sh
 sudo install -o 10001 -g 10001 -m 0400 /secure/source/service-account.json \
-  secrets/broadcast/fcm-service-account.json
+  secrets/feed-gateway/fcm-service-account.json
 ```
 
 Then set:
@@ -191,7 +191,7 @@ read this key. The sidecar, if enabled, has its own `secrets/sidecar` directory 
 ```sh
 docker compose -f compose.yaml up -d --build
 docker compose -f compose.yaml ps
-docker compose -f compose.yaml logs --tail=100 broadcast gateway-proxy centrifugo redis
+docker compose -f compose.yaml logs --tail=100 feed gateway-proxy centrifugo redis
 docker compose -f compose.yaml exec gateway-proxy \
   wget -qO- http://127.0.0.1:8081/healthz
 ```
@@ -226,7 +226,7 @@ Useful commands:
 
 ```sh
 docker compose -f compose.yaml ps
-docker compose -f compose.yaml logs -f broadcast gateway-proxy centrifugo redis
+docker compose -f compose.yaml logs -f feed gateway-proxy centrifugo redis
 docker compose -f compose.yaml run --rm gateway-ctl list
 docker compose -f compose.yaml restart gateway-proxy
 ```
@@ -237,9 +237,9 @@ snapshot:
 
 ```sh
 git pull --ff-only
-docker compose -f compose.yaml build broadcast gateway-ctl
+docker compose -f compose.yaml build feed gateway-ctl
 docker compose -f compose.yaml config --quiet
-docker compose -f compose.yaml up -d --no-deps broadcast gateway-proxy
+docker compose -f compose.yaml up -d --no-deps feed gateway-proxy
 ```
 
 The authoritative state is `broadcast-data`. Caddy's ACME account and certificates are in
@@ -257,7 +257,7 @@ docker run --rm \
   -v seeker-agent-wallet-server_gateway-caddy-data:/from:ro \
   -v "$PWD/backups:/to" alpine:3.22 \
   tar -C /from -czf /to/gateway-caddy-data.tgz .
-docker compose -f compose.yaml up -d --no-deps broadcast gateway-proxy
+docker compose -f compose.yaml up -d --no-deps feed gateway-proxy
 ```
 
 Restore only while those services are stopped, into the same named volumes, from a backup whose
@@ -304,7 +304,7 @@ sudo chown 10001:10001 secrets/sidecar
 Edit `.env.direct`. Keep `SERVER_DOMAIN`, `SIDECAR_PUBLIC_URL` and `MCP_ALLOWED_HOSTS` consistent;
 make `MCP_TOKEN` and `PHONE_TOKEN` different random values. `MCP_ENABLED=false` keeps the private
 phone workflow and makes MCP plus both OAuth metadata routes return 404. It does not route MCP
-through the broadcast gateway.
+through the feed gateway.
 
 Obtain a certificate and expose the raw TLS socket:
 
@@ -542,7 +542,7 @@ docker compose -f compose.yaml -f compose.demos.yaml logs --tail=100 \
 Expected from each publisher: `publishing as this server`, a
 `seekervault://feed?...gateway=https%3A%2F%2Ffeeds.example.com...` line, `the manifest is published`,
 and its API listening. The URL in the reference must be the external gateway origin. The logs may
-name `http://broadcast:8082` only as `publishing_to`; that is the private container route.
+name `http://feed-gateway:8082` only as `publishing_to`; that is the private container route.
 
 Check each API and the Prediction cycle through the shipped CLI. The token is placed in the
 one-shot container environment and is not an argument or committed file:
@@ -782,10 +782,10 @@ stopped, then start that service again. The infrastructure need not stop.
 | Behind Funnel: handshake fails or the certificate is refused | `ls -ln tls` must show the key as `10001 0` mode `0640` and the directory enterable; `BROADCAST_DOMAIN` must be the node's exact MagicDNS name; `tailscale funnel status` must show `tcp://…:443` forwarding to `GATEWAY_HTTPS_BIND`'s port. |
 | Caddy cannot obtain a certificate | DNS A/AAAA, inbound 80/443, `BROADCAST_DOMAIN`, and `gateway-proxy` logs. Never disable phone certificate validation. |
 | Unary works but `grpcurl` closes or never shows `subscribe` | The exact stream path in `Caddyfile`, external ALPN `h2`, Centrifugo health, ticket lifetime, and broker logs. Unary is not a substitute. |
-| A `*-ctl` command says `127.0.0.1:8093` (or `8095`) `connection refused`, or a proxy turns unhealthy after a restart | The publisher was restarted without its proxy. A proxy shares its publisher's network namespace (`network_mode: service:…`), and a restarted publisher gets a new one while the old proxy stays in the dead one. Restart the pair: `restart copytrading copytrading-proxy` (likewise `prediction prediction-proxy`, `broadcast gateway-proxy`). Restarting a proxy alone is always safe. |
+| A `*-ctl` command says `127.0.0.1:8093` (or `8095`) `connection refused`, or a proxy turns unhealthy after a restart | The publisher was restarted without its proxy. A proxy shares its publisher's network namespace (`network_mode: service:…`), and a restarted publisher gets a new one while the old proxy stays in the dead one. Restart the pair: `restart copytrading copytrading-proxy` (likewise `prediction prediction-proxy`, `feed gateway-proxy`). Restarting a proxy alone is always safe. |
 | Compose warns `Found orphan containers (…-sidecar-1)` | Expected: the sidecar belongs to the same project through `compose.direct.yaml`, which the command did not name. Never answer it with `--remove-orphans`; set `COMPOSE_IGNORE_ORPHANS=1` in `.env` to silence it. |
 | Publisher logs `other_gateway` | `PUBLISHER_GATEWAY_URL` is not the gateway's own origin, character for character, port included. `docker inspect` the `broadcast` container for `BROADCAST_PUBLIC_URL`; behind Funnel on 8443 it needs `GATEWAY_PUBLIC_PORT=8443` in `.env` and a recreated `broadcast`. A refusal is not retried until the publisher restarts. |
-| Publisher logs 404 while publishing | `PUBLISHER_PUBLISH_URL` was overridden or the demo is not on `publisher-ingress`; it must use `http://broadcast:8082`. |
+| Publisher logs 404 while publishing | `PUBLISHER_PUBLISH_URL` was overridden or the demo is not on `publisher-ingress`; it must use `http://feed-gateway:8082`. |
 | Gateway refuses `other_gateway` | `PUBLISHER_GATEWAY_URL` differs from `https://BROADCAST_DOMAIN`. Internal hostnames never belong there. |
 | Demo API is unreachable remotely | Expected. It binds host loopback. Use SSH/VPN or the password-gated `/trader` page. Never publish `/v1` on the public origin. |
 | `/trader` returns 502 | CopyTrading demo is not running, or `copytrading-admin` was not started with the publisher pair. Recreate `copytrading copytrading-proxy copytrading-admin` and `gateway-proxy` so Caddy has the route. |
@@ -796,7 +796,7 @@ stopped, then start that service again. The infrastructure need not stop.
 | Existing direct pairing disappeared | The deployment used a different project/volume name. Stop before changing anything and restore use of `seeker-agent-wallet-server_sidecar-data`. |
 | Port bind fails | Only gateway 80/443, demo host loopback 8092/8094 and optional sidecar loopback 8443/public TCP 10000 are intended. Stop older standalone stacks that own those host ports. |
 
-Further contract and security detail: [broadcast](../../docs/development/broadcast.md),
+Further contract and security detail: [broadcast](../../docs/development/feed-gateway.md),
 [publisher templates](../../docs/development/publisher.md),
 [Firebase](../../docs/guides/firebase.md), and
 [the Stage 7.1 environment model](../../docs/wiki/environments.md).

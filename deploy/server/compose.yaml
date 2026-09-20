@@ -12,11 +12,11 @@
 name: seeker-agent-wallet-server
 
 services:
-  broadcast:
+  feed-gateway:
     build:
       context: ../..
-      dockerfile: broadcast/Dockerfile
-    image: ${BROADCAST_IMAGE:-seeker-broadcast/gateway:local}
+      dockerfile: feed-gateway/Dockerfile
+    image: ${BROADCAST_IMAGE:-seeker-feed-gateway/gateway:local}
     restart: unless-stopped
 
     # Caddy shares this network namespace. These are Caddy's public ports; the
@@ -82,9 +82,9 @@ services:
   gateway-proxy:
     image: caddy:2.10-alpine
     restart: unless-stopped
-    network_mode: "service:broadcast"
+    network_mode: "service:feed-gateway"
     depends_on:
-      - broadcast
+      - feed-gateway
     environment:
       BROADCAST_DOMAIN: ${BROADCAST_DOMAIN:?set BROADCAST_DOMAIN in deploy/server/.env}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/server/.env}
@@ -121,7 +121,7 @@ services:
       CENTRIFUGO_ENGINE_REDIS_ADDRESS: redis://redis:6379
     volumes:
       # The pinned, tested broker configuration from the implementation, through
-      # a symlink to broadcast/centrifugo.yaml: one file in a checkout, and a real
+      # a symlink to feed-gateway/centrifugo.yaml: one file in a checkout, and a real
       # copy in a folder made with `rsync -L` for a server that only pulls images.
       - ./centrifugo.yaml:/etc/centrifugo/centrifugo.yaml:ro
     networks:
@@ -175,9 +175,9 @@ services:
     profiles: ["operator"]
     build:
       context: ../..
-      dockerfile: broadcast/Dockerfile
-    image: ${BROADCAST_IMAGE:-seeker-broadcast/gateway:local}
-    entrypoint: ["/broadcastctl"]
+      dockerfile: feed-gateway/Dockerfile
+    image: ${BROADCAST_IMAGE:-seeker-feed-gateway/gateway:local}
+    entrypoint: ["/feed-gatewayctl"]
     environment:
       BROADCAST_DATABASE_PATH: /data/broadcast.db
     volumes:

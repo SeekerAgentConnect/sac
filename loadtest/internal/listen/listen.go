@@ -1,14 +1,14 @@
 // Package listen is one simulated phone on the broadcast transport (SEE-99).
 //
 // It consumes Centrifugo's unidirectional gRPC stream — the transport the app consumes, on the
-// configuration this repository ships (broadcast/centrifugo.yaml) — and it makes the same decisions
+// configuration this repository ships (feed-gateway/centrifugo.yaml) — and it makes the same decisions
 // the app makes about what it receives (policy.go). What it adds is what a phone has no reason to
 // keep: the arrival time of every publication, the offsets it saw, the gaps between them, and the
 // reason each reconnect needed a snapshot read.
 //
 // # Why connect-go and not grpc-go
 //
-// The same argument the gateway makes for its side of the broker (broadcast/internal/stream): a
+// The same argument the gateway makes for its side of the broker (feed-gateway/internal/stream): a
 // gRPC client here would mean grpc-go and its transitive tree, for one server-streaming procedure
 // with two message types. connect-go speaks the gRPC protocol over an ordinary net/http transport,
 // and since Go 1.24 the standard library opens an unencrypted HTTP/2 connection by itself — so the
@@ -115,7 +115,7 @@ type Client struct {
 //
 // `streamURL` is where the transport is: the broker's own unidirectional gRPC port in a native run,
 // or a deployment's public origin, where the proxy forwards exactly this one procedure and nothing
-// else (broadcast/Caddyfile). Plain HTTP means prior-knowledge HTTP/2, because gRPC needs HTTP/2
+// else (feed-gateway/Caddyfile). Plain HTTP means prior-knowledge HTTP/2, because gRPC needs HTTP/2
 // and without TLS there is no negotiation to discover it with — the same pair the phone keeps.
 func Dial(streamURL string) *Client {
 	transport := &http.Transport{

@@ -7,7 +7,7 @@ without our Firebase credentials, without touching the app, and without holding 
 
 1. **It is a guide, not a second copy of the reference.** Everything a developer needs already
    exists somewhere — `publisher/.env.example` documents every setting, `docs/integrations/signal-api.md`
-   is the API's contract, `docs/wiki/broadcast-gateway.md` is the gateway's. What does not exist is
+   is the API's contract, `docs/wiki/feed-gateway.md` is the gateway's. What does not exist is
    the path *through* them in order, with the one command at each step. So this page is a spine with
    links, and where it repeats something it repeats it because a step needs it in the reader's hand.
 2. **It lives in `docs/guides/`.** That directory is where a numbered walkthrough goes
@@ -62,7 +62,7 @@ without our Firebase credentials, without touching the app, and without holding 
 - [x] `README.md`: a section beside Self-hosting, and the guide in the structure table.
 - [x] `docs/protocol.md`: from the gateway section.
 - [x] `docs/guides/self-hosting.md`: the other kind of server, named where a reader would look.
-- [x] `docs/wiki/broadcast-gateway.md`, `docs/development/publisher.md`,
+- [x] `docs/wiki/feed-gateway.md`, `docs/development/publisher.md`,
       `docs/integrations/signal-api.md`, `docs/wiki/copytrading-template.md`,
       `docs/wiki/prediction-template.md`, `docs/wiki/server-manifests.md`.
 - [x] `CODEBASE.md` and `AGENTS.md`.

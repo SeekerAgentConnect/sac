@@ -4,7 +4,7 @@ The stack in [`gateway/compose.yaml`](../../gateway/compose.yaml) runs the sidec
 
 What this gives you is the server half of Seeker Agent Connect. The phone still reviews and approves every request, and the wallet still signs; the sidecar holds no key and signs nothing ([`docs/architecture.md`](../architecture.md)).
 
-**This is the private kind of server**, paired to one owner's phone. The other kind broadcasts to everybody subscribed and is deployed separately, from `broadcast/` and `publisher/`: if that is what you are building, [`server-development.md`](server-development.md) is its numbered walkthrough and this page is not about it.
+**This is the private kind of server**, paired to one owner's phone. The other kind broadcasts to everybody subscribed and is deployed separately, from `feed-gateway/` and `publisher/`: if that is what you are building, [`server-development.md`](server-development.md) is its numbered walkthrough and this page is not about it.
 
 Everything builds from this checkout, and nothing in the path is ours. That is not the same as needing nothing: a public deployment needs a domain and a certificate authority, transfers need somebody's Solana RPC endpoint, and a hosted client needs an authorization server. [What this needs from outside](#what-this-needs-from-outside) is the whole list, with what is optional marked as optional.
 
@@ -635,7 +635,7 @@ The images are built for the architecture of the machine that builds them, from 
 
 - **Apple silicon Mac** (`linux/arm64` under Docker Desktop)
 - **Linux VPS** (`linux/amd64`, the common case; `linux/arm64` on an Ampere or Graviton host)
-- **A server that only pulls images** (`linux/amd64` built elsewhere). `mcp-server/Dockerfile`, `broadcast/Dockerfile` and `publisher/Dockerfile` run their install and compile stages on the building machine's own platform and assemble only the runtime stage for the target, so an Apple silicon Mac builds them with `docker buildx build --platform linux/amd64` — see [`deploy/server/GUIDE.md`](../../deploy/server/GUIDE.md).
+- **A server that only pulls images** (`linux/amd64` built elsewhere). `mcp-server/Dockerfile`, `feed-gateway/Dockerfile` and `publisher/Dockerfile` run their install and compile stages on the building machine's own platform and assemble only the runtime stage for the target, so an Apple silicon Mac builds them with `docker buildx build --platform linux/amd64` — see [`deploy/server/GUIDE.md`](../../deploy/server/GUIDE.md).
 
 A successful `docker buildx` for a platform is not evidence that the container runs there. [`docs/testing/stage-7.md`](../testing/stage-7.md) records which runtime checks were actually performed on which machine, and which are still outstanding.
 
