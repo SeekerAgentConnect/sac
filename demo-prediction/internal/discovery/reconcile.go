@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -579,12 +580,36 @@ func (r *Reconciler) statement(one candidate, row markets.Market, now time.Time)
 }
 
 // predictionTitle is the provider's own question, not an app-added category or venue prefix.
-// Some provider answers omit the event title, so the market title is the honest fallback.
+//
+// A multi-market event shares one event title ("Fed Decision in October?") and distinguishes
+// each binary market with its own title ("25 bps increase"). Both are kept, joined with a
+// middle dot, so carousel cards of the same event are not identical. A market that already
+// carries the event's question is left as the provider wrote it. An empty side falls back to
+// the other. Long event text is shortened first so the distinguishing market is not clipped
+// off the 64-byte bound.
 func predictionTitle(event jupiter.Event, market jupiter.Market) string {
-	if title := fold(event.Title, signals.MaxNameBytes); title != "" {
-		return title
+	eventTitle := fold(event.Title, signals.MaxNameBytes)
+	marketTitle := fold(market.Title, signals.MaxNameBytes)
+	switch {
+	case eventTitle == "":
+		return marketTitle
+	case marketTitle == "" || marketTitle == eventTitle:
+		return eventTitle
+	case strings.Contains(eventTitle, marketTitle):
+		return eventTitle
+	case strings.Contains(marketTitle, eventTitle):
+		return marketTitle
 	}
-	return fold(market.Title, signals.MaxNameBytes)
+	const separator = " · "
+	overhead := len(separator) + len(marketTitle)
+	if overhead >= signals.MaxNameBytes {
+		return marketTitle
+	}
+	head := fold(event.Title, signals.MaxNameBytes-overhead)
+	if head == "" {
+		return marketTitle
+	}
+	return head + separator + marketTitle
 }
 
 // Unpublishable is the reason a market that matched every filter still could not be published: the

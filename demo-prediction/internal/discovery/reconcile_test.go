@@ -272,8 +272,8 @@ func TestARealListingBecomesProposals(t *testing.T) {
 		t.Fatalf("revision %d", signal.Revision)
 	case signal.Status != signals.Open:
 		t.Fatalf("status %s", signal.Status)
-	case signal.Title != "Bank of Japan Decision in September?":
-		t.Fatalf("title %q is not the provider's question", signal.Title)
+	case signal.Title != "Bank of Japan Decision in September? · 50+ bps decrease":
+		t.Fatalf("title %q is not the provider's event and market", signal.Title)
 	case signals.Request(server, signal).GetPresentation().GetTitle() != signal.Title:
 		t.Fatalf("request title %q, expected %q",
 			signals.Request(server, signal).GetPresentation().GetTitle(), signal.Title)
@@ -302,6 +302,18 @@ func TestARealListingBecomesProposals(t *testing.T) {
 	}
 	if !strings.Contains(signal.Note, "Bank of Japan Decision in September?") {
 		t.Fatalf("the note does not say what the provider called it:\n%s", signal.Note)
+	}
+
+	titles := map[string]string{}
+	for _, row := range tracked {
+		title := row.Record.Signal.Title
+		if previous, seen := titles[title]; seen {
+			t.Fatalf("markets %s and %s share title %q", previous, row.Market.MarketID, title)
+		}
+		titles[title] = row.Market.MarketID
+		if !strings.Contains(title, " · ") {
+			t.Fatalf("multi-market event title does not name the market: %q", title)
+		}
 	}
 
 	// Nothing is published yet: publication is the drainer's, and this is the outbox.
@@ -425,14 +437,15 @@ func TestAProviderQuestionChangeMovesTheRequestTitleAndRevision(t *testing.T) {
 	held.clock = noon.Add(5 * time.Minute)
 	cycle := held.pass()
 	signal := held.signals()[0].Signal
+	want := question + " · 25 bps increase"
 	if cycle.Updated != 1 || signal.Revision != 2 {
 		t.Fatalf("updated %d, revision %d", cycle.Updated, signal.Revision)
 	}
-	if signal.Title != question {
-		t.Fatalf("title %q, expected %q", signal.Title, question)
+	if signal.Title != want {
+		t.Fatalf("title %q, expected %q", signal.Title, want)
 	}
-	if got := signals.Request(server, signal).GetPresentation().GetTitle(); got != question {
-		t.Fatalf("request title %q, expected %q", got, question)
+	if got := signals.Request(server, signal).GetPresentation().GetTitle(); got != want {
+		t.Fatalf("request title %q, expected %q", got, want)
 	}
 }
 
