@@ -21,9 +21,9 @@ later branch fixes to reconcile at the start of this run.
 - [x] 5. Run focused/runtime/package/build checks; update SEE-135/SEE-136 evidence and all touched docs,
       CODEBASE/changelog, plan review, and PR #38 metadata without weakening CI or publishing artifacts.
 - [x] Re-read SEE-137/SEE-128 before handoff, commit and push the existing branch, update PR #38, move
-      SEE-137 to In Review, and preserve SEE-128 as open. Direct Linear comments remain unavailable
-      because the configured plugin returns `401 invalid_token`; the runner fallback supports status
-      and PR linkage but exposes no comment command.
+      SEE-137 to In Review, add the verification comment, and preserve SEE-128 as open. The repository's
+      configured Linear plugin returned `401 invalid_token`; the connected Linear app completed the
+      status transition and comment after the runner fallback proved insufficient.
 
 ## Acceptance criteria (Linear, verbatim)
 
@@ -58,5 +58,6 @@ infrastructure limitation. No workflow was weakened and no package or image was 
 
 Implementation commit `e70e23e9ac74c93fa171f990401ad9be519fdc01` is pushed on the existing
 branch. PR #38's title/body now describe the complete migration and evidence. The Superset runner
-fallback moved SEE-137 to In Review and linked PR #38; SEE-128 remains In Progress. The required
-finished webhook is the final out-of-repository operation after the clean final head is pushed.
+fallback linked PR #38, and the connected Linear app moved SEE-137 to In Review and added the exact
+evidence comment; SEE-128 remains In Progress. The required finished webhook is the final
+out-of-repository operation after the clean final head is pushed.
