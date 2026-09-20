@@ -20,6 +20,43 @@ class RequestCarouselTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
+    fun insertionBeforeTheFirstCardPreservesItAndCountsTheArrival() {
+        var items by mutableStateOf(listOf(item("a"), item("b"), item("c")))
+        compose.setContent {
+            SeekerTheme {
+                RequestCarousel(
+                    items = items,
+                    centredIndex = 0,
+                    onItemClick = {},
+                )
+            }
+        }
+        compose.waitForIdle()
+        val before =
+            compose
+                .onNodeWithTag(RequestCarouselTags.item("a"))
+                .fetchSemanticsNode()
+                .boundsInRoot
+                .left
+
+        compose.runOnIdle { items = listOf(item("new-1")) + items }
+        compose.waitForIdle()
+
+        val after =
+            compose
+                .onNodeWithTag(RequestCarouselTags.item("a"))
+                .fetchSemanticsNode()
+                .boundsInRoot
+                .left
+        assertEquals(before, after, 0.5f)
+        compose.onNodeWithText("← 1 new").assertTextEquals("← 1 new")
+
+        compose.onNodeWithTag(RequestCarouselTags.LIST).performScrollToIndex(0)
+        compose.waitForIdle()
+        compose.onNodeWithTag(RequestCarouselTags.NEW_ITEMS).assertDoesNotExist()
+    }
+
+    @Test
     fun insertionBeforeTheVisibleCardPreservesItAndCountsNewItemsUntilViewed() {
         var items by mutableStateOf(listOf(item("a"), item("b"), item("c"), item("d")))
         compose.setContent {
