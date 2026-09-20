@@ -1,9 +1,9 @@
 name: CI
 
 on:
-  pull_request:
-  push:
-    branches: [master, develop]
+  # pull_request:
+  # push:
+  #   branches: [master, develop]
   workflow_dispatch:
 
 # CI only reads the repository. It never commits or pushes generated or formatted changes.
