@@ -44,10 +44,13 @@ describe("seeker-agent-connect-mcp pair", () => {
     const parsed = parsePairingUri(uri ?? "");
     assert.ok(parsed.ok, "the printed URI is a valid pairing code");
     assert.equal(parsed.code.serverUrl, "https://vault.example.ts.net");
-    assert.match(
-      stdout,
-      /https:\/\/vault\.example\.ts\.net\/pair\?v=1&url=https%3A%2F%2Fvault\.example\.ts\.net/,
-    );
+    assert.match(stdout, /https:\/\/vault\.example\.ts\.net\/pair#/);
+    const httpsLine = stdout
+      .split("\n")
+      .find((line) => line.startsWith("https://vault.example.ts.net/pair#"));
+    assert.ok(httpsLine, "prints the fragment landing URL");
+    assert.equal(new URL(httpsLine).search, "");
+    assert.doesNotMatch(new URL(httpsLine).pathname, /token/);
     // The printed token is the one the sidecar will accept.
     const db = openDatabase(databasePath);
     try {
@@ -82,8 +85,12 @@ describe("seeker-agent-connect-mcp pair", () => {
     assert.match(
       stdout,
       new RegExp(
-        `Pairing revokes the phone paired now: connection ${connectionId} \\("Seeker"\\)`,
+        `Connecting a phone with this link will disconnect the previously paired phone \\(connection ${connectionId} \\("Seeker"\\)`,
       ),
+    );
+    assert.match(
+      stdout,
+      /Creating or opening this link does not disconnect it\./,
     );
   });
 

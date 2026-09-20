@@ -19,6 +19,14 @@ const DIST = join(PACKAGE_ROOT, "dist");
 const SDK_DIST = join(REPOSITORY_ROOT, "server-sdk", "dist");
 const VENDORED_SDK = join(DIST, "vendor", "server-sdk");
 const STAGED = join(PACKAGE_ROOT, "package");
+const PAGE_SRC = join(PACKAGE_ROOT, "src", "pairing", "page");
+const PAGE_DIST = join(DIST, "pairing", "page");
+
+mkdirSync(PAGE_DIST, { recursive: true });
+for (const name of ["page.js", "page.css", "payload.js"]) {
+  cpSync(join(PAGE_SRC, name), join(PAGE_DIST, name));
+}
+cpSync(fileURLToPath(import.meta.resolve("uqr")), join(PAGE_DIST, "uqr.js"));
 
 cpSync(SDK_DIST, VENDORED_SDK, {
   recursive: true,

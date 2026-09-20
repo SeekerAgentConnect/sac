@@ -1,0 +1,153 @@
+:root {
+  color-scheme: light dark;
+  --bg: #111418;
+  --fg: #f4f1ea;
+  --muted: #c3bbb0;
+  --card: #1c2128;
+  --warn: #3a2a12;
+  --warn-fg: #f3d9a4;
+  --accent: #e8c07a;
+  --border: #3a414b;
+  --focus: #8ecae6;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f3ee;
+    --fg: #1b1f24;
+    --muted: #5c574e;
+    --card: #ffffff;
+    --warn: #fff1d6;
+    --warn-fg: #5a3b00;
+    --accent: #8a5a00;
+    --border: #d7d0c5;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  min-height: 100vh;
+  line-height: 1.45;
+}
+
+main {
+  width: min(40rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1.5rem 0 3rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 650;
+  margin: 0 0 0.75rem;
+}
+
+p,
+li {
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.1rem;
+  margin: 1rem 0;
+}
+
+.warning {
+  background: var(--warn);
+  color: var(--warn-fg);
+  border: 1px solid var(--accent);
+  border-radius: 0.75rem;
+  padding: 0.9rem 1rem;
+  margin: 1rem 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+a.button,
+button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #1b1f24;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--fg);
+}
+
+a.button:focus-visible,
+button:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+#qr {
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  width: fit-content;
+  max-width: 100%;
+}
+
+#qr svg {
+  width: min(16rem, 100%);
+  height: auto;
+}
+
+textarea {
+  width: 100%;
+  min-height: 5.5rem;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  padding: 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.hint {
+  font-size: 0.9rem;
+}
+
+#copy-status {
+  min-height: 1.25rem;
+}

@@ -197,6 +197,55 @@ npm exec --yes --package @seeker-vault/mcp-server@0.1.0 -- \
   seeker-agent-connect-mcp start
 ```
 
+## Phone pairing from an agent
+
+`vault_create_pairing_link` remains the console-free way to obtain a pairing code. Show
+`https_url` as **Connect your phone**. That HTTPS link opens a page on this same MCP server at
+`/pair`. The page's **Open Seeker Agent Connect** button opens the existing `seekervault://pair`
+deep link; this is not Android App Link configuration, and the app is not guaranteed to open in
+every embedded browser. `pairing_uri` is the copy/paste fallback for Add connection.
+
+New HTTPS URLs are `https://<SIDECAR_PUBLIC_URL origin>/pair#<payload>`. The pairing token and
+other parameters live in the fragment, so the initial HTTP request has no credential in the path
+or query. The fragment is **not encryption**: the link is still a secret. Chat history, screenshots,
+browser history, and shared logs can leak it. Do not treat a preview visit as pairing.
+
+The page is a display surface only. GET/HEAD `/pair`, loading its scripts, generating the QR code,
+and copying the code do not redeem a token, revoke a connection, or issue another code. Pairing
+still happens in the app after the owner confirms, through the existing Pair API. Issuing a new
+code invalidates older unused codes but does **not** disconnect the currently paired phone.
+Replacement happens only when a phone successfully pairs.
+
+When a phone is already paired, the tool result includes `replaces` and `warning`. Always show that
+warning with the link:
+
+> Connecting a phone with this link will disconnect the previously paired phone and cancel its
+> pending requests. Creating or opening this link does not disconnect it.
+
+Expiry and replacement fields on the page are display hints from the link, not live server state.
+The page does not claim a code is unused, already redeemed, or that no phone will be replaced. When
+that information is missing, it shows a conditional warning instead.
+
+Old query-format HTTPS links (`/pair?v=1&token=…`) still open the page. The token in that form was
+already in the request target and may appear in access logs; converting it locally to a fragment
+does not undo that. Prefer a fresh agent link.
+
+The page and its scripts/styles/QR library ship inside the source tree, the Docker image, and the
+executable npm package. They are served only at `/pair`, `/pair/page.js`, `/pair/page.css`,
+`/pair/payload.js`, and `/pair/uqr.js`. There is no CDN, analytics, public pairing-status API, or
+APK download.
+
+Responses set `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`,
+and a restrictive Content-Security-Policy (`connect-src 'none'`, `script-src 'self'`). The
+configured public origin is embedded in the HTML; a fragment that names a different server cannot
+use this page as a launch surface.
+
+**Ingress:** `deploy/ingress/direct/Caddyfile` currently reverse-proxies `/mcp` and the Connect
+phone APIs, then aborts every other path, including `/pair` and `/pair/page.js`. Phone pairing
+through that example Caddy file needs an operator-added route for `/pair` and those four assets, or
+the phone/browser must reach the MCP listener directly. This package does not change that
+deployment.
+
 ## Connect an agent
 
 Start the server first, then configure the client for Streamable HTTP at its URL. The MCP token is

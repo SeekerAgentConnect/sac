@@ -9,13 +9,10 @@
  * pairing code is the one place a token is shown, because showing it is how pairing works.
  */
 import { renderUnicodeCompact } from "uqr";
-import {
-  openDirectServer,
-  pairingHttpsUrl,
-  type PairedPhone,
-} from "@seeker-vault/server-sdk";
+import { openDirectServer, type PairedPhone } from "@seeker-vault/server-sdk";
 
 import { ConfigError, loadSidecarConfig } from "../config.ts";
+import { pairingLandingUrl } from "./fragment.ts";
 
 const USAGE = `Usage: seeker-agent-connect-mcp pair [status | revoke]
 
@@ -82,8 +79,8 @@ export async function runPairingCommand(
       "Or enter the code by hand:",
       uri,
       "",
-      "HTTPS landing page (opens the same deep link):",
-      pairingHttpsUrl(issued),
+      "HTTPS landing page (opens a pairing page; the page's button opens the app):",
+      pairingLandingUrl(issued),
       "",
     ];
     if (new URL(issued.serverUrl).protocol === "http:") {
@@ -94,7 +91,7 @@ export async function runPairingCommand(
     }
     if (issued.replaces !== undefined) {
       lines.push(
-        `Pairing revokes the phone paired now: ${describe(issued.replaces)}.`,
+        `Connecting a phone with this link will disconnect the previously paired phone (${describe(issued.replaces)}) and cancel its pending requests. Creating or opening this link does not disconnect it.`,
       );
     }
     lines.push(

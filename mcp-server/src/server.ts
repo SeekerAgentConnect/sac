@@ -43,7 +43,7 @@ import { LiveCommandService } from "@seeker-vault/server-sdk/protocol";
 
 import { DEFAULT_SOLANA_RPC_TIMEOUT_MS, type SidecarConfig } from "./config.ts";
 import { createMcpEndpoint, type McpEndpoint } from "./mcp-endpoint.ts";
-import { PAIRING_LINK_PATH, handlePairingLink } from "./pairing/link.ts";
+import { handlePairingLink, isPairingLinkPath } from "./pairing/link.ts";
 import {
   PROTECTED_RESOURCE_PATHS,
   protectedResourceMetadata,
@@ -241,11 +241,10 @@ async function serve(
       }
       if (path === "/healthz") {
         health(req, res, secure || h2c);
-      } else if (
-        path === PAIRING_LINK_PATH ||
-        path === `${PAIRING_LINK_PATH}/`
-      ) {
-        handlePairingLink(req as IncomingMessage, response);
+      } else if (isPairingLinkPath(path)) {
+        handlePairingLink(req as IncomingMessage, response, {
+          publicOrigin: config.publicUrl ?? listeningUrl ?? "",
+        });
       } else if (PROTECTED_RESOURCE_PATHS.includes(path)) {
         protectedResource(req, res, config.oauth);
       } else if (path === "/mcp") {
