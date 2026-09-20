@@ -89,13 +89,27 @@ fun RequestCarousel(
         val insertedBeforeAnchor =
             if (anchorIndex < 0) emptySet()
             else itemIds.take(anchorIndex).filterNot(knownIds::contains).toSet()
-        unseenIds = (unseenIds + insertedBeforeAnchor).intersect(itemIds.toSet())
         knownIds = itemIds.toSet()
+        // At the leading edge, item keys cannot keep a former first card in place: the list is
+        // pinned at offset 0, so a prepend would otherwise become the new first visible item.
+        if (
+            insertedBeforeAnchor.isNotEmpty() &&
+                anchorIndex >= 0 &&
+                carouselState.firstVisibleItemIndex == 0 &&
+                carouselState.firstVisibleItemScrollOffset == 0
+        ) {
+            carouselState.scrollToItem(anchorIndex)
+        }
+        unseenIds = (unseenIds + insertedBeforeAnchor).intersect(itemIds.toSet())
     }
     LaunchedEffect(activeId) { activeId?.let { anchorId = it } }
     LaunchedEffect(carouselState) {
         snapshotFlow {
-            carouselState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? String }.toSet()
+            val first = carouselState.firstVisibleItemIndex
+            carouselState.layoutInfo.visibleItemsInfo
+                .filter { it.index >= first }
+                .mapNotNull { it.key as? String }
+                .toSet()
         }
             .collect { visible -> unseenIds = unseenIds - visible }
     }
