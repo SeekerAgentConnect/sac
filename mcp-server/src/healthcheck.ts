@@ -143,44 +143,63 @@ export async function checkHealth(
 
 function checkH2cHealth(port: number, timeoutMs: number): Promise<string> {
   return new Promise((resolveBody, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`health check timed out after ${timeoutMs} ms`));
-    }, timeoutMs);
-    timer.unref();
+    let settled = false;
     const client = http2Connect(`http://127.0.0.1:${String(port)}`);
-    const fail = (error: Error) => {
-      clearTimeout(timer);
-      client.close();
-      reject(error);
-    };
-    client.once("error", fail);
     const request = client.request({
       ":method": "GET",
       ":path": "/healthz",
       ":authority": `127.0.0.1:${String(port)}`,
     });
+
+    const finish = (error?: Error, body?: string): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      request.destroy();
+      client.destroy();
+      if (error !== undefined) {
+        reject(error);
+        return;
+      }
+      resolveBody(body ?? "");
+    };
+
+    const fail = (error: Error): void => {
+      finish(error);
+    };
+
+    const timer = setTimeout(() => {
+      fail(new Error(`health check timed out after ${timeoutMs} ms`));
+    }, timeoutMs);
+    timer.unref();
+
+    // Leave error listeners attached so destroy() cannot become unhandled.
+    client.on("error", fail);
+    request.on("error", fail);
+    request.on("close", () => {
+      fail(new Error("health check closed before a complete response"));
+    });
+
     const chunks: Buffer[] = [];
     let bytes = 0;
     request.on("data", (chunk: Buffer) => {
       bytes += chunk.byteLength;
       if (bytes > MAX_BODY_BYTES) {
-        request.close();
         fail(new Error("health response exceeded 1024 bytes"));
-      } else {
-        chunks.push(chunk);
+        return;
       }
+      chunks.push(chunk);
     });
-    request.once("error", fail);
     request.once("response", (headers) => {
       const status = Number(headers[":status"] ?? 0);
       request.once("end", () => {
-        clearTimeout(timer);
-        client.close();
         if (status !== 200) {
-          reject(new Error(`health endpoint returned HTTP ${String(status)}`));
+          fail(new Error(`health endpoint returned HTTP ${String(status)}`));
           return;
         }
-        resolveBody(Buffer.concat(chunks).toString("utf8"));
+        finish(undefined, Buffer.concat(chunks).toString("utf8"));
       });
     });
     request.end();
