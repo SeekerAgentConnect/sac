@@ -55,6 +55,35 @@ services:
   - key: BROADCAST_ADMIN_ADDRESS
     scope: RUN_AND_BUILD_TIME
     value: 0.0.0.0:8092
+  # The direct-server push relay (SEE-144). Nothing here turns it on: it sends through the same
+  # BROADCAST_PUSH_CREDENTIALS the feed relay uses, so a deployment without one still lets a phone
+  # enroll and authorize and tells a server that asks for a wake-up to come back later. What is
+  # declared here is what it may cost, at its defaults, so an operator raising one of these is
+  # editing a value rather than discovering a variable. The routes need no ingress change: the
+  # phone's half is on the read listener and the server's half is on the publisher listener, both
+  # of which the edge already routes.
+  - key: BROADCAST_RELAY_SERVER_RATE
+    scope: RUN_AND_BUILD_TIME
+    value: "2"
+  - key: BROADCAST_RELAY_DEVICE_RATE
+    scope: RUN_AND_BUILD_TIME
+    value: "0.5"
+  - key: BROADCAST_RELAY_GLOBAL_RATE
+    scope: RUN_AND_BUILD_TIME
+    value: "50"
+  # A month before a phone renews an authorization, two months before an installation nothing has
+  # been heard from is forgotten with its bindings, and a day for an enrollment that authorized
+  # nothing. The second must be at least the first, or a phone would be forgotten while its
+  # authorizations were still valid — the gateway refuses to start otherwise.
+  - key: BROADCAST_RELAY_BINDING_HOURS
+    scope: RUN_AND_BUILD_TIME
+    value: "720"
+  - key: BROADCAST_RELAY_IDLE_HOURS
+    scope: RUN_AND_BUILD_TIME
+    value: "1440"
+  - key: BROADCAST_RELAY_UNBOUND_HOURS
+    scope: RUN_AND_BUILD_TIME
+    value: "24"
   health_check:
     failure_threshold: 9
     http_path: /healthz

@@ -329,7 +329,9 @@ subscribed through the shared gateway — and a second kind of message about it.
 stays exactly as it is: the direct path's registration, its `fid`-addressed invalidation, its Sync
 and its request alerts are untouched, and a deployment can run either half, both, or neither.
 
-**Who sends.** The feed gateway, not the publisher. The publisher publishes a document to the
+**Who sends.** The feed gateway, not the publisher. (It also relays for *direct* servers that hold
+no credential of their own, which is a different message to a different kind of address:
+[the direct-server push relay](#the-direct-server-push-relay-see-144).) The publisher publishes a document to the
 gateway as it already did; the gateway commits it and then sends one message to that feed's topic.
 A publisher is given no Firebase credential, cannot name a topic, and never learns that any phone
 received anything.
@@ -417,6 +419,127 @@ has.
 | Notification permission denied | Hints still cause a read; nothing is displayed. |
 | The owner force-stops the app | Nothing is delivered and no job runs until they open it again — the same limitation SAW-059 records for the private path, and it applies to a topic message too. |
 | Two deployments, one Firebase project | Give them different `BROADCAST_PUSH_ENVIRONMENT` values. Without that, the same publisher ID in both would be the same topic. |
+
+## The direct-server push relay (SEE-144)
+
+Stage 7.2 adds a third sender of a message that already exists. A server one owner pairs with
+directly — hosted by that developer, not by the gateway's operator — has no Firebase project, so
+the gateway sends `request_invalidation` on its behalf. The message is byte for byte the one the
+sidecar sends above, because a phone matches the payload whole and must not have to tell the two
+senders apart.
+
+**Who sends.** The gateway, with this deployment's own credential. The developer's server holds a
+scoped relay credential that can do exactly one thing: ask that a device which has already
+authorized it be told to go and read that server.
+
+**Who is addressed.** One device, by the `fid` a phone registered with this gateway — the same
+opaque Firebase installation the sidecar's own sender addresses, and verified against the installed
+Admin SDK rather than assumed: `fid`, `token`, `topic` and `condition` are four alternative target
+fields of one v1 message, and whichever is set is passed through to `messages:send` unchanged. A
+relay handle is **not** one of them. It addresses an authorization at this gateway, not a device,
+and it is never placed in a target field.
+
+**What is sent.** Exactly [SAW-056's payload](#invalidation-delivery-saw-056), under the same
+collapse key, with the same five-minute expiry. Nothing in the relay's request can reach it: the
+caller names a handle and one of two words, and the gateway builds the rest from constants.
+
+### Configure it
+
+Nothing new. The relay's device dispatch is the same credential, the same project and the same
+access-token cache as [the feed relay above](#the-broadcast-relay-and-feed-topics-see-92) — one
+Firebase project per deployment, and two token caches would be one grant minted twice. Setting
+`BROADCAST_PUSH_CREDENTIALS` turns both on.
+
+What is configurable is what it may cost:
+
+```bash
+# Sends per second per registered server, and the burst above it.
+BROADCAST_RELAY_SERVER_RATE=2
+BROADCAST_RELAY_SERVER_BURST=20
+# Sends per second per device authorization. This one is the coalescing rather than an abuse
+# bound: above it a caller is told the device is already being woken.
+BROADCAST_RELAY_DEVICE_RATE=0.5
+BROADCAST_RELAY_DEVICE_BURST=5
+# The whole deployment's ceiling.
+BROADCAST_RELAY_GLOBAL_RATE=50
+BROADCAST_RELAY_GLOBAL_BURST=200
+# Enrollment calls per second per caller address. Enrolling needs no credential, so this is what
+# bounds it.
+BROADCAST_RELAY_ENROLL_RATE=1
+BROADCAST_RELAY_ENROLL_BURST=10
+# How long one authorization lasts before a phone renews it, how long an installation may go
+# unauthenticated before it is forgotten, and how long an enrollment that authorized nothing is
+# kept. All three are what stop an abandoned grant from being permanent.
+BROADCAST_RELAY_BINDING_HOURS=720
+BROADCAST_RELAY_IDLE_HOURS=1440
+BROADCAST_RELAY_UNBOUND_HOURS=24
+```
+
+Every one has a modest default and none has to be set. An installation must outlive the
+authorizations it holds, so `BROADCAST_RELAY_IDLE_HOURS` below `BROADCAST_RELAY_BINDING_HOURS` is
+refused at startup rather than discovered as devices that quietly stop being woken.
+
+A deployment with no Firebase credential still serves the phone-facing half: a phone may enroll and
+authorize, because neither sends anything, and a server that then asks for a wake-up is told the
+relay cannot send right now — which is true, and is worth retrying.
+
+### Where each half lives
+
+The relay is two routes on two listeners, because its two callers are different parties:
+
+| | Listener | Who calls it |
+| --- | --- | --- |
+| `POST /relay/v1/installations`, and the routes under it | The **read** listener, which phones already read feeds from | The app |
+| `POST /relay/v1/notify` | The **publisher** listener, which developers already publish to | A developer's backend |
+
+Neither route exists on the other's listener, so a routing mistake cannot let a phone send an
+invalidation or a server enroll an installation. A deployment that keeps the publisher listener off
+the internet keeps both halves of its publishing surface and both halves of its relay's send.
+
+### Configure Android for it
+
+The app registers with **one** relay: the origin its build was given.
+
+```sh
+android/gradlew -p android :app:assembleDebug \
+  -Pseekervault.relayUrl=https://feeds.example.com
+```
+
+Empty by default, and empty means the app enrolls with no relay at all — every other push path is
+unchanged. A server may *advertise* a relay over its authenticated connection, and the app ignores
+the advertisement unless it names exactly this origin. That rule is what stops an advertisement
+from being a way to collect device registrations: a server naming an address of its own gets
+nothing, because nothing is sent there.
+
+### What the gateway learns, and what it does not
+
+It holds an installation identity it minted, the SHA-256 of the secret that proves a device is that
+installation, that device's current FCM registration, and which registered servers the device
+authorized. Delivery needs the registration, so it is the one value here that cannot be a hash — it
+is never returned by any read, never rendered on an admin page and never written to a log.
+
+It holds no request, approval, signature, result, wallet, amount or anything an owner decided, and
+there is no column that could carry one; a boundary test pins the whole schema so a new one would
+have to be argued for by name. What it learns from a send is that a registered server had something
+for one of the devices that authorized it, and when — not what it was.
+
+### Ownership, again, and why it is a secret
+
+[Registration ownership](#registration-ownership-and-cleanup) above is about a paired sidecar. The
+relay has the same problem and answers it the same way, for a reason worth stating: a device's FCM
+registration is **not** a secret. The server it paired with holds one, and so does anyone who ever
+saw one. So knowing a registration grants nothing here — enrolling mints a secret the gateway keeps
+only as a hash, and every call that can change where a device's wake-ups go proves ownership with
+it, inside the transaction that writes.
+
+A registration the endpoint rejects as permanently invalid is cleared, and only while it is still
+the one that failed: a phone that rotated while a send was in flight has already registered the new
+one, and clearing unconditionally would unregister a device that had just registered. The
+authorization survives — what is gone is somewhere to send — and the phone registers again on its
+own.
+
+The operator's walkthrough for a developer is
+[`docs/guides/server-development.md#17-waking-a-phone-from-a-server-you-host-yourself`](server-development.md#17-waking-a-phone-from-a-server-you-host-yourself).
 
 ## Pricing and quotas checked for SAW-054
 

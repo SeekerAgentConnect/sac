@@ -322,3 +322,16 @@
   overlapping capture work, then its newest coordination comment returned that guard wholly to
   SEE-116. Treat the newest explicit ownership message as authoritative, record the superseding
   boundary, and align both code and documentation with it before opening either PR.
+
+## Cross-runtime storage
+
+- **`JSONObject.put(String, Object)` on Android does not wrap a collection** (SEE-144). A Kotlin
+  `List` handed to it is serialized by `toString()`, so `["binding-1"]` is written as the *string*
+  `"[binding-1]"` and `optJSONArray` reads it back as null. Nothing throws. The symptom was a
+  revocation the phone owed a gateway being forgotten on the next launch — a security-relevant
+  silent loss. Build a `JSONArray` explicitly, and write a round-trip test for every field of a
+  state that is persisted whole, not just the one being added.
+- **An event loop that swallows nothing dies of one failure** (SEE-144). A serialized
+  `for (event in channel) handle(event)` inside a `SupervisorJob` scope stops for good the first
+  time `handle` throws, and looks exactly like a feature nobody configured. Put the best-effort
+  guard around the *handler*, not only around the individual calls inside it.
