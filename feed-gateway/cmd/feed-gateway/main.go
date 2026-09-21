@@ -105,7 +105,7 @@ func main() {
 		// Read here rather than in the relay's constructor so that a missing or malformed
 		// credential stops the process at startup, where an operator is looking, instead of
 		// becoming a warning per publication.
-		credentials, err := relay.ReadCredentials(settings.Relay.CredentialsPath)
+		credentials, err := relay.LoadCredentials(settings.Relay.CredentialsPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "The feed gateway cannot use its push relay: %v\n", err)
 			os.Exit(1)

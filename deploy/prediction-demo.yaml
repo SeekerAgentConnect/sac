@@ -23,7 +23,7 @@ services:
   - key: PUBLISHER_SERVER_ID
     scope: RUN_AND_BUILD_TIME
     type: SECRET
-    value: EV[1:uKBuYwOpcJ2cOYtFPKYy9qViAIfDCO4C:qSoezqsyjbcsrZz5bOHNCeItV9SQJ5dtmSSR2H7q0tkk3oN9mSahVPqxeLDwioyBGyMtng==]
+    value: EV[1:T9YMFEV5pYxkCihVRcR3+rqwcrOLRFSi:J7iSoLdFNMF4TA73jYRGdCBnPExqq1xIHvXGykXtrBvtlHF1jls0I1qhJecQNZe+QQ5u5Q==]
   - key: PUBLISHER_GATEWAY_URL
     scope: RUN_AND_BUILD_TIME
     value: https://seeker-gateway-sg8g3.ondigitalocean.app
@@ -39,7 +39,7 @@ services:
   - key: BROADCAST_CREDENTIAL
     scope: RUN_AND_BUILD_TIME
     type: SECRET
-    value: EV[1:MK/6MJ0f/3a1/41SPPbQvFCT7BaE5uup:92MQK7280/rDlITKA9FziiGZe3eru/v07OE35eDhRcyHX3Y+juV9y5fJD6k1xMvpcAwh33RHeqgRPTY=]
+    value: EV[1:s67lF04ydpEkaGKuu28/oEwkzRE7mH3O:hzN+DufN4ypwheN/hilPKy4Y2zwRQxeqzRcIg1AXppaD0vUucIEirE6WRoST3c3npWrQJCEMpt8SQqc=]
   - key: PUBLISHER_API_TOKEN
     scope: RUN_AND_BUILD_TIME
     type: SECRET

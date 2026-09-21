@@ -61,6 +61,21 @@ const assertionLifetime = time.Hour
 // refusal and a retry; a minute of margin is the cheapest way not to have that conversation.
 const margin = time.Minute
 
+// LoadCredentials is what a deployment configures as BROADCAST_PUSH_CREDENTIALS: a path to a
+// service-account file, or the JSON document itself. App Platform has no file mount, so the
+// encrypted env value is the document; Compose still mounts a file and names the path.
+//
+// A value whose first non-space byte is '{' is the document. Anything else is a path. That is
+// the whole rule — a path cannot start with '{' — and it is why a JSON env on an image that only
+// called [ReadCredentials] is a startup crash: the process tried to open the document as a file.
+func LoadCredentials(value string) (Credentials, error) {
+	trimmed := strings.TrimSpace(value)
+	if strings.HasPrefix(trimmed, "{") {
+		return parseCredentials([]byte(trimmed))
+	}
+	return ReadCredentials(trimmed)
+}
+
 // ReadCredentials reads and validates a service account file.
 //
 // Every problem names the field rather than the value, and no error from here carries any part of
@@ -72,6 +87,10 @@ func ReadCredentials(path string) (Credentials, error) {
 		// os.ReadFile's error names the path, which is the operator's own and holds no secret.
 		return Credentials{}, fmt.Errorf("relay: the push credential cannot be read: %w", err)
 	}
+	return parseCredentials(raw)
+}
+
+func parseCredentials(raw []byte) (Credentials, error) {
 	var credentials Credentials
 	if err := json.Unmarshal(raw, &credentials); err != nil {
 		// Deliberately not wrapped: a JSON error from a credential file can quote the file.
@@ -136,6 +155,11 @@ func exchangeable(raw string) bool {
 // privateKey parses the PEM the file carries. The error says which step failed and nothing about
 // the contents.
 func privateKey(text string) (*rsa.PrivateKey, error) {
+	// YAML and some consoles turn JSON's `\n` into a two-character sequence. A real Google
+	// file already has newlines, so this does nothing to a mounted credential.
+	if !strings.Contains(text, "\n") {
+		text = strings.ReplaceAll(text, `\n`, "\n")
+	}
 	block, _ := pem.Decode([]byte(text))
 	if block == nil {
 		return nil, fmt.Errorf(`relay: the push credential's "private_key" is not PEM`)

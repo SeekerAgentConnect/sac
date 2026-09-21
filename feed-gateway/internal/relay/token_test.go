@@ -449,6 +449,55 @@ func TestReadingACredentialQuotesNothingFromIt(t *testing.T) {
 	}
 }
 
+// App Platform has no file mount: BROADCAST_PUSH_CREDENTIALS is the JSON document. A path is
+// still a path. A JSON env on an image that only opened a file is the crash this exists to stop.
+func TestLoadCredentialsAcceptsTheDocumentOrAPath(t *testing.T) {
+	document, err := json.Marshal(credentials(t, "https://oauth2.example.com/token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fromJSON, err := LoadCredentials("  " + string(document) + "\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromJSON.ProjectID != "seeker-broadcast-test" {
+		t.Fatalf("the project is %q", fromJSON.ProjectID)
+	}
+
+	path := filepath.Join(t.TempDir(), "service-account.json")
+	if err := os.WriteFile(path, document, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fromFile, err := LoadCredentials(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromFile.ProjectID != "seeker-broadcast-test" {
+		t.Fatalf("the project is %q", fromFile.ProjectID)
+	}
+
+	_, err = LoadCredentials(`{"type":"service_account"}`)
+	if err == nil {
+		t.Fatal("a document missing required fields was accepted")
+	}
+	if strings.Contains(err.Error(), "{") {
+		t.Fatalf("the error quotes the document: %v", err)
+	}
+
+	// A YAML single-quoted env turns JSON's \n into a two-character sequence. The PEM still
+	// has to parse.
+	mangled := credentials(t, "https://oauth2.example.com/token")
+	mangled.PrivateKey = strings.ReplaceAll(pemKey(t), "\n", `\n`)
+	escaped, err := json.Marshal(mangled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCredentials(string(escaped)); err != nil {
+		t.Fatalf("a document whose PEM newlines were env-escaped was refused: %v", err)
+	}
+}
+
 func decode(t *testing.T, segment string, into any) {
 	t.Helper()
 	raw, err := base64.RawURLEncoding.DecodeString(segment)

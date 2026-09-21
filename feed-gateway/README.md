@@ -153,7 +153,7 @@ The process reads these variables. Empty optional values use the stated default.
 | `BROADCAST_STREAM_TOKEN_KEY` | required with stream URL | HMAC key used to mint listener tickets |
 | `BROADCAST_TICKET_MINUTES` | `60`, range 1–1440 | Listener-ticket lifetime |
 | `BROADCAST_MAX_CHANNELS` | `32`, range 1–128 | Maximum channels granted by one ticket/topic request |
-| `BROADCAST_PUSH_CREDENTIALS` | empty/off | Mounted Firebase service-account path inside the process |
+| `BROADCAST_PUSH_CREDENTIALS` | empty/off | Path of a Firebase service-account file, or the JSON document itself (App Platform has no file mount) |
 | `BROADCAST_PUSH_ENDPOINT` | required with push | Push API origin |
 | `BROADCAST_PUSH_ENVIRONMENT` | required with push | `production` or `sandbox`, included in topic scope |
 | `BROADCAST_PUSH_RATE` / `BROADCAST_PUSH_BURST` | `0.1` / `5` | Content-free hints per topic per second and burst |

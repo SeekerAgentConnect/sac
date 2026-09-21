@@ -44,24 +44,13 @@ services:
     scope: RUN_AND_BUILD_TIME
     type: SECRET
     value: EV[1:bEz6DnyKkO72MSgmWCoNxzA3zfRlN/3G:nmr1Cc2v2wBY82WUbs6xn+E70GI4f9zIEyXvr1UabEg/DBqp4pHwcTf2bNFOziHCifFE7LoMuF9lGDs=]
-  # The operator's admin page (SEE-141). It is declared here and left empty on purpose: the
-  # surface stays off until this app's own settings carry a hash, and no credential is committed.
-  # Turn it on by setting this one value to the output of `feed-gatewayctl password` as an
-  # encrypted app-level secret; the address below already points the edge at it. The hash is
-  # dot-separated and needs no escaping in a console field, an env file or this YAML.
   - key: BROADCAST_ADMIN_PASSWORD_HASH
     scope: RUN_AND_BUILD_TIME
-    value: ""
+    type: SECRET
+    value: EV[1:7vgYL/K7mcG0Rq7vFKUPbF1545uFaoyh:1DcqYiVCVh0zqt0lDzUkWxr/bCz7EB0es/vo6lityufF21kmsOT+gPYKNC6q347nv1WBoHt6Lm9ImWmNBLEhxcQnxj9Ol6tK4LJ4LyMu/0sMi4I/apH92KselIgWS9fJkR3KaxFeZQ==]
   - key: BROADCAST_ADMIN_ADDRESS
     scope: RUN_AND_BUILD_TIME
     value: 0.0.0.0:8092
-  # The direct-server push relay (SEE-144). Nothing here turns it on: it sends through the same
-  # BROADCAST_PUSH_CREDENTIALS the feed relay uses, so a deployment without one still lets a phone
-  # enroll and authorize and tells a server that asks for a wake-up to come back later. What is
-  # declared here is what it may cost, at its defaults, so an operator raising one of these is
-  # editing a value rather than discovering a variable. The routes need no ingress change: the
-  # phone's half is on the read listener and the server's half is on the publisher listener, both
-  # of which the edge already routes.
   - key: BROADCAST_RELAY_SERVER_RATE
     scope: RUN_AND_BUILD_TIME
     value: "2"
@@ -71,10 +60,6 @@ services:
   - key: BROADCAST_RELAY_GLOBAL_RATE
     scope: RUN_AND_BUILD_TIME
     value: "50"
-  # A month before a phone renews an authorization, two months before an installation nothing has
-  # been heard from is forgotten with its bindings, and a day for an enrollment that authorized
-  # nothing. The second must be at least the first, or a phone would be forgotten while its
-  # authorizations were still valid — the gateway refuses to start otherwise.
   - key: BROADCAST_RELAY_BINDING_HOURS
     scope: RUN_AND_BUILD_TIME
     value: "720"
@@ -84,6 +69,16 @@ services:
   - key: BROADCAST_RELAY_UNBOUND_HOURS
     scope: RUN_AND_BUILD_TIME
     value: "24"
+  - key: BROADCAST_PUSH_ENDPOINT
+    scope: RUN_AND_BUILD_TIME
+    value: https://fcm.googleapis.com
+  - key: BROADCAST_PUSH_ENVIRONMENT
+    scope: RUN_AND_BUILD_TIME
+    value: sandbox
+  - key: BROADCAST_PUSH_CREDENTIALS
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:kgY0Eifnz0yqghYrfjSNZI1QIdzIkDp9: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]
   health_check:
     failure_threshold: 9
     http_path: /healthz
@@ -96,7 +91,7 @@ services:
     registry_credentials: EV[1:GgvPQ2H1rVXKD5mtBcqCt/NWw5WtJl48:AaHA1P/xji0d0jCY8WjKJGYAOEdOdKr3+rFgoPEZH7WBVFVj/pEsgCVbZ56+N4jFp740H5cWth1jliA=]
     registry_type: DOCKER_HUB
     repository: seeker-agent-connect
-    tag: gateway-0.1.3
+    tag: gateway-0.1.5
   instance_count: 1
   instance_size_slug: apps-s-1vcpu-0.5gb
   internal_ports:
@@ -121,9 +116,11 @@ services:
   name: edge
   run_command: sh -c 'printf "%s\n" ":8080 {" "handle /seekervault.gateway.v1.FeedService*
     {" "reverse_proxy gateway:8090" "}" "handle /seekervault.gateway.v1.PublisherService*
-    {" "reverse_proxy gateway:8091" "}" "handle /admin* {" "reverse_proxy gateway:8092"
-    "}" "handle /healthz {" "reverse_proxy gateway:8090" "}" "}" > /tmp/Caddyfile
-    && exec caddy run --config /tmp/Caddyfile --adapter caddyfile'
+    {" "reverse_proxy gateway:8091" "}" "handle /relay/v1/notify* {" "reverse_proxy
+    gateway:8091" "}" "handle /relay/v1* {" "reverse_proxy gateway:8090" "}" "handle
+    /admin* {" "reverse_proxy gateway:8092" "}" "handle /healthz {" "reverse_proxy
+    gateway:8090" "}" "}" > /tmp/Caddyfile && exec caddy run --config /tmp/Caddyfile
+    --adapter caddyfile'
 - health_check:
     failure_threshold: 9
     period_seconds: 10

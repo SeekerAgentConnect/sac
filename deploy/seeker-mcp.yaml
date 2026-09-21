@@ -51,10 +51,6 @@ services:
   - key: SOLANA_RPC_TIMEOUT_MS
     scope: RUN_AND_BUILD_TIME
     value: "10000"
-  - key: FCM_PROJECT_ID
-    scope: RUN_AND_BUILD_TIME
-    type: SECRET
-    value: EV[1:dHvCZvO5WFg67DBL/oU8KGniNXNr6tmO:Euoyv7m6JmvPDybMhcocgIxMPMkH1TMrfIEQE5puCifu]
   - key: SIDECAR_PUBLIC_URL
     scope: RUN_AND_BUILD_TIME
     value: https://seeker-mcp-r9qqm.ondigitalocean.app
@@ -67,6 +63,17 @@ services:
   - key: SIDECAR_H2C
     scope: RUN_AND_BUILD_TIME
     value: "true"
+  - key: RELAY_CREDENTIAL
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:rmtDlvtdsHXmMeEQkK8coIke4pGAKOM3:uYYUrqqnNSsevAHNn2ylkJHQEB8M+11tVvr32nGUEepS/iNgqjygj0cBdwwSCQQ+Xw3V3/p7wpF6VVM=]
+  - key: RELAY_SERVER_ID
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:M008IwT/1Wde6igydbsG/+TB54NVVxPQ:V768lWbPOW0Ur3dt4kpNygVxSJz6xuyxhv2qXZA5x+h4zhVd1hfVP5vEeI8UKQbRWUCHZA==]
+  - key: RELAY_URL
+    scope: RUN_AND_BUILD_TIME
+    value: https://seeker-gateway-sg8g3.ondigitalocean.app
   health_check:
     failure_threshold: 9
     period_seconds: 10
@@ -78,7 +85,7 @@ services:
     registry_credentials: EV[1:e2CezOtNPDJBNTz7AV0BU20CjoSdAyck:gehnGytFw3WSNHt3xao+jVpQt76yO2G+R/Lb6YvXxlYezD9usuQHvDnR1FabunuWZkbHcqZ3sExlZNk=]
     registry_type: DOCKER_HUB
     repository: seeker-agent-connect
-    tag: mcp-0.1.5
+    tag: mcp-0.1.6
   instance_count: 1
   instance_size_slug: apps-s-1vcpu-0.5gb
   name: agent-connect
