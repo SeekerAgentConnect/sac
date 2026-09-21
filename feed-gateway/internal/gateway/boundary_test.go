@@ -140,15 +140,18 @@ func TestOnlyTheBrokerAndRelayCallOut(t *testing.T) {
 	}
 }
 
-// SQL stays in the SQLite implementation. The storage package is a contract, while schema,
-// migrations, connections and transaction execution are implementation details.
+// SQL stays in the store implementations. The storage package is a contract, while schema,
+// migrations, connections and transaction execution are implementation details — and there are two
+// of them since SEE-145, so the exemption is the implementation directory rather than one named
+// database. internal/storage itself is not exempt: the contract describes operations, and a
+// statement appearing there would mean it had started describing a database instead.
 func TestSqlLivesOnlyInTheStore(t *testing.T) {
 	// Case-sensitive on purpose: every statement in the store is written in upper case, and `select`
 	// in lower case is Go's own statement rather than a query.
 	sql := regexp.MustCompile(`\b(SELECT|INSERT INTO|UPDATE|DELETE FROM|CREATE TABLE|PRAGMA)\b`)
 	var offenders []string
 	for name, source := range shipped(t) {
-		if strings.HasPrefix(name, filepath.Join("internal", "storage", "sqlite")) {
+		if isStoreImplementation(name) {
 			continue
 		}
 		if sql.MatchString(withoutComments(source)) {
@@ -161,24 +164,44 @@ func TestSqlLivesOnlyInTheStore(t *testing.T) {
 	}
 }
 
-// Business and delivery code know the storage contract and never the SQLite implementation. The
-// two process composition roots and tests may import it; changing databases later must not require
-// rewriting validation, RPC, cursor or outbox-draining rules.
-func TestBusinessDoesNotImportSQLite(t *testing.T) {
-	implementation := "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/sqlite"
+// isStoreImplementation says whether a source file is part of a concrete store. The list is
+// explicit rather than "anything under internal/storage", so adding a third one is a line in this
+// test — which is the point of the guard.
+func isStoreImplementation(name string) bool {
+	for _, implementation := range []string{"sqlite", "postgres"} {
+		if strings.HasPrefix(name, filepath.Join("internal", "storage", implementation)) {
+			return true
+		}
+	}
+	return false
+}
+
+// Business and delivery code know the storage contract and never a concrete store. The two process
+// composition roots and tests may import one; which database is in use must not be a fact that
+// validation, RPC, cursor or outbox-draining rules can reach for.
+//
+// This is what made SEE-145 a new package rather than an edit: nothing above the store had to
+// change to gain a second database, because nothing above the store had ever been allowed to know
+// about the first.
+func TestBusinessDoesNotImportAStoreImplementation(t *testing.T) {
+	implementations := []string{
+		"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/sqlite",
+		"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/postgres",
+	}
 	var offenders []string
 	for name, source := range shipped(t) {
-		if strings.HasPrefix(name, filepath.Join("cmd")) ||
-			strings.HasPrefix(name, filepath.Join("internal", "storage", "sqlite")) {
+		if strings.HasPrefix(name, filepath.Join("cmd")) || isStoreImplementation(name) {
 			continue
 		}
-		if slices.Contains(imports(source), implementation) {
-			offenders = append(offenders, name)
+		for _, implementation := range implementations {
+			if slices.Contains(imports(source), implementation) {
+				offenders = append(offenders, name+" -> "+implementation)
+			}
 		}
 	}
 	if len(offenders) > 0 {
 		slices.Sort(offenders)
-		t.Fatalf("business code imports SQLite directly: %v", offenders)
+		t.Fatalf("business code imports a store implementation directly: %v", offenders)
 	}
 }
 

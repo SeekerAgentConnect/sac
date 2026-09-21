@@ -39,7 +39,7 @@ services:
   - key: BROADCAST_CREDENTIAL
     scope: RUN_AND_BUILD_TIME
     type: SECRET
-    value: EV[1:yw49aP1nV6gF2Mnph/DkERPkfcGKoi12:LEW5KYB+4KXPn4qjAGuSSDyfDYoyS4ImJxOhEX/TrWZe9PlwCkl2Yow+1aae/zqBYHPsYbdyLzpUkk8=]
+    value: EV[1:03wFtzcTBA+vHGv4gNrLjVUSusG69UXc:scXm6A0HjkRzloBnl4j35Ao4A77JUE9npbTy48IgipFhvZJ0mN1mddwgdn+INfrjt/bxyfQUnC6tE4c=]
   - key: PUBLISHER_API_TOKEN
     scope: RUN_AND_BUILD_TIME
     type: SECRET

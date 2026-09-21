@@ -310,16 +310,22 @@ install the new one, confirm you are publishing with it, and only then ask them 
 one. The reverse order is an outage. If you lose a credential, that is the same procedure: a new one
 added, the old one revoked.
 
-### The demo gateway's data is not durable, and what to do about it
+### Keep your server UUID, and what happens if a gateway loses its database
 
-The public demo runs on ephemeral storage. If its container is replaced, the gateway's database can
-go with it — and with it every registration and every credential hash. Your feed then reads as
-unknown, and your publications are refused as unauthenticated.
+The hosted demo keeps its registrations in Postgres and they survive a redeploy (SEE-145). This
+section is still here because a gateway is somebody else's deployment and you are not in control of
+it: a self-hosted one on a lost volume, a restore from no backup, or an operator starting again all
+land you in the same place, and it is worth knowing what that place is.
 
-The recovery is the onboarding conversation again: the operator logs in, registers your server ID,
-and gives you a new credential. Keep your server UUID written down somewhere of your own, because
-re-registering under the same ID is what lets existing subscribers keep the feed they added. Nothing
-restores the old credential — it only ever existed as a hash — and your own backend's stored
+If it happens, your feed reads as unknown and your publications are refused as unauthenticated. The
+recovery is the onboarding conversation again: the operator registers your server ID and gives you a
+new credential.
+
+**Keep your server UUID written down somewhere of your own.** Re-registering under the same ID is
+what lets existing subscribers keep the feed they added; a new ID is a new feed, and every phone
+that had yours would have to add it again.
+
+Nothing restores the old credential — it only ever existed as a hash — and your own backend's stored
 publications cannot put one back: an outbox replays documents to a gateway that already trusts you,
 it does not re-establish that trust. Your backend republishes its manifest and its open items once
 the new credential is installed.

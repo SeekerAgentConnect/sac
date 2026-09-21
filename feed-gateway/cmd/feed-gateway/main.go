@@ -36,9 +36,42 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gateway"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/pushrelay"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/relay"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/postgres"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/sqlite"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/stream"
 )
+
+// store is everything this process needs of its storage, which is the two contracts plus the
+// close. Closing is not in the contract on purpose — owning a file or a connection pool is the
+// implementation's business — so the composition root, which is the one place that picked the
+// implementation, is the one place that names it.
+type store interface {
+	storage.GatewayStore
+	storage.PublisherAdminStore
+	Close() error
+}
+
+// open is where a deployment's choice of storage is made, and the only place in the service that
+// knows there is a choice (SEE-145). Configuration has already refused having both.
+//
+// It returns what the store is, for the startup line, because "which database am I actually
+// talking to" is the first question an operator asks of a service that has two answers. Neither
+// form of it carries a credential.
+func open(ctx context.Context, settings *config.Config) (store, string, error) {
+	if settings.DatabaseURL != "" {
+		documents, err := postgres.Open(ctx, settings.DatabaseURL)
+		if err != nil {
+			return nil, "", err
+		}
+		return documents, "postgres " + documents.Describe(), nil
+	}
+	documents, err := sqlite.Open(settings.DatabasePath)
+	if err != nil {
+		return nil, "", err
+	}
+	return documents, "sqlite " + settings.DatabasePath, nil
+}
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -54,12 +87,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	documents, err := sqlite.Open(settings.DatabasePath)
+	documents, where, err := open(context.Background(), settings)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "The feed gateway cannot open its database: %v\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = documents.Close() }()
+	log.Info("the gateway holds its state in", "database", where)
 
 	// Anything left in the outbox is work from before this process existed: a publication that
 	// committed while the last one was stopping. Saying so at startup is how an operator sees that

@@ -36,8 +36,16 @@ type Config struct {
 	// This gateway's canonical origin, as a phone's feed reference spells it. A published manifest
 	// must name exactly this, because the phone compares the two character for character (SEE-88).
 	PublicURL string
-	// The SQLite file. It is the authority for everything the gateway serves.
+	// The SQLite file, when the gateway keeps its own. It is the authority for everything the
+	// gateway serves.
 	DatabasePath string
+	// The Postgres URL, when the gateway keeps its state in a database somebody else runs
+	// (SEE-145). Exactly one of this and DatabasePath is set, and which one is set is the whole of
+	// how a deployment chooses its storage implementation.
+	//
+	// It carries a password, so it is configured as a secret and never logged: what a startup line
+	// says is the host and the database, which the store builds from the parsed parts.
+	DatabaseURL string
 	// How long past its expiry a proposal is still served before it is swept.
 	Retention time.Duration
 	// The most proposals one channel may hold at once.
@@ -284,6 +292,7 @@ func Load(lookup Lookup) (*Config, []string) {
 		ReadAddress:      text("BROADCAST_READ_ADDRESS", DefaultReadAddress),
 		PublisherAddress: text("BROADCAST_PUBLISHER_ADDRESS", DefaultPublisherAddress),
 		DatabasePath:     text("BROADCAST_DATABASE_PATH", ""),
+		DatabaseURL:      text("BROADCAST_DATABASE_URL", ""),
 		Retention:        DefaultRetention,
 		MaxProposals:     DefaultMaxProposals,
 		ReadRate:         DefaultReadRate,
@@ -306,9 +315,18 @@ func Load(lookup Lookup) (*Config, []string) {
 			config.PublicURL = canonical
 		}
 	}
-	if config.DatabasePath == "" {
+	// One store, named one way. Both set is refused rather than resolved by precedence: they are
+	// two different authorities for the same state, and a deployment that set both has already
+	// lost track of which one its publications are in. The image ships a BROADCAST_DATABASE_PATH
+	// default, so a platform deployment that adds a URL clears the path in the same spec.
+	switch {
+	case config.DatabasePath == "" && config.DatabaseURL == "":
 		note("BROADCAST_DATABASE_PATH must be set to the file the gateway keeps publications in, " +
-			"for example /data/broadcast.db")
+			"for example /data/broadcast.db - or BROADCAST_DATABASE_URL to a Postgres database, " +
+			"for a deployment whose filesystem does not survive the container")
+	case config.DatabasePath != "" && config.DatabaseURL != "":
+		note("BROADCAST_DATABASE_PATH and BROADCAST_DATABASE_URL must not both be set: " +
+			"they are two authorities for the same state, and only one of them would hold it")
 	}
 	if config.ReadAddress == config.PublisherAddress {
 		note("BROADCAST_READ_ADDRESS and BROADCAST_PUBLISHER_ADDRESS " +
@@ -545,6 +563,26 @@ func AdminPath(raw string) (string, error) {
 }
 
 var loopback = map[string]bool{"127.0.0.1": true, "localhost": true, "::1": true}
+
+// Database is what the gateway holds its state in, as a line a log may carry. It is the file when
+// there is one, and otherwise the host and database name of the URL — never its user and never its
+// password, which is why this exists rather than a caller reading DatabaseURL and hoping.
+//
+// A URL that will not parse is reported as the fact that it will not parse. This is a log field,
+// and the connection attempt is what refuses a bad URL properly.
+func (c *Config) Database() string {
+	if c.DatabasePath != "" {
+		return c.DatabasePath
+	}
+	if c.DatabaseURL == "" {
+		return ""
+	}
+	parsed, err := url.Parse(c.DatabaseURL)
+	if err != nil {
+		return "an unreadable database URL"
+	}
+	return "postgres " + parsed.Host + strings.TrimSuffix(parsed.Path, "/")
+}
 
 // Origin is the canonical form of a gateway origin, by the same rules the phone reads one by
 // (servers/FeedReferences.gatewayUrlProblem and PairingCodes.normalizeServerUrl): HTTPS, or plain

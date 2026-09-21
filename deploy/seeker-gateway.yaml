@@ -30,9 +30,10 @@ services:
   - key: BROADCAST_PUBLISHER_ADDRESS
     scope: RUN_AND_BUILD_TIME
     value: 0.0.0.0:8091
-  - key: BROADCAST_DATABASE_PATH
+  - key: BROADCAST_DATABASE_URL
     scope: RUN_AND_BUILD_TIME
-    value: /data/broadcast.db
+    type: SECRET
+    value: EV[1:GxLDbJxdbs2i68a+OPAG01eGukkSfuto:MYf1GssX3ZIjyS3UcneI7UyVfksYXVxMWOV8GWhtup1+shlHEBkPWn+mTBOVjYE5hIQf91KGA+CnjF0VrP4UDSCB1ydrbeV/6T1yQacgiuRech+JMuVmWb6Wal3VfBEXCVP6v2sfyBaI4LeVkX6JA8c8Jvuby/kV3kVgDeFzJG9Xihb4QQz5MTvycsjl]
   - key: BROADCAST_STREAM_URL
     scope: RUN_AND_BUILD_TIME
     value: http://${centrifugo.PRIVATE_DOMAIN}:8000
@@ -91,7 +92,7 @@ services:
     registry_credentials: EV[1:GgvPQ2H1rVXKD5mtBcqCt/NWw5WtJl48:AaHA1P/xji0d0jCY8WjKJGYAOEdOdKr3+rFgoPEZH7WBVFVj/pEsgCVbZ56+N4jFp740H5cWth1jliA=]
     registry_type: DOCKER_HUB
     repository: seeker-agent-connect
-    tag: gateway-0.1.5
+    tag: gateway-0.1.7
   instance_count: 1
   instance_size_slug: apps-s-1vcpu-0.5gb
   internal_ports:
