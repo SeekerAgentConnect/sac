@@ -110,13 +110,19 @@ Bug fixes only need a changelog entry when significant enough for release notes.
 
 ## Task Management
 
-All session metadata lives in the `.claude/` folder and should be tracked in Git.
+Session metadata lives in the `.claude/` folder. What is shared and what is local differs,
+and the difference is whether it outlives the task.
 
-| File / Folder                  | Purpose                                            |
-| ------------------------------ | -------------------------------------------------- |
-| `.claude/plans/*.md`           | Plans with checkable items + review section        |
-| `.claude/tasks/lessons.md`     | Patterns learned from corrections                  |
-| `.claude/tasks/decisions.md`   | Architectural decisions and reasoning (optional)   |
+| File / Folder                  | Purpose                                            | In Git |
+| ------------------------------ | -------------------------------------------------- | ------ |
+| `.claude/plans/*.md`           | Plans with checkable items + review section        | No — local working notes |
+| `.claude/tasks/lessons.md`     | Patterns learned from corrections                  | Yes    |
+| `.claude/tasks/decisions.md`   | Architectural decisions and reasoning (optional)   | Yes    |
+| `.claude/settings.json`        | Hooks, permissions, enabled plugins                | Yes    |
+
+Plans are still written, still checked off, and still get their review section — they are just
+not committed. By the time the work lands, what the plan concluded belongs in the commit message,
+the changelog and `docs/`, which is where somebody reading the repository will look for it.
 
 ### Workflow
 
