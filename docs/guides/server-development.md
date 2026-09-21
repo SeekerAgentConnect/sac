@@ -159,9 +159,9 @@ What comes back is shown once:
 ```
 publisher   3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
 channel     server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
-credential  d7baec00
+credential  d05f561c
 
-zv5d4ETcax_r3dXHtA_mAcmh1J33zqFCf0XFz4pfXP0
+EXAMPLE-credential-not-a-real-one-000000000
 
 That credential is shown once and is not stored. Give it to the publisher as BROADCAST_CREDENTIAL,
 and keep it out of version control. Rotate with `rotate`, then `revoke --credential <id>`.
