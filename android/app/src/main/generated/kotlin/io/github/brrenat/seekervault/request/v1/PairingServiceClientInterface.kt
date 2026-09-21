@@ -44,6 +44,20 @@ public interface PairingServiceClientInterface {
   public suspend fun setFcmToken(request: SetFcmTokenRequest, headers: Headers = emptyMap()): ResponseMessage<SetFcmTokenResponse>
 
   /**
+   *  SetRelayHandle registers or clears the gateway push handle this phone authorized for this
+   *  connection (SEE-144). It is a separate RPC and a separate field from SetFcmToken because it
+   *  is a different kind of value: an FCM target addresses a device and is usable by whoever holds
+   *  it, while a relay handle addresses one authorization at one gateway and is useless without
+   *  that gateway's own relay credential. Putting one where the other belongs would send a
+   *  wake-up to nobody, so the protocol does not let it be done by accident.
+   *
+   *  The server needs no Firebase credential in this mode. Clearing names the handle being
+   *  removed, for the same compare-and-delete reason as above. Neither the handle nor the phone
+   *  credential is returned or logged.
+   */
+  public suspend fun setRelayHandle(request: SetRelayHandleRequest, headers: Headers = emptyMap()): ResponseMessage<SetRelayHandleResponse>
+
+  /**
    *  RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The
    *  credential stops working at once, its FCM target is deleted, and the connection's PENDING
    *  requests become CANCELLED.

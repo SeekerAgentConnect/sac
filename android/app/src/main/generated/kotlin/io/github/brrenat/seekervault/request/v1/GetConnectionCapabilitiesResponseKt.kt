@@ -73,6 +73,48 @@ public object GetConnectionCapabilitiesResponseKt {
 
     public val GetConnectionCapabilitiesResponseKt.Dsl.updatesOrNull: io.github.brrenat.seekervault.request.v1.UpdateCapability?
       get() = _builder.updatesOrNull
+
+    /**
+     * ```
+     * Absent when this server sends its own push, or none. Present when it asks the phone to
+     * authorize a gateway to wake it on its behalf (SEE-144).
+     * ```
+     *
+     * `.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];`
+     */
+    public var relay: io.github.brrenat.seekervault.request.v1.RelayCapability
+      @kotlin.jvm.JvmName("getRelay")
+        get() = _builder.relay
+      @kotlin.jvm.JvmName("setRelay")
+        set(value) {
+        _builder.relay = value
+      }
+    /**
+     * ```
+     * Absent when this server sends its own push, or none. Present when it asks the phone to
+     * authorize a gateway to wake it on its behalf (SEE-144).
+     * ```
+     *
+     * `.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];`
+     */
+    public fun clearRelay() {
+      _builder.clearRelay()
+    }
+    /**
+     * ```
+     * Absent when this server sends its own push, or none. Present when it asks the phone to
+     * authorize a gateway to wake it on its behalf (SEE-144).
+     * ```
+     *
+     * `.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];`
+     * @return Whether the relay field is set.
+     */
+    public fun hasRelay(): kotlin.Boolean {
+      return _builder.hasRelay()
+    }
+
+    public val GetConnectionCapabilitiesResponseKt.Dsl.relayOrNull: io.github.brrenat.seekervault.request.v1.RelayCapability?
+      get() = _builder.relayOrNull
   }
 }
 public inline fun io.github.brrenat.seekervault.request.v1.GetConnectionCapabilitiesResponse.copy(block: `io.github.brrenat.seekervault.request.v1`.GetConnectionCapabilitiesResponseKt.Dsl.() -> kotlin.Unit): io.github.brrenat.seekervault.request.v1.GetConnectionCapabilitiesResponse =
@@ -80,4 +122,7 @@ public inline fun io.github.brrenat.seekervault.request.v1.GetConnectionCapabili
 
 public val io.github.brrenat.seekervault.request.v1.GetConnectionCapabilitiesResponseOrBuilder.updatesOrNull: io.github.brrenat.seekervault.request.v1.UpdateCapability?
   get() = if (hasUpdates()) getUpdates() else null
+
+public val io.github.brrenat.seekervault.request.v1.GetConnectionCapabilitiesResponseOrBuilder.relayOrNull: io.github.brrenat.seekervault.request.v1.RelayCapability?
+  get() = if (hasRelay()) getRelay() else null
 

@@ -413,6 +413,64 @@ describe("loadSidecarConfig", () => {
     }
   });
 
+  it("configures the gateway relay as one setting in three variables", () => {
+    const relay = {
+      RELAY_URL: " https://feeds.example.com ",
+      RELAY_SERVER_ID: "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      RELAY_CREDENTIAL: " a-scoped-relay-credential ",
+    };
+    assert.equal(loadSidecarConfig(validEnv).relay, undefined);
+    assert.deepEqual(loadSidecarConfig({ ...validEnv, ...relay }).relay, {
+      relayUrl: "https://feeds.example.com",
+      serverId: "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      credential: "a-scoped-relay-credential",
+    });
+
+    // Two of the three is a server that looks like it wakes phones and never does, and the only
+    // sign of it would be an owner who stops getting notifications.
+    for (const missing of [
+      "RELAY_URL",
+      "RELAY_SERVER_ID",
+      "RELAY_CREDENTIAL",
+    ]) {
+      const partial: Record<string, string> = { ...validEnv, ...relay };
+      delete partial[missing];
+      assert.deepEqual(problemsFor(partial), [
+        "RELAY_URL, RELAY_SERVER_ID and RELAY_CREDENTIAL must all be set together: " +
+          "they are one setting in three variables, and a partial one sends nothing.",
+      ]);
+    }
+
+    // A relay URL that is not an origin is a startup failure with a named reason rather than
+    // wake-ups that quietly go nowhere — and the reason never repeats the credential.
+    const [problem] = problemsFor({
+      ...validEnv,
+      ...relay,
+      RELAY_URL: "https://feeds.example.com/relay",
+    });
+    assert.ok(problem?.includes("no path"), problem);
+    assert.equal(problem?.includes("a-scoped-relay-credential"), false);
+  });
+
+  it("refuses both ways of sending the same wake-up", () => {
+    // Both fire on the same committed update, so a phone would be woken twice for one change and
+    // an operator would have two places to look when it stopped happening.
+    assert.deepEqual(
+      problemsFor({
+        ...validEnv,
+        FCM_PROJECT_ID: "seeker-vault-prod-123",
+        RELAY_URL: "https://feeds.example.com",
+        RELAY_SERVER_ID: "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        RELAY_CREDENTIAL: "a-scoped-relay-credential",
+      }),
+      [
+        "FCM_PROJECT_ID and RELAY_URL configure two ways of sending the same wake-up. " +
+          "Set one: FCM_PROJECT_ID sends through this server's own Firebase project, " +
+          "RELAY_URL asks a gateway operator to send on its behalf.",
+      ],
+    );
+  });
+
   it("configures either loopback HTTP/2 development or the production TLS listener", () => {
     assert.equal(
       loadSidecarConfig({ ...validEnv, SIDECAR_UPDATE_PORT: "8081" })

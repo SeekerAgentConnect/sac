@@ -172,6 +172,10 @@ async function serve(
       transferProvider,
       confirmationProvider,
       invalidationSender: fcmSender,
+      // The other way of waking a phone (SEE-144): the gateway's operator holds the Firebase
+      // credential and this server holds a scoped relay credential. Configuring both is refused
+      // in config.ts, so at most one of these two lines is ever a value.
+      ...(config.relay === undefined ? {} : { relay: config.relay }),
     });
   } catch (error) {
     instanceLock.release();
@@ -189,6 +193,14 @@ async function serve(
       fcmSender === undefined
         ? "FCM sender is off; FCM_PROJECT_ID is not configured"
         : "FCM sender is configured through Application Default Credentials",
+    );
+    // The gateway and this server's own identity there are not secrets — the gateway's origin is
+    // what a phone compares, and the server ID is in every manifest. The relay credential is, and
+    // it is not in this line or any other.
+    log(
+      config.relay === undefined
+        ? "gateway push relay is off; RELAY_URL is not configured"
+        : `gateway push relay is configured: ${config.relay.relayUrl} as server ${config.relay.serverId}`,
     );
     log(
       transferProvider === undefined
