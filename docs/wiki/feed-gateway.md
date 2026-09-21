@@ -418,6 +418,91 @@ leaves a subscription behind. The cure is the hint itself — one that arrives o
 wants is unsubscribed from, so a stale subscription removes itself the first time it costs anything
 (`push/FeedTopicManager.kt`).
 
+## The private relay, for servers the operator does not host (SEE-144)
+
+The topic relay above wakes everyone subscribed to a public feed. This is the other half of the
+same problem and not a variant of it: a server one owner pairs with **directly**, hosted by a
+developer rather than by this operator, also needs to wake a backgrounded app — and there is no
+public topic to send to, because there is exactly one device that should hear it.
+
+It is not a return of the gateway-private request routing SEE-130 removed. That routed a server's
+documents and an owner's decisions. This routes a wake-up: an installation identity, where to send,
+and which servers one device agreed may send. What arrives says `request_invalidation` and nothing
+else, and the phone goes and reads its own server for everything that matters.
+
+### Three authorities, held by three parties
+
+A send happens where all three meet, and each is a separate secret held by someone different:
+
+| | Who holds it | What it establishes |
+| --- | --- | --- |
+| The registration | The operator | That this server may relay at all, and may be switched off |
+| The installation secret | The phone | That this device is this installation — minted once at enrollment, kept only as a hash |
+| The relay credential | The developer's server | That the caller is the server a binding names |
+
+That is what makes "a server cannot wake a phone that did not agree", "a phone cannot be redirected
+by somebody who saw its target" and "a server cannot use another server's handle" properties of the
+store's own queries rather than checks somebody has to remember. A handle resolves *for one server*
+in one statement, so cross-server use, a fabricated handle, a revoked one and an expired one are
+one refusal with one shape — and a caller learns that it may not send, never whether the handle
+exists.
+
+### Why the secret, and not the target
+
+A device's FCM registration is not a secret. The server it paired with holds one, and so does
+anyone who ever saw one. If knowing a registration were enough to change where it points, seeing
+one would be enough to steal a phone's wake-ups — so enrollment mints a secret instead, and every
+call that can replace a target, authorize a binding or revoke one proves ownership with it, inside
+the transaction that writes.
+
+The phone, for its part, registers only with the relay its build was configured with. A server may
+advertise one over its authenticated connection and the app compares it with that origin and
+ignores anything else, which is what stops an advertisement from being a way to collect device
+registrations.
+
+### What each party holds
+
+| | Holds | Never holds |
+| --- | --- | --- |
+| The gateway | An installation identity it minted, the hash of that installation's secret, the device's current FCM registration, and which servers that device authorized | Any request, approval, signature, result, wallet or decision |
+| The developer's server | The opaque handle, against the connection it was issued for | Any Firebase credential, any device target |
+| The phone | Its enrollment, and which authorization belongs to which connection | Its own handles: only their hashes were stored, so a lost one is re-authorized rather than recovered |
+
+The FCM registration is the one value in this database that cannot be a hash, because delivery needs
+it. It is therefore access-controlled instead: no read outside `internal/pushrelay` returns it, the
+operator's pages show counts and instants, and no log line has ever carried one.
+
+### What the gateway learns
+
+That a registered server had something for one of the devices that authorized it, and when. Not
+what it was. The operator's page says "N device authorization(s)" and "M accepted wake-up(s)" and
+deliberately never says "online": a binding is a standing permission, not a connection, and an
+accepted send is Firebase having taken a message rather than a phone having received one.
+
+### Two routes, two listeners
+
+The phone-facing half (`/relay/v1/installations…`) is on the public read listener, which phones
+already read feeds from. The server-facing half (`/relay/v1/notify`) is on the publisher listener,
+which developers' backends already publish to and which a deployment may keep off the internet.
+Neither route exists on the other's listener, so a routing mistake cannot let a phone send an
+invalidation or a server enroll an installation.
+
+### Nothing keeps working on its own
+
+A binding lasts a month unless renewed, an installation nothing has authenticated as for two months
+is forgotten with its bindings, and an enrollment that authorized nothing is kept for a day. The
+sweep runs beside retention. A phone that was wiped, reinstalled or unpaired while offline cannot
+leave a grant behind, because ending one needs nothing to happen — and a phone that is still paired
+re-authorizes on its next reconciliation.
+
+A revocation the phone could not make is kept as work and repeated until it lands, because a
+disconnection has to be final from the owner's point of view even when it happened on a train.
+
+The developer's walkthrough is
+[`docs/guides/server-development.md#17-waking-a-phone-from-a-server-you-host-yourself`](../guides/server-development.md#17-waking-a-phone-from-a-server-you-host-yourself);
+the operator's Firebase setup is
+[`docs/guides/firebase.md#the-direct-server-push-relay-see-144`](../guides/firebase.md#the-direct-server-push-relay-see-144).
+
 ## Reading a feed
 
 The unary reads all derive their answer from the store at the moment they are asked.
@@ -589,12 +674,25 @@ The file must stay on local storage, not NFS or another network filesystem. A fu
 implementation requires a new adapter, an explicit distributed consistency design, and an operator
 data migration; changing a connection string is not a supported deployment mode.
 
-Six tables: a publisher, its credential hashes, its manifest, its proposals, the channel's sequence,
-and the outbox. **There is no table, and no column, for a subscriber** — no address, no chosen
-quantity, no decision, nothing signed — and a boundary test reads the schema and fails if one
-appears. The gateway cannot lose a user's financial history because it never has one.
+Eight tables. Six are the public feed: a publisher, its credential hashes, its manifest, its
+proposals, the channel's sequence, and the outbox. **There is no table, and no column, for a
+subscriber** — no address, no chosen quantity, no decision, nothing signed — and a boundary test
+reads the schema and fails if one appears. The gateway cannot lose a user's financial history
+because it never has one.
+
+Two are the private relay's routing (SEE-144): an installation and a binding. They hold an identity
+this gateway minted, the hash of the secret that proves a device is it, where to send a wake-up,
+and which registered servers that device agreed may send one. The same boundary test pins them, so
+a column that could carry a request, an approval, a signature, a result or an owner's decision
+would have to be argued for by name, in that test, where somebody would ask why.
 
 ### Migration and rollback
+
+Schema version 5 adds capabilities to a registration and to each of its credentials, plus the
+relay's two tables. Every row that already existed becomes exactly what it already was — publishing
+enabled, relay not, every credential a publishing credential — so SEE-141's behaviour is unchanged
+by the migration rather than restored by a special case. Version 4 added a publisher's
+developer-supplied host.
 
 Schema version 3 is a one-way retirement of gateway-private routing. Opening a version-2 file runs
 one transaction that removes manifests with the former numeric mode 3, then drops

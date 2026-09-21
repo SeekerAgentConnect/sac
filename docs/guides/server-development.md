@@ -46,6 +46,10 @@ A phone holds any mixture of the two and none affects another. Connecting is nev
 signing, or execution authorization. The full account is
 [`docs/wiki/server-manifests.md`](../wiki/server-manifests.md#the-two-connection-modes).
 
+Most of this guide is the `gateway_feed` column. A `direct` server needs nothing here except
+[step 17](#17-waking-a-phone-from-a-server-you-host-yourself), which is how one hosted by somebody
+who is not the gateway's operator wakes a backgrounded app without holding a Firebase credential.
+
 ### What never leaves the phone
 
 In `gateway_feed` mode the phone calls nothing of yours, so there is no path for any of this to reach you even by accident: the amount an owner chose, which side they took, which wallet is selected, whether they approved or dismissed, the signature, and the outcome. The app has no outbox for a feed — no `SubmitResult`, no upload, no per-subscriber state anywhere ([`docs/security.md`](../security.md#a-proposal-is-common-and-a-decision-about-it-is-not-see-89)). The measured version of that claim, with the search that was run over every file both sides wrote, is [`docs/testing/see-98.md`](../testing/see-98.md#observed-data-flows).
@@ -696,6 +700,10 @@ For a deployment that wants the relay on, the operator's side is
 `BROADCAST_PUSH_ENVIRONMENT` is a topic label, not [step 11](#11-sandbox-and-production)'s
 environment, and sandbox and production publishers must not share one.
 
+This section is about a **publisher's** feed. A server one owner pairs with directly has the same
+problem and a different answer, because there is no public topic to send to and nobody else who
+should be woken: see [step 17](#17-waking-a-phone-from-a-server-you-host-yourself).
+
 ## 10. A build that does not have your plugin
 
 Your manifest names the client plugin your proposals are written for and the contract range it works with. The app carries a fixed list of plugins, compiled in — two of them today, `jupiter.swap` and `jupiter.prediction`, both at contract 1. **Nothing is downloaded, nothing is discovered at runtime, and there is no dynamic load path to secure because there is no dynamic load path.** So a manifest is matched against what the build already has, and the phone says which way it went:
@@ -851,6 +859,220 @@ SEEKERVAULT_JUPITER=1 go test ./internal/jupiter/ -run Live -v
 
 The evidence behind the claims on this page, rather than the claims: [`docs/testing/see-100.md`](../testing/see-100.md) is this guide walked end to end, command by command, with what each one answered. [`docs/testing/see-98.md`](../testing/see-98.md) is the cross-component and privacy acceptance, including the search that was run over every file both sides wrote. [`docs/testing/see-99.md`](../testing/see-99.md) is the load, isolation and failover measurement — 5,000 simultaneous listeners on one broker node, and where it stopped.
 
+## 17. Waking a phone from a server you host yourself
+
+Everything above is about a **publisher**: a backend that publishes to the shared gateway, and
+phones that read the feed from there. This section is about the other mode — a **direct** server
+that one owner pairs with — and the one thing such a server cannot do on its own.
+
+A direct server holds a phone's authenticated connection: the phone pairs with it, streams from it,
+synchronizes with it and submits its owner's decisions to it, all directly and none of it through
+anybody's gateway. But when the app is in the background there is no connection to carry anything,
+and waking an Android device needs a Firebase project and a service-account credential. Asking
+every developer to create one is asking them to run a Google Cloud project, mount a key file and
+keep it out of version control, for one message that says nothing.
+
+The gateway relay is the alternative. **The gateway's operator holds the Firebase credential; you
+hold a scoped relay credential that does exactly one thing; the owner's phone decides which servers
+may wake it.** Nothing else about your server changes.
+
+### What is relayed, and what is not
+
+One fixed, content-free message, identical to the one a server with its own Firebase project sends:
+
+```json
+{ "data": { "kind": "request_invalidation", "version": "1" },
+  "android": { "collapse_key": "seeker-vault-request-state-v1",
+               "priority": "HIGH", "ttl": "300s" } }
+```
+
+That is the whole payload, and you cannot add to it: the relay's request has two fields, a handle
+and one of two words, and the gateway builds the message from constants. There is no field for
+text, a title, a topic, a target, a priority number or a TTL anywhere in the contract.
+
+The phone that receives one goes and reads **your** server, authenticated, and renders what your
+server says. So the gateway never sees a request, an approval, a signature, a result, a wallet or
+anything the owner decided — and a forged, replayed or delayed wake-up can cause a read and
+nothing else.
+
+### The three push paths, which are not the same thing
+
+| | Feed topics ([step 9](#9-topic-push)) | Gateway relay (this section) | Direct Firebase |
+| --- | --- | --- | --- |
+| Which servers | Publishers | Direct servers | Direct servers |
+| Who is woken | Anyone subscribed to a public topic | One device that authorized this server | One device paired with this server |
+| Who holds Firebase | The gateway operator | The gateway operator | **You** |
+| What you configure | Nothing | A relay URL, your server ID, one credential | `FCM_PROJECT_ID` and application default credentials |
+| Addressed by | A public topic name | An opaque handle the phone gave you | The phone's own FCM registration |
+
+Configure the relay **or** direct Firebase, never both: they fire on the same committed update, so
+a phone would be woken twice for one change. The sidecar refuses both at startup and names them.
+
+### Operator onboarding
+
+Ask the operator of the gateway your owner's app is built for to register your server with the
+**push relay** capability. That is the same [admin panel](#if-you-are-the-operator) as a publisher
+registration, with the relay checkbox ticked; a relay-only registration publishes no feed and needs
+no manifest. It can also be done from the host:
+
+```sh
+feed-gatewayctl register --server <your uuid> --label "your server" --for relay
+# capabilities relay
+# server      3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+# credential  a1b2c3d4
+#
+# <the credential, shown once>
+```
+
+You are given back three things and no more:
+
+- your **server ID**, which is the identity your server names and the phone authorizes,
+- the **relay credential**, shown once and stored only as its SHA-256,
+- the gateway's **origin**, which is what the phone must already be configured to trust.
+
+You are **not** given a Firebase project, a service account, an API key or any device's target. The
+push credential belongs to the deployment, is mounted read-only into the gateway alone and never
+appears in an answer, an error or a log line.
+
+A relay credential does one thing. It cannot publish to a feed, it is not an administrator
+credential, and presenting it to the publisher API is refused — the store resolves the two through
+separate queries over separate columns, so there is no branch anywhere that could decide otherwise.
+
+### Configure your server
+
+Three environment variables on your own backend, and no Firebase anything:
+
+```bash
+RELAY_URL=https://feeds.example.com          # the gateway's origin, as the operator gave it
+RELAY_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+RELAY_CREDENTIAL=<the credential, shown once>
+```
+
+All three or none: two of the three is a server that looks like it wakes phones and never does, and
+the only sign of it would be an owner who stops getting notifications. The sidecar says so at
+startup and refuses to run. The credential is a secret and is never printed back — the startup line
+names the gateway and your server ID, which are not.
+
+Using the SDK directly, it is one option on `openDirectServer`:
+
+```ts
+openDirectServer({
+  // …
+  relay: {
+    relayUrl: "https://feeds.example.com",
+    serverId: "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    credential: process.env.RELAY_CREDENTIAL!,
+  },
+});
+```
+
+### Pair the phone, and let it authorize you
+
+Nothing about pairing changes: the owner scans your pairing code and the phone pairs with you
+directly, as it always has. What is new happens straight afterwards, over that authenticated
+connection:
+
+1. Your server **advertises** the relay — `PairingService.GetConnectionCapabilities` now answers a
+   `relay` with the gateway's origin and your server ID. The SDK does this for you once `relay` is
+   configured.
+2. The phone **compares that origin with the relay it was built to trust**, and ignores it when they
+   differ. This is the rule that makes the advertisement worthless to anyone who is not the
+   operator: naming an address of your own gets you nothing, because nothing is sent there.
+3. The phone **authorizes** a binding at the gateway — its own installation, your registered server
+   identity, and the one connection it holds with you.
+4. The gateway issues an opaque **handle**, the phone hands it to you over the same authenticated
+   connection (`PairingService.SetRelayHandle`), and the SDK stores it against that connection.
+
+A handle is not an FCM target and is never stored as one. An FCM target addresses a device and
+works for whoever holds it; a handle addresses one authorization at one gateway and is worth
+nothing without your relay credential — which is why the two have separate columns, separate types
+and separate RPCs. Putting one where the other belongs would wake nobody, and the failure would
+look exactly like a phone that is switched off.
+
+### The first push
+
+Create a request for that connection, as you already do. The SDK coalesces committed updates by
+connection and calls the relay:
+
+```http
+POST https://feeds.example.com/relay/v1/notify
+Authorization: Bearer <your relay credential>
+Content-Type: application/json
+
+{"version":"1","handle":"<the handle the phone gave you>","hint":"created"}
+```
+
+```json
+{ "version": "1", "status": "accepted" }
+```
+
+`hint` is `created` or `updated`, and it chooses Android's delivery priority and nothing else: a
+request that has just appeared is waiting on its owner, and a state change on one they have already
+decided is not. It never reaches the payload, so the phone cannot read it.
+
+What the answers mean:
+
+| | |
+| --- | --- |
+| `202` `accepted` | The gateway asked Firebase. That is not a promise a phone was woken — it may be switched off — and nothing treats it as one. |
+| `200` `coalesced` | This device is already being woken as fast as it is useful to. There is nothing to retry: the wake-up in flight carries the same news. |
+| `401` | The credential was not accepted: unknown, revoked, a publishing credential, or a server whose relay the operator switched off. |
+| `403` | That handle does not authorize you: fabricated, revoked, expired, or somebody else's. One answer for all of them, so probing tells you nothing. |
+| `429` | Too many. Back off; `Retry-After` is not promised and the next committed update is the retry. |
+| `503` | Nobody knows: an outage, a rejected device target, or a gateway with no Firebase credential yet. Retryable. |
+
+**None of this may fail a request.** The SDK swallows every outcome: a request that was created,
+committed and answered is not undone by a phone hearing about it a minute later, and an unreachable
+relay never blocks a synchronization or a decision.
+
+### Bounds
+
+Two sends a second per registered server with twenty in hand, one wake-up every two seconds per
+device with five in hand, and a ceiling for the whole deployment
+(`BROADCAST_RELAY_SERVER_RATE`, `BROADCAST_RELAY_DEVICE_RATE`, `BROADCAST_RELAY_GLOBAL_RATE` and
+their `_BURST` siblings). The per-device one is the coalescing rather than an abuse bound: above it
+the answer is `coalesced`, because a phone woken more often than that is being told the same thing
+again.
+
+### Rotation, revocation, and what ends what
+
+| | What it does | What it does not |
+| --- | --- | --- |
+| **Rotate** (`rotate --for relay`, or the admin panel) | Issues a second relay credential. Both work, so you deploy without downtime. | Nothing else. Revoke the old one afterwards. |
+| **Revoke** a credential | That credential stops being accepted from the next call, for good. | Does not end any authorization a phone gave you: a new credential resumes waking the same phones. |
+| **Disable** the relay capability | Every relay credential is refused while it is off; enabling it again makes the same ones work. | Not a revocation, and not reversible for messages already handed to Firebase — those cannot be recalled. |
+| **The owner disconnects** | The phone revokes its binding and your handle stops working at once. | Nothing on your side has to notice; the next `notify` answers `403`, and the SDK clears the handle. |
+| **Forget the server** | Everything: the registration, its credentials, and every authorization phones gave it. | Does not unpair anybody. Phones stay paired with you directly and simply stop being woken through the gateway. |
+
+A binding also ends on its own. One lasts a month unless the phone renews it, an installation
+nothing has been heard from for two months is forgotten with its bindings, and an enrollment that
+authorized nothing is kept for a day — so a device that was wiped, reinstalled or simply lost
+cannot leave you able to wake it indefinitely. A phone that is still paired re-authorizes on its
+next reconciliation without anybody doing anything.
+
+### What each side stores
+
+| | Holds | Never holds |
+| --- | --- | --- |
+| **Your server** | The handle, against the connection it was issued for | Any Firebase credential, any device target |
+| **The gateway** | An installation identity it minted, the hash of the secret proving a device is that installation, the current FCM registration, and which servers that device authorized | Any request, approval, signature, result, wallet, amount, or anything an owner decided |
+| **The phone** | Its enrollment, and which authorization belongs to which connection | Its own handles — the gateway kept only their hashes, so a lost one is re-authorized rather than recovered |
+
+What the gateway *learns* from a `notify` is routing metadata: that a registered server had
+something for one of the devices that authorized it, and when. Not what it was.
+
+### When the gateway loses its data
+
+The demo gateway's SQLite file is not durable ([step 2](#the-demo-gateways-data-is-not-durable-and-what-to-do-about-it)),
+and a relay's records are in it. A gateway that lost its file has lost every enrollment and every
+authorization, and **push bindings do not survive it** — nobody should claim otherwise.
+
+What it does not cost is a re-pairing. The direct connections were never the gateway's: the phone
+asks the gateway about its enrollment, is told there is none, enrolls again, and re-authorizes the
+connections it already holds. Your side needs a re-registration by the operator and the same three
+environment variables; the handle you hold stops working and the phone hands you a new one on its
+next reconciliation.
+
 ## What is not here
 
 - **A feed deep link.** The owner can scan or paste a `seekervault://feed` reference in **Add connection**, but Android does not yet route a URI tapped outside the app into that screen. [Step 5](#5-connect-the-app) shows the supported path.
@@ -859,3 +1081,4 @@ The evidence behind the claims on this page, rather than the claims: [`docs/test
 - **A plugin you can deploy.** A new execution platform is a new bundled client plugin in a release of the app.
 - **Anything that follows an order.** No fill, position, settlement, payout or profit-and-loss, on the phone or anywhere else.
 - **Anything about your subscribers.** There is no supported way to learn who they are or what they did, and there is not meant to be.
+- **Anything about the devices the relay wakes.** [Step 17](#17-waking-a-phone-from-a-server-you-host-yourself) gives you a handle and an answer that says whether the gateway accepted a message. Not a target, not an installation, not a count, and never whether a phone received anything.
