@@ -13,6 +13,11 @@ import io.github.brrenat.seekervault.sync.PushSyncScheduler
  * an authoritative read — and neither opens a request, notification, wallet, approval, signature or
  * transaction from anything in the payload.
  *
+ * SEE-144 adds a third sender of the first one and no third kind: a gateway relaying on behalf of a
+ * server that holds no Firebase credential sends exactly SAW-056's message, so a phone cannot tell
+ * the two apart and does not have to. What arrives is still "something changed", and the reading is
+ * still the part with authority.
+ *
  * The two are separate kinds rather than one, because they are about different servers, reach
  * different state and are bounded differently. They are matched whole, so a message with an extra
  * field is ignored rather than partly trusted.
@@ -36,6 +41,10 @@ class SeekerVaultMessagingService : FirebaseMessagingService() {
         // again which feeds this phone wants hints about (SEE-92). It carries no token and nothing
         // about this device anywhere.
         application.feedTopics.onRegistered()
+        // And the gateway relay, which holds this registration on behalf of servers that have no
+        // Firebase credential of their own (SEE-144). It is told the same target the paired
+        // sidecars are told, and only ever the relay this app was built to trust.
+        application.relayRegistrations.onRegistered(token)
     }
 
     override fun onUnregistered(token: String) {

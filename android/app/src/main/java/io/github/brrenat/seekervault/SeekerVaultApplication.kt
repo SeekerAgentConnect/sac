@@ -44,6 +44,10 @@ import io.github.brrenat.seekervault.push.FeedTopicClient
 import io.github.brrenat.seekervault.push.FeedTopicManager
 import io.github.brrenat.seekervault.push.FirebaseFcmRegistrationClient
 import io.github.brrenat.seekervault.push.FirebaseFeedTopicClient
+import io.github.brrenat.seekervault.push.HttpRelayClient
+import io.github.brrenat.seekervault.push.RelayClient
+import io.github.brrenat.seekervault.push.RelayRegistrationManager
+import io.github.brrenat.seekervault.push.storage.RelayStore
 import io.github.brrenat.seekervault.solana.HttpSolanaAccounts
 import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.sync.BackgroundSyncScheduler
@@ -106,6 +110,19 @@ class SeekerVaultApplication : Application() {
      * topic is the only thing this app asks Firebase for besides its own registration.
      */
     var feedTopicClient: () -> FeedTopicClient = { FirebaseFeedTopicClient(this) }
+
+    /**
+     * How this phone talks to the gateway push relay (SEE-144). It reaches no Firebase API of its
+     * own — what it carries is the registration Firebase already handed this app — so a test
+     * replaces it with an ordinary fake and nothing here needs a project.
+     */
+    var relayClient: () -> RelayClient = { HttpRelayClient(httpClient) }
+
+    /**
+     * The relay this build was configured to trust, or "" for a build with none. It is read here
+     * rather than by the manager so a test can point one at a local server without a rebuild.
+     */
+    var relayUrl: () -> String = { BuildConfig.RELAY_URL }
 
     /**
      * User-visible alerts exist only in an APK built with an operator-supplied Firebase project.
@@ -261,6 +278,22 @@ class SeekerVaultApplication : Application() {
                     dispatcher = connectionIo,
                 )
                 .also(FeedTopicManager::start)
+        relayRegistration =
+            RelayRegistrationManager(
+                    relayUrl = relayUrl(),
+                    loaded = repository.loaded,
+                    connections = repository.connections,
+                    client = relayClient(),
+                    // The installation secret is sealed with the same Keystore key a phone
+                    // credential is, and in noBackupFilesDir for the same reason: it proves this
+                    // device is this installation, and a restored backup is a different device.
+                    store = RelayStore(File(noBackupFilesDir, "relay")) { credentialKey() },
+                    loadConnections = repository::load,
+                    coordinates = repository::relayCoordinates,
+                    publish = { id, update -> repository.setRelayHandle(id, update) },
+                    dispatcher = connectionIo,
+                )
+                .also(RelayRegistrationManager::start)
         repository
     }
 
@@ -297,6 +330,15 @@ class SeekerVaultApplication : Application() {
         get() {
             connectionRepository
             return checkNotNull(feedTopicManager)
+        }
+
+    /**
+     * And for the relay's enrollment, which a registration callback is also the moment to renew.
+     */
+    val relayRegistrations: RelayRegistrationManager
+        get() {
+            connectionRepository
+            return checkNotNull(relayRegistration)
         }
 
     /**
@@ -405,6 +447,9 @@ class SeekerVaultApplication : Application() {
 
     /** And the one that keeps this phone's topic subscriptions in line with its feeds (SEE-92). */
     private var feedTopicManager: FeedTopicManager? = null
+
+    /** The gateway relay's lifecycle (SEE-144), built beside the other two and for one reason. */
+    private var relayRegistration: RelayRegistrationManager? = null
 
     /**
      * Where storage and network calls run — the connections' and the policy editor's alike. Tests

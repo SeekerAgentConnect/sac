@@ -2,6 +2,8 @@ package io.github.brrenat.seekervault.connections
 
 import com.google.protobuf.ByteString
 import com.google.protobuf.timestamp
+import io.github.brrenat.seekervault.push.RelayCoordinates
+import io.github.brrenat.seekervault.push.RelayHandleUpdate
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
 import io.github.brrenat.seekervault.request.v1.ConfirmationLevel
@@ -59,6 +61,14 @@ class FakeConnectionGateway : ConnectionGateway {
         var publications = 0
         /** Each active connection's current private FCM target. */
         val fcmTokens = mutableMapOf<String, String>()
+        /**
+         * Each active connection's current gateway push handle (SEE-144). A separate map from
+         * [fcmTokens] because they are separate values on the real server too: one addresses a
+         * device, the other one authorization at one gateway.
+         */
+        val relayHandles = mutableMapOf<String, String>()
+        /** What this server advertises about its relay, or null when it sends its own push. */
+        var relay: RelayCoordinates? = null
         /** When set, every call to this server fails this way. */
         var failure: GatewayException.Kind? = null
         /**
@@ -564,6 +574,31 @@ class FakeConnectionGateway : ConnectionGateway {
             is FcmTokenUpdate.Register -> server.fcmTokens[id] = update.target
             is FcmTokenUpdate.ClearIfCurrent ->
                 if (server.fcmTokens[id] == update.target) server.fcmTokens.remove(id)
+        }
+    }
+
+    override suspend fun relay(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+    ): RelayCoordinates? {
+        val server = reach(serverUrl, credential)
+        authenticated(server, credential, connectionId)
+        return server.relay
+    }
+
+    override suspend fun setRelayHandle(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+        update: RelayHandleUpdate,
+    ) {
+        val server = reach(serverUrl, credential)
+        val id = authenticated(server, credential, connectionId)
+        when (update) {
+            is RelayHandleUpdate.Register -> server.relayHandles[id] = update.handle
+            is RelayHandleUpdate.ClearIfCurrent ->
+                if (server.relayHandles[id] == update.handle) server.relayHandles.remove(id)
         }
     }
 

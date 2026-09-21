@@ -9,6 +9,8 @@ import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposals.settled
+import io.github.brrenat.seekervault.push.RelayCoordinates
+import io.github.brrenat.seekervault.push.RelayHandleUpdate
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
@@ -235,6 +237,50 @@ class ConnectionRepository(
                 }
         return try {
             gateway.setFcmToken(connection.serverUrl, credential, id, update)
+            true
+        } catch (e: GatewayException) {
+            if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(id)
+            false
+        }
+    }
+
+    /**
+     * Where this connection's own server asks for its wake-ups to come from (SEE-144), or null when
+     * it sends its own push, none, or does not know the call.
+     *
+     * It is read over the authenticated direct connection, which is what makes the identity in it
+     * the identity of the server this phone actually paired with.
+     */
+    suspend fun relayCoordinates(id: String): RelayCoordinates? {
+        val connection = find(id)?.takeIf { it.usable } ?: return null
+        val credential =
+            withContext(io) { vault.get(id) }
+                ?: run {
+                    forgetCredential(id)
+                    return null
+                }
+        return try {
+            gateway.relay(connection.serverUrl, credential, id)
+        } catch (e: GatewayException) {
+            if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(id)
+            null
+        }
+    }
+
+    /**
+     * Hands this connection's server the handle the gateway issued for it, or compare-clears one. A
+     * separate call from [setFcmToken] because the two values are not interchangeable.
+     */
+    suspend fun setRelayHandle(id: String, update: RelayHandleUpdate): Boolean {
+        val connection = find(id)?.takeIf { it.usable } ?: return false
+        val credential =
+            withContext(io) { vault.get(id) }
+                ?: run {
+                    forgetCredential(id)
+                    return false
+                }
+        return try {
+            gateway.setRelayHandle(connection.serverUrl, credential, id, update)
             true
         } catch (e: GatewayException) {
             if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(id)

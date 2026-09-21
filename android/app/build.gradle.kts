@@ -42,6 +42,18 @@ if (firebaseConfigured) {
 //   android/gradlew -p android :app:assembleDebug -Pseekervault.solanaRpc=https://…
 val solanaRpc = (providers.gradleProperty("seekervault.solanaRpc").orNull ?: "").trim()
 
+// The gateway this app will register with for push relayed on a direct server's behalf (SEE-144,
+// docs/guides/server-development.md#the-gateway-push-relay). **Empty by default**, for the same two
+// reasons as above and one more that matters more here: it is the one place this decision can be
+// made, so no server can point the phone at a relay of the server's choosing. A server may
+// *advertise* a relay over its authenticated connection, and the app ignores the advertisement
+// unless it names exactly this origin — which is what stops an advertisement from being a way to
+// collect device registrations. With no value, the app registers with no relay at all and every
+// other push path is unchanged.
+//
+//   android/gradlew -p android :app:assembleDebug -Pseekervault.relayUrl=https://feeds.example.com
+val relayUrl = (providers.gradleProperty("seekervault.relayUrl").orNull ?: "").trim().trimEnd('/')
+
 android {
     namespace = "io.github.brrenat.seekervault"
     compileSdk = 37
@@ -58,6 +70,10 @@ android {
         // A read-only endpoint, or the empty string. It is not a credential and it is not a
         // secret: it is an address the owner's phone reads public account data from.
         buildConfigField("String", "SOLANA_RPC", "\"$solanaRpc\"")
+        // The one relay this app will hand its Firebase registration to, or the empty string. It
+        // is an origin, not a credential: what it grants is nothing until the owner's phone
+        // authorizes a server at it, one direct connection at a time.
+        buildConfigField("String", "RELAY_URL", "\"$relayUrl\"")
         // src/androidTest: the device round trip, run by `pnpm test:hello --device`.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
