@@ -92,7 +92,7 @@ a { color: var(--accent); }
 label { display: block; font-weight: 600; margin: .8rem 0 .25rem; }
 label.check { font-weight: 400; display: flex; gap: .5rem; align-items: baseline; }
 
-input[type=text], input[type=password], input:not([type]) {
+input[type=text], input[type=password], input:not([type]), select {
   width: 100%;
   padding: .5rem .6rem;
   font: inherit;
@@ -101,6 +101,16 @@ input[type=text], input[type=password], input:not([type]) {
   border: 1px solid var(--line);
   border-radius: 6px;
 }
+
+/* The capability choice on "Add server" (SEE-144). It is a fieldset rather than two loose
+   checkboxes because the two are one decision: what this registration is for. */
+fieldset.capabilities {
+  margin: .8rem 0;
+  padding: .6rem .8rem .2rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+fieldset.capabilities legend { padding: 0 .4rem; font-weight: 600; }
 
 button {
   font: inherit;

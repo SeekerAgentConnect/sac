@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/pushrelay"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 )
@@ -135,20 +136,97 @@ type PublisherRow struct {
 	Active   int
 	Revoked  int
 
+	// What the operator has enabled, and how many relay credentials would be accepted. The two
+	// counts are separate because the two grants are (SEE-144).
+	Publishing  bool
+	Relaying    bool
+	ActiveRelay int
+
 	// What the feed itself holds for this publisher.
 	DisplayName  string
 	HasManifest  bool
 	ManifestAt   time.Time
 	Publications int
 	Sequence     uint64
+
+	// What the relay holds for this server: counts and instants, never a target, a handle or an
+	// installation identity.
+	Relay storage.RelayStatus
 }
 
-// Credentials is the sentence about whether this publisher could publish right now.
-func (p PublisherRow) Credentials() string {
-	if p.Active > 0 {
-		return "Publishing enabled"
+// Capabilities is the sentence about what this server is allowed to do at all. It is the
+// operator's own switch, and it is said before anything about credentials because a credential for
+// a capability that is off does nothing.
+func (p PublisherRow) Capabilities() string {
+	switch {
+	case p.Publishing && p.Relaying:
+		return "Feed publishing and push relay"
+	case p.Publishing:
+		return "Feed publishing"
+	case p.Relaying:
+		return "Push relay"
+	default:
+		return "Nothing enabled"
 	}
-	return "No active credentials"
+}
+
+// Credentials is the sentence about whether this server could do what it is enabled for right now.
+//
+// It says "enabled", never "connected" or "online", and the distinction is not pedantry: a
+// publisher calls an HTTP API when it has something to say, and a relay server calls one when a
+// request of its own changed. Neither holds a connection to this gateway in between, so there is
+// nothing here that could know whether either is running.
+func (p PublisherRow) Credentials() string {
+	parts := []string{}
+	if p.Publishing {
+		if p.Active > 0 {
+			parts = append(parts, "publishing enabled")
+		} else {
+			parts = append(parts, "publishing: no active credential")
+		}
+	}
+	if p.Relaying {
+		if p.ActiveRelay > 0 {
+			parts = append(parts, "relay enabled")
+		} else {
+			parts = append(parts, "relay: no active credential")
+		}
+	}
+	if len(parts) == 0 {
+		return "No capability enabled"
+	}
+	sentence := strings.Join(parts, ", ")
+	return strings.ToUpper(sentence[:1]) + sentence[1:]
+}
+
+// Working says whether every capability this server is enabled for has a credential behind it. It
+// is what decides whether the row reads as good or as needing attention, and it is deliberately
+// not "has any credential": a server enabled for both with only one is half set up.
+func (p PublisherRow) Working() bool {
+	if !p.Publishing && !p.Relaying {
+		return false
+	}
+	return (!p.Publishing || p.Active > 0) && (!p.Relaying || p.ActiveRelay > 0)
+}
+
+// Relayed is what the relay can honestly say about this server.
+//
+// A binding is a standing authorization by one app installation, not a connection and not a device
+// that is reachable. An accepted send is Firebase having taken the message, which is not a phone
+// having been woken. Both sentences are written to be true when the device is switched off.
+func (p PublisherRow) Relayed() string {
+	if !p.Relaying {
+		return "Push relay is not enabled"
+	}
+	switch {
+	case p.Relay.Bindings == 0 && p.Relay.Revoked == 0:
+		return "No device has authorized this server yet"
+	case p.Relay.Bindings == 0:
+		return fmt.Sprintf("No current authorizations (%d ended)", p.Relay.Revoked)
+	default:
+		return fmt.Sprintf("%d device authorization(s), %d accepted wake-up(s)",
+			p.Relay.Bindings, p.Relay.Sends)
+	}
 }
 
 // Publications names what the gateway durably holds from this publisher.
@@ -165,12 +243,23 @@ func (p PublisherRow) Published() string {
 	}
 }
 
-// CredentialRow is one credential, without the credential.
+// CredentialRow is one credential, without the credential. The capability is shown because the
+// two kinds are not interchangeable and an operator reading a list of IDs has no other way to tell
+// which is which.
 type CredentialRow struct {
-	ID      string
-	Label   string
-	Created time.Time
-	Revoked *time.Time
+	ID         string
+	Label      string
+	Capability storage.Capability
+	Created    time.Time
+	Revoked    *time.Time
+}
+
+// Kind is what this credential may be used for, in the words the page uses elsewhere.
+func (c CredentialRow) Kind() string {
+	if c.Capability == storage.Relaying {
+		return "push relay"
+	}
+	return "feed publishing"
 }
 
 func (c CredentialRow) State() string {
@@ -196,6 +285,13 @@ type Connection struct {
 	PublisherURL string
 	ManifestCall string
 	PublishCall  string
+	// RelayCall is where an independently hosted direct server asks for a wake-up, and RelayURL
+	// is the origin the phone must already be configured to trust. Both are shown because a
+	// developer configures the first in their server and reads the second to check that it is the
+	// gateway their owner's app knows — a phone never registers with a relay a server named
+	// (SEE-144).
+	RelayURL  string
+	RelayCall string
 }
 
 func (s *Server) connection(registration storage.Registration) Connection {
@@ -210,24 +306,33 @@ func (s *Server) connection(registration storage.Registration) Connection {
 		PublisherURL: publisher,
 		ManifestCall: publisher + "/seekervault.gateway.v1.PublisherService/PublishManifest",
 		PublishCall:  publisher + "/seekervault.gateway.v1.PublisherService/PublishRequest",
+		RelayURL:     s.options.PublicURL,
+		// The relay's send is on the publisher listener, beside the publications, because its
+		// caller is the same party: a developer's own backend. The phone-facing half is on the
+		// read listener, which is why the origin above is the public one.
+		RelayCall: publisher + pushrelay.Prefix + "/notify",
 	}
 }
 
 // RegistrationForm is the "Add server" form, kept so a refusal re-renders what was typed rather
 // than making the operator type it again.
 type RegistrationForm struct {
-	ServerID string
-	Label    string
-	Host     string
-	Generate bool
+	ServerID   string
+	Label      string
+	Host       string
+	Generate   bool
+	Publishing bool
+	Relaying   bool
 }
 
 func registrationForm(request *http.Request) RegistrationForm {
 	return RegistrationForm{
-		ServerID: strings.TrimSpace(request.PostFormValue("server")),
-		Label:    request.PostFormValue("label"),
-		Host:     request.PostFormValue("host"),
-		Generate: request.PostFormValue("generate") != "",
+		ServerID:   strings.TrimSpace(request.PostFormValue("server")),
+		Label:      request.PostFormValue("label"),
+		Host:       request.PostFormValue("host"),
+		Generate:   request.PostFormValue("generate") != "",
+		Publishing: request.PostFormValue("publishing") != "",
+		Relaying:   request.PostFormValue("relaying") != "",
 	}
 }
 
@@ -249,6 +354,15 @@ func (f RegistrationForm) parse() (storage.Registration, bool, string) {
 	default:
 		registration.ServerID = f.ServerID
 	}
+
+	// At least one capability, because a registration that can do nothing is a row nobody asked
+	// for. Both is allowed and neither is not; which one it is decides what the first credential
+	// is issued for, and a relay-only registration needs no manifest and no feed content at all.
+	if !f.Publishing && !f.Relaying {
+		return registration, generated, "Choose what this server may do: publish a public feed, " +
+			"relay push for its own paired phones, or both."
+	}
+	registration.Publishing, registration.Relaying = f.Publishing, f.Relaying
 
 	note, problem := label(f.Label, "")
 	if problem != "" {
@@ -274,10 +388,16 @@ type Reveal struct {
 	Action       string
 	Registration storage.Registration
 	Generated    bool
+	Capability   storage.Capability
 	CredentialID string
 	Secret       string
 	Connection   Connection
 }
+
+// Relay says whether the credential just shown is a relay credential, which decides which half of
+// the page a developer is told to configure. A publishing credential and a relay credential look
+// identical and do entirely different things, so the page never shows one without saying which.
+func (r Reveal) Relay() bool { return r.Capability == storage.Relaying }
 
 // ServersView is the list, with the "Add server" form under it.
 type ServersView struct {
@@ -332,15 +452,14 @@ func (s *Server) serverView(ctx context.Context, at *visit, serverID string) (Se
 	}
 	for _, one := range credentials {
 		view.Credentials = append(view.Credentials, CredentialRow{
-			ID: one.ID, Label: one.Label, Created: one.CreatedAt, Revoked: one.RevokedAt,
+			ID: one.ID, Label: one.Label, Capability: one.Capability,
+			Created: one.CreatedAt, Revoked: one.RevokedAt,
 		})
 		if one.RevokedAt != nil {
 			view.Publisher.Revoked++
 		}
 	}
-	view.Connection = s.connection(storage.Registration{
-		ServerID: publisher.ServerID, Label: publisher.Label, Host: publisher.Host,
-	})
+	view.Connection = s.connection(registrationOf(*publisher))
 	return view, nil
 }
 
@@ -348,14 +467,21 @@ func (s *Server) serverView(ctx context.Context, at *visit, serverID string) (Se
 // durable state: a manifest row and a count of publications, which is the only evidence this
 // service has that a publisher has ever said anything.
 func (s *Server) row(ctx context.Context, publisher storage.Publisher) (PublisherRow, error) {
+	var err error
 	channel := rules.ChannelFor(publisher.ServerID)
 	row := PublisherRow{
-		ServerID: publisher.ServerID,
-		Label:    publisher.Label,
-		Host:     publisher.Host,
-		Channel:  channel,
-		Created:  publisher.CreatedAt,
-		Active:   publisher.Active,
+		ServerID:    publisher.ServerID,
+		Label:       publisher.Label,
+		Host:        publisher.Host,
+		Channel:     channel,
+		Created:     publisher.CreatedAt,
+		Active:      publisher.Active,
+		ActiveRelay: publisher.ActiveRelay,
+		Publishing:  publisher.Publishing,
+		Relaying:    publisher.Relaying,
+	}
+	if row.Relay, err = s.options.Store.RelayStatus(ctx, publisher.ServerID); err != nil {
+		return row, err
 	}
 	manifest, err := s.options.Store.Manifest(ctx, publisher.ServerID)
 	if err != nil {

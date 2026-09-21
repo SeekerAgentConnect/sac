@@ -17,6 +17,15 @@
 // and an administrator session is never a publishing credential: separate secrets, separate code
 // paths, separate listeners, and a boundary test that holds them apart.
 //
+// # Two capabilities, held apart the same way
+//
+// Since SEE-144 a registered server may publish a public feed, relay private push wake-ups, both,
+// or neither while the operator sets it up. They are enabled independently and issued as separate
+// credentials, and the separation is in the store's queries rather than in a check here: a
+// publishing credential resolves to nothing in the relay and a relay credential resolves to
+// nothing in the publisher API, whatever this page does. What this page adds is the operator's
+// decision and a page that never makes the two look like one thing.
+//
 // # What it reaches
 //
 // The store, and nothing else. This package opens no connection, fetches no publisher's host and
@@ -65,6 +74,10 @@ type Store interface {
 	storage.PublisherAdminStore
 	Manifest(context.Context, string) (*storage.StoredManifest, error)
 	Sequence(context.Context, string) (uint64, error)
+	// RelayStatus is the aggregate a relay server's page shows. It is counts and instants by
+	// construction: there is no query behind it that could return a device target, a push handle
+	// or an installation identity, so this surface cannot show one by accident (SEE-144).
+	RelayStatus(context.Context, string) (storage.RelayStatus, error)
 }
 
 // Limiter is the token bucket a login is counted against. It is an interface so this package takes
@@ -153,6 +166,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET "+at+"/reveal", s.guarded(s.showReveal))
 	mux.HandleFunc("POST "+at+"/servers", s.guarded(s.registerServer))
 	mux.HandleFunc("GET "+at+"/servers/{server}", s.guarded(s.showServer))
+	mux.HandleFunc("POST "+at+"/servers/{server}/capabilities", s.guarded(s.setCapabilities))
 	mux.HandleFunc("POST "+at+"/servers/{server}/rotate", s.guarded(s.rotateCredential))
 	mux.HandleFunc("POST "+at+"/servers/{server}/revoke", s.guarded(s.revokeCredential))
 	mux.HandleFunc("POST "+at+"/servers/{server}/forget", s.guarded(s.forgetServer))
@@ -397,7 +411,15 @@ func (s *Server) registerServer(writer http.ResponseWriter, request *http.Reques
 
 	secret, hash := credential.New()
 	now := s.options.Now()
-	credentialID, err := s.options.Store.Register(request.Context(), registration, hash, now)
+	// The first credential is issued for whichever capability the registration has. A server that
+	// is enabled for both gets a publishing credential here and a relay credential from its own
+	// page, because one credential that did both would be the thing SEE-144 exists to prevent.
+	first := storage.Publishing
+	if !registration.Publishing {
+		first = storage.Relaying
+	}
+	credentialID, err := s.options.Store.Register(
+		request.Context(), registration, first, hash, now)
 	switch {
 	case errors.Is(err, storage.ErrPublisherExists):
 		s.record("register", registration.ServerID, "refused: already registered")
@@ -421,6 +443,7 @@ func (s *Server) registerServer(writer http.ResponseWriter, request *http.Reques
 		Action:       "registered",
 		Registration: registration,
 		Generated:    generated,
+		Capability:   first,
 		CredentialID: credentialID,
 		Secret:       secret,
 		Connection:   s.connection(registration),
@@ -436,7 +459,36 @@ func (s *Server) rotateCredential(writer http.ResponseWriter, request *http.Requ
 		s.notFound(writer)
 		return
 	}
-	label, problem := label(request.PostFormValue("label"), "rotated "+
+	// Which capability this credential is for is a field on the form rather than a guess from the
+	// server's own state: a server enabled for both would otherwise get whichever the code
+	// happened to prefer, and an operator would hand a developer a credential that silently does
+	// the wrong one of two jobs.
+	capability := storage.Capability(strings.TrimSpace(request.PostFormValue("capability")))
+	if !capability.Valid() {
+		s.back(writer, request, at, serverID,
+			"Say what this credential is for: publishing to the feed, or relaying push.", true)
+		return
+	}
+	held, err := s.options.Store.Publisher(request.Context(), serverID)
+	if err != nil {
+		s.failed(writer, "read publisher", err)
+		return
+	}
+	if held == nil {
+		s.notFound(writer)
+		return
+	}
+	if (capability == storage.Publishing && !held.Publishing) ||
+		(capability == storage.Relaying && !held.Relaying) {
+		// A credential for a capability this server does not have would not work, and issuing one
+		// anyway is how an operator comes to believe they have set something up that they have
+		// not. Enabling the capability is one checkbox above this form.
+		s.record("rotate", serverID, "refused: capability not enabled")
+		s.back(writer, request, at, serverID, "Enable that capability for this server first — "+
+			"a credential it does not have would be refused on every call.", true)
+		return
+	}
+	label, problem := label(request.PostFormValue("label"), string(capability)+" credential, "+
 		s.options.Now().UTC().Format(time.RFC3339))
 	if problem != "" {
 		s.back(writer, request, at, serverID, problem, true)
@@ -444,7 +496,7 @@ func (s *Server) rotateCredential(writer http.ResponseWriter, request *http.Requ
 	}
 	secret, hash := credential.New()
 	credentialID, err := s.options.Store.AddCredential(
-		request.Context(), serverID, label, hash, s.options.Now())
+		request.Context(), serverID, label, capability, hash, s.options.Now())
 	switch {
 	case errors.Is(err, storage.ErrNoPublisher):
 		s.record("rotate", serverID, "refused: no such publisher")
@@ -455,23 +507,80 @@ func (s *Server) rotateCredential(writer http.ResponseWriter, request *http.Requ
 		s.failed(writer, "add credential", err)
 		return
 	}
-	s.record("rotate", serverID, "added credential "+credentialID)
+	s.record("rotate", serverID, "added "+string(capability)+" credential "+credentialID)
 
-	publisher, err := s.options.Store.Publisher(request.Context(), serverID)
-	if err != nil || publisher == nil {
-		s.failed(writer, "read publisher", err)
-		return
-	}
-	registration := storage.Registration{
-		ServerID: publisher.ServerID, Label: publisher.Label, Host: publisher.Host,
-	}
+	registration := registrationOf(*held)
 	s.reveal(writer, request, at, &Reveal{
 		Action:       "rotated",
 		Registration: registration,
+		Capability:   capability,
 		CredentialID: credentialID,
 		Secret:       secret,
 		Connection:   s.connection(registration),
 	})
+}
+
+// setCapabilities is the operator's switch: what this server is allowed to do, effective on the
+// next call and without a restart.
+//
+// It is not revocation and says so on the page. Disabling a capability stops every credential of
+// that kind being accepted while it is off, and enabling it again finds the same credentials
+// working; revoking one ends it for good. Two operations, because an operator turning something
+// off for an afternoon and an operator ending a credential that leaked are doing different things.
+//
+// Turning everything off is allowed. It is the state a registration is in while an operator is
+// still deciding, and it is a server that can do nothing rather than a server that is gone.
+func (s *Server) setCapabilities(writer http.ResponseWriter, request *http.Request, at *visit) {
+	serverID := request.PathValue("server")
+	if !rules.IsID(serverID) {
+		s.notFound(writer)
+		return
+	}
+	publishing := request.PostFormValue("publishing") != ""
+	relaying := request.PostFormValue("relaying") != ""
+	err := s.options.Store.SetCapabilities(request.Context(), serverID, publishing, relaying)
+	switch {
+	case errors.Is(err, storage.ErrNoPublisher):
+		s.record("capabilities", serverID, "refused: no such publisher")
+		s.notFound(writer)
+	case err != nil:
+		s.record("capabilities", serverID, "failed")
+		s.failed(writer, "set capabilities", err)
+	default:
+		s.record("capabilities", serverID,
+			fmt.Sprintf("publishing=%t relay=%t", publishing, relaying))
+		s.back(writer, request, at, serverID, capabilityNotice(publishing, relaying), false)
+	}
+}
+
+// capabilityNotice says what just changed in the terms the operator will care about next: which
+// credentials are now honoured, and what it did not do.
+func capabilityNotice(publishing, relaying bool) string {
+	switch {
+	case publishing && relaying:
+		return "This server may publish to its feed and relay push. Its credentials of each " +
+			"kind are honoured from the next call."
+	case publishing:
+		return "This server may publish to its feed. Its relay credentials are refused from " +
+			"the next call; they are not revoked, so enabling relay again makes them work."
+	case relaying:
+		return "This server may relay push. Its publishing credentials are refused from the " +
+			"next call; they are not revoked, so enabling publishing again makes them work."
+	default:
+		return "This server may do nothing. Every credential it holds is refused from the next " +
+			"call; none is revoked, so enabling a capability again makes them work. Its feed is " +
+			"still served and its bindings still exist."
+	}
+}
+
+func registrationOf(publisher storage.Publisher) storage.Registration {
+	return storage.Registration{
+		ServerID:   publisher.ServerID,
+		Label:      publisher.Label,
+		Host:       publisher.Host,
+		Publishing: publisher.Publishing,
+		Relaying:   publisher.Relaying,
+	}
 }
 
 // revokeCredential ends one credential, or every credential a publisher holds. Enforcement is

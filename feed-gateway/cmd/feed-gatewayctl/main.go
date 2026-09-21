@@ -15,8 +15,9 @@
 // A credential is shown once, when it is created, and only its SHA-256 is stored — the same thing
 // the sidecar does with a phone's credential. Losing one means rotating it, not recovering it.
 //
-//	feed-gatewayctl register --server <uuid> --label <note> [--host <url>]
-//	feed-gatewayctl rotate   --server <uuid> [--label <note>]
+//	feed-gatewayctl register --server <uuid> --label <note> [--host <url>] [--for publish|relay|both]
+//	feed-gatewayctl rotate   --server <uuid> [--label <note>] [--for publish|relay]
+//	feed-gatewayctl capabilities --server <uuid> --for publish|relay|both|none
 //	feed-gatewayctl revoke   --credential <id>
 //	feed-gatewayctl revoke   --server <uuid> --all
 //	feed-gatewayctl list     [--server <uuid>]
@@ -54,17 +55,69 @@ func main() {
 
 const usage = `feed-gatewayctl manages the publishers a feed gateway accepts.
 
-  register --server <uuid> [--label <note>] [--host <url>]
-                                              register a publisher and print one credential
-  rotate   --server <uuid> [--label <note>]   add a second credential, so the first can be retired
+  register --server <uuid> [--label <note>] [--host <url>] [--for publish|relay|both]
+                                              register a server and print one credential
+  rotate   --server <uuid> [--label <note>] [--for publish|relay]
+                                              add a second credential, so the first can be retired
+  capabilities --server <uuid> --for publish|relay|both|none
+                                              enable or disable what a server may do
   revoke   --credential <id>                  end one credential
-  revoke   --server <uuid> --all              end every credential a publisher holds
+  revoke   --server <uuid> --all              end every credential a server holds
   list     [--server <uuid>]                  what is registered, and which credentials exist
-  forget   --server <uuid> --yes              remove a publisher and everything it published
+  forget   --server <uuid> --yes              remove a server and everything it published
   password [--password <text>]                print a hash for BROADCAST_ADMIN_PASSWORD_HASH
 
   --database <path>   the gateway's database, or BROADCAST_DATABASE_PATH
+
+A credential works for one capability and only while that capability is enabled (SEE-144).
+"publish" is the public feed; "relay" lets an independently hosted direct server wake a phone
+that has authorized it. Omitted, --for is publish, which is what every registration was before.
 `
+
+// capabilitiesOf reads --for as a registration's capabilities. "none" is allowed and means a
+// registration that may do nothing, which is a real state: it is what an operator leaves a server
+// in while they decide, and it is not the same as forgetting it.
+func capabilitiesOf(value string) (bool, bool, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "publish":
+		return true, false, nil
+	case "relay":
+		return false, true, nil
+	case "both":
+		return true, true, nil
+	case "none":
+		return false, false, nil
+	default:
+		return false, false, fmt.Errorf("--for must be publish, relay, both or none")
+	}
+}
+
+// credentialFor reads --for as the one capability a credential is issued for. "both" is refused
+// here on purpose: a credential does one thing, and a flag that seemed to make one do two would be
+// exactly the confusion the capability split exists to prevent.
+func credentialFor(value string) (storage.Capability, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "publish":
+		return storage.Publishing, nil
+	case "relay":
+		return storage.Relaying, nil
+	default:
+		return "", fmt.Errorf("--for must be publish or relay: a credential is for one of them")
+	}
+}
+
+func enabled(publishing, relaying bool) string {
+	switch {
+	case publishing && relaying:
+		return "publish, relay"
+	case publishing:
+		return "publish"
+	case relaying:
+		return "relay"
+	default:
+		return "nothing"
+	}
+}
 
 func run(arguments []string, out io.Writer) error {
 	if len(arguments) == 0 {
@@ -85,6 +138,8 @@ func run(arguments []string, out io.Writer) error {
 	yes := flags.Bool("yes", false, "with forget: confirm that documents will be deleted")
 	password := flags.String("password", "",
 		"with password: the administrator password to hash; omitted, it is read from stdin")
+	capability := flags.String("for", "",
+		"publish, relay, both or none: what a registration may do, or what a credential is for")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -108,9 +163,28 @@ func run(arguments []string, out io.Writer) error {
 	now := time.Now()
 
 	switch command {
+	case "capabilities":
+		if !rules.IsID(*serverID) {
+			return fmt.Errorf("--server must be a lowercase UUID")
+		}
+		publishing, relaying, err := capabilitiesOf(*capability)
+		if err != nil {
+			return err
+		}
+		if err := documents.SetCapabilities(ctx, *serverID, publishing, relaying); err != nil {
+			return err
+		}
+		// Saying what this is not is the useful half: an operator who meant to end a credential
+		// and switched a capability off instead would otherwise find it working again later.
+		fmt.Fprintf(out, "%s may now: %s\n", *serverID, enabled(publishing, relaying))
+		fmt.Fprint(out, "Credentials are not revoked by this. A capability switched off refuses "+
+			"them from the next\ncall and switching it on again makes the same ones work; "+
+			"`revoke` is what ends one for good.\n")
+		return nil
+
 	case "register", "rotate":
 		if !rules.IsID(*serverID) {
-			return fmt.Errorf("--server must be a lowercase UUID, which is what a publisher's " +
+			return fmt.Errorf("--server must be a lowercase UUID, which is what a server's " +
 				"manifest and every proposal of its own has to name")
 		}
 		secret, hash := credential.New()
@@ -126,29 +200,70 @@ func run(arguments []string, out io.Writer) error {
 			if hostErr != nil {
 				return fmt.Errorf("--host %v", hostErr)
 			}
+			publishing, relaying, capErr := capabilitiesOf(*capability)
+			if capErr != nil {
+				return capErr
+			}
+			if !publishing && !relaying {
+				return fmt.Errorf("--for must name at least one capability when registering: " +
+					"a server that may do nothing is a row nobody asked for")
+			}
+			// A server enabled for both gets its publishing credential here and its relay
+			// credential from `rotate --for relay`, because one credential that did both is the
+			// thing the capability split exists to prevent.
+			first := storage.Publishing
+			if !publishing {
+				first = storage.Relaying
+			}
 			issued, err = documents.Register(ctx, storage.Registration{
 				ServerID: *serverID, Label: note, Host: recorded,
-			}, hash, now)
+				Publishing: publishing, Relaying: relaying,
+			}, first, hash, now)
 			if errors.Is(err, storage.ErrPublisherExists) {
 				return fmt.Errorf("%s is already registered; use `rotate --server %s` to add a "+
 					"credential to it", *serverID, *serverID)
 			}
+			if err == nil {
+				fmt.Fprintf(out, "capabilities %s\n", enabled(publishing, relaying))
+			}
 		} else {
 			if strings.TrimSpace(*host) != "" {
 				return fmt.Errorf("--host belongs to `register`: rotation adds a credential and " +
-					"changes nothing else about a publisher")
+					"changes nothing else about a server")
 			}
-			issued, err = documents.AddCredential(ctx, *serverID, note, hash, now)
+			for_, capErr := credentialFor(*capability)
+			if capErr != nil {
+				return capErr
+			}
+			held, readErr := documents.Publisher(ctx, *serverID)
+			if readErr != nil {
+				return readErr
+			}
+			switch {
+			case held == nil:
+				return fmt.Errorf("%w: %s", storage.ErrNoPublisher, *serverID)
+			case for_ == storage.Publishing && !held.Publishing,
+				for_ == storage.Relaying && !held.Relaying:
+				// A credential for a capability this server does not have would be refused on
+				// every call, and issuing one anyway is how an operator comes to believe they
+				// have set something up that they have not.
+				return fmt.Errorf("%s is not enabled for %s; run "+
+					"`capabilities --server %s --for ...` first", *serverID, for_, *serverID)
+			}
+			issued, err = documents.AddCredential(ctx, *serverID, note, for_, hash, now)
+			if err == nil {
+				fmt.Fprintf(out, "for         %s\n", for_)
+			}
 		}
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "publisher   %s\n", *serverID)
+		fmt.Fprintf(out, "server      %s\n", *serverID)
 		fmt.Fprintf(out, "channel     %s\n", rules.ChannelFor(*serverID))
 		fmt.Fprintf(out, "credential  %s\n", issued)
 		fmt.Fprintf(out, "\n%s\n\n", secret)
 		fmt.Fprint(out, "That credential is shown once and is not stored. Give it to the "+
-			"publisher as BROADCAST_CREDENTIAL,\nand keep it out of version control. "+
+			"developer,\nand keep it out of version control. "+
 			"Rotate with `rotate`, then `revoke --credential <id>`.\n")
 		return nil
 

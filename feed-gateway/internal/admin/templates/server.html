@@ -1,14 +1,16 @@
 {{template "head" .}}
 {{$c := .CSRF}}{{$p := .Publisher}}
-<p class="crumb"><a href="{{at "/"}}">← All publishers</a></p>
+<p class="crumb"><a href="{{at "/"}}">← All servers</a></p>
 <h1>{{$p.Label}}</h1>
 {{template "flash" .}}
 
 <table class="facts">
   <tr><th>Server ID</th><td><code class="id">{{$p.ServerID}}</code>
       <button class="copy" type="button" data-copy="{{$p.ServerID}}">Copy</button></td></tr>
-  <tr><th>Channel</th><td><code class="id">{{$p.Channel}}</code>
-      <button class="copy" type="button" data-copy="{{$p.Channel}}">Copy</button></td></tr>
+  <tr><th>Enabled</th><td><span class="state">{{$p.Capabilities}}</span></td></tr>
+  <tr><th>Channel</th><td>{{if $p.Publishing}}<code class="id">{{$p.Channel}}</code>
+      <button class="copy" type="button" data-copy="{{$p.Channel}}">Copy</button>
+      {{else}}<span class="sub">no public feed: this server is not enabled for publishing</span>{{end}}</td></tr>
   <tr><th>Host</th><td>{{if $p.Host}}<a href="{{$p.Host}}" rel="noreferrer noopener external">{{$p.Host}}</a>
       <span class="sub">administrative metadata; never contacted by the gateway</span>
       {{else}}<span class="sub">none recorded</span>{{end}}</td></tr>
@@ -17,22 +19,56 @@
       {{else}}<span class="sub">no manifest received</span>{{end}}</td></tr>
   <tr><th>Registered</th><td>{{instant $p.Created}}</td></tr>
   <tr><th>State</th><td>
-      <span class="state {{if gt $p.Active 0}}good{{else}}warn{{end}}">{{$p.Credentials}}</span>
-      <span class="state">{{$p.Published}}</span></td></tr>
+      <span class="state {{if $p.Working}}good{{else}}warn{{end}}">{{$p.Credentials}}</span>
+      {{if $p.Publishing}}<span class="state">{{$p.Published}}</span>{{end}}</td></tr>
+  {{if $p.Publishing}}
   <tr><th>Feed sequence</th><td>{{$p.Sequence}}
       <span class="sub">how many publications this channel has accepted</span></td></tr>
+  {{end}}
+  {{if $p.Relaying}}
+  <tr><th>Push relay</th><td>{{$p.Relayed}}
+      <span class="sub">an authorization is a standing permission from one app installation, not a
+      connection: nothing here says a device is reachable, and an accepted wake-up is Firebase
+      having taken the message rather than a phone having received it</span>
+      {{with $p.Relay.LastSentAt}}<br><span class="sub">last accepted {{instant .}}</span>{{end}}
+      {{with $p.Relay.LastBindAt}}<br><span class="sub">last authorized {{instant .}}</span>{{end}}
+      </td></tr>
+  {{end}}
 </table>
+
+<h2>Capabilities</h2>
+<form method="post" action="{{at "/servers/"}}{{$p.ServerID}}/capabilities" class="card">
+  <input type="hidden" name="csrf" value="{{$c}}">
+  <p class="hint">This is a switch, not a revocation. Turning a capability off makes every
+  credential of that kind refused from the next call; turning it back on makes the same ones work
+  again. Revoking a credential below ends it for good.</p>
+  <label class="check">
+    <input type="checkbox" name="publishing" value="on" {{if $p.Publishing}}checked{{end}}>
+    Publish a public feed
+  </label>
+  <label class="check">
+    <input type="checkbox" name="relaying" value="on" {{if $p.Relaying}}checked{{end}}>
+    Relay push to phones paired with it
+  </label>
+  <p class="hint">Disabling the relay stops new wake-ups at once. Authorizations phones already
+  gave are kept, so enabling it again does not ask anyone to pair or authorize anything twice —
+  and a wake-up already handed to Firebase cannot be recalled.</p>
+  <button type="submit">Save capabilities</button>
+</form>
 
 <h2>Credentials</h2>
 <p class="hint">A credential is shown once, when it is created, and only its hash is stored. There
-is no way to read an existing one back — rotate instead.</p>
+is no way to read an existing one back — rotate instead. A publishing credential and a relay
+credential look identical and are not interchangeable: presenting one where the other belongs is
+refused, so the kind is listed beside every ID.</p>
 {{if .Credentials}}
 <table class="list">
-  <thead><tr><th>ID</th><th>Label</th><th>Created</th><th>State</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>For</th><th>Label</th><th>Created</th><th>State</th><th></th></tr></thead>
   <tbody>
   {{range .Credentials}}
     <tr>
       <td><code class="id">{{.ID}}</code></td>
+      <td><span class="state">{{.Kind}}</span></td>
       <td>{{.Label}}</td>
       <td><span class="sub">{{instant .Created}}</span></td>
       <td><span class="state {{if .Revoked}}warn{{else}}good{{end}}">{{.State}}</span></td>
@@ -57,7 +93,14 @@ is no way to read an existing one back — rotate instead.</p>
     <input type="hidden" name="csrf" value="{{$c}}">
     <h3>Add a credential (rotation)</h3>
     <p class="hint">The new credential works immediately and the existing ones keep working, so the
-    publisher can switch without downtime. Revoke the old one once it has.</p>
+    server can switch without downtime. Revoke the old one once it has.</p>
+    <label for="rotate-capability">What it is for</label>
+    <select id="rotate-capability" name="capability">
+      <option value="publish">Feed publishing</option>
+      <option value="relay">Push relay</option>
+    </select>
+    <p class="hint">A credential only works for the capability it was issued for, and only while
+    that capability is enabled above.</p>
     <label for="rotate-label">Label <span class="sub">(optional)</span></label>
     <input id="rotate-label" name="label" maxlength="64" placeholder="why this one exists">
     <button type="submit">Add credential</button>
@@ -67,25 +110,27 @@ is no way to read an existing one back — rotate instead.</p>
     <input type="hidden" name="csrf" value="{{$c}}">
     <input type="hidden" name="all" value="on">
     <h3>Revoke every credential</h3>
-    <p class="hint">This publisher stops being able to publish from the next request. Its manifest
-    and the feed items it already published stay on the feed — revocation ends publishing, it does
-    not withdraw what was published.</p>
+    <p class="hint">This server stops being able to publish and to relay from the next request,
+    of both kinds at once. Its manifest and the feed items it already published stay on the feed,
+    and the authorizations phones gave it are kept — revocation ends what it can present, it does
+    not withdraw what was published or what anyone agreed to.</p>
     <button type="submit" class="danger"
             data-confirm="Revoke every credential of {{$p.ServerID}}? It will not be able to publish again until a new one is issued.">Revoke all</button>
   </form>
 </div>
 
-<h2 class="destructive">Forget publisher</h2>
+<h2 class="destructive">Forget server</h2>
 <form method="post" action="{{at "/servers/"}}{{$p.ServerID}}/forget" class="card destructive">
   <input type="hidden" name="csrf" value="{{$c}}">
-  <p>This removes the registration, its credentials, its manifest and every feed item this gateway
-  holds for it. It is not a rotation and it is not a revocation: the public feed for this channel
-  stops existing.</p>
+  <p>This removes the registration, its credentials, its manifest, every feed item this gateway
+  holds for it and every push authorization phones gave it. It is not a rotation and it is not a
+  revocation: the public feed for this channel stops existing, and phones paired with this server
+  directly stay paired and simply stop being woken through this gateway.</p>
   <p class="hint">Phones that already read its feed items keep their own copies until their owners
   remove the feed. This clears what the gateway holds, not what a device decided.</p>
   <label for="confirm">Type <code class="id">{{$p.ServerID}}</code> to confirm</label>
   <input id="confirm" name="confirm" spellcheck="false" autocomplete="off" required>
   <button type="submit" class="danger"
-          data-confirm="Forget {{$p.ServerID}} and delete everything it published on this gateway?">Forget this publisher</button>
+          data-confirm="Forget {{$p.ServerID}} and delete everything it published and every push authorization for it?">Forget this server</button>
 </form>
 {{template "foot" .}}

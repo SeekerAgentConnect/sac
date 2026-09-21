@@ -17,6 +17,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/credential"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/dispatch"
 	gatewayv1connect "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1/gatewayv1connect"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/pushrelay"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 )
 
@@ -42,7 +43,14 @@ type Gateway struct {
 	Publish http.Handler
 	// Admin is nil unless the deployment configured an operator password. A nil handler means no
 	// listener is opened and no administrative route exists anywhere in this process (SEE-141).
-	Admin   http.Handler
+	Admin http.Handler
+	// Relay is the private push routing for independently hosted direct servers (SEE-144). It is
+	// two handlers rather than one because its two callers are different parties on different
+	// listeners: phones reach Installations over the public read listener, and developers' own
+	// backends reach Servers over the publisher listener. Neither route exists on the other's
+	// listener, so a routing mistake cannot let a phone send an invalidation or a server enroll an
+	// installation.
+	Relay   *pushrelay.Server
 	Drainer *dispatch.Drainer
 
 	config  *config.Config
@@ -61,6 +69,7 @@ func Build(
 	to dispatch.Dispatcher,
 	grants Grants,
 	topics Topics,
+	devices pushrelay.Sender,
 	log *slog.Logger,
 	now func() time.Time,
 ) *Gateway {
@@ -83,6 +92,43 @@ func Build(
 	))
 	readMux.HandleFunc("/healthz", healthz)
 
+	// The relay (SEE-144). It is built whether or not this deployment can actually send: a phone
+	// may enroll and authorize a binding against a gateway whose operator has not finished setting
+	// up Firebase, and neither of those sends anything. What follows the credential is the send
+	// itself, and with no sender a server that asks for one is told the relay cannot send right
+	// now — which is true, and is worth retrying.
+	//
+	// Nothing here is reachable without a decision somebody already made. A server reaches nothing
+	// until the operator registers it and enables relay for it; a phone's enrollment wakes nobody
+	// until the phone itself authorizes a server.
+	relaying, err := pushrelay.New(pushrelay.Options{
+		Store:           from,
+		Send:            devices,
+		BindingLifetime: settings.Relay.Direct.BindingLifetime,
+		Enrollments: NewLimiter(settings.Relay.Direct.EnrollRate,
+			settings.Relay.Direct.EnrollBurst, now),
+		Servers: NewLimiter(settings.Relay.Direct.ServerRate,
+			settings.Relay.Direct.ServerBurst, now),
+		Bindings: NewLimiter(settings.Relay.Direct.DeviceRate,
+			settings.Relay.Direct.DeviceBurst, now),
+		Global: NewLimiter(settings.Relay.Direct.GlobalRate,
+			settings.Relay.Direct.GlobalBurst, now),
+		Caller: func(request *http.Request) string {
+			return caller(request.RemoteAddr, request.Header.Get("X-Forwarded-For"),
+				settings.TrustedProxies)
+		},
+		Log: log,
+		Now: now,
+	})
+	if err != nil {
+		// The configuration was validated already, so this is a programming error rather than an
+		// operator's mistake. Not serving the routes is the only safe answer: a half-built relay
+		// that enrolled installations it could not authorize would be worse than none.
+		log.Error("the push relay could not be built", "error", err)
+	} else {
+		readMux.Handle(pushrelay.Prefix+"/", relaying.Installations)
+	}
+
 	// The publisher side, on its own handler and its own listener. The credential is resolved
 	// once, before any method runs, and the limit counts against the publisher it resolved to
 	// rather than against an address: a publisher behind a changing address is still one publisher.
@@ -101,6 +147,12 @@ func Build(
 		),
 	))
 	publishMux.HandleFunc("/healthz", healthz)
+	if relaying != nil {
+		// The send is on the publisher listener because its caller is the same party as a
+		// publication's: a developer's own backend, outbound only, with a credential this operator
+		// issued. A deployment that keeps this listener on a private network keeps both.
+		publishMux.Handle(pushrelay.Prefix+"/", relaying.Servers)
+	}
 
 	// The operator's administration, on a third listener of its own and only when a password hash
 	// is configured. A deployment that configured none has no administrative surface at all: not a
@@ -129,6 +181,7 @@ func Build(
 		Read:    readMux,
 		Publish: publishMux,
 		Admin:   administration,
+		Relay:   relaying,
 		Drainer: drainer,
 		config:  settings,
 		storage: from,
@@ -163,8 +216,10 @@ func buildAdmin(
 		Secure:       strings.HasPrefix(settings.PublicURL, "https://"),
 		PublicURL:    settings.PublicURL,
 		PublisherURL: settings.Admin.PublisherURL,
-		Store:        adminStore{PublisherAdminStore: administers, FeedStore: from},
-		Logins:       NewLimiter(settings.Admin.LoginRate, settings.Admin.LoginBurst, now),
+		Store: adminStore{
+			PublisherAdminStore: administers, FeedStore: from, RelayStore: from,
+		},
+		Logins: NewLimiter(settings.Admin.LoginRate, settings.Admin.LoginBurst, now),
 		Caller: func(request *http.Request) string {
 			return caller(request.RemoteAddr, request.Header.Get("X-Forwarded-For"),
 				settings.TrustedProxies)
@@ -180,6 +235,10 @@ func buildAdmin(
 type adminStore struct {
 	storage.PublisherAdminStore
 	storage.FeedStore
+	// The relay's aggregate for a server's page. It is the contract's own read, so the admin
+	// surface gets counts and instants and has no query available to it that could return a device
+	// target, a push handle or an installation identity (SEE-144).
+	storage.RelayStore
 }
 
 // Run serves both APIs, drains the outbox and sweeps retention until ctx is done, and then shuts
@@ -285,12 +344,28 @@ func (g *Gateway) sweep(ctx context.Context) {
 	for {
 		// A pass on start as well, so a gateway that was down for a week does not serve a week of
 		// expired proposals until the first tick.
-		removed, err := g.storage.Sweep(ctx, g.now().Add(-g.config.Retention))
+		at := g.now()
+		removed, err := g.storage.Sweep(ctx, at.Add(-g.config.Retention))
 		switch {
 		case err != nil && ctx.Err() == nil:
 			g.log.Warn("retention sweep failed", "error", err)
 		case removed > 0:
 			g.log.Info("retention swept expired proposals", "removed", removed)
+		}
+		// The relay's own retention, on the same loop and for the same reason: it is one
+		// idempotent job, and what it bounds is grants that outlived being used rather than
+		// documents that outlived being interesting (SEE-144).
+		direct := g.config.Relay.Direct
+		ended, err := g.storage.SweepRelay(ctx, storage.RelayRetention{
+			Bindings: at,
+			Idle:     at.Add(-direct.InstallationIdle),
+			Unbound:  at.Add(-direct.UnboundGrace),
+		})
+		switch {
+		case err != nil && ctx.Err() == nil:
+			g.log.Warn("relay sweep failed", "error", err)
+		case ended > 0:
+			g.log.Info("relay swept abandoned grants", "removed", ended)
 		}
 		select {
 		case <-ctx.Done():

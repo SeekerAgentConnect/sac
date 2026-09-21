@@ -124,6 +124,7 @@ func (o *operator) register(publisherA, label string) string {
 	o.t.Helper()
 	response := o.post("/servers", url.Values{
 		"csrf": {o.csrf("/")}, "server": {publisherA}, "label": {label},
+		"publishing": {"on"},
 	})
 	_ = response.Body.Close()
 	if response.StatusCode != http.StatusSeeOther {

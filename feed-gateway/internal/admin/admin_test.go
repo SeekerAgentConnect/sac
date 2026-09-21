@@ -334,7 +334,7 @@ func TestMutationsNeedTheSessionsOwnToken(t *testing.T) {
 		{"csrf": {"not-the-token"}},
 		{"csrf": {token + "x"}},
 	} {
-		form := url.Values{"label": {"attempt"}, "generate": {"on"}}
+		form := url.Values{"label": {"attempt"}, "generate": {"on"}, "publishing": {"on"}}
 		for key, value := range wrong {
 			form[key] = value
 		}
@@ -347,7 +347,9 @@ func TestMutationsNeedTheSessionsOwnToken(t *testing.T) {
 
 	// A real token, from a page opened in another site's frame or posted from another origin.
 	request, err := http.NewRequest(http.MethodPost, one.server.URL+at+"/servers",
-		strings.NewReader(url.Values{"csrf": {token}, "label": {"x"}, "generate": {"on"}}.Encode()))
+		strings.NewReader(url.Values{
+			"csrf": {token}, "label": {"x"}, "generate": {"on"}, "publishing": {"on"},
+		}.Encode()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,10 +380,11 @@ func TestRegisteringThroughTheUIGrantsPublishingImmediately(t *testing.T) {
 	one.logIn()
 
 	response := one.post(at+"/servers", url.Values{
-		"csrf":   {one.token(at + "/")},
-		"server": {publisher},
-		"label":  {"copy trading"},
-		"host":   {"https://Example.com/pub/"},
+		"csrf":       {one.token(at + "/")},
+		"server":     {publisher},
+		"label":      {"copy trading"},
+		"publishing": {"on"},
+		"host":       {"https://Example.com/pub/"},
 	})
 	_ = response.Body.Close()
 	if response.StatusCode != http.StatusSeeOther ||
@@ -429,6 +432,7 @@ func TestARawCredentialIsShownOnceAndNeverAgain(t *testing.T) {
 	one.logIn()
 	response := one.post(at+"/servers", url.Values{
 		"csrf": {one.token(at + "/")}, "server": {publisher}, "label": {"once"},
+		"publishing": {"on"},
 	})
 	_ = response.Body.Close()
 
@@ -459,6 +463,7 @@ func TestRegisteringAnIdentityThatExistsIsRefusedWithoutChangingIt(t *testing.T)
 
 	response := one.post(at+"/servers", url.Values{
 		"csrf": {one.token(at + "/")}, "server": {publisher}, "label": {"second"},
+		"publishing": {"on"},
 	})
 	body := read(t, response)
 	_ = response.Body.Close()
@@ -490,11 +495,16 @@ func TestAnInvalidRegistrationIsRefusedAndNothingIsWritten(t *testing.T) {
 	one := newFixture(t, openLimiter{})
 	one.logIn()
 	for _, form := range []url.Values{
-		{"server": {"not-a-uuid"}, "label": {"x"}},
-		{"server": {publisher}},
-		{"server": {publisher}, "label": {"x"}, "host": {"javascript:alert(1)"}},
-		{"server": {publisher}, "label": {"x"}, "generate": {"on"}},
-		{"server": {publisher}, "label": {strings.Repeat("x", admin.MaxLabelBytes+1)}},
+		{"server": {"not-a-uuid"}, "label": {"x"}, "publishing": {"on"}},
+		{"server": {publisher}, "publishing": {"on"}},
+		{"server": {publisher}, "label": {"x"}, "host": {"javascript:alert(1)"}, "publishing": {"on"}},
+		{"server": {publisher}, "label": {"x"}, "generate": {"on"}, "publishing": {"on"}},
+		{"server": {publisher}, "label": {strings.Repeat("x", admin.MaxLabelBytes+1)},
+			"publishing": {"on"}},
+		// A registration that may do nothing is refused for the same reason a label is required:
+		// it is a row nobody asked for, and the operator is one checkbox away from meaning one
+		// of the two things it could have been (SEE-144).
+		{"server": {publisher}, "label": {"x"}},
 	} {
 		form["csrf"] = []string{one.token(at + "/")}
 		response := one.post(at+"/servers", form)
@@ -518,6 +528,7 @@ func TestAGeneratedServerIdIsSaidToBeBinding(t *testing.T) {
 	one.logIn()
 	response := one.post(at+"/servers", url.Values{
 		"csrf": {one.token(at + "/")}, "generate": {"on"}, "label": {"new publisher"},
+		"publishing": {"on"},
 	})
 	_ = response.Body.Close()
 
@@ -546,6 +557,7 @@ func TestRotationLeavesTheOldCredentialWorkingUntilItIsRevoked(t *testing.T) {
 
 	response := one.post(at+"/servers/"+publisher+"/rotate", url.Values{
 		"csrf": {one.token(at + "/servers/" + publisher)}, "label": {"second"},
+		"capability": {"publish"},
 	})
 	_ = response.Body.Close()
 	shown := one.get(at + "/reveal")
@@ -679,7 +691,7 @@ func TestTheListDescribesOnlyWhatIsDurablyKnown(t *testing.T) {
 	empty := one.get(at + "/")
 	body := read(t, empty)
 	_ = empty.Body.Close()
-	if !strings.Contains(body, "No publisher servers are registered") ||
+	if !strings.Contains(body, "No servers are registered") ||
 		!strings.Contains(body, "Add server") {
 		t.Fatal("the empty state does not offer to add a server")
 	}
@@ -705,7 +717,7 @@ func TestTheListDescribesOnlyWhatIsDurablyKnown(t *testing.T) {
 	page = one.get(at + "/")
 	body = read(t, page)
 	_ = page.Body.Close()
-	if !strings.Contains(body, "No active credentials") {
+	if !strings.Contains(body, "Publishing: no active credential") {
 		t.Fatal("the list does not say that a publisher has no active credentials")
 	}
 }
@@ -843,7 +855,8 @@ func registerDirectly(t *testing.T, documents *sqlite.Store, serverID, label str
 	t.Helper()
 	secret, hash := credential.New()
 	if _, err := documents.Register(context.Background(),
-		storage.Registration{ServerID: serverID, Label: label}, hash,
+		storage.Registration{ServerID: serverID, Label: label, Publishing: true},
+		storage.Publishing, hash,
 		time.Date(2026, 9, 20, 9, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}

@@ -42,7 +42,10 @@ func CredentialID(hash []byte) string { return credential.ID(hash) }
 // to an existing publisher is rotation, which is AddCredential and says so; doing it under the
 // name "register" would let a second registration of the same identity quietly hand out the
 // ability to publish as an existing publisher (SEE-141).
-func (s *Store) Register(ctx context.Context, registration Registration, hash []byte, at time.Time) (string, error) {
+func (s *Store) Register(ctx context.Context, registration Registration, capability storage.Capability, hash []byte, at time.Time) (string, error) {
+	if !capability.Valid() {
+		return "", fmt.Errorf("not a capability: %s", capability)
+	}
 	err := s.write(ctx, func(tx *Tx) error {
 		known, err := tx.PublisherExists(ctx, registration.ServerID)
 		if err != nil {
@@ -52,12 +55,13 @@ func (s *Store) Register(ctx context.Context, registration Registration, hash []
 			return fmt.Errorf("%w: %s", ErrPublisherExists, registration.ServerID)
 		}
 		if _, err := tx.tx.ExecContext(ctx,
-			`INSERT INTO publisher (server_id, label, host, created_at_ms) VALUES (?, ?, ?, ?)`,
-			registration.ServerID, registration.Label, registration.Host,
-			milliseconds(at)); err != nil {
+			`INSERT INTO publisher (server_id, label, host, created_at_ms, publishing, relaying)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			registration.ServerID, registration.Label, registration.Host, milliseconds(at),
+			flag(registration.Publishing), flag(registration.Relaying)); err != nil {
 			return fmt.Errorf("register publisher: %w", err)
 		}
-		return tx.addCredential(ctx, registration.ServerID, registration.Label, hash, at)
+		return tx.addCredential(ctx, registration.ServerID, registration.Label, capability, hash, at)
 	})
 	if err != nil {
 		return "", err
@@ -65,10 +69,43 @@ func (s *Store) Register(ctx context.Context, registration Registration, hash []
 	return CredentialID(hash), nil
 }
 
+// SetCapabilities is the operator turning a capability on or off. It writes no credential and
+// revokes none: what a server may do and what a credential is are separate facts, so a capability
+// switched off and on again finds the same credentials working, while a revoked credential never
+// works again. That difference is the whole reason these are two operations.
+func (s *Store) SetCapabilities(ctx context.Context, serverID string, publishing, relaying bool) error {
+	return s.write(ctx, func(tx *Tx) error {
+		outcome, err := tx.tx.ExecContext(ctx,
+			`UPDATE publisher SET publishing = ?, relaying = ? WHERE server_id = ?`,
+			flag(publishing), flag(relaying), serverID)
+		if err != nil {
+			return fmt.Errorf("set capabilities: %w", err)
+		}
+		changed, err := outcome.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if changed == 0 {
+			return fmt.Errorf("%w: %s", ErrNoPublisher, serverID)
+		}
+		return nil
+	})
+}
+
+func flag(set bool) int {
+	if set {
+		return 1
+	}
+	return 0
+}
+
 // AddCredential is a rotation: the publisher keeps publishing with what it has while the new
 // credential is deployed, and the old one is revoked afterwards. Both work in between, which is
 // the whole point of rotation being two steps rather than one.
-func (s *Store) AddCredential(ctx context.Context, serverID, label string, hash []byte, at time.Time) (string, error) {
+func (s *Store) AddCredential(ctx context.Context, serverID, label string, capability storage.Capability, hash []byte, at time.Time) (string, error) {
+	if !capability.Valid() {
+		return "", fmt.Errorf("not a capability: %s", capability)
+	}
 	err := s.write(ctx, func(tx *Tx) error {
 		known, err := tx.PublisherExists(ctx, serverID)
 		if err != nil {
@@ -77,7 +114,7 @@ func (s *Store) AddCredential(ctx context.Context, serverID, label string, hash 
 		if !known {
 			return fmt.Errorf("%w: %s", ErrNoPublisher, serverID)
 		}
-		return tx.addCredential(ctx, serverID, label, hash, at)
+		return tx.addCredential(ctx, serverID, label, capability, hash, at)
 	})
 	if err != nil {
 		return "", err
@@ -85,12 +122,16 @@ func (s *Store) AddCredential(ctx context.Context, serverID, label string, hash 
 	return CredentialID(hash), nil
 }
 
-func (t *Tx) addCredential(ctx context.Context, serverID, label string, hash []byte, at time.Time) error {
+// addCredential writes the capability with the credential rather than deriving it from the server.
+// A server may hold both kinds at once, and a credential that carried no capability would have to
+// be interpreted by whoever presented it — which is the caller, which is the one party that must
+// not decide what its own credential is for (SEE-144).
+func (t *Tx) addCredential(ctx context.Context, serverID, label string, capability storage.Capability, hash []byte, at time.Time) error {
 	if _, err := t.tx.ExecContext(ctx,
 		`INSERT INTO publisher_credential
-		   (credential_hash, server_id, label, created_at_ms, revoked_at_ms)
-		 VALUES (?, ?, ?, ?, NULL)`,
-		hash, serverID, label, milliseconds(at)); err != nil {
+		   (credential_hash, server_id, label, capability, created_at_ms, revoked_at_ms)
+		 VALUES (?, ?, ?, ?, ?, NULL)`,
+		hash, serverID, label, string(capability), milliseconds(at)); err != nil {
 		return fmt.Errorf("add credential: %w", err)
 	}
 	return nil
@@ -170,13 +211,21 @@ func (s *Store) Forget(ctx context.Context, serverID, channel string) error {
 }
 
 // PublisherFor resolves a credential hash to the server it publishes as, or "" when the hash is
-// unknown or revoked. It is the whole of what a credential says: which server, and nothing about
-// what may be done to it, because there is only one thing a publisher can do.
+// unknown, revoked, issued for something other than publishing, or belongs to a server whose
+// publishing the operator has switched off.
+//
+// Since SEE-144 there are two things a registered server can be given, so the capability is part
+// of the condition rather than assumed. A relay credential resolves to nothing here however valid
+// it is — the publisher API cannot be reached with one, and there is no branch anywhere that could
+// decide otherwise, because the query does not return a row.
 func (s *Store) PublisherFor(ctx context.Context, hash []byte) (string, error) {
 	var serverID string
 	err := s.reader.QueryRowContext(ctx,
-		`SELECT server_id FROM publisher_credential
-		 WHERE credential_hash = ? AND revoked_at_ms IS NULL`, hash).Scan(&serverID)
+		`SELECT c.server_id FROM publisher_credential c
+		   JOIN publisher p ON p.server_id = c.server_id
+		  WHERE c.credential_hash = ? AND c.revoked_at_ms IS NULL
+		    AND c.capability = ? AND p.publishing = 1`,
+		hash, string(storage.Publishing)).Scan(&serverID)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return "", nil
@@ -188,24 +237,18 @@ func (s *Store) PublisherFor(ctx context.Context, hash []byte) (string, error) {
 
 // Publishers lists what is registered, for the operator's tool.
 func (s *Store) Publishers(ctx context.Context) ([]Publisher, error) {
-	rows, err := s.reader.QueryContext(ctx,
-		`SELECT p.server_id, p.label, p.host, p.created_at_ms,
-		        (SELECT COUNT(*) FROM publisher_credential c
-		          WHERE c.server_id = p.server_id AND c.revoked_at_ms IS NULL)
-		   FROM publisher p ORDER BY p.created_at_ms, p.server_id`)
+	rows, err := s.reader.QueryContext(ctx, publisherColumns+
+		` FROM publisher p ORDER BY p.created_at_ms, p.server_id`)
 	if err != nil {
 		return nil, fmt.Errorf("list publishers: %w", err)
 	}
 	defer rows.Close()
 	var publishers []Publisher
 	for rows.Next() {
-		var publisher Publisher
-		var created int64
-		if err := rows.Scan(&publisher.ServerID, &publisher.Label, &publisher.Host, &created,
-			&publisher.Active); err != nil {
-			return nil, fmt.Errorf("list publishers: %w", err)
+		publisher, err := scanPublisher(rows)
+		if err != nil {
+			return nil, err
 		}
-		publisher.CreatedAt = instant(created)
 		publishers = append(publishers, publisher)
 	}
 	return publishers, rows.Err()
@@ -213,22 +256,46 @@ func (s *Store) Publishers(ctx context.Context) ([]Publisher, error) {
 
 // Publisher is one registration, or nil when the server has not been registered.
 func (s *Store) Publisher(ctx context.Context, serverID string) (*Publisher, error) {
-	var publisher Publisher
-	var created int64
-	err := s.reader.QueryRowContext(ctx,
-		`SELECT p.server_id, p.label, p.host, p.created_at_ms,
-		        (SELECT COUNT(*) FROM publisher_credential c
-		          WHERE c.server_id = p.server_id AND c.revoked_at_ms IS NULL)
-		   FROM publisher p WHERE p.server_id = ?`, serverID).
-		Scan(&publisher.ServerID, &publisher.Label, &publisher.Host, &created, &publisher.Active)
+	publisher, err := scanPublisher(s.reader.QueryRowContext(ctx,
+		publisherColumns+` FROM publisher p WHERE p.server_id = ?`, serverID))
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return nil, nil
 	case err != nil:
-		return nil, fmt.Errorf("read publisher: %w", err)
+		return nil, err
+	}
+	return &publisher, nil
+}
+
+// publisherColumns is one registration as both readers want it: what the operator recorded, what
+// they have enabled, and how many credentials of each kind would be accepted right now. The two
+// counts are separate because the two grants are, and a page that showed one number would let a
+// relay-only server look like it could publish.
+const publisherColumns = `SELECT p.server_id, p.label, p.host, p.created_at_ms,
+	        p.publishing, p.relaying,
+	        (SELECT COUNT(*) FROM publisher_credential c
+	          WHERE c.server_id = p.server_id AND c.revoked_at_ms IS NULL
+	            AND c.capability = 'publish'),
+	        (SELECT COUNT(*) FROM publisher_credential c
+	          WHERE c.server_id = p.server_id AND c.revoked_at_ms IS NULL
+	            AND c.capability = 'relay')`
+
+func scanPublisher(from scanner) (Publisher, error) {
+	var (
+		publisher            Publisher
+		created              int64
+		publishing, relaying int
+	)
+	if err := from.Scan(&publisher.ServerID, &publisher.Label, &publisher.Host, &created,
+		&publishing, &relaying, &publisher.Active, &publisher.ActiveRelay); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return publisher, err
+		}
+		return publisher, fmt.Errorf("read publisher: %w", err)
 	}
 	publisher.CreatedAt = instant(created)
-	return &publisher, nil
+	publisher.Publishing, publisher.Relaying = publishing == 1, relaying == 1
+	return publisher, nil
 }
 
 // Publications is how many documents a channel currently holds, which is the durable evidence the
@@ -246,7 +313,7 @@ func (s *Store) Publications(ctx context.Context, channel string) (int, error) {
 // Credentials lists one publisher's credentials, revoked ones included.
 func (s *Store) Credentials(ctx context.Context, serverID string) ([]Credential, error) {
 	rows, err := s.reader.QueryContext(ctx,
-		`SELECT credential_hash, server_id, label, created_at_ms, revoked_at_ms
+		`SELECT credential_hash, server_id, label, capability, created_at_ms, revoked_at_ms
 		   FROM publisher_credential WHERE server_id = ? ORDER BY created_at_ms`, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("list credentials: %w", err)
@@ -255,14 +322,17 @@ func (s *Store) Credentials(ctx context.Context, serverID string) ([]Credential,
 	var credentials []Credential
 	for rows.Next() {
 		var (
-			hash    []byte
-			created int64
-			revoked sql.NullInt64
-			one     Credential
+			hash       []byte
+			capability string
+			created    int64
+			revoked    sql.NullInt64
+			one        Credential
 		)
-		if err := rows.Scan(&hash, &one.ServerID, &one.Label, &created, &revoked); err != nil {
+		if err := rows.Scan(&hash, &one.ServerID, &one.Label, &capability, &created,
+			&revoked); err != nil {
 			return nil, fmt.Errorf("list credentials: %w", err)
 		}
+		one.Capability = storage.Capability(capability)
 		one.ID = CredentialID(hash)
 		one.CreatedAt = instant(created)
 		if revoked.Valid {

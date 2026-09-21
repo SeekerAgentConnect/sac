@@ -270,8 +270,19 @@ func TestTheStoreKeepsOnlyPublicFeedState(t *testing.T) {
 		}
 		names = append(names, name)
 	}
+	// The live schema, in full. Nothing may be added to it without being argued for here, by name,
+	// where someone would ask why — which is how the two relay tables got the paragraph they have.
+	//
+	// relay_installation and relay_binding are SEE-144's private push routing. They hold an
+	// installation identity this gateway minted, the hash of the secret that proves ownership of
+	// it, where to send a wake-up, and which registered servers one device agreed may wake it.
+	// They are not a return of the gateway-private request routing version 3 removed: there is no
+	// column here for a request, an approval, a signature, a result, a wallet, an amount or
+	// anything an owner decided, and a phone woken through this relay goes and reads its own
+	// server for all of that.
 	expected := []string{
 		"channel_sequence", "manifest", "notice", "proposal", "publisher", "publisher_credential",
+		"relay_binding", "relay_installation",
 	}
 	if fmt.Sprint(names) != fmt.Sprint(expected) {
 		t.Fatalf("the store holds %v, expected %v", names, expected)
@@ -453,6 +464,7 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 		documents,
 		documents,
 		dispatch.Logger{Log: slog.New(slog.NewTextHandler(io.Discard, nil))},
+		nil,
 		nil,
 		nil,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
