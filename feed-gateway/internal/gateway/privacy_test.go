@@ -232,7 +232,10 @@ func TestReadingAFeedWritesNothingDown(t *testing.T) {
 		tables = append(tables, name)
 	}
 	sort.Strings(tables)
-	expected := "[channel_sequence manifest notice proposal publisher publisher_credential]"
+	// Reading a public feed still writes nothing anywhere, the relay's own tables included: a feed
+	// read never touches them, and nothing in them is reachable from the feed API at all.
+	expected := "[channel_sequence manifest notice proposal publisher publisher_credential " +
+		"relay_binding relay_installation]"
 	if fmt.Sprint(tables) != expected {
 		t.Fatalf("the store holds %v, expected %s", tables, expected)
 	}

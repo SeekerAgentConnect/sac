@@ -8,8 +8,17 @@
 // still have no subscriber column and a public read still writes nothing.
 //
 // Schema version 3 removes the retired gateway-private routing tables; version 4 adds a
-// publisher's developer-supplied host as a column on the registration it belongs to (SEE-141). The
-// six public tables above remain the complete live schema, and a boundary test pins that whole.
+// publisher's developer-supplied host as a column on the registration it belongs to (SEE-141);
+// version 5 adds capabilities to a registration and its credentials, and the two records the push
+// relay needs (SEE-144).
+//
+// The relay's two tables are the first private state this store has held since version 3 retired
+// the old routing, and they are deliberately not a return of it. What was removed routed requests
+// and approvals: a server's document, an owner's decision, a result. What is added routes a
+// wake-up — an installation identity, where to send to, and which server a device agreed may send.
+// No request, no approval, no signature and nothing an owner decided is stored here, and a
+// boundary test pins the whole schema so a column that could carry one would have to be argued for
+// by name.
 //
 // # Why SQLite
 //
@@ -50,7 +59,7 @@ import (
 // Version is the schema this build writes and reads. There is one, and a file from a later version
 // is refused rather than guessed at: an old binary reading a new file could silently ignore a
 // column that a rule depends on.
-const Version = 4
+const Version = 5
 
 // ErrNewerSchema is returned by Open when the file was written by a later version of the gateway.
 var ErrNewerSchema = errors.New("the database was written by a newer gateway")
@@ -185,6 +194,8 @@ func (s *Store) migrate(ctx context.Context) error {
 				migration = schemaV3
 			case 4:
 				migration = schemaV4
+			case 5:
+				migration = schemaV5
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -395,6 +406,82 @@ DROP TABLE device_binding;
 // fact, and two spellings of it would be two branches in every reader.
 const schemaV4 = `
 ALTER TABLE publisher ADD COLUMN host TEXT NOT NULL DEFAULT '';
+`
+
+// Version 5 is the push relay (SEE-144): what a registered server is allowed to do, and the two
+// records that let one wake a phone it has never been given a target for.
+//
+// # Capabilities
+//
+// A registration gains two switches and a credential gains the one thing it may be used for.
+// Every row that already exists becomes exactly what it already was — publishing enabled, relay
+// not, every credential a publishing credential — so SEE-141's behaviour is unchanged by the
+// migration rather than restored by a special case. The two are separate columns rather than one
+// mode because a server may do both, and separate from the credential's capability because
+// enabling is the operator's reversible switch while revoking is the credential's end.
+//
+// # Installations
+//
+// One row per app installation that asked this gateway to route for it. It holds an opaque
+// identity the gateway minted, the SHA-256 of the secret that proves ownership of it, and the
+// current FCM target.
+//
+// The target is the one value in this database that cannot be a hash, because delivery needs it.
+// That is why ownership is a secret rather than the target itself: if knowing a target were enough
+// to change where it points, anyone who saw one could redirect a phone's wake-ups. It is also why
+// no read outside internal/pushrelay returns it.
+//
+// There is no owner, no account, no device name and no wallet here. The gateway learns that an
+// installation exists and where to wake it; that is the whole of what routing needs.
+//
+// # Bindings
+//
+// One row per authorization: this installation agreed that this registered server may wake it, for
+// one of the connections the phone holds directly. The push handle the server presents is stored
+// only as its SHA-256, beside an opaque binding ID that is safe to name in a log or a listing.
+//
+// The active index is partial on purpose. A phone that rebinds the same connection — after a
+// reconnection, a reinstall, or a gateway that lost its file — replaces its authorization instead
+// of adding a second one, so the set of live handles for one connection cannot grow without bound.
+// Revoked rows stay until the sweep so a revocation is visible while it matters.
+//
+// connection_ref is the phone's own identifier for the direct connection. It is never parsed,
+// never resolved and never shown to a server: it exists so a phone can reconcile its own bindings
+// without the gateway keeping a second index of anything.
+const schemaV5 = `
+ALTER TABLE publisher ADD COLUMN publishing INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE publisher ADD COLUMN relaying INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE publisher_credential ADD COLUMN capability TEXT NOT NULL DEFAULT 'publish';
+
+CREATE TABLE relay_installation (
+  installation_id TEXT PRIMARY KEY,
+  secret_hash     BLOB NOT NULL UNIQUE,
+  -- The current FCM target, or '' when none is held: "no target" and "the target is nothing" are
+  -- the same fact, and two spellings of it would be two branches in every reader.
+  target          TEXT NOT NULL,
+  created_at_ms   INTEGER NOT NULL,
+  -- The last time the installation authenticated. It is what the idle sweep reads, so a device
+  -- that was wiped or reinstalled stops holding a grant without anyone having to notice.
+  seen_at_ms      INTEGER NOT NULL
+);
+CREATE INDEX relay_installation_by_seen ON relay_installation(seen_at_ms);
+
+CREATE TABLE relay_binding (
+  handle_hash     BLOB PRIMARY KEY,
+  binding_id      TEXT NOT NULL UNIQUE,
+  installation_id TEXT NOT NULL REFERENCES relay_installation(installation_id) ON DELETE CASCADE,
+  server_id       TEXT NOT NULL REFERENCES publisher(server_id) ON DELETE CASCADE,
+  connection_ref  TEXT NOT NULL,
+  created_at_ms   INTEGER NOT NULL,
+  expires_at_ms   INTEGER NOT NULL,
+  revoked_at_ms   INTEGER,
+  sends           INTEGER NOT NULL DEFAULT 0,
+  last_sent_at_ms INTEGER
+);
+CREATE UNIQUE INDEX relay_binding_active
+  ON relay_binding(installation_id, server_id, connection_ref) WHERE revoked_at_ms IS NULL;
+CREATE INDEX relay_binding_by_server ON relay_binding(server_id);
+CREATE INDEX relay_binding_by_expiry ON relay_binding(expires_at_ms);
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

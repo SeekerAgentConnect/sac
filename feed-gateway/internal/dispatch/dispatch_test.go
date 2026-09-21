@@ -77,7 +77,8 @@ func openStore(t *testing.T) *sqlite.Store {
 	t.Cleanup(func() { _ = documents.Close() })
 	sum := sha256.Sum256([]byte("credential"))
 	if _, err := documents.Register(context.Background(),
-		sqlite.Registration{ServerID: publisher, Label: "test"}, sum[:], published); err != nil {
+		sqlite.Registration{ServerID: publisher, Label: "test", Publishing: true},
+		storage.Publishing, sum[:], published); err != nil {
 		t.Fatal(err)
 	}
 	return documents

@@ -1,11 +1,11 @@
 {{template "head" .}}
-<h1>Registered publisher servers</h1>
+<h1>Registered servers</h1>
 {{template "flash" .}}
 
 {{if .Publishers}}
 <table class="list">
   <thead>
-    <tr><th>Publisher</th><th>Server ID</th><th>Credentials</th><th>Feed</th><th>Registered</th></tr>
+    <tr><th>Server</th><th>Server ID</th><th>Enabled</th><th>Credentials</th><th>Feed</th><th>Push relay</th><th>Registered</th></tr>
   </thead>
   <tbody>
   {{range .Publishers}}
@@ -16,40 +16,62 @@
         {{with .Host}}<span class="sub"><a href="{{.}}" rel="noreferrer noopener external">{{.}}</a></span>{{end}}
       </td>
       <td><code class="id">{{.ServerID}}</code></td>
-      <td><span class="state {{if gt .Active 0}}good{{else}}warn{{end}}">{{.Credentials}}</span></td>
-      <td><span class="sub">{{.Published}}</span><br><code class="id">{{.Channel}}</code></td>
+      <td><span class="state">{{.Capabilities}}</span></td>
+      <td><span class="state {{if .Working}}good{{else}}warn{{end}}">{{.Credentials}}</span></td>
+      <td>{{if .Publishing}}<span class="sub">{{.Published}}</span><br><code class="id">{{.Channel}}</code>
+          {{else}}<span class="sub">not a feed publisher</span>{{end}}</td>
+      <td><span class="sub">{{.Relayed}}</span></td>
       <td><span class="sub">{{instant .Created}}</span></td>
     </tr>
   {{end}}
   </tbody>
 </table>
 {{else}}
-<p class="empty">No publisher servers are registered yet. Add one below — it takes effect
-immediately, and the gateway is not restarted.</p>
+<p class="empty">No servers are registered yet. Add one below — it takes effect immediately, and
+the gateway is not restarted.</p>
 {{end}}
 
 <h2 id="add">Add server</h2>
 <form method="post" action="{{at "/servers"}}" class="card">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
 
+  <fieldset class="capabilities">
+    <legend>What this server may do</legend>
+    <label class="check">
+      <input type="checkbox" name="publishing" value="on" {{if .Form.Publishing}}checked{{end}}>
+      Publish a public feed
+    </label>
+    <p class="hint">Its manifest and its proposals are served to anyone who adds its feed. This is
+    what a publisher registration has always been.</p>
+    <label class="check">
+      <input type="checkbox" name="relaying" value="on" {{if .Form.Relaying}}checked{{end}}>
+      Relay push to phones paired with it
+    </label>
+    <p class="hint">For an independently hosted direct MCP server. It lets that server wake a
+    phone that has explicitly authorized it, with a fixed “there is something to read” message and
+    nothing else. The gateway relays no request, approval, signature or result, and the developer
+    never receives this deployment's Firebase credential. A relay-only registration needs no
+    manifest and publishes no feed.</p>
+  </fieldset>
+
   <label for="server">Server ID</label>
   <input id="server" name="server" value="{{.Form.ServerID}}" spellcheck="false"
          autocomplete="off" placeholder="the UUID this publisher already uses">
-  <p class="hint">The publisher's existing server UUID. It is the identity its manifest and every
-  publication of its own must name.</p>
+  <p class="hint">The server's existing UUID. It is the identity its manifest and every
+  publication of its own must name, and the identity a phone names when it authorizes the relay.</p>
 
   <label class="check">
     <input type="checkbox" name="generate" value="on" {{if .Form.Generate}}checked{{end}}>
     This publisher has no server ID yet — generate one
   </label>
-  <p class="hint">A generated ID is shown once on the next page. The publisher must then use
+  <p class="hint">A generated ID is shown once on the next page. The server must then use
   <em>exactly</em> that ID in its own configuration and manifest; the gateway cannot change it
   for them.</p>
 
   <label for="label">Label</label>
   <input id="label" name="label" value="{{.Form.Label}}" maxlength="64" required
-         placeholder="what you call this publisher">
-  <p class="hint">Your own note. It is never served to a phone or to the publisher.</p>
+         placeholder="what you call this server">
+  <p class="hint">Your own note. It is never served to a phone or to the server.</p>
 
   <label for="host">Host / base URL <span class="sub">(optional)</span></label>
   <input id="host" name="host" value="{{.Form.Host}}" spellcheck="false" autocomplete="off"

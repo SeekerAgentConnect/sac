@@ -48,7 +48,8 @@ func hashOf(of string) []byte {
 func register(t *testing.T, documents *Store, serverID string) {
 	t.Helper()
 	if _, err := documents.Register(context.Background(),
-		Registration{ServerID: serverID, Label: "test"}, hashOf(serverID), published); err != nil {
+		Registration{ServerID: serverID, Label: "test", Publishing: true},
+		storage.Publishing, hashOf(serverID), published); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -292,7 +293,8 @@ func TestACredentialIsRotatedWithoutAnOutageAndRevokedForGood(t *testing.T) {
 
 	first := hashOf(publisher)
 	second := hashOf(publisher + " rotated")
-	if _, err := documents.AddCredential(ctx, publisher, "rotated", second, published); err != nil {
+	if _, err := documents.AddCredential(ctx, publisher, "rotated", storage.Publishing, second,
+		published); err != nil {
 		t.Fatal(err)
 	}
 	// Both work while the new one is being deployed. That overlap is the whole reason rotation is
@@ -339,7 +341,8 @@ func TestACredentialIsRotatedWithoutAnOutageAndRevokedForGood(t *testing.T) {
 
 func TestACredentialCannotBeAddedToAPublisherThatIsNotThere(t *testing.T) {
 	documents := openStore(t)
-	_, err := documents.AddCredential(context.Background(), stranger, "x", hashOf(stranger), published)
+	_, err := documents.AddCredential(context.Background(), stranger, "x", storage.Publishing,
+		hashOf(stranger), published)
 	if !errors.Is(err, ErrNoPublisher) {
 		t.Fatalf("a credential was created for an unregistered publisher: %v", err)
 	}
@@ -381,8 +384,9 @@ func TestANoticeSurvivesAProcessThatStopsBeforeSendingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, err := documents.Register(ctx, Registration{ServerID: publisher, Label: "test"},
-		hashOf(publisher), published); err != nil {
+	if _, err := documents.Register(ctx, Registration{
+		ServerID: publisher, Label: "test", Publishing: true,
+	}, storage.Publishing, hashOf(publisher), published); err != nil {
 		t.Fatal(err)
 	}
 	put(t, documents, proposal(publisher, proposalA, 1, published.Add(time.Hour)))
@@ -666,8 +670,8 @@ func TestTheHostColumnIsAddedWithoutLosingAnything(t *testing.T) {
 	// And a host given now is kept across a restart on the same file, which is the whole of what
 	// durability means here: the records survive as long as the file does.
 	if _, err := documents.Register(ctx, Registration{
-		ServerID: stranger, Label: "new", Host: "https://example.com",
-	}, hashOf(stranger), published); err != nil {
+		ServerID: stranger, Label: "new", Host: "https://example.com", Publishing: true,
+	}, storage.Publishing, hashOf(stranger), published); err != nil {
 		t.Fatal(err)
 	}
 	if err := documents.Close(); err != nil {

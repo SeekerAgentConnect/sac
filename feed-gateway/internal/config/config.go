@@ -103,6 +103,52 @@ type Relay struct {
 	// bounds what a publisher can cost this gateway.
 	Rate  float64
 	Burst int
+	// Direct is the private push routing for independently hosted direct servers (SEE-144). It is
+	// configured separately from the hint above because it is a different thing sent to a
+	// different kind of address on behalf of a different caller, and an operator raising one of
+	// these numbers is almost never asking to raise the other.
+	Direct Direct
+}
+
+// Direct is the gateway's relay for independently hosted direct MCP servers (SEE-144): the bounds
+// on who may ask for a wake-up, how often, and how long an authorization outlives being used.
+//
+// Unlike the two blocks above, this has no on/off switch of its own. The phone-facing half is
+// always served, because a phone may enroll and authorize a binding against a gateway whose
+// operator has not finished setting up Firebase, and neither of those actually sends anything. The
+// sending half follows BROADCAST_PUSH_CREDENTIALS: with no credential a server that asks for a
+// wake-up is told the relay cannot send right now, which is both true and worth retrying.
+//
+// Nothing here is reachable without an operator's decision either way. A server can present any
+// credential it likes and reach nothing until the operator registers it and enables relay for it
+// in the admin surface, and a phone can enroll all it likes without any server being able to wake
+// it until it authorizes one.
+type Direct struct {
+	// Sends per second per registered server, and the burst above it. It bounds what one
+	// developer's backend can cost the deployment.
+	ServerRate  float64
+	ServerBurst int
+	// Sends per second per binding, and the burst above it. This one is not an abuse bound: it is
+	// the coalescing. A wake-up says "read your own server" and the next one says the same, so
+	// above this rate the answer is that the device is already being woken.
+	DeviceRate  float64
+	DeviceBurst int
+	// Sends per second across the whole deployment, and the burst above it. The ceiling that holds
+	// whatever the per-server limits add up to.
+	GlobalRate  float64
+	GlobalBurst int
+	// Phone-facing calls per second per caller address, and the burst above it. Enrolling needs no
+	// credential — the caller has none yet — so this is what bounds it.
+	EnrollRate  float64
+	EnrollBurst int
+	// How long one binding lasts before the phone renews it, and how long an installation may go
+	// unauthenticated before it is forgotten. Both are what stops an abandoned grant from being
+	// permanent, and neither needs anything to happen in order to take effect.
+	BindingLifetime  time.Duration
+	InstallationIdle time.Duration
+	// How long an installation that has authorized nothing is kept. A real app binds within
+	// seconds of enrolling; one that never does has granted nobody anything.
+	UnboundGrace time.Duration
 }
 
 // Admin is the operator's password-protected administration, and an empty password hash is a
@@ -168,6 +214,28 @@ const (
 	// conversation rather than one set high enough never to come up.
 	DefaultPushRate  = 0.1
 	DefaultPushBurst = 5
+	// The direct relay (SEE-144). Two sends a second per server with twenty in hand matches the
+	// publisher limit's shape, because it bounds the same kind of caller: a backend that answers a
+	// burst of agent activity and then goes quiet. One wake-up every two seconds per device, with
+	// five in hand, is the coalescing — a phone woken more often than that is being told the same
+	// thing again. The global ceiling is what the deployment as a whole will spend on waking
+	// phones, and the enrollment limit is per address because an enrolling caller has no identity
+	// yet.
+	DefaultRelayServerRate  = 2
+	DefaultRelayServerBurst = 20
+	DefaultRelayDeviceRate  = 0.5
+	DefaultRelayDeviceBurst = 5
+	DefaultRelayGlobalRate  = 50
+	DefaultRelayGlobalBurst = 200
+	DefaultRelayEnrollRate  = 1
+	DefaultRelayEnrollBurst = 10
+	// A month is long enough that an ordinary phone renews on a reconciliation it was going to run
+	// anyway, and short enough that a device nobody has seen since stops being able to be woken
+	// without anyone deciding anything. Two months of silence forgets the installation itself, and
+	// a day is all an enrollment that authorized nothing is kept for.
+	DefaultRelayBindingLifetime  = 30 * 24 * time.Hour
+	DefaultRelayInstallationIdle = 60 * 24 * time.Hour
+	DefaultRelayUnboundGrace     = 24 * time.Hour
 	// The admin surface. The address is loopback like the other two, the route is the one the
 	// ticket names, and an hour is the same bound a listener's ticket gets: long enough that an
 	// operator finishes a registration without logging in twice, short enough that a session left
@@ -339,6 +407,33 @@ func Load(lookup Lookup) (*Config, []string) {
 	}
 	relay.Rate = number("BROADCAST_PUSH_RATE", DefaultPushRate, 0.001, 100)
 	relay.Burst = int(number("BROADCAST_PUSH_BURST", DefaultPushBurst, 1, 1000))
+	relay.Direct = Direct{
+		ServerRate:  number("BROADCAST_RELAY_SERVER_RATE", DefaultRelayServerRate, 0.001, 10000),
+		ServerBurst: int(number("BROADCAST_RELAY_SERVER_BURST", DefaultRelayServerBurst, 1, 100000)),
+		DeviceRate:  number("BROADCAST_RELAY_DEVICE_RATE", DefaultRelayDeviceRate, 0.001, 10000),
+		DeviceBurst: int(number("BROADCAST_RELAY_DEVICE_BURST", DefaultRelayDeviceBurst, 1, 100000)),
+		GlobalRate:  number("BROADCAST_RELAY_GLOBAL_RATE", DefaultRelayGlobalRate, 0.001, 100000),
+		GlobalBurst: int(number("BROADCAST_RELAY_GLOBAL_BURST", DefaultRelayGlobalBurst, 1, 1000000)),
+		EnrollRate:  number("BROADCAST_RELAY_ENROLL_RATE", DefaultRelayEnrollRate, 0.001, 10000),
+		EnrollBurst: int(number("BROADCAST_RELAY_ENROLL_BURST", DefaultRelayEnrollBurst, 1, 100000)),
+		BindingLifetime: time.Duration(number("BROADCAST_RELAY_BINDING_HOURS",
+			DefaultRelayBindingLifetime.Hours(), 1, 24*365)) * time.Hour,
+		InstallationIdle: time.Duration(number("BROADCAST_RELAY_IDLE_HOURS",
+			DefaultRelayInstallationIdle.Hours(), 1, 24*365)) * time.Hour,
+		UnboundGrace: time.Duration(number("BROADCAST_RELAY_UNBOUND_HOURS",
+			DefaultRelayUnboundGrace.Hours(), 1, 24*365)) * time.Hour,
+	}
+	// An installation has to outlive the authorizations it holds, or a phone would be forgotten
+	// while its bindings were still current and would find itself unable to renew them. Saying so
+	// here is better than discovering it as devices that quietly stop being woken.
+	if relay.Direct.InstallationIdle < relay.Direct.BindingLifetime {
+		note("BROADCAST_RELAY_IDLE_HOURS must be at least BROADCAST_RELAY_BINDING_HOURS: " +
+			"an installation forgotten while its bindings are still valid cannot renew them")
+	}
+	if relay.Direct.UnboundGrace > relay.Direct.InstallationIdle {
+		note("BROADCAST_RELAY_UNBOUND_HOURS must not exceed BROADCAST_RELAY_IDLE_HOURS: " +
+			"an installation that authorized nothing is kept for less time, not more")
+	}
 	config.Relay = relay
 
 	// The admin surface, on the same all-or-nothing terms as the two above (SEE-141). The password

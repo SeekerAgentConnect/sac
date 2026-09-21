@@ -3,7 +3,7 @@
 <h1>{{if eq .Action "registered"}}Registered {{$r.Label}}{{else}}New credential for {{$r.Label}}{{end}}</h1>
 
 <div class="card once">
-  <h2>Publisher credential</h2>
+  <h2>{{if .Relay}}Push relay credential{{else}}Publisher credential{{end}}</h2>
   <p class="warn-line"><strong>This is shown once.</strong> The gateway stores only its hash and
   cannot show it again. Copy it now and hand it to the developer over a channel you trust; if it is
   lost, add another credential and revoke this one.</p>
@@ -13,16 +13,21 @@
   </div>
   <p class="hint">Credential ID <code class="id">{{.CredentialID}}</code> — that is the handle you
   revoke it by. It is not the credential and cannot be turned back into one.</p>
+  <p class="hint">{{if .Relay}}This one relays push and nothing else. It cannot publish to the feed
+  and it is not an administrator credential; presenting it to the publisher API is refused.
+  {{else}}This one publishes to the feed and nothing else. It cannot relay push and it is not an
+  administrator credential; presenting it to the relay is refused.{{end}}</p>
 </div>
 
 {{if .Generated}}
-<p class="problem" role="alert">This server ID was generated here. The publisher must use
-<em>exactly</em> this ID in its own configuration and in its manifest — the gateway cannot assign it
-to them, and a publication that names a different ID is refused.</p>
+<p class="problem" role="alert">This server ID was generated here. The server must use
+<em>exactly</em> this ID in its own configuration, in its manifest, and where it tells a paired
+phone which relay identity to authorize — the gateway cannot assign it to them, and a publication
+or a binding that names a different ID is refused.</p>
 {{end}}
 
 <h2>What the developer configures</h2>
-<p class="hint">These belong in the publisher's own backend. Adding a publisher here needed no
+<p class="hint">These belong in the developer's own backend. Adding a server here needed no
 gateway restart and no change to the gateway's environment; how that backend loads its own
 configuration is the developer's choice.</p>
 <table class="facts">
@@ -39,13 +44,37 @@ configuration is the developer's choice.</p>
       <button class="copy" type="button" data-copy="{{$n.PublisherURL}}">Copy</button>
       <span class="sub">where the backend sends publications — outbound only; the gateway never
       calls the publisher</span></td></tr>
-  <tr><th>Channel / feed</th><td><code class="id">{{$n.Channel}}</code>
+  {{if $r.Publishing}}<tr><th>Channel / feed</th><td><code class="id">{{$n.Channel}}</code>
       <button class="copy" type="button" data-copy="{{$n.Channel}}">Copy</button>
-      <span class="sub">the public feed reference; it carries no secret and may be shared</span></td></tr>
+      <span class="sub">the public feed reference; it carries no secret and may be shared</span></td></tr>{{end}}
+  {{if $r.Relaying}}<tr><th>Relay endpoint</th><td><code class="id">{{$n.RelayCall}}</code>
+      <button class="copy" type="button" data-copy="{{$n.RelayCall}}">Copy</button>
+      <span class="sub">where the server asks for a wake-up, with its relay credential and the
+      handle a phone gave it</span></td></tr>
+  <tr><th>Relay origin</th><td><code class="id">{{$n.RelayURL}}</code>
+      <button class="copy" type="button" data-copy="{{$n.RelayURL}}">Copy</button>
+      <span class="sub">the gateway the phone must already be configured to trust; a phone never
+      registers with a relay a server names</span></td></tr>{{end}}
   {{with $r.Host}}<tr><th>Host recorded</th><td><a href="{{.}}" rel="noreferrer noopener external">{{.}}</a>
       <span class="sub">your note about this developer; not an address anything contacts</span></td></tr>{{end}}
 </table>
 
+{{if .Relay}}
+<h2>The one call</h2>
+<p class="hint">Ordinary authenticated HTTP, made by the developer's own server when one of its
+requests changes. It carries a handle the owner's phone gave that server directly, and a hint of
+one of two words; the gateway builds the message itself. The walkthrough is in
+<code>docs/guides/server-development.md</code>.</p>
+<pre class="calls"><code>POST {{$n.RelayCall}}
+Content-Type: application/json
+Authorization: Bearer &lt;the credential above&gt;
+
+{"version":"1","handle":"&lt;from the paired phone&gt;","hint":"created"}</code></pre>
+<p class="hint">This developer needs no Firebase project and no service-account credential. The
+gateway's own credential stays with this deployment and is never handed out; a relay credential
+grants one thing — asking that a phone which already authorized this server be told to go and read
+that server for itself.</p>
+{{else}}
 <h2>The first two calls</h2>
 <p class="hint">Ordinary authenticated HTTP. No SDK, no inbound port and no phone-facing server is
 needed — see the developer walkthrough in <code>docs/guides/server-development.md</code>.</p>
@@ -53,6 +82,7 @@ needed — see the developer walkthrough in <code>docs/guides/server-development
 POST {{$n.PublishCall}}
 Content-Type: application/json
 Authorization: Bearer &lt;the credential above&gt;</code></pre>
+{{end}}
 
-<p><a class="button" href="{{at "/servers/"}}{{$n.ServerID}}">Done — open this publisher</a></p>
+<p><a class="button" href="{{at "/servers/"}}{{$n.ServerID}}">Done — open this server</a></p>
 {{template "foot" .}}

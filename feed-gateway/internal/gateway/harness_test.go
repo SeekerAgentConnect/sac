@@ -36,6 +36,8 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1/gatewayv1connect"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/proposal/v1"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/pushrelay"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/relay"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/sqlite"
@@ -152,6 +154,41 @@ func (n *namer) Topic(channel string) string {
 
 func (n *namer) MostTopics() int { return n.most }
 
+// pusher is the relay's device sender in these tests (SEE-144): it records what would have been
+// sent and answers whatever outcome the test wants, so what is asserted is the gateway's own
+// behaviour — who is allowed to ask, what is bounded, and what happens to a target the endpoint
+// rejects — rather than Firebase's.
+type pusher struct {
+	mutex   sync.Mutex
+	sent    []push
+	outcome relay.Outcome
+	fail    error
+}
+
+type push struct {
+	target        string
+	timeSensitive bool
+}
+
+func (p *pusher) Send(_ context.Context, target string, timeSensitive bool) (relay.Outcome, error) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.sent = append(p.sent, push{target: target, timeSensitive: timeSensitive})
+	return p.outcome, p.fail
+}
+
+func (p *pusher) all() []push {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	return append([]push(nil), p.sent...)
+}
+
+func (p *pusher) answer(outcome relay.Outcome) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.outcome = outcome
+}
+
 type harness struct {
 	t          *testing.T
 	documents  *sqlite.Store
@@ -159,6 +196,7 @@ type harness struct {
 	dispatcher *recorder
 	grants     *grantor
 	topics     *namer
+	devices    *pusher
 	logs       *captured
 	read       *httptest.Server
 	publish    *httptest.Server
@@ -219,6 +257,22 @@ func built(
 		ReadBurst:        config.DefaultReadBurst,
 		PublishRate:      config.DefaultPublishRate,
 		PublishBurst:     config.DefaultPublishBurst,
+		// The relay's own bounds, at their defaults (SEE-144). They are here rather than left zero
+		// because a zero binding lifetime is a relay that cannot be built, and a test that silently
+		// got no relay routes would pass for the wrong reason.
+		Relay: config.Relay{Direct: config.Direct{
+			ServerRate:       config.DefaultRelayServerRate,
+			ServerBurst:      config.DefaultRelayServerBurst,
+			DeviceRate:       config.DefaultRelayDeviceRate,
+			DeviceBurst:      config.DefaultRelayDeviceBurst,
+			GlobalRate:       config.DefaultRelayGlobalRate,
+			GlobalBurst:      config.DefaultRelayGlobalBurst,
+			EnrollRate:       config.DefaultRelayEnrollRate,
+			EnrollBurst:      config.DefaultRelayEnrollBurst,
+			BindingLifetime:  config.DefaultRelayBindingLifetime,
+			InstallationIdle: config.DefaultRelayInstallationIdle,
+			UnboundGrace:     config.DefaultRelayUnboundGrace,
+		}},
 	}
 	for _, apply := range change {
 		apply(settings)
@@ -230,22 +284,27 @@ func built(
 		dispatcher: &recorder{},
 		grants:     &grantor{lifetime: time.Hour, most: 4},
 		topics:     &namer{environment: "production", most: 4},
+		devices:    &pusher{},
 		logs:       &captured{},
 		clock:      published,
 		path:       path,
 	}
 	log := slog.New(slog.NewJSONHandler(one.logs, nil))
 	var (
-		grants gateway.Grants
-		topics gateway.Topics
+		grants  gateway.Grants
+		topics  gateway.Topics
+		devices pushrelay.Sender
 	)
 	if streaming {
 		grants = one.grants
 	}
 	if relaying {
-		topics = one.topics
+		// Both halves of push come from one credential in a real deployment, so a harness without
+		// push has neither: no topic to name and nothing to send to a device.
+		topics, devices = one.topics, one.devices
 	}
-	service := gateway.Build(settings, documents, documents, one.dispatcher, grants, topics, log, one.now)
+	service := gateway.Build(settings, documents, documents, one.dispatcher, grants, topics,
+		devices, log, one.now)
 	one.drainer = service.Drainer
 	one.read = httptest.NewServer(service.Read)
 	one.publish = httptest.NewServer(service.Publish)
@@ -294,9 +353,11 @@ func (h *harness) register(serverID string) string {
 	credential := base64.RawURLEncoding.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(credential))
 	_, err := h.documents.Register(context.Background(),
-		sqlite.Registration{ServerID: serverID, Label: "test"}, sum[:], h.now())
+		sqlite.Registration{ServerID: serverID, Label: "test", Publishing: true},
+		storage.Publishing, sum[:], h.now())
 	if errors.Is(err, storage.ErrPublisherExists) {
-		_, err = h.documents.AddCredential(context.Background(), serverID, "test", sum[:], h.now())
+		_, err = h.documents.AddCredential(context.Background(), serverID, "test",
+			storage.Publishing, sum[:], h.now())
 	}
 	if err != nil {
 		h.t.Fatal(err)
