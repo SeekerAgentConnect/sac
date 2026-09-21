@@ -73,7 +73,8 @@ something.
 | Variable | Default | What it is |
 | --- | --- | --- |
 | `BROADCAST_PUBLIC_URL` | none; required | This gateway's own origin, as a phone's feed reference spells it. Every published manifest must name exactly this |
-| `BROADCAST_DATABASE_PATH` | none; required | The SQLite file. It is the authority for everything served |
+| `BROADCAST_DATABASE_PATH` | one of the two is required | The SQLite file. It is the authority for everything served |
+| `BROADCAST_DATABASE_URL` | one of the two is required | A Postgres URL instead of a file (SEE-145), for a deployment whose filesystem does not survive the container. Setting both is refused at startup |
 | `BROADCAST_READ_ADDRESS` | `127.0.0.1:8090` | Where the anonymous feed API listens |
 | `BROADCAST_PUBLISHER_ADDRESS` | `127.0.0.1:8091` | Where the publisher API listens. It must differ from the read address |
 | `BROADCAST_RETENTION_HOURS` | 168 | How long past its own expiry a proposal is still served |
@@ -130,7 +131,8 @@ and the two share this store and these semantics rather than shelling out to eac
 | `forget --server <uuid> --yes` | Removes a publisher and everything it published |
 | `password [--password <text>]` | Reads a password from standard input and prints the hash to configure as `BROADCAST_ADMIN_PASSWORD_HASH`. Touches no database, so it works before one exists |
 
-`--database`, or `BROADCAST_DATABASE_PATH`, must be the file the gateway reads: pointing the two at
+`--database`, or `BROADCAST_DATABASE_PATH`, or `BROADCAST_DATABASE_URL`, must be the database the
+gateway reads — a Postgres URL is recognized by its scheme and anything else is a file. Pointing the two at
 different files is the one mistake that looks like a credential that does not work. The tool can run
 while the gateway is up, and what it changes the admin page sees immediately, because there is one
 file and one set of rules.
@@ -171,7 +173,8 @@ call.
 | `cmd/feed-gatewayctl` | The operator's tool, and its tests — which also pin that the tool and the gateway agree about what a credential is |
 | `internal/config` | The environment, validated, and the canonical form of a gateway origin |
 | `internal/rules` | What the gateway accepts, as pure functions: the document rules, the ordering rules, and what a withdrawal leaves behind. The phone's own rules, on this side |
-| `internal/storage` | The durable contracts used by publication, reads, delivery, maintenance, and the local operator tool. Business code depends on these interfaces and contains no SQL or SQLite import |
+| `internal/storage` | The durable contracts used by publication, reads, delivery, maintenance, and the local operator tool. Business code depends on these interfaces and contains no SQL and no import of either implementation |
+| `internal/storage/postgres` | The second implementation of those contracts (SEE-145), for a deployment with no durable filesystem. Its own schema lineage, its own tables in a non-public schema with row-level security on, and one transaction-scoped advisory lock per write, which is SQLite's single-writer rule made to hold across processes |
 | `internal/storage/sqlite` | The only place that speaks SQL: the six public publication/configuration/outbox tables, transaction ownership, the one-way schema-v3 retirement migration, and v4's added publisher host column |
 | `internal/gateway` | Public feed and authenticated publisher handlers; credential interceptors, limiters, cursors, the strict JSON codec and boundary tests. It also composes the admin surface and opens its listener when one is configured |
 | `internal/admin` | The operator's browser administration (SEE-141): routes, sessions, CSRF, the pages and the two assets. Built only when a password is configured |
@@ -185,6 +188,21 @@ call.
 
 `go test ./...` covers the service contract and its retirement boundary. Nothing in the gateway
 tests is mocked that the binary does not also use.
+
+The Postgres store's tests need a real Postgres and skip without one, because what they check is
+that this dialect answers the same questions SQLite does and the only thing that knows is the
+database:
+
+```sh
+docker run -d --name gateway-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=gatewaytest \
+  -p 55432:5432 postgres:17-alpine
+
+BROADCAST_TEST_DATABASE_URL='postgres://postgres:test@127.0.0.1:55432/gatewaytest?sslmode=disable' \
+  go test ./internal/storage/postgres/
+```
+
+**Point it at a throwaway database.** Each case truncates every table so it starts from nothing, so
+a URL naming a deployment's own database would empty it.
 
 Beside them, `pnpm test:integration` runs this **binary** against both publisher templates and two
 subscribers, with a privacy sweep of everything the run wrote (SEE-98,
@@ -206,7 +224,7 @@ hosted invitation route is absent from both surviving listeners.
 | `internal/gateway/http_publication_test.go` | A plain HTTP client, with no generated binding, publishes a manifest, creates and updates a feed item, withdraws it, and reads the authoritative result |
 | `internal/gateway/read_test.go` | A phone reading a feed with no credential, a walk that stays stable while the feed moves, the caching answers, what a reader cannot ask for, and expiry and retention |
 | `internal/gateway/privacy_test.go` | The three ways to try to submit something about a person, the read listener's lack of any write, that no credential reaches a log line, and that reading writes nothing down |
-| `internal/gateway/boundary_test.go` | No HTTP client in shipped business code, no SQLite import outside composition/storage tests, SQL only in `internal/storage/sqlite`, pure rules, no provider named, the six live schema tables, the contract's fields and reservations, two listeners only, no listener serving another role's procedures, and 404s for every retired private RPC and invitation route |
+| `internal/gateway/boundary_test.go` | No HTTP client in shipped business code, no store implementation imported outside composition/storage tests, SQL only in `internal/storage/sqlite` and `internal/storage/postgres`, pure rules, no provider named, the live schema tables, the contract's fields and reservations, two listeners only, no listener serving another role's procedures, and 404s for every retired private RPC and invitation route |
 | `internal/gateway/fixtures_test.go` | The committed cross-runtime fixtures are what the gateway actually answers |
 | `internal/gateway/internal_test.go` | Page tokens, the limiter's arithmetic and bound, who a call is counted against, and that every problem has a code |
 | `internal/gateway/ticket_test.go` | Which channels a listener is granted, which are left out, what is refused, and that asking to listen writes nothing down |

@@ -277,7 +277,7 @@ func (g *Gateway) Run(ctx context.Context) error {
 		"read", reading.Addr().String(),
 		"publish", publishing.Addr().String(),
 		"origin", g.config.PublicURL,
-		"database", g.config.DatabasePath,
+		"database", g.config.Database(),
 	}
 	if g.Admin != nil {
 		administration := &http.Server{

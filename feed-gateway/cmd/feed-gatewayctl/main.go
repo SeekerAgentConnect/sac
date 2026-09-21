@@ -24,9 +24,10 @@
 //	feed-gatewayctl forget   --server <uuid> --yes
 //	feed-gatewayctl password [--password <text>]
 //
-// The database is --database, or BROADCAST_DATABASE_PATH, which is the same variable the gateway
-// reads: pointing the two at different files is the one mistake that would look like a credential
-// that does not work.
+// The database is --database, or BROADCAST_DATABASE_PATH, or BROADCAST_DATABASE_URL: the same
+// variables the gateway reads, because pointing the two at different databases is the one mistake
+// that would look like a credential that does not work. A Postgres URL is recognized by its scheme
+// and anything else is a file, so one flag names either (SEE-145).
 package main
 
 import (
@@ -43,8 +44,36 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/credential"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/postgres"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/sqlite"
 )
+
+// operates is what this tool needs of a store: the operator's own surface, and the close. It is
+// the administration contract and nothing else, so no command here can read a publication, a relay
+// target or anything a phone authorized.
+type operates interface {
+	storage.PublisherAdminStore
+	Close() error
+}
+
+// openStore opens whichever store the operator named. A Postgres URL is recognized by its scheme;
+// everything else is a path, which is what it has always been.
+func openStore(ctx context.Context, database string) (operates, error) {
+	if strings.HasPrefix(database, "postgres://") || strings.HasPrefix(database, "postgresql://") {
+		return postgres.Open(ctx, database)
+	}
+	return sqlite.Open(database)
+}
+
+// configuredDatabase is the default for --database. A deployment sets one of the two, and
+// configuration refuses both, so reading the path first and the URL after it needs no precedence
+// rule of its own.
+func configuredDatabase() string {
+	if path := strings.TrimSpace(os.Getenv("BROADCAST_DATABASE_PATH")); path != "" {
+		return path
+	}
+	return strings.TrimSpace(os.Getenv("BROADCAST_DATABASE_URL"))
+}
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
@@ -67,7 +96,9 @@ const usage = `feed-gatewayctl manages the publishers a feed gateway accepts.
   forget   --server <uuid> --yes              remove a server and everything it published
   password [--password <text>]                print a hash for BROADCAST_ADMIN_PASSWORD_HASH
 
-  --database <path>   the gateway's database, or BROADCAST_DATABASE_PATH
+  --database <path|url>
+                      the gateway's database: a file, or a Postgres URL. Taken from
+                      BROADCAST_DATABASE_PATH or BROADCAST_DATABASE_URL when it is not given
 
 A credential works for one capability and only while that capability is enabled (SEE-144).
 "publish" is the public feed; "relay" lets an independently hosted direct server wake a phone
@@ -127,8 +158,8 @@ func run(arguments []string, out io.Writer) error {
 	command, arguments := arguments[0], arguments[1:]
 
 	flags := flag.NewFlagSet("feed-gatewayctl "+command, flag.ContinueOnError)
-	database := flags.String("database", os.Getenv("BROADCAST_DATABASE_PATH"),
-		"the gateway's database file")
+	database := flags.String("database", configuredDatabase(),
+		"the gateway's database: a file, or a Postgres URL")
 	serverID := flags.String("server", "", "the publisher's server ID (a lowercase UUID)")
 	label := flags.String("label", "", "a note for the operator; never served to anyone")
 	credentialID := flags.String("credential", "", "a credential ID, as `list` prints it")
@@ -151,15 +182,17 @@ func run(arguments []string, out io.Writer) error {
 	}
 
 	if strings.TrimSpace(*database) == "" {
-		return fmt.Errorf("--database, or BROADCAST_DATABASE_PATH, must name the gateway's database")
+		return fmt.Errorf(
+			"--database, or BROADCAST_DATABASE_PATH or BROADCAST_DATABASE_URL, " +
+				"must name the gateway's database")
 	}
 
-	documents, err := sqlite.Open(*database)
+	ctx := context.Background()
+	documents, err := openStore(ctx, strings.TrimSpace(*database))
 	if err != nil {
 		return err
 	}
 	defer func() { _ = documents.Close() }()
-	ctx := context.Background()
 	now := time.Now()
 
 	switch command {

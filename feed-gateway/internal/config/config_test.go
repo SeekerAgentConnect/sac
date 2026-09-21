@@ -373,3 +373,68 @@ func TestAnAdminPathIsCanonical(t *testing.T) {
 // "a-long-enough-operator-password" and protects nothing: the surface it would unlock exists only
 // in a test process with a temporary database.
 const adminHash = "pbkdf2-sha256.600000.AAECAwQFBgcICQoLDA0ODw.NRmRbsgnhpQ6PSECNLWXDtn5wAhq5ZbeBnMdCof_kME"
+
+// A gateway keeps its state in one place, and which place is the whole of how a deployment chooses
+// its storage implementation (SEE-145).
+func TestOneDatabaseIsNamedAndOnlyOne(t *testing.T) {
+	// A Postgres URL alone is a complete configuration: the path is what a platform deployment
+	// stops setting, not something it has to keep naming as well.
+	settings, problems := Load(environment(map[string]string{
+		"BROADCAST_PUBLIC_URL":   "https://feeds.example.com",
+		"BROADCAST_DATABASE_URL": "postgres://gateway@db.example:5432/gateway",
+	}))
+	if problems != nil {
+		t.Fatalf("a gateway configured with a database URL was refused: %v", problems)
+	}
+	if settings.DatabaseURL == "" || settings.DatabasePath != "" {
+		t.Fatalf("the URL was read as %q and the path as %q",
+			settings.DatabaseURL, settings.DatabasePath)
+	}
+
+	// Both is refused rather than resolved by precedence. They are two authorities for the same
+	// state, and a deployment that set both has already lost track of which one holds it.
+	both := complete()
+	both["BROADCAST_DATABASE_URL"] = "postgres://gateway@db.example:5432/gateway"
+	refused, problems := Load(environment(both))
+	if refused != nil || len(problems) != 1 {
+		t.Fatalf("naming two databases was accepted: %v", problems)
+	}
+	if !strings.Contains(problems[0], "BROADCAST_DATABASE_URL") ||
+		!strings.Contains(problems[0], "BROADCAST_DATABASE_PATH") {
+		t.Fatalf("the refusal does not name both: %v", problems)
+	}
+
+	// And neither is still a problem, named so that an operator learns the second variable exists.
+	_, problems = Load(environment(map[string]string{
+		"BROADCAST_PUBLIC_URL": "https://feeds.example.com",
+	}))
+	if len(problems) != 1 || !strings.Contains(problems[0], "BROADCAST_DATABASE_URL") {
+		t.Fatalf("naming no database gave %v", problems)
+	}
+}
+
+// What a log line may say about the database, which is never the credential in it.
+func TestTheDatabaseIsDescribedWithoutItsCredential(t *testing.T) {
+	settings, problems := Load(environment(map[string]string{
+		"BROADCAST_PUBLIC_URL": "https://feeds.example.com",
+		"BROADCAST_DATABASE_URL": "postgres://postgres.abcdefgh:s3cr3t-p4ssw0rd" +
+			"@aws-0-eu-west-2.pooler.supabase.com:5432/postgres?sslmode=require",
+	}))
+	if problems != nil {
+		t.Fatalf("refused: %v", problems)
+	}
+	described := settings.Database()
+	for _, secret := range []string{"s3cr3t-p4ssw0rd", "postgres.abcdefgh", "@"} {
+		if strings.Contains(described, secret) {
+			t.Fatalf("the description carries %q: %s", secret, described)
+		}
+	}
+	if !strings.Contains(described, "aws-0-eu-west-2.pooler.supabase.com:5432") {
+		t.Fatalf("the description does not say which host: %s", described)
+	}
+	// A file deployment still describes itself as the file.
+	file, _ := Load(environment(complete()))
+	if file.Database() != "/data/broadcast.db" {
+		t.Fatalf("a file deployment describes itself as %q", file.Database())
+	}
+}

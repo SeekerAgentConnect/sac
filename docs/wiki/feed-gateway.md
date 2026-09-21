@@ -606,11 +606,11 @@ than one service with a check per method make the separation survive a routing m
 makes it survive one more. A deployment can keep the page off the internet entirely and reach it
 through a tunnel, and the shipped ingress routes one prefix to it or the operator deletes that block.
 
-**The password is configuration, not a row.** That is what makes the documented recovery work: the
-demo's SQLite file can be replaced by a redeployment, and the operator can still log in to the
-replacement and register the publishers again, with no database console involved. It is stretched
-with PBKDF2-HMAC-SHA256 from Go's own `crypto/pbkdf2`, which keeps the module list at the three it
-has had since SEE-90, and `feed-gatewayctl password` is what prints one.
+**The password is configuration, not a row.** That is what makes the documented recovery work: a
+gateway that lost its database can be logged in to anyway, and the publishers registered again, with
+no database console involved. It mattered most when the hosted demo's file went with every redeploy;
+it still matters for any deployment that loses a volume. It is stretched with PBKDF2-HMAC-SHA256
+from Go's own `crypto/pbkdf2` rather than a dependency, and `feed-gatewayctl password` prints one.
 
 **A publishing credential is never an administrator credential.** They are different kinds of secret
 resolved by different code: 32 random bytes compared by SHA-256 on one side, a chosen password
@@ -656,23 +656,53 @@ which is how it gets back under it.
 
 ## Where it is kept
 
-SQLite, one local file, one process
-([`internal/storage/sqlite/store.go`](../../feed-gateway/internal/storage/sqlite/store.go)). Business
-and delivery code depend on the focused interfaces in
-[`internal/storage`](../../feed-gateway/internal/storage), while the SQLite package alone owns SQL,
-schema migration, and transaction mechanics. That seam makes the dependency explicit; it does not
-make the current file remotely deployable.
+In one of two databases, and the deployment picks which by naming it. Business and delivery code
+depend on the focused interfaces in
+[`internal/storage`](../../feed-gateway/internal/storage); each implementation alone owns SQL, schema
+migration and transaction mechanics, and a boundary test keeps it that way. Nothing above the store
+knows which one it has — which is why the second one was a new package rather than an edit.
+
+| Set | Store | For |
+| --- | --- | --- |
+| `BROADCAST_DATABASE_PATH` | [`internal/storage/sqlite`](../../feed-gateway/internal/storage/sqlite/store.go) | A self-hosted gateway. One file, one process, nothing to operate |
+| `BROADCAST_DATABASE_URL` | [`internal/storage/postgres`](../../feed-gateway/internal/storage/postgres/store.go) | A deployment whose filesystem does not survive the container (SEE-145) |
+
+Setting both is refused at startup. They are two authorities for the same state, and a deployment
+that named both has already lost track of which one holds it.
+
+### Why SQLite is still the default answer
 
 The store has one hard requirement — a publication and its notice must commit together — and a
 single-file transactional database does that with nothing to operate. The driver is pure Go, so the
-image carries no libc and the tests need no service. The load is bounded documents at human rates;
-Postgres would be a second thing to run, back up and reason about, and if a deployment ever outgrows
-one process the documents here are the authority either way: Centrifugo's and Redis's history
-(SEE-91) is a recovery cache, never a source of truth.
+image carries no libc and the tests need no service. The load is bounded documents at human rates.
+For a gateway on a host with a disk, that is the whole design, and §4 of
+[`deploy/README.md`](../../deploy/README.md) is how the file is backed up.
 
-The file must stay on local storage, not NFS or another network filesystem. A future remote SQL
-implementation requires a new adapter, an explicit distributed consistency design, and an operator
-data migration; changing a connection string is not a supported deployment mode.
+The file must stay on local storage, not NFS or another network filesystem.
+
+### Why Postgres exists as well
+
+Some platforms have no disk to put a file on. The hosted App Platform demo is one: its container is
+replaced rather than restarted on every deploy, and the file went with it — taking every
+registration, every credential hash and every relay binding. That was documented as an accepted
+limitation and recovered from by re-registering publishers; SEE-145 removed the limitation instead
+of describing it.
+
+The port keeps the schema's meaning rather than modernizing it: every instant is the same
+millisecond integer, because the comparisons the two stores must answer identically are a proposal's
+expiry, a notice's backoff, a binding's window and the three relay cutoffs, and a type change would
+have altered what those mean on the way past.
+
+Two things the file gave for free are rebuilt explicitly. SQLite serializes writes with one
+connection and an immediate transaction lock, so two publications cannot decide against the same
+stale revision; the Postgres store takes one transaction-scoped advisory lock at the start of every
+write, which is the same rule and now holds *across* processes rather than only within one. And the
+tables live in a schema of the service's own with row-level security on and no policy, because a
+managed Postgres may serve its public schema to anyone holding a publishable key, and this database
+holds credential hashes and the current push target of every enrolled phone.
+
+Neither store changes what is authoritative: Centrifugo's and Redis's history (SEE-91) is a recovery
+cache, never a source of truth.
 
 Eight tables. Six are the public feed: a publisher, its credential hashes, its manifest, its
 proposals, the channel's sequence, and the outbox. **There is no table, and no column, for a
@@ -744,9 +774,9 @@ and `TestAFileFromALaterVersionIsRefused` pins the rollback guard.
 - **The operator can administer publishers in a browser** (SEE-141), when the deployment configures a
   password for it. It is the CLI's operations through the CLI's store, on a third listener, behind
   one password, and it is off entirely in a deployment that configures none.
-- **It does not make the demo's storage durable.** On the current App Platform deployment the SQLite
-  file can go with a replaced container, taking the registrations and credential hashes with it. The
-  admin page is what makes recovering from that a login and a few forms rather than a console
-  session; it is not a claim that the data will be there.
+- **It did not make the demo's storage durable** — that was SEE-145, which moved the hosted
+  deployment's state into Postgres. What the admin page did was make recovering from a lost database
+  a login and a few forms rather than a console session, and it is still what an operator uses to
+  register a publisher; it was never a claim that the data would be there.
 - Not a user-account platform, not an execution-result database, not an order processor, not a
   message broker of its own, and no financial endpoint of any kind.

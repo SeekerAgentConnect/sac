@@ -18,9 +18,6 @@
       "Bash(curl:*)"
     ]
   },
-  "enabledPlugins": {
-    "linear@claude-plugins-official": true
-  },
   "hooks": {
     "SessionStart": [
       {
@@ -66,5 +63,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "linear@claude-plugins-official": true,
+    "supabase@claude-plugins-official": true
   }
 }

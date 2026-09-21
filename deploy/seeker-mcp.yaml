@@ -8,8 +8,7 @@ ingress:
   - component:
       name: agent-connect
     match:
-      authority:
-        exact: ""
+      authority: {}
       path:
         prefix: /
 name: seeker-mcp

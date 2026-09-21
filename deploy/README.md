@@ -249,10 +249,18 @@ port, and the `edge` Caddy already routes `/admin*` to it. `BROADCAST_ADMIN_PASS
 declared **empty** there on purpose — no credential is committed — so turning the page on is one
 encrypted app-level secret and a redeploy.
 
-Ephemeral storage is not fixed by any of this. If a container replacement discards the gateway's
-SQLite file, the registrations and credential hashes go with it; the operator logs in to the
-replacement — the password is deployment configuration, not a database row — and registers the
-publishers again. Lost publisher secrets cannot be recovered from hashes.
+Ephemeral storage is not fixed by any of this, and on App Platform it is not fixed by the
+filesystem either — there is no disk to attach. What fixes it is keeping the state somewhere else:
+that app sets `BROADCAST_DATABASE_URL` to a managed Postgres and sets no `BROADCAST_DATABASE_PATH`
+at all, so a container replacement discards nothing (SEE-145). Registrations, credential hashes and
+relay bindings are all on the other side of that connection.
+
+A gateway that does keep a file is unaffected by any of this and stays the recommended shape for a
+self-hosted deployment: the Compose presets name the file and an explicit volume, and §4's backup
+and restore is how that file survives. Should a file deployment lose its volume anyway, the recovery
+is unchanged — the operator logs in to the replacement, because the password is deployment
+configuration rather than a database row, and registers the publishers again. Lost publisher secrets
+cannot be recovered from hashes in either shape.
 
 ## 5. Combined host: feed, direct server, and both demos
 
