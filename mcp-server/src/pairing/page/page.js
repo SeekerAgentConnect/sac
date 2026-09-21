@@ -7,6 +7,7 @@ import {
   decodePairingFragment,
   parseLegacyPairingQuery,
   pairingUriFromCode,
+  REPLACEMENT_WARNING,
   sameOrigin,
 } from "./payload.js";
 
@@ -72,21 +73,7 @@ export async function bootPairingPage(env) {
   const qrHost = must(env.document, "qr");
   qrHost.replaceChildren();
   qrHost.setAttribute("data-pairing-uri", pairingUri);
-  if (env.loadQr !== undefined) {
-    const qr = await env.loadQr();
-    const svg = qr.renderSVG(pairingUri, { ecc: "M", border: 2, pixelSize: 4 });
-    qrHost.setAttribute("data-qr-svg", svg);
-    const Parser = env.DOMParser ?? globalThis.DOMParser;
-    if (typeof Parser === "function") {
-      const parsed = new Parser().parseFromString(svg, "image/svg+xml");
-      const root = parsed.documentElement;
-      if (root !== null && root.tagName.toLowerCase() === "svg") {
-        root.setAttribute("role", "img");
-        root.setAttribute("aria-label", "QR code for the pairing URI");
-        qrHost.appendChild(env.document.importNode?.(root, true) ?? root);
-      }
-    }
-  }
+  qrHost.hidden = true;
 
   const expired =
     payload !== undefined && Date.parse(payload.expires_at) < Date.now();
@@ -97,6 +84,7 @@ export async function bootPairingPage(env) {
 
   show(ready);
   env.onReady?.(pairingUri);
+  await renderQr(env, qrHost, pairingUri);
   return {
     state: expired ? "expired" : "ready",
     pairingUri,
@@ -167,10 +155,50 @@ function renderWarning(document, payload) {
 }
 
 function warningText(payload) {
-  if (payload?.warning !== undefined && payload.warning.length > 0) {
-    return payload.warning;
+  if (payload?.warning === REPLACEMENT_WARNING) {
+    return REPLACEMENT_WARNING;
   }
   return CONDITIONAL_REPLACEMENT_WARNING;
+}
+
+async function renderQr(env, qrHost, pairingUri) {
+  const fallback = env.document.getElementById("qr-fallback");
+  const fail = () => {
+    qrHost.replaceChildren();
+    qrHost.hidden = true;
+    if (fallback !== null) {
+      setText(
+        fallback,
+        "The QR code could not be generated. Use the button or copy the pairing code instead.",
+      );
+      fallback.hidden = false;
+    }
+  };
+  if (fallback !== null) {
+    fallback.hidden = true;
+    fallback.textContent = "";
+  }
+  if (env.loadQr === undefined) {
+    return;
+  }
+  try {
+    const qr = await env.loadQr();
+    const svg = qr.renderSVG(pairingUri, { ecc: "M", border: 2, pixelSize: 4 });
+    qrHost.setAttribute("data-qr-svg", svg);
+    const Parser = env.DOMParser ?? globalThis.DOMParser;
+    if (typeof Parser === "function") {
+      const parsed = new Parser().parseFromString(svg, "image/svg+xml");
+      const root = parsed.documentElement;
+      if (root !== null && root.tagName.toLowerCase() === "svg") {
+        root.setAttribute("role", "img");
+        root.setAttribute("aria-label", "QR code for the pairing URI");
+        qrHost.appendChild(env.document.importNode?.(root, true) ?? root);
+        qrHost.hidden = false;
+      }
+    }
+  } catch {
+    fail();
+  }
 }
 
 function renderCompatibility(document, legacyQuery) {

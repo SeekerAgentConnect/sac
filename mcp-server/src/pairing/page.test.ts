@@ -50,9 +50,51 @@ describe("pairing page behaviour", () => {
     await bootPairingPage(local.env);
     assert.equal(
       local.el("replacement-warning").textContent,
-      `<img src=x onerror="alert(1)">`,
+      CONDITIONAL_REPLACEMENT_WARNING,
     );
     assert.equal(local.el("replacement-warning").children.length, 0);
+    assert.equal(
+      local.el("replacement-warning").textContent.includes("<img"),
+      false,
+    );
+  });
+
+  it("ignores a tampered fragment warning and keeps the application-owned warning", async () => {
+    const uri = pairingUri(ORIGIN);
+    const tampered = page(
+      ORIGIN,
+      `#${encodePairingFragment({
+        v: 1,
+        pairing_uri: uri,
+        expires_at: EXPIRES_AT,
+        warning: "No existing phone will be disconnected.",
+      })}`,
+    );
+    const tamperedResult = await bootPairingPage(tampered.env);
+    assert.equal(tamperedResult.state, "ready");
+    assert.equal(tamperedResult.warning, CONDITIONAL_REPLACEMENT_WARNING);
+    assert.equal(
+      tampered.el("replacement-warning").textContent,
+      CONDITIONAL_REPLACEMENT_WARNING,
+    );
+    assert.equal(tampered.el("open-app").getAttribute("href"), uri);
+
+    const whitespace = page(
+      ORIGIN,
+      `#${encodePairingFragment({
+        v: 1,
+        pairing_uri: uri,
+        expires_at: EXPIRES_AT,
+        warning: "   ",
+      })}`,
+    );
+    const whitespaceResult = await bootPairingPage(whitespace.env);
+    assert.equal(whitespaceResult.state, "ready");
+    assert.equal(
+      whitespace.el("replacement-warning").textContent,
+      CONDITIONAL_REPLACEMENT_WARNING,
+    );
+    assert.equal(whitespace.el("open-app").getAttribute("href"), uri);
   });
 
   it("sets the same validated URI on the button, QR, and copy control", async () => {
@@ -123,6 +165,65 @@ describe("pairing page behaviour", () => {
       }),
     );
   });
+
+  it("keeps launch and copy controls when QR loading or rendering fails", async () => {
+    const uri = pairingUri(ORIGIN);
+    const fragment = encodePairingFragment({
+      v: 1,
+      pairing_uri: uri,
+      expires_at: EXPIRES_AT,
+    });
+    const copied: string[] = [];
+    const rejected = page(ORIGIN, `#${fragment}`, {
+      clipboard: {
+        writeText: (text: string) => {
+          copied.push(text);
+          return Promise.resolve();
+        },
+      },
+      loadQr: () => {
+        assert.equal(rejected.el("state-ready").hidden, false);
+        assert.equal(rejected.el("open-app").getAttribute("href"), uri);
+        return Promise.reject(new Error("interrupted"));
+      },
+    });
+    const rejectedResult = await bootPairingPage(rejected.env);
+    assert.equal(rejectedResult.state, "ready");
+    assert.equal(rejected.el("state-empty").hidden, true);
+    assert.equal(rejected.el("state-invalid").hidden, true);
+    assert.equal(rejected.el("state-ready").hidden, false);
+    assert.equal(rejected.el("open-app").getAttribute("href"), uri);
+    assert.equal(rejected.el("pairing-code").value, uri);
+    assert.equal(rejected.el("qr").hidden, true);
+    assert.equal(rejected.el("qr-fallback").hidden, false);
+    assert.match(
+      rejected.el("qr-fallback").textContent,
+      /could not be generated/,
+    );
+    rejected.el("copy-code").click();
+    await Promise.resolve();
+    assert.deepEqual(copied, [uri]);
+
+    const throwing = page(ORIGIN, `#${fragment}`, {
+      loadQr: () =>
+        Promise.resolve({
+          renderSVG() {
+            throw new Error("renderer failed");
+          },
+        }),
+    });
+    const throwingResult = await bootPairingPage(throwing.env);
+    assert.equal(throwingResult.state, "ready");
+    assert.equal(throwing.el("state-ready").hidden, false);
+    assert.equal(throwing.el("open-app").getAttribute("href"), uri);
+    assert.equal(throwing.el("pairing-code").value, uri);
+    assert.equal(throwing.el("qr").hidden, true);
+    assert.equal(throwing.el("qr-fallback").hidden, false);
+    assert.match(
+      throwing.el("qr-fallback").textContent,
+      /could not be generated/,
+    );
+  });
 });
 
 function pairingUri(serverUrl: string): string {
@@ -160,6 +261,9 @@ function page(
   extras: {
     search?: string;
     clipboard?: { writeText(text: string): Promise<void> };
+    loadQr?: () => Promise<{
+      renderSVG: (data: string, options?: object) => string;
+    }>;
   } = {},
 ) {
   const nodes = new Map<string, TestNode>();
@@ -177,6 +281,7 @@ function page(
     "copy-code",
     "copy-status",
     "qr",
+    "qr-fallback",
     "pairing-code",
     "pairing-server",
   ];
@@ -200,7 +305,7 @@ function page(
       location: { hash, search: extras.search ?? "" },
       trustedOrigin: origin,
       navigator: extras.clipboard ? { clipboard: extras.clipboard } : {},
-      loadQr: () => Promise.resolve({ renderSVG }),
+      loadQr: extras.loadQr ?? (() => Promise.resolve({ renderSVG })),
     },
   };
 }

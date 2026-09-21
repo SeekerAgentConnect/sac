@@ -222,9 +222,14 @@ warning with the link:
 > Connecting a phone with this link will disconnect the previously paired phone and cancel its
 > pending requests. Creating or opening this link does not disconnect it.
 
-Expiry and replacement fields on the page are display hints from the link, not live server state.
-The page does not claim a code is unused, already redeemed, or that no phone will be replaced. When
-that information is missing, it shows a conditional warning instead.
+The page never renders fragment-supplied warning text. It shows the application-owned replacement
+warning only when the fragment carries that exact wording; any other value, including a missing or
+tampered field, becomes the conditional warning. Fragment expiry is a display hint, not live server
+state. The page does not claim a code is unused, already redeemed, or that no phone will be
+replaced.
+
+If the QR library fails to load or render, the warning, app-opening button, and copy/manual
+fallback stay visible.
 
 Old query-format HTTPS links (`/pair?v=1&token=…`) still open the page. The token in that form was
 already in the request target and may appear in access logs; converting it locally to a fragment

@@ -169,7 +169,8 @@ function pairingPageHtml(origin: string): string {
 <button type="button" class="secondary" id="copy-code">Copy pairing code</button>
 </div>
 <p id="copy-status" class="hint" aria-live="polite"></p>
-<div id="qr"></div>
+<div id="qr" hidden></div>
+<p id="qr-fallback" class="hint" hidden></p>
 <label for="pairing-code">Pairing code</label>
 <textarea id="pairing-code" spellcheck="false"></textarea>
 <p class="hint">The code is single-use and private. This page does not know whether a phone is paired now, whether the code was already used, or whether pairing will succeed. Opening the app is not guaranteed in every browser.</p>
