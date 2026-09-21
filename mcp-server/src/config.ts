@@ -12,8 +12,10 @@ import { isAbsolute, join, resolve } from "node:path";
 import {
   MAX_EXPIRES_IN_SECONDS,
   MIN_EXPIRES_IN_SECONDS,
+  invalidRelayReason,
   invalidServerUrlReason,
   normalizeServerUrl,
+  type RelayConfiguration,
 } from "@seeker-vault/server-sdk";
 
 import { isSecureEndpoint, type OAuthConfig } from "./oauth.ts";
@@ -88,6 +90,16 @@ export interface SidecarConfig {
    * separately through Application Default Credentials and never enter this configuration.
    */
   readonly fcmProjectId?: string;
+  /**
+   * The gateway push relay (SEE-144), for a server this operator hosts themselves and does not
+   * want to give a Firebase project. All three of RELAY_URL, RELAY_SERVER_ID and RELAY_CREDENTIAL
+   * are set together or none is, and configuring it beside FCM_PROJECT_ID is refused: both would
+   * fire on the same committed update, so a phone would be woken twice for one change.
+   *
+   * The credential is a secret and behaves like one here: it is read, never logged, and never
+   * printed back by any startup line.
+   */
+  readonly relay?: RelayConfiguration;
   /**
    * Settings this configuration read and will not act on, named so startup can say so (SEE-87).
    *
@@ -265,6 +277,14 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
   const tlsCertificatePath = env.SIDECAR_TLS_CERT_PATH?.trim() || undefined;
   const tlsPrivateKeyPath = env.SIDECAR_TLS_KEY_PATH?.trim() || undefined;
   const fcmProjectId = firebaseProjectId(env, problems);
+  const relay = relayConfiguration(env, problems);
+  if (fcmProjectId !== undefined && relay !== undefined) {
+    problems.push(
+      "FCM_PROJECT_ID and RELAY_URL configure two ways of sending the same wake-up. " +
+        "Set one: FCM_PROJECT_ID sends through this server's own Firebase project, " +
+        "RELAY_URL asks a gateway operator to send on its behalf.",
+    );
+  }
   if (
     (tlsCertificatePath === undefined) !==
     (tlsPrivateKeyPath === undefined)
@@ -342,6 +362,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     ...(tlsCertificatePath === undefined ? {} : { tlsCertificatePath }),
     ...(tlsPrivateKeyPath === undefined ? {} : { tlsPrivateKeyPath }),
     ...(fcmProjectId === undefined ? {} : { fcmProjectId }),
+    ...(relay === undefined ? {} : { relay }),
     ...(ignoredSettings.length === 0 ? {} : { ignoredSettings }),
   };
 }
@@ -493,6 +514,48 @@ function firebaseProjectId(env: Env, problems: string[]): string | undefined {
     return undefined;
   }
   return value;
+}
+
+/**
+ * RELAY_URL, RELAY_SERVER_ID and RELAY_CREDENTIAL: the gateway that wakes this server's paired
+ * phones on its behalf (SEE-144).
+ *
+ * All three or none, on the same all-or-nothing terms the gateway applies to its own push
+ * settings and for the same reason: two of the three is a server that looks like it wakes phones
+ * and never does, and the only sign of it would be an owner who stops getting notifications.
+ *
+ * No problem here ever repeats the credential. A configuration error is printed at startup, and a
+ * startup line is pasted into places an operator does not control.
+ */
+function relayConfiguration(
+  env: Env,
+  problems: string[],
+): RelayConfiguration | undefined {
+  const relayUrl = env.RELAY_URL?.trim();
+  const serverId = env.RELAY_SERVER_ID?.trim();
+  const credential = env.RELAY_CREDENTIAL?.trim();
+  const given = [relayUrl, serverId, credential].filter(
+    (value) => value !== undefined && value !== "",
+  );
+  if (given.length === 0) return undefined;
+  if (given.length < 3) {
+    problems.push(
+      "RELAY_URL, RELAY_SERVER_ID and RELAY_CREDENTIAL must all be set together: " +
+        "they are one setting in three variables, and a partial one sends nothing.",
+    );
+    return undefined;
+  }
+  const configuration: RelayConfiguration = {
+    relayUrl: relayUrl as string,
+    serverId: serverId as string,
+    credential: credential as string,
+  };
+  const problem = invalidRelayReason(configuration);
+  if (problem !== undefined) {
+    problems.push(`The gateway relay is not configured correctly: ${problem}.`);
+    return undefined;
+  }
+  return configuration;
 }
 
 /**

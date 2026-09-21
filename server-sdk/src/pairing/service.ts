@@ -1,8 +1,8 @@
 /**
  * The phone's PairingService over Connect (docs/protocol.md#pairing). Pair takes the one-use
  * pairing token as its bearer credential. GetConnectionCapabilities, GetServerManifest,
- * SetFcmToken, and RevokeConnection take the phone's own credential. No credential or FCM target
- * reaches the log.
+ * SetFcmToken, SetRelayHandle, and RevokeConnection take the phone's own credential. No
+ * credential, FCM target or relay handle reaches the log.
  */
 import type { ConnectRouter } from "@connectrpc/connect";
 
@@ -10,6 +10,7 @@ import { bearerToken } from "../phone-auth.ts";
 import { RequestError } from "../gen/seekervault/request/v1/request_pb.js";
 import {
   PairingService,
+  type RelayCapability,
   type UpdateCapability,
 } from "../gen/seekervault/request/v1/service_pb.js";
 import type { ServerManifest } from "../gen/seekervault/server/v1/manifest_pb.js";
@@ -25,6 +26,11 @@ export function pairingRoutes(
   // the manifest names the URL the phone reaches — so like updateCapability it is read per call
   // rather than captured, and the only way it is absent is before anything can ask for it.
   serverManifest: () => ServerManifest | undefined = () => undefined,
+  // Where this server's wake-ups come from, when it asks a gateway to send them on its behalf
+  // (SEE-144). Absent when it sends its own push, or none. It is advertised over this
+  // authenticated connection because that is the only place a phone will take it from: the
+  // identity in it is the identity of the server the phone actually paired with.
+  relayCapability: () => RelayCapability | undefined = () => undefined,
 ): (router: ConnectRouter) => void {
   return (router) =>
     router.service(PairingService, {
@@ -75,7 +81,7 @@ export function pairingRoutes(
             new RequestFailure(RequestError.NOT_FOUND, "no such connection"),
           );
         }
-        return { updates: updateCapability() };
+        return { updates: updateCapability(), relay: relayCapability() };
       },
 
       getServerManifest(request, context) {
@@ -153,6 +159,56 @@ export function pairingRoutes(
         } catch (error) {
           if (!(error instanceof RequestFailure)) throw error;
           log(`rejected SetFcmToken: ${error.code}`);
+          throw connectError(error);
+        }
+      },
+
+      setRelayHandle(request, context) {
+        const connectionId = pairing.authenticate(
+          bearerToken(context.requestHeader.get("authorization")),
+        );
+        if (connectionId === undefined) {
+          log(
+            "rejected SetRelayHandle: missing, wrong, or revoked phone credential",
+          );
+          throw connectError(
+            new RequestFailure(
+              RequestError.UNAUTHENTICATED,
+              "a valid phone credential is required",
+            ),
+          );
+        }
+        if (request.connectionId !== connectionId) {
+          throw connectError(
+            new RequestFailure(RequestError.NOT_FOUND, "no such connection"),
+          );
+        }
+        try {
+          let changed: boolean;
+          if (request.update.case === "handle") {
+            changed = pairing.setRelayHandle(
+              connectionId,
+              request.update.value,
+            );
+          } else if (request.update.case === "clearIfHandle") {
+            changed = pairing.clearRelayHandle(
+              connectionId,
+              request.update.value,
+            );
+          } else {
+            throw new RequestFailure(
+              RequestError.INVALID_PARAMETERS,
+              "one relay handle update is required",
+            );
+          }
+          log(
+            `connection ${connectionId} relay authorization ` +
+              (changed ? "updated" : "unchanged"),
+          );
+          return {};
+        } catch (error) {
+          if (!(error instanceof RequestFailure)) throw error;
+          log(`rejected SetRelayHandle: ${error.code}`);
           throw connectError(error);
         }
       },

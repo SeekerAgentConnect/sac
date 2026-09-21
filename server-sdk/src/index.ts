@@ -65,6 +65,22 @@ export {
   FCM_INVALIDATION_DATA,
   FCM_INVALIDATION_TTL_MS,
 } from "./push/invalidation.ts";
+// The gateway relay (SEE-144). GatewayRelaySender is exported because a host may want to build
+// one itself; the dispatcher is not, because it is wired by openDirectServer and there is nothing
+// a caller does with one.
+export type {
+  RelayConfiguration,
+  RelayHint,
+  RelayInvalidation,
+  RelayOutcome,
+  RelaySender,
+} from "./push/relay.ts";
+export {
+  GatewayRelaySender,
+  RELAY_PATH,
+  RELAY_PROTOCOL_VERSION,
+  invalidRelayReason,
+} from "./push/relay.ts";
 export { SERVER_PROTOCOL_VERSION } from "./manifest.ts";
 export type { PairingCode, ParsedPairingUri } from "./pairing/uri.ts";
 export type { PairedPhone } from "./storage/pairing-store.ts";

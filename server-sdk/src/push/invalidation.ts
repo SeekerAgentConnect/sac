@@ -2,10 +2,17 @@
  * Content-free FCM invalidations (SAW-056). A push is only a hint to run authenticated Sync: it
  * names no request, state, connection, credential, policy, message, transaction, or approval.
  */
+import { CoalescingInvalidations } from "./coalescing.ts";
 import type { PairingStore } from "../storage/pairing-store.ts";
-import type { CommittedRequestUpdate } from "../storage/update-store.ts";
 
-/** The Firebase-compatible, content-free shape an optional delivery adapter receives. */
+/**
+ * The Firebase-compatible, content-free shape an optional delivery adapter receives.
+ *
+ * The target is `fid`: a Firebase installation, which is what the phone's registration is and what
+ * the Admin SDK sends when this field is set. It is not interchangeable with a gateway relay
+ * handle — that one addresses an authorization at a gateway rather than a device, is useless
+ * without that gateway's relay credential, and has a type and a field of its own (./relay.ts).
+ */
 export interface InvalidationMessage {
   readonly fid: string;
   readonly data: Readonly<Record<string, string>>;
@@ -49,62 +56,26 @@ export function invalidationMessage(
  * Coalesces committed changes by connection, then sends one best-effort hint to its current target.
  * A creation upgrades the whole batch to high priority; later state-only changes stay normal.
  */
-export class FcmInvalidationDispatcher {
+export class FcmInvalidationDispatcher extends CoalescingInvalidations {
   readonly #pairing: PairingStore;
   readonly #sender: InvalidationSender;
   readonly #log: (message: string) => void;
-  readonly #pending = new Map<string, boolean>();
-  #draining: Promise<void> | undefined;
-  #closed = false;
 
   constructor(
     pairing: PairingStore,
     sender: InvalidationSender,
     log: (message: string) => void,
   ) {
+    super();
     this.#pairing = pairing;
     this.#sender = sender;
     this.#log = log;
   }
 
-  invalidate(update: CommittedRequestUpdate): void {
-    if (this.#closed) return;
-    this.#pending.set(
-      update.connectionId,
-      (this.#pending.get(update.connectionId) ?? false) || update.timeSensitive,
-    );
-    this.#schedule();
-  }
-
-  /** Stops accepting work and lets already-queued sends settle before Firebase shuts down. */
-  async close(): Promise<void> {
-    this.#closed = true;
-    await this.#draining;
-  }
-
-  #schedule(): void {
-    if (this.#draining !== undefined) return;
-    this.#draining = Promise.resolve()
-      .then(() => this.#drain())
-      .finally(() => {
-        this.#draining = undefined;
-        if (!this.#closed && this.#pending.size > 0) this.#schedule();
-      });
-  }
-
-  async #drain(): Promise<void> {
-    while (this.#pending.size > 0) {
-      const batch = [...this.#pending];
-      this.#pending.clear();
-      await Promise.all(
-        batch.map(([connectionId, timeSensitive]) =>
-          this.#send(connectionId, timeSensitive),
-        ),
-      );
-    }
-  }
-
-  async #send(connectionId: string, timeSensitive: boolean): Promise<void> {
+  protected override async deliver(
+    connectionId: string,
+    timeSensitive: boolean,
+  ): Promise<void> {
     const token = this.#pairing.fcmToken(connectionId);
     if (token === undefined) return;
     try {

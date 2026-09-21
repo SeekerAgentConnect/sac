@@ -30,6 +30,13 @@ const REVOKED_OUTCOME = toBinary(
 );
 const MAX_DEVICE_NAME_BYTES = 128;
 export const MAX_FCM_TOKEN_BYTES = 4096;
+/**
+ * A gateway push handle is short by construction — the gateway mints 32 random bytes as base64url
+ * — and the bound is here so that a value which is not one costs nothing to refuse. It is
+ * deliberately much smaller than an FCM target's: the two are different kinds of value, and a
+ * limit that fitted both would be a limit that checked neither.
+ */
+export const MAX_RELAY_HANDLE_BYTES = 256;
 const { PENDING, CANCELLED } = RequestState;
 
 export interface PairingStoreOptions {
@@ -313,6 +320,76 @@ export class PairingStore {
   }
 
   /**
+   * The active connection's current gateway push handle, for the relay dispatcher.
+   *
+   * It is a different value from fcmToken and is read through a different method on purpose: a
+   * server sends through one of the two, never both, and a caller that reached for the wrong one
+   * would wake nobody while looking like it had.
+   */
+  relayHandle(connectionId: string): string | undefined {
+    const row = this.#db
+      .prepare(
+        `SELECT relay_handle FROM connections
+         WHERE connection_id = ? AND revoked_at_ms IS NULL`,
+      )
+      .get(connectionId);
+    return row === undefined || row.relay_handle === null
+      ? undefined
+      : text(row.relay_handle);
+  }
+
+  /** Registers or atomically replaces one active connection's opaque gateway push handle. */
+  setRelayHandle(connectionId: string, handle: string): boolean {
+    if (invalidRelayHandleReason(handle) !== undefined) {
+      throw new RequestFailure(
+        RequestError.INVALID_PARAMETERS,
+        `handle must be 1 to ${MAX_RELAY_HANDLE_BYTES} visible ASCII bytes`,
+      );
+    }
+    return transaction(this.#db, () => {
+      const row = this.#db
+        .prepare(
+          `SELECT relay_handle FROM connections
+           WHERE connection_id = ? AND revoked_at_ms IS NULL`,
+        )
+        .get(connectionId);
+      if (row === undefined) {
+        throw new RequestFailure(RequestError.NOT_FOUND, "no such connection");
+      }
+      if (row.relay_handle === handle) return false;
+      this.#db
+        .prepare(
+          "UPDATE connections SET relay_handle = ? WHERE connection_id = ?",
+        )
+        .run(handle, connectionId);
+      return true;
+    });
+  }
+
+  /**
+   * Clears a handle only if it is still current, so a refusal about an older send cannot erase a
+   * handle the phone re-authorized meanwhile. It is the same compare-and-delete clearFcmToken
+   * does, for the same race.
+   */
+  clearRelayHandle(connectionId: string, expectedHandle: string): boolean {
+    if (invalidRelayHandleReason(expectedHandle) !== undefined) {
+      throw new RequestFailure(
+        RequestError.INVALID_PARAMETERS,
+        `handle must be 1 to ${MAX_RELAY_HANDLE_BYTES} visible ASCII bytes`,
+      );
+    }
+    return transaction(this.#db, () => {
+      const { changes } = this.#db
+        .prepare(
+          `UPDATE connections SET relay_handle = NULL
+           WHERE connection_id = ? AND revoked_at_ms IS NULL AND relay_handle = ?`,
+        )
+        .run(connectionId, expectedHandle);
+      return Number(changes) === 1;
+    });
+  }
+
+  /**
    * Revokes a connection. Its credential stops working at once, and its PENDING requests are
    * cancelled. Requests the owner already approved stay as they are, and agents can still read
    * every request.
@@ -324,7 +401,7 @@ export class PairingStore {
   #revoke(connectionId: string, now: number): Revocation {
     const { changes } = this.#db
       .prepare(
-        `UPDATE connections SET revoked_at_ms = ?, fcm_token = NULL
+        `UPDATE connections SET revoked_at_ms = ?, fcm_token = NULL, relay_handle = NULL
          WHERE connection_id = ? AND revoked_at_ms IS NULL`,
       )
       .run(now, connectionId);
@@ -400,6 +477,21 @@ export function invalidFcmTokenReason(token: string): string | undefined {
   for (let index = 0; index < token.length; index += 1) {
     const code = token.charCodeAt(index);
     if (code < 0x21 || code > 0x7e) return "invalid FCM target";
+  }
+  return undefined;
+}
+
+/**
+ * Gateway push handles are opaque, bounded, header-safe values. The reason never repeats the
+ * handle — a refusal that quoted one would put an authorization somewhere somebody reads.
+ */
+export function invalidRelayHandleReason(handle: string): string | undefined {
+  const bytes = Buffer.byteLength(handle, "utf8");
+  if (bytes < 1 || bytes > MAX_RELAY_HANDLE_BYTES)
+    return "invalid relay handle";
+  for (let index = 0; index < handle.length; index += 1) {
+    const code = handle.charCodeAt(index);
+    if (code < 0x21 || code > 0x7e) return "invalid relay handle";
   }
   return undefined;
 }

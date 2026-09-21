@@ -140,6 +140,14 @@ export declare type GetConnectionCapabilitiesResponse = Message<"seekervault.req
    * @generated from field: seekervault.request.v1.UpdateCapability updates = 1;
    */
   updates?: UpdateCapability | undefined;
+
+  /**
+   * Absent when this server sends its own push, or none. Present when it asks the phone to
+   * authorize a gateway to wake it on its behalf (SEE-144).
+   *
+   * @generated from field: seekervault.request.v1.RelayCapability relay = 2;
+   */
+  relay?: RelayCapability | undefined;
 };
 
 /**
@@ -147,6 +155,52 @@ export declare type GetConnectionCapabilitiesResponse = Message<"seekervault.req
  * Use `create(GetConnectionCapabilitiesResponseSchema)` to create a new message.
  */
 export declare const GetConnectionCapabilitiesResponseSchema: GenMessage<GetConnectionCapabilitiesResponse>;
+
+/**
+ * RelayCapability is where this server's wake-ups come from, when it uses a gateway relay instead
+ * of a Firebase project of its own (SEE-144, docs/guides/server-development.md).
+ *
+ * It is advertised over the authenticated direct connection, which is the only place the phone
+ * will take it from: the identity below is the identity of the server the phone actually paired
+ * with, rather than a UUID out of a QR code or a hostname somebody claimed.
+ *
+ * The phone registers only with the relay it is configured to trust and ignores relay_url when it
+ * names anything else. That rule is the reason a hostile server cannot use this field to collect
+ * device targets: naming its own address here gets it nothing, because nothing is sent there.
+ *
+ * @generated from message seekervault.request.v1.RelayCapability
+ */
+export declare type RelayCapability = Message<"seekervault.request.v1.RelayCapability"> & {
+  /**
+   * Version 1 is the relay contract at <gateway>/relay/v1. Zero is never advertised.
+   *
+   * @generated from field: uint32 protocol_version = 1;
+   */
+  protocolVersion: number;
+
+  /**
+   * The gateway's canonical public origin, with no path, query, user info or fragment. It is
+   * compared with the phone's own configured relay and the binding is refused if they differ.
+   *
+   * @generated from field: string relay_url = 2;
+   */
+  relayUrl: string;
+
+  /**
+   * This server's registered identity at that gateway: the lowercase UUID its operator issued a
+   * relay credential for. The phone names it when it authorizes the binding, and the handle it
+   * gets back is useless to anyone who cannot also present that server's relay credential.
+   *
+   * @generated from field: string server_id = 3;
+   */
+  serverId: string;
+};
+
+/**
+ * Describes the message seekervault.request.v1.RelayCapability.
+ * Use `create(RelayCapabilitySchema)` to create a new message.
+ */
+export declare const RelayCapabilitySchema: GenMessage<RelayCapability>;
 
 /**
  * @generated from message seekervault.request.v1.GetServerManifestRequest
@@ -238,6 +292,60 @@ export declare type SetFcmTokenResponse = Message<"seekervault.request.v1.SetFcm
  * Use `create(SetFcmTokenResponseSchema)` to create a new message.
  */
 export declare const SetFcmTokenResponseSchema: GenMessage<SetFcmTokenResponse>;
+
+/**
+ * @generated from message seekervault.request.v1.SetRelayHandleRequest
+ */
+export declare type SetRelayHandleRequest = Message<"seekervault.request.v1.SetRelayHandleRequest"> & {
+  /**
+   * Must be the connection authenticated by the bearer phone credential.
+   *
+   * @generated from field: string connection_id = 1;
+   */
+  connectionId: string;
+
+  /**
+   * @generated from oneof seekervault.request.v1.SetRelayHandleRequest.update
+   */
+  update: {
+    /**
+     * The opaque handle the gateway issued for this connection's binding, as a 1-256 byte
+     * visible-ASCII value. Repeating the same value changes nothing; a different value atomically
+     * replaces it. It is not an FCM target and is never stored as one.
+     *
+     * @generated from field: string handle = 2;
+     */
+    value: string;
+    case: "handle";
+  } | {
+    /**
+     * Deletes the handle only when this is still the stored one, so a delayed revocation cannot
+     * erase a handle the phone re-authorized meanwhile.
+     *
+     * @generated from field: string clear_if_handle = 3;
+     */
+    value: string;
+    case: "clearIfHandle";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message seekervault.request.v1.SetRelayHandleRequest.
+ * Use `create(SetRelayHandleRequestSchema)` to create a new message.
+ */
+export declare const SetRelayHandleRequestSchema: GenMessage<SetRelayHandleRequest>;
+
+/**
+ * @generated from message seekervault.request.v1.SetRelayHandleResponse
+ */
+export declare type SetRelayHandleResponse = Message<"seekervault.request.v1.SetRelayHandleResponse"> & {
+};
+
+/**
+ * Describes the message seekervault.request.v1.SetRelayHandleResponse.
+ * Use `create(SetRelayHandleResponseSchema)` to create a new message.
+ */
+export declare const SetRelayHandleResponseSchema: GenMessage<SetRelayHandleResponse>;
 
 /**
  * @generated from message seekervault.request.v1.RevokeConnectionRequest
@@ -735,6 +843,25 @@ export declare const PairingService: GenService<{
     methodKind: "unary";
     input: typeof SetFcmTokenRequestSchema;
     output: typeof SetFcmTokenResponseSchema;
+  },
+  /**
+   * SetRelayHandle registers or clears the gateway push handle this phone authorized for this
+   * connection (SEE-144). It is a separate RPC and a separate field from SetFcmToken because it
+   * is a different kind of value: an FCM target addresses a device and is usable by whoever holds
+   * it, while a relay handle addresses one authorization at one gateway and is useless without
+   * that gateway's own relay credential. Putting one where the other belongs would send a
+   * wake-up to nobody, so the protocol does not let it be done by accident.
+   *
+   * The server needs no Firebase credential in this mode. Clearing names the handle being
+   * removed, for the same compare-and-delete reason as above. Neither the handle nor the phone
+   * credential is returned or logged.
+   *
+   * @generated from rpc seekervault.request.v1.PairingService.SetRelayHandle
+   */
+  setRelayHandle: {
+    methodKind: "unary";
+    input: typeof SetRelayHandleRequestSchema;
+    output: typeof SetRelayHandleResponseSchema;
   },
   /**
    * RevokeConnection ends the caller's connection (`Authorization: Bearer <phone token>`). The

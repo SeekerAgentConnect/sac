@@ -218,4 +218,20 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE server ADD COLUMN manifest_fingerprint TEXT;
     `,
   },
+  {
+    version: 7,
+    description:
+      "the gateway push handle a phone authorized for one connection (SEE-144)",
+    sql: `
+      -- A column of its own rather than a second meaning for fcm_token, because the two are not
+      -- the same kind of value. An FCM target addresses a device and works for whoever holds it; a
+      -- relay handle addresses one authorization at one gateway and is worth nothing without that
+      -- gateway's relay credential. A server in relay mode has a handle and no target, one in
+      -- direct mode has a target and no handle, and neither can be mistaken for the other by a
+      -- query. Like the target it cannot be hashed — the send needs it — it is never returned by
+      -- an RPC or named in a log, and revocation clears it in the same statement that ends the
+      -- connection.
+      ALTER TABLE connections ADD COLUMN relay_handle TEXT;
+    `,
+  },
 ];

@@ -12,7 +12,10 @@ import type { AddressInfo } from "node:net";
 import { create, toBinary } from "@bufbuild/protobuf";
 import { connectNodeAdapter } from "@connectrpc/connect-node";
 
-import { UpdateCapabilitySchema } from "./gen/seekervault/request/v1/service_pb.js";
+import {
+  RelayCapabilitySchema,
+  UpdateCapabilitySchema,
+} from "./gen/seekervault/request/v1/service_pb.js";
 import {
   ActionRequestSchema,
   type ActionRequest,
@@ -28,6 +31,13 @@ import {
   FcmInvalidationDispatcher,
   type InvalidationSender,
 } from "./push/invalidation.ts";
+import {
+  GatewayRelaySender,
+  RELAY_PROTOCOL_VERSION,
+  RelayInvalidationDispatcher,
+  type RelayConfiguration,
+  type RelaySender,
+} from "./push/relay.ts";
 import { agentRequests, type AgentRequests } from "./requests/agent-api.ts";
 import { ConfirmationTracker } from "./requests/confirmation.ts";
 import { requestRoutes } from "./requests/phone-service.ts";
@@ -68,7 +78,27 @@ export interface OpenDirectServerOptions {
   readonly updatePollMs?: number;
   readonly transferProvider?: TransferProvider;
   readonly confirmationProvider?: ConfirmationProvider;
+  /**
+   * Direct Firebase delivery: this server holds a service-account credential and sends its own
+   * wake-ups. It stays supported for operator-controlled installations that already have a
+   * Firebase project.
+   */
   readonly invalidationSender?: InvalidationSender;
+  /**
+   * Gateway relay delivery: this server holds no Firebase credential, and the gateway's operator
+   * wakes phones on its behalf (SEE-144).
+   *
+   * The configuration is always required, even when a sender is supplied, because two of its three
+   * fields are not the transport's business: the relay URL and the server ID are what a paired
+   * phone is told to authorize, and a relay with a way to send but nothing to advertise could
+   * never be given a handle to send with.
+   *
+   * Configuring this and invalidationSender at once is refused rather than merged. Both would fire
+   * on the same committed update, so a phone would be woken twice for one change and an operator
+   * would have two places to look when it stopped happening — which is exactly the kind of
+   * ambiguity a duplicate-delivery bug hides in.
+   */
+  readonly relay?: RelayConfiguration & { readonly sender?: RelaySender };
 }
 
 export interface IssuedPairing extends IssuedToken {
@@ -116,6 +146,34 @@ export interface DirectServer {
  * Explicitly opens one durable direct engine. Importing this package opens nothing, reads no
  * environment, registers no signal and starts no listener or background loop.
  */
+/**
+ * Which push transport this server has, if any. Exactly one, because both would wake a phone twice
+ * for one change; the caller was already refused above if it asked for two.
+ *
+ * A relay configuration builds the HTTP sender here rather than in the caller, so a developer
+ * configures three strings instead of constructing a transport — and a relay URL that is not an
+ * origin, or a server ID that is not a UUID, is a startup failure with a named reason rather than
+ * wake-ups that quietly go nowhere.
+ */
+function buildInvalidations(
+  options: OpenDirectServerOptions,
+  pairingStore: PairingStore,
+): FcmInvalidationDispatcher | RelayInvalidationDispatcher | undefined {
+  if (options.invalidationSender !== undefined) {
+    return new FcmInvalidationDispatcher(
+      pairingStore,
+      options.invalidationSender,
+      options.log,
+    );
+  }
+  if (options.relay === undefined) return undefined;
+  // The configuration is validated either way, so a relay URL that is not an origin or a server ID
+  // that is not a UUID is a startup failure with a named reason — not wake-ups that go nowhere and
+  // an advertisement no phone will accept.
+  const sender = options.relay.sender ?? new GatewayRelaySender(options.relay);
+  return new RelayInvalidationDispatcher(pairingStore, sender, options.log);
+}
+
 export function openDirectServer(
   options: OpenDirectServerOptions,
 ): DirectServer {
@@ -156,14 +214,16 @@ export function openDirectServer(
         : new ConfirmationTracker(requests, options.confirmationProvider, {
             now: options.now,
           });
-    const invalidations =
-      options.invalidationSender === undefined
-        ? undefined
-        : new FcmInvalidationDispatcher(
-            pairingStore,
-            options.invalidationSender,
-            options.log,
-          );
+    if (
+      options.invalidationSender !== undefined &&
+      options.relay !== undefined
+    ) {
+      throw new Error(
+        "configure either invalidationSender or relay, not both: " +
+          "both send on the same committed update, so a phone would be woken twice",
+      );
+    }
+    const invalidations = buildInvalidations(options, pairingStore);
     const stopInvalidations =
       invalidations === undefined
         ? undefined
@@ -266,6 +326,14 @@ export function openDirectServer(
                       grpcUrl: updateUrl(),
                     }),
               () => direct.manifest,
+              () =>
+                options.relay === undefined
+                  ? undefined
+                  : create(RelayCapabilitySchema, {
+                      protocolVersion: RELAY_PROTOCOL_VERSION,
+                      relayUrl: options.relay.relayUrl,
+                      serverId: options.relay.serverId,
+                    }),
             )(router);
             if (handlerOptions.includeUpdates === true) {
               updateRoutes(

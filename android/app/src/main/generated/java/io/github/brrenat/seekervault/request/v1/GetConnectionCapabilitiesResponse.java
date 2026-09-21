@@ -94,6 +94,78 @@ public  final class GetConnectionCapabilitiesResponse extends
     bitField0_ = (bitField0_ & ~0x00000001);
   }
 
+  public static final int RELAY_FIELD_NUMBER = 2;
+  private io.github.brrenat.seekervault.request.v1.RelayCapability relay_;
+  /**
+   * <pre>
+   * Absent when this server sends its own push, or none. Present when it asks the phone to
+   * authorize a gateway to wake it on its behalf (SEE-144).
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+   */
+  @java.lang.Override
+  public boolean hasRelay() {
+    return ((bitField0_ & 0x00000002) != 0);
+  }
+  /**
+   * <pre>
+   * Absent when this server sends its own push, or none. Present when it asks the phone to
+   * authorize a gateway to wake it on its behalf (SEE-144).
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+   */
+  @java.lang.Override
+  public io.github.brrenat.seekervault.request.v1.RelayCapability getRelay() {
+    return relay_ == null ? io.github.brrenat.seekervault.request.v1.RelayCapability.getDefaultInstance() : relay_;
+  }
+  /**
+   * <pre>
+   * Absent when this server sends its own push, or none. Present when it asks the phone to
+   * authorize a gateway to wake it on its behalf (SEE-144).
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+   */
+  private void setRelay(io.github.brrenat.seekervault.request.v1.RelayCapability value) {
+    java.util.Objects.requireNonNull(value);
+    relay_ = value;
+    bitField0_ |= 0x00000002;
+  }
+  /**
+   * <pre>
+   * Absent when this server sends its own push, or none. Present when it asks the phone to
+   * authorize a gateway to wake it on its behalf (SEE-144).
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+   */
+  @java.lang.SuppressWarnings("ReferenceEquality")
+  private void mergeRelay(io.github.brrenat.seekervault.request.v1.RelayCapability value) {
+    java.util.Objects.requireNonNull(value);
+    if (relay_ != null &&
+        relay_ != io.github.brrenat.seekervault.request.v1.RelayCapability.getDefaultInstance()) {
+      relay_ =
+        io.github.brrenat.seekervault.request.v1.RelayCapability.newBuilder(relay_).mergeFrom(value).buildPartial();
+    } else {
+      relay_ = value;
+    }
+    bitField0_ |= 0x00000002;
+  }
+  /**
+   * <pre>
+   * Absent when this server sends its own push, or none. Present when it asks the phone to
+   * authorize a gateway to wake it on its behalf (SEE-144).
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+   */
+  private void clearRelay() {
+    relay_ = null;
+    bitField0_ = (bitField0_ & ~0x00000002);
+  }
+
   public static io.github.brrenat.seekervault.request.v1.GetConnectionCapabilitiesResponse parseFrom(
       java.nio.ByteBuffer data)
       throws com.google.protobuf.InvalidProtocolBufferException {
@@ -274,6 +346,83 @@ public  final class GetConnectionCapabilitiesResponse extends
       return this;
     }
 
+    /**
+     * <pre>
+     * Absent when this server sends its own push, or none. Present when it asks the phone to
+     * authorize a gateway to wake it on its behalf (SEE-144).
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+     */
+    @java.lang.Override
+    public boolean hasRelay() {
+      return instance.hasRelay();
+    }
+    /**
+     * <pre>
+     * Absent when this server sends its own push, or none. Present when it asks the phone to
+     * authorize a gateway to wake it on its behalf (SEE-144).
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+     */
+    @java.lang.Override
+    public io.github.brrenat.seekervault.request.v1.RelayCapability getRelay() {
+      return instance.getRelay();
+    }
+    /**
+     * <pre>
+     * Absent when this server sends its own push, or none. Present when it asks the phone to
+     * authorize a gateway to wake it on its behalf (SEE-144).
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+     */
+    public Builder setRelay(io.github.brrenat.seekervault.request.v1.RelayCapability value) {
+      copyOnWrite();
+      instance.setRelay(value);
+      return this;
+      }
+    /**
+     * <pre>
+     * Absent when this server sends its own push, or none. Present when it asks the phone to
+     * authorize a gateway to wake it on its behalf (SEE-144).
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+     */
+    public Builder setRelay(
+        io.github.brrenat.seekervault.request.v1.RelayCapability.Builder builderForValue) {
+      copyOnWrite();
+      instance.setRelay(builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * Absent when this server sends its own push, or none. Present when it asks the phone to
+     * authorize a gateway to wake it on its behalf (SEE-144).
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+     */
+    public Builder mergeRelay(io.github.brrenat.seekervault.request.v1.RelayCapability value) {
+      copyOnWrite();
+      instance.mergeRelay(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * Absent when this server sends its own push, or none. Present when it asks the phone to
+     * authorize a gateway to wake it on its behalf (SEE-144).
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+     */
+    public Builder clearRelay() {  copyOnWrite();
+      instance.clearRelay();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.request.v1.GetConnectionCapabilitiesResponse)
   }
   @java.lang.Override
@@ -292,9 +441,11 @@ public  final class GetConnectionCapabilitiesResponse extends
           java.lang.Object[] objects = new java.lang.Object[] {
             "bitField0_",
             "updates_",
+            "relay_",
           };
           java.lang.String info =
-              "\u0000\u0001\u0000\u0001\u0001\u0001\u0001\u0000\u0000\u0000\u0001\u1009\u0000";
+              "\u0000\u0002\u0000\u0001\u0001\u0002\u0002\u0000\u0000\u0000\u0001\u1009\u0000\u0002" +
+              "\u1009\u0001";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

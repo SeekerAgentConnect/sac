@@ -32,4 +32,25 @@ public interface GetConnectionCapabilitiesResponseOrBuilder extends
    * @return The updates.
    */
   io.github.brrenat.seekervault.request.v1.UpdateCapability getUpdates();
+
+  /**
+   * <pre>
+   * Absent when this server sends its own push, or none. Present when it asks the phone to
+   * authorize a gateway to wake it on its behalf (SEE-144).
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+   * @return Whether the relay field is set.
+   */
+  boolean hasRelay();
+  /**
+   * <pre>
+   * Absent when this server sends its own push, or none. Present when it asks the phone to
+   * authorize a gateway to wake it on its behalf (SEE-144).
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.RelayCapability relay = 2 [json_name = "relay"];</code>
+   * @return The relay.
+   */
+  io.github.brrenat.seekervault.request.v1.RelayCapability getRelay();
 }
