@@ -45,7 +45,7 @@ Bug fixes only need a changelog entry when significant enough for release notes.
 
 ### 0. Read the Ticket First
 
-- **Never do a task you cannot read the ticket for.** Read the Linear ticket (`SEE-…`) through the project's configured MCP server (the `linear` plugin in `.claude/settings.json`); if it is unavailable or unauthorized, fall back to the superset runner's ticket access.
+- **Never do a task you cannot read the ticket for.** Read the Linear ticket (`SEE-…`) through the Linear MCP server authorized by `$SEE_LINEAR_TOKEN` — that token is the only Linear access that works in this project. The `linear` plugin in `.claude/settings.json` authorizes over OAuth, which a non-interactive session cannot complete, so don't wait on it. If `$SEE_LINEAR_TOKEN` is unset or its tools return an error, fall back to the superset runner's ticket access.
 - If neither works, STOP: report which ticket, which tools were tried and what each returned, POST `blocked` to the superset hook when `$SEE_SUPERSET_TOKEN` is set, and change nothing.
 - **NEVER guess the task** — a branch name, a prompt summary, an old plan file or a neighbouring ticket is not the ticket. Do exactly what the Linear ticket describes.
 - Full rules: `AGENTS.md` ("The ticket") and `docs/development/tickets.md`.
@@ -161,7 +161,7 @@ Body:
 
 Wiring: `.claude/settings.json` (Claude + GLM), `.codex/hooks.json`, `.grok/hooks/superset.json`. Details: `docs/development/superset-hooks.md`.
 
-If Linear is unreadable, STOP, run `bash scripts/superset-hook.sh blocked "ticket unreadable"`, and change nothing.
+If Linear is unreadable — no `$SEE_LINEAR_TOKEN`, its tools erroring, and no superset fallback — STOP, run `bash scripts/superset-hook.sh blocked "ticket unreadable"`, and change nothing.
 
 ## PR Code Review
 

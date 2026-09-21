@@ -16,21 +16,24 @@ looks like work and is not the work.
 
 ## Reading the ticket
 
-**1. The project's configured MCP server first.** `.claude/settings.json` enables
-`linear@claude-plugins-official`, so the Linear tools (`get_issue`, `list_comments`,
-`list_issues`, `get_document`, `get_project`, `get_milestone`) are the first and normal path. Read
-the whole issue, not the title:
+**1. The Linear MCP server authorized by `$SEE_LINEAR_TOKEN` first.** That token is the only Linear
+access that works in this project: it authorizes the Linear tools (`get_issue`, `list_comments`,
+`list_issues`, `get_document`, `get_project`, `get_milestone`) without an interactive step, and they
+are the first and normal path. `.claude/settings.json` also enables
+`linear@claude-plugins-official`, but that plugin authorizes over OAuth, which a non-interactive
+session cannot complete — an "authorization required" answer from it is expected and is not a reason
+to wait or retry. Read the whole issue, not the title:
 
 - the description and its acceptance criteria, in full
 - every comment — a comment can amend, narrow or cancel the description, and the last word wins
 - the parent issue and sub-issues, for what this ticket owns and what it doesn't
 - linked documents and attachments named by the description
 
-**2. Superset tools if that MCP server is unavailable.** If the Linear server isn't connected,
-isn't authorized, or its tools return an authentication error — a non-interactive session cannot
-run an OAuth flow — fall back to the superset runner's own ticket access (`superset.sh`, the
-`$SEE_SUPERSET_*` environment described in [`CLAUDE.md`](../../CLAUDE.md)). It is a fallback for
-*fetching the same ticket*, not a second source of truth.
+**2. Superset tools if that MCP server is unavailable.** If `$SEE_LINEAR_TOKEN` is unset, the Linear
+server isn't connected, or its tools return an authentication error, fall back to the superset
+runner's own ticket access (`superset.sh`, the `$SEE_SUPERSET_*` environment described in
+[`CLAUDE.md`](../../CLAUDE.md)). It is a fallback for *fetching the same ticket*, not a second
+source of truth.
 
 **3. Nothing else counts as reading the ticket.** None of these is the ticket:
 
@@ -50,8 +53,8 @@ that text came from, and use the tools instead whenever they work.
 Stop before the first edit, and report it:
 
 - name the ticket you were asked to do, each tool you tried, and what each one returned
-- name the fix: authorize the Linear connector in claude.ai connector settings, or run `claude mcp`
-  / `/mcp` in an interactive session; or have the owner paste the ticket body
+- name the fix: set `$SEE_LINEAR_TOKEN` in the session's environment so the Linear MCP server is
+  authorized without an interactive step; or have the owner paste the ticket body
 - if `$SEE_SUPERSET_TOKEN` and `$SEE_SUPERSET_HOOK` are set, POST `"status": "blocked"` with that
   reason, per the Superset Hook section of [`CLAUDE.md`](../../CLAUDE.md)
 
@@ -85,7 +88,7 @@ Ambiguity is not permission to choose:
 
 | Before you start | |
 | --- | --- |
-| Ticket read in full through Linear MCP, or through the superset fallback | required |
+| Ticket read in full through the `$SEE_LINEAR_TOKEN` Linear MCP, or through the superset fallback | required |
 | Comments, parent and sub-issues read | required |
 | Acceptance criteria copied into `.claude/plans/see-NN-<slug>.md` | required |
 | Anything not in the ticket | out of scope |

@@ -173,6 +173,8 @@ status are in `README.md`; checked-in working conventions are in `CLAUDE.md`.
 | `eslint.config.js`, `.prettierignore` | TypeScript lint (typescript-eslint, type-checked) and Prettier scope |
 | `.claude/settings.json` | Shared Claude Code permissions (tracked) |
 | `.claude/settings.local.json` | Local Claude Code settings (enabled plugins) |
+| `.mcp.json` | Project MCP servers (tracked): `context7`. Linear is read through the server `$SEE_LINEAR_TOKEN` authorizes — see `docs/development/tickets.md` |
+| `.codex/config.toml`, `.codex/hooks.json`, `.grok/hooks/superset.json` | Codex and Grok configuration for the same repo: `CLAUDE.md` as the instruction file, the shared MCP servers, and the superset status hooks |
 
 ## Architecture
 
