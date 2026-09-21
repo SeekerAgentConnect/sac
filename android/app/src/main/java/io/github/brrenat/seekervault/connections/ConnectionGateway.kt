@@ -1,5 +1,7 @@
 package io.github.brrenat.seekervault.connections
 
+import io.github.brrenat.seekervault.push.RelayCoordinates
+import io.github.brrenat.seekervault.push.RelayHandleUpdate
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
@@ -89,6 +91,35 @@ interface ConnectionGateway {
         credential: String,
         connectionId: String,
         update: FcmTokenUpdate,
+    )
+
+    /**
+     * Where this connection's server asks for its wake-ups to come from (SEE-144), or **null** when
+     * it sends its own push, or none, or does not know this call.
+     *
+     * It is read over the authenticated direct connection, which is the only place the phone will
+     * take it from: the identity in it is the identity of the server this phone actually paired
+     * with, rather than a UUID out of a QR code or a hostname somebody claimed. The phone then
+     * registers only with the relay it is configured to trust, so a server that names one of its
+     * own is ignored.
+     */
+    suspend fun relay(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+    ): RelayCoordinates?
+
+    /**
+     * Hands this connection's server the opaque handle a gateway issued for it, or compare-clears
+     * one. It is a separate call from [setFcmToken] because the two values are not interchangeable:
+     * one addresses a device and works for whoever holds it, the other addresses one authorization
+     * at one gateway and is worth nothing without that gateway's credential.
+     */
+    suspend fun setRelayHandle(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+        update: RelayHandleUpdate,
     )
 
     /** Ends the connection at its sidecar: the credential stops working there at once. */

@@ -9,6 +9,8 @@ import com.connectrpc.impl.ProtocolClient
 import com.connectrpc.okhttp.ConnectOkHttpClient
 import com.connectrpc.protocols.NetworkProtocol
 import com.connectrpc.simpleTimeouts
+import io.github.brrenat.seekervault.push.RelayCoordinates
+import io.github.brrenat.seekervault.push.RelayHandleUpdate
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PairingServiceClient
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
@@ -18,6 +20,7 @@ import io.github.brrenat.seekervault.request.v1.RequestServiceClient
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.checkStatusRequest
+import io.github.brrenat.seekervault.request.v1.getConnectionCapabilitiesRequest
 import io.github.brrenat.seekervault.request.v1.getServerManifestRequest
 import io.github.brrenat.seekervault.request.v1.listPendingRequest
 import io.github.brrenat.seekervault.request.v1.pairRequest
@@ -26,6 +29,7 @@ import io.github.brrenat.seekervault.request.v1.publishWalletRequest
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.revokeConnectionRequest
 import io.github.brrenat.seekervault.request.v1.setFcmTokenRequest
+import io.github.brrenat.seekervault.request.v1.setRelayHandleRequest
 import io.github.brrenat.seekervault.server.v1.ServerManifest
 import java.io.IOException
 import java.net.UnknownServiceException
@@ -196,6 +200,51 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
         }
     }
 
+    override suspend fun relay(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+    ): RelayCoordinates? {
+        val request = getConnectionCapabilitiesRequest { this.connectionId = connectionId }
+        val response =
+            try {
+                call {
+                    PairingServiceClient(protocolClient(serverUrl))
+                        .getConnectionCapabilities(request, bearer(credential))
+                }
+            } catch (e: GatewayException) {
+                // A server that doesn't know the call sends its own push, or none. Reported as an
+                // absence rather than a failure, the same way a missing manifest is.
+                if (e.kind == GatewayException.Kind.Unimplemented) return null
+                throw e
+            }
+        if (!response.hasRelay()) return null
+        val relay = response.relay
+        // An advertisement this app cannot act on is the same as none: a version it does not
+        // speak, or a field left empty. It is never a reason to fail anything.
+        if (relay.protocolVersion != RELAY_PROTOCOL || relay.relayUrl.isEmpty()) return null
+        return RelayCoordinates(relay.relayUrl, relay.serverId)
+    }
+
+    override suspend fun setRelayHandle(
+        serverUrl: String,
+        credential: String,
+        connectionId: String,
+        update: RelayHandleUpdate,
+    ) {
+        val request = setRelayHandleRequest {
+            this.connectionId = connectionId
+            when (update) {
+                is RelayHandleUpdate.Register -> handle = update.handle
+                is RelayHandleUpdate.ClearIfCurrent -> clearIfHandle = update.handle
+            }
+        }
+        call {
+            PairingServiceClient(protocolClient(serverUrl))
+                .setRelayHandle(request, bearer(credential))
+        }
+    }
+
     private fun protocolClient(serverUrl: String, timeout: Duration = TIMEOUT) =
         ProtocolClient(
             httpClient = ConnectOkHttpClient(httpClient),
@@ -227,6 +276,13 @@ class ConnectConnectionGateway(private val httpClient: OkHttpClient) : Connectio
 
     private companion object {
         const val PAGE_SIZE = 100
+
+        /**
+         * The relay contract this app speaks (SEE-144). A server advertising another version is
+         * read as advertising nothing: this phone would not know what to authorize, and guessing
+         * would be authorizing something it cannot describe to its owner.
+         */
+        const val RELAY_PROTOCOL = 1
 
         /** What a call that only reads the sidecar's own database gets. */
         val TIMEOUT = 15.seconds

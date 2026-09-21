@@ -199,6 +199,12 @@ class StageBoundaryTest {
                 // Where a feed's listener left off (SEE-91). Progress, never content: it holds a
                 // broker position and a snapshot boundary, and the documents live elsewhere.
                 File(main, "java/io/github/brrenat/seekervault/feeds/storage"),
+                // The gateway relay's enrollment (SEE-144). Routing, never content: an opaque
+                // installation identity, the sealed secret that proves this device is that
+                // installation, which authorization belongs to which connection, and the
+                // revocations this phone still owes a gateway it could not reach. No request, no
+                // decision, no FCM registration and no push handle is kept here.
+                File(main, "java/io/github/brrenat/seekervault/push/storage"),
             )
         val syncPackage = File(main, "java/io/github/brrenat/seekervault/sync")
         val storagePackages =
@@ -1324,6 +1330,14 @@ class StageBoundaryTest {
                 // application's own endpoint rather than any publisher's
                 // (docs/security.md#resolving-a-lookup-table).
                 "SolanaAccounts.kt",
+                // The gateway push relay (SEE-144). It reaches exactly one host — the relay this
+                // build was configured with, in BuildConfig.RELAY_URL — and no server can change
+                // that: a server may advertise a relay over its authenticated connection, and the
+                // app ignores the advertisement unless it names that same origin. What it sends
+                // there is this installation's Firebase registration and which servers the owner
+                // authorized to wake it; what it never sends is a request, a decision, or
+                // anything a server told it.
+                "RelayClient.kt",
             )
         val clients = sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.toSet()
         assertTrue(clients.all { it in allowed })
