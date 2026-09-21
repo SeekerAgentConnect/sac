@@ -47,3 +47,10 @@ google-services.json
 .vscode/
 .DS_Store
 captures/
+
+# Agent session plans. They are working notes for one task — reasoning, checked-off
+# items, a review written at the end — and they are kept locally rather than shared:
+# they name internal tickets, and what they conclude belongs in the commit message,
+# the changelog and docs/ by the time the work lands. `.claude/tasks/` and
+# `.claude/settings.json` stay tracked; those are the project's, not one session's.
+.claude/plans/
