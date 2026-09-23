@@ -5,7 +5,9 @@ import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
 import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.actionRequest
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -234,6 +236,27 @@ class ProviderRegistryTest {
                 )
             }
         assertTrue(sameLegacy.message!!.contains("jupiter.swap"))
+    }
+
+    @Test
+    fun aStatusQueryIsDeclaredBeforeItIsAnswered() {
+        // The optional half of the interface, and the rule about it: a provider that does not
+        // declare status queries answers `Unsupported` rather than inventing a state, and one that
+        // does answers in its own words — which nothing in this app turns into a fill, a settlement
+        // or a profit. **Nothing polls it** (SEE-145, docs/wiki/execution-providers.md).
+        val quiet = TestExecutionProvider(id = "quiet")
+        val talkative = TestExecutionProvider(id = "talkative", statusQueries = true)
+        val reference = PluginReference("order_account", "3fJ")
+
+        assertFalse(quiet.capabilities.statusQueries)
+        assertEquals(
+            ActionStatus.Unsupported,
+            runBlocking { quiet.status(operation(), reference) },
+        )
+        assertEquals(
+            ActionStatus.Reported("submitted"),
+            runBlocking { talkative.status(operation(), reference) },
+        )
     }
 
     @Test

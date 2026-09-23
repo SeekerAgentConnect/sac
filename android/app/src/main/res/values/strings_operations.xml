@@ -41,6 +41,7 @@
     <string name="operation_not_prepared">Nothing was prepared</string>
     <string name="operation_not_prepared_unknown">The plugin could not prepare this operation.</string>
     <string name="operation_provider_said">The provider said: %1$s</string>
+    <string name="operation_provider_says">What the provider says now</string>
     <string name="operation_unserved_no_provider">This build does not carry the execution provider this signal names, so nothing here can carry it out.</string>
     <string name="operation_unserved_contract">This build carries that execution provider, but at a version it cannot call.</string>
     <string name="operation_unserved_action">That execution provider does not do what this signal asks for.</string>

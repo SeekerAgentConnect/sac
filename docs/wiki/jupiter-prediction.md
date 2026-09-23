@@ -1,30 +1,53 @@
-# The Jupiter Prediction plugin (SEE-94)
+# Jupiter's `prediction.buy` action (SEE-94, SEE-145)
 
-`jupiter.prediction` is the app's second client plugin. A publisher broadcasts a market; each owner picks a side and a stake on their own phone; the order is prepared through Jupiter's own API, resolved and read by the phone itself, and signed once by the owner's wallet. Then the app **stops** and hands the owner a link.
+`prediction.buy` is a provider-neutral, versioned action, and `jupiter` is the bundled execution provider that serves it — the second of the two actions that one provider carries out. A publisher broadcasts a market; each owner picks a side and a stake on their own phone; the order is prepared through Jupiter's own API, resolved and read by the phone itself, and signed once by the owner's wallet. Then the app **stops** and hands the owner a link.
 
-It is written against the same boundary as the swap ([client plugins](client-plugins.md)) and reaches the same provider, plus one thing the swap needs and does not use: a read-only account reader for the chain.
+It was `jupiter.prediction`, one bundled plugin, until SEE-145 separated the action from whoever executes it. Nothing about what happens to the owner changed. A manifest that requires `jupiter.prediction` at contract `1..1` still resolves as it did, a publisher may spell the action `prediction` or `prediction.buy` and gets the same order from either, and the action is `prediction.buy` rather than `prediction` because buying a side is one thing that can be done to a market and not the only one — selling out and claiming a settled payout are others, and neither is in this app ([execution providers](execution-providers.md)).
+
+It is written against the same boundary as the swap ([client plugins](client-plugins.md)) and reaches the same API, plus one thing the swap needs and does not use: a read-only account reader for the chain.
+
+## The market provider is not the execution provider
+
+Two different things are called a provider here, and SEE-145 keeps the words apart deliberately.
+
+- The **execution provider** is `jupiter`: who builds the order, prepares the bytes and reads them back.
+- The **market provider** is Kalshi, Polymarket or Jupiter's own Forecast: whose market it is about. It is the publisher's `provider` term, it is `PredictionPayload.marketProvider`, and it never selects any code.
+
+They are not interchangeable, and the reason is the ticket's own: **a prediction market from one venue is not interchangeable with a similarly named market from another.** Two venues can both list "will it rain in Chicago", settle on different sources, close at different times and pay out differently. So the market provider and the market identifier together are the operation's `Instrument`, the instrument is pinned to the review beside the bytes, and a document whose market moved under an open review invalidates what was prepared (`BindingProblem.OtherInstrument`) rather than quietly buying a different thing.
 
 ## The publisher names a market, and nothing else
 
+The payload lives in [`plugins/actions/PredictionAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionAction.kt) and is read by core, once, before any provider is consulted — it is the action's schema rather than Jupiter's, because every provider of `prediction.buy` has to mean the same thing by `market_id` and refuse the same malformed document in the same way.
+
 | Term | Meaning | Rule |
 | --- | --- | --- |
-| `market_id` | The provider's identifier for the market | A bounded identifier, never a URL |
-| `event_id` | The event it belongs to, optionally | Cross-checked against the event the provider names |
-| `provider` | Its source, optionally | Cross-checked the same way |
-| `deposit_mint` | The token a stake is deposited in | One of the two the provider takes: its own dollar token, or USDC |
+| `market_id` | The market provider's identifier for the market | A bounded identifier, never a URL |
+| `event_id` | The event it belongs to, optionally | Cross-checked against the event the execution provider names for it |
+| `provider` | The **market's** venue — Kalshi, Polymarket — optionally | Cross-checked the same way; never the execution provider |
+| `deposit_mint` | The token a stake is deposited in | An exact base58 mint. Which mints are acceptable is the venue's own rule, not this reader's |
 | `deposit_decimals` | Its base units per whole token | 0–18, display only |
-| `least_deposit`, `most_deposit` | Optional bounds, in base units | The provider's five-dollar minimum is a floor under both |
+| `least_deposit`, `most_deposit` | Optional bounds, in base units | Whole numbers; a floor above the ceiling is refused |
 | `deposit_symbol` | An optional label | At most 16 characters, unverified |
 
-**Everything else about the market comes from the provider, at the moment the owner looks**: whether it is open, what the two sides cost, what the rules say, when it settles, whether it has already resolved. A publisher's prose is prose — a signal saying "this is nearly certain" is shown as the publisher's opinion beside the market's own state, and no field can stand in for a fact the provider would have given. That division is what lets a publisher be a stranger.
+**Everything else about the market comes from the execution provider, at the moment the owner looks**: whether it is open, what the two sides cost, what the rules say, when it settles, whether it has already resolved. A publisher's prose is prose — a signal saying "this is nearly certain" is shown as the publisher's opinion beside the market's own state, and no field can stand in for a fact the provider would have given. That division is what lets a publisher be a stranger.
 
-The market is read **before** an order is requested, which is how a signal that has gone stale becomes "this market is no longer open" rather than an order that fails.
+### The two stake tokens and the five dollars are the venue's, not the action's
+
+They used to be constants inside this payload reader, which quietly made "the mints Jupiter settles in" and "the smallest order Jupiter accepts" part of what the *action* meant. SEE-145 moved them to where they are true: `PREDICTION_BUY_CAPABILITY` in [`jupiter/JupiterExecutionProvider.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt), as `depositAssets` — Jupiter's own dollar token and USDC — and `leastDeposit`, five dollars in base units.
+
+The difference is visible to the owner. A publisher that names a stake token this venue will not take is now refused as `AssetUnsupported` **when the signal is read**, by the registry, before anything is prepared and before the provider's API is reached at all — rather than by an order coming back refused halfway through. And the five-dollar floor is folded into the amount field beside the publisher's own, so the bound the owner is shown is the one that actually applies; both are enforced again when the choice is read back. A second provider of the same action would declare its own two facts and neither would change what `prediction.buy` means.
 
 ## What is the owner's
 
-The side and the stake. There is deliberately no default side: a market has two answers and no third, and suggesting one would be the app expressing an opinion about a market it has no basis for. The stake has no suggestion for the same reason a swap's amount does not.
+The side and the stake ([`plugins/actions/PredictionInputs.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionInputs.kt)). There is deliberately no default side: a market has two answers and no third, and suggesting one would be the app expressing an opinion about a market it has no basis for. The stake has no suggestion for the same reason a swap's amount does not.
 
 Neither number reaches the publisher or the gateway, and there is nowhere for it to: a feed connection has no outbox, no result upload, no per-subscriber state. `PredictionOperationTest` runs the whole path and reads back what the gateway was told — a channel and a sequence.
+
+## The market is read twice, for two different reasons
+
+**When the review opens.** `resolve` asks Jupiter what the market currently is and returns the fields with what it found beside them: the market's status, its result if it has one, and — if it has already closed — a problem the owner is shown instead of a preparation. It is a read and nothing else: no order is placed, no wallet is touched, nothing is bound. This is the one action here with something live worth showing before anything is prepared, because a market that has already closed is not a preparation waiting to fail; it is a signal the owner should be told about while it is still only a screen. A provider that cannot be read at all raises its own failure, and the declared constraints stay as they are rather than being tightened by a guess.
+
+**Again inside `prepare`.** The same check is made before an order is requested, and that one is the one that guards the bytes: the market's identity, its event and its market provider all have to agree with what the publisher named, and a market that has closed between the review and the tap stops the preparation with its own reason. The first read is for the owner's benefit and is never a substitute for the second.
 
 ## Why the phone reads the chain
 
@@ -32,7 +55,7 @@ This is the one real addition SEE-94 makes to the app, and it was the owner's ca
 
 Jupiter's Prediction API returns **only** a versioned transaction whose accounts come from address lookup tables. There is no legacy option — six plausible parameter spellings were tried against the live API and all are ignored — so the escape the swap uses is not available here. In a real captured order, 35 of the aggregator's 55 accounts and 4 of the prediction program's 12 sat behind those tables: the phone could read the order's numbers but not see which accounts move funds.
 
-Three ways out were possible: sign it anyway on a parameter-only review, refuse the format and ship a plugin that never prepares, or **read the tables**. The owner chose the third, with these terms:
+Three ways out were possible: sign it anyway on a parameter-only review, refuse the format and ship an adapter that never prepares, or **read the tables**. The owner chose the third, with these terms:
 
 - resolution lives in a shared Solana component that neither couples core to a provider nor is configured by a publisher;
 - the tables are discovered from each transaction rather than hardcoded;
@@ -40,7 +63,7 @@ Three ways out were possible: sign it anyway on a parameter-only review, refuse 
 - the instructions are then checked against the reviewed action exactly as before, because resolving a table proves only which accounts the runtime will use and **nothing** about whether they are the right ones;
 - and a table that cannot be fetched or validated **blocks signing with a stated reason** — never a parameter-only review, never a blind signature.
 
-`solana/` is that component: one read method (`getMultipleAccounts`), a table parser, and the rebuild. It names no provider, so both plugins may use it; the swap asks for a format that needs no resolution and so never does, which also means the resolver is already in place if `asLegacyTransaction` is ever withdrawn.
+`solana/` is that component: one read method (`getMultipleAccounts`), a table parser, and the rebuild. It names no provider, so any provider may use it; the swap asks for a format that needs no resolution and so never does, which also means the resolver is already in place if `asLegacyTransaction` is ever withdrawn.
 
 **What it costs, said plainly:** the review is then only as accurate as the configured endpoint. This is not offline verification and is not trustless — see [security.md](../security.md#resolving-a-lookup-table). The endpoint is the application's or its host's (`-Pseekervault.solanaRpc=…`), is **empty by default** so a checkout reaches no cluster, and a build without one prepares no order and says so.
 
@@ -51,23 +74,24 @@ Verified against a real order captured from the live API (`fixtures/jupiter/orde
 | Instruction | Why it is there | What the review binds |
 | --- | --- | --- |
 | Compute budget ×2 | What the owner pays to be picked up | Read, and shown |
-| Associated token account, idempotent | The owner's own account for the provider's token | For the owner, paid by the owner, at the address that derives from both |
+| Associated token account, idempotent | The owner's own account for the venue's token | For the owner, paid by the owner, at the address that derives from both |
 | Jupiter `route` / `sharedAccountsRoute` | Funding the stake by swap | **SEE-93's reader, unchanged**: the owner authorizes it, the input leaves their own account for the mint they chose, no more than their stake, and it lands in the very account the order spends from |
 | The prediction program's order | The order | Everything in the next section |
 
-An order staked directly in the provider's own token has no route at all, and then the stake has to be exactly what the order costs. Both shapes are supported; anything else is a finding.
+An order staked directly in the venue's own token has no route at all, and then the stake has to be exactly what the order costs. Both shapes are supported; anything else is a finding.
 
 ## What the review covers
 
 The order instruction carries all of it, as its own Borsh fields, and the review reads each out of the bytes and compares it with what the owner chose and what the provider said: the market's hash, the request's identifier, **which side**, how many contracts, the most a contract may cost, what the order costs, the slippage, and the order and position accounts. Plus, from the message: the owner pays, the order is the owner's, and **the only signature still missing is theirs**.
 
-That last one deserves a note. The provider **co-signs**: an order arrives with two signature slots and the protocol's own already filled. So "nothing else signs" would be the wrong rule here; the right one is "one signature is missing, it is the owner's, and the owner is the fee payer". Both ways of breaking it are refused.
+That last one deserves a note. The venue **co-signs**: an order arrives with two signature slots and the protocol's own already filled. So "nothing else signs" would be the wrong rule here; the right one is "one signature is missing, it is the owner's, and the owner is the fee payer". Both ways of breaking it are refused.
 
 ## What is out of reach
 
-- **The market hash is not a plain digest of the market ID.** md5, sha1, sha256 and blake2s were all checked against a real pair and none matches. So the market is *cross-checked* — the hash in the bytes is the hash the provider stated for the market it answered about — and not proved from the identifier. A provider that claimed market X and built for market Y could not be caught by this check alone; what does catch it is that the market was read first, and its identity, event and source all had to agree.
+- **The market hash is not a plain digest of the market ID.** md5, sha1, sha256 and blake2s were all checked against a real pair and none matches. So the market is *cross-checked* — the hash in the bytes is the hash the provider stated for the market it answered about — and not proved from the identifier. A provider that claimed market X and built for market Y could not be caught by this check alone; what does catch it is that the market was read first, and its identity, event and market provider all had to agree.
 - **The review depends on the configured endpoint** being honest about a table's contents.
-- **A closed or settled market** is the provider's word. The phone has no other source for it.
+- **A closed or settled market** is the execution provider's word. The phone has no other source for it.
+- **What became of a submitted order.** The boundary has a `status` query and Jupiter answers `Unsupported`, because it has no read that would let this app turn "submitted" into "filled" without guessing. **Nothing in the app polls it**, and SEE-145 deliberately added no fill monitoring to go with it.
 
 ## Where the owner continues
 
@@ -85,15 +109,25 @@ There is deliberately **no position link**. The platform has no per-position add
 
 ## Limits, honestly
 
-- **Mainnet or nothing.** There is no devnet prediction market to point at.
-- **Sandbox gets the same work**, and stops before the wallet: the market is read, the order is built and reviewed, and nothing is signed or sent (SEE-97, [`docs/wiki/environments.md`](environments.md)). The plugin never reads the environment — whether bytes are signed is core's.
+- **Mainnet or nothing.** There is no devnet prediction market to point at, and the capability declares mainnet in both environments, so a wallet on another cluster is refused as `NetworkUnsupported` — a separate fact from an environment the provider does not serve.
+- **Sandbox gets the same work**, and stops before the wallet: the market is read, the order is built and reviewed, and nothing is signed or sent (SEE-97, [`docs/wiki/environments.md`](environments.md)). The provider never reads the environment — whether bytes are signed is core's.
 - **One minute of freshness**, as for a swap: a market's price moves and the transaction carries a recent blockhash.
-- **The keyless allowance is 0.5 requests a second, 30 a minute** — three calls per order (market, order, tables), which is ample for a person and not for polling. Nothing polls.
+- **The keyless allowance is 0.5 requests a second, 30 a minute** — four calls per order at most (the market when the review opens, the market again, the order, the tables), which is ample for a person and not for polling. Nothing polls.
 - **Buying only.** Selling a position is managing one, and this app does not.
+
+## Where the code is
+
+| File | What is in it |
+| --- | --- |
+| [`plugins/actions/PredictionAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionAction.kt) | The action's payload and every rule a publisher's terms are held to — provider-neutral, read by core |
+| [`plugins/actions/PredictionInputs.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionInputs.kt) | The side and the stake, with the publisher's bounds and the venue's floor folded together |
+| [`jupiter/JupiterPredictionAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterPredictionAction.kt) | Jupiter's half: `resolve`, the ordered checks in `prepare`, the chain read, the inspection, and the market link |
+| [`jupiter/JupiterExecutionProvider.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt) | The provider itself, and `PREDICTION_BUY_CAPABILITY`: schema 1, mainnet, its two stake mints, its five-dollar floor |
+| [`jupiter/JupiterPrediction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterPrediction.kt), [`jupiter/PredictionInstructions.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/PredictionInstructions.kt), [`jupiter/PredictionInspection.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/PredictionInspection.kt) | The market read and the order, the instruction's Borsh layout, and `inspectPrediction` |
 
 ## Where the rules for this live
 
-- The boundary: [`client-plugins.md`](client-plugins.md). The other plugin: [`jupiter-swap.md`](jupiter-swap.md).
-- The provider, its endpoints and its failures: [`integrations/jupiter.md`](../integrations/jupiter.md).
+- The boundary: [`client-plugins.md`](client-plugins.md). The extension contract in full: [`execution-providers.md`](execution-providers.md). The other action: [`jupiter-swap.md`](jupiter-swap.md).
+- The API, its endpoints and its failures: [`integrations/jupiter.md`](../integrations/jupiter.md).
 - Resolving a lookup table, and what trusting an endpoint means: [`security.md`](../security.md#resolving-a-lookup-table).
 - What is bound before a wallet opens: [`shared-proposals.md`](shared-proposals.md#what-a-signature-is-bound-to).

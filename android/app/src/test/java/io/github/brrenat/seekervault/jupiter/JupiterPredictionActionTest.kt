@@ -27,6 +27,7 @@ import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -182,6 +183,50 @@ class JupiterPredictionActionTest {
             Instant.ofEpochSecond(2_000).plus(ORDER_LIFETIME).epochSecond,
             prepared.expiresAtEpochSeconds,
         )
+    }
+
+    @Test
+    fun theMarketIsReadWhenTheReviewOpensAndAClosedOneIsSaidThere() {
+        // `resolve` is a read and nothing else: the market's state, when the owner looks, so a
+        // market that has already settled is a sentence on the screen rather than a preparation
+        // waiting to fail. No order is asked for, and nothing is bound (SEE-145).
+        provider.answersMarket = { openMarket(it, status = "closed", result = "yes") }
+
+        val resolution = runBlocking { plugin().resolve(subject()) }
+
+        assertEquals(PredictionProblem.MarketClosed.code, resolution.problem?.code)
+        assertEquals(listOf("market $MARKET_ID"), provider.asked)
+        // And what it says about itself, for the owner to read and for no rule to evaluate.
+        assertEquals(listOf("closed", "yes"), resolution.details.map { it.value })
+    }
+
+    @Test
+    fun anOpenMarketResolvesToTheFieldsAndTheVenuesOwnWords() {
+        honest()
+
+        val resolution = runBlocking { plugin().resolve(subject()) }
+
+        assertNull(resolution.problem)
+        assertEquals(
+            listOf(PredictionParameterNames.OUTCOME, PredictionParameterNames.DEPOSIT),
+            resolution.form.fields.map { it.key },
+        )
+    }
+
+    @Test
+    fun itAnswersNoStatusQueryRatherThanGuessingAtOne() {
+        // There is no read here that could turn "submitted" into "filled", and nothing in this app
+        // polls for one. Saying so is the honest answer (SEE-145).
+        val answer = runBlocking {
+            plugin()
+                .status(
+                    subject(),
+                    io.github.brrenat.seekervault.plugins.PluginReference(ORDER_ACCOUNT, "x"),
+                )
+        }
+
+        assertEquals(io.github.brrenat.seekervault.plugins.ActionStatus.Unsupported, answer)
+        assertEquals(emptyList<String>(), provider.asked)
     }
 
     @Test
