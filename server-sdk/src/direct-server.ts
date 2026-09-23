@@ -26,7 +26,11 @@ import { publishManifest } from "./manifest.ts";
 import { pairingRoutes } from "./pairing/service.ts";
 import { pairingUri } from "./pairing/uri.ts";
 import { phoneRoutes } from "./phone-api.ts";
-import type { ConfirmationProvider, TransferProvider } from "./providers.ts";
+import type {
+  ConfirmationProvider,
+  StakingProvider,
+  TransferProvider,
+} from "./providers.ts";
 import {
   FcmInvalidationDispatcher,
   type InvalidationSender,
@@ -77,6 +81,12 @@ export interface OpenDirectServerOptions {
   readonly now?: () => number;
   readonly updatePollMs?: number;
   readonly transferProvider?: TransferProvider;
+  /**
+   * Preparing staking actions, for a host that serves them (SEE-146). Supplied separately from
+   * `transferProvider` because serving one says nothing about serving the other, and a host that
+   * supplies neither prepares nothing rather than refusing halfway through a review.
+   */
+  readonly stakingProvider?: StakingProvider;
   readonly confirmationProvider?: ConfirmationProvider;
   /**
    * Direct Firebase delivery: this server holds a service-account credential and sends its own
@@ -201,11 +211,15 @@ export function openDirectServer(
       log: options.log,
     });
     const preparer =
-      options.transferProvider === undefined
+      options.transferProvider === undefined &&
+      options.stakingProvider === undefined
         ? undefined
         : new TransactionPreparer(
             requests,
-            options.transferProvider,
+            {
+              transfers: options.transferProvider,
+              staking: options.stakingProvider,
+            },
             options.now,
           );
     const tracker =

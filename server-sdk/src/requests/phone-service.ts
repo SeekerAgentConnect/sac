@@ -21,6 +21,7 @@ import type { PairingStore } from "../storage/pairing-store.ts";
 import { networkName, type RequestStore } from "../storage/request-store.ts";
 import { checkable, type ConfirmationTracker } from "./confirmation.ts";
 import { RequestFailure } from "./failure.ts";
+import { kindName } from "./lifecycle.ts";
 import type { TransactionPreparer } from "./preparation.ts";
 
 const CODES: ReadonlyMap<RequestError, Code> = new Map([
@@ -104,27 +105,37 @@ export function requestRoutes(
               Code.Unimplemented,
             );
           }
-          if (kind === "transfer" && preparer === undefined) {
+          if (kind === "transfer" && preparer?.servesTransfers !== true) {
             throw new RequestFailure(
               RequestError.CHAIN_UNAVAILABLE,
               "this sidecar has no Solana RPC endpoint configured, so it can prepare no transfer; set SOLANA_RPC_URL",
               current,
             );
           }
-          if (preparer === undefined || kind !== "transfer") {
+          if (kind === "staking" && preparer?.servesStaking !== true) {
             throw new RequestFailure(
-              RequestError.INVALID_PARAMETERS,
-              `${kind === "signMessage" ? "sign_message" : "ack"} requests have nothing to prepare`,
+              RequestError.CHAIN_UNAVAILABLE,
+              "this sidecar has no staking provider configured, so it can prepare no staking action",
               current,
             );
           }
-          const prepared = await preparer.prepareTransfer(
+          if (
+            preparer === undefined ||
+            (kind !== "transfer" && kind !== "staking")
+          ) {
+            throw new RequestFailure(
+              RequestError.INVALID_PARAMETERS,
+              `${kindName(kind)} requests have nothing to prepare`,
+              current,
+            );
+          }
+          const prepared = await preparer.prepareTransaction(
             connectionId,
             request.ref,
           );
           // Addresses and amounts belong to the request, not to the log; only what happened does.
           log(
-            `request ${current.ref?.requestId ?? ""}: prepared transfer version ${prepared.version}`,
+            `request ${current.ref?.requestId ?? ""}: prepared ${kind} version ${prepared.version}`,
           );
           return { prepared };
         }),

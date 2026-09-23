@@ -11,6 +11,7 @@ import {
   Network,
   RequestError,
   RequestState,
+  StakingOperation,
   WalletBindingSchema,
   type ActionRequest,
   type WalletBinding,
@@ -85,6 +86,18 @@ function transfer(wallet: string, network: Network) {
         amount: "1",
       },
     },
+  });
+}
+
+/** A staking action on mainnet, where the staking program is deployed. */
+function staking(
+  wallet: string,
+  network: Network,
+  operation: StakingOperation = StakingOperation.STAKE,
+  amount = "1",
+) {
+  return create(ActionSchema, {
+    kind: { case: "staking", value: { wallet, network, operation, amount } },
   });
 }
 
@@ -326,6 +339,50 @@ describe("RequestStore: the wallet binding", () => {
     assert.equal(rows(s.db, "requests"), 1);
   });
 
+  it("binds a staking action to the owner's wallet and to its own network", () => {
+    const s = setup();
+    s.store.publishWallet(s.connectionId, binding(WALLET, Network.MAINNET));
+    const stored = s.store.create({
+      action: staking(WALLET, Network.MAINNET),
+      agentNote: "",
+      idempotencyKey: "stake",
+    });
+    assert.equal(stored.request.state, PENDING);
+    // A staked position belongs to one wallet on one network, so neither may differ.
+    for (const [action, key] of [
+      [staking(OTHER_WALLET, Network.MAINNET), "stake-other-wallet"],
+      [staking(WALLET, Network.DEVNET), "stake-other-network"],
+    ] as const) {
+      assert.throws(
+        () => s.store.create({ action, agentNote: "", idempotencyKey: key }),
+        refused(RequestError.WALLET_MISMATCH),
+      );
+    }
+    assert.equal(rows(s.db, "requests"), 1);
+  });
+
+  it("cancels a pending staking action the owner's new wallet no longer fits", () => {
+    const s = setup();
+    s.store.publishWallet(s.connectionId, binding(WALLET, Network.MAINNET));
+    const dropped = s.store.create({
+      action: staking(WALLET, Network.MAINNET, StakingOperation.UNSTAKE),
+      agentNote: "",
+      idempotencyKey: "unstake",
+    }).request;
+    s.clock.now = NOON + 1_000;
+    const published = s.store.publishWallet(
+      s.connectionId,
+      binding(OTHER_WALLET, Network.MAINNET),
+    );
+    assert.deepEqual(
+      published.cancelled.map((ref) => ref.requestId),
+      [dropped.ref!.requestId],
+    );
+    const after = s.store.get(dropped.ref!.requestId);
+    assert.equal(after.state, CANCELLED);
+    assert.equal(after.outcome?.detail, WALLET_CHANGED_DETAIL);
+  });
+
   it("carries a sign_message request on any network the owner selected", () => {
     const s = setup();
     s.store.publishWallet(s.connectionId, binding(WALLET, Network.MAINNET));
@@ -454,6 +511,36 @@ describe("RequestStore: idempotency", () => {
     ]) {
       assert.throws(
         () => s.store.create(ack(text, "conflict")),
+        (thrown) =>
+          refused(RequestError.IDEMPOTENCY_CONFLICT)(thrown) &&
+          (thrown as RequestFailure).message.includes(idOf(first)),
+      );
+    }
+    assert.equal(rows(s.db, "requests"), 1);
+  });
+
+  it("replays a staking request, and refuses the key for another operation or amount", () => {
+    const s = setup();
+    s.store.publishWallet(s.connectionId, binding(WALLET, Network.MAINNET));
+    const stake = (
+      operation?: StakingOperation,
+      amount?: string,
+    ): NewRequest => ({
+      action: staking(WALLET, Network.MAINNET, operation, amount),
+      agentNote: "",
+      idempotencyKey: "stake-once",
+    });
+    const first = s.store.create(stake()).request;
+    const replay = s.store.create(stake());
+    assert.equal(replay.created, false);
+    assert.ok(equals(ActionRequestSchema, replay.request, first));
+    // Starting an unstake is not staking again, and 2 base units are not 1.
+    for (const changed of [
+      stake(StakingOperation.UNSTAKE),
+      stake(StakingOperation.STAKE, "2"),
+    ]) {
+      assert.throws(
+        () => s.store.create(changed),
         (thrown) =>
           refused(RequestError.IDEMPOTENCY_CONFLICT)(thrown) &&
           (thrown as RequestFailure).message.includes(idOf(first)),

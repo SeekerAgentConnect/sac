@@ -29,6 +29,7 @@ public  final class Action extends
     SIGN_MESSAGE(2),
     TRANSFER(3),
     SWAP(4),
+    STAKING(5),
     KIND_NOT_SET(0);
     private final int value;
     private KindCase(int value) {
@@ -48,6 +49,7 @@ public  final class Action extends
         case 2: return SIGN_MESSAGE;
         case 3: return TRANSFER;
         case 4: return SWAP;
+        case 5: return STAKING;
         case 0: return KIND_NOT_SET;
         default: return null;
       }
@@ -344,6 +346,76 @@ public  final class Action extends
    */
   private void clearSwap() {
     if (kindCase_ == 4) {
+      kindCase_ = 0;
+      kind_ = null;
+    }
+  }
+
+  public static final int STAKING_FIELD_NUMBER = 5;
+  /**
+   * <pre>
+   * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+   */
+  @java.lang.Override
+  public boolean hasStaking() {
+    return kindCase_ == 5;
+  }
+  /**
+   * <pre>
+   * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+   */
+  @java.lang.Override
+  public io.github.brrenat.seekervault.request.v1.StakingAction getStaking() {
+    if (kindCase_ == 5) {
+       return (io.github.brrenat.seekervault.request.v1.StakingAction) kind_;
+    }
+    return io.github.brrenat.seekervault.request.v1.StakingAction.getDefaultInstance();
+  }
+  /**
+   * <pre>
+   * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+   */
+  private void setStaking(io.github.brrenat.seekervault.request.v1.StakingAction value) {
+    java.util.Objects.requireNonNull(value);
+    kind_ = value;
+    kindCase_ = 5;
+  }
+  /**
+   * <pre>
+   * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+   */
+  private void mergeStaking(io.github.brrenat.seekervault.request.v1.StakingAction value) {
+    java.util.Objects.requireNonNull(value);
+    if (kindCase_ == 5 &&
+        kind_ != io.github.brrenat.seekervault.request.v1.StakingAction.getDefaultInstance()) {
+      kind_ = io.github.brrenat.seekervault.request.v1.StakingAction.newBuilder((io.github.brrenat.seekervault.request.v1.StakingAction) kind_)
+          .mergeFrom(value).buildPartial();
+    } else {
+      kind_ = value;
+    }
+    kindCase_ = 5;
+  }
+  /**
+   * <pre>
+   * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+   */
+  private void clearStaking() {
+    if (kindCase_ == 5) {
       kindCase_ = 0;
       kind_ = null;
     }
@@ -751,6 +823,78 @@ public  final class Action extends
       return this;
     }
 
+    /**
+     * <pre>
+     * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+     */
+    @java.lang.Override
+    public boolean hasStaking() {
+      return instance.hasStaking();
+    }
+    /**
+     * <pre>
+     * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+     */
+    @java.lang.Override
+    public io.github.brrenat.seekervault.request.v1.StakingAction getStaking() {
+      return instance.getStaking();
+    }
+    /**
+     * <pre>
+     * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+     */
+    public Builder setStaking(io.github.brrenat.seekervault.request.v1.StakingAction value) {
+      copyOnWrite();
+      instance.setStaking(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+     */
+    public Builder setStaking(
+        io.github.brrenat.seekervault.request.v1.StakingAction.Builder builderForValue) {
+      copyOnWrite();
+      instance.setStaking(builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+     */
+    public Builder mergeStaking(io.github.brrenat.seekervault.request.v1.StakingAction value) {
+      copyOnWrite();
+      instance.mergeStaking(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+     */
+    public Builder clearStaking() {
+      copyOnWrite();
+      instance.clearStaking();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.request.v1.Action)
   }
   @java.lang.Override
@@ -773,10 +917,11 @@ public  final class Action extends
             io.github.brrenat.seekervault.request.v1.SignMessageAction.class,
             io.github.brrenat.seekervault.request.v1.TransferAction.class,
             io.github.brrenat.seekervault.request.v1.SwapAction.class,
+            io.github.brrenat.seekervault.request.v1.StakingAction.class,
           };
           java.lang.String info =
-              "\u0000\u0004\u0001\u0000\u0001\u0004\u0004\u0000\u0000\u0000\u0001<\u0000\u0002<" +
-              "\u0000\u0003<\u0000\u0004<\u0000";
+              "\u0000\u0005\u0001\u0000\u0001\u0005\u0005\u0000\u0000\u0000\u0001<\u0000\u0002<" +
+              "\u0000\u0003<\u0000\u0004<\u0000\u0005<\u0000";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

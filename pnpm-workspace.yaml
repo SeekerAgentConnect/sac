@@ -1,6 +1,7 @@
 packages:
   - server-sdk
   - mcp-server
+  - skr-staking-server
   - test-agent
 
 # The postinstall only locates the platform binary that pnpm already installs as an

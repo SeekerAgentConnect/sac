@@ -14,7 +14,7 @@ export interface PrivateRequestDraft {
     readonly category: "request";
   };
   readonly capability: {
-    readonly id: "ack" | "sign_message" | "transfer" | "swap";
+    readonly id: "ack" | "sign_message" | "transfer" | "swap" | "staking";
     readonly version: 1;
     readonly action: Action;
   };
@@ -38,7 +38,8 @@ export function privateRequest(
     capability !== "ack" &&
     capability !== "sign_message" &&
     capability !== "transfer" &&
-    capability !== "swap"
+    capability !== "swap" &&
+    capability !== "staking"
   ) {
     throw new RequestFailure(
       RequestError.INVALID_PARAMETERS,
@@ -94,5 +95,7 @@ function title(capability: PrivateRequestDraft["capability"]["id"]): string {
       return "Transfer";
     case "swap":
       return "Swap";
+    case "staking":
+      return "Staking";
   }
 }

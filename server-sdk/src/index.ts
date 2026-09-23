@@ -27,6 +27,7 @@ export {
   invalidActionReason,
   messageBytes,
   parseBaseUnits,
+  stakingOperationName,
 } from "./requests/action.ts";
 export {
   COMMON_REQUEST_CONTRACT,
@@ -54,6 +55,7 @@ export {
   type ConfirmationProvider,
   type ProviderSignatureStatus,
   type ProviderTransaction,
+  type StakingProvider,
   type TransferProvider,
 } from "./providers.ts";
 export type {
