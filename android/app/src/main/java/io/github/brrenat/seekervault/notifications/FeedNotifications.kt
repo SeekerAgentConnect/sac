@@ -155,7 +155,7 @@ class ProposalNotificationManager(
 }
 
 /** A provider-neutral label for the protocol operation, never its raw identifier. */
-private fun proposalNotificationCopy(
+internal fun proposalNotificationCopy(
     context: Context,
     record: ProposalRecord,
     source: String,

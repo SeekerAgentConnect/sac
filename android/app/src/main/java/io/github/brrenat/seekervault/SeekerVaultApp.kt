@@ -5,6 +5,8 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -16,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -36,6 +39,7 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.SheetMotion
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.InboxRoute
 import io.github.brrenat.seekervault.inbox.InboxRouteCallbacks
 import io.github.brrenat.seekervault.inbox.InboxViewModel
@@ -51,6 +55,8 @@ import io.github.brrenat.seekervault.inbox.key
 import io.github.brrenat.seekervault.inbox.pendingItems
 import io.github.brrenat.seekervault.live.LiveCommandRoute
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
+import io.github.brrenat.seekervault.notifications.InAppNotificationTarget
+import io.github.brrenat.seekervault.notifications.InAppNotifications
 import io.github.brrenat.seekervault.notifications.RequestNotificationPermission
 import io.github.brrenat.seekervault.operations.OperationViewModel
 import io.github.brrenat.seekervault.operations.OperationsUiState
@@ -75,6 +81,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+
+/** Above `SeekerSheet`'s `10f + index`, so the banner is over the whole sheet stack. */
+private const val InAppNotificationZIndex = 100f
 
 /**
  * The design user-flow graph. Peer tabs replace the base destination, while every sheet is a typed
@@ -514,6 +523,36 @@ fun SeekerVaultApp(
                 }
             }
         }
+
+        // Above the content and above every sheet, and the last child so nothing can draw over it.
+        // A touch on the banner is the banner's; a touch anywhere else is not intercepted at all.
+        InAppNotifications(
+            loaded = state.loaded,
+            connections = state.connections,
+            waiting = commonPending,
+            reviewOpen = { identity ->
+                // Read at the moment the banner would be raised, not at the last recomposition.
+                navigator.state.sheets.any { sheet ->
+                    (sheet as? AppSheet.RequestReview)?.identity == identity ||
+                        (sheet as? AppSheet.WalletHandoff)?.identity == identity
+                }
+            },
+            onOpen = { target ->
+                // The same approach as a system notification's tap: back to a base destination
+                // the graph allows the destination to be pushed from, then push it.
+                resetTransientSheetState()
+                navigator.selectTab(AppScreen.Home)
+                when (target) {
+                    is InAppNotificationTarget.Review -> navigator.openReview(target.identity)
+                    is InAppNotificationTarget.PairAgain -> navigator.openAddConnection()
+                }
+            },
+            modifier =
+                Modifier.align(Alignment.TopCenter)
+                    .zIndex(InAppNotificationZIndex)
+                    .statusBarsPadding()
+                    .padding(horizontal = SeekerTheme.spacing.md),
+        )
     }
 }
 

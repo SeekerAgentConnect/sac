@@ -228,6 +228,15 @@ internal val componentGallerySpecimens =
         GallerySpecimen(component = "notice-card", variant = "stale-card") {
             NoticeCardStalePreview()
         },
+        GallerySpecimen(component = "notification", variant = "kind=request") {
+            InAppNotificationRequestPreview()
+        },
+        GallerySpecimen(component = "notification", variant = "kind=signal") {
+            InAppNotificationSignalPreview()
+        },
+        GallerySpecimen(component = "notification", variant = "kind=disconnected") {
+            InAppNotificationDisconnectedPreview()
+        },
         GallerySpecimen(component = "owner-input-card", variant = "state=chosen kind=prediction") {
             OwnerInputCardPredictionChosenPreview()
         },
