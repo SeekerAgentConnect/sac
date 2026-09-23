@@ -36,7 +36,7 @@ because they have the same words in their titles.
 | --- | --- |
 | `capabilities` | Who it is, which actions it serves, at which schema versions, on which Solana clusters, in which environments, in which assets and within which limits |
 | `inputs` | What the owner has to choose. Reaches nothing and cannot fail, so a review opens with its fields already on it |
-| `resolve` | What the provider says about the action *now* — a market's state, tightened constraints. A read, and nothing else |
+| `resolve` | What the provider says about the action *now* — a market's state, tightened constraints. A read, and nothing else. It suspends, so it may be superseded: see [below](#a-read-answers-the-review-that-asked) |
 | `prepare` | Builds the operation for the owner's explicit choice, and returns the exact bytes that would be signed |
 | `inspect` | Reads those bytes back and says what they establish, as typed facts |
 | `destinations` | Where the owner may carry on outside the app, if anywhere truthful exists |
@@ -179,6 +179,25 @@ They are different and conflating them would have invalidated every manifest alr
 
 A provider with no legacy row has no published number to be about, so a manifest requiring it is
 matched against the provider's own contract.
+
+## A read answers the review that asked
+
+`resolve` is the only call on the interface that reaches the network, so it is the only one that can
+still be out when the owner moves. They may open another feed's proposal that happens to carry the
+same publisher-minted ID, close this one and open it again, or have the publisher raise the revision
+underneath them.
+
+Core scopes the answer for you. Every open review carries its own number; a read that started under
+one is cancelled when it is superseded, and if it had already left, its result is discarded rather
+than applied. A provider does not have to be idempotent about this and does not have to carry a
+request identity — but it must not treat cancellation as an error worth reporting, because being
+stopped is the normal end of a read nobody is waiting for any more.
+
+A revision that moves is a new review in every respect: the terms are parsed again, `inputs` and
+`destinations` are asked again for the new record, `resolve` is asked again, and what the owner had
+chosen about the terms that were replaced is not carried onto terms they never saw. Preparing and
+approving both check the revision they were opened under, so the latest revision can never be
+prepared against the previous one's limits or instrument.
 
 ## The status query nothing polls
 

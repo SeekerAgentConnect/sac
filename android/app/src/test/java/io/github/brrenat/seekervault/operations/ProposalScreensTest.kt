@@ -90,6 +90,7 @@ class ProposalScreensTest {
         OperationReview(
             connectionId = CONNECTION,
             proposalId = PROPOSAL,
+            generation = 1,
             record = record(),
             standing = standing,
             environment = environment,

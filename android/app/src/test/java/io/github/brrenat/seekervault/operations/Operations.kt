@@ -232,11 +232,20 @@ fun swapProposal(
 /** The gateway's answers, and every question this phone asked it. */
 class FakeFeed : ProposalFeed {
     var answers: List<WireProposal> = emptyList()
+
+    /**
+     * What a particular channel answers, for the tests that hold two feeds at once.
+     *
+     * A proposal ID belongs to the publisher that minted it, so two feeds can hold the same one and
+     * mean two different documents. A channel is what tells them apart here, exactly as it does on
+     * the real gateway; anything not listed falls back to [answers].
+     */
+    var answersByChannel: Map<String, List<WireProposal>> = emptyMap()
     val asked = mutableListOf<Pair<FeedReference, Long>>()
 
     override suspend fun snapshot(reference: FeedReference, knownSequence: Long): FeedSnapshot {
         asked += reference to knownSequence
-        return FeedSnapshot.Read(1L, answers)
+        return FeedSnapshot.Read(1L, answersByChannel[reference.channel] ?: answers)
     }
 }
 
