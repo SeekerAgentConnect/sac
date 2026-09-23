@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.FeedReferenceProblem
 import io.github.brrenat.seekervault.servers.FeedReferenceResult
@@ -150,7 +150,7 @@ class ConnectionsViewModel(
     private val foregroundUpdates: StateFlow<ForegroundUpdatesState>? = null,
     private val foregroundFeeds: StateFlow<ForegroundFeedsState>? = null,
     /** The bundled client plugins this build carries, which is what a manifest is matched to. */
-    private val plugins: PluginRegistry = PluginRegistry.of(),
+    private val plugins: ProviderRegistry = ProviderRegistry.of(),
     /** A seam for the add flow's state tests; production always uses the repository method. */
     private val addFeed: suspend (FeedReference) -> FeedOutcome = repository::addFeed,
     private val cleartextPermitted: (host: String) -> Boolean,

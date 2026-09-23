@@ -4,23 +4,28 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityOutcome
-import io.github.brrenat.seekervault.jupiter.JUPITER_SWAP
 import io.github.brrenat.seekervault.jupiter.JupiterException
 import io.github.brrenat.seekervault.jupiter.JupiterProblem
 import io.github.brrenat.seekervault.jupiter.JupiterSwap
 import io.github.brrenat.seekervault.jupiter.SOL_MINT
 import io.github.brrenat.seekervault.jupiter.SWAP_PREPARATION_LIFETIME
 import io.github.brrenat.seekervault.jupiter.SwapFinding
-import io.github.brrenat.seekervault.jupiter.SwapParameterNames
 import io.github.brrenat.seekervault.jupiter.USDC_MINT
 import io.github.brrenat.seekervault.jupiter.swapTransaction
 import io.github.brrenat.seekervault.jupiter.usdcTerms
+import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
+import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.SWAP_ACTION
+import io.github.brrenat.seekervault.plugins.UnsupportedReason
+import io.github.brrenat.seekervault.plugins.actions.SwapParameterNames
 import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
+import io.github.brrenat.seekervault.proposals.instrumentOf
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SendResult
@@ -239,7 +244,8 @@ class OperationViewModelTest {
         val record = checkNotNull(phone.proposals.proposal(CONNECTION, PROPOSAL))
         val execution = checkNotNull(record.execution)
         // And the record says what was bound, written before the wallet opened.
-        assertEquals(JUPITER_SWAP, execution.binding.plugin)
+        assertEquals(JUPITER_PROVIDER, execution.binding.provider)
+        assertEquals(SWAP_ACTION, execution.binding.action)
         assertEquals(
             4_000_000UL,
             (execution.binding.choice[SwapParameterNames.INPUT_AMOUNT] as ParameterValue.Amount)
@@ -331,8 +337,11 @@ class OperationViewModelTest {
                     choice = it.choice,
                     wallet = owner,
                     network = io.github.brrenat.seekervault.request.v1.Network.NETWORK_MAINNET,
-                    plugin = JUPITER_SWAP,
-                    contract = 1,
+                    provider = JUPITER_PROVIDER,
+                    action = SWAP_ACTION,
+                    schemaVersion = 1,
+                    instrument = instrumentOf(it.record.proposal),
+                    contract = PROVIDER_CONTRACT,
                     preparedVersion = prepared.version,
                     contentHash =
                         ByteString.copyFrom(
@@ -424,7 +433,12 @@ class OperationViewModelTest {
 
         model.prepare()
 
-        assertEquals("other_network", checkNotNull(model.review.value).failure?.code)
+        // Refused by the registry, before a provider was reached at all, and said as itself:
+        // "this venue does not serve your cluster" and not "you have no wallet" (SEE-145).
+        assertEquals(
+            UnsupportedReason.NetworkUnsupported.code,
+            checkNotNull(model.review.value).failure?.code,
+        )
         // The provider was never asked: a devnet wallet is not a devnet provider, and the app's
         // own devnet transfer tests are about something else entirely.
         assertEquals(emptyList<String>(), phone.provider.asked)
@@ -561,8 +575,11 @@ class OperationViewModelTest {
                 choice = checkNotNull(model.review.value).choice,
                 wallet = owner,
                 network = io.github.brrenat.seekervault.request.v1.Network.NETWORK_MAINNET,
-                plugin = JUPITER_SWAP,
-                contract = 1,
+                provider = JUPITER_PROVIDER,
+                action = SWAP_ACTION,
+                schemaVersion = 1,
+                instrument = instrumentOf(checkNotNull(model.review.value).record.proposal),
+                contract = PROVIDER_CONTRACT,
                 preparedVersion = prepared.version,
                 contentHash =
                     ByteString.copyFrom(

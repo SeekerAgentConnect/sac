@@ -1,13 +1,24 @@
 package io.github.brrenat.seekervault.jupiter
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import io.github.brrenat.seekervault.plugins.ActionSubject
-import io.github.brrenat.seekervault.plugins.PLUGIN_CONTRACT
+import io.github.brrenat.seekervault.plugins.ActionOperation
+import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
+import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
+import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFailure
-import io.github.brrenat.seekervault.plugins.PluginPreparation
+import io.github.brrenat.seekervault.plugins.PreparedOperation
+import io.github.brrenat.seekervault.plugins.actions.ActionPayload
+import io.github.brrenat.seekervault.plugins.actions.PredictionChoiceProblem
+import io.github.brrenat.seekervault.plugins.actions.PredictionOutcomes
+import io.github.brrenat.seekervault.plugins.actions.PredictionParameterNames
+import io.github.brrenat.seekervault.plugins.actions.PredictionPayloadResult
+import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
+import io.github.brrenat.seekervault.plugins.actions.predictionPayloadFrom
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.solana.SolanaProblem
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.SelectedWallet
@@ -21,7 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The plugin, over a provider and a chain that are stood in for (SEE-94).
+ * Jupiter's `prediction.buy`, over an API and a chain that are stood in for (SEE-94, SEE-145).
  *
  * The bytes and the resolution are tested elsewhere; this is about the order the plugin does things
  * in, which is where its promises live: the market is asked about before an order is requested, the
@@ -29,7 +40,7 @@ import org.junit.runner.RunWith
  * with its own reason rather than degrading the review.
  */
 @RunWith(AndroidJUnit4::class)
-class JupiterPredictionPluginTest {
+class JupiterPredictionActionTest {
     private val provider = FakePrediction()
     private val terms =
         mapOf(
@@ -57,20 +68,38 @@ class JupiterPredictionPluginTest {
     }
 
     private fun plugin(at: Instant = Instant.ofEpochSecond(2_000)) =
-        JupiterPredictionPlugin(provider, chain) { at }
+        JupiterExecutionProvider(NoSwaps, provider, chain) { at }
+
+    /** A swap API that is never reached: these cases are all about the other action. */
+    private object NoSwaps : JupiterProvider {
+        override suspend fun quote(
+            terms: io.github.brrenat.seekervault.plugins.actions.SwapPayload,
+            amount: ULong,
+            slippageBps: Int,
+        ) = throw AssertionError("a prediction asked for a swap quote")
+
+        override suspend fun build(quote: JupiterQuote, wallet: String) =
+            throw AssertionError("a prediction asked for a swap build")
+    }
 
     private fun subject(
         environment: PluginEnvironment = PluginEnvironment.Production,
         wallet: SelectedWallet? = wallet(),
         values: Map<String, String> = terms,
     ) =
-        ActionSubject(
+        ActionOperation(
             connectionId = "5b1f4b3a-6a5f-4f5c-9d6c-0f2f1e2d3c4b",
-            operation = PREDICTION_OPERATION,
+            action = PREDICTION_BUY_ACTION,
+            schemaVersion = 1,
+            provider = JUPITER_PROVIDER,
             environment = environment,
+            network = Network.NETWORK_MAINNET,
+            payload =
+                ActionPayload.PredictionBuy(
+                    (predictionPayloadFrom(values) as PredictionPayloadResult.Valid).payload
+                ),
             request = null,
             wallet = wallet,
-            terms = values,
         )
 
     private fun chose(yes: Boolean = true, stake: ULong = 5_000_000UL) =
@@ -109,16 +138,22 @@ class JupiterPredictionPluginTest {
     }
 
     @Test
-    fun itDeclaresWhatItIsAndWhatItServes() {
-        val descriptor = plugin().descriptor
+    fun itDeclaresTheActionTheVenuesStakeTokensAndItsSmallestOrder() {
+        val capabilities = plugin().capabilities
 
-        assertEquals("jupiter.prediction", descriptor.id.value)
-        assertEquals(PLUGIN_CONTRACT, descriptor.contract)
-        assertTrue(descriptor.contractSupported)
-        assertEquals(setOf(PREDICTION_OPERATION), descriptor.operations)
+        assertEquals("jupiter", capabilities.id.value)
+        assertEquals(PROVIDER_CONTRACT, capabilities.contract)
+        assertTrue(capabilities.contractSupported)
+        assertTrue(JUPITER_PREDICTION in capabilities.legacyPlugins)
+        val buy = checkNotNull(capabilities.forAction(PREDICTION_BUY_ACTION))
+        assertEquals(1..1, buy.schemaVersions)
+        assertEquals(setOf(Network.NETWORK_MAINNET), buy.networks)
+        // The venue's own rules, declared rather than hidden inside the payload reader (SEE-145).
+        assertEquals(DEPOSIT_MINTS, buy.depositAssets)
+        assertEquals(LEAST_ORDER_DEPOSIT, buy.leastDeposit)
         assertEquals(
             setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
-            descriptor.environments,
+            capabilities.environments,
         )
     }
 
@@ -130,11 +165,6 @@ class JupiterPredictionPluginTest {
 
         assertEquals(1, destinations.size)
         assertEquals("https://jup.ag/prediction/$MARKET_ID", destinations.single().url)
-        // And a signal this plugin cannot read is sent nowhere at all.
-        assertEquals(
-            emptyList<Any>(),
-            plugin().destinations(subject(values = mapOf("market" to "something"))),
-        )
     }
 
     @Test
@@ -267,13 +297,14 @@ class JupiterPredictionPluginTest {
     }
 
     @Test
-    fun aSignalThisPluginCannotReadAsksForNothingAndSaysWhichTermWasWrong() {
-        val form = plugin().parameters(subject(values = mapOf("market" to MARKET_ID)))
+    fun theVenuesOwnFloorIsWhatTheOwnerIsShownAndWhatIsEnforced() {
+        // The publisher set none, so the five-dollar minimum on the field is Jupiter's, carried
+        // there by its capability rather than baked into the action's schema (SEE-145).
+        val stake =
+            plugin().inputs(subject()).fields[1].kind
+                as io.github.brrenat.seekervault.plugins.ParameterKind.Amount
 
-        assertTrue(form.isEmpty)
-        val problem = checkNotNull(form.problem)
-        assertTrue(problem.code.startsWith(PredictionTermProblem.Missing.code))
-        assertTrue(problem.code.endsWith(PredictionTermNames.MARKET_ID))
+        assertEquals(LEAST_ORDER_DEPOSIT, stake.least)
     }
 
     @Test
@@ -300,7 +331,7 @@ class JupiterPredictionPluginTest {
             one.inspect(
                     subject(),
                     chose(),
-                    PluginPreparation(
+                    PreparedOperation(
                         orderTransaction(order = SOMEONE_ELSE, cost = 4_000_000UL).transaction,
                         version = 9,
                     ),
@@ -314,8 +345,9 @@ class JupiterPredictionPluginTest {
     fun twoOwnersBackTwoSidesOfOneMarketWithTheirOwnStakes() {
         honest()
         val mine = plugin()
+        val theirApi = FakePrediction()
         val theirs =
-            JupiterPredictionPlugin(FakePrediction(), chain) { Instant.ofEpochSecond(2_000) }
+            JupiterExecutionProvider(NoSwaps, theirApi, chain) { Instant.ofEpochSecond(2_000) }
         val second = "7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDpvcMwJeK"
 
         val one = runBlocking { mine.prepare(subject(), chose(yes = true, stake = 5_000_000UL)) }
@@ -328,17 +360,14 @@ class JupiterPredictionPluginTest {
                     cost = 7_900_000UL,
                 )
             chain.tables = built.tables
-            (theirs.javaClass.getDeclaredField("provider").apply { isAccessible = true }.get(theirs)
-                    as FakePrediction)
-                .answersOrder =
-                { _, _, _ ->
-                    predictionOrder(
-                        built.transaction,
-                        yes = false,
-                        owner = second,
-                        orderCostUsd = 7_900_000UL,
-                    )
-                }
+            theirApi.answersOrder = { _, _, _ ->
+                predictionOrder(
+                    built.transaction,
+                    yes = false,
+                    owner = second,
+                    orderCostUsd = 7_900_000UL,
+                )
+            }
             theirs.prepare(
                 subject(wallet = wallet(second)),
                 chose(yes = false, stake = 8_000_000UL),

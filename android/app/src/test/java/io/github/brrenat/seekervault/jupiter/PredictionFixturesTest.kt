@@ -2,6 +2,8 @@ package io.github.brrenat.seekervault.jupiter
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
+import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
 import io.github.brrenat.seekervault.solana.AccountSnapshot
 import io.github.brrenat.seekervault.solana.LookupException
 import io.github.brrenat.seekervault.solana.LookupProblem
@@ -83,10 +85,10 @@ class PredictionFixturesTest {
 
     private val terms
         get() =
-            PredictionTerms(
+            PredictionPayload(
                 marketId = fixture.marketId,
                 eventId = fixture.eventId,
-                provider = "polymarket",
+                marketProvider = "polymarket",
                 depositMint = fixture.depositMint,
                 depositDecimals = 6,
                 depositSymbol = "USDC",

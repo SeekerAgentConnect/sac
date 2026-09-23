@@ -4,20 +4,22 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityOutcome
-import io.github.brrenat.seekervault.jupiter.JUPITER_PREDICTION
 import io.github.brrenat.seekervault.jupiter.MARKET
 import io.github.brrenat.seekervault.jupiter.MARKET_ID
 import io.github.brrenat.seekervault.jupiter.ORDER_ACCOUNT
 import io.github.brrenat.seekervault.jupiter.ORDER_PUBKEY
 import io.github.brrenat.seekervault.jupiter.POSITION_ACCOUNT
 import io.github.brrenat.seekervault.jupiter.POSITION_PUBKEY
-import io.github.brrenat.seekervault.jupiter.PredictionOutcomes
-import io.github.brrenat.seekervault.jupiter.PredictionParameterNames
 import io.github.brrenat.seekervault.jupiter.openMarket
 import io.github.brrenat.seekervault.jupiter.orderTransaction
 import io.github.brrenat.seekervault.jupiter.predictionOrder
+import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
+import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.actions.PredictionOutcomes
+import io.github.brrenat.seekervault.plugins.actions.PredictionParameterNames
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.solana.SolanaProblem
@@ -148,8 +150,16 @@ class PredictionOperationTest {
         assertTrue(review.inspection?.approvable == true)
         // The market was read before the order was asked for, and the chain was read before
         // anything was offered to sign.
+        // Twice, and both are reads. The first is `resolve`, when the review opened: what the
+        // venue says about the market *now*, so a closed one is a sentence on the screen rather
+        // than a preparation waiting to fail (SEE-145). The second is `prepare`'s own check, which
+        // is the one the bytes are guarded by — and the order comes after both.
         assertEquals(
-            listOf("market $MARKET_ID", "order $MARKET_ID yes=false 7000000 $owner"),
+            listOf(
+                "market $MARKET_ID",
+                "market $MARKET_ID",
+                "order $MARKET_ID yes=false 7000000 $owner",
+            ),
             phone.markets.asked,
         )
         assertEquals(1, phone.chain.asked.size)
@@ -174,7 +184,8 @@ class PredictionOperationTest {
         assertEquals(reviewed.transaction, phone.adapter.sendings.single().first)
         val record = checkNotNull(phone.proposals.proposal(CONNECTION, PREDICTION_PROPOSAL))
         val execution = checkNotNull(record.execution)
-        assertEquals(JUPITER_PREDICTION, execution.binding.plugin)
+        assertEquals(JUPITER_PROVIDER, execution.binding.provider)
+        assertEquals(PREDICTION_BUY_ACTION, execution.binding.action)
         assertEquals(ProposalOutcome.Submitted(signature), execution.outcome)
         assertTrue(phone.proposals.standing(record) is ProposalStanding.Executed)
 

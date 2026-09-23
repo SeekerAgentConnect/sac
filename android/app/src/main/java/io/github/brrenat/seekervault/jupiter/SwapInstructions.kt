@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.jupiter
 
+import io.github.brrenat.seekervault.plugins.actions.MOST_SLIPPAGE_BPS
 import io.github.brrenat.seekervault.transactions.ASSOCIATED_TOKEN_PROGRAM
 import io.github.brrenat.seekervault.transactions.COMPUTE_BUDGET_PROGRAM
 import io.github.brrenat.seekervault.transactions.DecodedInstruction

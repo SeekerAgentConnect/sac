@@ -14,8 +14,8 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.inbox.reviewedPolicy
 import io.github.brrenat.seekervault.plugins.ActionInspection
-import io.github.brrenat.seekervault.plugins.ActionPlugin
-import io.github.brrenat.seekervault.plugins.ActionSubject
+import io.github.brrenat.seekervault.plugins.ActionOperation
+import io.github.brrenat.seekervault.plugins.ExecutionProvider
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterForm
 import io.github.brrenat.seekervault.plugins.ParameterKey
@@ -23,18 +23,24 @@ import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginDestination
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFailure
-import io.github.brrenat.seekervault.plugins.PluginPreparation
-import io.github.brrenat.seekervault.plugins.PluginRegistry
-import io.github.brrenat.seekervault.plugins.PluginResolution
-import io.github.brrenat.seekervault.plugins.pluginFacts
+import io.github.brrenat.seekervault.plugins.PluginFinding
+import io.github.brrenat.seekervault.plugins.PreparedOperation
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.ProviderResolution
+import io.github.brrenat.seekervault.plugins.actionFacts
+import io.github.brrenat.seekervault.plugins.actions.ActionPayload
+import io.github.brrenat.seekervault.plugins.actions.ActionPayloadResult
+import io.github.brrenat.seekervault.plugins.actions.actionPayloadFrom
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ExecutionBinding
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
-import io.github.brrenat.seekervault.proposals.proposalPlugin
+import io.github.brrenat.seekervault.proposals.namedProvider
+import io.github.brrenat.seekervault.proposals.proposalProvider
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.wallet.SelectedWallet
@@ -103,7 +109,7 @@ class OperationViewModel(
     private val wallet: WalletRepository,
     private val policies: PolicyEvaluator,
     private val history: ActivityLog,
-    private val plugins: PluginRegistry,
+    private val providers: ProviderRegistry,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
@@ -169,13 +175,29 @@ class OperationViewModel(
     }
 
     /**
-     * Opens one proposal for review: asks the plugin what has to be chosen, and starts the fields
-     * at whatever the owner chose last time, or at what the plugin suggests.
+     * Opens one proposal for review: reads the publisher's terms as the action they claim to be,
+     * asks the execution provider what has to be chosen, and starts the fields at whatever the
+     * owner chose last time, or at what the provider suggests.
+     *
+     * The terms are read by core rather than by the provider (SEE-145), so a document that cannot
+     * be read as its action says so before any provider has been reached — and says the same thing
+     * whichever provider would have served it.
      */
     fun open(connectionId: String, proposalId: String) {
         val record = proposals.proposal(connectionId, proposalId) ?: return
-        val resolved = plugin(record)
-        val form = resolved?.parameters(subjectFor(record)) ?: ParameterForm()
+        val read = payloadOf(record)
+        val payload = (read as? ActionPayloadResult.Valid)?.payload
+        val resolved = payload?.let { provider(record, it) }
+        // Only for a provider that actually resolved: an operation names one, and a document whose
+        // provider this build does not carry has none to name.
+        val operation =
+            if (resolved != null && payload != null) operationFor(record, payload) else null
+        val form =
+            when {
+                resolved != null && operation != null -> resolved.inputs(operation)
+                read is ActionPayloadResult.Invalid -> ParameterForm(problem = read.finding)
+                else -> ParameterForm()
+            }
         _review.value =
             OperationReview(
                 connectionId = connectionId,
@@ -183,13 +205,16 @@ class OperationViewModel(
                 record = record,
                 standing = proposals.standing(record),
                 environment = environmentOf(connectionId),
+                payload = payload,
                 form = form,
-                // Where the owner may carry on outside the app, if the operation's provider has
+                // Where the owner may carry on outside the app, if the action's provider has
                 // anywhere truthful to send them (SEE-94). It comes from the terms alone, so it
                 // survives a restart and needs no preparation — and no URL is ever stored.
-                destinations = resolved?.destinations(subjectFor(record)).orEmpty(),
+                destinations =
+                    if (resolved != null && operation != null) resolved.destinations(operation)
+                    else emptyList(),
                 // A review already written for these terms is what the owner last chose about
-                // them; anything else starts from the plugin's own suggestion.
+                // them; anything else starts from the provider's own suggestion.
                 choice =
                     record.review?.takeIf { it.revision == record.proposal.revision }?.choice
                         ?: initial(form),
@@ -198,6 +223,61 @@ class OperationViewModel(
         // The rules are read when the review opens, so the owner is not shown a gap where the
         // assessment will be.
         assess()
+        // And then the provider is asked what it currently says about this action, which is a read
+        // and nothing else: no order, no quote, no wallet, nothing bound. A provider with nothing
+        // live to add answers immediately and nothing on screen moves.
+        refine(connectionId, proposalId)
+    }
+
+    /**
+     * Asks the provider what it says about this action now ([ExecutionProvider.resolve]).
+     *
+     * Its answer refines the constraints and adds what the venue currently reports. A failure is
+     * shown and changes nothing else: the declared constraints stay, because inventing tighter ones
+     * from a read that did not happen would be worse than leaving them as the publisher stated
+     * them.
+     */
+    private fun refine(connectionId: String, proposalId: String) {
+        viewModelScope.launch {
+            val open = _review.value ?: return@launch
+            if (open.connectionId != connectionId || open.proposalId != proposalId) return@launch
+            val payload = open.payload ?: return@launch
+            val record = proposals.proposal(connectionId, proposalId) ?: return@launch
+            val resolved = provider(record, payload) ?: return@launch
+            val resolution =
+                try {
+                    resolved.resolve(operationFor(record, payload))
+                } catch (e: PluginFailure) {
+                    _review.update {
+                        if (it?.proposalId != proposalId) it
+                        else it.copy(failure = OperationFailure(e.code, e.explanation, e.detail))
+                    }
+                    return@launch
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _review.update {
+                        if (it?.proposalId != proposalId) it
+                        else it.copy(failure = OperationFailure(UNEXPECTED, null, e.message))
+                    }
+                    return@launch
+                }
+            _review.update {
+                // Only while nothing has been prepared: a form that moved under prepared bytes
+                // would be a screen describing something other than what is on it.
+                if (it?.proposalId != proposalId || it.prepared != null) it
+                else
+                    it.copy(
+                        form = resolution.form,
+                        details = resolution.details,
+                        problem = null,
+                        choice =
+                            it.choice.takeIf { chosen -> chosen.values.isNotEmpty() }
+                                ?: initial(resolution.form),
+                        resolutionProblem = resolution.problem,
+                    )
+            }
+        }
     }
 
     fun close() {
@@ -230,18 +310,46 @@ class OperationViewModel(
         viewModelScope.launch {
             busy.withLock {
                 val record = proposals.proposal(open.connectionId, open.proposalId)
-                val resolved = record?.let(::plugin)
-                if (record == null || resolved == null) {
-                    _review.update { it?.copy(preparing = false) }
+                val payload = open.payload
+                val resolved =
+                    if (record == null || payload == null) null else provider(record, payload)
+                if (record == null || payload == null || resolved == null) {
+                    // Nothing here serves this, and the owner is told which of the six reasons it
+                    // is rather than being left with a button that did nothing (SEE-145). It is a
+                    // refusal before anything is prepared, and long before anything is signed.
+                    val reason =
+                        (record?.let {
+                                providers.resolve(
+                                    provider = namedProvider(it.proposal, providers),
+                                    action = it.proposal.action,
+                                    schemaVersion = it.proposal.capabilityVersion,
+                                    network =
+                                        wallet.wallet.value?.network?.network
+                                            ?: Network.NETWORK_UNSPECIFIED,
+                                    environment = environmentOf(open.connectionId),
+                                    payload = payload,
+                                )
+                            } as? ProviderResolution.Unsupported)
+                            ?.reason
+                    _review.update {
+                        it?.copy(
+                            preparing = false,
+                            failure =
+                                reason?.let { why ->
+                                    OperationFailure(why.code, unservedText(why))
+                                },
+                        )
+                    }
                     return@withLock
                 }
+                val operation = operationFor(record, payload)
                 // What the owner chose is written down before anything is prepared, because it is
                 // what the binding is checked against and what the record says they reviewed.
                 proposals.review(open.connectionId, open.proposalId, open.choice)
                 val outcome =
                     try {
-                        val prepared = resolved.prepare(subjectFor(record), open.choice)
-                        val inspection = resolved.inspect(subjectFor(record), open.choice, prepared)
+                        val prepared = resolved.prepare(operation, open.choice)
+                        val inspection = resolved.inspect(operation, open.choice, prepared)
                         Prepared(prepared, inspection)
                     } catch (e: PluginFailure) {
                         Prepared(failure = OperationFailure(e.code, e.explanation, e.detail))
@@ -306,7 +414,7 @@ class OperationViewModel(
 
     private suspend fun go(
         open: OperationReview,
-        prepared: PluginPreparation,
+        prepared: PreparedOperation,
         reviewed: SelectedWallet?,
     ) {
         val shown = open.assessment?.consent
@@ -333,7 +441,8 @@ class OperationViewModel(
             return
         }
         val record = proposals.proposal(open.connectionId, open.proposalId) ?: return
-        val resolved = plugin(record) ?: return
+        val payload = open.payload ?: return
+        val resolved = provider(record, payload) ?: return
         val binding =
             ExecutionBinding(
                 revision = record.proposal.revision,
@@ -346,8 +455,14 @@ class OperationViewModel(
                 choice = open.choice,
                 wallet = selected.address,
                 network = selected.network.network,
-                plugin = resolved.descriptor.id,
-                contract = resolved.descriptor.contract,
+                // Who prepared it, what they prepared, at which schema, and about exactly which
+                // market or pair — all four pinned, because any of them changing means the owner
+                // would be signing something other than what they reviewed (SEE-145).
+                provider = resolved.capabilities.id,
+                action = record.proposal.action,
+                schemaVersion = record.proposal.capabilityVersion,
+                instrument = payload.instrument,
+                contract = resolved.capabilities.contract,
                 preparedVersion = prepared.version,
                 contentHash = hash(prepared.transaction),
                 expiresAtEpochSeconds = prepared.expiresAtEpochSeconds,
@@ -430,18 +545,23 @@ class OperationViewModel(
     private fun assess(): RequestAssessment? {
         val open = _review.value ?: return null
         val record = proposals.proposal(open.connectionId, open.proposalId) ?: return null
+        val network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED
         val facts =
-            pluginFacts(
+            actionFacts(
                 connectionId = open.connectionId,
                 // A broadcast proposal carries no request, so the facts are built from what the
-                // plugin read and from the operation's own identity.
+                // provider read and from the action's own identity.
                 proposalId = open.proposalId,
-                operation = record.proposal.operation,
-                network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED,
+                action = record.proposal.action,
+                network = network,
                 resolution =
-                    plugins.resolve(
-                        record.proposal.operation,
-                        environmentOf(open.connectionId),
+                    providers.resolve(
+                        provider = namedProvider(record.proposal, providers),
+                        action = record.proposal.action,
+                        schemaVersion = record.proposal.capabilityVersion,
+                        network = network,
+                        environment = environmentOf(open.connectionId),
+                        payload = open.payload,
                     ),
                 inspection = open.inspection,
             )
@@ -485,17 +605,40 @@ class OperationViewModel(
         _review.update { it?.copy(problem = problem) }
     }
 
-    private fun plugin(record: ProposalRecord): ActionPlugin? {
+    /**
+     * The execution provider this build would use for [record], or null when none would.
+     *
+     * The publisher names one and it is asked for by name, never used as a hint: a document cannot
+     * choose code (SEE-89), and a build that does not carry the named provider serves nothing here
+     * rather than handing the terms to whatever else it has for the action (SEE-145).
+     */
+    private fun provider(record: ProposalRecord, payload: ActionPayload): ExecutionProvider? {
         val environment = environmentOf(record.connectionId)
-        // The publisher's plugin name is checked against what this build resolves, and never used
-        // to select anything: a document cannot choose code (SEE-89).
-        proposalPlugin(record.proposal, plugins, environment).let {
-            if (it !is io.github.brrenat.seekervault.proposals.ProposalPlugin.Serving) return null
+        val network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED
+        if (
+            proposalProvider(record.proposal, providers, network, environment)
+                !is io.github.brrenat.seekervault.proposals.ProposalProvider.Serving
+        ) {
+            return null
         }
-        return (plugins.resolve(record.proposal.operation, environment)
-                as? PluginResolution.Supported)
-            ?.plugin
+        return (providers.resolve(
+                provider = namedProvider(record.proposal, providers),
+                action = record.proposal.action,
+                schemaVersion = record.proposal.capabilityVersion,
+                network = network,
+                environment = environment,
+                payload = payload,
+            ) as? ProviderResolution.Supported)
+            ?.provider
     }
+
+    /** The publisher's terms, read as the action they claim to be ([actionPayloadFrom]). */
+    private fun payloadOf(record: ProposalRecord): ActionPayloadResult =
+        actionPayloadFrom(
+            record.proposal.action,
+            record.proposal.capabilityVersion,
+            record.proposal.terms(),
+        )
 
     /**
      * Which promise the feed this proposal arrived on keeps (SEE-97, docs/wiki/environments.md).
@@ -509,14 +652,19 @@ class OperationViewModel(
         connections.value.firstOrNull { it.id == connectionId }?.environment
             ?: PluginEnvironment.Sandbox
 
-    private fun subjectFor(record: ProposalRecord) =
-        ActionSubject(
+    private fun operationFor(record: ProposalRecord, payload: ActionPayload) =
+        ActionOperation(
             connectionId = record.connectionId,
-            operation = record.proposal.operation,
+            action = record.proposal.action,
+            schemaVersion = record.proposal.capabilityVersion,
+            // Null cannot reach here: a provider is only resolved when the document named one this
+            // build carries, and this is only built for a resolved provider.
+            provider = checkNotNull(namedProvider(record.proposal, providers)),
             environment = environmentOf(record.connectionId),
+            network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED,
+            payload = payload,
             request = null,
             wallet = wallet.wallet.value,
-            terms = record.proposal.values.associate { it.key to it.text },
         )
 
     private fun refreshed(open: OperationReview, state: OperationsUiState): OperationReview? {
@@ -594,7 +742,7 @@ class OperationViewModel(
 
 /** What was prepared, or why nothing was. */
 private class Prepared(
-    val prepared: PluginPreparation? = null,
+    val prepared: PreparedOperation? = null,
     val inspection: ActionInspection? = null,
     val failure: OperationFailure? = null,
 )
@@ -622,16 +770,28 @@ data class OperationReview(
      * was prepared for the other promise is dropped and they prepare again.
      */
     val environment: PluginEnvironment,
-    /** What the plugin says has to be chosen, or why it cannot read this signal at all. */
+    /**
+     * The publisher's terms, read as the action they claim to be; null when they cannot be
+     * ([form]'s own problem then says which rule broke).
+     */
+    val payload: ActionPayload? = null,
+    /** What the provider says has to be chosen, or why it cannot read this signal at all. */
     val form: ParameterForm,
     val choice: ParameterChoice,
     /** Whether this build has the plugin the publisher wrote this proposal for. */
     val served: Boolean,
     val preparing: Boolean = false,
-    val prepared: PluginPreparation? = null,
+    val prepared: PreparedOperation? = null,
     /** What this phone made of the prepared bytes, read independently of the provider. */
     val inspection: ActionInspection? = null,
     val failure: OperationFailure? = null,
+    /** What the provider currently says about the action, for the owner to read (SEE-145). */
+    val details: List<PluginFact> = emptyList(),
+    /**
+     * Why the provider says this action cannot be served as it stands — a market that has closed,
+     * say. It is shown and nothing is prepared from it; it is not a rule the owner could overrule.
+     */
+    val resolutionProblem: PluginFinding? = null,
     /** Where the owner may continue outside the app, built fresh and never read off disk. */
     val destinations: List<PluginDestination> = emptyList(),
     val assessment: RequestAssessment? = null,

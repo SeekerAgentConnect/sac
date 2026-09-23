@@ -2,12 +2,16 @@ package io.github.brrenat.seekervault.proposals
 
 import com.google.protobuf.ByteString
 import com.google.protobuf.timestamp
-import io.github.brrenat.seekervault.plugins.PLUGIN_CONTRACT
+import io.github.brrenat.seekervault.plugins.ActionId
+import io.github.brrenat.seekervault.plugins.ExecutionProviderId
+import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginId
+import io.github.brrenat.seekervault.plugins.actions.ActionPayloadResult
+import io.github.brrenat.seekervault.plugins.actions.Instrument
+import io.github.brrenat.seekervault.plugins.actions.actionPayloadFrom
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
 import io.github.brrenat.seekervault.proposal.v1.proposal as wireProposal
@@ -37,6 +41,11 @@ const val SWAP = "swap"
 
 const val PREDICTION = "prediction"
 
+/** Two real mints, spelled here so this file depends on no provider's package. */
+const val TEST_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
+const val TEST_SOL = "So11111111111111111111111111111111111111112"
+
 /** A wallet's address, as a phone holds one: a public key and nothing else. */
 const val WALLET = "6xJ8QGkQ6Qx1e8YpQ2CqZ9bJ7jY7N3tFh5T9Jr2vQ4dM"
 
@@ -56,7 +65,23 @@ fun wireProposal(
     updatedAt: Instant = createdAt,
     expiresAt: Instant = createdAt.plusSeconds(3600),
     note: String = "",
-    values: List<Pair<String, String>> = listOf("published_price" to "139420000"),
+    /**
+     * Terms a `swap` can actually be read out of, plus one the action's reader ignores.
+     *
+     * Both halves matter. The gate between a review and the wallet reads the terms as the action
+     * they claim to be and refuses a document it cannot ([BindingProblem.UnreadableTerms]), so a
+     * fixture that could not be read would exercise that path and nothing else; and a publisher
+     * saying more than the action reads is normal, so one such term stays here.
+     */
+    values: List<Pair<String, String>> =
+        listOf(
+            "input_mint" to TEST_USDC,
+            "input_decimals" to "6",
+            "output_mint" to TEST_SOL,
+            "output_decimals" to "9",
+            "max_slippage_bps" to "100",
+            "published_price" to "139420000",
+        ),
 ): WireProposal = wireProposal {
     this.serverId = serverId
     this.channel = channel
@@ -101,8 +126,11 @@ fun binding(
     environment: PluginEnvironment = PluginEnvironment.Production,
     wallet: String = WALLET,
     network: Network = Network.NETWORK_MAINNET,
-    plugin: String = proposal.plugin.value,
-    contract: Int = PLUGIN_CONTRACT,
+    provider: ExecutionProviderId? = proposal.provider,
+    action: ActionId = proposal.action,
+    schemaVersion: Int = proposal.capabilityVersion,
+    instrument: Instrument = instrumentOf(proposal),
+    contract: Int = PROVIDER_CONTRACT,
     preparedVersion: Int = 1,
     contentHash: ByteString = hash(1),
     expiresAtEpochSeconds: Long? = null,
@@ -113,12 +141,22 @@ fun binding(
         choice = choice,
         wallet = wallet,
         network = network,
-        plugin = PluginId(plugin),
+        provider = checkNotNull(provider) { "the proposal names no execution provider" },
+        action = action,
+        schemaVersion = schemaVersion,
+        instrument = instrument,
         contract = contract,
         preparedVersion = preparedVersion,
         contentHash = contentHash,
         expiresAtEpochSeconds = expiresAtEpochSeconds,
     )
+
+/** What a proposal is about, read the way core reads it before it binds anything. */
+fun instrumentOf(proposal: Proposal): Instrument =
+    (actionPayloadFrom(proposal.action, proposal.capabilityVersion, proposal.terms())
+            as? ActionPayloadResult.Valid)
+        ?.payload
+        ?.instrument ?: Instrument("", "")
 
 /** Thirty-two bytes standing in for the SHA-256 of what a plugin prepared. */
 fun hash(seed: Int): ByteString =

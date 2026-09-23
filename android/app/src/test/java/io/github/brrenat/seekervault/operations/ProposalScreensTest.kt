@@ -17,11 +17,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.jupiter.SOL_MINT
-import io.github.brrenat.seekervault.jupiter.SwapParameterNames
-import io.github.brrenat.seekervault.jupiter.SwapTermNames
-import io.github.brrenat.seekervault.jupiter.SwapTerms
+import io.github.brrenat.seekervault.jupiter.SWAP_CAPABILITY
 import io.github.brrenat.seekervault.jupiter.USDC_MINT
-import io.github.brrenat.seekervault.jupiter.swapParameters
 import io.github.brrenat.seekervault.plugins.ActionInspection
 import io.github.brrenat.seekervault.plugins.InspectedAction
 import io.github.brrenat.seekervault.plugins.ParameterChoice
@@ -30,7 +27,11 @@ import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFinding
-import io.github.brrenat.seekervault.plugins.PluginPreparation
+import io.github.brrenat.seekervault.plugins.PreparedOperation
+import io.github.brrenat.seekervault.plugins.actions.SwapParameterNames
+import io.github.brrenat.seekervault.plugins.actions.SwapPayload
+import io.github.brrenat.seekervault.plugins.actions.SwapTermNames
+import io.github.brrenat.seekervault.plugins.actions.swapInputs
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.proposal
@@ -63,7 +64,7 @@ class ProposalScreensTest {
     private var dismissals = 0
 
     private val terms =
-        SwapTerms(
+        SwapPayload(
             inputMint = USDC_MINT,
             inputDecimals = 6,
             outputMint = SOL_MINT,
@@ -93,7 +94,7 @@ class ProposalScreensTest {
             standing = standing,
             environment = environment,
             form =
-                if (served) swapParameters(terms)
+                if (served) swapInputs(terms, SWAP_CAPABILITY)
                 else io.github.brrenat.seekervault.plugins.ParameterForm(),
             choice =
                 ParameterChoice(
@@ -104,7 +105,7 @@ class ProposalScreensTest {
                 ),
             served = served,
             prepared =
-                if (prepared) PluginPreparation(com.google.protobuf.ByteString.EMPTY, 1) else null,
+                if (prepared) PreparedOperation(com.google.protobuf.ByteString.EMPTY, 1) else null,
             inspection =
                 if (!prepared) null
                 else

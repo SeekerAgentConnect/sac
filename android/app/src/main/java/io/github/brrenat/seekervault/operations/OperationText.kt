@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.operations
 
 import androidx.annotation.StringRes
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.plugins.UnsupportedReason
 import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -78,6 +79,25 @@ fun problemText(problem: OperationProblem): Int =
         is OperationProblem.Binding -> bindingText(problem.problem)
     }
 
+/**
+ * Why nothing in this build serves an action here (SEE-145).
+ *
+ * Six reasons and six sentences, because the owner would do a different thing about each: update
+ * the app, connect a wallet on another cluster, switch the connection's environment, or nothing at
+ * all. Collapsing them into "unsupported" would be telling them less than this phone knows.
+ */
+@StringRes
+fun unservedText(reason: UnsupportedReason): Int =
+    when (reason) {
+        UnsupportedReason.NoProvider -> R.string.operation_unserved_no_provider
+        UnsupportedReason.ContractUnsupported -> R.string.operation_unserved_contract
+        UnsupportedReason.ActionUnsupported -> R.string.operation_unserved_action
+        UnsupportedReason.SchemaUnsupported -> R.string.operation_unserved_schema
+        UnsupportedReason.NetworkUnsupported -> R.string.operation_unserved_network
+        UnsupportedReason.EnvironmentUnsupported -> R.string.operation_unserved_environment
+        UnsupportedReason.AssetUnsupported -> R.string.operation_unserved_asset
+    }
+
 /** One of the rules that stand between a review and the wallet (SEE-89). */
 @StringRes
 fun bindingText(problem: BindingProblem): Int =
@@ -91,7 +111,11 @@ fun bindingText(problem: BindingProblem): Int =
         BindingProblem.NotReviewed -> R.string.operation_binding_not_reviewed
         BindingProblem.ProposalChanged -> R.string.operation_binding_changed
         BindingProblem.ChoiceChanged -> R.string.operation_binding_choice_changed
-        BindingProblem.OtherPlugin -> R.string.operation_binding_other_plugin
+        BindingProblem.OtherProvider -> R.string.operation_binding_other_provider
+        BindingProblem.OtherAction -> R.string.operation_binding_other_action
+        BindingProblem.OtherSchema -> R.string.operation_binding_other_schema
+        BindingProblem.OtherInstrument -> R.string.operation_binding_other_instrument
+        BindingProblem.UnreadableTerms -> R.string.operation_binding_unreadable_terms
         BindingProblem.OtherContract -> R.string.operation_binding_other_contract
         BindingProblem.NothingPrepared -> R.string.operation_binding_nothing_prepared
         BindingProblem.PreparationExpired -> R.string.operation_binding_preparation_expired

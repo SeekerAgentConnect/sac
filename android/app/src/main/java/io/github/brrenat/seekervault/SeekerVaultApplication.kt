@@ -27,14 +27,13 @@ import io.github.brrenat.seekervault.feeds.RepositoryFeedHost
 import io.github.brrenat.seekervault.feeds.storage.FeedCursorStore
 import io.github.brrenat.seekervault.jupiter.HttpJupiterPrediction
 import io.github.brrenat.seekervault.jupiter.HttpJupiterProvider
-import io.github.brrenat.seekervault.jupiter.JupiterPredictionPlugin
-import io.github.brrenat.seekervault.jupiter.JupiterSwapPlugin
+import io.github.brrenat.seekervault.jupiter.JupiterExecutionProvider
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import io.github.brrenat.seekervault.notifications.ProposalNotificationManager
 import io.github.brrenat.seekervault.notifications.ProposalRef
 import io.github.brrenat.seekervault.notifications.RequestNotificationManager
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -186,10 +185,13 @@ class SeekerVaultApplication : Application() {
      * missing rather than fetched. Tests replace it before the first activity starts, to exercise
      * the boundary without reaching a provider.
      */
-    var plugins: () -> PluginRegistry = {
-        PluginRegistry.of(
-            JupiterSwapPlugin(HttpJupiterProvider(httpClient)),
-            JupiterPredictionPlugin(HttpJupiterPrediction(httpClient), solanaAccounts()),
+    var providers: () -> ProviderRegistry = {
+        ProviderRegistry.of(
+            JupiterExecutionProvider(
+                swapApi = HttpJupiterProvider(httpClient),
+                predictionApi = HttpJupiterPrediction(httpClient),
+                chain = solanaAccounts(),
+            )
         )
     }
 
@@ -207,7 +209,7 @@ class SeekerVaultApplication : Application() {
     }
 
     /** One registry for the process, so every screen resolves an operation the same way. */
-    val pluginRegistry: PluginRegistry by lazy { plugins() }
+    val providerRegistry: ProviderRegistry by lazy { providers() }
 
     /**
      * The proposals the phone read from publishers' feeds (SEE-89,
@@ -310,7 +312,7 @@ class SeekerVaultApplication : Application() {
         ProposalRepository(
             store = proposalStore,
             connections = { connectionRepository.connections.value },
-            plugins = pluginRegistry,
+            plugins = providerRegistry,
             // The same gateway the settings come from: one endpoint, one client (SEE-91).
             feed = feedGateway(),
             history = activityLog,

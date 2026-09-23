@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.jupiter
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
 import java.net.InetAddress
 import java.util.Base64
 import kotlinx.coroutines.runBlocking

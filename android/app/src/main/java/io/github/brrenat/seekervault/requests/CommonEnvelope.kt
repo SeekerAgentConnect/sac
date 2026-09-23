@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.requests
 
+import io.github.brrenat.seekervault.plugins.legacyOperationOf
 import io.github.brrenat.seekervault.proposals.OwnerInputKind
 import io.github.brrenat.seekervault.proposals.Proposal
 import io.github.brrenat.seekervault.proposals.ProposalStatus
@@ -92,13 +93,16 @@ fun Proposal.commonEnvelope(): Request =
         )
         .setPresentation(
             Presentation.newBuilder()
-                .setTitle(title.ifEmpty { operation.value })
+                .setTitle(title.ifEmpty { action.value })
                 .setDescription(note)
                 .setCategory(PresentationCategory.PRESENTATION_CATEGORY_SIGNAL)
         )
         .setAction(
             ActionCapability.newBuilder()
-                .setCapabilityId(operation.value)
+                // The legacy spelling, so a document this phone re-emits reads the same to a
+                // client written before SEE-145 as the one it came from did (`prediction`, not
+                // `prediction.buy`). Both spellings are read back as the same action.
+                .setCapabilityId(legacyOperationOf(action))
                 .setCapabilityVersion(capabilityVersion)
                 .setPluginId(plugin.value)
                 .addAllParameters(

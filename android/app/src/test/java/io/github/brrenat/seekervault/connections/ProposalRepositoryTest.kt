@@ -8,8 +8,8 @@ import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.plugins.PluginRegistry
-import io.github.brrenat.seekervault.plugins.TestPlugin
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.jupiterLike
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
 import io.github.brrenat.seekervault.proposals.AMOUNT
@@ -75,7 +75,7 @@ class ProposalRepositoryTest {
 
     private fun repository(
         withFeed: Boolean = true,
-        plugins: PluginRegistry = PluginRegistry.of(TestPlugin(id = SWAP_PLUGIN)),
+        plugins: ProviderRegistry = ProviderRegistry.of(jupiterLike()),
         store: ProposalStore = this.store,
     ) =
         ProposalRepository(
@@ -367,7 +367,7 @@ class ProposalRepositoryTest {
 
     @Test
     fun nothingIsExecutedForAServerThisBuildDoesNotSupport() = runBlocking {
-        val bare = repository(plugins = PluginRegistry.of())
+        val bare = repository(plugins = ProviderRegistry.of())
         bare.apply(FEED, wireProposal())
         val chose = choice(1_000_000u)
         bare.review(FEED, PROPOSAL_A, chose)

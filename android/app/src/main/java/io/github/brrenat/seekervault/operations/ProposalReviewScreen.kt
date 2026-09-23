@@ -92,7 +92,7 @@ fun ProposalReviewScreen(
             ) {
                 Column(Modifier.weight(1f).padding(start = SeekerTheme.dimensions.dp8)) {
                     Text(
-                        proposal.operation.value,
+                        proposal.action.value,
                         style = MaterialTheme.typography.titleLarge,
                     )
                     Text(

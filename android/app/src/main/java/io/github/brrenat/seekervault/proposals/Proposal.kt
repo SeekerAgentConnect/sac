@@ -1,7 +1,8 @@
 package io.github.brrenat.seekervault.proposals
 
 import io.github.brrenat.seekervault.connections.isConnectionId
-import io.github.brrenat.seekervault.plugins.OperationId
+import io.github.brrenat.seekervault.plugins.ActionId
+import io.github.brrenat.seekervault.plugins.ExecutionProviderId
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.servers.channelFor
 import java.time.Instant
@@ -41,15 +42,27 @@ data class Proposal(
     /** Source-authored title; Signal is presentation, not an operation type. */
     val title: String = "",
     /**
-     * What is proposed, at the protocol's own level (`swap`). Which plugin serves it is this
-     * build's business ([proposalPlugin]), not the document's.
+     * What is proposed, at the protocol's own level (`swap`, `prediction.buy`). Which provider
+     * serves it is the document's to *name* and this build's to *carry* ([proposalProvider]).
      */
-    val operation: OperationId,
+    val action: ActionId,
     /**
-     * The plugin the publisher wrote the proposal for. It is checked against the one this build
-     * resolves for [operation] rather than followed: a name is not a way to choose code, and a
-     * build that resolves something else refuses the proposal instead of handing the document to
-     * whatever it happens to carry.
+     * Which execution provider the publisher named, or null when it named none this build could
+     * identify (SEE-145).
+     *
+     * It is stated rather than inferred. A document written before SEE-145 names only a bundled
+     * plugin, and that is turned into a provider through one explicit table
+     * ([io.github.brrenat.seekervault.plugins.LEGACY_CAPABILITIES]) — never by splitting the name
+     * on its dot. Null is a real answer: an operation with no provider is refused before anything
+     * is prepared, rather than handed to whichever provider this build happens to have for the
+     * action.
+     */
+    val provider: ExecutionProviderId?,
+    /**
+     * The bundled plugin the publisher wrote the proposal for, as a compatibility claim. It is
+     * checked against what this build resolves rather than followed: a name is not a way to choose
+     * code, and a build that resolves something else refuses the proposal instead of handing the
+     * document to whatever it happens to carry.
      */
     val plugin: PluginId,
     val status: ProposalStatus,
@@ -77,6 +90,15 @@ data class Proposal(
 ) {
     /** The term named [name], or null when the publisher gave none. */
     fun value(name: String): String? = values.firstOrNull { it.key == name }?.text
+
+    /**
+     * The terms as the action's own reader takes them: names to text, and nothing interpreted.
+     *
+     * It is the one shape a publisher's document reaches a payload reader in
+     * ([io.github.brrenat.seekervault.plugins.actions.actionPayloadFrom]), so it is spelled once
+     * here rather than rebuilt at each call site.
+     */
+    fun terms(): Map<String, String> = values.associate { it.key to it.text }
 }
 
 /** This release interprets capability version 1. A higher version stays readable. */

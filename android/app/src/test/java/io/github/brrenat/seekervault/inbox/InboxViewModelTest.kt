@@ -20,8 +20,9 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.plugins.PluginRegistry
-import io.github.brrenat.seekervault.plugins.TestPlugin
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.TestExecutionProvider
+import io.github.brrenat.seekervault.plugins.jupiterLike
 import io.github.brrenat.seekervault.policy.Allowlist
 import io.github.brrenat.seekervault.policy.AssetLimits
 import io.github.brrenat.seekervault.policy.ConnectionAssetLimits
@@ -2020,7 +2021,7 @@ class InboxViewModelTest {
     fun aRegisteredPluginIsNeverAskedAboutAnActionTheAppCarriesOutItself() {
         // The app's own actions stay the app's: an acknowledgement, a message and a transfer are
         // read exactly as they were before this stage, and no plugin can change what they mean.
-        val plugin = TestPlugin()
+        val plugin = TestExecutionProvider()
         val (transfer, _) = pendingTransfer()
         val message = runBlocking {
             val request = server.addPendingMessage(transfer.connectionId, WALLET)
@@ -2038,7 +2039,7 @@ class InboxViewModelTest {
                 wallet,
                 evaluator,
                 history,
-                plugins = PluginRegistry.of(plugin),
+                plugins = ProviderRegistry.of(plugin),
                 io = Dispatchers.Unconfined,
             )
 
@@ -2170,7 +2171,7 @@ class InboxViewModelTest {
                 wallet,
                 evaluator,
                 history,
-                plugins = PluginRegistry.of(TestPlugin(id = "jupiter.swap")),
+                plugins = ProviderRegistry.of(jupiterLike()),
                 io = Dispatchers.Unconfined,
             )
 

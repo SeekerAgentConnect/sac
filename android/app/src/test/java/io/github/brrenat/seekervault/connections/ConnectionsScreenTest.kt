@@ -20,9 +20,8 @@ import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.inbox.PendingItem
-import io.github.brrenat.seekervault.plugins.OperationId
+import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.proposals.PREDICTION
 import io.github.brrenat.seekervault.proposals.PROPOSAL_A
 import io.github.brrenat.seekervault.proposals.PROPOSAL_B
 import io.github.brrenat.seekervault.proposals.ProposalRecord
@@ -262,7 +261,7 @@ class ConnectionsScreenTest {
                     base.copy(
                         key = base.key.copy(proposalId = id),
                         title = title,
-                        operation = OperationId(PREDICTION),
+                        action = PREDICTION_BUY_ACTION,
                         values = listOf(ProposalValue("provider", provider)),
                     ),
             )

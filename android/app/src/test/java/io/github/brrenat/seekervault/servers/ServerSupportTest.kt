@@ -1,10 +1,11 @@
 package io.github.brrenat.seekervault.servers
 
-import io.github.brrenat.seekervault.plugins.PLUGIN_CONTRACT
+import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.plugins.PluginRegistry
-import io.github.brrenat.seekervault.plugins.TestPlugin
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.TestExecutionProvider
+import io.github.brrenat.seekervault.plugins.jupiterLike
 import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -26,7 +27,7 @@ class ServerSupportTest {
     private val swap = PluginId(SWAP_PLUGIN)
     private val prediction = PluginId(PREDICTION_PLUGIN)
 
-    private fun registry(vararg plugins: TestPlugin) = PluginRegistry.of(*plugins)
+    private fun registry(vararg plugins: TestExecutionProvider) = ProviderRegistry.of(*plugins)
 
     private fun manifest(
         required: List<Pair<String, IntRange>> = emptyList(),
@@ -53,7 +54,7 @@ class ServerSupportTest {
 
     private fun support(
         record: ServerRecord,
-        plugins: PluginRegistry = registry(),
+        plugins: ProviderRegistry = registry(),
         environment: PluginEnvironment = PluginEnvironment.Production,
     ) = serverSupport(record, plugins, environment)
 
@@ -62,7 +63,7 @@ class ServerSupportTest {
         val state =
             support(
                 manifest(required = listOf(SWAP_PLUGIN to 1..1)),
-                registry(TestPlugin(id = SWAP_PLUGIN)),
+                registry(jupiterLike()),
             )
 
         assertEquals(ServerSupport.Supported, state)
@@ -81,7 +82,7 @@ class ServerSupportTest {
         val state =
             support(
                 manifest(required = listOf(SWAP_PLUGIN to 1..1, PREDICTION_PLUGIN to 1..1)),
-                registry(TestPlugin(id = SWAP_PLUGIN)),
+                registry(jupiterLike()),
             )
 
         assertEquals(ServerSupport.PluginMissing(listOf(prediction)), state)
@@ -95,7 +96,7 @@ class ServerSupportTest {
         val state =
             support(
                 manifest(required = listOf(SWAP_PLUGIN to 3..4)),
-                registry(TestPlugin(id = SWAP_PLUGIN, contract = PLUGIN_CONTRACT)),
+                registry(jupiterLike(contract = PROVIDER_CONTRACT)),
             )
 
         assertEquals(ServerSupport.PluginIncompatible(listOf(swap)), state)
@@ -109,7 +110,7 @@ class ServerSupportTest {
         val state =
             support(
                 manifest(required = listOf(SWAP_PLUGIN to 1..9)),
-                registry(TestPlugin(id = SWAP_PLUGIN, contract = 9)),
+                registry(jupiterLike(contract = 9)),
             )
 
         assertEquals(ServerSupport.PluginIncompatible(listOf(swap)), state)
@@ -120,7 +121,7 @@ class ServerSupportTest {
         val state =
             support(
                 manifest(required = listOf(SWAP_PLUGIN to 3..4, PREDICTION_PLUGIN to 1..1)),
-                registry(TestPlugin(id = SWAP_PLUGIN)),
+                registry(jupiterLike()),
             )
 
         assertEquals(ServerSupport.PluginMissing(listOf(prediction)), state)
@@ -187,7 +188,7 @@ class ServerSupportTest {
         assertEquals(ServerSupport.PluginMissing(listOf(swap)), support(record))
         assertEquals(
             ServerSupport.Supported,
-            support(record, registry(TestPlugin(id = SWAP_PLUGIN))),
+            support(record, registry(jupiterLike())),
         )
     }
 }

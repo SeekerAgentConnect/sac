@@ -6,7 +6,7 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.requestRef
@@ -85,7 +85,7 @@ class InboxRealSidecarTest {
             ServerSupport.Supported,
             serverSupport(
                 checkNotNull(app.connection(connection.id)).server,
-                PluginRegistry.of(),
+                ProviderRegistry.of(),
                 PluginEnvironment.Production,
             ),
         )

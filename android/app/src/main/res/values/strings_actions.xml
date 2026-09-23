@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Words for the provider-neutral actions themselves (SEE-145). They belong to the action rather
+     than to whoever executes it, so they say "this signal" and never name a venue. -->
+<resources>
+    <!-- What a swap leaves to the owner. -->
+    <string name="action_swap_amount_label">Amount to swap</string>
+    <string name="action_swap_slippage_label">Most the price may move (basis points)</string>
+
+    <!-- What a signal has to say for itself, and which rule it broke when it does not. -->
+    <string name="action_swap_terms_missing">This signal does not say which assets to swap.</string>
+    <string name="action_swap_terms_one_asset">This signal proposes swapping an asset for itself.</string>
+    <string name="action_swap_terms_bad_slippage">This signal does not state how far the price may move.</string>
+    <string name="action_terms_not_a_mint">This signal names an asset by something other than its mint address, so which asset it means cannot be established.</string>
+    <string name="action_terms_bad_decimals">This signal states units for an asset that no mint can have.</string>
+    <string name="action_terms_bad_amount">This signal states an amount bound that is not a whole number of base units.</string>
+    <string name="action_terms_impossible_amounts">This signal states a smallest amount above its own largest.</string>
+    <string name="action_terms_bad_symbol">This signal carries a label too long to show.</string>
+
+    <!-- What a prediction order leaves to the owner. -->
+    <string name="action_prediction_outcome_label">Which side</string>
+    <string name="action_prediction_outcome_yes">Yes</string>
+    <string name="action_prediction_outcome_no">No</string>
+    <string name="action_prediction_deposit_label">Amount to stake</string>
+
+    <string name="action_prediction_terms_missing">This signal does not say which market it is about.</string>
+    <string name="action_prediction_terms_not_an_identifier">This signal names a market by something that is not a market identifier.</string>
+
+    <!-- What the owner chose, when it cannot be acted on. -->
+    <string name="action_choice_no_amount">Enter how much to swap.</string>
+    <string name="action_choice_too_little">That is below the smallest amount this signal is for.</string>
+    <string name="action_choice_too_much">That is above the largest amount this signal is for.</string>
+    <string name="action_choice_bad_slippage">Choose how far the price may move, within what this signal allows.</string>
+    <string name="action_choice_no_outcome">Choose which side of this market to buy.</string>
+    <string name="action_choice_bad_outcome">That is not one of this market\'s two sides.</string>
+    <string name="action_choice_stake_too_little">That is below the smallest order this provider accepts, or below the smallest this signal is for.</string>
+</resources>

@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.proposals
 
-import io.github.brrenat.seekervault.plugins.OperationId
+import io.github.brrenat.seekervault.plugins.ActionId
+import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.servers.channelFor
@@ -26,7 +28,7 @@ class ProposalFixturesTest {
 
         assertEquals(ProposalKey(PUBLISHER, channelFor(PUBLISHER), OPEN_ID), proposal.key)
         assertEquals(4L, proposal.revision)
-        assertEquals(OperationId("swap"), proposal.operation)
+        assertEquals(ActionId("swap"), proposal.action)
         assertEquals(PluginId("jupiter.swap"), proposal.plugin)
         assertEquals(ProposalStatus.Open, proposal.status)
         assertEquals(Instant.parse("2026-09-17T09:00:00Z"), proposal.createdAt)
@@ -45,7 +47,10 @@ class ProposalFixturesTest {
         val proposal = valid("cancelled")
 
         assertEquals(ProposalStatus.Cancelled, proposal.status)
-        assertEquals(OperationId("prediction"), proposal.operation)
+        // The wire says `prediction`; the action it names is `prediction.buy`, through the one
+        // compatibility table (SEE-145). The publisher's plugin claim is kept exactly as written.
+        assertEquals(PREDICTION_BUY_ACTION, proposal.action)
+        assertEquals(JUPITER_PROVIDER, proposal.provider)
         assertEquals(PluginId("jupiter.prediction"), proposal.plugin)
         assertEquals("SOL above 200 on 2026-10-01", proposal.value("market"))
     }

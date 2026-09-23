@@ -6,6 +6,9 @@ import io.github.brrenat.seekervault.plugins.ActionInspection
 import io.github.brrenat.seekervault.plugins.InspectedAction
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFinding
+import io.github.brrenat.seekervault.plugins.actions.SwapChoice
+import io.github.brrenat.seekervault.plugins.actions.SwapPayload
+import io.github.brrenat.seekervault.plugins.actions.WRAPPED_SOL
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.transactions.DecodeFailure
 import io.github.brrenat.seekervault.transactions.DecodeResult
@@ -142,7 +145,7 @@ val SWAP_NETWORK: Network = Network.NETWORK_MAINNET
  * afterwards, so nothing the provider said about them can steer the reading.
  */
 fun inspectSwap(
-    terms: SwapTerms,
+    terms: SwapPayload,
     choice: SwapChoice,
     quote: JupiterQuote,
     wallet: SelectedWallet?,
@@ -255,7 +258,7 @@ fun inspectSwap(
  * between showing somebody a review and showing them a receipt somebody else wrote.
  */
 private fun details(
-    terms: SwapTerms,
+    terms: SwapPayload,
     route: SwapStep.Route,
     steps: List<SwapStep>,
 ): List<PluginFact> {
@@ -314,7 +317,7 @@ private fun percent(bps: Int): String = formatBaseUnits(bps.toULong(), 2) + "%"
  */
 private fun checkOthers(
     steps: List<SwapStep>,
-    terms: SwapTerms,
+    terms: SwapPayload,
     choice: SwapChoice,
     owner: String?,
     findings: MutableList<SwapFinding>,

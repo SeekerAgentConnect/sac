@@ -158,7 +158,7 @@ private fun proposalNotificationCopy(
     record: ProposalRecord,
     source: String,
 ): ReviewNotificationCopy =
-    when (record.proposal.operation.value) {
+    when (record.proposal.action.value) {
         "swap" ->
             ReviewNotificationCopy(
                 title = context.getString(R.string.notification_proposal_swap_title),

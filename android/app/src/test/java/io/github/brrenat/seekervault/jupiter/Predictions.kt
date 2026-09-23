@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.jupiter
 
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
+import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
 import io.github.brrenat.seekervault.solana.ADDRESS_LOOKUP_TABLE_PROGRAM
 import io.github.brrenat.seekervault.solana.AccountSnapshot
 import io.github.brrenat.seekervault.solana.LOOKUP_TABLE_HEADER_BYTES
@@ -55,11 +57,11 @@ fun predictionTerms(
     provider: String = "",
     depositMint: String = USDC_MINT,
     mostDeposit: ULong? = null,
-): PredictionTerms =
-    PredictionTerms(
+): PredictionPayload =
+    PredictionPayload(
         marketId = marketId,
         eventId = eventId,
-        provider = provider,
+        marketProvider = provider,
         depositMint = depositMint,
         depositDecimals = 6,
         depositSymbol = if (depositMint == USDC_MINT) "USDC" else "JupUSD",
@@ -126,7 +128,7 @@ fun predictionOrder(
  * never see. The table's contents are supplied beside it ([tableFor]), so a test resolves offline.
  */
 fun orderTransaction(
-    terms: PredictionTerms = predictionTerms(),
+    terms: PredictionPayload = predictionTerms(),
     yes: Boolean = true,
     deposit: ULong = 5_000_000UL,
     owner: String = OWNER,
@@ -373,7 +375,7 @@ class FakeChain(private val tables: Map<String, List<String>> = emptyMap()) : So
 class FakePrediction : JupiterPrediction {
     val asked = mutableListOf<String>()
     var answersMarket: (String) -> PredictionMarket = { openMarket(it) }
-    var answersOrder: (PredictionTerms, PredictionChoice, String) -> PredictionOrder =
+    var answersOrder: (PredictionPayload, PredictionChoice, String) -> PredictionOrder =
         { terms, choice, wallet ->
             predictionOrder(
                 orderTransaction(
@@ -394,7 +396,7 @@ class FakePrediction : JupiterPrediction {
     }
 
     override suspend fun order(
-        terms: PredictionTerms,
+        terms: PredictionPayload,
         choice: PredictionChoice,
         wallet: String,
     ): PredictionOrder {

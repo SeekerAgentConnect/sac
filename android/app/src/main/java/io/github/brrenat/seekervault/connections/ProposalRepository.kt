@@ -10,7 +10,9 @@ import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.legacyOperationOf
+import io.github.brrenat.seekervault.plugins.legacyPluginOf
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ExecutionBinding
@@ -18,17 +20,18 @@ import io.github.brrenat.seekervault.proposals.ProposalDismissal
 import io.github.brrenat.seekervault.proposals.ProposalExecution
 import io.github.brrenat.seekervault.proposals.ProposalExpectation
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
-import io.github.brrenat.seekervault.proposals.ProposalPlugin
 import io.github.brrenat.seekervault.proposals.ProposalProblem
+import io.github.brrenat.seekervault.proposals.ProposalProvider
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalResult
 import io.github.brrenat.seekervault.proposals.ProposalReview
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.bindingProblem
 import io.github.brrenat.seekervault.proposals.proposalFrom
-import io.github.brrenat.seekervault.proposals.proposalPlugin
+import io.github.brrenat.seekervault.proposals.proposalProvider
 import io.github.brrenat.seekervault.proposals.proposalStanding
 import io.github.brrenat.seekervault.proposals.settled
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v2.Request as WireRequest
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
@@ -136,7 +139,7 @@ class ProposalRepository(
      */
     private val connections: () -> List<Connection>,
     /** The plugins compiled into this build, for deciding what it supports (SEE-86, SEE-88). */
-    private val plugins: PluginRegistry,
+    private val plugins: ProviderRegistry,
     /**
      * How a publisher's proposals are read, when this build has a gateway to read them through.
      * Optional because the gateway is SEE-90: without one, [refresh] says so and reads nothing.
@@ -374,6 +377,17 @@ class ProposalRepository(
                 wallet,
                 support(connection),
                 connection.environment,
+                // What this build resolves for the document, asked at the moment of acting rather
+                // than taken from the binding: a build that has stopped carrying the provider
+                // refuses, exactly as one that never had it does (SEE-145).
+                (proposalProvider(
+                        record.proposal,
+                        plugins,
+                        wallet?.network?.network ?: Network.NETWORK_UNSPECIFIED,
+                        connection.environment,
+                    )
+                        as? ProposalProvider.Serving)
+                    ?.id,
                 now(),
             )
             ?.let {
@@ -411,10 +425,6 @@ class ProposalRepository(
     /** Where a proposal stands for this owner, derived afresh ([proposalStanding]). */
     fun standing(record: ProposalRecord): ProposalStanding =
         proposalStanding(record, supportOf(record.connectionId), now())
-
-    /** Which plugin this build would use for a proposal, or why none would ([proposalPlugin]). */
-    fun plugin(record: ProposalRecord): ProposalPlugin =
-        proposalPlugin(record.proposal, plugins, environmentOf(record.connectionId))
 
     /** Everything held for one feed, oldest first. */
     fun proposalsFor(connectionId: String): List<ProposalRecord> =
@@ -524,8 +534,15 @@ class ProposalRepository(
                 outcome = activityOutcome(execution.outcome),
                 operation =
                     ReviewedOperation(
-                        operation = record.proposal.operation.value,
-                        plugin = binding.plugin.value,
+                        // The legacy spelling, for the same reason the plugin name is: a record
+                        // written before this upgrade and one written after it must read the same
+                        // to the owner (SEE-145).
+                        operation = legacyOperationOf(record.proposal.action),
+                        // The bundled plugin name the provider answers to, so the owner's history
+                        // reads the same across the upgrade as it did before it (SEE-145).
+                        plugin =
+                            legacyPluginOf(binding.provider, binding.action)?.value
+                                ?: binding.provider.value,
                         contract = binding.contract,
                         revision = binding.revision,
                         wallet = binding.wallet,
