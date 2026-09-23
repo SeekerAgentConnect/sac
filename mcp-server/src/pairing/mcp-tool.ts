@@ -26,12 +26,12 @@ const PAIRING_LINK_SCHEMA = {
   pairing_uri: z
     .string()
     .describe(
-      "The seekervault://pair deep link. Copy/paste fallback if the HTTPS page's button does not open the app. Paste it under Add connection.",
+      "Complete seekervault://pair deep link. Copy and paste this entire value under Add connection if the page's button does not open the app. Do not omit or escape any character.",
     ),
   https_url: z
     .string()
     .describe(
-      "Primary Connect-your-phone link: https://<origin>/pair#<fragment>. Opens a pairing page on this server. The page's button opens the app. This is not Android App Link configuration, and the app is not guaranteed to open in every browser.",
+      "Complete https://<origin>/pair#<fragment> link. A Connect your phone label is allowed only when this entire string is the link target. Do not insert an ellipsis, line break, or escape sequence. The page rejects a shortened fragment.",
     ),
   server_url: z
     .string()
@@ -57,14 +57,16 @@ const PAIRING_LINK_SCHEMA = {
 
 const PAIRING_LINK_DESCRIPTION =
   "Issues a one-use pairing code for Seeker Agent Connect, the same code the operator CLI " +
-  "prints. Returns https_url (this server's /pair page; show it as Connect your phone) and " +
-  "pairing_uri (the seekervault://pair copy/paste fallback). The HTTPS link opens a page; " +
-  "the page's button opens the app. Do not promise automatic Android App Link behaviour. " +
-  "Always display any warning field together with the link. The code works once, expires at " +
-  "expires_at, and must be kept private. A newer code voids an unused one. Whoever completes " +
-  "pairing first becomes the paired phone and revokes the phone paired now; creating or " +
-  "opening the link does not disconnect it. It does not pair by itself: the owner still " +
-  "confirms on the phone.";
+  "prints. Returns the complete https_url (https://<origin>/pair#<fragment>; show the " +
+  "returned text, or a link labeled Connect your phone whose target is this entire value) and " +
+  "pairing_uri (the complete seekervault://pair copy/paste fallback). Do not omit, wrap, escape, " +
+  "or replace any part of https_url or pairing_uri. A shortened visible label is not a shortened " +
+  "URL, and the page rejects a damaged fragment. The HTTPS link opens a page; the page's button " +
+  "opens the app. Do not promise automatic Android App Link behaviour. Always display any warning " +
+  "field together with the link. The code works once, expires at expires_at, and must be kept " +
+  "private. A newer code voids an unused one. Whoever completes pairing first becomes the paired " +
+  "phone and revokes the phone paired now; creating or opening the link does not disconnect it. " +
+  "It does not pair by itself: the owner still confirms on the phone.";
 
 export function registerPairingLinkTool(
   server: McpServer,
@@ -116,11 +118,19 @@ export function humanPairingLink(view: PairingLinkView): string {
     "",
     "Open this HTTPS link on the phone. It opens a pairing page on this server. The page's button opens Seeker Agent Connect. Opening the app is not guaranteed in every browser.",
     "",
+    `[Connect your phone](${view.https_url})`,
+    "",
+    "The address itself, as one unbroken line:",
+    "",
+    "```",
     view.https_url,
+    "```",
     "",
     "If the app does not open, copy this pairing code and paste it under Add connection:",
     "",
+    "```",
     view.pairing_uri,
+    "```",
     "",
     `This code works once and expires at ${view.expires_at}. Keep it private; it carries the pairing token. Sharing the link shares the code. The fragment keeps the token out of the initial HTTP request, but the link is still a secret.`,
   ];

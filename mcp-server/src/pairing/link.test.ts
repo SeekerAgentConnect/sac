@@ -4,6 +4,7 @@ import { after, before, describe, it } from "node:test";
 
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { parsePairingUri } from "@seeker-vault/server-sdk";
+import { renderSVG } from "uqr";
 
 import { startSidecar, type Sidecar } from "../server.ts";
 import {
@@ -19,6 +20,7 @@ import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
 import { landingUrlHasCredential } from "./fragment.ts";
 import { REPLACEMENT_WARNING } from "./fragment.ts";
 import { CREATE_PAIRING_LINK_TOOL, humanPairingLink } from "./mcp-tool.ts";
+import { bootPairingPage } from "./page/page.js";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);
@@ -75,12 +77,112 @@ describe("pairing links", () => {
     const text = result.content[0];
     assert.equal(text?.type, "text");
     if (text?.type === "text") {
-      assert.equal(text.text.includes(view.https_url), true);
+      assert.equal(
+        text.text.includes(`[Connect your phone](${view.https_url})`),
+        true,
+      );
       assert.equal(text.text.includes(view.pairing_uri), true);
+      assert.equal(
+        text.text.includes("```\n" + view.https_url + "\n```"),
+        true,
+      );
+      assert.equal(
+        text.text.includes("```\n" + view.pairing_uri + "\n```"),
+        true,
+      );
+      assert.doesNotMatch(text.text, /\.\.\.|…/);
       assert.doesNotMatch(text.text, /seekervault:\\\/\\\//);
     }
+    assert.match(agent.getInstructions() ?? "", /complete https_url/);
+    assert.doesNotMatch(agent.getInstructions() ?? "", /\.\.\.|…/);
+    const { tools } = await agent.listTools();
+    const described = tools.find(
+      (tool) => tool.name === CREATE_PAIRING_LINK_TOOL,
+    );
+    assert.match(described?.description ?? "", /complete https_url/);
+    assert.doesNotMatch(described?.description ?? "", /\.\.\.|…/);
     assert.ok(logs.includes("pairing link issued"));
     assert.ok(logs.every((line) => !line.includes(parsed.code.token)));
+  });
+
+  it("renders a tool-generated link in the page while CSP stays enabled", async () => {
+    const landing = await requestPath("/pair");
+    assert.match(
+      landing.headers["content-security-policy"] ?? "",
+      /script-src 'self'/,
+    );
+    assert.match(
+      landing.headers["content-security-policy"] ?? "",
+      /connect-src 'none'/,
+    );
+    const served = await requestPath("/pair/page.js");
+    assert.match(served.body, /damaged or incomplete/);
+    assert.match(served.body, /decodePairingFragment/);
+    const origin = JSON.parse(
+      /id="pairing-server">([^<]+)/.exec(landing.body)?.[1] ?? "",
+    ) as { origin: string };
+    assert.equal(origin.origin, PUBLIC_URL);
+
+    const result = await callTool(agent, CREATE_PAIRING_LINK_TOOL, {});
+    const view = result.structuredContent as {
+      pairing_uri: string;
+      https_url: string;
+    };
+    const text = result.content[0];
+    assert.equal(text?.type, "text");
+    const href = /\[Connect your phone\]\(([^)]+)\)/.exec(
+      text?.type === "text" ? text.text : "",
+    )?.[1];
+    assert.equal(href, view.https_url);
+    const hash = new URL(view.https_url).hash;
+    const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
+    assert.equal(new URL(href ?? "").hash, hash);
+
+    const copied: string[] = [];
+    const ready = toolPage(origin.origin, hash, {
+      clipboard: {
+        writeText(value: string) {
+          copied.push(value);
+          return Promise.resolve();
+        },
+      },
+    });
+    const booted = await bootPairingPage(ready.env);
+    assert.equal(booted.state, "ready");
+    assert.equal(booted.pairingUri, view.pairing_uri);
+    assert.equal(ready.el("open-app").getAttribute("href"), view.pairing_uri);
+    assert.equal(ready.el("pairing-code").value, view.pairing_uri);
+    assert.equal(
+      ready.el("qr").getAttribute("data-pairing-uri"),
+      view.pairing_uri,
+    );
+    assert.equal(
+      ready.el("qr").getAttribute("data-qr-svg"),
+      renderSVG(view.pairing_uri, { ecc: "M", border: 2, pixelSize: 4 }),
+    );
+    ready.el("copy-code").click();
+    await Promise.resolve();
+    assert.deepEqual(copied, [view.pairing_uri]);
+    assert.equal(
+      logs.every((line) => !line.includes(tokenOf(view.pairing_uri))),
+      true,
+    );
+
+    for (const damagedHash of [
+      `#${fragment.slice(0, 6)}...${fragment.slice(-4)}`,
+      "#eyJ2Ij...WiJ9",
+      `#${fragment.slice(0, Math.floor(fragment.length / 2))}`,
+    ]) {
+      const damaged = toolPage(origin.origin, damagedHash);
+      const rejected = await bootPairingPage(damaged.env);
+      assert.equal(rejected.state, "invalid", damagedHash);
+      assert.match(
+        damaged.el("invalid-reason").textContent,
+        /damaged or incomplete/,
+      );
+      assert.equal(damaged.el("open-app").getAttribute("href"), null);
+      assert.equal(damaged.el("pairing-code").value, "");
+    }
   });
 
   it("serves a pairing page, not a redirect, and does not launch the app", async () => {
@@ -236,4 +338,110 @@ function requestPath(
 
 function header(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value.join(",") : value;
+}
+
+function toolPage(
+  origin: string,
+  hash: string,
+  extras: {
+    clipboard?: { writeText(text: string): Promise<void> };
+  } = {},
+) {
+  const nodes = new Map<string, TestNode>();
+  for (const id of [
+    "state-empty",
+    "state-invalid",
+    "state-ready",
+    "invalid-reason",
+    "server-origin",
+    "expiry",
+    "replacement-warning",
+    "legacy-query-note",
+    "expired-note",
+    "open-app",
+    "copy-code",
+    "copy-status",
+    "qr",
+    "qr-fallback",
+    "pairing-code",
+    "pairing-server",
+  ]) {
+    nodes.set(id, testNode(id));
+  }
+  const serverNode = nodes.get("pairing-server");
+  assert.ok(serverNode);
+  serverNode.textContent = JSON.stringify({ origin });
+  return {
+    el(id: string): TestNode {
+      const node = nodes.get(id);
+      assert.ok(node, id);
+      return node;
+    },
+    env: {
+      document: {
+        getElementById(id: string) {
+          return nodes.get(id) ?? null;
+        },
+      },
+      location: { hash, search: "" },
+      trustedOrigin: origin,
+      navigator: extras.clipboard ? { clipboard: extras.clipboard } : {},
+      loadQr: () => Promise.resolve({ renderSVG }),
+    },
+  };
+}
+
+interface TestNode {
+  id: string;
+  hidden: boolean;
+  textContent: string;
+  value: string;
+  children: unknown[];
+  readOnly: boolean;
+  attributes: Record<string, string>;
+  listeners: Record<string, Array<() => void>>;
+  setAttribute(name: string, value: string): void;
+  getAttribute(name: string): string | null;
+  replaceChildren(): void;
+  appendChild(child: unknown): unknown;
+  addEventListener(type: string, fn: () => void): void;
+  click(): void;
+  focus(): void;
+  select(): void;
+}
+
+function testNode(id: string): TestNode {
+  const attributes: Record<string, string> = {};
+  const listeners: Record<string, Array<() => void>> = {};
+  return {
+    id,
+    hidden: true,
+    textContent: "",
+    value: "",
+    children: [],
+    readOnly: false,
+    attributes,
+    listeners,
+    setAttribute(name, value) {
+      attributes[name] = value;
+    },
+    getAttribute(name) {
+      return attributes[name] ?? null;
+    },
+    replaceChildren() {
+      this.children = [];
+    },
+    appendChild(child) {
+      this.children.push(child);
+      return child;
+    },
+    addEventListener(type, fn) {
+      (listeners[type] ??= []).push(fn);
+    },
+    click() {
+      for (const fn of listeners.click ?? []) fn();
+    },
+    focus() {},
+    select() {},
+  };
 }

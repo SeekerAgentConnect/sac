@@ -224,6 +224,67 @@ describe("pairing page behaviour", () => {
       /could not be generated/,
     );
   });
+
+  it("rejects a literal ellipsis and a truncated fragment", async () => {
+    const uri = pairingUri(ORIGIN);
+    const fragment = encodePairingFragment({
+      v: 1,
+      pairing_uri: uri,
+      expires_at: EXPIRES_AT,
+    });
+    for (const hash of [
+      `#${fragment.slice(0, 6)}...${fragment.slice(-4)}`,
+      "#eyJ2Ij...WiJ9",
+      `#${fragment.slice(0, 6)}…${fragment.slice(-4)}`,
+      `#${fragment.slice(0, Math.floor(fragment.length / 2))}`,
+    ]) {
+      const damaged = page(ORIGIN, hash);
+      const result = await bootPairingPage(damaged.env);
+      assert.equal(result.state, "invalid", hash);
+      assert.match(
+        damaged.el("invalid-reason").textContent,
+        /damaged or incomplete/,
+      );
+      assert.equal(damaged.el("open-app").getAttribute("href"), null);
+      assert.equal(damaged.el("pairing-code").value, "");
+    }
+  });
+
+  it("round-trips a fragment that contains base64url underscores and hyphens", async () => {
+    const uri = pairingUri(ORIGIN);
+    // Padding chosen so the base64url fragment contains both "_" and "-".
+    const warning = "k.$)G(66c>zi?";
+    const fragment = encodePairingFragment({
+      v: 1,
+      pairing_uri: uri,
+      expires_at: EXPIRES_AT,
+      warning,
+    });
+    assert.match(fragment, /_/);
+    assert.match(fragment, /-/);
+    const copied: string[] = [];
+    const view = page(ORIGIN, `#${fragment}`, {
+      clipboard: {
+        writeText: (text: string) => {
+          copied.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+    const result = await bootPairingPage(view.env);
+    assert.equal(result.state, "ready");
+    assert.equal(result.pairingUri, uri);
+    assert.equal(view.el("open-app").getAttribute("href"), uri);
+    assert.equal(view.el("pairing-code").value, uri);
+    assert.equal(view.el("qr").getAttribute("data-pairing-uri"), uri);
+    assert.equal(
+      view.el("qr").getAttribute("data-qr-svg"),
+      renderSVG(uri, { ecc: "M", border: 2, pixelSize: 4 }),
+    );
+    view.el("copy-code").click();
+    await Promise.resolve();
+    assert.deepEqual(copied, [uri]);
+  });
 });
 
 function pairingUri(serverUrl: string): string {
