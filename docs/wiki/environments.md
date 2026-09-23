@@ -7,7 +7,7 @@ That is what an **environment** is here: which promise is being kept when the ow
 | | **Production** | **Sandbox** |
 | --- | --- | --- |
 | The market data | Real, live, from the provider | **The same.** Real, live, from the provider |
-| The transaction | Built by the plugin, from this phone | **The same bytes**, built the same way |
+| The transaction | Built by the execution provider, from this phone | **The same bytes**, built the same way |
 | The review | Every finding, every fact, read out of the bytes | **The same review** |
 | The owner's rules | Applied | **Applied** |
 | The wallet | Opened once, with exactly those bytes | **Never opened** |
@@ -19,7 +19,14 @@ The last four rows are the whole difference. Sandbox is not a smaller version of
 
 ## It is not a network, and it does not choose one
 
-**An environment is not a Solana cluster.** The cluster is the network the owner's wallet is selected for, it is checked separately and always, and no environment changes it: a plugin that refuses a wallet selected for devnet refuses it in sandbox too, because the bytes it builds are mainnet bytes either way (`docs/wiki/jupiter-swap.md`, `docs/wiki/jupiter-prediction.md`).
+**An environment is not a Solana cluster.** The cluster is the network the owner's wallet is selected for, it is checked separately and always, and no environment changes it: a provider that refuses a wallet selected for devnet refuses it in sandbox too, because the bytes it builds are mainnet bytes either way (`docs/wiki/jupiter-swap.md`, `docs/wiki/jupiter-prediction.md`).
+
+**A shared interface must not imply that a provider has a testnet**, so SEE-145 made the two declarations separate and kept them that way:
+
+- **`ActionCapability.networks`** is the set of Solana clusters a provider serves an action on. Jupiter declares mainnet and only mainnet, in both environments.
+- **`ProviderCapabilities.environments`** is which of sandbox and production it serves the action in at all. A provider that serves both does the same work in each; the field exists for one that genuinely cannot serve one.
+
+Neither is derived from the other, and they are **two separate refusals**: `NetworkUnsupported` when the wallet is selected for a cluster the provider does not serve, `EnvironmentUnsupported` when the connection keeps a promise it cannot keep. Both happen before anything is prepared, and telling an owner the wrong one of them would send them to change the wrong setting — a provider with no devnet is not a provider with no sandbox ([`docs/wiki/execution-providers.md`](execution-providers.md#an-environment-is-not-a-network)).
 
 There is no Jupiter devnet or testnet to point sandbox at. Neither the swap aggregator nor the prediction markets exist on another cluster, and this repository does not pretend otherwise — a sandbox that claimed to trade on a test network would be inventing a service the provider does not run. The app's existing devnet checks, for transfers and message signing, are about a different thing entirely and are unaffected (`README.md`, `docs/guides/transfers.md`).
 
@@ -62,13 +69,14 @@ A rehearsal **spends the proposal**, exactly as declining in the wallet does: on
 | Protocol | `proto/seekervault/server/v1/manifest.proto` | `ServerEnvironment`, and the `environments` a manifest names |
 | Gateway | `feed-gateway/internal/rules/manifest.go` | The environments may not change once published |
 | Publisher | `publisher-support/environment/environment.go` | One type, one pair of words, shared by both templates |
-| Phone: the promise | `android/.../plugins/ActionPlugin.kt` | `PluginEnvironment`, and the environments a plugin serves |
+| Phone: the promise | `android/.../plugins/ExecutionProvider.kt` | `PluginEnvironment`, `ProviderCapabilities.environments` (which promises a provider can keep) and `ActionCapability.networks` (which clusters it serves), declared apart |
+| Phone: the refusal | `android/.../plugins/ProviderRegistry.kt` | `EnvironmentUnsupported` and `NetworkUnsupported`, told apart and both answered before anything is prepared |
 | Phone: the connection | `android/.../connections/Connection.kt` | Which one this connection keeps, and the direct-is-production invariant |
 | Phone: the gate | `android/.../proposals/ProposalBinding.kt` | The promise pinned in a binding, checked inside the wallet's own lock |
 | Phone: the act | `android/.../operations/OperationViewModel.kt` | The one branch: a rehearsal has no wallet session in scope to sign with |
 | Phone: the record | `android/.../activity/ActivityRecord.kt` | What the operation was bound under, beside the cluster |
 
-**A plugin does not read the environment to decide anything.** It prepares the same way in both, because whether bytes are signed is core's business — core holds the wallet — exactly as which cluster they are for is core's. A plugin that decided for itself would be a second place for the answer to be wrong, and the demonstration would stop being a demonstration of the real thing. What a plugin *does* declare is which environments it can serve at all, and `PluginRegistry.resolve` reports one that cannot as unsupported rather than calling it for something it said it could not do.
+**An execution provider does not read the environment to decide anything.** It prepares the same way in both, because whether bytes are signed is core's business — core holds the wallet — exactly as which cluster they are for is core's. A provider that decided for itself would be a second place for the answer to be wrong, and the demonstration would stop being a demonstration of the real thing. What a provider *does* declare is which environments it can serve at all, and `ProviderRegistry.resolve` reports one that cannot as unsupported rather than calling it for something it said it could not do — separately from the cluster check, which it answers in its own words.
 
 ## Two other things called "environment"
 

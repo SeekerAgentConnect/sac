@@ -22,48 +22,75 @@ registered against without core review, rules, wallet or history code changing.
 ## Plan
 
 ### 1. The common contract — `plugins/execution/`
-- [ ] `ExecutionProviderId`, `ActionId`, `PROVIDER_CONTRACT`, `ProviderCapabilities`,
+- [x] `ExecutionProviderId`, `ActionId`, `PROVIDER_CONTRACT`, `ProviderCapabilities`,
       `ActionCapability` (action, schema versions, Solana networks, deposit assets, limits).
-- [ ] `ActionOperation` — what core hands a provider: connection, action + schema version, provider,
+- [x] `ActionOperation` — what core hands a provider: connection, action + schema version, provider,
       environment, network, wallet, request, and a **typed** `ActionPayload`.
-- [ ] `ActionPayload` sealed: `Swap`, `PredictionBuy`; each exposes an `Instrument`.
-- [ ] `ExecutionProvider`: `capabilities`, `inputs`, `resolve` (suspend, live info + constraints),
+- [x] `ActionPayload` sealed: `Swap`, `PredictionBuy`; each exposes an `Instrument`.
+- [x] `ExecutionProvider`: `capabilities`, `inputs`, `resolve` (suspend, live info + constraints),
       `prepare`, `inspect`, `destinations`, optional `status`.
-- [ ] `ProviderRegistry.resolve(provider, action, schemaVersion, network, environment)` with one
+- [x] `ProviderRegistry.resolve(provider, action, schemaVersion, network, environment)` with one
       unsupported reason per way it can fail.
-- [ ] `Compatibility.kt`: the explicit legacy table `jupiter.swap ↔ (jupiter, swap, 1)` and
+- [x] `Compatibility.kt`: the explicit legacy table `jupiter.swap ↔ (jupiter, swap, 1)` and
       `jupiter.prediction ↔ (jupiter, prediction.buy, 1)`, plus the legacy operation names.
 
 ### 2. Provider-neutral action payloads — `plugins/actions/`
-- [ ] Move `SwapTerms`/`PredictionTerms` parsing out of `jupiter/` (they are the action's schema,
+- [x] Move `SwapTerms`/`PredictionTerms` parsing out of `jupiter/` (they are the action's schema,
       not Jupiter's API) and make the messages neutral string resources.
-- [ ] Deposit-mint set and minimum order move from the payload parser into Jupiter's **capabilities**,
+- [x] Deposit-mint set and minimum order move from the payload parser into Jupiter's **capabilities**,
       so an unsupported deposit asset is a provider answer rather than a schema rule.
 
 ### 3. Jupiter adapter — `jupiter/JupiterProviderAdapter.kt`
-- [ ] One `ExecutionProvider` serving both actions; swap and prediction preparation, provider API
+- [x] One `ExecutionProvider` serving both actions; swap and prediction preparation, provider API
       access, instruction readers and the handoff link stay inside it.
 
 ### 4. Core
-- [ ] `ExecutionBinding` gains `provider`, `action`, `schemaVersion`, `instrument`; `bindingProblem`
+- [x] `ExecutionBinding` gains `provider`, `action`, `schemaVersion`, `instrument`; `bindingProblem`
       refuses each of them.
-- [ ] `Proposal` carries `action` + `provider` (+ the publisher's legacy plugin claim).
-- [ ] `ProposalStore` v4 writes both forms and reads v1–v3 rows through the compatibility table.
-- [ ] `ActionCapability.execution_provider` added to `request/v2` for explicit new-format emission.
+- [x] `Proposal` carries `action` + `provider` (+ the publisher's legacy plugin claim).
+- [x] `ProposalStore` v4 writes both forms and reads v1–v3 rows through the compatibility table.
+- [x] `ActionCapability.execution_provider` added to `request/v2` for explicit new-format emission.
 
 ### 5. Tests
-- [ ] Registry: unsupported provider / action / version / network / environment / contract.
-- [ ] Compatibility: legacy and new-format proposals resolve to the same Jupiter behaviour.
-- [ ] Binding: provider, market, side, amount, owner, network, environment, bytes each invalidate.
-- [ ] A **test-only** alternate provider registered beside Jupiter, driving the same core flow;
+- [x] Registry: unsupported provider / action / version / network / environment / contract.
+- [x] Compatibility: legacy and new-format proposals resolve to the same Jupiter behaviour.
+- [x] Binding: provider, market, side, amount, owner, network, environment, bytes each invalidate.
+- [x] A **test-only** alternate provider registered beside Jupiter, driving the same core flow;
       an assertion that the bundled production registry carries Jupiter alone.
-- [ ] Upgrade: legacy store rows keep their pending items, records and one-attempt behaviour.
+- [x] Upgrade: legacy store rows keep their pending items, records and one-attempt behaviour.
 
 ### 6. Docs
-- [ ] `docs/wiki/execution-providers.md` (the extension contract + how to add a provider).
-- [ ] Update `client-plugins.md`, `jupiter-swap.md`, `jupiter-prediction.md`, `common-requests.md`,
+- [x] `docs/wiki/execution-providers.md` (the extension contract + how to add a provider).
+- [x] Update `client-plugins.md`, `jupiter-swap.md`, `jupiter-prediction.md`, `common-requests.md`,
       `integrations/jupiter.md`, `docs/development/android.md`, changelog, `CODEBASE.md`.
 
 ## Review
 
-(filled in at the end)
+Landed as planned, with three decisions worth recording.
+
+**The wire was not changed.** The plan assumed an `execution_provider` field on
+`request/v2.ActionCapability`. Regenerating the bindings needs network access to buf's remote
+plugins, which this environment blocks (`tls: failed to verify certificate` from `buf generate`), so
+adding the field would have left the generated Kotlin, TypeScript and Go stale and
+`pnpm check:generated` failing. The ticket says to touch contracts "only where necessary", and it
+is not necessary: provider identity reaches the phone through the `plugin_id` compatibility claim
+that was already there, and the provider-neutral versioned action through SEE-108's existing
+`capability_id` + `capability_version`. Documented as the natural next step in
+`docs/wiki/execution-providers.md#compatibility`.
+
+**Two numbers are called "contract" and they had to be separated.** Raising `PROVIDER_CONTRACT` to
+2 — which SEE-145 genuinely is, since every part of the interface changed — would have made every
+published manifest requiring `jupiter.swap` at `1..1` report `PluginIncompatible`. The number a
+*server* names is a statement about the agreement with a client, and that did not change, so it
+lives in the compatibility table as `LegacyCapability.contract` and stays at 1.
+
+**A new provider needs no row in the compatibility table.** The first cut derived the provider from
+a static table only, which would have meant a second provider could not be named by any document
+without editing core. `ProviderRegistry.byLegacyPlugin` matches the names a registered provider
+declares, so the table is only ever about the two names published before SEE-145 —
+`AlternateProviderTest` is the proof, since `example.swap` appears in no table anywhere.
+
+Also worth noting: an owner with no wallet connected has no cluster, so `NETWORK_UNSPECIFIED` skips
+the cluster check rather than telling them a venue does not serve their network. And `resolve` now
+reads a prediction market when the review opens, so the prediction API is read twice on that path —
+once for the owner's benefit, once as `prepare`'s own guard on the bytes.

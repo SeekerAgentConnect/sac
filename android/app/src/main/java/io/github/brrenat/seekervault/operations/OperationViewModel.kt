@@ -25,7 +25,6 @@ import io.github.brrenat.seekervault.plugins.PluginDestination
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFailure
-import io.github.brrenat.seekervault.plugins.PluginFinding
 import io.github.brrenat.seekervault.plugins.PreparedOperation
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.ProviderResolution
@@ -268,13 +267,18 @@ class OperationViewModel(
                 if (it?.proposalId != proposalId || it.prepared != null) it
                 else
                     it.copy(
-                        form = resolution.form,
+                        // A provider saying the action cannot be served as it stands — a market
+                        // that has closed — lands where a document this phone could not read
+                        // lands: shown, with nothing to prepare from. They are the same thing to
+                        // the owner, so they are the same field.
+                        form =
+                            resolution.form.copy(
+                                problem = resolution.problem ?: resolution.form.problem
+                            ),
                         details = resolution.details,
-                        problem = null,
                         choice =
                             it.choice.takeIf { chosen -> chosen.values.isNotEmpty() }
                                 ?: initial(resolution.form),
-                        resolutionProblem = resolution.problem,
                     )
             }
         }
@@ -787,11 +791,6 @@ data class OperationReview(
     val failure: OperationFailure? = null,
     /** What the provider currently says about the action, for the owner to read (SEE-145). */
     val details: List<PluginFact> = emptyList(),
-    /**
-     * Why the provider says this action cannot be served as it stands — a market that has closed,
-     * say. It is shown and nothing is prepared from it; it is not a rule the owner could overrule.
-     */
-    val resolutionProblem: PluginFinding? = null,
     /** Where the owner may continue outside the app, built fresh and never read off disk. */
     val destinations: List<PluginDestination> = emptyList(),
     val assessment: RequestAssessment? = null,

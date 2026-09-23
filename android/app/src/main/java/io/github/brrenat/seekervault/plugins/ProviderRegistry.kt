@@ -48,9 +48,9 @@ private constructor(private val providers: Map<ExecutionProviderId, ExecutionPro
      * different thing to tell someone: this build carries no such provider; it carries it but it
      * was written against a boundary this build doesn't speak; it speaks the boundary but serves no
      * such action; it serves the action but not at this payload schema version; not on the cluster
-     * the owner's wallet is selected for; not in the environment this connection keeps. All six are
-     * refusals, none is a verdict about the action itself, and every one of them happens before
-     * anything is prepared and long before anything is signed.
+     * the owner's wallet is selected for; not in the environment this connection keeps; not in the
+     * asset the document names. All seven are refusals, none is a verdict about the action itself,
+     * and every one of them happens before anything is prepared and long before anything is signed.
      */
     fun resolve(
         provider: ExecutionProviderId?,
