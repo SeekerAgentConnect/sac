@@ -34,4 +34,11 @@
     <string name="notification_proposal_prediction_summary">Review the market before choosing a side and stake.</string>
     <string name="notification_proposal_unknown_title">Signal ready for review</string>
     <string name="notification_proposal_unknown_summary">A publisher signal is ready for your review.</string>
+    <string name="in_app_notification_request_subtitle">New request · %1$s · %2$s</string>
+    <string name="in_app_notification_signal_subtitle">New signal · %1$s · %2$s</string>
+    <string name="in_app_notification_disconnected_title">%1$s disconnected</string>
+    <string name="in_app_notification_open_request">%1$s, open request</string>
+    <string name="in_app_notification_open_signal">%1$s, open signal</string>
+    <string name="in_app_notification_open_disconnected">%1$s, open</string>
+    <string name="in_app_notification_dismiss">Dismiss</string>
 </resources>

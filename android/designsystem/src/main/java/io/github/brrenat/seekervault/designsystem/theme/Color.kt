@@ -41,6 +41,12 @@ data class SeekerColors(
     val onDestructive: Color,
     val destructiveContainer: Color,
     val onDestructiveContainer: Color,
+    /**
+     * The only translucent value in the scheme. A floating layer — today the in-app notification
+     * banner — casts a shadow so it reads as being above the content rather than part of it; a
+     * solid ink under a rounded corner would read as a second, misaligned card.
+     */
+    val overlayShadow: Color,
 )
 
 internal val DarkSeekerColors =
@@ -78,6 +84,7 @@ internal val DarkSeekerColors =
         onDestructive = Color(0xFF2B0008),
         destructiveContainer = Color(0xFF4D0011),
         onDestructiveContainer = Color(0xFFFFD9DE),
+        overlayShadow = Color(0x73000000),
     )
 
 internal val LightSeekerColors =
@@ -115,6 +122,7 @@ internal val LightSeekerColors =
         onDestructive = Color(0xFF2B0008),
         destructiveContainer = Color(0xFFFFE1E5),
         onDestructiveContainer = Color(0xFF5C0014),
+        overlayShadow = Color(0x29000000),
     )
 
 internal val DarkColorScheme: ColorScheme =

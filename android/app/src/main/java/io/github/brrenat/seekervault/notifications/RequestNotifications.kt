@@ -134,7 +134,7 @@ class RequestNotificationManager(
 }
 
 /** Human words for the request kind already held in the authoritative post-Sync cache. */
-private fun requestNotificationCopy(
+internal fun requestNotificationCopy(
     context: Context,
     request: ActionRequest,
     source: String,
