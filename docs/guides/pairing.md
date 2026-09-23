@@ -12,7 +12,9 @@ The app talks to each self-hosted sidecar through a **connection**. You pair onc
 
 ## Pair
 
-1. On the computer that runs the sidecar, run `pnpm pair`, or from a connected agent call `vault_create_pairing_link`. Either prints (or returns) a `seekervault://pair?` deep link and an `https://<origin>/pair?` landing page that opens the same link. The code works once, for 10 minutes, and a newer code replaces it. Opening the deep link or the HTTPS page on Android goes to the same confirmation screen and does not contact the server until the owner taps **Pair**. You can also paste either URI under **Add connection**.
+1. On the computer that runs the sidecar, run `pnpm pair`, or from a connected agent call `vault_create_pairing_link`. Either prints (or returns) a `seekervault://pair?` deep link and an `https://<origin>/pair#<fragment>` landing page that opens the same link. The code works once, for 10 minutes, and a newer code replaces it. Opening the deep link or the HTTPS page on Android goes to the same confirmation screen and does not contact the server until the owner taps **Pair**. You can also paste either URI under **Add connection**.
+
+   If the pairing page says the link is damaged or incomplete, the address was shortened or changed before it was opened. The fragment after `#` has to be the whole `https_url`. A link with `...` in it will not work. Open the full `https_url`, or paste the full `seekervault://pair` code under **Add connection**.
 2. In the app, on **Connections**, tap **Add connection**.
 3. Tap **Scan QR code**. The first time, Android asks for camera access; allow it. Point the camera at the QR code.
 
