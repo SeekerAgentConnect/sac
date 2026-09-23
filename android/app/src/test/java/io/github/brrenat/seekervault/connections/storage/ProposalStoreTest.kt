@@ -1,9 +1,12 @@
 package io.github.brrenat.seekervault.connections.storage
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.SWAP_ACTION
 import io.github.brrenat.seekervault.proposals.PROPOSAL_A
 import io.github.brrenat.seekervault.proposals.PROPOSAL_B
 import io.github.brrenat.seekervault.proposals.ProposalDismissal
@@ -127,6 +130,79 @@ class ProposalStoreTest {
         assertEquals(1, migrated.proposal.capabilityVersion)
         assertEquals(emptyList<Any>(), migrated.proposal.ownerInputs)
         assertEquals(record.dismissed, migrated.dismissed)
+    }
+
+    @Test
+    fun aVersionThreeRowKeepsItsPendingItemsAndItsOneAttemptAcrossTheUpgrade() {
+        // What SEE-145 must not break: a proposal reviewed and executed by a build that knew only
+        // `swap` and `jupiter.swap` reads back naming the action, the provider and the schema —
+        // through the compatibility table, never by splitting the plugin name on its dot — and it
+        // still blocks a second attempt, because that is the whole point of writing it down.
+        val record =
+            ProposalRecord(
+                connectionId = CONNECTION,
+                proposal = proposal(),
+                review = ProposalReview(1, choice(1_000_000uL), AT),
+                execution =
+                    ProposalExecution(
+                        binding = binding(proposal(), choice(1_000_000uL)),
+                        startedAt = AT,
+                        outcome = ProposalOutcome.Declined,
+                        settledAt = AT,
+                    ),
+            )
+        store.put(record)
+        val file = File(dir, "$CONNECTION/$PROPOSAL_A.json")
+        val old = JSONObject(file.readText())
+        old.put("version", 3)
+        // A version-3 row said `operation` and `plugin`, and nothing else about who would execute.
+        old.getJSONObject("proposal").apply {
+            remove("action")
+            remove("provider")
+        }
+        old.getJSONObject("execution").getJSONObject("binding").apply {
+            remove("provider")
+            remove("action")
+            remove("schemaVersion")
+            remove("instrument")
+            remove("marketProvider")
+        }
+        file.writeText(old.toString())
+
+        val migrated = checkNotNull(store.get(CONNECTION, PROPOSAL_A))
+
+        assertEquals(SWAP_ACTION, migrated.proposal.action)
+        assertEquals(JUPITER_PROVIDER, migrated.proposal.provider)
+        assertEquals(JUPITER_PROVIDER, migrated.execution?.binding?.provider)
+        assertEquals(SWAP_ACTION, migrated.execution?.binding?.action)
+        assertEquals(1, migrated.execution?.binding?.schemaVersion)
+        // The owner's own decision, and the one attempt this device made, both exactly as written.
+        assertEquals(record.review, migrated.review)
+        assertEquals(ProposalOutcome.Declined, migrated.execution?.outcome)
+        assertEquals(
+            record.execution?.binding?.contentHash,
+            migrated.execution?.binding?.contentHash,
+        )
+    }
+
+    @Test
+    fun aRowThisBuildWritesIsStillReadableByOneThatOnlyKnowsTheOldNames() {
+        // The other direction, which is what keeps a downgrade honest: a row written now carries
+        // the action and the provider *and* the operation and plugin names an older build reads.
+        store.put(ProposalRecord(connectionId = CONNECTION, proposal = proposal()))
+
+        val written =
+            JSONObject(File(dir, "$CONNECTION/$PROPOSAL_A.json").readText())
+                .getJSONObject("proposal")
+
+        assertEquals(
+            4,
+            JSONObject(File(dir, "$CONNECTION/$PROPOSAL_A.json").readText()).getInt("version"),
+        )
+        assertEquals(SWAP_ACTION.value, written.getString("action"))
+        assertEquals(JUPITER_PROVIDER.value, written.getString("provider"))
+        assertEquals(SWAP, written.getString("operation"))
+        assertEquals(JUPITER_SWAP.value, written.getString("plugin"))
     }
 
     @Test

@@ -1,6 +1,9 @@
 package io.github.brrenat.seekervault.jupiter
 
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.plugins.actions.SwapChoice
+import io.github.brrenat.seekervault.plugins.actions.SwapPayload
+import io.github.brrenat.seekervault.plugins.actions.WRAPPED_SOL
 import io.github.brrenat.seekervault.transactions.TOKEN_PROGRAM
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.transactions.associatedTokenAddress
@@ -31,7 +34,7 @@ class SwapInspectionTest {
 
     private fun inspect(
         transaction: ByteString,
-        terms: SwapTerms = this.terms,
+        terms: SwapPayload = this.terms,
         choice: SwapChoice = this.choice,
         quote: JupiterQuote = this.quote,
         walletAddress: String = OWNER,

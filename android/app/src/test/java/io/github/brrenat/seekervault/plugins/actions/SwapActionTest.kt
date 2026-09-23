@@ -1,8 +1,16 @@
-package io.github.brrenat.seekervault.jupiter
+package io.github.brrenat.seekervault.plugins.actions
 
+import io.github.brrenat.seekervault.jupiter.JUP_MINT
+import io.github.brrenat.seekervault.jupiter.SOL_MINT
+import io.github.brrenat.seekervault.jupiter.USDC_MINT
+import io.github.brrenat.seekervault.jupiter.usdcTerms
+import io.github.brrenat.seekervault.plugins.ActionCapability
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.SWAP_ACTION
+import io.github.brrenat.seekervault.plugins.SWAP_SCHEMA_VERSION
+import io.github.brrenat.seekervault.request.v1.Network
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -16,9 +24,17 @@ import org.junit.Test
  * confused by it, and the first of them is the one that matters most — an asset is a mint address,
  * never a ticker.
  */
-class SwapTermsTest {
-    private fun terms(vararg pairs: Pair<String, String>): SwapTermsResult =
-        swapTermsFrom(mapOf(*pairs))
+class SwapActionTest {
+    /** A venue that takes any pair, with no floor and no ceiling of its own — as Jupiter does. */
+    private val venue =
+        ActionCapability(
+            action = SWAP_ACTION,
+            schemaVersions = SWAP_SCHEMA_VERSION..SWAP_SCHEMA_VERSION,
+            networks = setOf(Network.NETWORK_MAINNET),
+        )
+
+    private fun terms(vararg pairs: Pair<String, String>): SwapPayloadResult =
+        swapPayloadFrom(mapOf(*pairs))
 
     private val sound =
         arrayOf(
@@ -29,11 +45,11 @@ class SwapTermsTest {
             SwapTermNames.MAX_SLIPPAGE_BPS to "100",
         )
 
-    private fun valid(vararg extra: Pair<String, String>): SwapTerms =
-        (terms(*sound, *extra) as SwapTermsResult.Valid).terms
+    private fun valid(vararg extra: Pair<String, String>): SwapPayload =
+        (terms(*sound, *extra) as SwapPayloadResult.Valid).payload
 
-    private fun problem(vararg pairs: Pair<String, String>): Pair<SwapTermProblem, String> =
-        (terms(*pairs) as SwapTermsResult.Invalid).let { it.problem to it.term }
+    private fun problem(vararg pairs: Pair<String, String>): Pair<SwapPayloadProblem, String> =
+        (terms(*pairs) as SwapPayloadResult.Invalid).let { it.problem to it.term }
 
     @Test
     fun aSignalNamesItsAssetsByMintAndItsOwnCeiling() {
@@ -66,7 +82,7 @@ class SwapTermsTest {
                 )
             assertTrue(
                 "$named: $problem",
-                problem == SwapTermProblem.NotAMint || problem == SwapTermProblem.Missing,
+                problem == SwapPayloadProblem.NotAMint || problem == SwapPayloadProblem.Missing,
             )
             assertEquals(SwapTermNames.INPUT_MINT, term)
         }
@@ -75,11 +91,11 @@ class SwapTermsTest {
     @Test
     fun eachWayASignalCanBeUnreadableIsSaidWithTheTermItIsAbout() {
         assertEquals(
-            SwapTermProblem.Missing to SwapTermNames.INPUT_MINT,
+            SwapPayloadProblem.Missing to SwapTermNames.INPUT_MINT,
             problem(SwapTermNames.OUTPUT_MINT to SOL_MINT),
         )
         assertEquals(
-            SwapTermProblem.OneAsset to SwapTermNames.OUTPUT_MINT,
+            SwapPayloadProblem.OneAsset to SwapTermNames.OUTPUT_MINT,
             problem(
                 SwapTermNames.INPUT_MINT to USDC_MINT,
                 SwapTermNames.OUTPUT_MINT to USDC_MINT,
@@ -87,14 +103,14 @@ class SwapTermsTest {
         )
         // Absent and unreadable are told apart, because they are different things to show someone.
         assertEquals(
-            SwapTermProblem.Missing to SwapTermNames.INPUT_DECIMALS,
+            SwapPayloadProblem.Missing to SwapTermNames.INPUT_DECIMALS,
             problem(
                 SwapTermNames.INPUT_MINT to USDC_MINT,
                 SwapTermNames.OUTPUT_MINT to SOL_MINT,
             ),
         )
         assertEquals(
-            SwapTermProblem.BadDecimals to SwapTermNames.INPUT_DECIMALS,
+            SwapPayloadProblem.BadDecimals to SwapTermNames.INPUT_DECIMALS,
             problem(
                 SwapTermNames.INPUT_MINT to USDC_MINT,
                 SwapTermNames.INPUT_DECIMALS to "99",
@@ -104,7 +120,7 @@ class SwapTermsTest {
         for (slippage in listOf("0", "10001", "-5", "half")) {
             assertEquals(
                 slippage,
-                SwapTermProblem.BadSlippage to SwapTermNames.MAX_SLIPPAGE_BPS,
+                SwapPayloadProblem.BadSlippage to SwapTermNames.MAX_SLIPPAGE_BPS,
                 problem(
                     SwapTermNames.INPUT_MINT to USDC_MINT,
                     SwapTermNames.INPUT_DECIMALS to "6",
@@ -115,11 +131,11 @@ class SwapTermsTest {
             )
         }
         assertEquals(
-            SwapTermProblem.BadAmount to SwapTermNames.LEAST_INPUT,
+            SwapPayloadProblem.BadAmount to SwapTermNames.LEAST_INPUT,
             problem(*sound, SwapTermNames.LEAST_INPUT to "1.5"),
         )
         assertEquals(
-            SwapTermProblem.ImpossibleAmounts to SwapTermNames.MOST_INPUT,
+            SwapPayloadProblem.ImpossibleAmounts to SwapTermNames.MOST_INPUT,
             problem(
                 *sound,
                 SwapTermNames.LEAST_INPUT to "100",
@@ -127,7 +143,7 @@ class SwapTermsTest {
             ),
         )
         assertEquals(
-            SwapTermProblem.BadSymbol to SwapTermNames.OUTPUT_SYMBOL,
+            SwapPayloadProblem.BadSymbol to SwapTermNames.OUTPUT_SYMBOL,
             problem(*sound, SwapTermNames.OUTPUT_SYMBOL to "S".repeat(17)),
         )
     }
@@ -145,7 +161,7 @@ class SwapTermsTest {
     @Test
     fun theOwnerIsAskedForTheAmountAndTheSlippageWithinWhatTheSignalAllows() {
         val read = valid(SwapTermNames.LEAST_INPUT to "1000", SwapTermNames.MOST_INPUT to "9000")
-        val form = swapParameters(read)
+        val form = swapInputs(read, venue)
 
         assertEquals(
             listOf(SwapParameterNames.INPUT_AMOUNT, SwapParameterNames.SLIPPAGE_BPS),
@@ -164,7 +180,7 @@ class SwapTermsTest {
         assertEquals(50U, slippage.initial)
         assertEquals(
             25U,
-            (swapParameters(valid(SwapTermNames.MAX_SLIPPAGE_BPS to "25")).fields[1].kind
+            (swapInputs(valid(SwapTermNames.MAX_SLIPPAGE_BPS to "25"), venue).fields[1].kind
                     as ParameterKind.Count)
                 .initial,
         )
@@ -174,7 +190,7 @@ class SwapTermsTest {
     fun nativeSolIsAskedForAsSolEvenThoughASignalNamesTheWrappedMint() {
         // The terms name the mint that moves, because that is what a pool takes. What the owner
         // holds and spends is SOL, and the field says so.
-        val form = swapParameters(usdcTerms(inputMint = SOL_MINT, outputMint = USDC_MINT))
+        val form = swapInputs(usdcTerms(inputMint = SOL_MINT, outputMint = USDC_MINT), venue)
 
         assertNull((form.fields[0].kind as ParameterKind.Amount).mint)
     }
@@ -186,6 +202,7 @@ class SwapTermsTest {
         fun chose(amount: ULong?, slippage: Int?): SwapChoiceResult =
             swapChoiceFrom(
                 read,
+                venue,
                 ParameterChoice(
                     buildMap {
                         amount?.let {

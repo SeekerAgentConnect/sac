@@ -1,15 +1,27 @@
 package io.github.brrenat.seekervault.jupiter
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import io.github.brrenat.seekervault.plugins.ActionSubject
-import io.github.brrenat.seekervault.plugins.PLUGIN_CONTRACT
+import io.github.brrenat.seekervault.operations.OrderChain
+import io.github.brrenat.seekervault.plugins.ActionOperation
+import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
+import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
+import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFailure
-import io.github.brrenat.seekervault.plugins.PluginPreparation
-import io.github.brrenat.seekervault.plugins.SWAP_OPERATION
+import io.github.brrenat.seekervault.plugins.PreparedOperation
+import io.github.brrenat.seekervault.plugins.SWAP_ACTION
+import io.github.brrenat.seekervault.plugins.actions.ActionPayload
+import io.github.brrenat.seekervault.plugins.actions.SwapChoiceProblem
+import io.github.brrenat.seekervault.plugins.actions.SwapParameterNames
+import io.github.brrenat.seekervault.plugins.actions.SwapPayload
+import io.github.brrenat.seekervault.plugins.actions.SwapPayloadResult
+import io.github.brrenat.seekervault.plugins.actions.SwapTermNames
+import io.github.brrenat.seekervault.plugins.actions.swapPayloadFrom
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
@@ -17,31 +29,33 @@ import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The plugin, over a provider that is stood in for (SEE-93).
+ * Jupiter's `swap`, over an API that is stood in for (SEE-93, SEE-145).
  *
- * The bytes and the wire are tested elsewhere; this is about the three things the boundary asks of
- * a plugin and the order it does them in — what the owner is asked for, what happens when a
- * provider fails, and that two people acting on the same document get two different transactions.
+ * The bytes and the wire are tested elsewhere; this is about what the boundary asks of a provider
+ * and the order it does it in — what the owner is asked for, what happens when the API fails, and
+ * that two people acting on the same document get two different transactions.
+ *
+ * It goes through the real [JupiterExecutionProvider], so what is exercised is the same object the
+ * app registers, dispatching on the same typed payload core hands it.
  */
 @RunWith(AndroidJUnit4::class)
-class JupiterSwapPluginTest {
+class JupiterSwapActionTest {
 
     /** A provider that records what it was asked and answers what the test tells it to. */
     private class Provider(
-        var quote: ((SwapTerms, ULong, Int) -> JupiterQuote)? = null,
+        var quote: ((SwapPayload, ULong, Int) -> JupiterQuote)? = null,
         var build: ((JupiterQuote, String) -> JupiterSwap)? = null,
     ) : JupiterProvider {
         val asked = mutableListOf<String>()
 
         override suspend fun quote(
-            terms: SwapTerms,
+            terms: SwapPayload,
             amount: ULong,
             slippageBps: Int,
         ): JupiterQuote {
@@ -69,14 +83,20 @@ class JupiterSwapPluginTest {
         wallet: SelectedWallet? = wallet(),
         values: Map<String, String> = terms,
     ) =
-        ActionSubject(
+        ActionOperation(
             connectionId = "1f0b4b3a-6a5f-4f5c-9d6c-0f2f1e2d3c4b",
-            operation = SWAP_OPERATION,
+            action = SWAP_ACTION,
+            schemaVersion = 1,
+            provider = JUPITER_PROVIDER,
             environment = environment,
-            // A broadcast proposal carries no request, and the plugin is handed the terms instead.
+            network = Network.NETWORK_MAINNET,
+            // Core reads the publisher's terms once, against the action's own schema, and hands
+            // the provider the typed result (SEE-145).
+            payload =
+                ActionPayload.Swap((swapPayloadFrom(values) as SwapPayloadResult.Valid).payload),
+            // A broadcast proposal carries no request.
             request = null,
             wallet = wallet,
-            terms = values,
         )
 
     private fun chose(amount: ULong, slippage: Int = 50) =
@@ -107,34 +127,31 @@ class JupiterSwapPluginTest {
     }
 
     private fun plugin(provider: JupiterProvider, at: Instant = Instant.ofEpochSecond(1_000)) =
-        JupiterSwapPlugin(provider) { at }
+        JupiterExecutionProvider(provider, FakePrediction(), OrderChain()) { at }
 
     @Test
-    fun itDeclaresWhatItIsAndWhatItServes() {
-        val descriptor = plugin(Provider()).descriptor
+    fun itDeclaresWhoItIsWhatItServesAndWhereItServesIt() {
+        val capabilities = plugin(Provider()).capabilities
 
-        assertEquals("jupiter.swap", descriptor.id.value)
-        assertEquals(PLUGIN_CONTRACT, descriptor.contract)
-        assertTrue(descriptor.contractSupported)
-        assertEquals(setOf(SWAP_OPERATION), descriptor.operations)
+        assertEquals("jupiter", capabilities.id.value)
+        assertEquals(PROVIDER_CONTRACT, capabilities.contract)
+        assertTrue(capabilities.contractSupported)
+        // The legacy names a manifest written before SEE-145 still requires, declared rather than
+        // parsed out of anything.
+        assertEquals(setOf(JUPITER_SWAP, JUPITER_PREDICTION), capabilities.legacyPlugins)
+        val swap = checkNotNull(capabilities.forAction(SWAP_ACTION))
+        assertEquals(1..1, swap.schemaVersions)
+        // One cluster, in both environments, because there is no devnet Jupiter.
+        assertEquals(setOf(Network.NETWORK_MAINNET), swap.networks)
+        assertNull("any pair the payload can name", swap.depositAssets)
         // Both environments, because a sandbox server is a supported server: its signals are read
         // and reviewed here, and preparing is the part it declines.
         assertEquals(
             setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
-            descriptor.environments,
+            capabilities.environments,
         )
-    }
-
-    @Test
-    fun aSignalItCannotReadAsksForNothingAndSaysWhy() {
-        val form = plugin(Provider()).parameters(subject(values = mapOf("pair" to "BTC/USD")))
-
-        assertTrue(form.isEmpty)
-        // And not merely empty: the owner is told which term was the trouble.
-        val problem = assertNotNull(form.problem).let { form.problem!! }
-        assertTrue(problem.code.startsWith(SwapTermProblem.Missing.code))
-        assertTrue(problem.code.endsWith(SwapTermNames.INPUT_MINT))
-        assertTrue(problem.invalidates)
+        // It answers no status query, and does not pretend to: "submitted" never becomes "filled".
+        assertFalse(capabilities.statusQueries)
     }
 
     @Test
@@ -290,7 +307,7 @@ class JupiterSwapPluginTest {
                 .inspect(
                     subject(),
                     chose(5UL),
-                    PluginPreparation(
+                    PreparedOperation(
                         transaction = swapTransaction(usdcTerms(), 5UL, quoteFor(usdcTerms(), 5UL)),
                         version = 9,
                     ),

@@ -1,6 +1,7 @@
-package io.github.brrenat.seekervault.jupiter
+package io.github.brrenat.seekervault.plugins.actions
 
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.plugins.ActionCapability
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterField
 import io.github.brrenat.seekervault.plugins.ParameterForm
@@ -35,30 +36,43 @@ object PredictionOutcomes {
     val NO: ParameterKey = ParameterKey("no")
 }
 
-/** What [JupiterPredictionPlugin] asks the owner for, given the market the publisher named. */
-fun predictionParameters(terms: PredictionTerms): ParameterForm =
+/**
+ * What the owner has to choose for a prediction order, given the market the publisher named and
+ * what the venue serving it will accept.
+ *
+ * The venue's smallest order is folded into the floor here. It used to be a constant inside the
+ * payload reader, which quietly made "the smallest order Jupiter accepts" part of what the *action*
+ * means; SEE-145 moved it to where it is true — the capability of the provider that would place it.
+ */
+fun predictionBuyInputs(payload: PredictionPayload, capability: ActionCapability): ParameterForm =
     ParameterForm(
         listOf(
             ParameterField(
                 key = PredictionParameterNames.OUTCOME,
-                label = R.string.jupiter_outcome_label,
+                label = R.string.action_prediction_outcome_label,
                 kind =
                     ParameterKind.Choice(
                         listOf(
-                            ParameterOption(PredictionOutcomes.YES, R.string.jupiter_outcome_yes),
-                            ParameterOption(PredictionOutcomes.NO, R.string.jupiter_outcome_no),
+                            ParameterOption(
+                                PredictionOutcomes.YES,
+                                R.string.action_prediction_outcome_yes,
+                            ),
+                            ParameterOption(
+                                PredictionOutcomes.NO,
+                                R.string.action_prediction_outcome_no,
+                            ),
                         )
                     ),
             ),
             ParameterField(
                 key = PredictionParameterNames.DEPOSIT,
-                label = R.string.jupiter_deposit_label,
+                label = R.string.action_prediction_deposit_label,
                 kind =
                     ParameterKind.Amount(
-                        mint = terms.depositMint,
-                        decimals = terms.depositDecimals,
-                        most = terms.mostDeposit,
-                        least = terms.leastDeposit,
+                        mint = payload.depositMint,
+                        decimals = payload.depositDecimals,
+                        most = leastOf(payload.mostDeposit, capability.mostDeposit),
+                        least = maxOf(payload.leastDeposit, capability.leastDeposit),
                     ),
             ),
         )
@@ -74,11 +88,22 @@ enum class PredictionChoiceProblem(val code: String) {
     /** A side that is neither of the market's two. */
     BadOutcome("bad_outcome"),
     NoDeposit("no_deposit"),
-    /** Below the publisher's floor, or below the least the provider will accept. */
+    /** Below the publisher's floor, or below the least the venue will accept. */
     TooLittle("too_little"),
-    /** Above the publisher's ceiling. */
+    /** Above the ceiling one of them set. */
     TooMuch("too_much"),
 }
+
+/** The owner-facing words for each. */
+val PredictionChoiceProblem.message: Int
+    get() =
+        when (this) {
+            PredictionChoiceProblem.NoOutcome -> R.string.action_choice_no_outcome
+            PredictionChoiceProblem.BadOutcome -> R.string.action_choice_bad_outcome
+            PredictionChoiceProblem.NoDeposit -> R.string.action_choice_no_amount
+            PredictionChoiceProblem.TooLittle -> R.string.action_choice_stake_too_little
+            PredictionChoiceProblem.TooMuch -> R.string.action_choice_too_much
+        }
 
 sealed interface PredictionChoiceResult {
     data class Valid(val choice: PredictionChoice) : PredictionChoiceResult
@@ -87,14 +112,15 @@ sealed interface PredictionChoiceResult {
 }
 
 /**
- * Reads [choice] against [terms], or says why it cannot be acted on.
+ * Reads [choice] against [payload] and [capability], or says why it cannot be acted on.
  *
  * Both bounds are enforced here, on the owner's own side of the boundary: the publisher's, and the
- * provider's five-dollar minimum, which [PredictionTerms] has already folded into the floor. The
- * screen may offer whatever it likes; nothing is prepared unless the numbers are within both.
+ * venue's own minimum order. The screen may offer whatever it likes; nothing is prepared unless the
+ * numbers are within both.
  */
 fun predictionChoiceFrom(
-    terms: PredictionTerms,
+    payload: PredictionPayload,
+    capability: ActionCapability,
     choice: ParameterChoice,
 ): PredictionChoiceResult {
     val selected =
@@ -109,10 +135,10 @@ fun predictionChoiceFrom(
     val deposit =
         (choice[PredictionParameterNames.DEPOSIT] as? ParameterValue.Amount)?.baseUnits
             ?: return PredictionChoiceResult.Invalid(PredictionChoiceProblem.NoDeposit)
-    if (deposit < terms.leastDeposit) {
+    if (deposit < maxOf(payload.leastDeposit, capability.leastDeposit)) {
         return PredictionChoiceResult.Invalid(PredictionChoiceProblem.TooLittle)
     }
-    terms.mostDeposit?.let {
+    leastOf(payload.mostDeposit, capability.mostDeposit)?.let {
         if (deposit > it) return PredictionChoiceResult.Invalid(PredictionChoiceProblem.TooMuch)
     }
     return PredictionChoiceResult.Valid(PredictionChoice(yes, deposit))

@@ -1,5 +1,7 @@
-package io.github.brrenat.seekervault.jupiter
+package io.github.brrenat.seekervault.plugins.actions
 
+import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.plugins.PluginFinding
 import io.github.brrenat.seekervault.wallet.isSolanaAddress
 
 /**
@@ -32,7 +34,7 @@ import io.github.brrenat.seekervault.wallet.isSolanaAddress
  * slippage and may state bounds on the amount; within those, both are chosen on the phone, stay on
  * the phone, and differ between two people who received the same document.
  */
-data class SwapTerms(
+data class SwapPayload(
     /** The mint the owner spends. Native SOL is the wrapped mint, spelled out ([WRAPPED_SOL]). */
     val inputMint: String,
     /** Its base units per whole token, for display only: nothing here rounds anything. */
@@ -83,7 +85,7 @@ const val MOST_DECIMALS: Int = 18
 const val MOST_SYMBOL_LENGTH: Int = 16
 
 /** Which rule a publisher's terms broke. Each is a separate fact, and none of them is a guess. */
-enum class SwapTermProblem(val code: String) {
+enum class SwapPayloadProblem(val code: String) {
     /** A required term is absent. A swap with no assets named is not a swap with defaults. */
     Missing("missing"),
     /** A named asset is not a base58 32-byte mint — a ticker, a name, or a typo. */
@@ -102,11 +104,29 @@ enum class SwapTermProblem(val code: String) {
     BadSymbol("bad_symbol"),
 }
 
-sealed interface SwapTermsResult {
-    data class Valid(val terms: SwapTerms) : SwapTermsResult
+/** The owner-facing words for each rule. They stay in resources, not in code. */
+val SwapPayloadProblem.message: Int
+    get() =
+        when (this) {
+            SwapPayloadProblem.Missing -> R.string.action_swap_terms_missing
+            SwapPayloadProblem.NotAMint -> R.string.action_terms_not_a_mint
+            SwapPayloadProblem.OneAsset -> R.string.action_swap_terms_one_asset
+            SwapPayloadProblem.BadDecimals -> R.string.action_terms_bad_decimals
+            SwapPayloadProblem.BadSlippage -> R.string.action_swap_terms_bad_slippage
+            SwapPayloadProblem.BadAmount -> R.string.action_terms_bad_amount
+            SwapPayloadProblem.ImpossibleAmounts -> R.string.action_terms_impossible_amounts
+            SwapPayloadProblem.BadSymbol -> R.string.action_terms_bad_symbol
+        }
+
+sealed interface SwapPayloadResult {
+    data class Valid(val payload: SwapPayload) : SwapPayloadResult
 
     /** Which rule broke, and the term it broke on, so the owner is told which one. */
-    data class Invalid(val problem: SwapTermProblem, val term: String) : SwapTermsResult
+    data class Invalid(val problem: SwapPayloadProblem, val term: String) : SwapPayloadResult {
+        /** The rule that broke, and the term it broke on, as one finding the owner is shown. */
+        val finding: PluginFinding
+            get() = PluginFinding("${problem.code}:$term", problem.message, invalidates = true)
+    }
 }
 
 /**
@@ -118,62 +138,62 @@ sealed interface SwapTermsResult {
  * the extra is not an error — but it is also not consulted, so nothing in an unknown term can
  * change what is prepared.
  */
-fun swapTermsFrom(terms: Map<String, String>): SwapTermsResult {
+fun swapPayloadFrom(terms: Map<String, String>): SwapPayloadResult {
     val inputMint =
         required(terms, SwapTermNames.INPUT_MINT) ?: return missing(SwapTermNames.INPUT_MINT)
     if (!isSolanaAddress(inputMint)) {
-        return SwapTermsResult.Invalid(SwapTermProblem.NotAMint, SwapTermNames.INPUT_MINT)
+        return SwapPayloadResult.Invalid(SwapPayloadProblem.NotAMint, SwapTermNames.INPUT_MINT)
     }
     val outputMint =
         required(terms, SwapTermNames.OUTPUT_MINT) ?: return missing(SwapTermNames.OUTPUT_MINT)
     if (!isSolanaAddress(outputMint)) {
-        return SwapTermsResult.Invalid(SwapTermProblem.NotAMint, SwapTermNames.OUTPUT_MINT)
+        return SwapPayloadResult.Invalid(SwapPayloadProblem.NotAMint, SwapTermNames.OUTPUT_MINT)
     }
     if (inputMint == outputMint) {
-        return SwapTermsResult.Invalid(SwapTermProblem.OneAsset, SwapTermNames.OUTPUT_MINT)
+        return SwapPayloadResult.Invalid(SwapPayloadProblem.OneAsset, SwapTermNames.OUTPUT_MINT)
     }
     val inputDecimals =
         decimals(terms, SwapTermNames.INPUT_DECIMALS)
             ?: return badOrMissing(
                 terms,
                 SwapTermNames.INPUT_DECIMALS,
-                SwapTermProblem.BadDecimals,
+                SwapPayloadProblem.BadDecimals,
             )
     val outputDecimals =
         decimals(terms, SwapTermNames.OUTPUT_DECIMALS)
             ?: return badOrMissing(
                 terms,
                 SwapTermNames.OUTPUT_DECIMALS,
-                SwapTermProblem.BadDecimals,
+                SwapPayloadProblem.BadDecimals,
             )
     val slippage =
         terms[SwapTermNames.MAX_SLIPPAGE_BPS]?.toIntOrNull()?.takeIf { it in 1..MOST_SLIPPAGE_BPS }
             ?: return badOrMissing(
                 terms,
                 SwapTermNames.MAX_SLIPPAGE_BPS,
-                SwapTermProblem.BadSlippage,
+                SwapPayloadProblem.BadSlippage,
             )
     // Absent is absent; present and unreadable is a broken term, and the two are not the same
     // thing to tell the owner.
     val least =
         if (SwapTermNames.LEAST_INPUT in terms) {
             terms[SwapTermNames.LEAST_INPUT]?.toULongOrNull()
-                ?: return SwapTermsResult.Invalid(
-                    SwapTermProblem.BadAmount,
+                ?: return SwapPayloadResult.Invalid(
+                    SwapPayloadProblem.BadAmount,
                     SwapTermNames.LEAST_INPUT,
                 )
         } else 0UL
     val most =
         if (SwapTermNames.MOST_INPUT in terms) {
             terms[SwapTermNames.MOST_INPUT]?.toULongOrNull()
-                ?: return SwapTermsResult.Invalid(
-                    SwapTermProblem.BadAmount,
+                ?: return SwapPayloadResult.Invalid(
+                    SwapPayloadProblem.BadAmount,
                     SwapTermNames.MOST_INPUT,
                 )
         } else null
     if (most != null && (most < least || most == 0UL)) {
-        return SwapTermsResult.Invalid(
-            SwapTermProblem.ImpossibleAmounts,
+        return SwapPayloadResult.Invalid(
+            SwapPayloadProblem.ImpossibleAmounts,
             SwapTermNames.MOST_INPUT,
         )
     }
@@ -181,8 +201,8 @@ fun swapTermsFrom(terms: Map<String, String>): SwapTermsResult {
         symbol(terms, SwapTermNames.INPUT_SYMBOL) ?: return badSymbol(SwapTermNames.INPUT_SYMBOL)
     val outputSymbol =
         symbol(terms, SwapTermNames.OUTPUT_SYMBOL) ?: return badSymbol(SwapTermNames.OUTPUT_SYMBOL)
-    return SwapTermsResult.Valid(
-        SwapTerms(
+    return SwapPayloadResult.Valid(
+        SwapPayload(
             inputMint = inputMint,
             inputDecimals = inputDecimals,
             outputMint = outputMint,
@@ -205,16 +225,16 @@ private fun decimals(terms: Map<String, String>, name: String): Int? =
 private fun symbol(terms: Map<String, String>, name: String): String? =
     (terms[name] ?: "").takeIf { it.length <= MOST_SYMBOL_LENGTH }
 
-private fun missing(name: String) = SwapTermsResult.Invalid(SwapTermProblem.Missing, name)
+private fun missing(name: String) = SwapPayloadResult.Invalid(SwapPayloadProblem.Missing, name)
 
-private fun badSymbol(name: String) = SwapTermsResult.Invalid(SwapTermProblem.BadSymbol, name)
+private fun badSymbol(name: String) = SwapPayloadResult.Invalid(SwapPayloadProblem.BadSymbol, name)
 
 // Absent and unreadable are told apart, because "the publisher said nothing" and "the publisher
 // said something this plugin can't read" are different things to show someone.
 private fun badOrMissing(
     terms: Map<String, String>,
     name: String,
-    problem: SwapTermProblem,
-): SwapTermsResult.Invalid =
-    if (required(terms, name) == null) SwapTermsResult.Invalid(SwapTermProblem.Missing, name)
-    else SwapTermsResult.Invalid(problem, name)
+    problem: SwapPayloadProblem,
+): SwapPayloadResult.Invalid =
+    if (required(terms, name) == null) SwapPayloadResult.Invalid(SwapPayloadProblem.Missing, name)
+    else SwapPayloadResult.Invalid(problem, name)

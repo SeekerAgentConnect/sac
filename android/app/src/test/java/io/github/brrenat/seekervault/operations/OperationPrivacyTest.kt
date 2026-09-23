@@ -17,15 +17,16 @@ import io.github.brrenat.seekervault.feeds.ConnectFeedGateway
 import io.github.brrenat.seekervault.gateway.v1.ListRequestsRequest
 import io.github.brrenat.seekervault.gateway.v1.listRequestsRequest
 import io.github.brrenat.seekervault.gateway.v1.listRequestsResponse
+import io.github.brrenat.seekervault.jupiter.HttpJupiterPrediction
 import io.github.brrenat.seekervault.jupiter.HttpJupiterProvider
-import io.github.brrenat.seekervault.jupiter.JUPITER_SWAP
-import io.github.brrenat.seekervault.jupiter.JupiterSwapPlugin
+import io.github.brrenat.seekervault.jupiter.JupiterExecutionProvider
 import io.github.brrenat.seekervault.jupiter.SOL_MINT
-import io.github.brrenat.seekervault.jupiter.SwapParameterNames
 import io.github.brrenat.seekervault.jupiter.USDC_MINT
+import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.actions.SwapParameterNames
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
@@ -176,12 +177,7 @@ class OperationPrivacyTest {
             ProposalRepository(
                 store = ProposalStore(File(folder.root, "proposals")),
                 connections = { listOf(connection) },
-                plugins =
-                    PluginRegistry.of(
-                        JupiterSwapPlugin(HttpJupiterProvider(OkHttpClient(), providerUrl)) {
-                            clock
-                        }
-                    ),
+                plugins = jupiter(providerUrl, clock),
                 feed = feeds,
                 history = history,
                 now = { clock },
@@ -216,12 +212,7 @@ class OperationPrivacyTest {
                 wallet = wallet,
                 policies = PolicyEvaluator(policies, records = { history.records.value }),
                 history = history,
-                plugins =
-                    PluginRegistry.of(
-                        JupiterSwapPlugin(HttpJupiterProvider(OkHttpClient(), providerUrl)) {
-                            clock
-                        }
-                    ),
+                providers = jupiter(providerUrl, clock),
                 now = { clock },
                 io = Dispatchers.Unconfined,
             )
@@ -371,4 +362,21 @@ class OperationPrivacyTest {
                     .toByteArray()
             )
     }
+
+    /**
+     * The real bundled provider, pointed at the one local socket this test runs (SEE-145).
+     *
+     * It is the shipped `JupiterExecutionProvider`, not a stand-in: the point of this test is what
+     * actually leaves the phone, so the code under test has to be the code that would.
+     */
+    private fun jupiter(providerUrl: String, clock: java.time.Instant) =
+        ProviderRegistry.of(
+            JupiterExecutionProvider(
+                HttpJupiterProvider(OkHttpClient(), providerUrl),
+                HttpJupiterPrediction(OkHttpClient(), providerUrl),
+                OrderChain(),
+            ) {
+                clock
+            }
+        )
 }

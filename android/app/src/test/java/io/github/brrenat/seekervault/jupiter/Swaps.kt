@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.jupiter
 
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.plugins.actions.SwapPayload
+import io.github.brrenat.seekervault.plugins.actions.WRAPPED_SOL
 import io.github.brrenat.seekervault.transactions.ASSOCIATED_TOKEN_PROGRAM
 import io.github.brrenat.seekervault.transactions.COMPUTE_BUDGET_PROGRAM
 import io.github.brrenat.seekervault.transactions.SYSTEM_PROGRAM
@@ -42,8 +44,8 @@ fun usdcTerms(
     maxSlippageBps: Int = 100,
     leastInput: ULong = 0UL,
     mostInput: ULong? = null,
-): SwapTerms =
-    SwapTerms(
+): SwapPayload =
+    SwapPayload(
         inputMint = inputMint,
         inputDecimals = if (inputMint == SOL_MINT) 9 else 6,
         outputMint = outputMint,
@@ -59,7 +61,7 @@ fun usdcTerms(
  * A quote for exactly what a route instruction will say, so the two agree unless a test parts them.
  */
 fun quoteFor(
-    terms: SwapTerms,
+    terms: SwapPayload,
     amount: ULong,
     outAmount: ULong = 1_000_000UL,
     slippageBps: Int = 50,
@@ -98,7 +100,7 @@ data class Step(val program: String, val accounts: List<String>, val data: ByteA
  * phone would have refused to read at all.
  */
 fun swapTransaction(
-    terms: SwapTerms,
+    terms: SwapPayload,
     amount: ULong,
     quote: JupiterQuote,
     owner: String = OWNER,

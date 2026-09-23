@@ -124,7 +124,7 @@ sealed interface ServerReference {
 
 /**
  * One bundled plugin a server's operations need, named by the stable ID the plugin declares
- * ([io.github.brrenat.seekervault.plugins.PluginDescriptor.id]).
+ * ([io.github.brrenat.seekervault.plugins.ProviderCapabilities.id]).
  *
  * [contracts] is the range of plugin-boundary versions the server works with. A plugin in this
  * build whose contract falls outside it is reported as incompatible rather than called through a

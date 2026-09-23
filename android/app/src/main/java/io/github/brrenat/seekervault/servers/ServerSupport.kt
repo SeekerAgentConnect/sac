@@ -2,7 +2,8 @@ package io.github.brrenat.seekervault.servers
 
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.legacyCapabilityOf
 
 /**
  * Whether this build supports a server, and when it doesn't, why not (SEE-88).
@@ -62,8 +63,8 @@ sealed interface ServerSupport {
  * direct connection the owner paired and could always act on, and its requests are the actions the
  * app carries out itself; a server that has published nothing it needs cannot be found wanting for
  * it. An operation a plugin *would* serve is still resolved for each request
- * ([PluginRegistry.resolve]), and one nothing serves establishes nothing whichever state this is in
- * (SEE-86).
+ * ([ProviderRegistry.resolve]), and one nothing serves establishes nothing whichever state this is
+ * in (SEE-86).
  *
  * The check is exhaustive so that a state added later has to be decided about rather than
  * inheriting an answer.
@@ -94,12 +95,12 @@ val ServerSupport.executable: Boolean
  *
  * Only the IDs and contract ranges are matched here. Whether a plugin serves a particular operation
  * in a particular environment is resolved for each request by the registry itself
- * ([PluginRegistry.resolve]), because that is a question about one request and not about the
+ * ([ProviderRegistry.resolve]), because that is a question about one request and not about the
  * server.
  */
 fun serverSupport(
     record: ServerRecord,
-    plugins: PluginRegistry,
+    plugins: ProviderRegistry,
     environment: PluginEnvironment,
 ): ServerSupport {
     val manifest =
@@ -115,13 +116,25 @@ fun serverSupport(
     if (environment !in manifest.environments) {
         return ServerSupport.EnvironmentUnsupported(environment)
     }
-    val carried = plugins.descriptors.associateBy { it.id }
-    val missing = manifest.required.filterNot { carried.containsKey(it.id) }
+    // A manifest names bundled plugins, and what answers to one of those names is the execution
+    // provider that declares it ([ProviderCapabilities.legacyPlugins]) — matched, never parsed out
+    // of the name (SEE-145, docs/wiki/execution-providers.md#compatibility).
+    val missing = manifest.required.filterNot { plugins.byLegacyPlugin(it.id) != null }
     if (missing.isNotEmpty()) return ServerSupport.PluginMissing(missing.map { it.id })
     val incompatible =
         manifest.required.filterNot { requirement ->
-            val descriptor = checkNotNull(carried[requirement.id])
-            descriptor.contractSupported && descriptor.contract in requirement.contracts
+            // The number a server names is the *published* contract of that plugin name, which
+            // SEE-145 did not move: restructuring the code behind `jupiter.swap` is not a change to
+            // the agreement a server has with a client, so a manifest requiring `1..1` is satisfied
+            // exactly as before ([LegacyCapability.contract]).
+            val carried = checkNotNull(plugins.byLegacyPlugin(requirement.id)).capabilities
+            // Two different ways it can fail to be callable, and both are this one state: the
+            // provider itself is written against a boundary this build no longer calls, or the
+            // published contract of the name it answers to is outside the range the server works
+            // with. A provider with no legacy row is matched on its own contract, because then
+            // there is no published number to be about.
+            val published = legacyCapabilityOf(requirement.id)?.contract ?: carried.contract
+            carried.contractSupported && published in requirement.contracts
         }
     if (incompatible.isNotEmpty()) {
         return ServerSupport.PluginIncompatible(incompatible.map { it.id })

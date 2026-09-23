@@ -10,7 +10,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Connection
-import io.github.brrenat.seekervault.plugins.OperationId
+import io.github.brrenat.seekervault.plugins.ActionId
+import io.github.brrenat.seekervault.plugins.ExecutionProviderId
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.proposals.Proposal
@@ -301,7 +302,8 @@ class FeedNotificationsTest {
                                 ref.proposalId,
                             ),
                         revision = 1,
-                        operation = OperationId(operation),
+                        action = ActionId(operation),
+                        provider = ExecutionProviderId("test"),
                         plugin = PluginId("test.plugin"),
                         status = ProposalStatus.Open,
                         createdAt = Instant.parse("2026-09-17T09:00:00Z"),

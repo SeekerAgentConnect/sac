@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.jupiter
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.plugins.actions.SwapChoice
+import io.github.brrenat.seekervault.plugins.actions.WRAPPED_SOL
 import io.github.brrenat.seekervault.transactions.DecodeResult
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.transactions.associatedTokenAddress

@@ -39,7 +39,7 @@ import org.junit.Test
  * read are all a gap in the review — and a gap is never an allowance
  * (docs/policy.md#what-is-evaluated).
  */
-class PluginFactsTest {
+class ActionFactsTest {
     private val production = PluginEnvironment.Production
     private val mainnet = Network.NETWORK_MAINNET
 
@@ -56,8 +56,8 @@ class PluginFactsTest {
     fun anOperationIsNamedAtTheProtocolsOwnLevelAndNeverAfterAProvider() {
         // Core says "swap". Which provider makes a swap work is the plugin's business, and this is
         // what keeps `connections/`, `sync/` and `live/` free of a provider's name.
-        assertEquals(ActionOwner.Plugin(OperationId("swap")), actionOwner(swap()))
-        assertEquals("swap", SWAP_OPERATION.value)
+        assertEquals(ActionOwner.Provider(ActionId("swap")), actionOwner(swap()))
+        assertEquals("swap", SWAP_ACTION.value)
     }
 
     @Test
@@ -68,11 +68,11 @@ class PluginFactsTest {
     @Test
     fun anOperationNoPluginServesEstablishesNothingAtAll() {
         val facts =
-            pluginFacts(
+            actionFacts(
                 CONNECTION,
                 swap(),
                 mainnet,
-                PluginRegistry.of().resolve(SWAP_OPERATION, production),
+                resolved(ProviderRegistry.of()),
             )
 
         assertEquals(PolicyAction.Swap, facts.action)
@@ -90,14 +90,17 @@ class PluginFactsTest {
 
     @Test
     fun aPluginThatIsThereButHasPreparedNothingEstablishesNothingEither() {
-        val registry = PluginRegistry.of(TestPlugin(inspection = TestPlugin.verified()))
+        val registry =
+            ProviderRegistry.of(
+                TestExecutionProvider(inspection = TestExecutionProvider.verified())
+            )
 
         val facts =
-            pluginFacts(
+            actionFacts(
                 CONNECTION,
                 swap(),
                 mainnet,
-                registry.resolve(SWAP_OPERATION, production),
+                resolved(registry),
                 inspection = null,
             )
 
@@ -108,11 +111,11 @@ class PluginFactsTest {
     @Test
     fun bytesAPluginCouldNotReadEstablishNothing() {
         val facts =
-            pluginFacts(
+            actionFacts(
                 CONNECTION,
                 swap(),
                 mainnet,
-                PluginRegistry.of(TestPlugin()).resolve(SWAP_OPERATION, production),
+                resolved(ProviderRegistry.of(TestExecutionProvider())),
                 inspection = ActionInspection.nothingEstablished(version = 3),
             )
 
@@ -124,21 +127,21 @@ class PluginFactsTest {
 
     @Test
     fun whatAPluginDidReadBecomesTheFactsTheRulesAreAppliedTo() {
-        val inspection = TestPlugin.verified(amount = 250uL, version = 2)
+        val inspection = TestExecutionProvider.verified(amount = 250uL, version = 2)
 
         val facts =
-            pluginFacts(
+            actionFacts(
                 CONNECTION,
                 swap(),
                 mainnet,
-                PluginRegistry.of(TestPlugin()).resolve(SWAP_OPERATION, production),
+                resolved(ProviderRegistry.of(TestExecutionProvider())),
                 inspection,
             )
 
-        assertEquals(TestPlugin.WALLET, facts.wallet)
-        assertEquals(TestPlugin.RECIPIENT, facts.recipient)
+        assertEquals(TestExecutionProvider.WALLET, facts.wallet)
+        assertEquals(TestExecutionProvider.RECIPIENT, facts.recipient)
         assertEquals(250uL, facts.amount)
-        assertEquals(listOf(TestPlugin.PROGRAM), facts.programs)
+        assertEquals(listOf(TestExecutionProvider.PROGRAM), facts.programs)
         assertEquals(PolicyAsset.sol(mainnet), facts.asset)
         assertTrue(facts.fullyRead)
         assertEquals(2, facts.preparedVersion)
@@ -150,16 +153,16 @@ class PluginFactsTest {
     @Test
     fun oneInstructionLeftUnreadWithholdsTheReadingHoweverWellTheRestMatched() {
         val facts =
-            pluginFacts(
+            actionFacts(
                 CONNECTION,
                 swap(),
                 mainnet,
-                PluginRegistry.of(TestPlugin()).resolve(SWAP_OPERATION, production),
-                TestPlugin.partlyRead(),
+                resolved(ProviderRegistry.of(TestExecutionProvider())),
+                TestExecutionProvider.partlyRead(),
             )
 
         // The facts it did read stand; the coverage answer is what withholds the verdict.
-        assertEquals(TestPlugin.WALLET, facts.wallet)
+        assertEquals(TestExecutionProvider.WALLET, facts.wallet)
         assertFalse(facts.fullyRead)
     }
 
@@ -168,23 +171,23 @@ class PluginFactsTest {
         // A plugin reports the mint it read. Which chain that mint is on is the network the owner's
         // wallet is selected for, so a wallet that isn't connected leaves the asset unestablished
         // rather than having one guessed for it.
-        val registry = PluginRegistry.of(TestPlugin())
-        val resolution = registry.resolve(SWAP_OPERATION, production)
+        val registry = ProviderRegistry.of(TestExecutionProvider())
+        val resolution = resolved(registry)
         val onDevnet =
-            pluginFacts(
+            actionFacts(
                 CONNECTION,
                 swap(),
                 Network.NETWORK_DEVNET,
                 resolution,
-                TestPlugin.verified(mint = MINT),
+                TestExecutionProvider.verified(mint = MINT),
             )
         val noWallet =
-            pluginFacts(
+            actionFacts(
                 CONNECTION,
                 swap(),
                 Network.NETWORK_UNSPECIFIED,
                 resolution,
-                TestPlugin.verified(mint = MINT),
+                TestExecutionProvider.verified(mint = MINT),
             )
 
         assertEquals(PolicyAsset.token(Network.NETWORK_DEVNET, MINT), onDevnet.asset)
@@ -205,17 +208,17 @@ class PluginFactsTest {
                 connectionId = CONNECTION,
                 actions = Allowlist.of(PolicyAction.Swap, PolicyAction.Transfer),
                 assets = Allowlist.of(PolicyAsset.sol(mainnet)),
-                recipients = Allowlist.of(TestPlugin.RECIPIENT),
-                programs = Allowlist.of(TestPlugin.PROGRAM),
+                recipients = Allowlist.of(TestExecutionProvider.RECIPIENT),
+                programs = Allowlist.of(TestExecutionProvider.PROGRAM),
                 limits = mapOf(PolicyAsset.sol(mainnet) to AssetLimits(perOperation = 1_000uL)),
                 updatedAt = SAVED,
             )
         val unserved =
-            pluginFacts(
+            actionFacts(
                 CONNECTION,
                 swap(),
                 mainnet,
-                PluginRegistry.of().resolve(SWAP_OPERATION, production),
+                resolved(ProviderRegistry.of()),
             )
 
         val decision = evaluate(policy, unserved)
@@ -262,18 +265,18 @@ class PluginFactsTest {
                 connectionId = CONNECTION,
                 actions = Allowlist.of(PolicyAction.Swap),
                 assets = Allowlist.of(PolicyAsset.sol(mainnet)),
-                recipients = Allowlist.of(TestPlugin.RECIPIENT),
-                programs = Allowlist.of(TestPlugin.PROGRAM),
+                recipients = Allowlist.of(TestExecutionProvider.RECIPIENT),
+                programs = Allowlist.of(TestExecutionProvider.PROGRAM),
                 limits = mapOf(PolicyAsset.sol(mainnet) to AssetLimits(perOperation = 1_000uL)),
                 updatedAt = SAVED,
             )
         val read =
-            pluginFacts(
+            actionFacts(
                 CONNECTION,
                 swap(),
                 mainnet,
-                PluginRegistry.of(TestPlugin()).resolve(SWAP_OPERATION, production),
-                TestPlugin.verified(amount = 250uL),
+                resolved(ProviderRegistry.of(TestExecutionProvider())),
+                TestExecutionProvider.verified(amount = 250uL),
             )
 
         val decision = evaluate(policy, read)
@@ -287,9 +290,9 @@ class PluginFactsTest {
     @Test
     fun anInspectionThatReadNothingIsNeverApprovable() {
         assertFalse(ActionInspection.nothingEstablished().approvable)
-        assertFalse(TestPlugin.partlyRead().approvable)
-        assertTrue(TestPlugin.verified().approvable)
-        assertEquals(Verdict.Verified, TestPlugin.verified().verdict)
+        assertFalse(TestExecutionProvider.partlyRead().approvable)
+        assertTrue(TestExecutionProvider.verified().approvable)
+        assertEquals(Verdict.Verified, TestExecutionProvider.verified().verdict)
     }
 
     @Test
@@ -297,10 +300,10 @@ class PluginFactsTest {
         // Bytes that disagree with the request must not be approved; bytes the plugin simply didn't
         // read leave the review incomplete. They are different things, and a finding says which it
         // is rather than leaving a caller to guess from the verdict.
-        val unread = TestPlugin.partlyRead().findings.single()
+        val unread = TestExecutionProvider.partlyRead().findings.single()
         assertFalse(unread.invalidates)
         assertEquals("unread", unread.code)
-        assertEquals(Verdict.Unverified, TestPlugin.partlyRead().verdict)
+        assertEquals(Verdict.Unverified, TestExecutionProvider.partlyRead().verdict)
     }
 
     @Test
@@ -309,10 +312,10 @@ class PluginFactsTest {
         // to travel with the bytes. A preparation that carries none is taken as fresh, exactly as a
         // transfer's is, which is why a plugin whose bytes expire has to say when.
         val bytes = ByteString.copyFromUtf8("prepared")
-        assertNull(PluginPreparation(bytes, version = 1).expiresAtEpochSeconds)
+        assertNull(PreparedOperation(bytes, version = 1).expiresAtEpochSeconds)
         assertEquals(
             1_789_000_000L,
-            PluginPreparation(bytes, version = 2, expiresAtEpochSeconds = 1_789_000_000L)
+            PreparedOperation(bytes, version = 2, expiresAtEpochSeconds = 1_789_000_000L)
                 .expiresAtEpochSeconds,
         )
     }
@@ -320,7 +323,7 @@ class PluginFactsTest {
     @Test
     fun coverageIsDerivedFromTheCountsAndNotStatedSeparately() {
         // A plugin can't claim it read bytes it didn't finish reading.
-        val partial = TestPlugin.partlyRead().facts!!
+        val partial = TestExecutionProvider.partlyRead().facts!!
         assertFalse(partial.fullyRead)
         assertEquals(3, partial.instructionCount)
         assertEquals(2, partial.recognizedInstructions)
@@ -342,16 +345,16 @@ class PluginFactsTest {
 
     private fun message(): ActionRequest = request {
         signMessage = signMessageAction {
-            wallet = TestPlugin.WALLET
+            wallet = TestExecutionProvider.WALLET
             text = "Sign in to Example"
         }
     }
 
     private fun transfer(): ActionRequest = request {
         transfer = transferAction {
-            wallet = TestPlugin.WALLET
+            wallet = TestExecutionProvider.WALLET
             network = Network.NETWORK_MAINNET
-            recipient = TestPlugin.RECIPIENT
+            recipient = TestExecutionProvider.RECIPIENT
             asset = asset { nativeSol = Asset.NativeSol.getDefaultInstance() }
             amount = "1"
         }
@@ -359,7 +362,7 @@ class PluginFactsTest {
 
     private fun swap(): ActionRequest = request {
         swap = swapAction {
-            wallet = TestPlugin.WALLET
+            wallet = TestExecutionProvider.WALLET
             network = Network.NETWORK_MAINNET
             inputAsset = asset { nativeSol = Asset.NativeSol.getDefaultInstance() }
             outputAsset = asset { tokenMint = MINT }
@@ -374,4 +377,22 @@ class PluginFactsTest {
         const val MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
         val SAVED: Instant = Instant.parse("2026-09-17T09:00:00Z")
     }
+
+    /**
+     * Resolving a `swap` for the one provider a test registered.
+     *
+     * The provider is named explicitly, as every resolution is (SEE-145): there is no "whichever
+     * one serves it", which is exactly why an empty registry answers `NoProvider`.
+     */
+    private fun resolved(
+        registry: ProviderRegistry,
+        provider: ExecutionProviderId? = ExecutionProviderId("test"),
+    ): ProviderResolution =
+        registry.resolve(
+            provider = provider,
+            action = SWAP_ACTION,
+            schemaVersion = SWAP_SCHEMA_VERSION,
+            network = Network.NETWORK_MAINNET,
+            environment = production,
+        )
 }

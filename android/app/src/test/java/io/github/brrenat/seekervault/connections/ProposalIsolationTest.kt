@@ -11,8 +11,8 @@ import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.plugins.PluginRegistry
-import io.github.brrenat.seekervault.plugins.TestPlugin
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.jupiterLike
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposals.AMOUNT
 import io.github.brrenat.seekervault.proposals.PROPOSAL_A
@@ -95,7 +95,7 @@ class ProposalIsolationTest {
             ProposalRepository(
                 store = store,
                 connections = { listOf(connection) },
-                plugins = PluginRegistry.of(TestPlugin(id = SWAP_PLUGIN)),
+                plugins = ProviderRegistry.of(jupiterLike()),
                 feed = feed,
                 history = history,
                 now = { clock },
@@ -290,7 +290,7 @@ class ProposalIsolationTest {
             ProposalRepository(
                 store = store,
                 connections = { repository.connections.value },
-                plugins = PluginRegistry.of(TestPlugin(id = SWAP_PLUGIN)),
+                plugins = ProviderRegistry.of(jupiterLike()),
                 history = history,
                 now = { clock },
                 io = Dispatchers.Unconfined,
@@ -427,7 +427,7 @@ class ProposalIsolationTest {
             ProposalRepository(
                 store = store,
                 connections = { connections },
-                plugins = PluginRegistry.of(TestPlugin(id = SWAP_PLUGIN)),
+                plugins = ProviderRegistry.of(jupiterLike()),
                 history = history,
                 now = { clock },
                 io = Dispatchers.Unconfined,

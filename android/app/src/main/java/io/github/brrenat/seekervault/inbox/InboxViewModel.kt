@@ -21,9 +21,10 @@ import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.connections.toOutcome
 import io.github.brrenat.seekervault.plugins.ActionOwner
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.SWAP_SCHEMA_VERSION
+import io.github.brrenat.seekervault.plugins.actionFacts
 import io.github.brrenat.seekervault.plugins.actionOwner
-import io.github.brrenat.seekervault.plugins.pluginFacts
 import io.github.brrenat.seekervault.policy.EffectivePolicy
 import io.github.brrenat.seekervault.policy.PolicyDecision
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
@@ -250,7 +251,7 @@ class InboxViewModel(
      * doesn't carry out itself, and about nothing else: an acknowledgement, a message and a
      * transfer never reach it. Resolving is a lookup — it opens no wallet and sends nothing.
      */
-    private val plugins: PluginRegistry = PluginRegistry.of(),
+    private val plugins: ProviderRegistry = ProviderRegistry.of(),
     /**
      * How long the app waits for the wallet before it gives up on an approval. It is the owner's
      * own time in the wallet app, so it is generous; a wallet that never answers at all must still
@@ -532,12 +533,24 @@ class InboxViewModel(
         val prepared = activity.value.preparations[key] as? Preparation.Ready
         val network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED
         val owner = actionOwner(request)
-        if (owner is ActionOwner.Plugin) {
-            return pluginFacts(
+        if (owner is ActionOwner.Provider) {
+            return actionFacts(
                 connectionId = key.connectionId,
                 request = request,
                 network = network,
-                resolution = plugins.resolve(owner.operation, environmentOf(key.connectionId)),
+                // A private `ActionRequest` names no execution provider — the v1 action carries no
+                // field for one — so nothing resolves for it and nothing is established. That is
+                // the same answer this path has always given (this app has never prepared a swap
+                // from a private request), reached explicitly rather than by picking whichever
+                // provider happened to serve the action (SEE-145).
+                resolution =
+                    plugins.resolve(
+                        provider = null,
+                        action = owner.action,
+                        schemaVersion = SWAP_SCHEMA_VERSION,
+                        network = network,
+                        environment = environmentOf(key.connectionId),
+                    ),
             )
         }
         return policyFacts(

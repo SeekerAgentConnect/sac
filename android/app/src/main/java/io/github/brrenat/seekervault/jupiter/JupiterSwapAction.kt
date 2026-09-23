@@ -2,129 +2,107 @@ package io.github.brrenat.seekervault.jupiter
 
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.plugins.ActionCapability
 import io.github.brrenat.seekervault.plugins.ActionInspection
-import io.github.brrenat.seekervault.plugins.ActionPlugin
-import io.github.brrenat.seekervault.plugins.ActionSubject
-import io.github.brrenat.seekervault.plugins.PLUGIN_CONTRACT
+import io.github.brrenat.seekervault.plugins.ActionOperation
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterForm
-import io.github.brrenat.seekervault.plugins.PluginDescriptor
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFailure
 import io.github.brrenat.seekervault.plugins.PluginFinding
-import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.plugins.PluginPreparation
-import io.github.brrenat.seekervault.plugins.SWAP_OPERATION
+import io.github.brrenat.seekervault.plugins.PreparedOperation
+import io.github.brrenat.seekervault.plugins.actions.SwapChoiceResult
+import io.github.brrenat.seekervault.plugins.actions.SwapPayload
+import io.github.brrenat.seekervault.plugins.actions.message
+import io.github.brrenat.seekervault.plugins.actions.swapChoiceFrom
+import io.github.brrenat.seekervault.plugins.actions.swapInputs
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * `jupiter.swap`: executing a publisher's spot-swap signal with the owner's own amount (SEE-93).
+ * Jupiter's half of the `swap` action: executing a publisher's spot-swap signal with the owner's
+ * own amount (SEE-93, SEE-145).
  *
- * It is the first plugin written against the boundary SEE-86 landed, and it takes nothing the
- * boundary does not hand it. It has a provider of its own and no other reach: no credential, no
- * wallet authorization token, no way to approve or send. The owner's rules, their hand on the
- * Approve button and the one wallet interaction at a time are all still core's
- * (docs/wiki/jupiter-swap.md).
+ * It is one of the two actions [JupiterExecutionProvider] serves, and it takes nothing the boundary
+ * does not hand it. It has an API of its own and no other reach: no credential, no wallet
+ * authorization token, no way to approve or send. The owner's rules, their hand on the Approve
+ * button and the one wallet interaction at a time are all still core's (docs/wiki/jupiter-swap.md).
  *
  * ## The three things it does
  *
  * - **Says what the owner has to choose.** How much of the input mint, and how much slippage they
  *   will tolerate within the publisher's ceiling. Both stay on the phone.
  * - **Gets the route and the bytes.** One quote and one build, from Jupiter, from this phone. If
- *   anything about that fails, it fails: there is no approximate preparation, and a build the
- *   provider's own simulation rejected is not offered to anybody.
+ *   anything about that fails, it fails: there is no approximate preparation, and a build Jupiter's
+ *   own simulation rejected is not offered to anybody.
  * - **Reads the bytes back.** Independently, out of the transaction, against the owner's choice
  *   ([inspectSwap]).
+ *
+ * What it no longer does is read the publisher's terms. The `swap` payload is the action's schema
+ * rather than Jupiter's, so core reads it once and hands it over typed
+ * ([io.github.brrenat.seekervault.plugins.actions.SwapPayload]) — which is what makes a second
+ * provider of the same action possible without two readings of the same document.
  *
  * ## It does not read the environment, and that is the point
  *
  * Sandbox and production get the same work: the same quote, the same build, the same bytes, the
- * same inspection. What differs is what happens afterwards, and afterwards is not this plugin's —
- * core holds the wallet, so core is what signs or rehearses (SEE-97, docs/wiki/environments.md). A
- * plugin that decided for itself would be a second place for the answer to be wrong, exactly as a
- * plugin deciding which cluster its bytes are for would be.
- *
- * What that means for a sandbox owner is that the demonstration is the real thing up to the
- * signature: a live route at a live price, and a review with nothing simulated in it.
+ * same inspection. What differs is what happens afterwards, and afterwards is not this code's —
+ * core holds the wallet, so core is what signs or rehearses (SEE-97, docs/wiki/environments.md).
  *
  * ## And it is mainnet or nothing, in both environments
  *
  * Jupiter routes liquidity that exists on one network. There is no devnet Jupiter to point at, and
- * pretending otherwise would be the one thing worse than saying so: the plugin refuses a wallet
- * selected for another network, and the app's existing devnet transfer and message tests are
- * unaffected because they are about a different thing entirely.
+ * pretending otherwise would be the one thing worse than saying so: the capability declares mainnet
+ * and the registry refuses a wallet selected for anything else before this code is reached
+ * ([JupiterExecutionProvider]).
  */
-class JupiterSwapPlugin(
-    private val provider: JupiterProvider,
-    private val now: () -> Instant = Instant::now,
-) : ActionPlugin {
-
-    override val descriptor: PluginDescriptor =
-        PluginDescriptor(
-            id = JUPITER_SWAP,
-            contract = PLUGIN_CONTRACT,
-            operations = setOf(SWAP_OPERATION),
-            // Both, and it does the same work in each: a sandbox owner reviews the route this
-            // plugin actually built, and core is what stops before the wallet (SEE-97).
-            environments = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
-        )
+internal class JupiterSwapAction(
+    private val api: JupiterProvider,
+    private val capability: ActionCapability,
+    private val now: () -> Instant,
+) {
 
     // What was offered for the bytes that were built, keyed by those exact bytes. It is the only
-    // thing this plugin remembers, and a miss is a refusal rather than a guess: the offer cannot be
+    // thing this remembers, and a miss is a refusal rather than a guess: the offer cannot be
     // recovered from the transaction, and an inspection that invented one would be worse than an
     // inspection that says it has nothing to compare against.
     private val offers = Offers()
 
     private val preparations = AtomicInteger()
 
-    override fun parameters(subject: ActionSubject): ParameterForm =
-        when (val terms = swapTermsFrom(subject.terms)) {
-            is SwapTermsResult.Valid -> swapParameters(terms.terms)
-            is SwapTermsResult.Invalid -> ParameterForm(problem = terms.problem.finding(terms.term))
-        }
+    fun inputs(payload: SwapPayload): ParameterForm = swapInputs(payload, capability)
 
-    override suspend fun prepare(
-        subject: ActionSubject,
+    suspend fun prepare(
+        operation: ActionOperation,
+        payload: SwapPayload,
         choice: ParameterChoice,
-    ): PluginPreparation {
-        val terms =
-            when (val read = swapTermsFrom(subject.terms)) {
-                is SwapTermsResult.Valid -> read.terms
-                is SwapTermsResult.Invalid ->
-                    throw PluginFailure(
-                        read.problem.code,
-                        R.string.jupiter_failure_terms,
-                        read.term,
-                    )
-            }
+    ): PreparedOperation {
         val wallet =
-            subject.wallet ?: throw PluginFailure(NO_WALLET, R.string.jupiter_failure_no_wallet)
+            operation.wallet ?: throw PluginFailure(NO_WALLET, R.string.jupiter_failure_no_wallet)
         if (wallet.network.network != SWAP_NETWORK) {
             throw PluginFailure(OTHER_NETWORK, R.string.jupiter_failure_other_network)
         }
         val chosen =
-            when (val read = swapChoiceFrom(terms, choice)) {
+            when (val read = swapChoiceFrom(payload, capability, choice)) {
                 is SwapChoiceResult.Valid -> read.choice
                 is SwapChoiceResult.Invalid ->
                     throw PluginFailure(read.problem.code, read.problem.message)
             }
         val quote =
             try {
-                provider.quote(terms, chosen.amount, chosen.slippageBps)
+                api.quote(payload, chosen.amount, chosen.slippageBps)
             } catch (e: JupiterException) {
                 throw e.asFailure()
             }
         val built =
             try {
-                provider.build(quote, wallet.address)
+                api.build(quote, wallet.address)
             } catch (e: JupiterException) {
                 throw e.asFailure()
             }
         val version = preparations.incrementAndGet()
         offers.remember(built.transaction, quote)
-        return PluginPreparation(
+        return PreparedOperation(
             transaction = built.transaction,
             version = version,
             // A quote is a price a moment ago and the transaction carries a blockhash that stops
@@ -135,19 +113,14 @@ class JupiterSwapPlugin(
         )
     }
 
-    override fun inspect(
-        subject: ActionSubject,
+    fun inspect(
+        operation: ActionOperation,
+        payload: SwapPayload,
         choice: ParameterChoice,
-        prepared: PluginPreparation,
+        prepared: PreparedOperation,
     ): ActionInspection {
-        val terms =
-            when (val read = swapTermsFrom(subject.terms)) {
-                is SwapTermsResult.Valid -> read.terms
-                is SwapTermsResult.Invalid ->
-                    return nothing(read.problem.finding(read.term), prepared.version)
-            }
         val chosen =
-            when (val read = swapChoiceFrom(terms, choice)) {
+            when (val read = swapChoiceFrom(payload, capability, choice)) {
                 is SwapChoiceResult.Valid -> read.choice
                 is SwapChoiceResult.Invalid ->
                     return nothing(
@@ -162,10 +135,10 @@ class JupiterSwapPlugin(
                     prepared.version,
                 )
         return inspectSwap(
-            terms = terms,
+            terms = payload,
             choice = chosen,
             quote = quote,
-            wallet = subject.wallet,
+            wallet = operation.wallet,
             transaction = prepared.transaction,
             version = prepared.version,
         )
@@ -181,9 +154,6 @@ class JupiterSwapPlugin(
     }
 }
 
-/** This plugin's stable identity, which a server manifest may require (SEE-88). */
-val JUPITER_SWAP: PluginId = PluginId("jupiter.swap")
-
 /**
  * How long a preparation stands.
  *
@@ -195,35 +165,9 @@ val JUPITER_SWAP: PluginId = PluginId("jupiter.swap")
  */
 val SWAP_PREPARATION_LIFETIME: Duration = Duration.ofSeconds(60)
 
-/** The publisher's terms, as a finding about their document rather than about any bytes. */
-private fun SwapTermProblem.finding(term: String): PluginFinding =
-    PluginFinding(code = "${code}:$term", message = message, invalidates = true)
-
-private val SwapTermProblem.message: Int
-    get() =
-        when (this) {
-            SwapTermProblem.Missing -> R.string.jupiter_terms_missing
-            SwapTermProblem.NotAMint -> R.string.jupiter_terms_not_a_mint
-            SwapTermProblem.OneAsset -> R.string.jupiter_terms_one_asset
-            SwapTermProblem.BadDecimals -> R.string.jupiter_terms_bad_decimals
-            SwapTermProblem.BadSlippage -> R.string.jupiter_terms_bad_slippage
-            SwapTermProblem.BadAmount -> R.string.jupiter_terms_bad_amount
-            SwapTermProblem.ImpossibleAmounts -> R.string.jupiter_terms_impossible_amounts
-            SwapTermProblem.BadSymbol -> R.string.jupiter_terms_bad_symbol
-        }
-
-private val SwapChoiceProblem.message: Int
-    get() =
-        when (this) {
-            SwapChoiceProblem.NoAmount -> R.string.jupiter_choice_no_amount
-            SwapChoiceProblem.TooLittle -> R.string.jupiter_choice_too_little
-            SwapChoiceProblem.TooMuch -> R.string.jupiter_choice_too_much
-            SwapChoiceProblem.BadSlippage -> R.string.jupiter_choice_bad_slippage
-        }
-
-// The provider's failures become the boundary's, with the provider's own words carried through for
-// display when it gave any. Nothing is parsed out of them.
-private fun JupiterException.asFailure(): PluginFailure =
+// Jupiter's failures become the boundary's, with Jupiter's own words carried through for display
+// when it gave any. Nothing is parsed out of them.
+internal fun JupiterException.asFailure(): PluginFailure =
     PluginFailure(
         code = problem.code,
         explanation =
@@ -239,7 +183,7 @@ private fun JupiterException.asFailure(): PluginFailure =
     )
 
 /**
- * The offers this plugin has made, keyed by the bytes it made them for.
+ * The offers this has made, keyed by the bytes it made them for.
  *
  * Bounded, because the owner may have more than one signal open and none of them is worth holding
  * forever; and keyed by the bytes, so an entry can only ever describe the transaction it was

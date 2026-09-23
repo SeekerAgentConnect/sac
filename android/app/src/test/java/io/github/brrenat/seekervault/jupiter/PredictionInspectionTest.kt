@@ -3,6 +3,8 @@ package io.github.brrenat.seekervault.jupiter
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.plugins.ActionInspection
+import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
+import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
 import io.github.brrenat.seekervault.solana.LookupException
 import io.github.brrenat.seekervault.solana.SolanaException
 import io.github.brrenat.seekervault.solana.SolanaProblem
@@ -38,7 +40,7 @@ class PredictionInspectionTest {
     private fun inspect(
         built: OrderBytes,
         order: PredictionOrder? = null,
-        terms: PredictionTerms = this.terms,
+        terms: PredictionPayload = this.terms,
         choice: PredictionChoice = this.choice,
         walletAddress: String = OWNER,
         network: WalletNetwork = WalletNetwork.Mainnet,

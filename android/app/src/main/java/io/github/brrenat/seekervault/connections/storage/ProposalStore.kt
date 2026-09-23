@@ -3,12 +3,20 @@ package io.github.brrenat.seekervault.connections.storage
 import android.util.AtomicFile
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.isConnectionId
-import io.github.brrenat.seekervault.plugins.OperationId
+import io.github.brrenat.seekervault.plugins.ActionId
+import io.github.brrenat.seekervault.plugins.ExecutionProviderId
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
+import io.github.brrenat.seekervault.plugins.actionOf
+import io.github.brrenat.seekervault.plugins.actions.Instrument
+import io.github.brrenat.seekervault.plugins.isPluginId
+import io.github.brrenat.seekervault.plugins.legacyCapabilityOf
+import io.github.brrenat.seekervault.plugins.legacyOperationOf
+import io.github.brrenat.seekervault.plugins.legacyPluginOf
+import io.github.brrenat.seekervault.plugins.providerOf
 import io.github.brrenat.seekervault.proposals.ExecutionBinding
 import io.github.brrenat.seekervault.proposals.OwnerInputDeclaration
 import io.github.brrenat.seekervault.proposals.OwnerInputKind
@@ -128,9 +136,13 @@ class ProposalStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        // Version 3 preserves the common envelope's presentation and owner-input declarations.
-        // Versions 1 and 2 adapt to contract 1 with an operation title and no declarations.
-        const val VERSION = 3
+        // Version 4 records the execution provider and the versioned action beside the legacy
+        // operation and plugin names, which it keeps writing (SEE-145): a row this build writes is
+        // still readable by one that only knows version 3, and a row written before this build is
+        // read through the same compatibility table the wire uses. Version 3 preserved the common
+        // envelope's presentation and owner-input declarations; versions 1 and 2 adapt to contract
+        // 1 with an operation title and no declarations.
+        const val VERSION = 4
         const val OLDEST_VERSION = 1
 
         fun encode(record: ProposalRecord): String =
@@ -156,7 +168,12 @@ class ProposalStore(private val dir: File) {
                 .put("contractVersion", proposal.contractVersion)
                 .put("capabilityVersion", proposal.capabilityVersion)
                 .put("title", proposal.title)
-                .put("operation", proposal.operation.value)
+                // Both vocabularies, deliberately. The action and the provider are what this
+                // build reads; the operation and the plugin are what an older build reads, and a
+                // row that dropped them would be a row an owner could not downgrade past.
+                .put("action", proposal.action.value)
+                .putOpt("provider", proposal.provider?.value)
+                .put("operation", legacyOperationOf(proposal.action))
                 .put("plugin", proposal.plugin.value)
                 .put("status", proposal.status.name)
                 .put("createdAt", proposal.createdAt.toString())
@@ -218,7 +235,23 @@ class ProposalStore(private val dir: File) {
                 contractVersion = json.optInt("contractVersion", 1),
                 capabilityVersion = json.optInt("capabilityVersion", 1),
                 title = json.optString("title", json.getString("operation")),
-                operation = OperationId(json.getString("operation")),
+                // A row written before SEE-145 carries only the old two, and they are read
+                // through the same compatibility table the wire is: an operation name becomes an
+                // action, and a bundled plugin name becomes the provider that answers to it.
+                // Nothing is split on a dot.
+                action =
+                    json.optString("action").takeIf(String::isNotEmpty)?.let(::ActionId)
+                        ?: actionOf(json.getString("operation"))
+                        ?: ActionId(json.getString("operation")),
+                provider =
+                    providerOf(
+                        named =
+                            json
+                                .optString("provider")
+                                .takeIf(String::isNotEmpty)
+                                ?.let(::ExecutionProviderId),
+                        plugin = PluginId(json.getString("plugin")),
+                    ),
                 plugin = PluginId(json.getString("plugin")),
                 status = ProposalStatus.valueOf(json.getString("status")),
                 createdAt = Instant.parse(json.getString("createdAt")),
@@ -351,7 +384,13 @@ class ProposalStore(private val dir: File) {
                 .put("choice", encodeChoice(binding.choice))
                 .put("wallet", binding.wallet)
                 .put("network", binding.network.name)
-                .put("plugin", binding.plugin.value)
+                .put("provider", binding.provider.value)
+                .put("action", binding.action.value)
+                .put("schemaVersion", binding.schemaVersion)
+                .put("marketProvider", binding.instrument.marketProvider)
+                .put("instrument", binding.instrument.id)
+                // Still written, so an older build reads a record this one wrote.
+                .putOpt("plugin", legacyPluginOf(binding.provider, binding.action)?.value)
                 .put("contract", binding.contract)
                 .put("preparedVersion", binding.preparedVersion)
                 .put(
@@ -360,8 +399,17 @@ class ProposalStore(private val dir: File) {
                 )
                 .putOpt("expiresAt", binding.expiresAtEpochSeconds)
 
-        fun decodeBinding(json: JSONObject): ExecutionBinding =
-            ExecutionBinding(
+        fun decodeBinding(json: JSONObject): ExecutionBinding {
+            // The bundled-plugin name a row written before SEE-145 carries, when it carries one.
+            // A row written since names the provider and the action outright, and one written for
+            // a provider that has no legacy name carries no `plugin` at all — so this is looked up
+            // once, defensively, rather than inside each field's fallback.
+            val legacy =
+                json
+                    .optString("plugin")
+                    .takeIf { it.isNotEmpty() && isPluginId(it) }
+                    ?.let { legacyCapabilityOf(PluginId(it)) }
+            return ExecutionBinding(
                 revision = json.getLong("revision"),
                 // A record written before the environment was part of a binding is a production
                 // one: that is what every execution was then, and a simulated one could not exist
@@ -376,7 +424,28 @@ class ProposalStore(private val dir: File) {
                 choice = decodeChoice(json.getJSONObject("choice")),
                 wallet = json.getString("wallet"),
                 network = Network.valueOf(json.getString("network")),
-                plugin = PluginId(json.getString("plugin")),
+                // A binding written before SEE-145 names only the plugin that prepared the bytes.
+                // It is turned into a provider and an action through the compatibility table, and a
+                // name the table doesn't carry is an unreadable record rather than a guess.
+                provider =
+                    json
+                        .optString("provider")
+                        .takeIf(String::isNotEmpty)
+                        ?.let(::ExecutionProviderId)
+                        ?: legacy?.provider
+                        ?: throw IllegalArgumentException("no execution provider"),
+                action =
+                    json.optString("action").takeIf(String::isNotEmpty)?.let(::ActionId)
+                        ?: legacy?.action
+                        ?: throw IllegalArgumentException("no action"),
+                schemaVersion =
+                    if (json.has("schemaVersion")) json.getInt("schemaVersion")
+                    else legacy?.schemaVersion ?: 1,
+                instrument =
+                    Instrument(
+                        marketProvider = json.optString("marketProvider"),
+                        id = json.optString("instrument"),
+                    ),
                 contract = json.getInt("contract"),
                 preparedVersion = json.getInt("preparedVersion"),
                 contentHash =
@@ -384,6 +453,7 @@ class ProposalStore(private val dir: File) {
                 expiresAtEpochSeconds =
                     if (json.has("expiresAt")) json.getLong("expiresAt") else null,
             )
+        }
 
         fun encodeOutcome(outcome: ProposalOutcome): JSONObject =
             when (outcome) {

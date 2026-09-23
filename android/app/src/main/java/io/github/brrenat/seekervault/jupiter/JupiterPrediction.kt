@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.jupiter
 
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
+import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
 import java.io.IOException
 import java.util.Base64
 import kotlinx.coroutines.CoroutineDispatcher
@@ -40,7 +42,7 @@ interface JupiterPrediction {
 
     /** The order that would buy [choice]'s side of it, built for [wallet] to sign. */
     suspend fun order(
-        terms: PredictionTerms,
+        terms: PredictionPayload,
         choice: PredictionChoice,
         wallet: String,
     ): PredictionOrder
@@ -150,7 +152,7 @@ class HttpJupiterPrediction(
     }
 
     override suspend fun order(
-        terms: PredictionTerms,
+        terms: PredictionPayload,
         choice: PredictionChoice,
         wallet: String,
     ): PredictionOrder {
@@ -210,7 +212,7 @@ class HttpJupiterPrediction(
 
     private fun readOrder(
         answer: JSONObject,
-        terms: PredictionTerms,
+        terms: PredictionPayload,
         choice: PredictionChoice,
     ): PredictionOrder {
         val order =

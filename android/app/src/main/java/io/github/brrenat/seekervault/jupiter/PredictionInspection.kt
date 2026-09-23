@@ -7,6 +7,9 @@ import io.github.brrenat.seekervault.plugins.InspectedAction
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFinding
 import io.github.brrenat.seekervault.plugins.PluginReference
+import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
+import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
+import io.github.brrenat.seekervault.plugins.actions.WRAPPED_SOL
 import io.github.brrenat.seekervault.solana.ResolvedTransaction
 import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.solana.resolveLookups
@@ -125,7 +128,7 @@ val PredictionFinding.invalidates: Boolean
  * refusal to prepare, with the reason the owner is shown.
  */
 suspend fun inspectPrediction(
-    terms: PredictionTerms,
+    terms: PredictionPayload,
     choice: PredictionChoice,
     order: PredictionOrder,
     wallet: SelectedWallet?,
@@ -242,7 +245,7 @@ const val MARKET: String = "market_id"
 /** The order instruction against what the owner chose and what the provider said. */
 private fun check(
     placed: OrderStep.Order,
-    terms: PredictionTerms,
+    terms: PredictionPayload,
     choice: PredictionChoice,
     order: PredictionOrder,
     owner: String?,
@@ -289,7 +292,7 @@ private fun check(
  */
 private fun checkFunding(
     steps: List<OrderStep>,
-    terms: PredictionTerms,
+    terms: PredictionPayload,
     choice: PredictionChoice,
     placed: OrderStep.Order,
     owner: String?,
@@ -363,7 +366,7 @@ private fun checkFunding(
  * way anyone expects and whether a payout is ever claimed are all outside this app.
  */
 private fun details(
-    terms: PredictionTerms,
+    terms: PredictionPayload,
     choice: PredictionChoice,
     placed: OrderStep.Order,
     order: PredictionOrder,

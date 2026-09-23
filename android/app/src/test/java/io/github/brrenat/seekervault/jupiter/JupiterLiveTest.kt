@@ -1,6 +1,9 @@
 package io.github.brrenat.seekervault.jupiter
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
+import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
+import io.github.brrenat.seekervault.plugins.actions.SwapChoice
 import io.github.brrenat.seekervault.transactions.Verdict
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -91,7 +94,7 @@ class JupiterLiveTest {
         // which is the whole of what this asserts: the endpoint still serves orders keyless, and
         // the refusal still arrives as one this phone can tell apart. **Nothing is placed.**
         val terms =
-            PredictionTerms(
+            PredictionPayload(
                 marketId = market.marketId,
                 depositMint = USDC_MINT,
                 depositDecimals = 6,

@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- jupiter.swap (SEE-93). The plugin's own words; core holds none of them. -->
-    <string name="jupiter_amount_label">Amount to swap</string>
-    <string name="jupiter_slippage_label">Most the price may move (basis points)</string>
 
     <!-- What the phone read out of the built transaction, for the owner to see. -->
     <string name="jupiter_fact_minimum_out">You receive at least</string>
@@ -12,20 +10,8 @@
     <string name="jupiter_fact_new_account">A new token account will be created for</string>
 
     <!-- Why the publisher's terms could not be read as a swap. -->
-    <string name="jupiter_terms_missing">This signal does not say which assets to swap.</string>
-    <string name="jupiter_terms_not_a_mint">This signal names an asset by something other than its mint address, so which asset it means cannot be established.</string>
-    <string name="jupiter_terms_one_asset">This signal proposes swapping an asset for itself.</string>
-    <string name="jupiter_terms_bad_decimals">This signal states units for an asset that no mint can have.</string>
-    <string name="jupiter_terms_bad_slippage">This signal does not state how far the price may move.</string>
-    <string name="jupiter_terms_bad_amount">This signal states an amount bound that is not a whole number of base units.</string>
-    <string name="jupiter_terms_impossible_amounts">This signal states a smallest amount above its own largest.</string>
-    <string name="jupiter_terms_bad_symbol">This signal carries a label too long to show.</string>
 
     <!-- Why what was chosen here cannot be acted on. -->
-    <string name="jupiter_choice_no_amount">Enter how much to swap.</string>
-    <string name="jupiter_choice_too_little">That is below the smallest amount this signal is for.</string>
-    <string name="jupiter_choice_too_much">That is above the largest amount this signal is for.</string>
-    <string name="jupiter_choice_bad_slippage">Choose how far the price may move, within what this signal allows.</string>
 
     <!-- Why nothing could be prepared. -->
     <string name="jupiter_failure_terms">This signal cannot be read as a swap, so there is nothing to prepare.</string>
@@ -67,10 +53,6 @@
     <string name="jupiter_finding_unrecognized">This transaction contains an instruction this phone does not read.</string>
     <string name="jupiter_finding_no_offer">This phone no longer holds the quote these bytes were built for, so there is nothing to check them against. Prepare again.</string>
     <!-- jupiter.prediction (SEE-94). -->
-    <string name="jupiter_outcome_label">Which side</string>
-    <string name="jupiter_outcome_yes">Yes</string>
-    <string name="jupiter_outcome_no">No</string>
-    <string name="jupiter_deposit_label">Amount to stake</string>
     <string name="jupiter_destination_market">This market on Jupiter</string>
 
     <!-- What the phone read out of the order, for the owner to see. -->
@@ -80,18 +62,14 @@
     <string name="jupiter_fact_payout">Paid out if this side wins</string>
     <string name="jupiter_fact_max_price">Most one contract may cost</string>
     <string name="jupiter_fact_provider_fee">Provider fee</string>
+    <string name="jupiter_fact_market_status">Market status now</string>
+    <string name="jupiter_fact_market_result">Settled as</string>
     <string name="jupiter_fact_instructions">Instructions in the transaction</string>
     <string name="jupiter_fact_resolved_accounts">Accounts read from lookup tables</string>
 
     <!-- Why the publisher's market terms could not be read. -->
-    <string name="jupiter_prediction_missing">This signal does not say which market it is about.</string>
-    <string name="jupiter_prediction_not_an_identifier">This signal names a market by something that is not a market identifier.</string>
-    <string name="jupiter_prediction_unsupported_mint">This signal asks for a stake in a token this provider does not take.</string>
 
     <!-- Why what was chosen here cannot be acted on. -->
-    <string name="jupiter_choice_no_outcome">Choose which side of this market to buy.</string>
-    <string name="jupiter_choice_bad_outcome">That is not one of this market\'s two sides.</string>
-    <string name="jupiter_choice_stake_too_little">That is below the smallest order this provider accepts, or below the smallest this signal is for.</string>
 
     <!-- Why nothing could be prepared. -->
     <string name="jupiter_failure_prediction_terms">This signal cannot be read as a market, so there is nothing to prepare.</string>

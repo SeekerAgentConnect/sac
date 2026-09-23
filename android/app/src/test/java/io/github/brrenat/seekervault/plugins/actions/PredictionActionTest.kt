@@ -1,8 +1,18 @@
-package io.github.brrenat.seekervault.jupiter
+package io.github.brrenat.seekervault.plugins.actions
 
+import io.github.brrenat.seekervault.jupiter.EVENT_ID
+import io.github.brrenat.seekervault.jupiter.JUP_MINT
+import io.github.brrenat.seekervault.jupiter.JUP_USD_MINT
+import io.github.brrenat.seekervault.jupiter.LEAST_ORDER_DEPOSIT
+import io.github.brrenat.seekervault.jupiter.MARKET_ID
+import io.github.brrenat.seekervault.jupiter.USDC_MINT
+import io.github.brrenat.seekervault.plugins.ActionCapability
+import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
+import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_SCHEMA_VERSION
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.request.v1.Network
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -16,7 +26,23 @@ import org.junit.Test
  * provider when the owner looks. So these tests are mostly about what is *not* accepted from a
  * publisher.
  */
-class PredictionTermsTest {
+class PredictionActionTest {
+    /**
+     * A venue that settles in one token and will not place an order under five dollars.
+     *
+     * Both facts are the *venue's* and neither is the action's, which is what SEE-145 separated:
+     * the reader below accepts any well-formed mint, and it is this capability that says which ones
+     * are actually acceptable. What the registry does with that is `ProviderRegistryTest`'s.
+     */
+    private val venue =
+        ActionCapability(
+            action = PREDICTION_BUY_ACTION,
+            schemaVersions = PREDICTION_BUY_SCHEMA_VERSION..PREDICTION_BUY_SCHEMA_VERSION,
+            networks = setOf(Network.NETWORK_MAINNET),
+            depositAssets = setOf(USDC_MINT, JUP_USD_MINT),
+            leastDeposit = LEAST_ORDER_DEPOSIT,
+        )
+
     private val sound =
         arrayOf(
             PredictionTermNames.MARKET_ID to MARKET_ID,
@@ -24,11 +50,13 @@ class PredictionTermsTest {
             PredictionTermNames.DEPOSIT_DECIMALS to "6",
         )
 
-    private fun valid(vararg extra: Pair<String, String>): PredictionTerms =
-        (predictionTermsFrom(mapOf(*sound, *extra)) as PredictionTermsResult.Valid).terms
+    private fun valid(vararg extra: Pair<String, String>): PredictionPayload =
+        (predictionPayloadFrom(mapOf(*sound, *extra)) as PredictionPayloadResult.Valid).payload
 
-    private fun problem(vararg pairs: Pair<String, String>): Pair<PredictionTermProblem, String> =
-        (predictionTermsFrom(mapOf(*pairs)) as PredictionTermsResult.Invalid).let {
+    private fun problem(
+        vararg pairs: Pair<String, String>
+    ): Pair<PredictionPayloadProblem, String> =
+        (predictionPayloadFrom(mapOf(*pairs)) as PredictionPayloadResult.Invalid).let {
             it.problem to it.term
         }
 
@@ -43,61 +71,66 @@ class PredictionTermsTest {
 
         assertEquals(MARKET_ID, read.marketId)
         assertEquals(EVENT_ID, read.eventId)
-        assertEquals("polymarket", read.provider)
+        assertEquals("polymarket", read.marketProvider)
         assertEquals(USDC_MINT, read.depositMint)
         assertEquals(6, read.depositDecimals)
-        // The provider's own minimum is folded into the floor, so an amount too small to act on is
-        // refused before anything is asked of anybody.
-        assertEquals(LEAST_ORDER_DEPOSIT, read.leastDeposit)
+        // The publisher's own floor and nothing else. The venue's minimum is applied where the
+        // venue is known, which is the whole of what SEE-145 moved out of this reader.
+        assertEquals(0UL, read.leastDeposit)
         assertNull(read.mostDeposit)
     }
 
     @Test
-    fun theProvidersMinimumIsAFloorUnderEveryPublishersOwn() {
-        // A publisher asking for less than the provider accepts has asked for an order that cannot
-        // be placed, so the floor is the higher of the two rather than the publisher's.
+    fun theVenuesMinimumIsAFloorUnderEveryPublishersOwn() {
+        // A publisher asking for less than the venue accepts has asked for an order that cannot be
+        // placed, so the floor the owner is shown is the higher of the two. It is applied where the
+        // venue is known rather than inside the payload, which is what makes the payload the
+        // action's and not Jupiter's (SEE-145).
         assertEquals(
             LEAST_ORDER_DEPOSIT,
-            valid(PredictionTermNames.LEAST_DEPOSIT to "1").leastDeposit,
+            (predictionBuyInputs(valid(PredictionTermNames.LEAST_DEPOSIT to "1"), venue)
+                    .fields[1]
+                    .kind as ParameterKind.Amount)
+                .least,
         )
         assertEquals(
             9_000_000UL,
-            valid(PredictionTermNames.LEAST_DEPOSIT to "9000000").leastDeposit,
+            (predictionBuyInputs(
+                        valid(PredictionTermNames.LEAST_DEPOSIT to "9000000"),
+                        venue,
+                    )
+                    .fields[1]
+                    .kind as ParameterKind.Amount)
+                .least,
         )
     }
 
     @Test
-    fun aStakeTokenTheProviderDoesNotTakeIsRefused() {
-        // Not a validation flourish: a publisher naming something else is naming a token the
-        // provider will not accept, and the honest moment to say so is when the signal is read.
-        assertEquals(
-            PredictionTermProblem.UnsupportedMint to PredictionTermNames.DEPOSIT_MINT,
-            problem(
-                PredictionTermNames.MARKET_ID to MARKET_ID,
-                PredictionTermNames.DEPOSIT_MINT to JUP_MINT,
-                PredictionTermNames.DEPOSIT_DECIMALS to "6",
-            ),
-        )
-        // And both the ones it does take are read.
-        assertEquals(
-            JUP_USD_MINT,
-            (predictionTermsFrom(
-                    mapOf(
-                        PredictionTermNames.MARKET_ID to MARKET_ID,
-                        PredictionTermNames.DEPOSIT_MINT to JUP_USD_MINT,
-                        PredictionTermNames.DEPOSIT_DECIMALS to "6",
+    fun anyWellFormedStakeMintIsReadAndWhichOnesAreAcceptableIsTheVenuesBusiness() {
+        // The reader's job is that the term names a mint at all. Whether *this* venue settles in it
+        // is its capability's, and an unacceptable one is refused before anything is prepared
+        // (`ProviderRegistryTest.anAssetTheVenueDoesNotSettleInIsRefusedBeforeAnythingIsPrepared`).
+        for (mint in listOf(USDC_MINT, JUP_USD_MINT, JUP_MINT)) {
+            assertEquals(
+                mint,
+                (predictionPayloadFrom(
+                        mapOf(
+                            PredictionTermNames.MARKET_ID to MARKET_ID,
+                            PredictionTermNames.DEPOSIT_MINT to mint,
+                            PredictionTermNames.DEPOSIT_DECIMALS to "6",
+                        )
                     )
-                )
-                    as PredictionTermsResult.Valid)
-                .terms
-                .depositMint,
-        )
+                        as PredictionPayloadResult.Valid)
+                    .payload
+                    .depositMint,
+            )
+        }
     }
 
     @Test
     fun eachWayASignalCanBeUnreadableIsSaidWithTheTermItIsAbout() {
         assertEquals(
-            PredictionTermProblem.Missing to PredictionTermNames.MARKET_ID,
+            PredictionPayloadProblem.Missing to PredictionTermNames.MARKET_ID,
             problem(PredictionTermNames.DEPOSIT_MINT to USDC_MINT),
         )
         for (named in listOf("https://jup.ag/prediction/x", "a market", "", "x".repeat(65))) {
@@ -109,13 +142,13 @@ class PredictionTermsTest {
                 )
             assertTrue(
                 "$named: $problem",
-                problem == PredictionTermProblem.NotAnIdentifier ||
-                    problem == PredictionTermProblem.Missing,
+                problem == PredictionPayloadProblem.NotAnIdentifier ||
+                    problem == PredictionPayloadProblem.Missing,
             )
             assertEquals(PredictionTermNames.MARKET_ID, term)
         }
         assertEquals(
-            PredictionTermProblem.NotAMint to PredictionTermNames.DEPOSIT_MINT,
+            PredictionPayloadProblem.NotAMint to PredictionTermNames.DEPOSIT_MINT,
             problem(
                 PredictionTermNames.MARKET_ID to MARKET_ID,
                 PredictionTermNames.DEPOSIT_MINT to "USDC",
@@ -123,14 +156,14 @@ class PredictionTermsTest {
             ),
         )
         assertEquals(
-            PredictionTermProblem.Missing to PredictionTermNames.DEPOSIT_DECIMALS,
+            PredictionPayloadProblem.Missing to PredictionTermNames.DEPOSIT_DECIMALS,
             problem(
                 PredictionTermNames.MARKET_ID to MARKET_ID,
                 PredictionTermNames.DEPOSIT_MINT to USDC_MINT,
             ),
         )
         assertEquals(
-            PredictionTermProblem.BadDecimals to PredictionTermNames.DEPOSIT_DECIMALS,
+            PredictionPayloadProblem.BadDecimals to PredictionTermNames.DEPOSIT_DECIMALS,
             problem(
                 PredictionTermNames.MARKET_ID to MARKET_ID,
                 PredictionTermNames.DEPOSIT_MINT to USDC_MINT,
@@ -138,11 +171,11 @@ class PredictionTermsTest {
             ),
         )
         assertEquals(
-            PredictionTermProblem.BadAmount to PredictionTermNames.MOST_DEPOSIT,
+            PredictionPayloadProblem.BadAmount to PredictionTermNames.MOST_DEPOSIT,
             problem(*sound, PredictionTermNames.MOST_DEPOSIT to "1.5"),
         )
         assertEquals(
-            PredictionTermProblem.ImpossibleAmounts to PredictionTermNames.MOST_DEPOSIT,
+            PredictionPayloadProblem.ImpossibleAmounts to PredictionTermNames.MOST_DEPOSIT,
             problem(
                 *sound,
                 PredictionTermNames.LEAST_DEPOSIT to "9000000",
@@ -150,7 +183,7 @@ class PredictionTermsTest {
             ),
         )
         assertEquals(
-            PredictionTermProblem.NotAnIdentifier to PredictionTermNames.EVENT_ID,
+            PredictionPayloadProblem.NotAnIdentifier to PredictionTermNames.EVENT_ID,
             problem(*sound, PredictionTermNames.EVENT_ID to "an event"),
         )
     }
@@ -169,7 +202,7 @@ class PredictionTermsTest {
 
     @Test
     fun theOwnerIsAskedForASideAndAStakeAndIsSuggestedNeither() {
-        val form = predictionParameters(valid(PredictionTermNames.MOST_DEPOSIT to "50000000"))
+        val form = predictionBuyInputs(valid(PredictionTermNames.MOST_DEPOSIT to "50000000"), venue)
 
         assertEquals(
             listOf(PredictionParameterNames.OUTCOME, PredictionParameterNames.DEPOSIT),
@@ -194,6 +227,7 @@ class PredictionTermsTest {
         fun chose(side: io.github.brrenat.seekervault.plugins.ParameterKey?, stake: ULong?) =
             predictionChoiceFrom(
                 read,
+                venue,
                 ParameterChoice(
                     buildMap {
                         side?.let {

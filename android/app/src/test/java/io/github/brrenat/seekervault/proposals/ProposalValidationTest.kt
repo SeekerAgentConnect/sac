@@ -1,6 +1,6 @@
 package io.github.brrenat.seekervault.proposals
 
-import io.github.brrenat.seekervault.plugins.OperationId
+import io.github.brrenat.seekervault.plugins.ActionId
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
@@ -32,7 +32,7 @@ class ProposalValidationTest {
 
         assertEquals(ProposalKey(SERVER_B, channelFor(SERVER_B), PROPOSAL_A), proposal.key)
         assertEquals(4L, proposal.revision)
-        assertEquals(OperationId(SWAP), proposal.operation)
+        assertEquals(ActionId(SWAP), proposal.action)
         assertEquals(PluginId(SWAP_PLUGIN), proposal.plugin)
         assertEquals(ProposalStatus.Open, proposal.status)
         assertEquals(PUBLISHED, proposal.createdAt)
