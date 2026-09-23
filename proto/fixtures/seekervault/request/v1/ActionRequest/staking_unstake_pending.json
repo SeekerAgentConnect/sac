@@ -1,0 +1,19 @@
+{
+  "ref": {
+    "connectionId": "7c1f2e3d-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+    "requestId": "b3a29180-d5c4-4b3a-9180-e6d5c4b3a291"
+  },
+  "action": {
+    "staking": {
+      "wallet": "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW",
+      "network": "NETWORK_MAINNET",
+      "operation": "STAKING_OPERATION_UNSTAKE",
+      "amount": "18446744073709551615"
+    }
+  },
+  "agentNote": "Close the whole SKR position before the vesting review",
+  "state": "REQUEST_STATE_PENDING",
+  "createdAt": "2026-09-24T09:00:00.002Z",
+  "expiresAt": "2026-09-24T09:30:00.002Z",
+  "updatedAt": "2026-09-24T09:00:00.002Z"
+}

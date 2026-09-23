@@ -16,7 +16,10 @@
  * It also holds no connection or credential of its own, opens no socket, and is not a second store:
  * one is constructed per explicitly opened SDK instance over its private store.
  */
-import type { Asset } from "../gen/seekervault/request/v1/request_pb.js";
+import type {
+  Asset,
+  StakingAction,
+} from "../gen/seekervault/request/v1/request_pb.js";
 import type {
   ActionRequest,
   Action,
@@ -60,6 +63,19 @@ export interface AgentConfirmations {
    * builds, signs, sends, or replaces a transaction.
    */
   settle(request: ActionRequest): Promise<ActionRequest>;
+}
+
+/**
+ * Acting on an SKR staking position, when the host supplied a provider that can (SEE-146). Absent
+ * otherwise, which is how an adapter learns not to offer the staking tools at all.
+ */
+export interface AgentStaking {
+  /**
+   * Whether this host can act on the action as asked — the network it serves, the position the
+   * owner holds, the amount the program would take. It reads the chain and stores nothing, so an
+   * adapter asks it before it stores a request, never after.
+   */
+  checkStaking(action: StakingAction): Promise<void>;
 }
 
 /** The core operations an adapter may use, and the whole of them. */
@@ -106,12 +122,15 @@ export interface AgentRequests {
   /** Absent when no chain endpoint is configured, and then no transfer is served. */
   readonly transfers?: AgentTransfers;
 
+  /** Absent unless the host supplied a staking provider, and then no staking action is served. */
+  readonly staking?: AgentStaking;
+
   /** Absent when no chain endpoint is configured, and then nothing is confirmed on chain. */
   readonly confirmations?: AgentConfirmations;
 }
 
 export interface AgentRequestsOptions {
-  /** Present exactly when the embedding host supplied a transfer provider. */
+  /** Present exactly when the embedding host supplied a transfer or staking provider. */
   readonly preparer?: TransactionPreparer;
   /** Present exactly when the embedding host supplied a confirmation provider. */
   readonly tracker?: ConfirmationTracker;
@@ -147,13 +166,22 @@ export function agentRequests(
     get pendingLimit() {
       return store.pendingLimit;
     },
-    ...(preparer === undefined
-      ? {}
-      : {
+    ...(preparer?.servesTransfers === true
+      ? {
           transfers: {
-            checkAsset: (asset) => preparer.checkAsset(asset),
+            checkAsset: (asset: Asset | undefined) =>
+              preparer.checkAsset(asset),
           },
-        }),
+        }
+      : {}),
+    ...(preparer?.servesStaking === true
+      ? {
+          staking: {
+            checkStaking: (action: StakingAction) =>
+              preparer.checkStaking(action),
+          },
+        }
+      : {}),
     ...(tracker === undefined
       ? {}
       : {

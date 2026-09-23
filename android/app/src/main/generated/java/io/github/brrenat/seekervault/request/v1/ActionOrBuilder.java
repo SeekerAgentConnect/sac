@@ -86,5 +86,24 @@ public interface ActionOrBuilder extends
    */
   io.github.brrenat.seekervault.request.v1.SwapAction getSwap();
 
+  /**
+   * <pre>
+   * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+   * @return Whether the staking field is set.
+   */
+  boolean hasStaking();
+  /**
+   * <pre>
+   * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];</code>
+   * @return The staking.
+   */
+  io.github.brrenat.seekervault.request.v1.StakingAction getStaking();
+
   public io.github.brrenat.seekervault.request.v1.Action.KindCase getKindCase();
 }

@@ -1,0 +1,35 @@
+{
+  "ref": {
+    "connectionId": "7c1f2e3d-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+    "requestId": "c4b3a291-80d5-4c4b-8a91-80e6d5c4b3a2"
+  },
+  "action": {
+    "staking": {
+      "wallet": "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW",
+      "network": "NETWORK_MAINNET",
+      "operation": "STAKING_OPERATION_WITHDRAW"
+    }
+  },
+  "agentNote": "The cooldown finished, so take the SKR back",
+  "state": "REQUEST_STATE_CONFIRMED",
+  "createdAt": "2026-09-24T09:00:00.003Z",
+  "expiresAt": "2026-09-24T09:30:00.003Z",
+  "updatedAt": "2026-09-24T09:02:11.003Z",
+  "outcome": {
+    "approval": {
+      "preparedVersion": 1,
+      "contentHash": "F/////////////////////////////////////////8="
+    },
+    "signature": "Ki8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLw==",
+    "detail": "Withdrawn after the cooldown.",
+    "confirmation": {
+      "level": "CONFIRMATION_LEVEL_FINALIZED",
+      "slot": "318000001",
+      "checkedAt": "2026-09-24T09:02:11.003Z",
+      "checks": 2,
+      "endpoint": "api.mainnet-beta.solana.com",
+      "matchesApproval": true,
+      "detail": "Finalized on chain."
+    }
+  }
+}

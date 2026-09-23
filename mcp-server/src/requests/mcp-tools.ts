@@ -50,7 +50,12 @@ export const REQUEST_ACK_TOOL = "vault_request_ack";
 export const GET_REQUEST_TOOL = "vault_get_request";
 export const CANCEL_REQUEST_TOOL = "vault_cancel_request";
 
-const ACTIONS = ["ack", "sign_message", "transfer", "swap"] as const;
+// Every action the protocol has a name for, which is what a view of a request may report. It is
+// not the list this sidecar serves: that one is `operations` in vault_get_capabilities, and it is
+// built from the tools actually wired up. A staking request is created by the standalone staking
+// server (SEE-146) and never by this one, but a client reading this schema still has to be able to
+// read one back if it ever sees it.
+const ACTIONS = ["ack", "sign_message", "transfer", "swap", "staking"] as const;
 const STATUSES = [
   "PENDING",
   "PROCESSING",

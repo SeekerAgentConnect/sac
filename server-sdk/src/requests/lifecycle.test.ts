@@ -8,6 +8,7 @@ import { timestampFromMs } from "@bufbuild/protobuf/wkt";
 import {
   ActionRequestSchema,
   Network,
+  StakingOperation,
   PreparedTransactionSchema,
   RequestError,
   RequestState,
@@ -30,6 +31,7 @@ import {
   successState,
   unpreparableReason,
   type ActionKind,
+  type Actor,
   type ResultCase,
 } from "./lifecycle.ts";
 import { testWallet } from "../testing/wallet.ts";
@@ -47,7 +49,13 @@ const RECIPIENT = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh";
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const MESSAGE = "Sign in to Example\r\ne\u{301}"; // decomposed e-acute, which NFC would change
 
-const KINDS: readonly ActionKind[] = ["ack", "signMessage", "transfer", "swap"];
+const KINDS: readonly ActionKind[] = [
+  "ack",
+  "signMessage",
+  "transfer",
+  "swap",
+  "staking",
+];
 const RESULTS: readonly ResultCase[] = [
   "acknowledgement",
   "rejection",
@@ -93,6 +101,17 @@ const ACTIONS: Readonly<
         outputAsset: { kind: { case: "nativeSol", value: {} } },
         inputAmount: "1000000",
         slippageBps: 50,
+      },
+    },
+  },
+  staking: {
+    kind: {
+      case: "staking",
+      value: {
+        wallet: WALLET,
+        network: Network.MAINNET,
+        operation: StakingOperation.UNSTAKE,
+        amount: "1000000",
       },
     },
   },
@@ -194,7 +213,7 @@ describe("the transition table", () => {
     );
   });
 
-  for (const kind of ["transfer", "swap"] as const) {
+  for (const kind of ["transfer", "swap", "staking"] as const) {
     it(`${kind}: approval, submission, then on-chain confirmation`, () => {
       assert.deepEqual(
         edges(kind),
@@ -222,6 +241,37 @@ describe("the transition table", () => {
       );
     });
   }
+
+  it("staking: confirms on chain, and never ends as a signed message", () => {
+    assert.equal(successState("staking"), RequestState.CONFIRMED);
+    assert.notEqual(successState("staking"), RequestState.COMPLETED);
+    const path: ReadonlyArray<readonly [RequestState, RequestState, Actor]> = [
+      [RequestState.PENDING, RequestState.PROCESSING, "phone"],
+      [RequestState.PROCESSING, RequestState.SUBMITTED, "phone"],
+      [RequestState.SUBMITTED, RequestState.CONFIRMED, "sidecar"],
+    ];
+    for (const [from, to, by] of path) {
+      assert.ok(
+        canTransition("staking", from, to, by),
+        `${name(from)} -> ${name(to)} by ${by}`,
+      );
+    }
+    // A staking action is a transaction: the wallet sends one, and signs nothing to hand back.
+    assert.equal(
+      canTransition(
+        "staking",
+        RequestState.PROCESSING,
+        RequestState.COMPLETED,
+        "phone",
+      ),
+      false,
+    );
+    assert.equal(
+      resultTarget("staking", RequestState.PROCESSING, "messageSignature"),
+      undefined,
+    );
+    assert.ok(!reachable("staking").has(RequestState.COMPLETED));
+  });
 
   it("has six terminal states that nothing leaves, and UNKNOWN isn't one", () => {
     assert.deepEqual(STATES.filter(isTerminal).map(name), [
@@ -277,11 +327,12 @@ describe("the transition table", () => {
     assert.equal(successState("signMessage"), RequestState.COMPLETED);
     assert.equal(successState("transfer"), RequestState.CONFIRMED);
     assert.equal(successState("swap"), RequestState.CONFIRMED);
+    assert.equal(successState("staking"), RequestState.CONFIRMED);
     for (const kind of ["ack", "signMessage"] as const) {
       assert.ok(!reachable(kind).has(RequestState.CONFIRMED), kind);
       assert.ok(!reachable(kind).has(RequestState.SUBMITTED), kind);
     }
-    for (const kind of ["transfer", "swap"] as const) {
+    for (const kind of ["transfer", "swap", "staking"] as const) {
       assert.ok(!reachable(kind).has(RequestState.COMPLETED), kind);
     }
     assert.ok(!reachable("ack").has(RequestState.PROCESSING));
@@ -719,6 +770,18 @@ describe("unpreparableReason", () => {
       RequestState.UNKNOWN,
     ]) {
       assert.deepEqual(unpreparableReason(request("transfer", state)), {
+        error: RequestError.INVALID_STATE,
+        message: `only a PENDING request can be prepared; this one is ${RequestState[state]}`,
+      });
+    }
+  });
+
+  it("lets a PENDING staking action be prepared, and no answered one", () => {
+    assert.equal(unpreparableReason(request("staking")), undefined);
+    for (const state of STATES.filter(
+      (state) => state !== RequestState.PENDING,
+    )) {
+      assert.deepEqual(unpreparableReason(request("staking", state)), {
         error: RequestError.INVALID_STATE,
         message: `only a PENDING request can be prepared; this one is ${RequestState[state]}`,
       });

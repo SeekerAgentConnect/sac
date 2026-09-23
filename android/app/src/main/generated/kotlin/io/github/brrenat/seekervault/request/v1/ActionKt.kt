@@ -177,6 +177,42 @@ public object ActionKt {
     public fun hasSwap(): kotlin.Boolean {
       return _builder.hasSwap()
     }
+
+    /**
+     * ```
+     * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+     * ```
+     *
+     * `.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];`
+     */
+    public var staking: io.github.brrenat.seekervault.request.v1.StakingAction
+      @kotlin.jvm.JvmName("getStaking")
+        get() = _builder.staking
+      @kotlin.jvm.JvmName("setStaking")
+        set(value) {
+        _builder.staking = value
+      }
+    /**
+     * ```
+     * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+     * ```
+     *
+     * `.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];`
+     */
+    public fun clearStaking() {
+      _builder.clearStaking()
+    }
+    /**
+     * ```
+     * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+     * ```
+     *
+     * `.seekervault.request.v1.StakingAction staking = 5 [json_name = "staking"];`
+     * @return Whether the staking field is set.
+     */
+    public fun hasStaking(): kotlin.Boolean {
+      return _builder.hasStaking()
+    }
     public val kindCase: io.github.brrenat.seekervault.request.v1.Action.KindCase
     @kotlin.jvm.JvmName("getKindCase")
       get() = _builder.kindCase
@@ -200,4 +236,7 @@ public val io.github.brrenat.seekervault.request.v1.ActionOrBuilder.transferOrNu
 
 public val io.github.brrenat.seekervault.request.v1.ActionOrBuilder.swapOrNull: io.github.brrenat.seekervault.request.v1.SwapAction?
   get() = if (hasSwap()) getSwap() else null
+
+public val io.github.brrenat.seekervault.request.v1.ActionOrBuilder.stakingOrNull: io.github.brrenat.seekervault.request.v1.StakingAction?
+  get() = if (hasStaking()) getStaking() else null
 

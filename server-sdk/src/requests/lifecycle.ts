@@ -57,6 +57,12 @@ const {
   UNKNOWN,
 } = RequestState;
 
+/** An action kind as the protocol document writes it, for a message an agent reads. */
+export function kindName(kind: ActionKind | undefined): string {
+  if (kind === undefined) return "malformed";
+  return kind === "signMessage" ? "sign_message" : kind;
+}
+
 /**
  * How much of a prepared transaction's blockhash window must be left when an approval arrives.
  * The phone invokes the wallet as soon as the sidecar accepts the approval, so anything less
@@ -69,9 +75,19 @@ const EVERY_KIND: readonly ActionKind[] = [
   "signMessage",
   "transfer",
   "swap",
+  "staking",
 ];
-const WALLET_KINDS: readonly ActionKind[] = ["signMessage", "transfer", "swap"];
-const TRANSACTION_KINDS: readonly ActionKind[] = ["transfer", "swap"];
+const WALLET_KINDS: readonly ActionKind[] = [
+  "signMessage",
+  "transfer",
+  "swap",
+  "staking",
+];
+const TRANSACTION_KINDS: readonly ActionKind[] = [
+  "transfer",
+  "swap",
+  "staking",
+];
 const MESSAGE_KINDS: readonly ActionKind[] = ["signMessage"];
 
 /**
@@ -478,10 +494,10 @@ export function unpreparableReason(
   request: ActionRequest,
 ): { readonly error: RequestError; readonly message: string } | undefined {
   const kind = request.action?.kind.case;
-  if (kind !== "transfer" && kind !== "swap") {
+  if (!TRANSACTION_KINDS.includes(kind as ActionKind)) {
     return {
       error: RequestError.INVALID_PARAMETERS,
-      message: `${kind === "signMessage" ? "sign_message" : "ack"} requests have nothing to prepare`,
+      message: `${kindName(kind)} requests have nothing to prepare`,
     };
   }
   if (request.state !== PENDING) {

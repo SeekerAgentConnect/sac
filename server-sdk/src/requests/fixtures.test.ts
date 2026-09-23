@@ -52,6 +52,8 @@ const cases: ReadonlyArray<readonly [DescMessage, string]> = [
   [ActionRequestSchema, "sign_message_text"],
   [ActionRequestSchema, "sign_message_data"],
   [ActionRequestSchema, "swap_pending"],
+  [ActionRequestSchema, "staking_unstake_pending"],
+  [ActionRequestSchema, "staking_withdraw_confirmed"],
   [ActionRequestSchema, "empty"],
   [PreparedTransactionSchema, "v2"],
   [PreparedTransactionSchema, "max_values"],
