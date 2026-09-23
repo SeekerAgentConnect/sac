@@ -10,10 +10,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Connection
-import io.github.brrenat.seekervault.plugins.ActionId
 import io.github.brrenat.seekervault.plugins.ExecutionProviderId
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
+import io.github.brrenat.seekervault.plugins.actionOf
 import io.github.brrenat.seekervault.proposals.Proposal
 import io.github.brrenat.seekervault.proposals.ProposalKey
 import io.github.brrenat.seekervault.proposals.ProposalRecord
@@ -147,6 +147,35 @@ class FeedNotificationsTest {
         assertTrue(
             platform.activeNotifications.none {
                 it.notification.extras.toString().contains("future_action")
+            }
+        )
+    }
+
+    /**
+     * Both wire spellings of the prediction action reach the notifier as `prediction.buy`, because
+     * `actionOf` normalizes them, so both must get the prediction copy rather than the generic one
+     * a name this build does not know would get (SEE-145).
+     */
+    @Test
+    fun bothSpellingsOfThePredictionActionGetThePredictionCopy() {
+        shadowOf(application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val newFormat = ProposalRef(FEED.id, "11111111-2222-4333-8444-555555555555")
+        val newFormatRecord = record(FEED, newFormat, "prediction.buy")
+
+        notifications.reconcile(
+            emptySet(),
+            setOf(TWO, newFormat),
+            listOf(FEED),
+            listOf(TWO_RECORD, newFormatRecord),
+        )
+
+        val titles =
+            platform.activeNotifications.map { it.notification.extras[Notification.EXTRA_TITLE] }
+        assertEquals(listOf("Prediction signal", "Prediction signal"), titles)
+        assertTrue(
+            platform.activeNotifications.all {
+                it.notification.extras[Notification.EXTRA_TEXT] ==
+                    "Review the market before choosing a side and stake."
             }
         )
     }
@@ -302,7 +331,9 @@ class FeedNotificationsTest {
                                 ref.proposalId,
                             ),
                         revision = 1,
-                        action = ActionId(operation),
+                        // Through the same normalization production uses, so a test cannot assert
+                        // copy for a spelling `actionOf` would never hand the notifier (SEE-145).
+                        action = checkNotNull(actionOf(operation)),
                         provider = ExecutionProviderId("test"),
                         plugin = PluginId("test.plugin"),
                         status = ProposalStatus.Open,

@@ -48,9 +48,11 @@ import io.github.brrenat.seekervault.wallet.WalletRepository
 import java.io.IOException
 import java.security.MessageDigest
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -125,6 +127,19 @@ class OperationViewModel(
     // the first one's work instead of starting beside it.
     private val busy = Mutex()
 
+    /**
+     * What makes one review distinct from every other, including the same proposal opened twice.
+     *
+     * A proposal ID belongs to a source, not to the phone, so two feeds can hold the same one; and
+     * the same proposal reopened, or moved to a new revision, is a different thing to be reading.
+     * Every one of those mints a fresh number here, and anything that suspends carries the number
+     * it started under — so an answer can only ever land on the review that asked for it (SEE-145).
+     */
+    private val reviews = AtomicLong()
+
+    /** The provider read in flight, kept only so a superseded one can be stopped. */
+    private var refining: Job? = null
+
     init {
         viewModelScope.launch {
             // The connections are read first, and waited for. A proposal is only ever held under
@@ -145,7 +160,16 @@ class OperationViewModel(
                     _state.value = fresh
                     // A proposal that moved under an open review — a higher revision, a
                     // cancellation, the feed removed — is reflected rather than remembered.
+                    val before = _review.value?.generation
                     _review.update { open -> open?.let { refreshed(it, fresh) } }
+                    val moved = _review.value?.takeIf { it.generation != before }
+                    // Terms that moved are terms nothing has been asked about yet: the rules are
+                    // read against the new ones, and the provider is asked about them afresh,
+                    // exactly as opening the review would have done (SEE-145).
+                    if (moved != null) {
+                        assess()
+                        refine(moved.connectionId, moved.proposalId, moved.generation)
+                    }
                 }
         }
     }
@@ -184,40 +208,28 @@ class OperationViewModel(
      */
     fun open(connectionId: String, proposalId: String) {
         val record = proposals.proposal(connectionId, proposalId) ?: return
-        val read = payloadOf(record)
-        val payload = (read as? ActionPayloadResult.Valid)?.payload
-        val resolved = payload?.let { provider(record, it) }
-        // Only for a provider that actually resolved: an operation names one, and a document whose
-        // provider this build does not carry has none to name.
-        val operation =
-            if (resolved != null && payload != null) operationFor(record, payload) else null
-        val form =
-            when {
-                resolved != null && operation != null -> resolved.inputs(operation)
-                read is ActionPayloadResult.Invalid -> ParameterForm(problem = read.finding)
-                else -> ParameterForm()
-            }
+        val terms = termsOf(record)
+        val generation = reviews.incrementAndGet()
         _review.value =
             OperationReview(
                 connectionId = connectionId,
                 proposalId = proposalId,
+                generation = generation,
                 record = record,
                 standing = proposals.standing(record),
                 environment = environmentOf(connectionId),
-                payload = payload,
-                form = form,
+                payload = terms.payload,
+                form = terms.form,
                 // Where the owner may carry on outside the app, if the action's provider has
                 // anywhere truthful to send them (SEE-94). It comes from the terms alone, so it
                 // survives a restart and needs no preparation — and no URL is ever stored.
-                destinations =
-                    if (resolved != null && operation != null) resolved.destinations(operation)
-                    else emptyList(),
+                destinations = terms.destinations,
                 // A review already written for these terms is what the owner last chose about
                 // them; anything else starts from the provider's own suggestion.
                 choice =
                     record.review?.takeIf { it.revision == record.proposal.revision }?.choice
-                        ?: initial(form),
-                served = resolved != null,
+                        ?: initial(terms.form),
+                served = terms.served,
             )
         // The rules are read when the review opens, so the owner is not shown a gap where the
         // assessment will be.
@@ -225,7 +237,47 @@ class OperationViewModel(
         // And then the provider is asked what it currently says about this action, which is a read
         // and nothing else: no order, no quote, no wallet, nothing bound. A provider with nothing
         // live to add answers immediately and nothing on screen moves.
-        refine(connectionId, proposalId)
+        refine(connectionId, proposalId, generation)
+    }
+
+    /** Everything in a review that is read off the proposal's terms, and nothing that is not. */
+    private class Terms(
+        val payload: ActionPayload?,
+        val form: ParameterForm,
+        val destinations: List<PluginDestination>,
+        val served: Boolean,
+    )
+
+    /**
+     * Reads [record]'s terms as the action they claim to be, and asks the provider this build would
+     * serve them with what has to be chosen.
+     *
+     * Opening a review and a revision arriving under an open one both come through here, which is
+     * the point: the parsed payload, the input form, the provider resolution and the destinations
+     * are derived together from one record, so a review can never hold one revision's terms beside
+     * another revision's record (SEE-145).
+     */
+    private fun termsOf(record: ProposalRecord): Terms {
+        val read = payloadOf(record)
+        val payload = (read as? ActionPayloadResult.Valid)?.payload
+        val resolved = payload?.let { provider(record, it) }
+        // Only for a provider that actually resolved: an operation names one, and a document whose
+        // provider this build does not carry has none to name.
+        val operation =
+            if (resolved != null && payload != null) operationFor(record, payload) else null
+        return Terms(
+            payload = payload,
+            form =
+                when {
+                    resolved != null && operation != null -> resolved.inputs(operation)
+                    read is ActionPayloadResult.Invalid -> ParameterForm(problem = read.finding)
+                    else -> ParameterForm()
+                },
+            destinations =
+                if (resolved != null && operation != null) resolved.destinations(operation)
+                else emptyList(),
+            served = resolved != null,
+        )
     }
 
     /**
@@ -236,10 +288,14 @@ class OperationViewModel(
      * from a read that did not happen would be worse than leaving them as the publisher stated
      * them.
      */
-    private fun refine(connectionId: String, proposalId: String) {
-        viewModelScope.launch {
+    private fun refine(connectionId: String, proposalId: String, generation: Long) {
+        // A read for a review nobody is on any more answers nobody, and it must not be allowed to
+        // answer the review that replaced it. It is superseded here, and its result is checked
+        // against [generation] again on the far side of the wait.
+        refining?.cancel()
+        refining = viewModelScope.launch {
             val open = _review.value ?: return@launch
-            if (open.connectionId != connectionId || open.proposalId != proposalId) return@launch
+            if (!open.isStill(connectionId, proposalId, generation)) return@launch
             val payload = open.payload ?: return@launch
             val record = proposals.proposal(connectionId, proposalId) ?: return@launch
             val resolved = provider(record, payload) ?: return@launch
@@ -248,7 +304,7 @@ class OperationViewModel(
                     resolved.resolve(operationFor(record, payload))
                 } catch (e: PluginFailure) {
                     _review.update {
-                        if (it?.proposalId != proposalId) it
+                        if (it?.isStill(connectionId, proposalId, generation) != true) it
                         else it.copy(failure = OperationFailure(e.code, e.explanation, e.detail))
                     }
                     return@launch
@@ -256,21 +312,23 @@ class OperationViewModel(
                     throw e
                 } catch (e: Exception) {
                     _review.update {
-                        if (it?.proposalId != proposalId) it
+                        if (it?.isStill(connectionId, proposalId, generation) != true) it
                         else it.copy(failure = OperationFailure(UNEXPECTED, null, e.message))
                     }
                     return@launch
                 }
             _review.update {
-                // Only while nothing has been prepared: a form that moved under prepared bytes
-                // would be a screen describing something other than what is on it.
-                if (it?.proposalId != proposalId || it.prepared != null) it
+                // Only for the review that asked, and only while nothing has been prepared: a
+                // form that moved under prepared bytes would be a screen describing something
+                // other than what is on it.
+                if (it?.isStill(connectionId, proposalId, generation) != true) it
+                else if (it.prepared != null) it
                 else
                     it.copy(
-                        // A provider saying the action cannot be served as it stands — a market
-                        // that has closed — lands where a document this phone could not read
-                        // lands: shown, with nothing to prepare from. They are the same thing to
-                        // the owner, so they are the same field.
+                        // A provider saying the action cannot be served as it stands — a
+                        // market that has closed — lands where a document this phone could not
+                        // read lands: shown, with nothing to prepare from. They are the same
+                        // thing to the owner, so they are the same field.
                         form =
                             resolution.form.copy(
                                 problem = resolution.problem ?: resolution.form.problem
@@ -284,7 +342,19 @@ class OperationViewModel(
         }
     }
 
+    /** Whether this is still the very review something suspended under (SEE-145). */
+    private fun OperationReview.isStill(
+        connectionId: String,
+        proposalId: String,
+        generation: Long,
+    ): Boolean =
+        this.connectionId == connectionId &&
+            this.proposalId == proposalId &&
+            this.generation == generation
+
     fun close() {
+        refining?.cancel()
+        refining = null
         _review.value = null
     }
 
@@ -313,36 +383,57 @@ class OperationViewModel(
         _review.update { it?.copy(preparing = true, failure = null, problem = null) }
         viewModelScope.launch {
             busy.withLock {
-                val record = proposals.proposal(open.connectionId, open.proposalId)
+                // The terms on screen belong to one revision, and they are the ones being prepared
+                // from. A record that moved while the tap was waiting for the lock is prepared
+                // from by nobody: the refresh is about to replace the whole review with the new
+                // terms, and combining the latest revision with the previous one's limits is
+                // exactly the thing the binding exists to refuse (SEE-145).
+                val record =
+                    proposals.proposal(open.connectionId, open.proposalId)?.takeIf {
+                        it.proposal.revision == open.record.proposal.revision
+                    }
+                        ?: run {
+                            _review.update {
+                                if (it?.generation != open.generation) it?.copy(preparing = false)
+                                else
+                                    it.copy(
+                                        preparing = false,
+                                        problem =
+                                            OperationProblem.Binding(
+                                                BindingProblem.ProposalChanged
+                                            ),
+                                    )
+                            }
+                            return@withLock
+                        }
                 val payload = open.payload
-                val resolved =
-                    if (record == null || payload == null) null else provider(record, payload)
-                if (record == null || payload == null || resolved == null) {
+                val resolved = if (payload == null) null else provider(record, payload)
+                if (payload == null || resolved == null) {
                     // Nothing here serves this, and the owner is told which of the six reasons it
                     // is rather than being left with a button that did nothing (SEE-145). It is a
                     // refusal before anything is prepared, and long before anything is signed.
                     val reason =
-                        (record?.let {
-                                providers.resolve(
-                                    provider = namedProvider(it.proposal, providers),
-                                    action = it.proposal.action,
-                                    schemaVersion = it.proposal.capabilityVersion,
-                                    network =
-                                        wallet.wallet.value?.network?.network
-                                            ?: Network.NETWORK_UNSPECIFIED,
-                                    environment = environmentOf(open.connectionId),
-                                    payload = payload,
-                                )
-                            } as? ProviderResolution.Unsupported)
+                        (providers.resolve(
+                                provider = namedProvider(record.proposal, providers),
+                                action = record.proposal.action,
+                                schemaVersion = record.proposal.capabilityVersion,
+                                network =
+                                    wallet.wallet.value?.network?.network
+                                        ?: Network.NETWORK_UNSPECIFIED,
+                                environment = environmentOf(open.connectionId),
+                                payload = payload,
+                            ) as? ProviderResolution.Unsupported)
                             ?.reason
                     _review.update {
-                        it?.copy(
-                            preparing = false,
-                            failure =
-                                reason?.let { why ->
-                                    OperationFailure(why.code, unservedText(why))
-                                },
-                        )
+                        if (it?.generation != open.generation) it?.copy(preparing = false)
+                        else
+                            it.copy(
+                                preparing = false,
+                                failure =
+                                    reason?.let { why ->
+                                        OperationFailure(why.code, unservedText(why))
+                                    },
+                            )
                     }
                     return@withLock
                 }
@@ -365,14 +456,18 @@ class OperationViewModel(
                         Prepared(failure = OperationFailure(UNEXPECTED, null, e.message))
                     }
                 _review.update {
-                    it?.copy(
-                        preparing = false,
-                        prepared = outcome.prepared,
-                        inspection = outcome.inspection,
-                        failure = outcome.failure,
-                        acknowledged = false,
-                        assessment = null,
-                    )
+                    // Bytes belong to the review they were prepared for. One that moved while the
+                    // provider was working gets nothing from it, not even a failure (SEE-145).
+                    if (it?.generation != open.generation) it?.copy(preparing = false)
+                    else
+                        it.copy(
+                            preparing = false,
+                            prepared = outcome.prepared,
+                            inspection = outcome.inspection,
+                            failure = outcome.failure,
+                            acknowledged = false,
+                            assessment = null,
+                        )
                 }
             }
             assess()
@@ -445,6 +540,13 @@ class OperationViewModel(
             return
         }
         val record = proposals.proposal(open.connectionId, open.proposalId) ?: return
+        // The bytes were prepared from one revision's terms, so they are bound against that
+        // revision or against nothing. The gate below would refuse the mismatch too, but only
+        // after the record said the owner reviewed something they did not (SEE-145).
+        if (record.proposal.revision != open.record.proposal.revision) {
+            stop(OperationProblem.Binding(BindingProblem.ProposalChanged))
+            return
+        }
         val payload = open.payload ?: return
         val resolved = provider(record, payload) ?: return
         val binding =
@@ -685,14 +787,43 @@ class OperationViewModel(
         val moved =
             record.proposal.revision != open.record.proposal.revision ||
                 environment != open.environment
+        if (!moved) {
+            return open.copy(
+                record = record,
+                standing = proposals.standing(record),
+                environment = environment,
+            )
+        }
+        // A revision that moved is a different set of terms, and everything read off the old ones
+        // goes with it: the parsed payload, the input form, which provider serves it and where it
+        // may be continued. Keeping the old payload beside the new record is how the latest
+        // revision comes to be prepared against the previous revision's limits (SEE-145).
+        val terms = termsOf(record)
         return open.copy(
+            // A new number, so a provider read still in flight for the old terms cannot land on
+            // these, and so the caller knows to ask about them afresh.
+            generation = reviews.incrementAndGet(),
             record = record,
             standing = proposals.standing(record),
             environment = environment,
-            // Terms that moved are terms nobody reviewed. What was prepared was for the old ones.
-            prepared = if (moved) null else open.prepared,
-            inspection = if (moved) null else open.inspection,
-            acknowledged = if (moved) false else open.acknowledged,
+            payload = terms.payload,
+            form = terms.form,
+            destinations = terms.destinations,
+            served = terms.served,
+            // What the owner last chose about *these* terms, or the provider's suggestion — never
+            // the previous revision's answer carried forward onto terms they never saw.
+            choice =
+                record.review?.takeIf { it.revision == record.proposal.revision }?.choice
+                    ?: initial(terms.form),
+            // Terms that moved are terms nobody reviewed. What was prepared was for the old ones,
+            // and so was everything shown beside it.
+            prepared = null,
+            inspection = null,
+            acknowledged = false,
+            details = emptyList(),
+            failure = null,
+            problem = null,
+            assessment = null,
         )
     }
 
@@ -764,6 +895,15 @@ data class OperationsUiState(
 data class OperationReview(
     val connectionId: String,
     val proposalId: String,
+    /**
+     * Which review this is, counted by the ViewModel that minted it.
+     *
+     * Proposal IDs belong to the publisher, so two feeds may hold the same one, and the same
+     * proposal reopened or moved to a new revision is a different thing to be looking at. Anything
+     * that suspends carries the number it started under and compares it before it writes, so a slow
+     * answer lands on the review that asked for it or on nothing at all (SEE-145).
+     */
+    val generation: Long,
     val record: ProposalRecord,
     val standing: ProposalStanding,
     /**

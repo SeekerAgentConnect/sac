@@ -763,6 +763,11 @@ class StageBoundaryTest {
                 "CommonEnvelope.kt",
                 "ConnectionStore.kt",
                 "ConnectionsViewModel.kt",
+                // The alert's words, chosen by the action's own identity rather than by a spelling
+                // of it: both wire spellings of the prediction action normalize to one constant,
+                // so matching the constant is the only way the copy cannot drift from what
+                // `actionOf` produces (SEE-145).
+                "FeedNotifications.kt",
                 "InboxViewModel.kt",
                 // The words for each of the six reasons nothing serves an action here.
                 "OperationText.kt",

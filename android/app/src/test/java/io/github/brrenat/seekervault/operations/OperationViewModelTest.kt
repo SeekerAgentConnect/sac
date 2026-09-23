@@ -22,6 +22,7 @@ import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.SWAP_ACTION
 import io.github.brrenat.seekervault.plugins.UnsupportedReason
 import io.github.brrenat.seekervault.plugins.actions.SwapParameterNames
+import io.github.brrenat.seekervault.plugins.actions.SwapTermNames
 import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -593,6 +594,96 @@ class OperationViewModelTest {
                 BindingProblem.OtherEnvironment
             ),
             phone.proposals.beginExecution(CONNECTION, PROPOSAL, stale, phone.wallet.wallet.value),
+        )
+    }
+
+    /**
+     * A revision that moved is prepared from its own terms, and never from the ones it replaced.
+     *
+     * The record, the review that is written down and the binding all follow the latest revision
+     * the moment it arrives. If the parsed terms did not follow with them, preparing again would
+     * validate and build against the *previous* revision's limits while everything else said the
+     * current one — which is a preparation that never has to answer to the terms it was made under.
+     */
+    @Test
+    fun aRevisionThatMovedIsPreparedFromItsOwnTermsRatherThanTheOnesItReplaced() = runBlocking {
+        val phone = phone()
+        val model =
+            opened(
+                phone,
+                proposal = swapProposal(extra = mapOf(SwapTermNames.MOST_INPUT to "10000000")),
+            )
+        choose(model, 5_000_000UL, slippage = 50)
+        model.prepare()
+        assertNotNull(checkNotNull(model.review.value).prepared)
+
+        // The publisher tightened the ceiling on the same pair while the owner was reading.
+        phone.feed.answers =
+            listOf(swapProposal(revision = 2, extra = mapOf(SwapTermNames.MOST_INPUT to "1000000")))
+        model.refresh(CONNECTION)
+
+        val moved = checkNotNull(model.review.value)
+        assertEquals(2L, moved.record.proposal.revision)
+        assertNull(moved.prepared)
+        // The form is the new terms' form, not the old one carried forward.
+        assertEquals(
+            1_000_000UL,
+            (moved.form.fields.single { it.key == SwapParameterNames.INPUT_AMOUNT }.kind
+                    as ParameterKind.Amount)
+                .most,
+        )
+        // And the answer they gave to the old terms is not applied to terms they never saw.
+        assertNull(moved.choice[SwapParameterNames.INPUT_AMOUNT])
+
+        // The amount the replaced revision allowed is refused against the one on screen, before
+        // any provider is asked for bytes.
+        choose(model, 5_000_000UL, slippage = 50)
+        model.prepare()
+        val after = checkNotNull(model.review.value)
+        assertNull(after.prepared)
+        assertEquals("too_much", after.failure?.code)
+        model.approve(phone.wallet.wallet.value)
+        assertEquals(
+            emptyList<Triple<ByteString, SelectedWallet, String>>(),
+            phone.adapter.sendings,
+        )
+    }
+
+    /**
+     * And when the revision repoints the proposal at another pair, the new pair is what is prepared
+     * — rather than the old instrument being rebuilt and then refused by the gate until the owner
+     * happens to close the review and open it again.
+     */
+    @Test
+    fun aRevisionThatRepointedThePairIsPreparedForThePairItNamesNow() = runBlocking {
+        val phone = phone()
+        phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        val model = opened(phone)
+        choose(model, 1_000_000UL)
+        model.prepare()
+        assertNotNull(checkNotNull(model.review.value).prepared)
+
+        phone.feed.answers =
+            listOf(swapProposal(revision = 2, inputMint = SOL_MINT, outputMint = USDC_MINT))
+        model.refresh(CONNECTION)
+
+        val moved = checkNotNull(model.review.value)
+        assertEquals(instrumentOf(moved.record.proposal), moved.payload?.instrument)
+
+        choose(model, 1_000_000UL, slippage = 50)
+        model.prepare()
+        val after = checkNotNull(model.review.value)
+        assertNotNull(after.prepared)
+        // The provider was asked about the pair the proposal names now.
+        assertTrue(phone.provider.asked.last { it.startsWith("quote") }.contains("$SOL_MINT->"))
+
+        // And the binding is for that pair, so the approval gets past the gate rather than being
+        // refused as another instrument.
+        model.approve(phone.wallet.wallet.value)
+        assertEquals(1, phone.adapter.sendings.size)
+        assertEquals(
+            checkNotNull(after.prepared).transaction,
+            phone.adapter.sendings.single().first,
         )
     }
 

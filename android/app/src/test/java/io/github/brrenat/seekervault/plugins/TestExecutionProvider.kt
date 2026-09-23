@@ -4,6 +4,9 @@ import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.transactions.Verdict
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /**
  * A second, **test-only** execution provider (SEE-145).
@@ -29,7 +32,8 @@ class TestExecutionProvider(
     /** What [inspect] will say about the bytes; nothing established by default. */
     private val inspection: ActionInspection = ActionInspection.nothingEstablished(),
     private val form: ParameterForm = ParameterForm(),
-    private val details: List<PluginFact> = emptyList(),
+    /** What [resolve] reports; a `var` so a test can tell one answer from the next. */
+    var details: List<PluginFact> = emptyList(),
 ) : ExecutionProvider {
     override val capabilities =
         ProviderCapabilities(
@@ -49,9 +53,27 @@ class TestExecutionProvider(
         return form
     }
 
+    /**
+     * Holds [resolve] until a test releases it, for the cases about an answer that lands late.
+     *
+     * The wait is deliberately [NonCancellable]: a real provider read is an HTTP call whose
+     * response may already be in flight when the review it was for is replaced, and a stand-in that
+     * stopped the moment its job was cancelled could not exercise what happens then.
+     */
+    var releases: CompletableDeferred<Unit>? = null
+
+    /** What [resolve] throws instead of answering, for the failure half of those cases. */
+    var refuses: PluginFailure? = null
+
     override suspend fun resolve(operation: ActionOperation): ActionResolution {
         calls += "resolve"
-        return ActionResolution(form, details)
+        // What this call will answer is fixed when it starts, so a test can queue one answer
+        // behind another and still tell which read produced which.
+        val answer = ActionResolution(form, details)
+        val refusal = refuses
+        releases?.let { withContext(NonCancellable) { it.await() } }
+        refusal?.let { throw it }
+        return answer
     }
 
     override suspend fun prepare(
