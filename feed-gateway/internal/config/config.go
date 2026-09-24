@@ -50,6 +50,15 @@ type Config struct {
 	Retention time.Duration
 	// The most proposals one channel may hold at once.
 	MaxProposals int
+	// How often, at most, a publisher is expected to say that its own server is running (SEE-150).
+	// It is what PublisherService.Heartbeat answers with, and the gateway shows a feed offline once
+	// three of these have passed with no authenticated call from its publisher.
+	//
+	// Three rather than one because a check-in is one HTTP request over somebody else's network: a
+	// single lost one must not flip a running feed to offline on every phone reading it. The window
+	// is derived rather than configured, so no operator can set one shorter than the interval and
+	// leave every feed permanently offline.
+	Heartbeat time.Duration
 	// Reads per second and the burst above it, per remote address.
 	ReadRate  float64
 	ReadBurst int
@@ -202,10 +211,14 @@ const (
 	DefaultPublisherAddress = "127.0.0.1:8091"
 	DefaultRetention        = 7 * 24 * time.Hour
 	DefaultMaxProposals     = 200
-	DefaultReadRate         = 20
-	DefaultReadBurst        = 60
-	DefaultPublishRate      = 2
-	DefaultPublishBurst     = 20
+	// Half a minute between check-ins, so a feed whose publisher stopped reads as offline within
+	// about ninety seconds. It is a bounded cost the gateway can state: one tiny write per
+	// publisher per interval, and only from a publisher that had nothing else to say.
+	DefaultHeartbeat    = 30 * time.Second
+	DefaultReadRate     = 20
+	DefaultReadBurst    = 60
+	DefaultPublishRate  = 2
+	DefaultPublishBurst = 20
 	// An hour is long enough that a phone in the foreground rarely renews, and short enough that a
 	// grant which escaped stops mattering on its own. The broker ends the connection when it
 	// expires and the listener asks for another, which is a path the client has to have working
@@ -295,6 +308,7 @@ func Load(lookup Lookup) (*Config, []string) {
 		DatabaseURL:      text("BROADCAST_DATABASE_URL", ""),
 		Retention:        DefaultRetention,
 		MaxProposals:     DefaultMaxProposals,
+		Heartbeat:        DefaultHeartbeat,
 		ReadRate:         DefaultReadRate,
 		ReadBurst:        DefaultReadBurst,
 		PublishRate:      DefaultPublishRate,
@@ -335,6 +349,11 @@ func Load(lookup Lookup) (*Config, []string) {
 	config.Retention = time.Duration(number("BROADCAST_RETENTION_HOURS",
 		DefaultRetention.Hours(), 1, 24*365)) * time.Hour
 	config.MaxProposals = int(number("BROADCAST_MAX_PROPOSALS", DefaultMaxProposals, 1, 10000))
+	// Seconds rather than the hours and minutes the other durations take: a presence window is the
+	// one setting here an operator tunes against how quickly a phone should notice, and both ends of
+	// the range are shorter than a minute's granularity could say.
+	config.Heartbeat = time.Duration(number("BROADCAST_HEARTBEAT_SECONDS",
+		DefaultHeartbeat.Seconds(), 5, 3600)) * time.Second
 	config.ReadRate = number("BROADCAST_READ_RATE", DefaultReadRate, 0.1, 10000)
 	config.ReadBurst = int(number("BROADCAST_READ_BURST", DefaultReadBurst, 1, 100000))
 	config.PublishRate = number("BROADCAST_PUBLISH_RATE", DefaultPublishRate, 0.1, 10000)

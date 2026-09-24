@@ -171,4 +171,9 @@
     <string name="connection_status_unsupported_protocol">This server speaks a newer version of the protocol than this app. Update the app to use it.</string>
     <string name="connection_status_unsupported_environment">This server doesn\'t serve the environment this app is running in.</string>
     <string name="connection_status_manifest_refused">This app refused this server\'s own description of itself, so nothing from it can be approved.</string>
+    <!-- Whether the server behind a feed is running, which the gateway answers separately from being
+         reachable itself (SEE-150). "Offline" says what is still true as well as what is not: the
+         signals this feed already published are readable and reviewable, and only new ones are
+         waiting on the publisher. -->
+    <string name="connection_status_feed_offline">This feed\'s server is offline. What it already published is still here; nothing new will arrive until it\'s back.</string>
 </resources>

@@ -718,3 +718,122 @@ func TestPublicationsCountsWhatAChannelHolds(t *testing.T) {
 		t.Fatalf("after a republication the channel holds %d: %v", count, err)
 	}
 }
+
+// Version 6 adds when a publisher last said its own server is running (SEE-150). A database written
+// before it opens unchanged, keeps every row, and answers "never" — not "at the epoch" — for the
+// registrations that predate the column.
+//
+// The distinction is why the column is nullable. Both read as offline today, but only one of them is
+// true: a registration made before this version has not told this gateway anything, and encoding
+// that as a check-in in 1970 would be a fact the store made up.
+func TestTheLastSeenColumnIsAddedWithoutLosingAnything(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broadcast.db")
+
+	// A database at version 5: the schema as it was, with a publisher and a credential in it.
+	older, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, `PRAGMA user_version = 5`,
+	} {
+		if _, err := older.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := older.Exec(
+		`INSERT INTO publisher (server_id, label, created_at_ms, host, publishing, relaying)
+		 VALUES (?, ?, ?, '', 1, 0)`,
+		publisher, "from an older gateway", milliseconds(published)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := older.Exec(
+		`INSERT INTO publisher_credential
+		   (credential_hash, server_id, label, created_at_ms, revoked_at_ms, capability)
+		 VALUES (?, ?, ?, ?, NULL, 'publish')`,
+		hashOf(publisher), publisher, "old", milliseconds(published)); err != nil {
+		t.Fatal(err)
+	}
+	if err := older.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	documents, err := Open(path)
+	if err != nil {
+		t.Fatalf("a version 5 database could not be opened: %v", err)
+	}
+	t.Cleanup(func() { _ = documents.Close() })
+	ctx := context.Background()
+
+	held, err := documents.Publisher(ctx, publisher)
+	if err != nil || held == nil || held.Label != "from an older gateway" {
+		t.Fatalf("the existing registration is gone: %+v, %v", held, err)
+	}
+	if resolved, err := documents.PublisherFor(ctx, hashOf(publisher)); err != nil ||
+		resolved != publisher {
+		t.Fatalf("the existing credential stopped resolving: %q, %v", resolved, err)
+	}
+	seen, err := documents.PublisherLastSeen(ctx, publisher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seen.IsZero() {
+		t.Fatalf("a registration that never checked in reads as seen at %v", seen)
+	}
+
+	// And a check-in made now survives a restart on the same file.
+	if err := documents.PublisherSeen(ctx, publisher, published); err != nil {
+		t.Fatal(err)
+	}
+	if err := documents.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	back, err := reopened.PublisherLastSeen(ctx, publisher)
+	if err != nil || !back.Equal(published) {
+		t.Fatalf("the check-in did not survive a restart: %v, %v", back, err)
+	}
+}
+
+// A check-in only ever moves forward, and one for a server nothing is registered under is not an
+// error: the only way to reach it is with a credential that resolved a moment ago, so the case is a
+// registration deleted in between, and there is nothing to record about one that is gone.
+func TestACheckInOnlyMovesForwardAndToleratesAStranger(t *testing.T) {
+	documents := openStore(t)
+	ctx := context.Background()
+	if _, err := documents.Register(ctx,
+		Registration{ServerID: publisher, Label: "test", Publishing: true},
+		storage.Publishing, hashOf(publisher), published); err != nil {
+		t.Fatal(err)
+	}
+
+	later := published.Add(time.Hour)
+	if err := documents.PublisherSeen(ctx, publisher, later); err != nil {
+		t.Fatal(err)
+	}
+	if err := documents.PublisherSeen(ctx, publisher, published); err != nil {
+		t.Fatal(err)
+	}
+	seen, err := documents.PublisherLastSeen(ctx, publisher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seen.Equal(later) {
+		t.Fatalf("an earlier check-in moved the instant back to %v", seen)
+	}
+
+	if err := documents.PublisherSeen(ctx, stranger, later); err != nil {
+		t.Fatalf("a check-in for an unregistered server failed: %v", err)
+	}
+	unknown, err := documents.PublisherLastSeen(ctx, stranger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unknown.IsZero() {
+		t.Fatalf("an unregistered server reads as seen at %v", unknown)
+	}
+}

@@ -141,6 +141,28 @@ after a partial unstake, when the pending amount may be withdrawn, whether a tok
 created, the owner's derived stake account, and the programs the transaction touches. A pending
 cooldown that this action would restart is called out in the error colour.
 
+## When the owner sees it (SEE-150)
+
+A staking request used to arrive only when the owner went and looked. The server served the phone's
+update routes but never told it where they were, so no stream was ever opened and no wake-up was ever
+sent — and because a manual refresh worked, the symptom was simply an owner who answered late.
+
+It now behaves like the general MCP server:
+
+- **App open.** The request, and each supported status change, arrive on the phone's own update stream
+  and appear without a refresh. A stream that drops reconnects with backoff and resumes from its
+  cursor; nothing is missed, because the phone resumes from what it holds rather than from what it was
+  sent.
+- **App closed or in the background.** The gateway push relay wakes the phone (SEE-144). What is sent
+  is one content-free message; the phone then reads this server, authenticated, and renders what the
+  server says. Tapping the notification opens that request's review.
+- **Neither configured.** Manual refresh, exactly as before. A deployment that serves no updates is
+  smaller, not broken.
+
+Nothing an agent does changes any of this, and nothing it sends can address a phone: there is no
+field for a device, a topic or a message in any staking tool. Operator setup is in
+[running the server](../development/skr-staking-server.md#live-updates-and-waking-the-phone-see-150).
+
 ## How the rules treat it
 
 Staking is one `PolicyAction` — `staking` — rather than four, because a rule an owner writes is about

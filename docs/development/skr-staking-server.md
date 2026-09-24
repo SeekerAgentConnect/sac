@@ -94,6 +94,100 @@ compose project and asserts both.
 The compose project joins the same `direct-ingress` network the general server uses, so one ingress
 can serve both; the two are separate services with separate volumes and separate ports.
 
+## Live updates and waking the phone (SEE-150)
+
+The phone opens its update stream only on an origin the server advertised at pairing, and this server
+advertised none. It *served* the update routes; it never said where they were. So `Pair` and
+`GetConnectionCapabilities` came back with no update capability, the phone never subscribed, and a
+staking request the agent had just created sat unseen until the owner pulled to refresh. Nothing
+failed — which is the whole reason it was only noticed by somebody looking at a phone.
+
+Two things had to be configured, and they are separate: **the stream**, which reaches a phone whose
+app is open, and **the relay**, which wakes a phone whose app is not.
+
+### The stream
+
+`UpdateService.Subscribe` is gRPC over HTTP/2, and that is the constraint everything else follows
+from.
+
+| Deployment | Setting | What the phone is told |
+| --- | --- | --- |
+| Behind a TLS-terminating HTTP/2 proxy (App Platform) | `SKR_STAKING_H2C=true` | The public origin it paired with — the only one the proxy answers on |
+| Loopback, phone on `adb reverse` | `SKR_STAKING_UPDATE_PORT=8091` | `http://127.0.0.1:<that port>` |
+| Plain HTTP/1.1, neither set | — | Nothing. The phone refreshes by hand, which still works |
+
+The second exists because of what h2c cannot do. Against an `http://` origin the phone makes its unary
+calls over HTTP/1.1 — cleartext has no ALPN to negotiate anything better — and an h2c listener refuses
+HTTP/1.1 outright. So a loopback server keeps HTTP/1.1 on its main port and carries the stream on a
+second one, exactly as the general server does with `SIDECAR_UPDATE_PORT`. Setting both is refused at
+startup: they answer the same question differently, and choosing one quietly would advertise an origin
+the operator did not mean. `SKR_STAKING_UPDATE_PORT` also requires a loopback `SKR_STAKING_HOST` — a
+cleartext listener has no business on a wildcard bind, and `0.0.0.0` is not an origin a phone could
+reach anyway.
+
+Startup says which it is, in one line, so an operator never has to infer it:
+
+```
+live updates are served as gRPC over HTTP/2 at https://staking.example.com
+live updates are not served: set SKR_STAKING_H2C behind an HTTP/2 proxy, or
+  SKR_STAKING_UPDATE_PORT on loopback; the phone refreshes only by hand
+```
+
+Recovery after a disconnect is the phone's, and it already existed: `ForegroundUpdateManager`
+reconnects with backoff and resumes from its cursor. Nothing in this server had to change for that —
+what changed is that there is now a stream for it to reconnect to.
+
+### The relay
+
+This server holds no Firebase credential and is not going to: the gateway's operator holds one and
+wakes this server's paired phone on its behalf (SEE-144). Three variables, all or none:
+
+```bash
+SKR_STAKING_RELAY_URL=https://feeds.example.com
+SKR_STAKING_RELAY_SERVER_ID=<this server's uuid>
+SKR_STAKING_RELAY_CREDENTIAL=<shown once at registration>
+```
+
+Registered on the gateway host, or from its admin page with the relay box ticked:
+
+```sh
+feed-gatewayctl register --server <uuid> --label "skr staking" --for relay
+```
+
+The names are this server's own rather than the general server's `RELAY_*` because the two are
+registered at the gateway as **two servers**, each with its own identity and credential, and one
+`.env` has to be able to hold both. Two of the three is refused at startup: a server that looks like
+it wakes phones and never does would show up only as an owner whose staking requests stop arriving
+until they happen to open the app. The credential appears in no startup line and no configuration
+problem — the check-in tests assert that it does not.
+
+Startup says this too:
+
+```
+gateway push relay is configured: https://feeds.example.com as server <uuid>
+gateway push relay is off; SKR_STAKING_RELAY_URL is not configured
+```
+
+The App Platform spec (`deploy/seeker-skr-staking-mcp.yaml`) already sets `SKR_STAKING_H2C=true`, so
+the stream needs nothing there. The relay needs the three keys added as encrypted secrets by whoever
+holds the gateway registration; they are deliberately **not** in the committed spec, because two of
+three would stop the deployment from starting.
+
+### Tests
+
+`src/updates.test.ts` acts as the phone does, with its real transports — Connect for the unary calls,
+genuine gRPC over cleartext HTTP/2 for `Subscribe`, the MCP SDK for the agent:
+
+- the public HTTPS origin advertised on an h2c listener, and that `Pair` carries it
+- nothing advertised on a plain HTTP/1.1 listener, and manual refresh still working
+- an agent's staking request, and a later status change, arriving on an open `Subscribe`
+- the phone woken through the gateway exactly once for a new request
+- startup saying the relay is off when it is not configured
+
+`src/config.test.ts` covers the refusals: `H2C` with `UPDATE_PORT`, a wildcard bind with
+`UPDATE_PORT`, two of the three relay variables, a relay URL that is not an origin, and that no
+problem ever repeats the credential.
+
 ## Things worth knowing before changing it
 
 **The program's interface is derived, not copied.** `solana-mobile/react-native-samples` carries no

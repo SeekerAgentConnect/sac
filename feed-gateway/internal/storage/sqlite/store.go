@@ -59,7 +59,7 @@ import (
 // Version is the schema this build writes and reads. There is one, and a file from a later version
 // is refused rather than guessed at: an old binary reading a new file could silently ignore a
 // column that a rule depends on.
-const Version = 5
+const Version = 6
 
 // ErrNewerSchema is returned by Open when the file was written by a later version of the gateway.
 var ErrNewerSchema = errors.New("the database was written by a newer gateway")
@@ -196,6 +196,8 @@ func (s *Store) migrate(ctx context.Context) error {
 				migration = schemaV4
 			case 5:
 				migration = schemaV5
+			case 6:
+				migration = schemaV6
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -482,6 +484,29 @@ CREATE UNIQUE INDEX relay_binding_active
   ON relay_binding(installation_id, server_id, connection_ref) WHERE revoked_at_ms IS NULL;
 CREATE INDEX relay_binding_by_server ON relay_binding(server_id);
 CREATE INDEX relay_binding_by_expiry ON relay_binding(expires_at_ms);
+`
+
+// Version 6 is publisher presence (SEE-150): when a publisher last told this gateway that its own
+// server is running.
+//
+// It is a column on the registration for the same reason the host is: the live schema stays the
+// tables a boundary test pins, and this is one more fact about a registration rather than a new
+// kind of state. The gateway still never contacts a publisher's host — presence is pushed, by every
+// authenticated call the publisher makes, and by PublisherService.Heartbeat when it has nothing to
+// publish.
+//
+// It is nullable, and that is the opposite of the choice schemaV4 made for the host. There, "no
+// host was given" and "the host is nothing" were the same fact. Here they are not: a registration
+// that has never checked in is not one that checked in at the epoch, and a NOT NULL DEFAULT 0 would
+// make every publisher registered before this version look like one that was running in 1970 and
+// stopped. Both read as offline today, but only one of them would still be wrong if the window ever
+// grew.
+//
+// Nothing about a *reader* is recorded here, and nothing can be: the column is on the publisher,
+// written on the publisher listener, where every caller has already been authenticated as exactly
+// one registered server.
+const schemaV6 = `
+ALTER TABLE publisher ADD COLUMN last_seen_at_ms INTEGER;
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

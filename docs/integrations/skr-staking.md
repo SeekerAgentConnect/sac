@@ -141,6 +141,14 @@ second call finds the first request instead of creating a second one.
 A different `idempotency_key` with otherwise identical parameters creates a **second** request. The
 key is what says "the same ask", not the amount.
 
+**The owner sees it without being asked to look (SEE-150).** A deployment that serves live updates
+pushes a new request, and each supported status change, to the phone while the app is open, and wakes
+it through the gateway relay while it is not. Neither is anything an agent configures or can address:
+there is no field for a device, a topic or a message anywhere in these tools, the wake-up carries no
+content at all, and the phone reads this server for itself afterwards. What an agent notices is only
+that the owner tends to answer sooner. Polling the same tool with the same `idempotency_key` remains
+the whole of an agent's side, and works identically on a deployment that serves no updates.
+
 ## Worked example
 
 ```

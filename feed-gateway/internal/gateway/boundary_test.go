@@ -343,6 +343,16 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			"channels",
 			"topics",
 			"channel", "topic",
+			// Whether each channel's publisher is running (SEE-150): the channels asked about, one
+			// answer per channel, and the channel and the verdict inside it. Presence is about
+			// publishers and this list is what proves it — there is nowhere here for a reader's
+			// identity, a device, a subscription or a count of who asked, and the answer to one
+			// phone is the answer to every phone. The verdict is an enum with three named values,
+			// not a free field, so the whole of what a gateway may say about a publisher is
+			// "online", "offline" or nothing.
+			"channels",
+			"statuses",
+			"channel", "availability",
 		},
 		// What a subscriber receives (SEE-91): a sequence the gateway counted and a document a
 		// publisher published. A field here would be a field every listener on the channel sees.
@@ -358,6 +368,11 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			"status", "revision", "snapshot_sequence",
 			"proposal_id", "revision",
 			"status", "proposal", "snapshot_sequence",
+			// A check-in (SEE-150). The request has no field at all — the credential says who is
+			// calling, and there is nothing else a publisher is being asked — and the answer is one
+			// number, how often to call again. Nothing here names a host, an address or a port, so
+			// no check-in can tell this gateway where to reach anybody.
+			"interval_seconds",
 		},
 		"problem.proto": {"problem", "field", "held_revision"},
 	} {
@@ -503,6 +518,7 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 		gatewayv1connect.PublisherServiceCancelRequestProcedure,
 		gatewayv1connect.PublisherServicePublishProposalProcedure,
 		gatewayv1connect.PublisherServiceCancelProposalProcedure,
+		gatewayv1connect.PublisherServiceHeartbeatProcedure,
 	}
 	feedProcedures := []string{
 		gatewayv1connect.FeedServiceGetServerManifestProcedure,
@@ -512,6 +528,7 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 		gatewayv1connect.FeedServiceGetProposalProcedure,
 		gatewayv1connect.FeedServiceGetStreamTicketProcedure,
 		gatewayv1connect.FeedServiceGetFeedTopicsProcedure,
+		gatewayv1connect.FeedServiceGetFeedStatusProcedure,
 	}
 	retiredProcedures := []string{
 		"/seekervault.gateway.v1.InvitationService/ResolveInvitation",

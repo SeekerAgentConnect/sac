@@ -24,6 +24,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.feeds.FeedAvailability
 import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -141,10 +142,20 @@ fun statusText(
      */
     support: ServerSupport? = null,
     feed: FeedListenerState? = null,
+    /**
+     * Whether the publisher behind this feed is running (SEE-150). It is said after the states that
+     * are about *this phone's* connection and before the ordinary "feed available", because it is
+     * the more specific fact: a gateway that answers is no evidence a publisher is up, and a
+     * gateway that does not answer is what the owner needs to hear about first.
+     */
+    availability: FeedAvailability = FeedAvailability.Unknown,
 ): String {
     val check = connection.lastCheck
     val liveState = connection.directTransport(live)
     val feedState = connection.feedTransport(feed)
+    val feedAvailability =
+        availability.takeIf { connection.mode == ConnectionMode.GatewayFeed }
+            ?: FeedAvailability.Unknown
     return when {
         connection.retirement == ConnectionRetirement.GatewayPrivateRemoved ->
             stringResource(R.string.connection_status_gateway_private_retired)
@@ -154,10 +165,17 @@ fun statusText(
             stringResource(R.string.connection_status_credential_missing)
         feedState == FeedListenerState.Connecting ->
             stringResource(R.string.connection_status_connecting)
+        feedState is FeedListenerState.Live && feedAvailability == FeedAvailability.Offline ->
+            stringResource(R.string.connection_status_feed_offline)
         feedState is FeedListenerState.Live -> stringResource(R.string.connection_status_live)
         feedState is FeedListenerState.Reconnecting ->
             stringResource(R.string.connection_status_reconnecting)
         feedState is FeedListenerState.Unreachable -> outcomeText(feedState.outcome)
+        // A gateway with no broker is a working deployment, so the feed's own state is the whole of
+        // what there is to say about it — and an offline publisher there is exactly the case the
+        // owner could not see before: no stream to look wrong, and a feed that had stopped moving.
+        feedState == FeedListenerState.NoStream && feedAvailability == FeedAvailability.Offline ->
+            stringResource(R.string.connection_status_feed_offline)
         feedState == FeedListenerState.NoStream ->
             stringResource(R.string.connection_status_feed_available)
         feedState is FeedListenerState.Refused -> stringResource(R.string.connection_status_failed)
@@ -189,6 +207,7 @@ fun hasProblem(
     live: ForegroundConnectionState? = null,
     support: ServerSupport? = null,
     feed: FeedListenerState? = null,
+    availability: FeedAvailability = FeedAvailability.Unknown,
 ): Boolean {
     val liveState = connection.directTransport(live)
     val feedState = connection.feedTransport(feed)
@@ -198,6 +217,12 @@ fun hasProblem(
     return connection.retirement != null ||
         (connection.mode == ConnectionMode.Direct && !connection.usable) ||
         support?.executable == false ||
+        // A publisher that has stopped is the owner's business even though nothing on this phone is
+        // wrong: the feed has quietly stopped moving, which is the state SEE-150 was reported
+        // about.
+        // Unknown is not a problem — not having been told is not bad news.
+        (connection.mode == ConnectionMode.GatewayFeed &&
+            availability == FeedAvailability.Offline) ||
         feedState is FeedListenerState.Unreachable ||
         feedState is FeedListenerState.Refused ||
         when (liveState) {

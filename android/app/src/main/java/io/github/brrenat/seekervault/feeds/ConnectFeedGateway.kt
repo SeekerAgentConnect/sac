@@ -14,7 +14,9 @@ import io.github.brrenat.seekervault.connections.FeedManifest
 import io.github.brrenat.seekervault.connections.FeedSnapshot
 import io.github.brrenat.seekervault.connections.GatewayException
 import io.github.brrenat.seekervault.connections.ProposalFeed
+import io.github.brrenat.seekervault.gateway.v1.FeedAvailability as WireAvailability
 import io.github.brrenat.seekervault.gateway.v1.FeedServiceClient
+import io.github.brrenat.seekervault.gateway.v1.getFeedStatusRequest
 import io.github.brrenat.seekervault.gateway.v1.getFeedTopicsRequest
 import io.github.brrenat.seekervault.gateway.v1.getProposalRequest
 import io.github.brrenat.seekervault.gateway.v1.getServerManifestRequest
@@ -50,7 +52,7 @@ import okhttp3.OkHttpClient
  * one client. The stream is next door and speaks a different protocol; this file never touches it.
  */
 class ConnectFeedGateway(private val httpClient: OkHttpClient) :
-    FeedGateway, ProposalFeed, FeedTickets, FeedTopics {
+    FeedGateway, ProposalFeed, FeedTickets, FeedTopics, FeedStatuses {
 
     override suspend fun resolve(reference: FeedReference, knownRevision: Long): FeedManifest {
         val answer =
@@ -239,6 +241,45 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
                 )
             }
             FeedChannelTopic(it.channel, it.topic)
+        }
+    }
+
+    /**
+     * Whether each channel's publisher is running (SEE-150).
+     *
+     * A channel the answer leaves out is absent from the map rather than an error, on the same
+     * terms a topic and a ticket are: the gateway does not host it, which one stale feed reference
+     * on this phone can cause, and the owner's other feeds keep their answers. A caller reads a
+     * missing entry as [FeedAvailability.Unknown], which is what it is.
+     *
+     * An answer naming a channel nobody asked about is refused whole, exactly as a topic list is:
+     * at that point nothing in it describes this phone's feeds, and reading part of it would mean
+     * showing the owner a verdict about somebody else's publisher.
+     *
+     * An availability this build has no name for is [FeedAvailability.Unknown] and never
+     * [FeedAvailability.Online]. A value added to the contract later must not be able to make a
+     * dead feed look alive, which is the whole failure this method exists to stop.
+     */
+    override suspend fun statuses(
+        gatewayUrl: String,
+        channels: List<String>,
+    ): Map<String, FeedAvailability> {
+        val asked = channels.distinct()
+        val answer =
+            call(gatewayUrl) { it.getFeedStatus(getFeedStatusRequest { this.channels += asked }) }
+        return answer.statusesList.associate {
+            if (it.channel !in asked) {
+                throw GatewayException(
+                    GatewayException.Kind.BadResponse,
+                    "a feed status for a channel that was not asked about",
+                )
+            }
+            it.channel to
+                when (it.availability) {
+                    WireAvailability.FEED_AVAILABILITY_ONLINE -> FeedAvailability.Online
+                    WireAvailability.FEED_AVAILABILITY_OFFLINE -> FeedAvailability.Offline
+                    else -> FeedAvailability.Unknown
+                }
         }
     }
 

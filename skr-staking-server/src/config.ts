@@ -13,6 +13,10 @@
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { PublicKey } from "@solana/web3.js";
+import {
+  invalidRelayReason,
+  type RelayConfiguration,
+} from "@seeker-vault/server-sdk";
 
 /** The live diagnostic this server does not serve. The SDK wants a timeout; nothing uses it. */
 export const UNUSED_LIVE_COMMAND_TIMEOUT_SECONDS = 60;
@@ -67,7 +71,33 @@ export interface Config {
   readonly allowedHosts: readonly string[];
   /** Which guardian's pool to stake into; the official one unless told otherwise. */
   readonly guardian: PublicKey | undefined;
+  /**
+   * The main listener is cleartext HTTP/2 (h2c), for a TLS-terminating HTTP/2 proxy in front, and
+   * the phone is told to open its update stream on the public origin — the same origin it pairs
+   * with, because that is the only one the proxy carries.
+   */
   readonly h2c: boolean;
+  /**
+   * A second, cleartext HTTP/2 listener for loopback development (SKR_STAKING_UPDATE_PORT), and the
+   * only way a phone on the other end of `adb reverse` gets live updates from this server.
+   *
+   * It exists because of what h2c cannot do. The phone makes its unary calls — pairing, the pending
+   * list, a result — over HTTP/1.1 when the origin is `http://`, since cleartext has no ALPN to
+   * negotiate anything better, and an h2c listener refuses HTTP/1.1 outright. So a loopback server
+   * keeps HTTP/1.1 on its main port and carries the update stream here, exactly as the general
+   * server does with SIDECAR_UPDATE_PORT.
+   */
+  readonly updatePort: number | undefined;
+  /**
+   * The gateway push relay (SEE-144): the gateway's operator holds the Firebase credential and
+   * wakes this server's paired phone on its behalf, so a phone that is not looking still hears
+   * that something changed. All three of SKR_STAKING_RELAY_URL, SKR_STAKING_RELAY_SERVER_ID and
+   * SKR_STAKING_RELAY_CREDENTIAL are set together or none is.
+   *
+   * The credential is a secret and behaves like one here: it is read, never logged, and never
+   * printed back by any startup line or any configuration problem.
+   */
+  readonly relay: RelayConfiguration | undefined;
 }
 
 /** Reads and checks the configuration, or throws a `ConfigError` naming every problem. */
@@ -128,6 +158,28 @@ export function loadConfig(env: Env = process.env): Config {
 
   const guardian = optionalAddress(env, "SKR_STAKING_GUARDIAN", problems);
   const h2c = flag(env, "SKR_STAKING_H2C", problems);
+  const updatePort = optionalWholeNumber(
+    env,
+    "SKR_STAKING_UPDATE_PORT",
+    problems,
+    1,
+    65_535,
+  );
+  if (updatePort !== undefined && h2c) {
+    // Both answer the same question — where the update stream is — and they answer it
+    // differently. Picking one quietly would advertise an origin the operator did not mean.
+    problems.push(
+      "SKR_STAKING_H2C cannot be combined with SKR_STAKING_UPDATE_PORT: the first carries updates on the public origin behind a proxy, the second on a loopback port for development.",
+    );
+  }
+  if (updatePort !== undefined && host !== undefined && WILDCARD.has(host)) {
+    // A cleartext listener nothing authenticates the transport of has no business on a wildcard
+    // bind, and the origin it would advertise — 0.0.0.0 — is not one a phone could reach anyway.
+    problems.push(
+      "SKR_STAKING_UPDATE_PORT is a loopback development listener, so SKR_STAKING_HOST must be a loopback address when it is set.",
+    );
+  }
+  const relay = relayConfiguration(env, problems);
   // Read before the check, not inside the returned object: a problem found after the throw has
   // already been decided against is a problem nobody is ever told about, and this one matters —
   // an allowed host that was quietly dropped is a host the DNS-rebinding guard will refuse.
@@ -150,6 +202,8 @@ export function loadConfig(env: Env = process.env): Config {
     allowedHosts,
     guardian,
     h2c,
+    updatePort,
+    relay,
   };
 }
 
@@ -248,6 +302,51 @@ function publicOrigin(
     return undefined;
   }
   return url.origin;
+}
+
+/**
+ * SKR_STAKING_RELAY_URL, SKR_STAKING_RELAY_SERVER_ID and SKR_STAKING_RELAY_CREDENTIAL: the gateway
+ * that wakes this server's paired phone on its behalf (SEE-144).
+ *
+ * All three or none, on the same all-or-nothing terms the general server applies to its RELAY_*
+ * settings and for the same reason: two of the three is a server that looks like it wakes phones
+ * and never does, and the only sign of it would be an owner whose staking requests stop arriving
+ * until they happen to open the app.
+ *
+ * The names are this server's own rather than the general server's RELAY_URL: the two are
+ * registered at the gateway as two servers, each with its own identity and its own credential, and
+ * one `.env` has to be able to hold both.
+ *
+ * No problem here ever repeats the credential. A configuration error is printed at startup, and a
+ * startup line is pasted into places an operator does not control.
+ */
+function relayConfiguration(
+  env: Env,
+  problems: string[],
+): RelayConfiguration | undefined {
+  const relayUrl = env.SKR_STAKING_RELAY_URL?.trim() ?? "";
+  const serverId = env.SKR_STAKING_RELAY_SERVER_ID?.trim() ?? "";
+  const credential = env.SKR_STAKING_RELAY_CREDENTIAL?.trim() ?? "";
+  const given = [relayUrl, serverId, credential].filter(
+    (value) => value !== "",
+  );
+  if (given.length === 0) return undefined;
+  if (given.length < 3) {
+    problems.push(
+      "SKR_STAKING_RELAY_URL, SKR_STAKING_RELAY_SERVER_ID and SKR_STAKING_RELAY_CREDENTIAL must all be set together: " +
+        "they are one setting in three variables, and a partial one sends nothing.",
+    );
+    return undefined;
+  }
+  const configuration: RelayConfiguration = { relayUrl, serverId, credential };
+  // The SDK's own definition of a relay configuration, so this server and the general one cannot
+  // disagree about what the gateway will accept. Its reason never repeats the credential.
+  const problem = invalidRelayReason(configuration);
+  if (problem !== undefined) {
+    problems.push(`The gateway relay is not configured correctly: ${problem}.`);
+    return undefined;
+  }
+  return configuration;
 }
 
 function directory(env: Env, problems: string[]): string {

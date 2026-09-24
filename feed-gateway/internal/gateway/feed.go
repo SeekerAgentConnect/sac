@@ -38,6 +38,10 @@ type Feed struct {
 	// same kind of reason: a deployment without a push credential relays nothing and says so once.
 	// The two are independent — either, both or neither may be configured.
 	topics Topics
+	// How long after a publisher's last check-in its feed is still shown as online (SEE-150,
+	// presence.go). It has no nil case: every deployment answers presence, from the store it
+	// already keeps registrations in.
+	window time.Duration
 }
 
 // ListRequests is the common-contract snapshot read. It deliberately shares the cursor, sequence
@@ -123,8 +127,14 @@ func (f *Feed) GetRequest(
 	return uncached(connect.NewResponse(&gatewayv1.GetRequestResponse{Request: document.Document})), nil
 }
 
-func NewFeed(from storage.FeedStore, now func() time.Time, grants Grants, topics Topics) *Feed {
-	return &Feed{storage: from, now: now, grants: grants, topics: topics}
+func NewFeed(
+	from storage.FeedStore,
+	now func() time.Time,
+	grants Grants,
+	topics Topics,
+	window time.Duration,
+) *Feed {
+	return &Feed{storage: from, now: now, grants: grants, topics: topics, window: window}
 }
 
 // GetServerManifest answers with what the publisher registered, or says it has nothing.

@@ -9,16 +9,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertLeftPositionInRootIsEqualTo
+import androidx.compose.ui.test.assertTopPositionInRootIsEqualTo
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -72,9 +76,11 @@ class InAppNotificationHostTest {
     private var reviewOpen by mutableStateOf(emptySet<ReviewIdentity>())
     private var opened: InAppNotificationTarget? = null
     private var underneathClicked = false
+    private var root: android.view.View? = null
 
     private fun host() {
         compose.setContent {
+            root = LocalView.current
             CompositionLocalProvider(LocalLifecycleOwner provides owner) {
                 SeekerTheme(darkTheme = true) {
                     Box(Modifier.fillMaxSize()) {
@@ -125,6 +131,51 @@ class InAppNotificationHostTest {
             InAppNotificationTarget.Review(ReviewIdentity.Private(DIRECT.id, TRANSFER_ID)),
             opened,
         )
+    }
+
+    @Test
+    fun `the banner clears the status bar and the cutout, and floats a gap below them`() {
+        host()
+        waiting = listOf(PendingItem.Private(TRANSFER))
+        compose.waitForIdle()
+
+        // A 24dp status bar with a deeper 30dp cutout, at this configuration's 3x density: the
+        // banner has to clear whichever reaches further, then leave its gap (SEE-150).
+        //
+        // Dispatched through the platform view, and only once the banner is on screen. Compose
+        // installs its insets listener when something first *reads* insets, so a dispatch made
+        // while the queue was empty would reach nothing and leave the banner measuring against
+        // zero — which is what the other test asserts, so it would have passed for the wrong
+        // reason.
+        compose.runOnUiThread {
+            checkNotNull(root)
+                .dispatchApplyWindowInsets(
+                    android.view.WindowInsets.Builder()
+                        .setInsets(
+                            android.view.WindowInsets.Type.statusBars(),
+                            android.graphics.Insets.of(0, 72, 0, 0),
+                        )
+                        .setInsets(
+                            android.view.WindowInsets.Type.displayCutout(),
+                            android.graphics.Insets.of(0, 90, 0, 0),
+                        )
+                        .build()
+                )
+        }
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(InAppNotificationTag).assertTopPositionInRootIsEqualTo(42.dp)
+        compose.onNodeWithTag(InAppNotificationTag).assertLeftPositionInRootIsEqualTo(8.dp)
+    }
+
+    @Test
+    fun `without any system bar the banner still keeps its gap from the top edge`() {
+        host()
+
+        waiting = listOf(PendingItem.Private(TRANSFER))
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(InAppNotificationTag).assertTopPositionInRootIsEqualTo(12.dp)
     }
 
     @Test
