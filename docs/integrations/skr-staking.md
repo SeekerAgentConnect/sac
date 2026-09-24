@@ -43,6 +43,12 @@ and the pairing code names this server's own origin.
 Takes nothing. Reads the connected wallet's position from the chain and answers with it. It creates
 no request, asks the owner nothing, and builds no transaction.
 
+It answers only for a connection bound to **mainnet**, and only when the configured endpoint is
+serving mainnet-beta. A devnet binding is refused with `INVALID_PARAMETERS` before anything is read,
+because the alternative is this mainnet-only server reading that address on mainnet and labelling
+the answer `devnet` — a position off one cluster presented as another's, which looks like an
+ordinary answer. An endpoint that cannot be reached is `CHAIN_UNAVAILABLE`: try again.
+
 | Field | Meaning |
 | --- | --- |
 | `wallet`, `network` | The connection's own binding. Never a parameter. |

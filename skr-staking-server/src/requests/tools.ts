@@ -40,9 +40,14 @@ import {
   type ActionRequest,
 } from "@seeker-vault/server-sdk/protocol";
 import { z } from "zod";
+import { ChainUnavailable } from "../skr/chain.ts";
 import { SKR_DECIMALS } from "../skr/program.ts";
 import { formatSkr } from "../skr/shares.ts";
-import type { SkrStakingProvider, StakingPosition } from "../skr/provider.ts";
+import {
+  UnsupportedStaking,
+  type SkrStakingProvider,
+  type StakingPosition,
+} from "../skr/provider.ts";
 
 export const STATUS_TOOL = "get_staking_status";
 export const STAKE_TOOL = "request_stake";
@@ -231,10 +236,41 @@ function registerStatus(
     async (): Promise<CallToolResult> =>
       answerAsync(async () => {
         const binding = core.activeWallet();
-        const position = await provider.position(binding.wallet);
+        // The network the connection is bound to, checked before anything is read from it.
+        //
+        // This provider only ever reads mainnet-beta, so a phone that published a devnet binding
+        // would get its devnet wallet's mainnet position back, labelled "devnet" — an answer that
+        // is wrong twice over and looks entirely ordinary. Creating a request already refuses
+        // this (the SDK calls `checkStaking`, which asserts the network); a read has to refuse it
+        // for itself, because nothing else on this path will.
+        await chainCall(() => provider.assertNetwork(binding.network));
+        const position = await chainCall(() =>
+          provider.position(binding.wallet),
+        );
         return statusView(position, provider, networkName(binding.network));
       }),
   );
+}
+
+/**
+ * This package's chain errors as failures an agent can read.
+ *
+ * The distinction is the same one the preparation path makes: `CHAIN_UNAVAILABLE` means try
+ * again, `INVALID_PARAMETERS` means trying again will not help. Without this, either escapes
+ * `answerAsync` as an unhandled error and the agent is told nothing it can act on.
+ */
+async function chainCall<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof ChainUnavailable) {
+      throw new RequestFailure(RequestError.CHAIN_UNAVAILABLE, error.message);
+    }
+    if (error instanceof UnsupportedStaking) {
+      throw new RequestFailure(RequestError.INVALID_PARAMETERS, error.message);
+    }
+    throw error;
+  }
 }
 
 interface AmountToolOptions {

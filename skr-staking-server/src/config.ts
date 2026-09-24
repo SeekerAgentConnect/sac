@@ -128,6 +128,10 @@ export function loadConfig(env: Env = process.env): Config {
 
   const guardian = optionalAddress(env, "SKR_STAKING_GUARDIAN", problems);
   const h2c = flag(env, "SKR_STAKING_H2C", problems);
+  // Read before the check, not inside the returned object: a problem found after the throw has
+  // already been decided against is a problem nobody is ever told about, and this one matters —
+  // an allowed host that was quietly dropped is a host the DNS-rebinding guard will refuse.
+  const allowedHosts = hosts(env, problems);
 
   if (problems.length > 0) throw new ConfigError(problems);
 
@@ -143,7 +147,7 @@ export function loadConfig(env: Env = process.env): Config {
     requestTtlSeconds,
     pendingLimit,
     pairingTokenTtlSeconds,
-    allowedHosts: hosts(env, problems),
+    allowedHosts,
     guardian,
     h2c,
   };

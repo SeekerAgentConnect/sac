@@ -59,7 +59,11 @@ agent ──MCP──▶ skr-staking-server ──server-sdk──▶ phone ─�
    accepts it, and only then is the wallet opened — with the bytes from the stored approval, never
    with bytes fetched again.
 6. The wallet signs and sends. The result goes back as a submission, and the confirmation is checked
-   on chain the same way a transfer's is.
+   on chain the same way a transfer's is: the server hands the SDK a confirmation provider over the
+   same endpoint it reads everything else from, so a `SUBMITTED` request is asked about when the
+   agent polls it or when the owner presses check on the phone. There is no background worker — the
+   asking is what makes the looking happen — and a signature whose transaction is not the approved
+   one settles nothing rather than being reported either way.
 
 ## What the phone checks
 
