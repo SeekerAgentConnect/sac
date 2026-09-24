@@ -828,6 +828,7 @@ private fun ConnectionDetailsRoute(
     }
     ConnectionDetailLibraryScreen(
         connection = connection,
+        connections = state.connections,
         refreshing = id in state.refreshing || operationRefreshing,
         disconnect = state.disconnect?.takeIf { it.id == id },
         message = state.message,
@@ -845,6 +846,7 @@ private fun ConnectionDetailsRoute(
         onRules = onRules,
         onInbox = onInbox,
         onPairDirect = onPairDirect,
+        onColour = { viewModel.setColour(id, it) },
         overrideCount = overrideCount,
         live = state.updates.connections[id],
         support = state.support[id],

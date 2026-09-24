@@ -4,6 +4,7 @@ import android.util.AtomicFile
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionRetirement
+import io.github.brrenat.seekervault.connections.ServerColour
 import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
@@ -42,6 +43,10 @@ import org.json.JSONObject
  * Version 5 retires gateway-private records. Versions 2–4 are read just far enough to recognize the
  * literal old mode, then rewritten without an active mode, credential state, or cached private
  * manifest. No endpoint or credential is converted to another transport.
+ *
+ * Version 6 added the connection's marker colour (SEE-83). An older file is read without one, which
+ * is exactly what it held: the field is cosmetic and the repository assigns a colour to any active
+ * connection missing one.
  */
 class ConnectionStore(private val dir: File) {
     /** Every readable connection, oldest pairing first. A damaged file is skipped. */
@@ -120,7 +125,7 @@ class ConnectionStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        const val VERSION = 5
+        const val VERSION = 6
         const val LEGACY_GATEWAY_PRIVATE = "gateway_private"
         /**
          * Version 1 files predate the mode and the manifest, and are read as direct and unasked.
@@ -128,6 +133,8 @@ class ConnectionStore(private val dir: File) {
         const val FIRST_VERSION = 1
         /** Version 3 added the environment; before it, every connection was production. */
         const val ENVIRONMENT_VERSION = 3
+        /** Version 6 added the marker colour; before it, records had none (SEE-83). */
+        const val COLOUR_VERSION = 6
 
         fun encode(connection: Connection): String =
             JSONObject()
@@ -152,6 +159,7 @@ class ConnectionStore(private val dir: File) {
                 .putOpt("mode", connection.mode?.code)
                 .putOpt("retirement", connection.retirement?.code)
                 .put("environment", connection.environment.code)
+                .putOpt("colour", connection.colour?.name)
                 .put("server", encodeServer(connection.server))
                 .toString()
 
@@ -283,6 +291,17 @@ class ConnectionStore(private val dir: File) {
                 mode = mode,
                 server = server,
                 environment = environment,
+                // A missing or unrecognised name is no colour. The record stays readable and the
+                // repository assigns one (SEE-83).
+                colour =
+                    if (version < COLOUR_VERSION) null
+                    else
+                        json
+                            .optString("colour")
+                            .takeIf { it.isNotEmpty() }
+                            ?.let { name ->
+                                ServerColour.entries.firstOrNull { it.name == name }
+                            },
             )
         }
 

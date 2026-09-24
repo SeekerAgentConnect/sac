@@ -24,7 +24,9 @@ and typed state rather than colour, size, or typography overrides.
 `SourceChip` and `SourceAvatar` share one deterministic source-colour allocator: lowercase UTF-8
 FNV-1a selects one of the six source palette pairs. A collision shares a colour, while the visible
 source name or initials remains the identity. The same source string therefore keeps one colour
-without persisting presentation state.
+without persisting presentation state. A caller can pass a `SourceColour` instead, which is how a
+paired server's stored marker replaces the hash (SEE-83). Captured specimens pass none, so they
+stay on the colour the guide drew for that name.
 
 The button heights are 32dp, 40dp, and 48dp; the FAB is 56dp high. Compact chip geometry remains
 24dp, except the on-tile signal label at 22dp. `SeekerTheme` disables Material's implicit minimum

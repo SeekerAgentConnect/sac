@@ -11,6 +11,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import io.github.brrenat.seekervault.designsystem.ConnectionColourOption
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailFact
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailRules
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailSheet
@@ -30,6 +31,7 @@ import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
 @Composable
 fun ConnectionDetailLibraryScreen(
     connection: Connection,
+    connections: List<Connection> = listOf(connection),
     refreshing: Boolean,
     disconnect: DisconnectState?,
     message: ConnectionMessage?,
@@ -45,6 +47,7 @@ fun ConnectionDetailLibraryScreen(
     onRules: () -> Unit,
     onInbox: () -> Unit,
     onPairDirect: () -> Unit,
+    onColour: (ServerColour) -> Unit = {},
     modifier: Modifier = Modifier,
     live: ForegroundConnectionState? = null,
     support: ServerSupport? = null,
@@ -65,8 +68,19 @@ fun ConnectionDetailLibraryScreen(
                 ConnectionDetailSheetState(
                     title = connection.label,
                     initials = connection.label.initials(),
-                    colourName = "Tangerine",
-                    colourSupportingText = "marks this server everywhere",
+                    colour = connection.colour?.sourceColour(),
+                    colourOptions =
+                        ServerColour.entries.map { colour ->
+                            ConnectionColourOption(
+                                colour = colour.sourceColour(),
+                                usedBy =
+                                    connections
+                                        .firstOrNull {
+                                            it.id != connection.id && it.colour == colour
+                                        }
+                                        ?.label,
+                            )
+                        },
                     status =
                         ConnectionDetailStatus(
                             headline = statusText(connection, live, support, feed),
@@ -150,6 +164,9 @@ fun ConnectionDetailLibraryScreen(
                     onRename = { renaming = true },
                     onInbox = if (connection.retirement != null) onPairDirect else onInbox,
                     onDisconnect = onDisconnect,
+                    onColour = { colour ->
+                        onColour(ServerColour.entries.first { it.sourceColour() == colour })
+                    },
                 ),
             modifier = Modifier.fillMaxWidth(),
         )

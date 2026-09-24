@@ -16,8 +16,14 @@ import io.github.brrenat.seekervault.designsystem.preview.DesignRef
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 
 @Composable
-fun SourceAvatar(sourceName: String, initials: String, modifier: Modifier = Modifier) {
-    val colors = sourcePaletteColors(sourceName)
+fun SourceAvatar(
+    sourceName: String,
+    initials: String,
+    colour: SourceColour? = null,
+    modifier: Modifier = Modifier,
+) {
+    val colors =
+        if (colour == null) sourcePaletteColors(sourceName) else sourcePaletteColors(colour)
     Box(
         modifier =
             modifier

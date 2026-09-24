@@ -20,8 +20,16 @@ object SheetCompositionFixtures {
         ConnectionDetailSheetState(
             title = "studio-mac",
             initials = "SM",
-            colourName = "Tangerine",
-            colourSupportingText = "marks this server everywhere",
+            colour = SourceColour.Tangerine,
+            colourOptions =
+                listOf(
+                    ConnectionColourOption(SourceColour.Tangerine),
+                    ConnectionColourOption(SourceColour.Sky, "hermes-box"),
+                    ConnectionColourOption(SourceColour.Violet, "runner-node"),
+                    ConnectionColourOption(SourceColour.Teal, "CopyTrading demo"),
+                    ConnectionColourOption(SourceColour.Rose, "Jupiter Prediction demo"),
+                    ConnectionColourOption(SourceColour.Sand),
+                ),
             status =
                 ConnectionDetailStatus(
                     headline = "Connected · 2 pending",

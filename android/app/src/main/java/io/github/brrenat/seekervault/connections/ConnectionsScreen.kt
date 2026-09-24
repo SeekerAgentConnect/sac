@@ -38,6 +38,7 @@ import io.github.brrenat.seekervault.designsystem.SeekerFab
 import io.github.brrenat.seekervault.designsystem.ServerRow
 import io.github.brrenat.seekervault.designsystem.ServerRowModel
 import io.github.brrenat.seekervault.designsystem.ServerRowState
+import io.github.brrenat.seekervault.designsystem.SourceColour
 import io.github.brrenat.seekervault.designsystem.WalletBanner
 import io.github.brrenat.seekervault.designsystem.WalletBannerVariant
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
@@ -347,6 +348,7 @@ fun homeScreenState(
             newestFirst.map { item ->
                 item.toHomeCarouselItem(
                     sourceName = connections[item.connectionId]?.label,
+                    sourceColour = connections[item.connectionId]?.colour?.sourceColour(),
                     assessment =
                         (item as? PendingItem.Private)?.request?.key?.let(requestAssessments::get),
                 )
@@ -370,6 +372,7 @@ fun homeScreenState(
 
 private fun PendingItem.toHomeCarouselItem(
     sourceName: String?,
+    sourceColour: SourceColour?,
     assessment: RequestAssessment?,
 ): RequestCarouselItem {
     val request = envelope
@@ -396,6 +399,7 @@ private fun PendingItem.toHomeCarouselItem(
                         sourceName = source,
                         supportingText = "$source asks",
                         warningCount = warnings,
+                        sourceColour = sourceColour,
                     )
                 RequestTileKind.PredictionSignal ->
                     RequestTileModel(
@@ -404,6 +408,7 @@ private fun PendingItem.toHomeCarouselItem(
                         supportingText = request.presentation.description,
                         warningCount = warnings,
                         footerText = request.parameter("provider")?.providerName() ?: source,
+                        sourceColour = sourceColour,
                     )
                 RequestTileKind.SwapSignal ->
                     RequestTileModel(
@@ -411,12 +416,14 @@ private fun PendingItem.toHomeCarouselItem(
                         sourceName = source,
                         supportingText = request.presentation.description,
                         warningCount = warnings,
+                        sourceColour = sourceColour,
                     )
                 RequestTileKind.SignatureRequest ->
                     RequestTileModel(
                         title = request.messageByteCount().toString(),
                         sourceName = source,
                         supportingText = request.parameter("text") ?: HomeCopy.MessageBytes,
+                        sourceColour = sourceColour,
                         warningCount = warnings,
                         signatureByteCount = request.messageByteCount(),
                     )
@@ -430,6 +437,7 @@ private fun PendingItem.toHomeCarouselItem(
                                 ?: HomeCopy.RecipientUnavailable,
                         warningCount = warnings,
                         assetSymbol = amountAndAsset.second,
+                        sourceColour = sourceColour,
                     )
                 }
             },
@@ -509,6 +517,7 @@ private fun Connection.toHomeServerState(
                 sourceName = label,
                 initials = label.homeInitials(),
                 statusText = status,
+                sourceColour = colour?.sourceColour(),
             ),
         rowState = rowState,
     )

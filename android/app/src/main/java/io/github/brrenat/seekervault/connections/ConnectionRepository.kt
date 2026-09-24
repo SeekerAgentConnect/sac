@@ -336,6 +336,7 @@ class ConnectionRepository(
                     it.delivery != Delivery.Waiting && (it.settledAt ?: it.answeredAt) < cutoff
                 }
                 .forEach { results.delete(it.connectionId, it.requestId) }
+            assignMissingColours()
             publish()
             // The app closed while an action was with the wallet: whatever the wallet did, this
             // phone never learned it, so the approval is settled as unresolved rather than left
@@ -429,7 +430,7 @@ class ConnectionRepository(
         ) {
             throw GatewayException(GatewayException.Kind.BadResponse, "unusable PairResponse")
         }
-        val connection =
+        val drafted =
             Connection(
                 id = paired.connectionId,
                 label = PairingCodes.hostOf(code.serverUrl),
@@ -438,21 +439,23 @@ class ConnectionRepository(
                 deviceName = deviceName,
                 pairedAt = now(),
             )
-        locked {
-            if (store.get(connection.id) != null) {
+        val connection = locked {
+            if (store.get(drafted.id) != null) {
                 throw GatewayException(GatewayException.Kind.BadResponse, "a known connection ID")
             }
+            val coloured = drafted.copy(colour = nextServerColour(store.list()))
             try {
-                vault.put(connection.id, paired.credential)
-                store.put(connection)
+                vault.put(coloured.id, paired.credential)
+                store.put(coloured)
             } catch (e: GeneralSecurityException) {
-                vault.delete(connection.id)
+                vault.delete(coloured.id)
                 throw StorageException(e)
             } catch (e: IOException) {
-                vault.delete(connection.id)
+                vault.delete(coloured.id)
                 throw StorageException(e)
             }
             publish()
+            coloured
         }
         // What the server says about itself, asked with the credential it just issued. A server
         // that answers nothing is the legacy path and the pairing stands either way: the manifest
@@ -507,7 +510,7 @@ class ConnectionRepository(
             }
         // The phone's own ID for a connection it wasn't given one for. A feed pairs with nothing,
         // so there is no server to assign it and no device name to have told anyone.
-        val connection =
+        val drafted =
             Connection(
                 id = UUID.randomUUID().toString(),
                 label = manifest.name.ifEmpty { PairingCodes.hostOf(reference.gatewayUrl) },
@@ -523,16 +526,18 @@ class ConnectionRepository(
                 // serves nothing else.
                 environment = startingEnvironment(ServerRecord.Known(manifest)),
             )
-        locked {
-            if (store.get(connection.id) != null) {
+        val connection = locked {
+            if (store.get(drafted.id) != null) {
                 throw GatewayException(GatewayException.Kind.BadResponse, "a known connection ID")
             }
+            val coloured = drafted.copy(colour = nextServerColour(store.list()))
             try {
-                store.put(connection)
+                store.put(coloured)
             } catch (e: IOException) {
                 throw StorageException(e)
             }
             publish()
+            coloured
         }
         return FeedOutcome.Added(connection)
     }
@@ -1180,6 +1185,15 @@ class ConnectionRepository(
     }
 
     /**
+     * Stores the owner's marker colour for one connection (SEE-83). The choice is local: nothing is
+     * sent to the server. [publish] replaces the in-memory list, so every open screen that reads it
+     * shows the new colour without being reloaded.
+     */
+    suspend fun setColour(id: String, colour: ServerColour) {
+        update(id) { it.copy(colour = colour) }
+    }
+
+    /**
      * Moves a gateway connection between the environments its server serves (SEE-97,
      * docs/wiki/environments.md), and returns what became of the request.
      *
@@ -1353,6 +1367,25 @@ class ConnectionRepository(
     // Runs [block] under the lock on the I/O dispatcher.
     private suspend fun <T> locked(block: () -> T): T = lock.withLock {
         withContext(io) { block() }
+    }
+
+    /**
+     * Gives every active connection that has no colour the next free palette entry, oldest first,
+     * and writes only the records that changed. A retired record is not shown as a server, so it
+     * takes none (SEE-83).
+     */
+    private fun assignMissingColours() {
+        val current = store.list()
+        val assigned = mutableListOf<Connection>()
+        current.forEach { connection ->
+            if (connection.colour != null || connection.retirement != null) {
+                assigned += connection
+            } else {
+                val coloured = connection.copy(colour = nextServerColour(assigned))
+                store.put(coloured)
+                assigned += coloured
+            }
+        }
     }
 
     private fun publish() {

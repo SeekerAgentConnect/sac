@@ -16,6 +16,7 @@ import io.github.brrenat.seekervault.designsystem.RequestTileModel
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.ServerRowModel
 import io.github.brrenat.seekervault.designsystem.ServerRowState
+import io.github.brrenat.seekervault.designsystem.SourceColour
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
@@ -246,6 +247,35 @@ class ConnectionsScreenTest {
 
         assertEquals(ServerRowState.Unreachable, reconnecting.servers.single().rowState)
         assertEquals("Reconnecting · 1 pending", reconnecting.servers.single().model.statusText)
+    }
+
+    @Test
+    fun aChangedColourIsWhatTheAvatarAndTheWaitingPillBothRead() {
+        val home = HOME.copy(label = "studio-mac", colour = ServerColour.Sky)
+        val waiting = prediction(home, PROPOSAL_A, "Will SOL close above \$200?", "polymarket")
+        val before =
+            homeScreenState(
+                connectionsState = ConnectionsUiState(connections = listOf(home), loaded = true),
+                inboxSummary = null,
+                wallet = null,
+                pendingItems = listOf(waiting),
+                requestAssessments = emptyMap(),
+            )
+        assertEquals(SourceColour.Sky, before.servers.single().model.sourceColour)
+        assertEquals(SourceColour.Sky, before.pending.single().tile.sourceColour)
+        assertEquals("studio-mac", before.pending.single().tile.sourceName)
+
+        val changed = home.copy(colour = ServerColour.Teal)
+        val after =
+            homeScreenState(
+                connectionsState = ConnectionsUiState(connections = listOf(changed), loaded = true),
+                inboxSummary = null,
+                wallet = null,
+                pendingItems = listOf(waiting),
+                requestAssessments = emptyMap(),
+            )
+        assertEquals(SourceColour.Teal, after.servers.single().model.sourceColour)
+        assertEquals(SourceColour.Teal, after.pending.single().tile.sourceColour)
     }
 
     private fun prediction(

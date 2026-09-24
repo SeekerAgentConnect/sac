@@ -134,11 +134,13 @@ enum class SourceChipWidth {
 @Composable
 fun SourceChip(
     sourceName: String,
+    colour: SourceColour? = null,
     size: SourceChipSize = SourceChipSize.Standard,
     width: SourceChipWidth = SourceChipWidth.Natural,
     modifier: Modifier = Modifier,
 ) {
-    val colors = sourcePaletteColors(sourceName)
+    val colors =
+        if (colour == null) sourcePaletteColors(sourceName) else sourcePaletteColors(colour)
     val textStyle =
         when (size) {
             SourceChipSize.Standard -> MaterialTheme.typography.labelLarge
@@ -173,7 +175,9 @@ fun SourceChip(
             modifier = textModifier,
             color = colors.content,
             maxLines = 1,
-            overflow = TextOverflow.Clip,
+            overflow =
+                if (width == SourceChipWidth.Truncated) TextOverflow.Clip
+                else TextOverflow.Ellipsis,
             softWrap = false,
             style = textStyle,
         )

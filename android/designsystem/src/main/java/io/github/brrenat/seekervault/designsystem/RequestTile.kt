@@ -59,6 +59,8 @@ data class RequestTileModel(
     val assetSymbol: String? = null,
     /** Optional source-owned footer copy; kinds use their safe default when absent. */
     val footerText: String? = null,
+    /** The connection's stored marker. Null keeps the source-name hash used by captured tiles. */
+    val sourceColour: SourceColour? = null,
 )
 
 @Composable
@@ -159,6 +161,7 @@ private fun RequestTileHeader(
         }
         SourceChip(
             sourceName = model.sourceName,
+            colour = model.sourceColour,
             size = if (kind.isSignal()) SourceChipSize.Compact else SourceChipSize.Standard,
             modifier = Modifier.widthIn(max = SeekerTheme.spacing.huge * RequestTileSourceMaxUnits),
         )
