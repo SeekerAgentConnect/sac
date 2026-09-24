@@ -210,6 +210,9 @@ importers:
       typescript:
         specifier: 6.0.3
         version: 6.0.3
+      uqr:
+        specifier: 0.1.3
+        version: 0.1.3
 
   skr-staking-server:
     dependencies:

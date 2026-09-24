@@ -30,6 +30,8 @@ import type { AddressInfo } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
+  handlePairingLink,
+  isPairingLinkPath,
   openDirectServer,
   ProviderUnavailable,
   UnsupportedPreparation,
@@ -43,7 +45,7 @@ import { LiveCommandService } from "@seeker-vault/server-sdk/protocol";
 
 import { DEFAULT_SOLANA_RPC_TIMEOUT_MS, type SidecarConfig } from "./config.ts";
 import { createMcpEndpoint, type McpEndpoint } from "./mcp-endpoint.ts";
-import { handlePairingLink, isPairingLinkPath } from "./pairing/link.ts";
+import { PAIRING_PAGE, qrModulePath } from "./pairing/landing-page.ts";
 import {
   PROTECTED_RESOURCE_PATHS,
   protectedResourceMetadata,
@@ -244,6 +246,8 @@ async function serve(
       } else if (isPairingLinkPath(path)) {
         handlePairingLink(req as IncomingMessage, response, {
           publicOrigin: config.publicUrl ?? listeningUrl ?? "",
+          identity: PAIRING_PAGE,
+          qrModulePath,
         });
       } else if (PROTECTED_RESOURCE_PATHS.includes(path)) {
         protectedResource(req, res, config.oauth);

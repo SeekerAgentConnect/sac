@@ -1,6 +1,7 @@
 /**
  * Pairing page behaviour. Runs in the browser against the fragment (the server never sees
- * it) and as a module from MCP tests. No fetch, storage, analytics, or automatic navigation.
+ * it), and as a module from a host's tests. No fetch, storage, analytics, or automatic
+ * navigation.
  */
 import {
   CONDITIONAL_REPLACEMENT_WARNING,

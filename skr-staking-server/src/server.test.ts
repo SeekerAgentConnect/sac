@@ -5,72 +5,16 @@
  * else, which is exactly as much chain as starting up requires. No test here reaches a network.
  */
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { after, describe, it } from "node:test";
-import type { AddressInfo } from "node:net";
 import { MAINNET_GENESIS_HASH } from "./skr/chain.ts";
-import type { Config } from "./config.ts";
+import {
+  configFor,
+  removeTemporaryDirectories,
+  stubCluster,
+} from "./testing/cluster.ts";
 import { startStakingServer } from "./server.ts";
 
-/** A JSON-RPC endpoint that knows which cluster it is and refuses to pretend anything else. */
-async function stubCluster(genesis: string): Promise<{
-  url: string;
-  methods: () => readonly string[];
-  close: () => Promise<void>;
-}> {
-  const methods: string[] = [];
-  const server = createServer((request, response) => {
-    let body = "";
-    request.on("data", (chunk: Buffer) => (body += chunk.toString()));
-    request.on("end", () => {
-      const call = JSON.parse(body) as { id: number; method: string };
-      methods.push(call.method);
-      const result = call.method === "getGenesisHash" ? genesis : null;
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ jsonrpc: "2.0", id: call.id, result }));
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address() as AddressInfo;
-  return {
-    url: `http://127.0.0.1:${port}`,
-    methods: () => methods,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
-  };
-}
-
-const directories: string[] = [];
-
-function configFor(rpcUrl: string): Config {
-  const directory = mkdtempSync(join(tmpdir(), "skr-staking-server-test-"));
-  directories.push(directory);
-  return {
-    host: "127.0.0.1",
-    // Port 0: the listener picks a free one, so concurrent tests cannot collide.
-    port: 0,
-    mcpToken: "t".repeat(64),
-    publicUrl: undefined,
-    dataDirectory: directory,
-    databasePath: join(directory, "skr-staking-server.db"),
-    rpcUrl,
-    rpcTimeoutMs: 2_000,
-    requestTtlSeconds: 3_600,
-    pendingLimit: 10,
-    pairingTokenTtlSeconds: 600,
-    allowedHosts: [],
-    guardian: undefined,
-    h2c: false,
-  };
-}
-
-after(() => {
-  for (const directory of directories) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
+after(removeTemporaryDirectories);
 
 describe("starting the staking server", () => {
   it("refuses to come up against a cluster that is not mainnet-beta", async () => {

@@ -1,9 +1,10 @@
 /**
- * MCP-host HTTPS landing URLs for pairing codes. The custom-scheme URI stays the SDK's
- * `seekervault://pair?...`. Credentials live in the URL fragment so a new landing request
- * has no token in its path or query. The fragment is not encryption.
+ * HTTPS landing URLs for pairing codes, shared by every server that hosts the page (SEE-149).
+ * The custom-scheme URI stays `seekervault://pair?...`. Credentials live in the URL fragment so
+ * a new landing request has no token in its path or query. The fragment is not encryption.
  */
-import { parsePairingUri, type IssuedPairing } from "@seeker-vault/server-sdk";
+import type { IssuedPairing } from "../direct-server.ts";
+import { parsePairingUri } from "./uri.ts";
 
 import {
   CONDITIONAL_REPLACEMENT_WARNING,
@@ -22,6 +23,7 @@ export {
   decodePairingFragment,
   encodePairingFragment,
 };
+export type { FragmentDecode, PairingFragmentPayload };
 
 export function pairingLandingUrl(issued: IssuedPairing): string {
   const expiresAt = new Date(issued.expiresAtMs).toISOString();
@@ -50,9 +52,9 @@ export function landingUrlHasCredential(url: string): boolean {
 }
 
 /**
- * Host-side check used by tests and documentation: decode the fragment, require the SDK's
- * custom-scheme parser to accept the URI, and require the pairing server origin to match
- * this process's configured origin — not a hostname from the fragment alone.
+ * Host-side check used by tests and documentation: decode the fragment, require the custom-scheme
+ * parser to accept the URI, and require the pairing server origin to match this process's
+ * configured origin — not a hostname from the fragment alone.
  */
 export function decodeLandingFragment(
   fragment: string,

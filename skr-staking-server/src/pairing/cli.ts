@@ -13,7 +13,11 @@
  * The pairing code is the one place a token is printed, because printing it is how pairing works.
  */
 import { renderUnicodeCompact } from "uqr";
-import { openDirectServer, type PairedPhone } from "@seeker-vault/server-sdk";
+import {
+  openDirectServer,
+  pairingLandingUrl,
+  type PairedPhone,
+} from "@seeker-vault/server-sdk";
 
 import {
   ConfigError,
@@ -46,9 +50,14 @@ export async function runPairingCommand(
   // No staking provider here: pairing reads and writes this server's own database and reaches no
   // chain. A pairing command that needed an endpoint would be one an operator could not run while
   // their endpoint was down.
+  // Without a configured public URL the phone is expected to reach this server over `adb reverse`,
+  // so the code names the loopback origin it would actually call. An empty origin would not be a
+  // quieter default: a pairing code has to name a URL, and one that names none cannot be issued.
+  const origin =
+    config.publicUrl ?? `http://${loopback(config.host)}:${config.port}`;
   const direct = openDirectServer({
     databasePath: config.databasePath,
-    publicOrigin: config.publicUrl ?? "",
+    publicOrigin: origin,
     requestTtlSeconds: config.requestTtlSeconds,
     pendingLimit: config.pendingLimit,
     pairingTokenTtlSeconds: config.pairingTokenTtlSeconds,
@@ -88,6 +97,9 @@ export async function runPairingCommand(
       "Or enter the code by hand:",
       issued.uri,
       "",
+      "HTTPS landing page (opens a pairing page on this server; the page's button opens the app):",
+      pairingLandingUrl(issued),
+      "",
     ];
     if (new URL(issued.serverUrl).protocol === "http:") {
       lines.push(
@@ -111,6 +123,12 @@ export async function runPairingCommand(
   } finally {
     await direct.close();
   }
+}
+
+/** A wildcard bind has no address a phone could call, so name the loopback one it can. */
+function loopback(host: string): string {
+  if (host === "0.0.0.0" || host === "::") return "127.0.0.1";
+  return host === "::1" ? "[::1]" : host;
 }
 
 function describe(phone: PairedPhone): string {

@@ -15,6 +15,26 @@ actions move no tokens at all.
 - Running and deploying it: [development/skr-staking-server.md](../development/skr-staking-server.md)
 - What was verified against mainnet, and the owner-run lifecycle test: [testing/see-146.md](../testing/see-146.md)
 
+## Connecting the phone to it (SEE-149)
+
+The staking server's pairing is its own: its own database, its own one-use code, and a second
+connection on the phone beside whatever else the owner has added. What changed with SEE-149 is how
+the owner gets that code. An agent connected to this server can call `skr_create_pairing_link` and
+hand them an HTTPS link — `https://<origin>/pair#<fragment>` — instead of the owner needing a shell
+on the host to run `skr-staking-server pair` and read a QR code out of a terminal. It is the same
+flow the general MCP server has had since SEE-140, served by this server at `/pair`, and the page
+says which server it is so two connections are not confused for one.
+
+The page, the fragment codec and what an agent is told about the link live in the SDK
+(`server-sdk/src/pairing/`) and are shared by both servers, so the protections are one
+implementation rather than two: the token is in the fragment and never in a request, a log or
+storage; nothing pairs, revokes or launches on load, copy or QR; a code for another origin or a
+fragment that has been shortened — including one with a literal ellipsis in it — is refused rather
+than half-read.
+
+The staking server imports none of that from `mcp-server`: it uses the public SDK API and nothing
+else, which is what keeps it a server somebody could run without the other one.
+
 ## The four actions, and why they are one message
 
 | Action | What the program does | Does anything move? |

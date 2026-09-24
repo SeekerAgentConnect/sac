@@ -1,12 +1,17 @@
 /**
  * Starting and stopping this server.
  *
- * One listener carries three things: `/healthz`, `/mcp` for the agent, and the Direct Server SDK's
- * phone API for everything else. The SDK owns pairing, the request lifecycle, preparation, results
- * and confirmation — this file only decides which path reaches which handler and hands the SDK the
- * staking provider it should prepare with.
+ * One listener carries four things: `/healthz`, `/mcp` for the agent, `/pair` for the owner's
+ * browser, and the Direct Server SDK's phone API for everything else. The SDK owns pairing, the
+ * pairing page, the request lifecycle, preparation, results and confirmation — this file only
+ * decides which path reaches which handler and hands the SDK the staking provider it should
+ * prepare with.
  */
-import { createServer as createHttpServer } from "node:http";
+import {
+  createServer as createHttpServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { createServer as createH2cServer } from "node:http2";
 import {
   alreadyAnswered,
@@ -19,6 +24,8 @@ import { dirname } from "node:path";
 import {
   ProviderUnavailable,
   UnsupportedPreparation,
+  handlePairingLink,
+  isPairingLinkPath,
   openDirectServer,
   type ConfirmationProvider,
   type DirectServer,
@@ -31,6 +38,7 @@ import { ChainUnavailable, SolanaRpc } from "./skr/chain.ts";
 import { isApprovedTransaction } from "./skr/confirmation.ts";
 import { SkrStakingProvider, UnsupportedStaking } from "./skr/provider.ts";
 import { mcpEndpoint, type McpEndpoint } from "./mcp-endpoint.ts";
+import { PAIRING_PAGE, qrModulePath } from "./pairing/landing-page.ts";
 
 export const VERSION = "0.1.0";
 
@@ -140,6 +148,7 @@ export async function startStakingServer(
     mcp = mcpEndpoint({
       core: direct.requests,
       provider,
+      issuePairing: () => direct.pairing.issue(),
       mcpToken: config.mcpToken,
       allowedHosts: config.allowedHosts,
       version: VERSION,
@@ -165,6 +174,21 @@ export async function startStakingServer(
         });
         return;
       }
+      // The public pairing page. It is served from the configured origin rather than a forwarded
+      // Host header, it issues nothing, and the pairing code it shows arrives in the URL fragment,
+      // which this process never receives.
+      if (isPairingLinkPath(path)) {
+        handlePairingLink(
+          request as IncomingMessage,
+          response as ServerResponse,
+          {
+            publicOrigin: config.publicUrl ?? listeningUrl ?? "",
+            identity: PAIRING_PAGE,
+            qrModulePath,
+          },
+        );
+        return;
+      }
       phone(request, response);
     };
 
@@ -188,7 +212,7 @@ export async function startStakingServer(
     listeningUrl =
       config.publicUrl ?? `http://${displayHost(config.host)}:${port}`;
     log(
-      `listening on ${listeningUrl}; MCP at /mcp, phone API on the same listener`,
+      `listening on ${listeningUrl}; MCP at /mcp, pairing page at /pair, phone API on the same listener`,
     );
 
     const endpoint = mcp;

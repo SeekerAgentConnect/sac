@@ -4,38 +4,27 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const PAGE = fileURLToPath(new URL("./page/", import.meta.url));
-const DIST_PAGE = fileURLToPath(
-  new URL("../../dist/pairing/page/", import.meta.url),
-);
-const STAGED_PAGE = fileURLToPath(
-  new URL("../../package/dist/pairing/page/", import.meta.url),
-);
+/**
+ * After SEE-149 the page itself belongs to the SDK and travels with the vendored copy of it; what
+ * this package still owns is the QR library the page imports. Both have to survive the build, or
+ * the served page loses its script, its stylesheet or its QR code in the packaged artifact only.
+ */
+const DIST = fileURLToPath(new URL("../../dist/", import.meta.url));
+const STAGED = fileURLToPath(new URL("../../package/dist/", import.meta.url));
 
-describe("pairing page assets in source and packaged output", () => {
-  it("keeps the page, codec, and stylesheet next to the handler", () => {
-    for (const name of ["page.js", "page.css", "payload.js"]) {
-      assert.equal(existsSync(join(PAGE, name)), true, name);
-    }
-    const page = readFileSync(join(PAGE, "page.js"), "utf8");
-    assert.doesNotMatch(page, /\bfetch\s*\(/);
-    assert.doesNotMatch(page, /localStorage|sessionStorage/);
-    assert.doesNotMatch(page, /window\.location\s*=/);
-    assert.match(page, /from "\.\/payload\.js"/);
-    assert.match(page, /import\("\.\/uqr\.js"\)/);
-  });
-
-  it("includes those assets and the vendored QR library after a package build", () => {
-    const roots = [DIST_PAGE, STAGED_PAGE].filter((dir) =>
-      existsSync(join(dir, "page.js")),
+describe("pairing page assets in the packaged output", () => {
+  it("vendors the SDK's page and this package's QR library after a package build", () => {
+    const roots = [DIST, STAGED].filter((root) =>
+      existsSync(join(root, "pairing/page/uqr.js")),
     );
     if (roots.length === 0) return;
     for (const root of roots) {
-      for (const name of ["page.js", "page.css", "payload.js", "uqr.js"]) {
-        assert.equal(existsSync(join(root, name)), true, `${root}${name}`);
-      }
-      const qr = readFileSync(join(root, "uqr.js"), "utf8");
+      const qr = readFileSync(join(root, "pairing/page/uqr.js"), "utf8");
       assert.match(qr, /export \{[^}]*renderSVG/);
+      const page = join(root, "vendor/server-sdk/pairing/page");
+      for (const name of ["page.js", "page.css", "payload.js"]) {
+        assert.equal(existsSync(join(page, name)), true, `${page}/${name}`);
+      }
     }
   });
 });

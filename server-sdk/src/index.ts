@@ -93,3 +93,39 @@ export {
   pairingUri,
   parsePairingUri,
 } from "./pairing/uri.ts";
+// The HTTPS pairing link and the page it lands on (SEE-140/SEE-148), shared by every server that
+// offers the owner one (SEE-149). The host registers its own MCP tool and routes its own /pair;
+// what the token travels in, what the page does, and what an agent is told about the link are the
+// same wherever it is served.
+export {
+  CONDITIONAL_REPLACEMENT_WARNING,
+  REPLACEMENT_WARNING,
+  decodeLandingFragment,
+  decodePairingFragment,
+  encodePairingFragment,
+  landingUrlHasCredential,
+  pairingLandingUrl,
+  type FragmentDecode,
+  type PairingFragmentPayload,
+} from "./pairing/landing.ts";
+export {
+  PAIRING_LINK_PATH,
+  SEEKER_MCP_PAIRING_PAGE,
+  handlePairingLink,
+  isPairingLinkPath,
+  type PairingLinkOptions,
+  type PairingPageIdentity,
+} from "./pairing/link.ts";
+export {
+  PAIRING_LINK_FIELDS,
+  humanPairingLink,
+  pairingLinkInstruction,
+  pairingLinkToolDescription,
+  pairingLinkView,
+  type PairingLinkView,
+} from "./pairing/link-text.ts";
+// The page's own browser module, exported so a host can drive the page it serves in a test.
+export {
+  bootPairingPage,
+  trustedOriginFromDocument,
+} from "./pairing/page/page.js";
