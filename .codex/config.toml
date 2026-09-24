@@ -3,3 +3,7 @@ project_doc_fallback_filenames = ["CLAUDE.md"]
 
 [mcp_servers.context7]
 url = "https://mcp.context7.com/mcp"
+
+[mcp_servers.linear]
+url = "https://mcp.linear.app/mcp"
+bearer_token_env_var = "SEE_LINEAR_TOKEN"

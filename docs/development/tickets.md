@@ -18,7 +18,10 @@ looks like work and is not the work.
 
 **1. The project's configured MCP server first.** `.claude/settings.json` enables
 `linear@claude-plugins-official`, so the Linear tools (`get_issue`, `list_comments`,
-`list_issues`, `get_document`, `get_project`, `get_milestone`) are the first and normal path. Read
+`list_issues`, `get_document`, `get_project`, `get_milestone`) are the first and normal path. The
+repository also declares a `linear` server (`https://mcp.linear.app/mcp`) in `.mcp.json` for Claude
+Code and in `.codex/config.toml` for Codex, authenticated with a Linear API key from
+`$SEE_LINEAR_TOKEN` — the path for non-interactive sessions, which cannot complete OAuth. Read
 the whole issue, not the title:
 
 - the description and its acceptance criteria, in full
