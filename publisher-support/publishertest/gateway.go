@@ -57,6 +57,31 @@ type FakeGateway struct {
 	attempts map[string]int
 	// Injected refusals, by procedure name ("PublishProposal"). A nil error lets the call through.
 	Refuse func(procedure string) error
+	// What Heartbeat answers with, in seconds (SEE-150). Zero means the gateway's own default, so
+	// a test that does not care about the interval says nothing about it.
+	HeartbeatSeconds uint32
+}
+
+// Heartbeat is a publisher saying it is running (SEE-150). It publishes nothing, and the fake
+// records it exactly as it records a publication, so a test can count check-ins and assert the
+// credential one carried.
+//
+// A fake that did not serve this would answer `unimplemented`, which is a real answer — an older
+// gateway's — and one the presence loop treats as "stop asking". Both are worth being able to test,
+// so this is here and [FakeGateway.Refuse] can still take it away.
+func (f *FakeGateway) Heartbeat(
+	_ context.Context,
+	request *connect.Request[gatewayv1.HeartbeatRequest],
+) (*connect.Response[gatewayv1.HeartbeatResponse], error) {
+	f.mutex.Lock()
+	f.note("Heartbeat", request.Header().Get("Authorization"))
+	if err := f.refusal("Heartbeat"); err != nil {
+		f.mutex.Unlock()
+		return nil, err
+	}
+	seconds := f.HeartbeatSeconds
+	f.mutex.Unlock()
+	return connect.NewResponse(&gatewayv1.HeartbeatResponse{IntervalSeconds: seconds}), nil
 }
 
 func (f *FakeGateway) PublishRequest(

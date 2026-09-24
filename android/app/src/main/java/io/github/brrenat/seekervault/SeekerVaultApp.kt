@@ -5,8 +5,6 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,7 +37,6 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.SheetMotion
-import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.InboxRoute
 import io.github.brrenat.seekervault.inbox.InboxRouteCallbacks
 import io.github.brrenat.seekervault.inbox.InboxViewModel
@@ -552,11 +549,7 @@ fun SeekerVaultApp(
                     is InAppNotificationTarget.PairAgain -> navigator.openAddConnection()
                 }
             },
-            modifier =
-                Modifier.align(Alignment.TopCenter)
-                    .zIndex(InAppNotificationZIndex)
-                    .statusBarsPadding()
-                    .padding(horizontal = SeekerTheme.spacing.md),
+            modifier = Modifier.align(Alignment.TopCenter).zIndex(InAppNotificationZIndex),
         )
     }
 }
@@ -895,6 +888,7 @@ private fun ConnectionDetailsRoute(
         live = state.updates.connections[id],
         support = state.support[id],
         feed = state.feeds.gateways[connection.serverUrl],
+        availability = state.feedStatus.availabilityOf(id),
     )
 }
 

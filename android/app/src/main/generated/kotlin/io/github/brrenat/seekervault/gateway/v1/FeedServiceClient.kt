@@ -151,4 +151,28 @@ public class FeedServiceClient(
     ),
   )
 
+
+  /**
+   *  Whether each channel's publisher is running right now (SEE-150).
+   *
+   *  Reaching this gateway says nothing about the publisher behind a channel: the gateway keeps
+   *  serving what a publisher last published after that publisher's own server stops. So the two
+   *  are answered separately, and this is the second one. The gateway never contacts a publisher's
+   *  server to find out; a running publisher checks in over the publisher API
+   *  (PublisherService.Heartbeat), and a channel is online while its last check-in is recent.
+   *
+   *  Like a ticket and a topic, the answer is about channels and never about the caller, and asking
+   *  changes nothing.
+   */
+  override suspend fun getFeedStatus(request: GetFeedStatusRequest, headers: Headers): ResponseMessage<GetFeedStatusResponse> = client.unary(
+    request,
+    headers,
+    MethodSpec(
+    "seekervault.gateway.v1.FeedService/GetFeedStatus",
+      io.github.brrenat.seekervault.gateway.v1.GetFeedStatusRequest::class,
+      io.github.brrenat.seekervault.gateway.v1.GetFeedStatusResponse::class,
+      StreamType.UNARY,
+    ),
+  )
+
 }

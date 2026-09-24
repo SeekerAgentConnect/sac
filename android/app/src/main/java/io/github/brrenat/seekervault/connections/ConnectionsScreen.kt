@@ -42,6 +42,7 @@ import io.github.brrenat.seekervault.designsystem.SourceColour
 import io.github.brrenat.seekervault.designsystem.WalletBanner
 import io.github.brrenat.seekervault.designsystem.WalletBannerVariant
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.feeds.FeedAvailability
 import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.inbox.PendingItem
 import io.github.brrenat.seekervault.inbox.RequestAssessment
@@ -359,6 +360,7 @@ fun homeScreenState(
                 connection.toHomeServerState(
                     live = connectionsState.updates.connections[connection.id],
                     feed = connectionsState.feeds.gateways[connection.serverUrl],
+                    availability = connectionsState.feedStatus.availabilityOf(connection.id),
                     pending =
                         newestFirst.count {
                             it is PendingItem.Signal && it.connectionId == connection.id
@@ -459,6 +461,13 @@ private fun transferAmountAndAsset(request: Request): Pair<String, String?> {
 private fun Connection.toHomeServerState(
     live: ForegroundConnectionState?,
     feed: FeedListenerState?,
+    /**
+     * Whether the publisher behind this feed is running, which the gateway answers separately from
+     * being reachable itself (SEE-150). It is read only for a feed, and only once everything about
+     * this phone's own connection is in order: an owner whose gateway is unreachable is told that,
+     * not told to wonder about a publisher this phone has heard nothing about.
+     */
+    availability: FeedAvailability,
     pending: Int,
     support: ServerSupport?,
     formatTime: (Instant) -> String,
@@ -503,10 +512,19 @@ private fun Connection.toHomeServerState(
             ServerRowState.Connected -> {
                 val currentPending =
                     if (mode == ConnectionMode.GatewayFeed) pending else lastCheck?.pending ?: 0
-                if (mode == ConnectionMode.Direct && lastCheck?.morePending == true) {
-                    "Connected · more than $currentPending pending"
-                } else {
-                    "Connected · $currentPending pending"
+                when {
+                    // The row stays Connected — this phone's own connection to the gateway is fine,
+                    // and there is nothing here for the owner to retry — and the line says what is
+                    // actually wrong: the publisher has stopped, so the feed is readable and will
+                    // not
+                    // move (SEE-150). Unknown keeps the ordinary line, because not having been told
+                    // is not evidence of anything.
+                    mode == ConnectionMode.GatewayFeed &&
+                        availability == FeedAvailability.Offline ->
+                        "${HomeCopy.FeedOffline} · $currentPending pending"
+                    mode == ConnectionMode.Direct && lastCheck?.morePending == true ->
+                        "Connected · more than $currentPending pending"
+                    else -> "Connected · $currentPending pending"
                 }
             }
         }
@@ -596,6 +614,12 @@ object HomeCopy {
     const val Disconnected = "Disconnected · pair again to reconnect"
     const val Reconnecting = "Reconnecting"
     const val Unreachable = "Couldn’t reach the server"
+    /**
+     * The feed's own server, not the gateway (SEE-150). Two words, because a row has one line and
+     * shares it with the pending count; the sentence that says the published signals are still
+     * readable is on the connection's own screen, where there is room for it.
+     */
+    const val FeedOffline = "Feed offline"
     const val ServerInitial = "S"
 }
 

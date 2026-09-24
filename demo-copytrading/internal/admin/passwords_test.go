@@ -17,7 +17,7 @@ func TestHashLineIsANamedBcryptRow(t *testing.T) {
 	if !found || name != "judge1" || !validHash(hash) {
 		t.Fatalf("line %q", line)
 	}
-	file := writePasswords(t, line+"\n")
+	file := passwordsFile(t, line+"\n")
 	if !file.Check("judge1", "correct-horse") {
 		t.Fatal("the hashed password was not accepted")
 	}
@@ -27,7 +27,7 @@ func TestHashLineIsANamedBcryptRow(t *testing.T) {
 }
 
 func TestUnknownNamesUseTheSameRefusalAsAWrongPassword(t *testing.T) {
-	file := writePasswords(t, mustHash(t, "alice", "secret")+"\n")
+	file := passwordsFile(t, mustHash(t, "alice", "secret")+"\n")
 	if file.Check("bob", "secret") {
 		t.Fatal("an unknown name was accepted")
 	}
@@ -74,7 +74,10 @@ func TestANameMustBeASingleToken(t *testing.T) {
 	}
 }
 
-func writePasswords(t *testing.T, contents string) *File {
+// Named for what it returns rather than for what it does, because `writePasswords` is already a
+// function in this package (config.go) and a test file shares its package: two declarations of one
+// name stop the package's tests compiling, which is how this was found.
+func passwordsFile(t *testing.T, contents string) *File {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "admin-passwords")
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {

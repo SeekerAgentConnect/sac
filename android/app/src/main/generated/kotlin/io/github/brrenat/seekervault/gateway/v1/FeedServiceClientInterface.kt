@@ -76,4 +76,18 @@ public interface FeedServiceClientInterface {
    *  owns topic membership, and the gateway is not told who joined (docs/security.md).
    */
   public suspend fun getFeedTopics(request: GetFeedTopicsRequest, headers: Headers = emptyMap()): ResponseMessage<GetFeedTopicsResponse>
+
+  /**
+   *  Whether each channel's publisher is running right now (SEE-150).
+   *
+   *  Reaching this gateway says nothing about the publisher behind a channel: the gateway keeps
+   *  serving what a publisher last published after that publisher's own server stops. So the two
+   *  are answered separately, and this is the second one. The gateway never contacts a publisher's
+   *  server to find out; a running publisher checks in over the publisher API
+   *  (PublisherService.Heartbeat), and a channel is online while its last check-in is recent.
+   *
+   *  Like a ticket and a topic, the answer is about channels and never about the caller, and asking
+   *  changes nothing.
+   */
+  public suspend fun getFeedStatus(request: GetFeedStatusRequest, headers: Headers = emptyMap()): ResponseMessage<GetFeedStatusResponse>
 }

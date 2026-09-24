@@ -355,3 +355,56 @@
   authorized where the old code refused it. Validate the **pair**, and do it on every path that
   reads the old name — parse, stored-row decode, and the gate before signing. A registry lookup is
   not a substitute: it will answer for any name the provider declares.
+
+## Window insets, and tests that measure them
+
+- **Insets belong to the host, not to a design-system component** (SEE-150). Putting
+  `windowInsetsPadding` in `:designsystem`'s `SheetScaffold` moved the stacked-sheet Roborazzi
+  reference: the preview host reports a navigation bar, so the component wrote a *simulated* system
+  bar into its own design golden — which then no longer matches the design export it is paired with.
+  A presentation component should be window-agnostic; the one layer that hosts every instance is
+  where the safe area is applied. `windowInsetsPadding` also consumes what it applies, so a host
+  doing it means nothing nested can pad for the same bar twice.
+- **A Roborazzi golden failing in a full run but passing alone is usually stale build state, not a
+  regression.** Reverting the cause and re-running only the preview tests proves nothing, because
+  that reproduces the isolated condition. Re-run the whole module with `--rerun-tasks` before
+  concluding anything, and get a baseline from a clean `origin/master` worktree before calling a
+  failure pre-existing *or* new — on this branch both answers were needed, and both were wrong the
+  first time.
+- **Compose installs its window-insets listener when something first reads insets** (SEE-150). A
+  test that dispatches `WindowInsets` before the composable under test exists reaches nothing, and
+  the subject then measures against zero. That is invisible when a sibling test asserts the
+  zero-inset case: the broken test fails against the right number for the wrong reason. Dispatch
+  after the subject is on screen, and use the platform `View.dispatchApplyWindowInsets` —
+  `ViewCompat.dispatchApplyWindowInsets` did not reach Compose here.
+
+## Presence, and answers that are true but not the question
+
+- **"Can I reach the intermediary" is not "is the origin running"** (SEE-150). The gateway keeps
+  serving what a publisher last published after that publisher's process is gone, so a phone that
+  could reach the gateway was shown a dead feed as connected. Nothing failed; only a person looking
+  at a phone could notice. When two facts are routinely used as one, give them two states, two
+  reads and two lines of copy, and never derive one from the other — including in the failure
+  direction: a gateway that cannot be reached must not be reported as a publisher that has stopped.
+- **The absence of an answer is its own value, and it must not collapse into the good one.**
+  `Unknown` is separate from `Offline` so nothing has to decide which "no answer" means — and
+  emphatically separate from `Online`, because folding an unreadable enum value into "running" is
+  the original bug arriving by another route. A wire enum's unspecified zero, and any value a build
+  does not recognise, both land on unknown.
+- **A presence window is a multiple of the interval, derived and not configured.** One lost check-in
+  over somebody else's network must not flip a running feed offline on every phone reading it, and a
+  separately configured window lets an operator set one shorter than the interval — which shows every
+  feed offline for ever and looks exactly like a feature nobody turned on.
+- **"Never happened" and "happened at the epoch" are different facts.** The new `last_seen_at_ms`
+  column is nullable for that reason, the opposite of the choice the `host` column made where the
+  two genuinely were one fact. Both read as offline today; only one of them would still be right if
+  the window ever grew.
+
+## Advertising a capability is not serving it
+
+- **Serving a route and telling the client where it is are two separate pieces of work** (SEE-150).
+  `skr-staking-server` served `UpdateService` and never advertised an update origin, so `Pair` came
+  back with no update capability, the phone never subscribed, and requests sat unseen until a manual
+  refresh — which worked, so nothing looked broken. When a client only acts on what it was told at
+  handshake time, a test that the handler responds proves nothing; assert what the handshake
+  *advertises*.

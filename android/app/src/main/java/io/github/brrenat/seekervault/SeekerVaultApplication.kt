@@ -21,6 +21,7 @@ import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.feeds.CentrifugoFeedStream
 import io.github.brrenat.seekervault.feeds.ConnectFeedGateway
+import io.github.brrenat.seekervault.feeds.FeedStatusManager
 import io.github.brrenat.seekervault.feeds.FeedStream
 import io.github.brrenat.seekervault.feeds.ForegroundFeedManager
 import io.github.brrenat.seekervault.feeds.RepositoryFeedHost
@@ -437,6 +438,23 @@ class SeekerVaultApplication : Application() {
             tickets = feedGateway(),
             stream = feedStream(),
             cursors = feedCursors,
+            dispatcher = connectionIo,
+        )
+    }
+
+    /**
+     * Whether the publisher behind each feed is running, for as long as the app is being looked at
+     * (SEE-150).
+     *
+     * Beside [foregroundFeeds] rather than inside it, because it answers the other question: that
+     * one is whether this phone reaches the gateway, this one is whether the server behind a
+     * channel is up, and the bug was treating the first as evidence for the second. It reads the
+     * same gateway client, because it is the same endpoint.
+     */
+    val foregroundFeedStatus: FeedStatusManager by lazy {
+        FeedStatusManager(
+            connections = connectionRepository.connections,
+            statuses = feedGateway(),
             dispatcher = connectionIo,
         )
     }

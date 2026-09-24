@@ -80,7 +80,7 @@ func Build(
 	reads := NewLimiter(settings.ReadRate, settings.ReadBurst, now)
 	readMux := http.NewServeMux()
 	readMux.Handle(gatewayv1connect.NewFeedServiceHandler(
-		NewFeed(from, now, grants, topics),
+		NewFeed(from, now, grants, topics, PresenceWindow(settings.Heartbeat)),
 		connect.WithReadMaxBytes(MostBytes),
 		connect.WithCodec(strictJSON{}),
 		connect.WithInterceptors(
@@ -135,7 +135,7 @@ func Build(
 	publishes := NewLimiter(settings.PublishRate, settings.PublishBurst, now)
 	publishMux := http.NewServeMux()
 	publishMux.Handle(gatewayv1connect.NewPublisherServiceHandler(
-		NewPublisher(from, settings.PublicURL, settings.MaxProposals, now, drainer.Wake),
+		NewPublisher(from, settings.PublicURL, settings.MaxProposals, settings.Heartbeat, now, drainer.Wake),
 		connect.WithReadMaxBytes(MostBytes),
 		connect.WithCodec(strictJSON{}),
 		connect.WithInterceptors(
@@ -143,6 +143,11 @@ func Build(
 			Authenticating(from),
 			Limiting(publishes, func(ctx context.Context, _ connect.AnyRequest) string {
 				return publisherOf(ctx)
+			}),
+			// Last, so that a call which got as far as being this publisher's and within its rate
+			// is what counts as evidence the publisher is running (SEE-150, presence.go).
+			CheckingIn(from, now, func(err error) {
+				log.Warn("a publisher check-in was not recorded", "error", err)
 			}),
 		),
 	))

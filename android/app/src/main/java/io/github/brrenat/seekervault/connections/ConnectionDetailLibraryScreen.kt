@@ -20,6 +20,7 @@ import io.github.brrenat.seekervault.designsystem.ConnectionDetailSheetState
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailStatus
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailStatusTone
 import io.github.brrenat.seekervault.designsystem.FactRowValueStyle
+import io.github.brrenat.seekervault.feeds.FeedAvailability
 import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -52,8 +53,13 @@ fun ConnectionDetailLibraryScreen(
     live: ForegroundConnectionState? = null,
     support: ServerSupport? = null,
     feed: FeedListenerState? = null,
+    /**
+     * Whether the publisher behind this feed is running, which the gateway answers separately from
+     * being reachable itself (SEE-150).
+     */
+    availability: FeedAvailability = FeedAvailability.Unknown,
 ) {
-    val problem = hasProblem(connection, live, support, feed)
+    val problem = hasProblem(connection, live, support, feed, availability)
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(message, snackbar, onMessageShown)
     var renaming by rememberSaveable { mutableStateOf(false) }
@@ -83,7 +89,7 @@ fun ConnectionDetailLibraryScreen(
                         },
                     status =
                         ConnectionDetailStatus(
-                            headline = statusText(connection, live, support, feed),
+                            headline = statusText(connection, live, support, feed, availability),
                             supportingText =
                                 connection.lastCheck?.let { "Checked ${formatInstant(it.at)}" },
                             tone =

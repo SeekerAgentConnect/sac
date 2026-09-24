@@ -65,6 +65,9 @@ const (
 	// PublisherServiceCancelProposalProcedure is the fully-qualified name of the PublisherService's
 	// CancelProposal RPC.
 	PublisherServiceCancelProposalProcedure = "/seekervault.gateway.v1.PublisherService/CancelProposal"
+	// PublisherServiceHeartbeatProcedure is the fully-qualified name of the PublisherService's
+	// Heartbeat RPC.
+	PublisherServiceHeartbeatProcedure = "/seekervault.gateway.v1.PublisherService/Heartbeat"
 )
 
 // PublisherServiceClient is a client for the seekervault.gateway.v1.PublisherService service.
@@ -85,6 +88,12 @@ type PublisherServiceClient interface {
 	// has to cancel may no longer hold what it published — and because the gateway is then the only
 	// thing that writes the transition, in one place, from one state.
 	CancelProposal(context.Context, *connect.Request[v1.CancelProposalRequest]) (*connect.Response[v1.CancelProposalResponse], error)
+	// Say that this publisher's server is running (SEE-150). The gateway never contacts a
+	// publisher's server, so this is how a phone can be told a feed is online rather than only that
+	// the gateway is: every authenticated call here counts as a check-in, and a publisher with
+	// nothing to publish calls this on the interval the answer names. A publisher that stops calling
+	// is shown offline once the gateway's presence window passes.
+	Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error)
 }
 
 // NewPublisherServiceClient constructs a client for the seekervault.gateway.v1.PublisherService
@@ -128,6 +137,12 @@ func NewPublisherServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(publisherServiceMethods.ByName("CancelProposal")),
 			connect.WithClientOptions(opts...),
 		),
+		heartbeat: connect.NewClient[v1.HeartbeatRequest, v1.HeartbeatResponse](
+			httpClient,
+			baseURL+PublisherServiceHeartbeatProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("Heartbeat")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -138,6 +153,7 @@ type publisherServiceClient struct {
 	cancelRequest   *connect.Client[v1.CancelRequestRequest, v1.CancelRequestResponse]
 	publishProposal *connect.Client[v1.PublishProposalRequest, v1.PublishProposalResponse]
 	cancelProposal  *connect.Client[v1.CancelProposalRequest, v1.CancelProposalResponse]
+	heartbeat       *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
 }
 
 // PublishManifest calls seekervault.gateway.v1.PublisherService.PublishManifest.
@@ -165,6 +181,11 @@ func (c *publisherServiceClient) CancelProposal(ctx context.Context, req *connec
 	return c.cancelProposal.CallUnary(ctx, req)
 }
 
+// Heartbeat calls seekervault.gateway.v1.PublisherService.Heartbeat.
+func (c *publisherServiceClient) Heartbeat(ctx context.Context, req *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error) {
+	return c.heartbeat.CallUnary(ctx, req)
+}
+
 // PublisherServiceHandler is an implementation of the seekervault.gateway.v1.PublisherService
 // service.
 type PublisherServiceHandler interface {
@@ -184,6 +205,12 @@ type PublisherServiceHandler interface {
 	// has to cancel may no longer hold what it published — and because the gateway is then the only
 	// thing that writes the transition, in one place, from one state.
 	CancelProposal(context.Context, *connect.Request[v1.CancelProposalRequest]) (*connect.Response[v1.CancelProposalResponse], error)
+	// Say that this publisher's server is running (SEE-150). The gateway never contacts a
+	// publisher's server, so this is how a phone can be told a feed is online rather than only that
+	// the gateway is: every authenticated call here counts as a check-in, and a publisher with
+	// nothing to publish calls this on the interval the answer names. A publisher that stops calling
+	// is shown offline once the gateway's presence window passes.
+	Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error)
 }
 
 // NewPublisherServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -223,6 +250,12 @@ func NewPublisherServiceHandler(svc PublisherServiceHandler, opts ...connect.Han
 		connect.WithSchema(publisherServiceMethods.ByName("CancelProposal")),
 		connect.WithHandlerOptions(opts...),
 	)
+	publisherServiceHeartbeatHandler := connect.NewUnaryHandler(
+		PublisherServiceHeartbeatProcedure,
+		svc.Heartbeat,
+		connect.WithSchema(publisherServiceMethods.ByName("Heartbeat")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/seekervault.gateway.v1.PublisherService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PublisherServicePublishManifestProcedure:
@@ -235,6 +268,8 @@ func NewPublisherServiceHandler(svc PublisherServiceHandler, opts ...connect.Han
 			publisherServicePublishProposalHandler.ServeHTTP(w, r)
 		case PublisherServiceCancelProposalProcedure:
 			publisherServiceCancelProposalHandler.ServeHTTP(w, r)
+		case PublisherServiceHeartbeatProcedure:
+			publisherServiceHeartbeatHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -262,4 +297,8 @@ func (UnimplementedPublisherServiceHandler) PublishProposal(context.Context, *co
 
 func (UnimplementedPublisherServiceHandler) CancelProposal(context.Context, *connect.Request[v1.CancelProposalRequest]) (*connect.Response[v1.CancelProposalResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.CancelProposal is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.Heartbeat is not implemented"))
 }

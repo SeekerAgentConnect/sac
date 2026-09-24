@@ -185,6 +185,15 @@ func run(log *slog.Logger) error {
 		drainer.Run(ctx)
 	}()
 
+	// Telling the gateway this process is running, so a phone can be shown that this feed is
+	// online and not merely that the gateway is (SEE-150). It publishes nothing; a publisher with
+	// signals to send has already checked in by sending them.
+	checked := make(chan struct{})
+	go func() {
+		defer close(checked)
+		publish.NewPresence(publish.PresencePlan{Gateway: gateway, Log: log}).Run(ctx)
+	}()
+
 	failed := make(chan error, 1)
 	go func() {
 		log.Info("the API is listening", "address", settings.APIAddress)
@@ -206,5 +215,6 @@ func run(log *slog.Logger) error {
 	defer cancel()
 	err = service.Shutdown(shutdown)
 	<-drained
+	<-checked
 	return err
 }

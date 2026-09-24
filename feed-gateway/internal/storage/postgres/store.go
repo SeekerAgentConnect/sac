@@ -69,7 +69,7 @@ import (
 // The lineage is this implementation's own and starts at 1. It is not SQLite's version 5 renamed:
 // nothing has ever migrated between the two, and a Postgres database is created at the shape the
 // current release needs rather than by replaying five years of somebody else's history.
-const Version = 1
+const Version = 2
 
 // Schema is the namespace every statement in this package qualifies. It is deliberately not
 // public: see the package comment.
@@ -231,6 +231,8 @@ func (s *Store) migrate(ctx context.Context) error {
 			switch version + 1 {
 			case 1:
 				migration = schemaV1
+			case 2:
+				migration = schemaV2
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -363,6 +365,20 @@ ALTER TABLE ` + Schema + `.channel_sequence     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ` + Schema + `.notice               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ` + Schema + `.relay_installation   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ` + Schema + `.relay_binding        ENABLE ROW LEVEL SECURITY;
+`
+
+// schemaV2 is publisher presence (SEE-150), the same column the SQLite store adds at its version 6
+// and nullable for the same reason: a registration that has never checked in is not one that
+// checked in at the epoch.
+//
+// It is a migration rather than a line inside schemaV1, although this store creates the current
+// shape from scratch. schemaV1 has already been applied to a live database, and a constant that is
+// edited after that is a constant whose meaning depends on when it was read — the deployment that
+// ran the old text would never get the column, because its version row already says 1.
+//
+// No ENABLE ROW LEVEL SECURITY here: that is per table, and this adds none.
+const schemaV2 = `
+ALTER TABLE ` + Schema + `.publisher ADD COLUMN last_seen_at_ms BIGINT;
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

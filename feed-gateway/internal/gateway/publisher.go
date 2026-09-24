@@ -32,6 +32,10 @@ type Publisher struct {
 	// hint: the notice is already durable, so a wake-up that is lost costs a delay and never a
 	// delivery (internal/dispatch).
 	wake func()
+	// How often this gateway asks a publisher to check in, which is what Heartbeat answers with
+	// (SEE-150, presence.go). The window a feed is shown online for is three of these, derived
+	// where it is read rather than configured separately.
+	heartbeat time.Duration
 }
 
 // PublishRequest is the primary developer publication operation. The older proposal RPC below is
@@ -169,13 +173,21 @@ func NewPublisher(
 	into storage.PublicationStore,
 	gatewayURL string,
 	mostProposals int,
+	heartbeat time.Duration,
 	now func() time.Time,
 	wake func(),
 ) *Publisher {
 	if wake == nil {
 		wake = func() {}
 	}
-	return &Publisher{storage: into, gateway: gatewayURL, most: mostProposals, now: now, wake: wake}
+	return &Publisher{
+		storage:   into,
+		gateway:   gatewayURL,
+		most:      mostProposals,
+		heartbeat: heartbeat,
+		now:       now,
+		wake:      wake,
+	}
 }
 
 func (p *Publisher) expectation(ctx context.Context) rules.Expectation {

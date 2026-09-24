@@ -47,9 +47,8 @@ func TestAPublicationDoesNotSucceedOrWakeWhenTheCommitFails(t *testing.T) {
 	t.Cleanup(func() { _ = documents.Close() })
 
 	wakes := 0
-	publisher := NewPublisher(commitFailure{documents}, gatewayURL, 200, time.Now, func() {
-		wakes++
-	})
+	publisher := NewPublisher(commitFailure{documents}, gatewayURL, 200, 30*time.Second, time.Now,
+		func() { wakes++ })
 	ctx := context.WithValue(context.Background(), publisherKey{}, serverID)
 	_, err = publisher.PublishManifest(ctx, connect.NewRequest(&gatewayv1.PublishManifestRequest{
 		Manifest: &serverv1.ServerManifest{

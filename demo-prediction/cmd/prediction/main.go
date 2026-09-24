@@ -222,6 +222,15 @@ func run(log *slog.Logger) error {
 		defer close(drained)
 		drainer.Run(ctx)
 	}()
+
+	// Telling the gateway this process is running, so a phone can be shown that this feed is
+	// online and not merely that the gateway is (SEE-150). It publishes nothing; a publisher with
+	// markets to publish has already checked in by publishing them.
+	checked := make(chan struct{})
+	go func() {
+		defer close(checked)
+		publish.NewPresence(publish.PresencePlan{Gateway: gateway, Log: log}).Run(ctx)
+	}()
 	// The reconciler's first cycle is at startup rather than after the first interval: an operator
 	// who has just changed a filter wants to see what it matches now.
 	reconciled := make(chan struct{})
@@ -252,5 +261,6 @@ func run(log *slog.Logger) error {
 	err = service.Shutdown(shutdown)
 	<-drained
 	<-reconciled
+	<-checked
 	return err
 }
