@@ -111,4 +111,38 @@ about it — the phone re-derives every address it checks and reads every instru
 
 ## Review
 
-_Filled in at the end._
+Everything the ticket asks for is in, and the stages above are all done. What changed after the
+plan was written:
+
+- **Stage B's packaging was finished last.** The server had its code and tests before it had a
+  `Dockerfile`, a `.env.example`, a `README`, a `LICENSE` or a compose project. All five are here
+  now, and `scripts/check-deployments.mjs` carries a `skr staking` preset plus two assertions that
+  are really about the ticket's "runs independently": the server's `.env.example` may not reuse one
+  of the general server's variable names, and its default port may not be the general server's.
+- **Four checks were missing from the phone's inspection and were added.** An amount on a cancel or
+  a withdrawal was accepted and ignored, where the protocol says it must be refused; the guardian
+  pool's own `guardian` field was never compared against the derived one; the instructions' fixed
+  account positions — the program's own ID, its event authority, the token and system programs —
+  were carried past unchecked; and `checkOthers` ended in a dead `if (reading == null) return`
+  whose parameter had no other use. `StakingFinding.UnexpectedAccount` is the one new finding.
+- **Three boundary tests and one fixture test had to be told about the new package.**
+  `readingATransactionStaysInOnePackageAndOnlyReads` now admits `skr/` beside `jupiter/` as a
+  *caller* of the one decoder and still refuses a second parser; the policy package's exact import
+  list gained the two reads it makes of `skr/`; a comment in `SkrProgram.kt` was reworded because
+  `nothingSpendsSwapsOrAsksForABiometricOfItsOwn` greps raw lines for `mainnet-beta` and a guard
+  against a hardcoded endpoint is worth more than that phrasing. `RequestProtocolFixturesTest` now
+  covers the two staking fixtures the protocol commit added.
+- **The fake gateway did not know about staking.** It refused to prepare a non-transfer request and
+  refused to accept an approval for one, so the first ViewModel test showed `NotApproved` rather
+  than a wallet hand-off. Both now treat a staking action exactly as they treat a transfer,
+  including the stale-preparation refusal.
+
+## What was not done, and why
+
+- **No physical-device run and no real mainnet action.** Both are ticket constraints. The owner-run
+  lifecycle guide is `docs/testing/see-146.md`, including the 48-hour wait.
+- **`docker build` and `pnpm check:deployments` were not run**: no Docker daemon on this host. The
+  Dockerfile and compose project mirror `mcp-server`'s, which is verified in CI.
+- **No npm package gate.** `mcp-server` has one (`pnpm test:mcp-server-package`) because it is
+  published as an executable tarball. This server is deployed from source or as an image, which is
+  what the ticket asks for, so a tarball gate would be a gate over a thing that does not ship.
