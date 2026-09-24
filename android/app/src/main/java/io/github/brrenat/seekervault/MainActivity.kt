@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
                     repository = app.connectionRepository,
                     foregroundUpdates = app.foregroundUpdates.state,
                     foregroundFeeds = app.foregroundFeeds.state,
+                    foregroundFeedStatus = app.foregroundFeedStatus.state,
                     cleartextPermitted = app::isCleartextPermitted,
                     // The one registry for the process, so a server's requirements are matched
                     // against the same plugins here as when a request is reviewed (SEE-88).
@@ -213,6 +214,10 @@ class MainActivity : ComponentActivity() {
         // The feeds' own listener, which is a separate transport to a separate service and shares
         // no state with the one above (SEE-91).
         (application as SeekerVaultApplication).foregroundFeeds.onForeground()
+        // And whether the publishers behind those feeds are running, which is the other question
+        // and
+        // the one a reachable gateway says nothing about (SEE-150).
+        (application as SeekerVaultApplication).foregroundFeedStatus.onForeground()
         viewModel.onAppVisible()
         connections.onAppVisible()
         // Also after coming back from the wallet app: an approval whose answer never arrived is
@@ -231,6 +236,7 @@ class MainActivity : ComponentActivity() {
         if (!isChangingConfigurations) {
             (application as SeekerVaultApplication).foregroundUpdates.onBackground()
             (application as SeekerVaultApplication).foregroundFeeds.onBackground()
+            (application as SeekerVaultApplication).foregroundFeedStatus.onBackground()
             viewModel.onAppHidden()
             connections.onAppHidden()
             wallet.onAppHidden()

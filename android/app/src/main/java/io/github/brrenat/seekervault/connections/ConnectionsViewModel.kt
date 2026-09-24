@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.connections
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.brrenat.seekervault.feeds.FeedStatusState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
@@ -46,6 +47,15 @@ data class ConnectionsUiState(
     val updates: ForegroundUpdatesState = ForegroundUpdatesState(),
     /** Current shared-feed transport liveness, keyed by gateway origin. */
     val feeds: ForegroundFeedsState = ForegroundFeedsState(),
+    /**
+     * Whether the publisher behind each feed is running, by connection ID (SEE-150).
+     *
+     * Deliberately a second state beside [feeds] rather than a field folded into it: that one is
+     * whether this phone reaches the gateway, this one is whether the server behind a channel is
+     * up, and a gateway that answers is no evidence at all for the second. A feed nothing has been
+     * heard about is [io.github.brrenat.seekervault.feeds.FeedAvailability.Unknown], never online.
+     */
+    val feedStatus: FeedStatusState = FeedStatusState(),
     /**
      * Whether this build supports each connection's server, by connection ID (SEE-88). It is worked
      * out here from the manifest the connection caches and the plugins compiled into this build,
@@ -160,6 +170,7 @@ class ConnectionsViewModel(
     private val repository: ConnectionRepository,
     private val foregroundUpdates: StateFlow<ForegroundUpdatesState>? = null,
     private val foregroundFeeds: StateFlow<ForegroundFeedsState>? = null,
+    private val foregroundFeedStatus: StateFlow<FeedStatusState>? = null,
     /** The bundled client plugins this build carries, which is what a manifest is matched to. */
     private val plugins: ProviderRegistry = ProviderRegistry.of(),
     /** A seam for the add flow's state tests; production always uses the repository method. */
@@ -193,6 +204,11 @@ class ConnectionsViewModel(
         foregroundFeeds?.let { feeds ->
             viewModelScope.launch {
                 feeds.collect { current -> _state.update { it.copy(feeds = current) } }
+            }
+        }
+        foregroundFeedStatus?.let { availability ->
+            viewModelScope.launch {
+                availability.collect { current -> _state.update { it.copy(feedStatus = current) } }
             }
         }
         viewModelScope.launch {

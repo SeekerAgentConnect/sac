@@ -235,6 +235,12 @@ importers:
         specifier: 'catalog:'
         version: 4.6.1
     devDependencies:
+      '@connectrpc/connect':
+        specifier: 2.2.0
+        version: 2.2.0(@bufbuild/protobuf@2.14.1)
+      '@connectrpc/connect-node':
+        specifier: 2.2.0
+        version: 2.2.0(@bufbuild/protobuf@2.14.1)(@connectrpc/connect@2.2.0(@bufbuild/protobuf@2.14.1))
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.4

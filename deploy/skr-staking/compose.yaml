@@ -24,6 +24,11 @@ services:
       SKR_STAKING_PAIRING_TOKEN_TTL_SECONDS: ${SKR_STAKING_PAIRING_TOKEN_TTL_SECONDS:-}
       SKR_STAKING_ALLOWED_HOSTS: ${SKR_STAKING_ALLOWED_HOSTS:-}
       SKR_STAKING_GUARDIAN: ${SKR_STAKING_GUARDIAN:-}
+      # The gateway push relay (SEE-144). All three or none; the server names the partial one at
+      # startup rather than running as a server that looks like it wakes phones and never does.
+      SKR_STAKING_RELAY_URL: ${SKR_STAKING_RELAY_URL:-}
+      SKR_STAKING_RELAY_SERVER_ID: ${SKR_STAKING_RELAY_SERVER_ID:-}
+      SKR_STAKING_RELAY_CREDENTIAL: ${SKR_STAKING_RELAY_CREDENTIAL:-}
     ports:
       - "${SKR_STAKING_SERVER_BIND:-127.0.0.1}:${SKR_STAKING_SERVER_PORT:-8090}:8090"
     networks:

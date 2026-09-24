@@ -70,6 +70,9 @@ const (
 	// FeedServiceGetFeedTopicsProcedure is the fully-qualified name of the FeedService's GetFeedTopics
 	// RPC.
 	FeedServiceGetFeedTopicsProcedure = "/seekervault.gateway.v1.FeedService/GetFeedTopics"
+	// FeedServiceGetFeedStatusProcedure is the fully-qualified name of the FeedService's GetFeedStatus
+	// RPC.
+	FeedServiceGetFeedStatusProcedure = "/seekervault.gateway.v1.FeedService/GetFeedStatus"
 )
 
 // FeedServiceClient is a client for the seekervault.gateway.v1.FeedService service.
@@ -118,6 +121,17 @@ type FeedServiceClient interface {
 	// holding its name grants nothing, and subscribing to it says nothing to this gateway — Firebase
 	// owns topic membership, and the gateway is not told who joined (docs/security.md).
 	GetFeedTopics(context.Context, *connect.Request[v1.GetFeedTopicsRequest]) (*connect.Response[v1.GetFeedTopicsResponse], error)
+	// Whether each channel's publisher is running right now (SEE-150).
+	//
+	// Reaching this gateway says nothing about the publisher behind a channel: the gateway keeps
+	// serving what a publisher last published after that publisher's own server stops. So the two
+	// are answered separately, and this is the second one. The gateway never contacts a publisher's
+	// server to find out; a running publisher checks in over the publisher API
+	// (PublisherService.Heartbeat), and a channel is online while its last check-in is recent.
+	//
+	// Like a ticket and a topic, the answer is about channels and never about the caller, and asking
+	// changes nothing.
+	GetFeedStatus(context.Context, *connect.Request[v1.GetFeedStatusRequest]) (*connect.Response[v1.GetFeedStatusResponse], error)
 }
 
 // NewFeedServiceClient constructs a client for the seekervault.gateway.v1.FeedService service. By
@@ -173,6 +187,12 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("GetFeedTopics")),
 			connect.WithClientOptions(opts...),
 		),
+		getFeedStatus: connect.NewClient[v1.GetFeedStatusRequest, v1.GetFeedStatusResponse](
+			httpClient,
+			baseURL+FeedServiceGetFeedStatusProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("GetFeedStatus")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -185,6 +205,7 @@ type feedServiceClient struct {
 	getProposal       *connect.Client[v1.GetProposalRequest, v1.GetProposalResponse]
 	getStreamTicket   *connect.Client[v1.GetStreamTicketRequest, v1.GetStreamTicketResponse]
 	getFeedTopics     *connect.Client[v1.GetFeedTopicsRequest, v1.GetFeedTopicsResponse]
+	getFeedStatus     *connect.Client[v1.GetFeedStatusRequest, v1.GetFeedStatusResponse]
 }
 
 // GetServerManifest calls seekervault.gateway.v1.FeedService.GetServerManifest.
@@ -220,6 +241,11 @@ func (c *feedServiceClient) GetStreamTicket(ctx context.Context, req *connect.Re
 // GetFeedTopics calls seekervault.gateway.v1.FeedService.GetFeedTopics.
 func (c *feedServiceClient) GetFeedTopics(ctx context.Context, req *connect.Request[v1.GetFeedTopicsRequest]) (*connect.Response[v1.GetFeedTopicsResponse], error) {
 	return c.getFeedTopics.CallUnary(ctx, req)
+}
+
+// GetFeedStatus calls seekervault.gateway.v1.FeedService.GetFeedStatus.
+func (c *feedServiceClient) GetFeedStatus(ctx context.Context, req *connect.Request[v1.GetFeedStatusRequest]) (*connect.Response[v1.GetFeedStatusResponse], error) {
+	return c.getFeedStatus.CallUnary(ctx, req)
 }
 
 // FeedServiceHandler is an implementation of the seekervault.gateway.v1.FeedService service.
@@ -268,6 +294,17 @@ type FeedServiceHandler interface {
 	// holding its name grants nothing, and subscribing to it says nothing to this gateway — Firebase
 	// owns topic membership, and the gateway is not told who joined (docs/security.md).
 	GetFeedTopics(context.Context, *connect.Request[v1.GetFeedTopicsRequest]) (*connect.Response[v1.GetFeedTopicsResponse], error)
+	// Whether each channel's publisher is running right now (SEE-150).
+	//
+	// Reaching this gateway says nothing about the publisher behind a channel: the gateway keeps
+	// serving what a publisher last published after that publisher's own server stops. So the two
+	// are answered separately, and this is the second one. The gateway never contacts a publisher's
+	// server to find out; a running publisher checks in over the publisher API
+	// (PublisherService.Heartbeat), and a channel is online while its last check-in is recent.
+	//
+	// Like a ticket and a topic, the answer is about channels and never about the caller, and asking
+	// changes nothing.
+	GetFeedStatus(context.Context, *connect.Request[v1.GetFeedStatusRequest]) (*connect.Response[v1.GetFeedStatusResponse], error)
 }
 
 // NewFeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -319,6 +356,12 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("GetFeedTopics")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceGetFeedStatusHandler := connect.NewUnaryHandler(
+		FeedServiceGetFeedStatusProcedure,
+		svc.GetFeedStatus,
+		connect.WithSchema(feedServiceMethods.ByName("GetFeedStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/seekervault.gateway.v1.FeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FeedServiceGetServerManifestProcedure:
@@ -335,6 +378,8 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceGetStreamTicketHandler.ServeHTTP(w, r)
 		case FeedServiceGetFeedTopicsProcedure:
 			feedServiceGetFeedTopicsHandler.ServeHTTP(w, r)
+		case FeedServiceGetFeedStatusProcedure:
+			feedServiceGetFeedStatusHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -370,4 +415,8 @@ func (UnimplementedFeedServiceHandler) GetStreamTicket(context.Context, *connect
 
 func (UnimplementedFeedServiceHandler) GetFeedTopics(context.Context, *connect.Request[v1.GetFeedTopicsRequest]) (*connect.Response[v1.GetFeedTopicsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.GetFeedTopics is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) GetFeedStatus(context.Context, *connect.Request[v1.GetFeedStatusRequest]) (*connect.Response[v1.GetFeedStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.GetFeedStatus is not implemented"))
 }

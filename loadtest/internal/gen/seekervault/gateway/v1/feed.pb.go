@@ -43,6 +43,61 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// FeedAvailability is what the gateway can say about a publisher's own server. It is never
+// inferred from the gateway being reachable, and a client that cannot read it treats the feed as
+// unknown, not online.
+type FeedAvailability int32
+
+const (
+	FeedAvailability_FEED_AVAILABILITY_UNSPECIFIED FeedAvailability = 0
+	// The publisher checked in within the gateway's presence window.
+	FeedAvailability_FEED_AVAILABILITY_ONLINE FeedAvailability = 1
+	// The publisher is hosted here but has not checked in within the window, or never has: what it
+	// last published is still served, and nothing new will arrive until it is back.
+	FeedAvailability_FEED_AVAILABILITY_OFFLINE FeedAvailability = 2
+)
+
+// Enum value maps for FeedAvailability.
+var (
+	FeedAvailability_name = map[int32]string{
+		0: "FEED_AVAILABILITY_UNSPECIFIED",
+		1: "FEED_AVAILABILITY_ONLINE",
+		2: "FEED_AVAILABILITY_OFFLINE",
+	}
+	FeedAvailability_value = map[string]int32{
+		"FEED_AVAILABILITY_UNSPECIFIED": 0,
+		"FEED_AVAILABILITY_ONLINE":      1,
+		"FEED_AVAILABILITY_OFFLINE":     2,
+	}
+)
+
+func (x FeedAvailability) Enum() *FeedAvailability {
+	p := new(FeedAvailability)
+	*p = x
+	return p
+}
+
+func (x FeedAvailability) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (FeedAvailability) Descriptor() protoreflect.EnumDescriptor {
+	return file_seekervault_gateway_v1_feed_proto_enumTypes[0].Descriptor()
+}
+
+func (FeedAvailability) Type() protoreflect.EnumType {
+	return &file_seekervault_gateway_v1_feed_proto_enumTypes[0]
+}
+
+func (x FeedAvailability) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use FeedAvailability.Descriptor instead.
+func (FeedAvailability) EnumDescriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{0}
+}
+
 type GetServerManifestRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The publisher's lasting ID, which is what a feed reference carries.
@@ -982,6 +1037,152 @@ func (x *FeedTopic) GetTopic() string {
 	return ""
 }
 
+type GetFeedStatusRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The channels to ask about, each "server/<server_id>" and each one the caller holds a feed
+	// reference for. The same bounds as a ticket's: none is refused, and more than the gateway
+	// answers at once is refused with the bound.
+	Channels      []string `protobuf:"bytes,1,rep,name=channels,proto3" json:"channels,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFeedStatusRequest) Reset() {
+	*x = GetFeedStatusRequest{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFeedStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFeedStatusRequest) ProtoMessage() {}
+
+func (x *GetFeedStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFeedStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetFeedStatusRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetFeedStatusRequest) GetChannels() []string {
+	if x != nil {
+		return x.Channels
+	}
+	return nil
+}
+
+type GetFeedStatusResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// One entry per channel this gateway hosts, in the order they were asked for. A channel that is
+	// well formed but not hosted here is **absent rather than fatal**, exactly as it is in a grant.
+	Statuses      []*FeedStatus `protobuf:"bytes,1,rep,name=statuses,proto3" json:"statuses,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFeedStatusResponse) Reset() {
+	*x = GetFeedStatusResponse{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFeedStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFeedStatusResponse) ProtoMessage() {}
+
+func (x *GetFeedStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFeedStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetFeedStatusResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *GetFeedStatusResponse) GetStatuses() []*FeedStatus {
+	if x != nil {
+		return x.Statuses
+	}
+	return nil
+}
+
+// FeedStatus is whether one channel's publisher is running, as far as this gateway can tell.
+type FeedStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Channel       string                 `protobuf:"bytes,1,opt,name=channel,proto3" json:"channel,omitempty"`
+	Availability  FeedAvailability       `protobuf:"varint,2,opt,name=availability,proto3,enum=seekervault.gateway.v1.FeedAvailability" json:"availability,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FeedStatus) Reset() {
+	*x = FeedStatus{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FeedStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FeedStatus) ProtoMessage() {}
+
+func (x *FeedStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FeedStatus.ProtoReflect.Descriptor instead.
+func (*FeedStatus) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *FeedStatus) GetChannel() string {
+	if x != nil {
+		return x.Channel
+	}
+	return ""
+}
+
+func (x *FeedStatus) GetAvailability() FeedAvailability {
+	if x != nil {
+		return x.Availability
+	}
+	return FeedAvailability_FEED_AVAILABILITY_UNSPECIFIED
+}
+
 var File_seekervault_gateway_v1_feed_proto protoreflect.FileDescriptor
 
 const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
@@ -1043,7 +1244,19 @@ const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
 	"\x06topics\x18\x01 \x03(\v2!.seekervault.gateway.v1.FeedTopicR\x06topics\";\n" +
 	"\tFeedTopic\x12\x18\n" +
 	"\achannel\x18\x01 \x01(\tR\achannel\x12\x14\n" +
-	"\x05topic\x18\x02 \x01(\tR\x05topic2\x8f\x06\n" +
+	"\x05topic\x18\x02 \x01(\tR\x05topic\"2\n" +
+	"\x14GetFeedStatusRequest\x12\x1a\n" +
+	"\bchannels\x18\x01 \x03(\tR\bchannels\"W\n" +
+	"\x15GetFeedStatusResponse\x12>\n" +
+	"\bstatuses\x18\x01 \x03(\v2\".seekervault.gateway.v1.FeedStatusR\bstatuses\"t\n" +
+	"\n" +
+	"FeedStatus\x12\x18\n" +
+	"\achannel\x18\x01 \x01(\tR\achannel\x12L\n" +
+	"\favailability\x18\x02 \x01(\x0e2(.seekervault.gateway.v1.FeedAvailabilityR\favailability*r\n" +
+	"\x10FeedAvailability\x12!\n" +
+	"\x1dFEED_AVAILABILITY_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18FEED_AVAILABILITY_ONLINE\x10\x01\x12\x1d\n" +
+	"\x19FEED_AVAILABILITY_OFFLINE\x10\x022\xfd\x06\n" +
 	"\vFeedService\x12x\n" +
 	"\x11GetServerManifest\x120.seekervault.gateway.v1.GetServerManifestRequest\x1a1.seekervault.gateway.v1.GetServerManifestResponse\x12i\n" +
 	"\fListRequests\x12+.seekervault.gateway.v1.ListRequestsRequest\x1a,.seekervault.gateway.v1.ListRequestsResponse\x12c\n" +
@@ -1052,7 +1265,8 @@ const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
 	"\rListProposals\x12,.seekervault.gateway.v1.ListProposalsRequest\x1a-.seekervault.gateway.v1.ListProposalsResponse\x12f\n" +
 	"\vGetProposal\x12*.seekervault.gateway.v1.GetProposalRequest\x1a+.seekervault.gateway.v1.GetProposalResponse\x12r\n" +
 	"\x0fGetStreamTicket\x12..seekervault.gateway.v1.GetStreamTicketRequest\x1a/.seekervault.gateway.v1.GetStreamTicketResponse\x12l\n" +
-	"\rGetFeedTopics\x12,.seekervault.gateway.v1.GetFeedTopicsRequest\x1a-.seekervault.gateway.v1.GetFeedTopicsResponseB\xfe\x01\n" +
+	"\rGetFeedTopics\x12,.seekervault.gateway.v1.GetFeedTopicsRequest\x1a-.seekervault.gateway.v1.GetFeedTopicsResponse\x12l\n" +
+	"\rGetFeedStatus\x12,.seekervault.gateway.v1.GetFeedStatusRequest\x1a-.seekervault.gateway.v1.GetFeedStatusResponseB\xfe\x01\n" +
 	"\x1acom.seekervault.gateway.v1B\tFeedProtoP\x01Z[github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (
@@ -1067,55 +1281,64 @@ func file_seekervault_gateway_v1_feed_proto_rawDescGZIP() []byte {
 	return file_seekervault_gateway_v1_feed_proto_rawDescData
 }
 
-var file_seekervault_gateway_v1_feed_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_seekervault_gateway_v1_feed_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_seekervault_gateway_v1_feed_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_seekervault_gateway_v1_feed_proto_goTypes = []any{
-	(*GetServerManifestRequest)(nil),  // 0: seekervault.gateway.v1.GetServerManifestRequest
-	(*GetServerManifestResponse)(nil), // 1: seekervault.gateway.v1.GetServerManifestResponse
-	(*ListRequestsRequest)(nil),       // 2: seekervault.gateway.v1.ListRequestsRequest
-	(*ListRequestsResponse)(nil),      // 3: seekervault.gateway.v1.ListRequestsResponse
-	(*GetRequestRequest)(nil),         // 4: seekervault.gateway.v1.GetRequestRequest
-	(*GetRequestResponse)(nil),        // 5: seekervault.gateway.v1.GetRequestResponse
-	(*ListProposalsRequest)(nil),      // 6: seekervault.gateway.v1.ListProposalsRequest
-	(*ListProposalsResponse)(nil),     // 7: seekervault.gateway.v1.ListProposalsResponse
-	(*GetProposalRequest)(nil),        // 8: seekervault.gateway.v1.GetProposalRequest
-	(*GetProposalResponse)(nil),       // 9: seekervault.gateway.v1.GetProposalResponse
-	(*GetStreamTicketRequest)(nil),    // 10: seekervault.gateway.v1.GetStreamTicketRequest
-	(*GetStreamTicketResponse)(nil),   // 11: seekervault.gateway.v1.GetStreamTicketResponse
-	(*StreamChannel)(nil),             // 12: seekervault.gateway.v1.StreamChannel
-	(*GetFeedTopicsRequest)(nil),      // 13: seekervault.gateway.v1.GetFeedTopicsRequest
-	(*GetFeedTopicsResponse)(nil),     // 14: seekervault.gateway.v1.GetFeedTopicsResponse
-	(*FeedTopic)(nil),                 // 15: seekervault.gateway.v1.FeedTopic
-	(*v1.ServerManifest)(nil),         // 16: seekervault.server.v1.ServerManifest
-	(*v2.Request)(nil),                // 17: seekervault.request.v2.Request
-	(*v11.Proposal)(nil),              // 18: seekervault.proposal.v1.Proposal
+	(FeedAvailability)(0),             // 0: seekervault.gateway.v1.FeedAvailability
+	(*GetServerManifestRequest)(nil),  // 1: seekervault.gateway.v1.GetServerManifestRequest
+	(*GetServerManifestResponse)(nil), // 2: seekervault.gateway.v1.GetServerManifestResponse
+	(*ListRequestsRequest)(nil),       // 3: seekervault.gateway.v1.ListRequestsRequest
+	(*ListRequestsResponse)(nil),      // 4: seekervault.gateway.v1.ListRequestsResponse
+	(*GetRequestRequest)(nil),         // 5: seekervault.gateway.v1.GetRequestRequest
+	(*GetRequestResponse)(nil),        // 6: seekervault.gateway.v1.GetRequestResponse
+	(*ListProposalsRequest)(nil),      // 7: seekervault.gateway.v1.ListProposalsRequest
+	(*ListProposalsResponse)(nil),     // 8: seekervault.gateway.v1.ListProposalsResponse
+	(*GetProposalRequest)(nil),        // 9: seekervault.gateway.v1.GetProposalRequest
+	(*GetProposalResponse)(nil),       // 10: seekervault.gateway.v1.GetProposalResponse
+	(*GetStreamTicketRequest)(nil),    // 11: seekervault.gateway.v1.GetStreamTicketRequest
+	(*GetStreamTicketResponse)(nil),   // 12: seekervault.gateway.v1.GetStreamTicketResponse
+	(*StreamChannel)(nil),             // 13: seekervault.gateway.v1.StreamChannel
+	(*GetFeedTopicsRequest)(nil),      // 14: seekervault.gateway.v1.GetFeedTopicsRequest
+	(*GetFeedTopicsResponse)(nil),     // 15: seekervault.gateway.v1.GetFeedTopicsResponse
+	(*FeedTopic)(nil),                 // 16: seekervault.gateway.v1.FeedTopic
+	(*GetFeedStatusRequest)(nil),      // 17: seekervault.gateway.v1.GetFeedStatusRequest
+	(*GetFeedStatusResponse)(nil),     // 18: seekervault.gateway.v1.GetFeedStatusResponse
+	(*FeedStatus)(nil),                // 19: seekervault.gateway.v1.FeedStatus
+	(*v1.ServerManifest)(nil),         // 20: seekervault.server.v1.ServerManifest
+	(*v2.Request)(nil),                // 21: seekervault.request.v2.Request
+	(*v11.Proposal)(nil),              // 22: seekervault.proposal.v1.Proposal
 }
 var file_seekervault_gateway_v1_feed_proto_depIdxs = []int32{
-	16, // 0: seekervault.gateway.v1.GetServerManifestResponse.manifest:type_name -> seekervault.server.v1.ServerManifest
-	17, // 1: seekervault.gateway.v1.ListRequestsResponse.requests:type_name -> seekervault.request.v2.Request
-	17, // 2: seekervault.gateway.v1.GetRequestResponse.request:type_name -> seekervault.request.v2.Request
-	18, // 3: seekervault.gateway.v1.ListProposalsResponse.proposals:type_name -> seekervault.proposal.v1.Proposal
-	18, // 4: seekervault.gateway.v1.GetProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
-	12, // 5: seekervault.gateway.v1.GetStreamTicketResponse.channels:type_name -> seekervault.gateway.v1.StreamChannel
-	15, // 6: seekervault.gateway.v1.GetFeedTopicsResponse.topics:type_name -> seekervault.gateway.v1.FeedTopic
-	0,  // 7: seekervault.gateway.v1.FeedService.GetServerManifest:input_type -> seekervault.gateway.v1.GetServerManifestRequest
-	2,  // 8: seekervault.gateway.v1.FeedService.ListRequests:input_type -> seekervault.gateway.v1.ListRequestsRequest
-	4,  // 9: seekervault.gateway.v1.FeedService.GetRequest:input_type -> seekervault.gateway.v1.GetRequestRequest
-	6,  // 10: seekervault.gateway.v1.FeedService.ListProposals:input_type -> seekervault.gateway.v1.ListProposalsRequest
-	8,  // 11: seekervault.gateway.v1.FeedService.GetProposal:input_type -> seekervault.gateway.v1.GetProposalRequest
-	10, // 12: seekervault.gateway.v1.FeedService.GetStreamTicket:input_type -> seekervault.gateway.v1.GetStreamTicketRequest
-	13, // 13: seekervault.gateway.v1.FeedService.GetFeedTopics:input_type -> seekervault.gateway.v1.GetFeedTopicsRequest
-	1,  // 14: seekervault.gateway.v1.FeedService.GetServerManifest:output_type -> seekervault.gateway.v1.GetServerManifestResponse
-	3,  // 15: seekervault.gateway.v1.FeedService.ListRequests:output_type -> seekervault.gateway.v1.ListRequestsResponse
-	5,  // 16: seekervault.gateway.v1.FeedService.GetRequest:output_type -> seekervault.gateway.v1.GetRequestResponse
-	7,  // 17: seekervault.gateway.v1.FeedService.ListProposals:output_type -> seekervault.gateway.v1.ListProposalsResponse
-	9,  // 18: seekervault.gateway.v1.FeedService.GetProposal:output_type -> seekervault.gateway.v1.GetProposalResponse
-	11, // 19: seekervault.gateway.v1.FeedService.GetStreamTicket:output_type -> seekervault.gateway.v1.GetStreamTicketResponse
-	14, // 20: seekervault.gateway.v1.FeedService.GetFeedTopics:output_type -> seekervault.gateway.v1.GetFeedTopicsResponse
-	14, // [14:21] is the sub-list for method output_type
-	7,  // [7:14] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	20, // 0: seekervault.gateway.v1.GetServerManifestResponse.manifest:type_name -> seekervault.server.v1.ServerManifest
+	21, // 1: seekervault.gateway.v1.ListRequestsResponse.requests:type_name -> seekervault.request.v2.Request
+	21, // 2: seekervault.gateway.v1.GetRequestResponse.request:type_name -> seekervault.request.v2.Request
+	22, // 3: seekervault.gateway.v1.ListProposalsResponse.proposals:type_name -> seekervault.proposal.v1.Proposal
+	22, // 4: seekervault.gateway.v1.GetProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
+	13, // 5: seekervault.gateway.v1.GetStreamTicketResponse.channels:type_name -> seekervault.gateway.v1.StreamChannel
+	16, // 6: seekervault.gateway.v1.GetFeedTopicsResponse.topics:type_name -> seekervault.gateway.v1.FeedTopic
+	19, // 7: seekervault.gateway.v1.GetFeedStatusResponse.statuses:type_name -> seekervault.gateway.v1.FeedStatus
+	0,  // 8: seekervault.gateway.v1.FeedStatus.availability:type_name -> seekervault.gateway.v1.FeedAvailability
+	1,  // 9: seekervault.gateway.v1.FeedService.GetServerManifest:input_type -> seekervault.gateway.v1.GetServerManifestRequest
+	3,  // 10: seekervault.gateway.v1.FeedService.ListRequests:input_type -> seekervault.gateway.v1.ListRequestsRequest
+	5,  // 11: seekervault.gateway.v1.FeedService.GetRequest:input_type -> seekervault.gateway.v1.GetRequestRequest
+	7,  // 12: seekervault.gateway.v1.FeedService.ListProposals:input_type -> seekervault.gateway.v1.ListProposalsRequest
+	9,  // 13: seekervault.gateway.v1.FeedService.GetProposal:input_type -> seekervault.gateway.v1.GetProposalRequest
+	11, // 14: seekervault.gateway.v1.FeedService.GetStreamTicket:input_type -> seekervault.gateway.v1.GetStreamTicketRequest
+	14, // 15: seekervault.gateway.v1.FeedService.GetFeedTopics:input_type -> seekervault.gateway.v1.GetFeedTopicsRequest
+	17, // 16: seekervault.gateway.v1.FeedService.GetFeedStatus:input_type -> seekervault.gateway.v1.GetFeedStatusRequest
+	2,  // 17: seekervault.gateway.v1.FeedService.GetServerManifest:output_type -> seekervault.gateway.v1.GetServerManifestResponse
+	4,  // 18: seekervault.gateway.v1.FeedService.ListRequests:output_type -> seekervault.gateway.v1.ListRequestsResponse
+	6,  // 19: seekervault.gateway.v1.FeedService.GetRequest:output_type -> seekervault.gateway.v1.GetRequestResponse
+	8,  // 20: seekervault.gateway.v1.FeedService.ListProposals:output_type -> seekervault.gateway.v1.ListProposalsResponse
+	10, // 21: seekervault.gateway.v1.FeedService.GetProposal:output_type -> seekervault.gateway.v1.GetProposalResponse
+	12, // 22: seekervault.gateway.v1.FeedService.GetStreamTicket:output_type -> seekervault.gateway.v1.GetStreamTicketResponse
+	15, // 23: seekervault.gateway.v1.FeedService.GetFeedTopics:output_type -> seekervault.gateway.v1.GetFeedTopicsResponse
+	18, // 24: seekervault.gateway.v1.FeedService.GetFeedStatus:output_type -> seekervault.gateway.v1.GetFeedStatusResponse
+	17, // [17:25] is the sub-list for method output_type
+	9,  // [9:17] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_gateway_v1_feed_proto_init() }
@@ -1128,13 +1351,14 @@ func file_seekervault_gateway_v1_feed_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_gateway_v1_feed_proto_rawDesc), len(file_seekervault_gateway_v1_feed_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   16,
+			NumEnums:      1,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_seekervault_gateway_v1_feed_proto_goTypes,
 		DependencyIndexes: file_seekervault_gateway_v1_feed_proto_depIdxs,
+		EnumInfos:         file_seekervault_gateway_v1_feed_proto_enumTypes,
 		MessageInfos:      file_seekervault_gateway_v1_feed_proto_msgTypes,
 	}.Build()
 	File_seekervault_gateway_v1_feed_proto = out.File

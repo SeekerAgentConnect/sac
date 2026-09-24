@@ -230,6 +230,41 @@ func (s *Store) PublisherFor(ctx context.Context, hash []byte) (string, error) {
 	return serverID, nil
 }
 
+// PublisherSeen records that this publisher's own server is running (SEE-150). A check-in for a
+// server_id nothing is registered under changes no row and is not an error, and the write only ever
+// moves the instant forward: see the SQLite store, where both are argued.
+func (s *Store) PublisherSeen(ctx context.Context, serverID string, at time.Time) error {
+	return s.write(ctx, func(tx *Tx) error {
+		_, err := tx.tx.ExecContext(ctx,
+			`UPDATE `+Schema+`.publisher SET last_seen_at_ms = $1
+			  WHERE server_id = $2 AND (last_seen_at_ms IS NULL OR last_seen_at_ms < $1)`,
+			milliseconds(at), serverID)
+		if err != nil {
+			return fmt.Errorf("record a publisher check-in: %w", err)
+		}
+		return nil
+	})
+}
+
+// PublisherLastSeen is when this publisher last checked in, or the zero time when it never has —
+// which is also what an unregistered server_id answers.
+func (s *Store) PublisherLastSeen(ctx context.Context, serverID string) (time.Time, error) {
+	var seen sql.NullInt64
+	err := s.reader.QueryRowContext(ctx,
+		`SELECT last_seen_at_ms FROM `+Schema+`.publisher WHERE server_id = $1`,
+		serverID).Scan(&seen)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return time.Time{}, nil
+	case err != nil:
+		return time.Time{}, fmt.Errorf("read a publisher check-in: %w", err)
+	}
+	if !seen.Valid {
+		return time.Time{}, nil
+	}
+	return instant(seen.Int64), nil
+}
+
 // Publishers lists what is registered, for the operator's tool.
 func (s *Store) Publishers(ctx context.Context) ([]Publisher, error) {
 	rows, err := s.reader.QueryContext(ctx, publisherColumns+

@@ -23,16 +23,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
@@ -634,7 +639,24 @@ private fun SheetLayer(
                 shadowElevation = SeekerTheme.dimensions.dp0,
                 tonalElevation = SeekerTheme.dimensions.dp0,
             ) {
-                Column {
+                // The surface runs to the bottom edge, behind the gesture area or the navigation
+                // buttons, and what is on it stops above them with a gap (SEE-150): the last line
+                // of a review is read, not hidden under the home indicator.
+                //
+                // The host owns this and `:designsystem` does not, for the reason the banner's
+                // placement moved here too: a sheet component is window-agnostic presentation,
+                // every
+                // sheet the app pushes goes through this one layer, and a design-system component
+                // that measured itself against a window would put a simulated navigation bar into
+                // its own reference capture. `windowInsetsPadding` also consumes what it applies,
+                // so
+                // nothing inside can pad for the same bar twice.
+                Column(
+                    Modifier.windowInsetsPadding(
+                            WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
+                        )
+                        .padding(bottom = SeekerTheme.spacing.xl)
+                ) {
                     Box(
                         Modifier.fillMaxWidth().height(SeekerTheme.dimensions.dp22),
                         contentAlignment = Alignment.Center,

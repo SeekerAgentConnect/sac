@@ -1,6 +1,12 @@
 package io.github.brrenat.seekervault.notifications
 
 import android.content.Context
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -20,6 +26,7 @@ import io.github.brrenat.seekervault.ReviewIdentity
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.designsystem.InAppNotification
 import io.github.brrenat.seekervault.designsystem.InAppNotificationKind
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.PendingItem
 
 /**
@@ -46,6 +53,9 @@ import io.github.brrenat.seekervault.inbox.PendingItem
  * @param waiting everything waiting for the owner, in the chronological order the inbox sorts it.
  * @param reviewOpen whether the review for that identity is already on screen; a banner for a
  *   request the owner is already reading is suppressed.
+ * @param modifier where the banner sits in its parent. The safe area is the host's own business
+ *   (SEE-150): the banner keeps clear of the status bar and any display cutout, with a visible gap
+ *   below them, so a caller only aligns it.
  */
 @Composable
 fun InAppNotifications(
@@ -120,10 +130,27 @@ fun InAppNotifications(
                 onOpen(visible.target)
             },
             onDismiss = { queue.dismiss(visible.id) },
-            modifier = modifier,
+            modifier = modifier.inAppNotificationSafeArea(),
         )
     }
 }
+
+/**
+ * Below the status bar and any display cutout — both are in `safeDrawing`, and a cutout on the side
+ * of a landscape phone is too — and then a gap, so the banner reads as floating over the content
+ * rather than hanging from the top edge (SEE-150). The padding sits outside the banner's own
+ * gesture area, so the strip above it stays the content's to touch.
+ */
+@Composable
+private fun Modifier.inAppNotificationSafeArea(): Modifier =
+    windowInsetsPadding(
+            WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+        )
+        .padding(
+            start = SeekerTheme.spacing.md,
+            top = SeekerTheme.spacing.lg,
+            end = SeekerTheme.spacing.md,
+        )
 
 /**
  * The words. A banner says what the system notification for the same event says, from the same two

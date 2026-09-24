@@ -43,6 +43,12 @@ service PublisherService {
   // has to cancel may no longer hold what it published — and because the gateway is then the only
   // thing that writes the transition, in one place, from one state.
   rpc CancelProposal(CancelProposalRequest) returns (CancelProposalResponse);
+  // Say that this publisher's server is running (SEE-150). The gateway never contacts a
+  // publisher's server, so this is how a phone can be told a feed is online rather than only that
+  // the gateway is: every authenticated call here counts as a check-in, and a publisher with
+  // nothing to publish calls this on the interval the answer names. A publisher that stops calling
+  // is shown offline once the gateway's presence window passes.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 }
 
 // What became of a publication. Both answers mean the gateway holds what the caller sent; they
@@ -114,4 +120,13 @@ message CancelProposalResponse {
   // writes, because the withdrawal happened here.
   seekervault.proposal.v1.Proposal proposal = 2;
   uint64 snapshot_sequence = 3;
+}
+
+// Nothing to say but that the caller is running; the credential says who it is.
+message HeartbeatRequest {}
+
+message HeartbeatResponse {
+  // How often, at most, the gateway expects a check-in. A publisher that goes three intervals
+  // without any authenticated call is shown offline.
+  uint32 interval_seconds = 1;
 }

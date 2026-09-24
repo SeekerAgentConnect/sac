@@ -79,6 +79,7 @@ something.
 | `BROADCAST_PUBLISHER_ADDRESS` | `127.0.0.1:8091` | Where the publisher API listens. It must differ from the read address |
 | `BROADCAST_RETENTION_HOURS` | 168 | How long past its own expiry a proposal is still served |
 | `BROADCAST_MAX_PROPOSALS` | 200 | The most proposals one channel may hold at once |
+| `BROADCAST_HEARTBEAT_SECONDS` | 30, range 5–3600 | How often a publisher is asked to say its own server is running (SEE-150). `PublisherService.Heartbeat` answers with it, and a feed is shown online until three of these have passed with no authenticated call from its publisher. The window is three intervals and is not configurable on its own: one shorter than the interval would show every feed offline for ever |
 | `BROADCAST_READ_RATE`, `BROADCAST_READ_BURST` | 20, 60 | Reads per second per caller, and the burst |
 | `BROADCAST_PUBLISH_RATE`, `BROADCAST_PUBLISH_BURST` | 2, 20 | Publications per second per publisher, and the burst |
 | `BROADCAST_STREAM_URL`, `BROADCAST_STREAM_API_KEY`, `BROADCAST_STREAM_TOKEN_KEY` | unset | The broker and its two keys (SEE-91). All three or none: without them the gateway answers every read and says once that there is no stream |

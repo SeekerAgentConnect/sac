@@ -203,6 +203,38 @@ func (g *Gateway) Withdraw(ctx context.Context, proposalID string, revision uint
 	return statusOf(answer.Msg.GetStatus()), nil
 }
 
+// Heartbeat says this publisher's server is running, and answers with how often the gateway wants
+// to hear it again (SEE-150).
+//
+// It is the one call here that publishes nothing. The gateway never contacts a publisher's server,
+// so a phone that can reach the gateway learns nothing from that about whether the feed behind a
+// channel is up — what it last published is still served either way. A check-in is how the gateway
+// comes to know, and every authenticated call on this service already counts as one; this exists
+// for the publisher that has nothing to publish, which is most of them most of the time.
+//
+// The interval is the gateway's to decide and not this template's to assume: a publisher that
+// checks in on a schedule the gateway did not name is a publisher shown offline while it is
+// running. A gateway that answers with no interval is taken at [DefaultHeartbeat], the same figure
+// the gateway's own default names, so an answer from a future gateway that drops the field still
+// leaves a working loop.
+func (g *Gateway) Heartbeat(ctx context.Context) (time.Duration, error) {
+	ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	defer cancel()
+	answer, err := g.client.Heartbeat(ctx, carrying(g.credential, &gatewayv1.HeartbeatRequest{}))
+	if err != nil {
+		return 0, classify(err)
+	}
+	seconds := answer.Msg.GetIntervalSeconds()
+	if seconds == 0 {
+		return DefaultHeartbeat, nil
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
+// DefaultHeartbeat is the interval assumed when a gateway names none. It matches the gateway's own
+// default (feed-gateway: PRESENCE_HEARTBEAT_SECONDS).
+const DefaultHeartbeat = 30 * time.Second
+
 // carrying wraps a message with the credential. It is the only place the credential is read, and
 // it goes into a header and nowhere else. A free function rather than a method because a method
 // cannot take a type parameter of its own.

@@ -92,6 +92,23 @@ type FeedStore interface {
 	Proposal(context.Context, string, string) (*StoredProposal, error)
 	Page(context.Context, string, string, int) ([]*StoredProposal, error)
 	Sequence(context.Context, string) (uint64, error)
+	// PublisherLastSeen is when this publisher last made an authenticated call, or the zero time
+	// when it never has (SEE-150). It is the only fact the gateway has about whether a publisher's
+	// own server is running, and it is one the publisher pushed: nothing here ever contacts a
+	// publisher's host, so a registration that has never checked in and one whose process stopped
+	// are the same answer.
+	PublisherLastSeen(context.Context, string) (time.Time, error)
+}
+
+// PresenceStore records that a publisher's server is running (SEE-150).
+//
+// It is not a publication and deliberately not on PublicationTx: a check-in is not part of any
+// publication's atomic decision, it carries no document, it advances no sequence and it wakes
+// nobody. A check-in for a server the gateway does not host is not an error — it is a registration
+// that was forgotten between the credential resolving and the write, and there is nothing to
+// record.
+type PresenceStore interface {
+	PublisherSeen(context.Context, string, time.Time) error
 }
 
 // CredentialResolver is the complete authority of a publisher credential: resolve its hash to the
@@ -130,6 +147,7 @@ type MaintenanceStore interface {
 type GatewayStore interface {
 	PublicationStore
 	FeedStore
+	PresenceStore
 	CredentialResolver
 	OutboxStore
 	MaintenanceStore

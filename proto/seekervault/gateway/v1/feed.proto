@@ -73,6 +73,17 @@ service FeedService {
   // holding its name grants nothing, and subscribing to it says nothing to this gateway — Firebase
   // owns topic membership, and the gateway is not told who joined (docs/security.md).
   rpc GetFeedTopics(GetFeedTopicsRequest) returns (GetFeedTopicsResponse);
+  // Whether each channel's publisher is running right now (SEE-150).
+  //
+  // Reaching this gateway says nothing about the publisher behind a channel: the gateway keeps
+  // serving what a publisher last published after that publisher's own server stops. So the two
+  // are answered separately, and this is the second one. The gateway never contacts a publisher's
+  // server to find out; a running publisher checks in over the publisher API
+  // (PublisherService.Heartbeat), and a channel is online while its last check-in is recent.
+  //
+  // Like a ticket and a topic, the answer is about channels and never about the caller, and asking
+  // changes nothing.
+  rpc GetFeedStatus(GetFeedStatusRequest) returns (GetFeedStatusResponse);
 }
 
 message GetServerManifestRequest {
@@ -225,4 +236,35 @@ message GetFeedTopicsResponse {
 message FeedTopic {
   string channel = 1;
   string topic = 2;
+}
+
+message GetFeedStatusRequest {
+  // The channels to ask about, each "server/<server_id>" and each one the caller holds a feed
+  // reference for. The same bounds as a ticket's: none is refused, and more than the gateway
+  // answers at once is refused with the bound.
+  repeated string channels = 1;
+}
+
+message GetFeedStatusResponse {
+  // One entry per channel this gateway hosts, in the order they were asked for. A channel that is
+  // well formed but not hosted here is **absent rather than fatal**, exactly as it is in a grant.
+  repeated FeedStatus statuses = 1;
+}
+
+// FeedStatus is whether one channel's publisher is running, as far as this gateway can tell.
+message FeedStatus {
+  string channel = 1;
+  FeedAvailability availability = 2;
+}
+
+// FeedAvailability is what the gateway can say about a publisher's own server. It is never
+// inferred from the gateway being reachable, and a client that cannot read it treats the feed as
+// unknown, not online.
+enum FeedAvailability {
+  FEED_AVAILABILITY_UNSPECIFIED = 0;
+  // The publisher checked in within the gateway's presence window.
+  FEED_AVAILABILITY_ONLINE = 1;
+  // The publisher is hosted here but has not checked in within the window, or never has: what it
+  // last published is still served, and nothing new will arrive until it is back.
+  FEED_AVAILABILITY_OFFLINE = 2;
 }

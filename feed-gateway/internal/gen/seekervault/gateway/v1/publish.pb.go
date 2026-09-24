@@ -633,6 +633,89 @@ func (x *CancelProposalResponse) GetSnapshotSequence() uint64 {
 	return 0
 }
 
+// Nothing to say but that the caller is running; the credential says who it is.
+type HeartbeatRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HeartbeatRequest) Reset() {
+	*x = HeartbeatRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HeartbeatRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HeartbeatRequest) ProtoMessage() {}
+
+func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
+func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{10}
+}
+
+type HeartbeatResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// How often, at most, the gateway expects a check-in. A publisher that goes three intervals
+	// without any authenticated call is shown offline.
+	IntervalSeconds uint32 `protobuf:"varint,1,opt,name=interval_seconds,json=intervalSeconds,proto3" json:"interval_seconds,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *HeartbeatResponse) Reset() {
+	*x = HeartbeatResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HeartbeatResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HeartbeatResponse) ProtoMessage() {}
+
+func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
+func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *HeartbeatResponse) GetIntervalSeconds() uint32 {
+	if x != nil {
+		return x.IntervalSeconds
+	}
+	return 0
+}
+
 var File_seekervault_gateway_v1_publish_proto protoreflect.FileDescriptor
 
 const file_seekervault_gateway_v1_publish_proto_rawDesc = "" +
@@ -670,17 +753,21 @@ const file_seekervault_gateway_v1_publish_proto_rawDesc = "" +
 	"\x16CancelProposalResponse\x12=\n" +
 	"\x06status\x18\x01 \x01(\x0e2%.seekervault.gateway.v1.PublishStatusR\x06status\x12=\n" +
 	"\bproposal\x18\x02 \x01(\v2!.seekervault.proposal.v1.ProposalR\bproposal\x12+\n" +
-	"\x11snapshot_sequence\x18\x03 \x01(\x04R\x10snapshotSequence*h\n" +
+	"\x11snapshot_sequence\x18\x03 \x01(\x04R\x10snapshotSequence\"\x12\n" +
+	"\x10HeartbeatRequest\">\n" +
+	"\x11HeartbeatResponse\x12)\n" +
+	"\x10interval_seconds\x18\x01 \x01(\rR\x0fintervalSeconds*h\n" +
 	"\rPublishStatus\x12\x1e\n" +
 	"\x1aPUBLISH_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15PUBLISH_STATUS_STORED\x10\x01\x12\x1c\n" +
-	"\x18PUBLISH_STATUS_UNCHANGED\x10\x022\xca\x04\n" +
+	"\x18PUBLISH_STATUS_UNCHANGED\x10\x022\xac\x05\n" +
 	"\x10PublisherService\x12r\n" +
 	"\x0fPublishManifest\x12..seekervault.gateway.v1.PublishManifestRequest\x1a/.seekervault.gateway.v1.PublishManifestResponse\x12o\n" +
 	"\x0ePublishRequest\x12-.seekervault.gateway.v1.PublishRequestRequest\x1a..seekervault.gateway.v1.PublishRequestResponse\x12l\n" +
 	"\rCancelRequest\x12,.seekervault.gateway.v1.CancelRequestRequest\x1a-.seekervault.gateway.v1.CancelRequestResponse\x12r\n" +
 	"\x0fPublishProposal\x12..seekervault.gateway.v1.PublishProposalRequest\x1a/.seekervault.gateway.v1.PublishProposalResponse\x12o\n" +
-	"\x0eCancelProposal\x12-.seekervault.gateway.v1.CancelProposalRequest\x1a..seekervault.gateway.v1.CancelProposalResponseB\x85\x02\n" +
+	"\x0eCancelProposal\x12-.seekervault.gateway.v1.CancelProposalRequest\x1a..seekervault.gateway.v1.CancelProposalResponse\x12`\n" +
+	"\tHeartbeat\x12(.seekervault.gateway.v1.HeartbeatRequest\x1a).seekervault.gateway.v1.HeartbeatResponseB\x85\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\fPublishProtoP\x01Z_github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (
@@ -696,7 +783,7 @@ func file_seekervault_gateway_v1_publish_proto_rawDescGZIP() []byte {
 }
 
 var file_seekervault_gateway_v1_publish_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_seekervault_gateway_v1_publish_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_seekervault_gateway_v1_publish_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_seekervault_gateway_v1_publish_proto_goTypes = []any{
 	(PublishStatus)(0),              // 0: seekervault.gateway.v1.PublishStatus
 	(*PublishManifestRequest)(nil),  // 1: seekervault.gateway.v1.PublishManifestRequest
@@ -709,33 +796,37 @@ var file_seekervault_gateway_v1_publish_proto_goTypes = []any{
 	(*PublishProposalResponse)(nil), // 8: seekervault.gateway.v1.PublishProposalResponse
 	(*CancelProposalRequest)(nil),   // 9: seekervault.gateway.v1.CancelProposalRequest
 	(*CancelProposalResponse)(nil),  // 10: seekervault.gateway.v1.CancelProposalResponse
-	(*v1.ServerManifest)(nil),       // 11: seekervault.server.v1.ServerManifest
-	(*v2.Request)(nil),              // 12: seekervault.request.v2.Request
-	(*v11.Proposal)(nil),            // 13: seekervault.proposal.v1.Proposal
+	(*HeartbeatRequest)(nil),        // 11: seekervault.gateway.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),       // 12: seekervault.gateway.v1.HeartbeatResponse
+	(*v1.ServerManifest)(nil),       // 13: seekervault.server.v1.ServerManifest
+	(*v2.Request)(nil),              // 14: seekervault.request.v2.Request
+	(*v11.Proposal)(nil),            // 15: seekervault.proposal.v1.Proposal
 }
 var file_seekervault_gateway_v1_publish_proto_depIdxs = []int32{
-	11, // 0: seekervault.gateway.v1.PublishManifestRequest.manifest:type_name -> seekervault.server.v1.ServerManifest
+	13, // 0: seekervault.gateway.v1.PublishManifestRequest.manifest:type_name -> seekervault.server.v1.ServerManifest
 	0,  // 1: seekervault.gateway.v1.PublishManifestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	12, // 2: seekervault.gateway.v1.PublishRequestRequest.request:type_name -> seekervault.request.v2.Request
+	14, // 2: seekervault.gateway.v1.PublishRequestRequest.request:type_name -> seekervault.request.v2.Request
 	0,  // 3: seekervault.gateway.v1.PublishRequestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
 	0,  // 4: seekervault.gateway.v1.CancelRequestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	12, // 5: seekervault.gateway.v1.CancelRequestResponse.request:type_name -> seekervault.request.v2.Request
-	13, // 6: seekervault.gateway.v1.PublishProposalRequest.proposal:type_name -> seekervault.proposal.v1.Proposal
+	14, // 5: seekervault.gateway.v1.CancelRequestResponse.request:type_name -> seekervault.request.v2.Request
+	15, // 6: seekervault.gateway.v1.PublishProposalRequest.proposal:type_name -> seekervault.proposal.v1.Proposal
 	0,  // 7: seekervault.gateway.v1.PublishProposalResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
 	0,  // 8: seekervault.gateway.v1.CancelProposalResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	13, // 9: seekervault.gateway.v1.CancelProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
+	15, // 9: seekervault.gateway.v1.CancelProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
 	1,  // 10: seekervault.gateway.v1.PublisherService.PublishManifest:input_type -> seekervault.gateway.v1.PublishManifestRequest
 	3,  // 11: seekervault.gateway.v1.PublisherService.PublishRequest:input_type -> seekervault.gateway.v1.PublishRequestRequest
 	5,  // 12: seekervault.gateway.v1.PublisherService.CancelRequest:input_type -> seekervault.gateway.v1.CancelRequestRequest
 	7,  // 13: seekervault.gateway.v1.PublisherService.PublishProposal:input_type -> seekervault.gateway.v1.PublishProposalRequest
 	9,  // 14: seekervault.gateway.v1.PublisherService.CancelProposal:input_type -> seekervault.gateway.v1.CancelProposalRequest
-	2,  // 15: seekervault.gateway.v1.PublisherService.PublishManifest:output_type -> seekervault.gateway.v1.PublishManifestResponse
-	4,  // 16: seekervault.gateway.v1.PublisherService.PublishRequest:output_type -> seekervault.gateway.v1.PublishRequestResponse
-	6,  // 17: seekervault.gateway.v1.PublisherService.CancelRequest:output_type -> seekervault.gateway.v1.CancelRequestResponse
-	8,  // 18: seekervault.gateway.v1.PublisherService.PublishProposal:output_type -> seekervault.gateway.v1.PublishProposalResponse
-	10, // 19: seekervault.gateway.v1.PublisherService.CancelProposal:output_type -> seekervault.gateway.v1.CancelProposalResponse
-	15, // [15:20] is the sub-list for method output_type
-	10, // [10:15] is the sub-list for method input_type
+	11, // 15: seekervault.gateway.v1.PublisherService.Heartbeat:input_type -> seekervault.gateway.v1.HeartbeatRequest
+	2,  // 16: seekervault.gateway.v1.PublisherService.PublishManifest:output_type -> seekervault.gateway.v1.PublishManifestResponse
+	4,  // 17: seekervault.gateway.v1.PublisherService.PublishRequest:output_type -> seekervault.gateway.v1.PublishRequestResponse
+	6,  // 18: seekervault.gateway.v1.PublisherService.CancelRequest:output_type -> seekervault.gateway.v1.CancelRequestResponse
+	8,  // 19: seekervault.gateway.v1.PublisherService.PublishProposal:output_type -> seekervault.gateway.v1.PublishProposalResponse
+	10, // 20: seekervault.gateway.v1.PublisherService.CancelProposal:output_type -> seekervault.gateway.v1.CancelProposalResponse
+	12, // 21: seekervault.gateway.v1.PublisherService.Heartbeat:output_type -> seekervault.gateway.v1.HeartbeatResponse
+	16, // [16:22] is the sub-list for method output_type
+	10, // [10:16] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
 	10, // [10:10] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name
@@ -752,7 +843,7 @@ func file_seekervault_gateway_v1_publish_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_gateway_v1_publish_proto_rawDesc), len(file_seekervault_gateway_v1_publish_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

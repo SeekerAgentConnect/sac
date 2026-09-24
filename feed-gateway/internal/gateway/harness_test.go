@@ -257,6 +257,11 @@ func built(
 		ReadBurst:        config.DefaultReadBurst,
 		PublishRate:      config.DefaultPublishRate,
 		PublishBurst:     config.DefaultPublishBurst,
+		// The presence interval (SEE-150), at its default and not left zero for the same reason the
+		// relay's bounds are not: a zero interval is a zero window, every feed would read as offline
+		// however recently its publisher called, and a test asserting that would pass for the wrong
+		// reason.
+		Heartbeat: config.DefaultHeartbeat,
 		// The relay's own bounds, at their defaults (SEE-144). They are here rather than left zero
 		// because a zero binding lifetime is a relay that cannot be built, and a test that silently
 		// got no relay routes would pass for the wrong reason.
@@ -517,6 +522,42 @@ func (h *harness) namedTopics(channels ...string) *gatewayv1.GetFeedTopicsRespon
 		h.t.Fatalf("asking where hints arrive failed: %v", err)
 	}
 	return response.Msg
+}
+
+// heartbeat is a publisher saying it is running, with nothing to publish (SEE-150).
+func (h *harness) heartbeat(
+	as gatewayv1connect.PublisherServiceClient,
+) *gatewayv1.HeartbeatResponse {
+	h.t.Helper()
+	response, err := as.Heartbeat(context.Background(),
+		connect.NewRequest(&gatewayv1.HeartbeatRequest{}))
+	if err != nil {
+		h.t.Fatalf("checking in failed: %v", err)
+	}
+	return response.Msg
+}
+
+// status asks whether these channels' publishers are running, the way a phone in the foreground
+// does (SEE-150).
+func (h *harness) status(channels ...string) *gatewayv1.GetFeedStatusResponse {
+	h.t.Helper()
+	response, err := h.feed.GetFeedStatus(context.Background(),
+		connect.NewRequest(&gatewayv1.GetFeedStatusRequest{Channels: channels}))
+	if err != nil {
+		h.t.Fatalf("asking whether a feed is online failed: %v", err)
+	}
+	return response.Msg
+}
+
+// availabilityOf is one channel's verdict out of a presence answer, or UNSPECIFIED when the answer
+// does not mention that channel at all — which is what a phone reads as unknown.
+func availabilityOf(answer *gatewayv1.GetFeedStatusResponse, channel string) gatewayv1.FeedAvailability {
+	for _, status := range answer.GetStatuses() {
+		if status.GetChannel() == channel {
+			return status.GetAvailability()
+		}
+	}
+	return gatewayv1.FeedAvailability_FEED_AVAILABILITY_UNSPECIFIED
 }
 
 // refused asserts that a call failed with one code and one problem, and returns the detail so a
