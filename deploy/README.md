@@ -465,3 +465,4 @@ kept in [`docs/testing/see-137.md`](../docs/testing/see-137.md); unavailable liv
 - `doctl apps update 326326e6-43c2-4aa1-893c-a3607b77e6ef --spec deploy/prediction-demo.yaml`
 - `doctl apps update a7aba189-c59f-4e0b-a0b0-0ccd8442036b --spec deploy/signals-demo.yam`
 - `doctl apps update accce337-aab1-42ed-9768-3fc6c1ddc412 --spec deploy/seeker-gateway.yaml`
+- `android/gradlew -p android :app:assembleDebug -Pseekervault.relayUrl=https://seeker-gateway-sg8g3.ondigitalocean.app`
