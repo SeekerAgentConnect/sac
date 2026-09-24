@@ -39,13 +39,17 @@ import io.github.brrenat.seekervault.inbox.PendingItem
  * of foreground (`MainActivity.onStart`/`onStop`). What arrives while the app is away is the system
  * notification's, and is not replayed as a burst of banners on return.
  *
+ * @param ready whether every list a banner could be raised from has been filled at least once: the
+ *   stored connections read, the fetch that follows them settled, and the stored proposals read.
+ *   The first ready look is the baseline, so anything short of all three would make the rest of the
+ *   opening arrive as banners.
  * @param waiting everything waiting for the owner, in the chronological order the inbox sorts it.
  * @param reviewOpen whether the review for that identity is already on screen; a banner for a
  *   request the owner is already reading is suppressed.
  */
 @Composable
 fun InAppNotifications(
-    loaded: Boolean,
+    ready: Boolean,
     connections: List<Connection>,
     waiting: List<PendingItem>,
     reviewOpen: (ReviewIdentity) -> Boolean,
@@ -71,7 +75,7 @@ fun InAppNotifications(
 
     val snapshot =
         InAppNotificationSnapshot(
-            loaded = loaded,
+            ready = ready,
             waiting = items.keys,
             disconnected = disconnected,
         )

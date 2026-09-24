@@ -74,11 +74,28 @@ Collection runs inside `repeatOnLifecycle(STARTED)`, which is the app's own defi
 
 - Leaving the foreground empties the queue and cancels its timers, so a banner never outlives the
   screen it was on.
-- The first snapshot after coming back is a baseline and announces nothing. Everything that arrived
-  while the app was away was the system notification's to tell, and is not replayed as a burst of
-  banners. The same rule makes an ordinary cold start silent about an inbox the owner has been
-  carrying for days.
+- The first *ready* snapshot after coming back is a baseline and announces nothing. Everything that
+  arrived while the app was away was the system notification's to tell, and is not replayed as a
+  burst of banners.
 - What arrives after the owner is back is a banner again.
+
+Ready is the whole of what makes a cold start silent, and it is more than the stored connections
+having been read. The stored connections carry no pending requests and no proposals with them: the
+inbox is filled by the fetch the app makes when it opens, and the proposals by
+`ProposalRepository.load()`. A baseline taken at `ConnectionsUiState.loaded` would therefore be
+empty, and everything those two reads brought back — an inbox the owner has been carrying for days —
+would look like it had just arrived. So the banner waits for all three:
+
+| Signal | Means |
+| --- | --- |
+| `ConnectionsUiState.loaded` | the stored connections have been read |
+| `ConnectionsUiState.fetched` | the fetch that follows that read has settled for every usable connection |
+| `OperationsUiState.loaded` | `ProposalRepository.load()` has read the stored proposals |
+
+`fetched` implies `loaded`, so `SeekerVaultApp` passes `state.fetched && (operations == null ||
+operationsState.loaded)`. A build with no operations holds no proposals, so there is nothing there
+to wait for. `OperationsUiState.loaded` is the repository's own flag rather than "the combine has
+emitted", for exactly the same reason: its first emission happens before the store has been read.
 
 ## Suppression and routing
 

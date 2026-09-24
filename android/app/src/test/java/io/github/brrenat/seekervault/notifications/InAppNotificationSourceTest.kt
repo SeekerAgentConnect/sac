@@ -8,10 +8,10 @@ class InAppNotificationSourceTest {
     private val source = InAppNotificationSource()
 
     @Test
-    fun `nothing is announced until the repositories have been read`() {
+    fun `nothing is announced until every list a banner reads has been filled`() {
         assertEquals(
             emptyList<InAppNotificationArrival>(),
-            source.accept(snapshot(loaded = false, waiting = listOf(FIRST))),
+            source.accept(snapshot(ready = false, waiting = listOf(FIRST))),
         )
         // The first read is the baseline, not an arrival: the owner has been carrying this inbox.
         assertEquals(
@@ -102,12 +102,12 @@ class InAppNotificationSourceTest {
     }
 
     private fun snapshot(
-        loaded: Boolean = true,
+        ready: Boolean = true,
         waiting: List<ReviewIdentity> = emptyList(),
         disconnected: List<String> = emptyList(),
     ) =
         InAppNotificationSnapshot(
-            loaded = loaded,
+            ready = ready,
             waiting = LinkedHashSet(waiting),
             disconnected = LinkedHashSet(disconnected),
         )

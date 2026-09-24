@@ -105,6 +105,34 @@ class OperationViewModelTest {
     }
 
     @Test
+    fun saysNothingIsKnownUntilTheStoredProposalsHaveBeenRead() {
+        // An earlier run of the app: one signal read off the feed and kept on this phone.
+        val first = phone()
+        runBlocking {
+            first.feed.answers = listOf(swapProposal())
+            first.proposals.refresh(CONNECTION)
+        }
+        assertEquals(1, first.proposals.proposals.value.size)
+
+        // The app starts again over the same store. The read waits for the connections, because a
+        // proposal is only ever held under the feed it arrived on.
+        val restarted = phone()
+        restarted.loaded.value = false
+        val model = restarted.viewModel()
+
+        // An empty list here is "not read yet", not "this phone holds none". Anything reading an
+        // appearing signal as an arrival — the foreground banners (SEE-147) — would otherwise take
+        // its baseline here and then announce the whole stored feed as new.
+        assertFalse(model.state.value.loaded)
+        assertTrue(model.state.value.records.isEmpty())
+
+        restarted.loaded.value = true
+
+        assertTrue(model.state.value.loaded)
+        assertEquals(1, model.state.value.records.size)
+    }
+
+    @Test
     fun twoOwnersActOnOneSignalWithTheirOwnAmounts() = runBlocking {
         // SEE-93's first acceptance. One document, two phones, two amounts — and neither phone
         // tells the publisher or the gateway anything about its own.
