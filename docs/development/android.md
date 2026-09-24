@@ -704,6 +704,8 @@ Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.pr
 
 ### On a device or emulator
 
+For a headless emulator driven by an agent session against the deployed servers and demo feeds, see [emulator-e2e.md](emulator-e2e.md).
+
 The Stage 5.2 foreground/background run is physical-Seeker-only; an emulator does not count as PASS. Follow the [MacBook-to-Seeker live/background runbook](../guides/live-background-updates.md) and record every item in the [Stage 5.2 device checklist](../testing/stage-5-2.md#physical-seeker-checklist-saw-053) as PASS, FAIL, or NOT RUN.
 
 `src/androidTest/.../LiveCommandDeviceTest.kt` runs the round trip on real Android. It opens **Live test**, enters the phone token, taps **Connect**, waits for the agent's text, checks that the text is exact, and taps **OK** twice. It needs a running sidecar and an agent, so run it with `pnpm test:hello --device`. The script:
