@@ -43,6 +43,7 @@
     <string name="operation_provider_said">The provider said: %1$s</string>
     <string name="operation_provider_says">What the provider says now</string>
     <string name="operation_unserved_no_provider">This build does not carry the execution provider this signal names, so nothing here can carry it out.</string>
+    <string name="operation_unserved_name_mismatch">This signal names a capability that was published for something other than what it asks for, so nothing here will carry it out.</string>
     <string name="operation_unserved_contract">This build carries that execution provider, but at a version it cannot call.</string>
     <string name="operation_unserved_action">That execution provider does not do what this signal asks for.</string>
     <string name="operation_unserved_schema">This signal states a version of its action that this build does not read.</string>

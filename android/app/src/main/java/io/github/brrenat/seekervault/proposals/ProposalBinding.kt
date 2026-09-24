@@ -12,6 +12,7 @@ import io.github.brrenat.seekervault.plugins.UnsupportedReason
 import io.github.brrenat.seekervault.plugins.actions.ActionPayloadResult
 import io.github.brrenat.seekervault.plugins.actions.Instrument
 import io.github.brrenat.seekervault.plugins.actions.actionPayloadFrom
+import io.github.brrenat.seekervault.plugins.legacyNameContradicts
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.wallet.SelectedWallet
@@ -249,9 +250,18 @@ sealed interface ProposalProvider {
  * matched against the providers registered in *this build* — so a provider added later answers to
  * the names it declares without a line of core changing, and only the two names published before
  * SEE-145 need a row in [io.github.brrenat.seekervault.plugins.LEGACY_CAPABILITIES] at all.
+ *
+ * Either way a published legacy name has to agree with the action the document asks for. Nothing is
+ * resolved for one that does not, because the whole of what such a name authorizes is the
+ * capability it was published for ([legacyNameContradicts]).
  */
-fun namedProvider(proposal: Proposal, providers: ProviderRegistry): ExecutionProviderId? =
-    proposal.provider ?: providers.byLegacyPlugin(proposal.plugin)?.capabilities?.id
+fun namedProvider(proposal: Proposal, providers: ProviderRegistry): ExecutionProviderId? {
+    // A legacy name published for another action names nobody here, and the registry is not asked.
+    // It would answer, too — `jupiter.prediction` is a name Jupiter declares — which is exactly
+    // why the question is settled before it is put ([legacyNameContradicts]).
+    if (legacyNameContradicts(proposal.plugin, proposal.action)) return null
+    return proposal.provider ?: providers.byLegacyPlugin(proposal.plugin)?.capabilities?.id
+}
 
 fun proposalProvider(
     proposal: Proposal,
@@ -259,6 +269,13 @@ fun proposalProvider(
     network: Network,
     environment: PluginEnvironment,
 ): ProposalProvider {
+    // Before the terms and before any provider: a document claiming a legacy name published for
+    // another action is refused as the contradiction it is, rather than resolved to the provider
+    // that name happens to belong to. The build before SEE-145 refused the same document, and it
+    // stays a proposal the owner can look at and dismiss (SEE-145).
+    if (legacyNameContradicts(proposal.plugin, proposal.action)) {
+        return ProposalProvider.Unserved(UnsupportedReason.NameMismatch)
+    }
     // The terms are read before anything is resolved, so a document that cannot be read as its own
     // action is unserved for that reason rather than for a provider's. It stays a proposal the
     // owner can look at and dismiss either way.

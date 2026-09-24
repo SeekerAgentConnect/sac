@@ -136,13 +136,20 @@ class ProposalStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        // Version 4 records the execution provider and the versioned action beside the legacy
-        // operation and plugin names, which it keeps writing (SEE-145): a row this build writes is
-        // still readable by one that only knows version 3, and a row written before this build is
-        // read through the same compatibility table the wire uses. Version 3 preserved the common
-        // envelope's presentation and owner-input declarations; versions 1 and 2 adapt to contract
-        // 1 with an operation title and no declarations.
-        const val VERSION = 4
+        // Version 3 is where SEE-145 left the number, deliberately. The execution provider and
+        // the versioned action are written beside the legacy operation and plugin names rather
+        // than instead of them, so the format is purely additive: every field a version-3 build
+        // reads is still there, and the two it does not know it ignores. Raising the number to 4
+        // would have been the one change that broke the downgrade it was meant to protect —
+        // that build's `decode` refuses anything outside `1..3` before it looks at a single field,
+        // so every row this build had rewritten would have vanished on the way back, taking the
+        // owner's review and the record of the one attempt with it and letting a refreshed
+        // proposal look unexecuted. A format that only adds keys does not need a new number.
+        //
+        // Version 3 preserved the common envelope's presentation and owner-input declarations;
+        // versions 1 and 2 adapt to contract 1 with an operation title and no declarations. A row
+        // written before this build is read through the same compatibility table the wire uses.
+        const val VERSION = 3
         const val OLDEST_VERSION = 1
 
         fun encode(record: ProposalRecord): String =
@@ -223,8 +230,16 @@ class ProposalStore(private val dir: File) {
                     },
                 )
 
-        fun decodeProposal(json: JSONObject): Proposal =
-            Proposal(
+        fun decodeProposal(json: JSONObject): Proposal {
+            // A row written before SEE-145 carries only the old two, and they are read through
+            // the same compatibility table the wire is: an operation name becomes an action, and
+            // a bundled plugin name becomes the provider that answers to it — but only when that
+            // name was published for this very action. Nothing is split on a dot.
+            val action =
+                json.optString("action").takeIf(String::isNotEmpty)?.let(::ActionId)
+                    ?: actionOf(json.getString("operation"))
+                    ?: ActionId(json.getString("operation"))
+            return Proposal(
                 key =
                     ProposalKey(
                         serverId = json.getString("serverId"),
@@ -235,14 +250,7 @@ class ProposalStore(private val dir: File) {
                 contractVersion = json.optInt("contractVersion", 1),
                 capabilityVersion = json.optInt("capabilityVersion", 1),
                 title = json.optString("title", json.getString("operation")),
-                // A row written before SEE-145 carries only the old two, and they are read
-                // through the same compatibility table the wire is: an operation name becomes an
-                // action, and a bundled plugin name becomes the provider that answers to it.
-                // Nothing is split on a dot.
-                action =
-                    json.optString("action").takeIf(String::isNotEmpty)?.let(::ActionId)
-                        ?: actionOf(json.getString("operation"))
-                        ?: ActionId(json.getString("operation")),
+                action = action,
                 provider =
                     providerOf(
                         named =
@@ -251,6 +259,7 @@ class ProposalStore(private val dir: File) {
                                 .takeIf(String::isNotEmpty)
                                 ?.let(::ExecutionProviderId),
                         plugin = PluginId(json.getString("plugin")),
+                        action = action,
                     ),
                 plugin = PluginId(json.getString("plugin")),
                 status = ProposalStatus.valueOf(json.getString("status")),
@@ -297,6 +306,7 @@ class ProposalStore(private val dir: File) {
                         }
                     },
             )
+        }
 
         fun encodeDismissal(dismissal: ProposalDismissal): JSONObject =
             JSONObject().put("revision", dismissal.revision).put("at", dismissal.at.toString())

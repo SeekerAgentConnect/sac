@@ -1,7 +1,9 @@
 package io.github.brrenat.seekervault.proposals
 
 import io.github.brrenat.seekervault.plugins.ExecutionProviderId
+import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
 import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
 import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
@@ -298,6 +300,44 @@ class ProposalBindingTest {
                 MAINNET,
                 PRODUCTION,
             ),
+        )
+    }
+
+    @Test
+    fun aLegacyNameCrossedWithAnotherActionIsRefusedBeforeAnythingIsPrepared() {
+        // The build this document was written for refused it: the operation resolved to
+        // `jupiter.swap`, that was not the plugin claimed, and it was another plugin's proposal.
+        // The refusal survives SEE-145. It is told apart from a missing provider on purpose —
+        // nothing is missing here. Jupiter is carried, it does swaps, and it answers to both
+        // names, exactly as the shipped provider does; what is wrong is the document (SEE-145).
+        val jupiter = jupiterLike(legacyPlugins = setOf(JUPITER_SWAP, JUPITER_PREDICTION))
+        val crossed = proposal(wireProposal(operation = SWAP, plugin = JUPITER_PREDICTION.value))
+
+        assertEquals(
+            ProposalProvider.Unserved(UnsupportedReason.NameMismatch),
+            proposalProvider(crossed, registry(jupiter), MAINNET, PRODUCTION),
+        )
+        // Nothing downstream is handed a provider for it either, so a binding cannot be made.
+        assertNull(namedProvider(crossed, registry(jupiter)))
+
+        // The other direction, where the action is one Jupiter also serves: still the document's
+        // contradiction and not the action's, so the same answer rather than an unsupported one.
+        val alsoCrossed =
+            proposal(wireProposal(operation = PREDICTION, plugin = JUPITER_SWAP.value))
+
+        assertEquals(
+            ProposalProvider.Unserved(UnsupportedReason.NameMismatch),
+            proposalProvider(alsoCrossed, registry(jupiter), MAINNET, PRODUCTION),
+        )
+
+        // And the pair as it was published is served, which is what keeps this a rule about
+        // crossed names rather than about prediction proposals.
+        val straight =
+            proposal(wireProposal(operation = PREDICTION, plugin = JUPITER_PREDICTION.value))
+
+        assertEquals(
+            ProposalProvider.Serving(JUPITER_PROVIDER),
+            proposalProvider(straight, registry(jupiter), MAINNET, PRODUCTION),
         )
     }
 

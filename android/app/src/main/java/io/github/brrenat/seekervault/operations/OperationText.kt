@@ -82,14 +82,16 @@ fun problemText(problem: OperationProblem): Int =
 /**
  * Why nothing in this build serves an action here (SEE-145).
  *
- * Six reasons and six sentences, because the owner would do a different thing about each: update
- * the app, connect a wallet on another cluster, switch the connection's environment, or nothing at
- * all. Collapsing them into "unsupported" would be telling them less than this phone knows.
+ * One sentence per reason, because the owner would do a different thing about each: update the app,
+ * connect a wallet on another cluster, switch the connection's environment, go back to the
+ * publisher about a signal that disagrees with itself, or nothing at all. Collapsing them into
+ * "unsupported" would be telling them less than this phone knows.
  */
 @StringRes
 fun unservedText(reason: UnsupportedReason): Int =
     when (reason) {
         UnsupportedReason.NoProvider -> R.string.operation_unserved_no_provider
+        UnsupportedReason.NameMismatch -> R.string.operation_unserved_name_mismatch
         UnsupportedReason.ContractUnsupported -> R.string.operation_unserved_contract
         UnsupportedReason.ActionUnsupported -> R.string.operation_unserved_action
         UnsupportedReason.SchemaUnsupported -> R.string.operation_unserved_schema

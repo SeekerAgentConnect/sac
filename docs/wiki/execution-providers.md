@@ -91,10 +91,11 @@ a refusal rather than a licence to pick one.
 | `NetworkUnsupported` | Not on the cluster the owner's wallet is selected for |
 | `EnvironmentUnsupported` | Not in the environment this connection keeps |
 | `AssetUnsupported` | Not in the asset the document names |
+| `NameMismatch` | It names a legacy capability that was published for something else |
 
 Each is a different thing to be told, because the owner would do a different thing about each:
-update the app, connect a wallet on another cluster, switch the connection's environment, or
-nothing at all. Every one of them happens **before anything is prepared**, and long before anything
+update the app, connect a wallet on another cluster, switch the connection's environment, go back
+to the publisher about a signal that disagrees with itself, or nothing at all. Every one of them happens **before anything is prepared**, and long before anything
 is signed.
 
 An owner with no wallet connected has no cluster yet, so `NETWORK_UNSPECIFIED` skips the cluster
@@ -155,14 +156,29 @@ Four things follow from it.
   versioned action through the existing `capability_id` and `capability_version` that SEE-108
   already defined. Adding an explicit `execution_provider` field is the natural next step and is
   deliberately not part of this change.
+- **A legacy name authorizes exactly the capability it was published for.** `jupiter.prediction`
+  never meant "Jupiter, and separately whatever this document asks for" — it meant Jupiter's
+  prediction order. So a document pairing it with the `swap` action, or `jupiter.swap` with a
+  prediction, is not naming a provider: it is disagreeing with itself, and it resolves to nobody
+  (`NameMismatch`). The build before SEE-145 refused the same document, because the operation
+  resolved to a plugin that was not the one claimed. Checking the *pair* is what keeps that
+  refusal: asking only "does Jupiter do swaps?" answers yes and lets the contradiction through.
+  Naming the provider outright does not rescue it either — a stated provider settles *which*
+  provider, never *whether*. A name with no row in the table constrains nothing, because it never
+  carried an action to contradict.
 - **A new provider needs no row here.** The table exists only for the two names published before
   there was a way to name a provider at all. Anything registered later declares its own
   `legacyPlugins`, and `ProviderRegistry.byLegacyPlugin` matches them.
-- **Stored rows survive in both directions.** `ProposalStore` is at version 4: it writes the action
-  and the provider *beside* the legacy operation and plugin names, so a row this build writes is
-  still readable by one that only knows version 3, and rows written before are read through the
-  same table. A pending item, a completed record and the one-attempt rule all come back exactly as
-  written.
+- **Stored rows survive in both directions.** `ProposalStore` stays at version **3**: it writes the
+  action and the provider *beside* the legacy operation and plugin names, never instead of them, so
+  the format is purely additive and rows written before are read through the same table. The number
+  stays put deliberately. A version-3 build's `decode` refuses anything outside `1..3` before it
+  reads a single field, so raising it to 4 would have been the one change that broke the downgrade
+  it was meant to protect: every row this build had rewritten would vanish on the way back, taking
+  the owner's review and the record of the one attempt with it, and a refreshed proposal would look
+  unexecuted and be actionable again. Writing keys an older reader ignores is what "additive"
+  means; renumbering is not. A pending item, a completed record and the one-attempt rule all come
+  back exactly as written, in both directions.
 
 ### Two numbers are called "contract"
 

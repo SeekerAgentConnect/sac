@@ -828,6 +828,10 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.plugins.actions.actionPayloadFrom",
                 "io.github.brrenat.seekervault.plugins.isDottedName",
                 "io.github.brrenat.seekervault.plugins.isPluginId",
+                // Which legacy names mean what, and — the same question asked the other way —
+                // which pairing of a legacy name and an action was never published at all
+                // (SEE-145). Both are lookups in one table; neither is a decision taken here.
+                "io.github.brrenat.seekervault.plugins.legacyNameContradicts",
                 "io.github.brrenat.seekervault.plugins.providerOf",
                 "io.github.brrenat.seekervault.proposal.v1.Proposal",
                 "io.github.brrenat.seekervault.proposal.v1.ProposalStatus",
