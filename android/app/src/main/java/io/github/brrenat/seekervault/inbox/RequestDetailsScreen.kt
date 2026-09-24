@@ -71,6 +71,11 @@ import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.request.v1.StakingAction
+import io.github.brrenat.seekervault.request.v1.StakingOperation
+import io.github.brrenat.seekervault.skr.SKR_DECIMALS
+import io.github.brrenat.seekervault.skr.StakingFacts
+import io.github.brrenat.seekervault.skr.staking
 import io.github.brrenat.seekervault.transactions.ASSOCIATED_TOKEN_PROGRAM
 import io.github.brrenat.seekervault.transactions.COMPUTE_BUDGET_PROGRAM
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
@@ -155,6 +160,33 @@ fun RequestDetailsScreen(
     val warns = assessment?.decision?.warns == true
     if (request.transfer() != null) {
         TransferRequestReview(
+            request = request,
+            source = source,
+            result = result,
+            sending = sending,
+            now = now,
+            onAnswer = onAnswer,
+            onSendAgain = onSendAgain,
+            onBack = onBack,
+            modifier = modifier,
+            wallet = wallet,
+            signingProblem = signingProblem,
+            preparation = preparation,
+            onPrepareAgain = onPrepareAgain,
+            onApprove = onApproveTransfer,
+            checking = checking,
+            onCheckStatus = onCheckStatus,
+            assessment = assessment,
+            warns = warns,
+            acknowledged = acknowledged,
+            onAcknowledge = onAcknowledge,
+            onRules = onRules,
+            executable = executable,
+        )
+        return
+    }
+    if (request.staking() != null) {
+        StakingRequestReview(
             request = request,
             source = source,
             result = result,
@@ -1497,7 +1529,7 @@ private fun TransferRequestReview(
 ) {
     val transfer = checkNotNull(request.transfer())
     val ready = preparation as? Preparation.Ready
-    val facts = ready?.inspection?.facts
+    val facts = ready?.transferReading?.facts
     val canAnswer = canAnswer(request, result, now)
     Column(modifier.fillMaxWidth()) {
         Row(
@@ -1525,7 +1557,7 @@ private fun TransferRequestReview(
                 checking = checking,
                 now = now,
                 amount = amount,
-                ready = ready?.inspection?.approvable == true,
+                ready = ready?.transferReading?.approvable == true,
             )
             if (sending || checking) {
                 LinearProgressIndicator(
@@ -1603,7 +1635,7 @@ private fun TransferRequestReview(
                         )
                     }
                     is Preparation.Ready -> {
-                        val inspection = preparation.inspection
+                        val inspection = preparation.transferReading
                         DeviceVerification(inspection.verdict)
                         if (inspection.findings.isNotEmpty()) {
                             SeekerCard(
@@ -1651,7 +1683,7 @@ private fun TransferRequestReview(
                             .padding(horizontal = SeekerTheme.dimensions.dp16)
                             .testTag(InboxTags.TRANSFER_AGAIN),
                 )
-                if (!ready.inspection.approvable && result == null) {
+                if (!ready.transferReading.approvable && result == null) {
                     SeekerCard(
                         Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
                         color = MaterialTheme.colorScheme.errorContainer,
@@ -1704,7 +1736,9 @@ private fun TransferRequestReview(
                                 .testTag(InboxTags.SIGNING_PROBLEM),
                     )
                 }
-            } else if (ready?.inspection?.approvable == true && wallet == null && result == null) {
+            } else if (
+                ready?.transferReading?.approvable == true && wallet == null && result == null
+            ) {
                 SeekerCard(
                     Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
                     color = MaterialTheme.colorScheme.errorContainer,
@@ -1744,7 +1778,7 @@ private fun TransferRequestReview(
             ) {
                 // A preparation read before the server's manifest changed under it is not a
                 // way past the gate either: both have to hold for an Approve button to exist.
-                val approvable = executable && ready?.inspection?.approvable == true
+                val approvable = executable && ready?.transferReading?.approvable == true
                 if (warns && approvable) ApproveAnyway(acknowledged, onAcknowledge)
                 Row(
                     Modifier.fillMaxWidth(),
@@ -1892,7 +1926,7 @@ private fun TransferReview(
             )
         }
         is Preparation.Ready -> {
-            val inspection = preparation.inspection
+            val inspection = preparation.transferReading
             Text(
                 stringResource(verdictText(inspection.verdict)),
                 style = MaterialTheme.typography.bodyLarge,
@@ -2163,3 +2197,356 @@ private fun Field(@StringRes label: Int, value: String, name: String) {
         }
     }
 }
+
+/**
+ * The review for a prepared staking action (SEE-146).
+ *
+ * It is a separate screen from the transfer review because the four actions are not transfers and
+ * three of them move nothing. What the owner needs to see is what this phone read out of the bytes
+ * and off the chain: which of the four this is, what it does to their position, and — for the two
+ * that are easy to confuse — that starting an unstake is not the same as withdrawing.
+ *
+ * Every value below comes from [StakingInspection]. The server's own account of what it built is
+ * shown nowhere, and the agent's note is shown as the agent's.
+ */
+@Composable
+private fun StakingRequestReview(
+    request: ActionRequest,
+    source: Connection?,
+    result: LocalResult?,
+    sending: Boolean,
+    now: Instant,
+    onAnswer: (Answer) -> Unit,
+    onSendAgain: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier,
+    wallet: SelectedWallet?,
+    signingProblem: SigningProblem?,
+    preparation: Preparation?,
+    onPrepareAgain: () -> Unit,
+    onApprove: () -> Unit,
+    checking: Boolean,
+    onCheckStatus: () -> Unit,
+    assessment: RequestAssessment?,
+    warns: Boolean,
+    acknowledged: Boolean,
+    onAcknowledge: (Boolean) -> Unit,
+    onRules: (() -> Unit)?,
+    executable: Boolean,
+) {
+    val staking = checkNotNull(request.staking())
+    val ready = preparation as? Preparation.Ready
+    val inspection = ready?.staking
+    val facts = inspection?.facts
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth()
+                .height(SeekerTheme.dimensions.dp56)
+                .padding(start = SeekerTheme.dimensions.dp16, end = SeekerTheme.dimensions.dp8),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(stakingActionText(staking.operation)),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
+            CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
+        }
+        Column(
+            Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
+        ) {
+            TransferStatusBlock(
+                request = request,
+                result = result,
+                sending = sending,
+                checking = checking,
+                now = now,
+                amount = stakingPrimaryAmount(facts, staking),
+                ready = inspection?.approvable == true,
+            )
+            if (sending || checking) {
+                LinearProgressIndicator(
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.SENDING),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            // What this action does, in the owner's words, before any number. The pair that gets
+            // confused is unstake and withdraw, so each says plainly which of the two it is.
+            Text(
+                stringResource(stakingEffectText(staking.operation)),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier =
+                    Modifier.padding(horizontal = SeekerTheme.dimensions.dp20)
+                        .testTag(InboxTags.STAKING_EFFECT),
+            )
+            if (facts?.resetsExistingCooldown == true) {
+                Text(
+                    stringResource(R.string.staking_cooldown_reset),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier =
+                        Modifier.padding(horizontal = SeekerTheme.dimensions.dp20)
+                            .testTag(InboxTags.STAKING_COOLDOWN_RESET),
+                )
+            }
+            if (inspection != null) DeviceVerification(inspection.verdict)
+            if (facts != null) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp16),
+                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
+                ) {
+                    facts.amount?.let { amount ->
+                        SummaryRow(
+                            stringResource(stakingAmountLabel(staking.operation)),
+                            "${formatBaseUnits(amount, facts.decimals)} SKR",
+                            InboxTags.STAKING_AMOUNT,
+                        )
+                    }
+                    SummaryRow(
+                        stringResource(R.string.staking_fact_wallet),
+                        facts.wallet,
+                        InboxTags.STAKING_WALLET,
+                        mono = true,
+                    )
+                    SummaryRow(
+                        stringResource(R.string.staking_fact_network),
+                        io.github.brrenat.seekervault.policy.networkText(staking.network),
+                        InboxTags.STAKING_NETWORK,
+                    )
+                    facts.remainingStake?.let { remaining ->
+                        SummaryRow(
+                            stringResource(R.string.staking_fact_remaining),
+                            "${formatBaseUnits(remaining, facts.decimals)} SKR",
+                            InboxTags.STAKING_REMAINING,
+                        )
+                    }
+                    facts.cooldownEndsAt?.let { endsAt ->
+                        SummaryRow(
+                            stringResource(
+                                if (facts.operation == StakingOperation.STAKING_OPERATION_UNSTAKE) {
+                                    R.string.staking_fact_withdrawable_from
+                                } else {
+                                    R.string.staking_fact_cooled_down_since
+                                }
+                            ),
+                            shortTime(Instant.ofEpochSecond(endsAt)),
+                            InboxTags.STAKING_COOLDOWN,
+                        )
+                    }
+                    if (facts.createsTokenAccount) {
+                        SummaryRow(
+                            stringResource(R.string.staking_fact_creates_account),
+                            stringResource(R.string.staking_creates_account_value),
+                            InboxTags.STAKING_RENT,
+                        )
+                    }
+                    SummaryRow(
+                        stringResource(R.string.staking_fact_stake_account),
+                        facts.stakeAccount,
+                        InboxTags.STAKING_ACCOUNT,
+                        mono = true,
+                    )
+                }
+                ProgramSummary(facts.programs)
+            }
+            if (inspection != null && inspection.findings.isNotEmpty()) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.dimensions.dp20),
+                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
+                ) {
+                    inspection.findings.forEach { finding ->
+                        Text(
+                            stringResource(stakingFindingText(finding)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.testTag(InboxTags.STAKING_FINDING),
+                        )
+                    }
+                }
+            }
+            if (preparation is Preparation.Failed) {
+                Text(
+                    stringResource(R.string.staking_not_prepared),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier =
+                        Modifier.padding(horizontal = SeekerTheme.dimensions.dp20)
+                            .testTag(InboxTags.STAKING_NOT_PREPARED),
+                )
+            }
+            PolicyReview(assessment, onRules = onRules, transaction = true)
+            if (request.agentNote.isNotEmpty()) {
+                SeekerCard(
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = SeekerTheme.dimensions.dp16)
+                        .testTag(InboxTags.NOTE)
+                        .semantics(mergeDescendants = true) {},
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    Column(
+                        Modifier.padding(SeekerTheme.dimensions.dp16),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp4),
+                    ) {
+                        Text(
+                            stringResource(R.string.request_field_note_v4),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(request.agentNote, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            signingProblem?.let { problem ->
+                Text(
+                    stringResource(problemText(problem)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier =
+                        Modifier.padding(horizontal = SeekerTheme.dimensions.dp20)
+                            .testTag(InboxTags.SIGNING_PROBLEM),
+                )
+            }
+            Text(
+                stringResource(
+                    R.string.request_expires_v4,
+                    relativeTime(request.expiresAt.instant(), now),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = SeekerTheme.dimensions.dp20),
+            )
+            Spacer(Modifier.height(SeekerTheme.dimensions.dp12))
+        }
+        if (canAnswer(request, result, now)) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .padding(
+                        start = SeekerTheme.dimensions.dp16,
+                        end = SeekerTheme.dimensions.dp16,
+                        top = SeekerTheme.dimensions.dp12,
+                        bottom = SeekerTheme.dimensions.dp20,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
+            ) {
+                if (!executable) UnsupportedServer()
+                if (warns && executable) ApproveAnyway(acknowledged, onAcknowledge)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
+                ) {
+                    SeekerButton(
+                        text =
+                            stringResource(
+                                if (warns) R.string.approve_despite_warnings
+                                else stakingApproveText(staking.operation)
+                            ),
+                        onClick = onApprove,
+                        // The inspection is the gate, not a suggestion: a preparation this phone
+                        // could not account for has no approve button to overrule.
+                        enabled =
+                            !sending &&
+                                executable &&
+                                wallet != null &&
+                                inspection?.approvable == true &&
+                                (!warns || acknowledged),
+                        modifier = Modifier.weight(1f).testTag(InboxTags.APPROVE),
+                    )
+                    SeekerButton(
+                        text = stringResource(R.string.reject),
+                        onClick = { onAnswer(Answer.Reject) },
+                        enabled = !sending,
+                        role = SeekerButtonRole.Neutral,
+                        modifier = Modifier.testTag(InboxTags.REJECT),
+                    )
+                }
+                if (inspection != null && !inspection.approvable) {
+                    SeekerButton(
+                        text = stringResource(R.string.transfer_prepare_again),
+                        onClick = onPrepareAgain,
+                        enabled = !sending,
+                        role = SeekerButtonRole.Neutral,
+                        modifier = Modifier.fillMaxWidth().testTag(InboxTags.TRANSFER_AGAIN),
+                    )
+                }
+            }
+        } else if (result?.awaitingChain == true) {
+            SeekerButton(
+                text = stringResource(R.string.check_status),
+                onClick = onCheckStatus,
+                enabled = !checking,
+                role = SeekerButtonRole.Neutral,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(
+                            start = SeekerTheme.dimensions.dp16,
+                            end = SeekerTheme.dimensions.dp16,
+                            top = SeekerTheme.dimensions.dp12,
+                            bottom = SeekerTheme.dimensions.dp20,
+                        )
+                        .testTag(InboxTags.CHECK_STATUS),
+            )
+        } else if (result?.delivery == Delivery.Waiting) {
+            SeekerButton(
+                text = stringResource(R.string.send_again),
+                onClick = onSendAgain,
+                enabled = !sending,
+                role = SeekerButtonRole.Neutral,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(
+                            start = SeekerTheme.dimensions.dp16,
+                            end = SeekerTheme.dimensions.dp16,
+                            top = SeekerTheme.dimensions.dp12,
+                            bottom = SeekerTheme.dimensions.dp20,
+                        )
+                        .testTag(InboxTags.SEND_AGAIN),
+            )
+        }
+    }
+}
+
+/** The headline amount, from the bytes when they establish one and from the request otherwise. */
+@Composable
+private fun stakingPrimaryAmount(facts: StakingFacts?, staking: StakingAction): String {
+    facts?.amount?.let {
+        return "${formatBaseUnits(it, facts.decimals)} SKR"
+    }
+    val asked = staking.amount.toULongOrNull() ?: return ""
+    return "${formatBaseUnits(asked, SKR_DECIMALS)} SKR"
+}
+
+/** What each action does, in a sentence, including what it does not do. */
+@StringRes
+private fun stakingEffectText(operation: StakingOperation): Int =
+    when (operation) {
+        StakingOperation.STAKING_OPERATION_STAKE -> R.string.staking_effect_stake
+        StakingOperation.STAKING_OPERATION_UNSTAKE -> R.string.staking_effect_unstake
+        StakingOperation.STAKING_OPERATION_CANCEL_UNSTAKE -> R.string.staking_effect_cancel
+        StakingOperation.STAKING_OPERATION_WITHDRAW -> R.string.staking_effect_withdraw
+        else -> R.string.staking_effect_unknown
+    }
+
+/** What the amount on this review is the amount *of*, which differs for all four. */
+@StringRes
+private fun stakingAmountLabel(operation: StakingOperation): Int =
+    when (operation) {
+        StakingOperation.STAKING_OPERATION_STAKE -> R.string.staking_fact_staking
+        StakingOperation.STAKING_OPERATION_UNSTAKE -> R.string.staking_fact_unstaking
+        StakingOperation.STAKING_OPERATION_CANCEL_UNSTAKE -> R.string.staking_fact_restoring
+        StakingOperation.STAKING_OPERATION_WITHDRAW -> R.string.staking_fact_withdrawing
+        else -> R.string.staking_fact_amount
+    }
+
+/** The primary button names the action, so nobody approves "unstake" meaning "withdraw". */
+@StringRes
+private fun stakingApproveText(operation: StakingOperation): Int =
+    when (operation) {
+        StakingOperation.STAKING_OPERATION_STAKE -> R.string.staking_approve_stake
+        StakingOperation.STAKING_OPERATION_UNSTAKE -> R.string.staking_approve_unstake
+        StakingOperation.STAKING_OPERATION_CANCEL_UNSTAKE -> R.string.staking_approve_cancel
+        StakingOperation.STAKING_OPERATION_WITHDRAW -> R.string.staking_approve_withdraw
+        else -> R.string.approve
+    }

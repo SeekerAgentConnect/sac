@@ -181,6 +181,12 @@ enum class PolicyAction(val code: String) {
     /** A message the wallet signs. It reaches no network and moves nothing. */
     MessageSignature("sign_message"),
     Transfer("transfer"),
+    /**
+     * Any of the four SKR staking actions (SEE-146). One vocabulary rather than four, because a
+     * rule an owner writes is about whether this app may touch their staking position at all; what
+     * each action does to it is a fact of the review, not of the rule.
+     */
+    Staking("staking"),
     Swap("swap"),
 
     /**

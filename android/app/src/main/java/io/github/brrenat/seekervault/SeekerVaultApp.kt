@@ -697,7 +697,7 @@ private fun WalletHandoffRoute(
                         approvalStarted = true
                         when (route.kind) {
                             WalletHandoffKind.Transfer ->
-                                inbox.approveTransfer(
+                                inbox.approveTransaction(
                                     key,
                                     inboxState.preparations[key] as? Preparation.Ready,
                                 )

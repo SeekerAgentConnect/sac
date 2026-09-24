@@ -186,6 +186,14 @@ private fun actionCapability(action: Action): ActionCapability {
             asset(values, "asset", action.transfer.asset)
             integer("amount", action.transfer.amount)
         }
+        Action.KindCase.STAKING -> {
+            text("wallet", action.staking.wallet)
+            text("network", action.staking.network.name)
+            text("operation", action.staking.operation.name)
+            // Cancelling and withdrawing carry none, and an absent parameter is the honest way to
+            // say the program takes none rather than projecting a zero somebody could read.
+            if (action.staking.amount.isNotEmpty()) integer("amount", action.staking.amount)
+        }
         Action.KindCase.SWAP -> {
             text("wallet", action.swap.wallet)
             text("network", action.swap.network.name)
@@ -235,6 +243,7 @@ private fun capabilityId(kind: Action.KindCase): String =
         Action.KindCase.ACK -> "ack"
         Action.KindCase.SIGN_MESSAGE -> "sign_message"
         Action.KindCase.TRANSFER -> "transfer"
+        Action.KindCase.STAKING -> "staking"
         Action.KindCase.SWAP -> "swap"
         else -> "unknown"
     }
@@ -244,6 +253,7 @@ private fun title(kind: Action.KindCase): String =
         Action.KindCase.ACK -> "Acknowledgement"
         Action.KindCase.SIGN_MESSAGE -> "Sign message"
         Action.KindCase.TRANSFER -> "Transfer"
+        Action.KindCase.STAKING -> "Staking"
         Action.KindCase.SWAP -> "Swap"
         else -> "Request"
     }

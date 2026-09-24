@@ -13,6 +13,7 @@ import android.os.Build
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,6 +30,7 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
+import io.github.brrenat.seekervault.request.v1.StakingOperation
 
 /**
  * Posts privacy-preserving request alerts after authoritative Sync. Display copy is derived from
@@ -156,6 +158,13 @@ private fun requestNotificationCopy(
                 source = source,
                 summary = context.getString(R.string.notification_request_transfer_summary),
             )
+        Action.KindCase.STAKING ->
+            ReviewNotificationCopy(
+                title =
+                    context.getString(stakingNotificationTitle(request.action.staking.operation)),
+                source = source,
+                summary = context.getString(R.string.notification_request_staking_summary),
+            )
         Action.KindCase.SWAP ->
             ReviewNotificationCopy(
                 title = context.getString(R.string.notification_request_swap_title),
@@ -261,3 +270,20 @@ internal fun notificationsGranted(context: Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
+
+/**
+ * Which staking action is waiting, in the notification's own title.
+ *
+ * A single "staking request" would hide the distinction that matters most on a lock screen: whether
+ * this is the step that starts a wait or the step that moves the tokens.
+ */
+@StringRes
+private fun stakingNotificationTitle(operation: StakingOperation): Int =
+    when (operation) {
+        StakingOperation.STAKING_OPERATION_STAKE -> R.string.notification_request_stake_title
+        StakingOperation.STAKING_OPERATION_UNSTAKE -> R.string.notification_request_unstake_title
+        StakingOperation.STAKING_OPERATION_CANCEL_UNSTAKE ->
+            R.string.notification_request_cancel_unstake_title
+        StakingOperation.STAKING_OPERATION_WITHDRAW -> R.string.notification_request_withdraw_title
+        else -> R.string.notification_request_unknown_title
+    }

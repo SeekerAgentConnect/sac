@@ -51,6 +51,7 @@ fun kindText(kind: ActivityKind): String =
             ActivityKind.Acknowledgement -> R.string.activity_kind_ack
             ActivityKind.MessageSignature -> R.string.activity_kind_message
             ActivityKind.Transfer -> R.string.activity_kind_transfer
+            ActivityKind.Staking -> R.string.activity_kind_staking
             ActivityKind.Operation -> R.string.activity_kind_operation
             ActivityKind.Other -> R.string.activity_kind_other
         }

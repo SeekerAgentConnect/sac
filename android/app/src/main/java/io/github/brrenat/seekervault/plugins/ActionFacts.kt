@@ -41,7 +41,11 @@ fun actionOwner(request: ActionRequest): ActionOwner =
     when (request.action.kindCase) {
         Action.KindCase.ACK,
         Action.KindCase.SIGN_MESSAGE,
-        Action.KindCase.TRANSFER -> ActionOwner.Core
+        Action.KindCase.TRANSFER,
+        // Staking is core's, for the same reason a transfer is: this app reads the bytes itself,
+        // against a program it carries the addresses for. No provider prepares it and none is
+        // consulted (SEE-146).
+        Action.KindCase.STAKING -> ActionOwner.Core
         Action.KindCase.SWAP -> ActionOwner.Provider(SWAP_ACTION)
         else -> ActionOwner.Unnamed
     }

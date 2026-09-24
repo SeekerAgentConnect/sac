@@ -11,6 +11,11 @@
     <string name="notification_request_signature_summary">Review the message before deciding whether to sign it.</string>
     <string name="notification_request_transfer_title">Transfer requested</string>
     <string name="notification_request_transfer_summary">Review the amount and recipient before deciding whether to send.</string>
+    <string name="notification_request_stake_title">Stake requested</string>
+    <string name="notification_request_unstake_title">Unstake requested</string>
+    <string name="notification_request_cancel_unstake_title">Cancel unstaking requested</string>
+    <string name="notification_request_withdraw_title">Withdrawal requested</string>
+    <string name="notification_request_staking_summary">Review what it does to your staking position before deciding.</string>
     <string name="notification_request_swap_title">Swap requested</string>
     <string name="notification_request_swap_summary">Review the swap terms before deciding whether to continue.</string>
     <string name="notification_request_unknown_title">Review requested</string>

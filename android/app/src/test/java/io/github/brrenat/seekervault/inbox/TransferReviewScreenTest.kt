@@ -289,7 +289,7 @@ class TransferReviewScreenTest {
             .onNodeWithText(context.getString(R.string.finding_recipient_mismatch))
             .assertExists()
         // And it shows where the money would really go, which is not where the request said.
-        val paid = checkNotNull(readyFrom(case).inspection.facts).recipient
+        val paid = checkNotNull(readyFrom(case).transferReading.facts).recipient
         assertEquals(false, paid == case.getJSONObject("request").getString("recipient"))
         field("to")
             .performScrollTo()
@@ -363,7 +363,7 @@ class TransferReviewScreenTest {
         // could be verified about still shows the programs it names (SAW-028).
         val case = case("token_transfer_creates_account")
         show(case, readyFrom(case, rentLamports = 2_039_280L))
-        val programs = checkNotNull(readyFrom(case).inspection.facts).programs
+        val programs = checkNotNull(readyFrom(case).transferReading.facts).programs
         assertEquals(true, programs.size > 1)
         field("programs")
             .performScrollTo()
