@@ -1,9 +1,13 @@
 /**
- * Public HTTPS landing for a pairing code: GET /pair serves a page. New links put the
- * token in the fragment, which this process never receives. The page's button opens the
- * existing seekervault://pair URI; this route does not pair, revoke, or issue codes.
+ * Public HTTPS landing for a pairing code: GET /pair serves a page. New links put the token in
+ * the fragment, which this process never receives. The page's button opens the existing
+ * seekervault://pair URI; this route does not pair, revoke, or issue codes.
+ *
+ * Every server that offers the owner a pairing link serves the same page (SEE-149). What differs
+ * between them is one sentence — which server the owner is about to connect to — and where the QR
+ * library lives, because that is the host's dependency rather than this package's.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 
@@ -27,9 +31,36 @@ export function isPairingLinkPath(path: string): boolean {
   );
 }
 
+/**
+ * Who is asking the owner to pair. The owner may run more than one server, and each pairing is a
+ * separate connection on the phone, so the page has to say which one this is.
+ */
+export interface PairingPageIdentity {
+  /** The browser tab's title. */
+  readonly title: string;
+  /** The page's heading. */
+  readonly heading: string;
+  /** Which server serves this page, as a sentence or two the owner reads first. */
+  readonly server: string;
+}
+
+export const SEEKER_MCP_PAIRING_PAGE: PairingPageIdentity = {
+  title: "Pair Seeker Agent Connect",
+  heading: "Connect your phone",
+  server: "This page is served by the Seeker Agent Connect MCP server.",
+};
+
 export interface PairingLinkOptions {
   /** Configured public origin, not a forwarded Host header. */
   readonly publicOrigin: string;
+  /** Which server the page says it is; the general MCP server unless told otherwise. */
+  readonly identity?: PairingPageIdentity;
+  /**
+   * Absolute path to the host's ESM build of `uqr`, served as /pair/uqr.js. Without it the page
+   * still works: the QR code is replaced by its own fallback line, and the button, the copy value
+   * and the pairing code all still carry the URI.
+   */
+  readonly qrModulePath?: () => string;
 }
 
 const CSP = [
@@ -63,11 +94,14 @@ export function handlePairingLink(
     return;
   }
   if (path in PAGE_ASSETS) {
-    sendAsset(req, res, path as keyof typeof PAGE_ASSETS);
+    sendAsset(req, res, path as keyof typeof PAGE_ASSETS, options);
     return;
   }
   const origin = configuredOrigin(options.publicOrigin);
-  const html = pairingPageHtml(origin);
+  const html = pairingPageHtml(
+    origin,
+    options.identity ?? SEEKER_MCP_PAIRING_PAGE,
+  );
   const headers = {
     ...securityHeaders(),
     "Content-Type": "text/html; charset=utf-8",
@@ -85,11 +119,16 @@ function sendAsset(
   req: IncomingMessage,
   res: ServerResponse,
   path: keyof typeof PAGE_ASSETS,
+  options: PairingLinkOptions,
 ): void {
   const asset = PAGE_ASSETS[path];
   let body: Buffer;
   try {
-    body = readFileSync(assetFile(asset.name));
+    // Resolving the host's QR module can fail as readily as reading it can — an installation
+    // without one is a page without a QR code, not a request that kills the listener.
+    const file = assetFile(asset.name, options);
+    if (file === undefined) throw new Error("not served");
+    body = readFileSync(file);
   } catch {
     res.writeHead(404, {
       ...securityHeaders(),
@@ -110,12 +149,11 @@ function sendAsset(
   res.end(body);
 }
 
-function assetFile(name: string): string {
-  if (name === "uqr.js") {
-    const vendored = fileURLToPath(new URL("./page/uqr.js", import.meta.url));
-    if (existsSync(vendored)) return vendored;
-    return fileURLToPath(import.meta.resolve("uqr"));
-  }
+function assetFile(
+  name: string,
+  options: PairingLinkOptions,
+): string | undefined {
+  if (name === "uqr.js") return options.qrModulePath?.();
   return fileURLToPath(new URL(`./page/${name}`, import.meta.url));
 }
 
@@ -137,20 +175,32 @@ function securityHeaders(): Record<string, string> {
   };
 }
 
-function pairingPageHtml(origin: string): string {
+/** The identity is the host's own text, and it is still escaped: the page is not a template. */
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function pairingPageHtml(
+  origin: string,
+  identity: PairingPageIdentity,
+): string {
   const config = JSON.stringify({ origin }).replaceAll("<", "\\u003c");
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pair Seeker Agent Connect</title>
+<title>${escapeHtml(identity.title)}</title>
 <link rel="stylesheet" href="/pair/page.css">
 </head>
 <body>
 <main>
-<h1>Connect your phone</h1>
-<p>This page is served by the Seeker Agent Connect MCP server. It does not pair by itself. The button below opens the app; if it does not open, copy or scan the code and paste it under Add connection.</p>
+<h1>${escapeHtml(identity.heading)}</h1>
+<p>${escapeHtml(identity.server)} It does not pair by itself. The button below opens the app; if it does not open, copy or scan the code and paste it under Add connection.</p>
 <script type="application/json" id="pairing-server">${config}</script>
 <section id="state-empty" hidden>
 <p>This page needs a pairing link from your agent. Opening it with no code does not connect a phone.</p>

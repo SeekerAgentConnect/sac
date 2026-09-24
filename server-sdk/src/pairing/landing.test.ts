@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { parsePairingUri, type IssuedPairing } from "@seeker-vault/server-sdk";
+import type { IssuedPairing } from "../direct-server.ts";
 
 import {
   decodeLandingFragment,
@@ -10,7 +10,8 @@ import {
   landingUrlHasCredential,
   pairingLandingUrl,
   REPLACEMENT_WARNING,
-} from "./fragment.ts";
+} from "./landing.ts";
+import { parsePairingUri } from "./uri.ts";
 
 const TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789ABCDE_-";
 const SERVER_ID = "9fda5035-f3b4-4ec3-a68a-5e6caa02397a";

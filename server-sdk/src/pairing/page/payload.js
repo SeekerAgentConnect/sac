@@ -1,6 +1,6 @@
 /**
  * Bounded pairing-page fragment codec. This file is served to the browser and imported by
- * the MCP host; it has no Node, SDK, fetch, or storage APIs.
+ * whichever server hosts the page; it has no Node, SDK, fetch, or storage APIs.
  *
  * Encoding: UTF-8 JSON object → base64url without padding. The HTTP request never carries
  * this payload. A fragment is not encryption.

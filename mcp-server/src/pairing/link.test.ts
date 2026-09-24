@@ -3,7 +3,13 @@ import { request as httpRequest } from "node:http";
 import { after, before, describe, it } from "node:test";
 
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { parsePairingUri } from "@seeker-vault/server-sdk";
+import {
+  bootPairingPage,
+  humanPairingLink,
+  landingUrlHasCredential,
+  parsePairingUri,
+  REPLACEMENT_WARNING,
+} from "@seeker-vault/server-sdk";
 import { renderSVG } from "uqr";
 
 import { startSidecar, type Sidecar } from "../server.ts";
@@ -17,10 +23,7 @@ import {
 import { temporaryDatabasePath } from "../testing/process.ts";
 import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
 import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
-import { landingUrlHasCredential } from "./fragment.ts";
-import { REPLACEMENT_WARNING } from "./fragment.ts";
-import { CREATE_PAIRING_LINK_TOOL, humanPairingLink } from "./mcp-tool.ts";
-import { bootPairingPage } from "./page/page.js";
+import { CREATE_PAIRING_LINK_TOOL } from "./mcp-tool.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);

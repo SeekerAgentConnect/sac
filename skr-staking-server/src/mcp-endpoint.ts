@@ -12,9 +12,17 @@ import type { Http2ServerRequest } from "node:http2";
 import { writeJson, type AnyRequest, type AnyResponse } from "./http.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import type { AgentRequests } from "@seeker-vault/server-sdk";
+import {
+  pairingLinkInstruction,
+  type AgentRequests,
+  type IssuedPairing,
+} from "@seeker-vault/server-sdk";
 import type { SkrStakingProvider } from "./skr/provider.ts";
 import { registerStakingTools } from "./requests/tools.ts";
+import {
+  CREATE_PAIRING_LINK_TOOL,
+  registerPairingLinkTool,
+} from "./pairing/mcp-tool.ts";
 
 /** A whole JSON-RPC body may be this large; a bigger one is refused rather than buffered. */
 const MAX_BODY_BYTES = 64 * 1024;
@@ -24,6 +32,8 @@ const LOOPBACK_HOSTNAMES = ["127.0.0.1", "localhost", "[::1]"];
 export interface McpEndpointOptions {
   readonly core: AgentRequests;
   readonly provider: SkrStakingProvider;
+  /** Issues the one-use pairing code the owner's phone still has to confirm. */
+  readonly issuePairing: () => IssuedPairing;
   readonly mcpToken: string;
   readonly allowedHosts: readonly string[];
   readonly version: string;
@@ -52,6 +62,10 @@ function instructions(): string {
     "Unstaking is not withdrawing. request_unstake starts a cooldown and moves no tokens;",
     "request_withdraw moves the tokens once that cooldown has finished. Amounts are SKR base units",
     "as decimal strings, and SKR has 6 decimals.",
+    "",
+    pairingLinkInstruction(CREATE_PAIRING_LINK_TOOL),
+    "It pairs this server, which is the owner's own connection for staking and is not the general",
+    "Seeker Agent Connect MCP server: a phone paired there cannot answer these requests.",
   ].join("\n");
 }
 
@@ -69,6 +83,7 @@ export function mcpEndpoint(options: McpEndpointOptions): McpEndpoint {
       { instructions: instructions() },
     );
     registerStakingTools(server, core, provider, log);
+    registerPairingLinkTool(server, options.issuePairing, log);
     return server;
   }
 

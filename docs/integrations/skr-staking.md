@@ -26,15 +26,34 @@ with the bearer token in `SKR_STAKING_MCP_TOKEN`.
 }
 ```
 
-The phone is connected separately, once, by pairing:
+The phone is connected separately, once, by pairing. Either you ask for the link:
+
+```jsonc
+// skr_create_pairing_link, no arguments
+{
+  "pairing_uri": "seekervault://pair?v=1&url=https%3A%2F%2Fstaking.example.com&server=…&token=…",
+  "https_url": "https://staking.example.com/pair#eyJ2IjoxLCJwYWlyaW5nX3VyaSI6…",
+  "server_url": "https://staking.example.com",
+  "expires_at": "2026-09-24T16:10:00.000Z"
+}
+```
+
+or whoever has a shell on the host runs:
 
 ```bash
 node --env-file-if-exists=.env skr-staking-server/src/cli.ts pair
 ```
 
+Show the owner the **whole** `https_url`. A label such as "Connect your phone" is fine when that
+entire string is the link target, but an abbreviated, wrapped or escaped URL is refused by the page
+as damaged — it does not pair something else by accident. `pairing_uri` is the copy/paste fallback,
+and any `warning` field belongs next to the link: a newer code voids an unused one, and whoever
+pairs first replaces the phone paired now. The tool issues a code and nothing more; the owner still
+confirms on their phone, and nothing is disconnected by creating or opening the link.
+
 Until a phone is paired and has published a wallet, every tool answers that there is no connected
 wallet. That is the same shape as the general server's pairing ([wiki/mcp-adapter.md](../wiki/mcp-adapter.md)),
-and the pairing code names this server's own origin.
+and the pairing code names this server's own origin — the one in `SKR_STAKING_PUBLIC_URL`.
 
 ## The tools
 

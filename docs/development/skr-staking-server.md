@@ -14,9 +14,12 @@ built to be run beside `mcp-server/` rather than instead of it.
 | --- | --- |
 | `src/cli.ts` | The executable: `start` and `pair`, with signal handling. |
 | `src/config.ts` | Every `SKR_STAKING_*` variable, validated all at once. |
-| `src/server.ts` | One listener carrying `/healthz`, `/mcp` and the SDK's phone API. |
+| `src/server.ts` | One listener carrying `/healthz`, `/mcp`, `/pair` and the SDK's phone API. |
 | `src/mcp-endpoint.ts` | The agent's transport: bearer token, allowed hosts, session handling. |
-| `src/requests/tools.ts` | The five tools. |
+| `src/requests/tools.ts` | The five staking tools. |
+| `src/pairing/mcp-tool.ts` | `skr_create_pairing_link` (SEE-149): the MCP registration only. |
+| `src/pairing/landing-page.ts` | What the shared pairing page says it is, and where its QR library is. |
+| `src/pairing/cli.ts` | `pair`, `pair status`, `pair revoke`, against this server's own database. |
 | `src/skr/program.ts` | The program's identity, its discriminators and every PDA derivation. |
 | `src/skr/accounts.ts` | The account decoders. |
 | `src/skr/shares.ts` | Exact share arithmetic, including the full-position case. |
@@ -25,8 +28,17 @@ built to be run beside `mcp-server/` rather than instead of it.
 | `src/skr/provider.ts` | Chain reads, each operation's preconditions, and preparation. |
 
 Everything specific to SKR is under `src/skr/`. Everything else is the Direct Server SDK
-(`server-sdk/`), which owns pairing, the request lifecycle, preparation, results and confirmation —
-the same package `mcp-server/` uses, unchanged by this server's existence.
+(`server-sdk/`), which owns pairing, the pairing page, the request lifecycle, preparation, results
+and confirmation — the same package `mcp-server/` uses, unchanged by this server's existence.
+
+The pairing page is the clearest case of that rule. SEE-149 gave this server the HTTPS pairing link
+`mcp-server` has, and it did it by moving the page, the fragment codec and the tool's wording into
+`server-sdk/src/pairing/` rather than copying them here: the token-in-the-fragment rule, the CSP and
+the refusal of a shortened or foreign code are security-carrying code, and two copies of those would
+drift. This package supplies the two things that are genuinely its own — the sentence saying which
+server the owner is pairing, and the path to its own `uqr` build — and registers its own MCP tool,
+because MCP is a host concern the SDK does not import. Nothing here imports from `mcp-server`, and
+nothing should.
 
 ## Two servers, one host
 

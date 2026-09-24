@@ -9,10 +9,13 @@
  * pairing code is the one place a token is shown, because showing it is how pairing works.
  */
 import { renderUnicodeCompact } from "uqr";
-import { openDirectServer, type PairedPhone } from "@seeker-vault/server-sdk";
+import {
+  openDirectServer,
+  pairingLandingUrl,
+  type PairedPhone,
+} from "@seeker-vault/server-sdk";
 
 import { ConfigError, loadSidecarConfig } from "../config.ts";
-import { pairingLandingUrl } from "./fragment.ts";
 
 const USAGE = `Usage: seeker-agent-connect-mcp pair [status | revoke]
 
