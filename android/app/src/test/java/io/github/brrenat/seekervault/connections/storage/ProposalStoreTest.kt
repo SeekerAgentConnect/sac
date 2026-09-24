@@ -191,18 +191,60 @@ class ProposalStoreTest {
         // the action and the provider *and* the operation and plugin names an older build reads.
         store.put(ProposalRecord(connectionId = CONNECTION, proposal = proposal()))
 
-        val written =
-            JSONObject(File(dir, "$CONNECTION/$PROPOSAL_A.json").readText())
-                .getJSONObject("proposal")
+        val row = JSONObject(File(dir, "$CONNECTION/$PROPOSAL_A.json").readText())
+        val written = row.getJSONObject("proposal")
 
-        assertEquals(
-            4,
-            JSONObject(File(dir, "$CONNECTION/$PROPOSAL_A.json").readText()).getInt("version"),
+        // And carries a version number that build will accept. Its `decode` refuses anything
+        // outside `1..3` before it reads a single field, so raising the number would have thrown
+        // away every row this build had rewritten — the owner's review and the record of the one
+        // attempt with it, leaving a refreshed proposal looking unexecuted and actionable again.
+        // Writing keys a reader does not know is what "additive" means; renumbering is not.
+        assertTrue(
+            "a row written now must pass the version-3 gate, not just carry the old fields",
+            row.getInt("version") in 1..3,
         )
+        assertEquals(3, row.getInt("version"))
         assertEquals(SWAP_ACTION.value, written.getString("action"))
         assertEquals(JUPITER_PROVIDER.value, written.getString("provider"))
         assertEquals(SWAP, written.getString("operation"))
         assertEquals(JUPITER_SWAP.value, written.getString("plugin"))
+    }
+
+    @Test
+    fun aRowThisBuildRewroteStillBlocksTheSecondAttemptAfterADowngrade() {
+        // The consequence spelled out, because the number alone reads like bookkeeping. A proposal
+        // reviewed and executed here, rewritten by this build, and then read back by the decoder
+        // the previous build had: the attempt is still on record, so nothing becomes spendable a
+        // second time (SEE-145).
+        val record =
+            ProposalRecord(
+                connectionId = CONNECTION,
+                proposal = proposal(),
+                review = ProposalReview(1, choice(1_000_000uL), AT),
+                execution =
+                    ProposalExecution(
+                        binding = binding(proposal(), choice(1_000_000uL)),
+                        startedAt = AT,
+                        outcome = ProposalOutcome.Declined,
+                        settledAt = AT,
+                    ),
+            )
+        store.put(record)
+
+        val row = JSONObject(File(dir, "$CONNECTION/$PROPOSAL_A.json").readText())
+
+        // Exactly what the previous build's `decode` did before it looked at anything else.
+        assertTrue("the row would be dropped whole on a downgrade", row.getInt("version") in 1..3)
+        // What it reads once past that gate: the operation and the plugin, never an action or a
+        // provider it has no field for, and the owner's review and one attempt intact.
+        val proposal = row.getJSONObject("proposal")
+        assertEquals(SWAP, proposal.getString("operation"))
+        assertEquals(JUPITER_SWAP.value, proposal.getString("plugin"))
+        assertEquals(1L, row.getJSONObject("review").getLong("revision"))
+        assertEquals(
+            "Declined",
+            row.getJSONObject("execution").getJSONObject("outcome").getString("outcome"),
+        )
     }
 
     @Test

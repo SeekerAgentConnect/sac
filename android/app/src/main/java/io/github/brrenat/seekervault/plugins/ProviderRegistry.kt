@@ -150,6 +150,19 @@ enum class UnsupportedReason(val code: String) {
     NoProvider("no_provider"),
 
     /**
+     * The document claims a bundled-plugin name that was published for a different action than the
+     * one it asks for — `jupiter.prediction` while asking to swap, or `jupiter.swap` while asking
+     * for a prediction order.
+     *
+     * It is told apart from [NoProvider] because it is a different fact about a different party.
+     * Nothing is missing from this build: the provider is carried, the action is served, and the
+     * two would resolve happily if the document had not also said it was something else. What is
+     * wrong is the document, and a name published for one capability does not get to authorize
+     * another ([io.github.brrenat.seekervault.plugins.legacyNameContradicts]).
+     */
+    NameMismatch("name_mismatch"),
+
+    /**
      * One exists, but it was written against a version of the boundary this build doesn't call.
      * Calling it anyway would be guessing at a contract neither side agreed to.
      */

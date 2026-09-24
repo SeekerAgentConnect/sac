@@ -90,11 +90,12 @@ change:
 - a feed action never enters the direct result outbox, and no local feed state is uploaded to the
   publisher or gateway.
 
-`ProposalStore` version 4 records the execution provider and the versioned action **beside** the
-legacy operation and plugin names, which it keeps writing: a row this build writes is still readable
-by one that only knows version 3, and a row written before this build is read through the same
-compatibility table the wire uses. Version 3 adds the common presentation and owner-input
-declarations. Versions 1 and 2 read as contract 1, derive the title from the operation, retain no
+`ProposalStore` stays at version 3 and records the execution provider and the versioned action
+**beside** the legacy operation and plugin names, which it keeps writing: the format only adds keys
+an older reader ignores, so a row this build writes is still readable by one that only knows
+version 3 — which refuses anything numbered outside `1..3` before it reads a field — and a row
+written before this build is read through the same compatibility table the wire uses. Version 3
+adds the common presentation and owner-input declarations. Versions 1 and 2 read as contract 1, derive the title from the operation, retain no
 declarations they never had, and preserve every dismissal, review, execution and outcome. The
 gateway continues to use its
 existing `proposal` table and reads old proposal bytes through the compatibility adapter, so

@@ -12,6 +12,7 @@ import io.github.brrenat.seekervault.request.v2.request
 import io.github.brrenat.seekervault.requests.commonEnvelope
 import io.github.brrenat.seekervault.servers.SERVER_B
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -44,7 +45,9 @@ class CompatibilityTest {
         assertEquals(2, PROVIDER_CONTRACT)
         // And a name nobody published means nothing here.
         assertNull(legacyCapabilityOf(PluginId("somebody.else")))
-        assertNull(providerOf(named = null, plugin = PluginId("somebody.else")))
+        assertNull(
+            providerOf(named = null, plugin = PluginId("somebody.else"), action = SWAP_ACTION)
+        )
     }
 
     @Test
@@ -58,6 +61,58 @@ class CompatibilityTest {
         // is shown as unsupported rather than mistaken for one that is.
         assertEquals(ActionId("bridge"), actionOf("bridge"))
         assertNull(actionOf("Bridge"))
+    }
+
+    @Test
+    fun aLegacyNameDoesNotAuthorizeTheCapabilityItWasNotPublishedFor() {
+        // `jupiter.prediction` never meant "Jupiter, and separately whatever this document asks
+        // for". It meant Jupiter's prediction order. So a document pairing it with `swap` — or
+        // `jupiter.swap` with a prediction — is not naming a provider, it is disagreeing with
+        // itself, and it resolves to nobody. Asking "does Jupiter do swaps?" would answer yes and
+        // let the contradiction through, which is why the pair is what gets checked.
+        assertNull(providerOf(named = null, plugin = JUPITER_PREDICTION, action = SWAP_ACTION))
+        assertNull(providerOf(named = null, plugin = JUPITER_SWAP, action = PREDICTION_BUY_ACTION))
+        assertTrue(legacyNameContradicts(JUPITER_PREDICTION, SWAP_ACTION))
+        assertTrue(legacyNameContradicts(JUPITER_SWAP, PREDICTION_BUY_ACTION))
+
+        // Naming the provider outright does not rescue it. The document still says it is two
+        // different things, and the stated provider settles which provider — never whether.
+        assertNull(
+            providerOf(named = JUPITER_PROVIDER, plugin = JUPITER_PREDICTION, action = SWAP_ACTION)
+        )
+
+        // The pairs that were published resolve exactly as they always have.
+        assertEquals(
+            JUPITER_PROVIDER,
+            providerOf(named = null, plugin = JUPITER_SWAP, action = SWAP_ACTION),
+        )
+        assertEquals(
+            JUPITER_PROVIDER,
+            providerOf(named = null, plugin = JUPITER_PREDICTION, action = PREDICTION_BUY_ACTION),
+        )
+        // And a name this build never published constrains nothing: it carried no action to
+        // contradict, so it is the provider the document states that decides.
+        assertFalse(legacyNameContradicts(PluginId("somebody.else"), SWAP_ACTION))
+        assertFalse(legacyNameContradicts(null, SWAP_ACTION))
+    }
+
+    @Test
+    fun aLegacyDocumentThatContradictsItselfNamesNoProvider() {
+        // The same rule where it arrives: a published document, valid in every other way, whose
+        // operation and plugin name were published for different capabilities. It stays a proposal
+        // the owner can read and dismiss — it just has nobody to execute it.
+        val crossed = proposal(wireProposal(operation = SWAP, plugin = JUPITER_PREDICTION.value))
+
+        assertEquals(SWAP_ACTION, crossed.action)
+        assertEquals(JUPITER_PREDICTION, crossed.plugin)
+        assertNull(crossed.provider)
+
+        // And the other way round, with the prediction's own terms under the swap's name.
+        val alsoCrossed =
+            proposal(wireProposal(operation = PREDICTION, plugin = JUPITER_SWAP.value))
+
+        assertEquals(PREDICTION_BUY_ACTION, alsoCrossed.action)
+        assertNull(alsoCrossed.provider)
     }
 
     @Test

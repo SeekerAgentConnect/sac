@@ -283,7 +283,7 @@ fun proposalFrom(message: WireRequest, expect: ProposalExpectation): ProposalRes
             // the one that answers to the bundled-plugin name the document claims — looked up in
             // one explicit table and never parsed out of the name
             // (docs/wiki/execution-providers.md#compatibility).
-            provider = providerOf(named = null, plugin = plugin),
+            provider = providerOf(named = null, plugin = plugin, action = capability),
             plugin = plugin,
             status = status,
             createdAt = createdAt,
@@ -366,7 +366,7 @@ fun proposalFrom(message: WireProposal, expect: ProposalExpectation): ProposalRe
             revision = message.revision,
             title = message.operation,
             action = legacyAction,
-            provider = providerOf(named = null, plugin = legacyPlugin),
+            provider = providerOf(named = null, plugin = legacyPlugin, action = legacyAction),
             plugin = legacyPlugin,
             status = status,
             createdAt = createdAt,

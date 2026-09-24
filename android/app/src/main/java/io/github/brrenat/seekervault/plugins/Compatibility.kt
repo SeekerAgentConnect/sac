@@ -76,6 +76,30 @@ fun legacyCapabilityOf(plugin: PluginId): LegacyCapability? = LEGACY_CAPABILITIE
 }
 
 /**
+ * Whether [plugin] contradicts [action]: a legacy name this build published, claimed for an action
+ * other than the one it was published for.
+ *
+ * A legacy name is not half of a description, it is a whole one. `jupiter.prediction` did not mean
+ * "Jupiter, and separately some action"; it meant Jupiter's prediction order, and that is the only
+ * thing it has ever meant. So a document that says `jupiter.prediction` while asking for `swap` is
+ * not a document naming a provider — it is a document disagreeing with itself, and the older build
+ * it was written for said so too: the operation resolved to `jupiter.swap`, that was not the plugin
+ * claimed, and the proposal was refused as another plugin's before anything was prepared.
+ *
+ * Keeping that refusal is what stops a published name from authorizing a capability it was never
+ * published for. It is asked of the pair and not of the provider on purpose: the provider is the
+ * same `jupiter` either way, so a check that only asked "does Jupiter do swaps?" would answer yes
+ * and let the contradiction through.
+ *
+ * A name with no row here constrains nothing — it never carried an action to contradict
+ * (docs/wiki/execution-providers.md#compatibility).
+ */
+fun legacyNameContradicts(plugin: PluginId?, action: ActionId): Boolean {
+    val published = plugin?.let(::legacyCapabilityOf) ?: return false
+    return published.action != action
+}
+
+/**
  * The action a document's capability name asks for.
  *
  * Both spellings are accepted and they mean the same thing, which is what "do not silently break
@@ -112,9 +136,22 @@ fun legacyOperationOf(action: ActionId): String =
  * only when nothing was stated, and only through [LEGACY_CAPABILITIES] — so a document that names
  * neither a provider nor a plugin this build knows resolves to no provider, and an operation with
  * no provider is refused before anything is prepared.
+ *
+ * [action] is what the document asks for, and a legacy [plugin] that was published for a different
+ * one resolves to no provider whatever [named] says: a name cannot authorize a capability it never
+ * stood for ([legacyNameContradicts]).
  */
-fun providerOf(named: ExecutionProviderId?, plugin: PluginId?): ExecutionProviderId? =
-    named ?: plugin?.let { legacyCapabilityOf(it)?.provider }
+fun providerOf(
+    named: ExecutionProviderId?,
+    plugin: PluginId?,
+    action: ActionId,
+): ExecutionProviderId? {
+    // Before either of them, because it is not a question about which provider: a document whose
+    // legacy name was published for another action has not named a provider at all, however it
+    // spelled the rest of itself ([legacyNameContradicts]).
+    if (legacyNameContradicts(plugin, action)) return null
+    return named ?: plugin?.let { legacyCapabilityOf(it)?.provider }
+}
 
 /**
  * How a provider's action is named for something that still reads the old vocabulary: the bundled
