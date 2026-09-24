@@ -1,0 +1,68 @@
+alerts:
+- rule: DEPLOYMENT_FAILED
+- rule: DOMAIN_FAILED
+features:
+- buildpack-stack=ubuntu-22
+ingress:
+  rules:
+  - component:
+      name: seeker-skr-staking-mcp
+    match:
+      authority: {}
+      path:
+        prefix: /
+name: seeker-skr-staking-mcp
+region: ams
+services:
+- envs:
+  - key: SKR_STAKING_MCP_TOKEN
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:nG2bQ3DOeZ1D7InelWy50LPg3OTbvcgq:g3B94NqTJ2rT3rA0yeFKcIlOEQS3GTKY5tlEcb4YSkGqg3QoGe9MWCxI6Zc1Mj9rVufPXrbkzaSWM/WR]
+  - key: SKR_STAKING_RPC_URL
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: EV[1:pySoVDk59Kyhc06FGbFbQliGJ8kfthLR:+fjq4c84yZ+Kb5qXWuFJ95H+didcJ8LoIZ8zM7Vkl6MCLEEepvAxPXkgCV6UKS6pW/t4]
+  - key: SKR_STAKING_RPC_TIMEOUT_MS
+    scope: RUN_AND_BUILD_TIME
+    value: "10000"
+  - key: SKR_STAKING_ALLOWED_HOSTS
+    scope: RUN_AND_BUILD_TIME
+    value: ${APP_DOMAIN}
+  - key: SKR_STAKING_PUBLIC_URL
+    scope: RUN_AND_BUILD_TIME
+    value: ${APP_URL}
+  - key: SKR_STAKING_HOST
+    scope: RUN_AND_BUILD_TIME
+    value: 0.0.0.0
+  - key: SKR_STAKING_PORT
+    scope: RUN_AND_BUILD_TIME
+    value: "8080"
+  - key: SKR_STAKING_H2C
+    scope: RUN_AND_BUILD_TIME
+    value: "true"
+  - key: SKR_STAKING_REQUEST_TTL_SECONDS
+    scope: RUN_AND_BUILD_TIME
+    value: "86400"
+  - key: SKR_STAKING_PENDING_LIMIT
+    scope: RUN_AND_BUILD_TIME
+    value: "100"
+  - key: SKR_STAKING_PAIRING_TOKEN_TTL_SECONDS
+    scope: RUN_AND_BUILD_TIME
+    value: "600"
+  health_check:
+    failure_threshold: 9
+    period_seconds: 10
+    success_threshold: 1
+    timeout_seconds: 1
+  http_port: 8080
+  image:
+    registry: brenat
+    registry_credentials: EV[1:HkQdhus/rY/IXfZpOmWqTzksU0Ju1MDh:3H9eSDV8UPor5LDovVDCyW6SVaw6h+diJ37tQMn+nqhhLur9p1Rpsq08HoQDK+QAas6hXkS/cW0gt84=]
+    registry_type: DOCKER_HUB
+    repository: seeker-agent-connect
+    tag: skr-staking-mcp-0.1.1
+  instance_count: 1
+  instance_size_slug: apps-s-1vcpu-0.5gb
+  name: seeker-skr-staking-mcp
+  protocol: HTTP2

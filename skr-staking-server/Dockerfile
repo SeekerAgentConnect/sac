@@ -45,6 +45,7 @@ COPY --from=prod-deps --chown=root:root /app/node_modules node_modules
 COPY --from=prod-deps --chown=root:root /app/skr-staking-server/node_modules skr-staking-server/node_modules
 # The SDK is a workspace package rather than a published one, so its built output travels with the
 # image and the workspace link above resolves to it.
+COPY --from=prod-deps --chown=root:root /app/server-sdk/node_modules server-sdk/node_modules
 COPY --from=build --chown=root:root /app/server-sdk/dist server-sdk/dist
 COPY --chown=root:root server-sdk/package.json server-sdk/
 COPY --from=build --chown=root:root /app/skr-staking-server/dist skr-staking-server/dist
