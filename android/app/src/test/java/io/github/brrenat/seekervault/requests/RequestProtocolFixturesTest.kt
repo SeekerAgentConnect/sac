@@ -19,6 +19,7 @@ import io.github.brrenat.seekervault.request.v1.RequestError
 import io.github.brrenat.seekervault.request.v1.RequestErrorDetail
 import io.github.brrenat.seekervault.request.v1.RequestRef
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.request.v1.StakingOperation
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.TransactionSubmission
 import io.github.brrenat.seekervault.request.v1.WalletBinding
@@ -35,6 +36,7 @@ import io.github.brrenat.seekervault.request.v1.publishWalletRequest
 import io.github.brrenat.seekervault.request.v1.requestErrorDetail
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.signMessageAction
+import io.github.brrenat.seekervault.request.v1.stakingAction
 import io.github.brrenat.seekervault.request.v1.submitResultRequest
 import io.github.brrenat.seekervault.request.v1.swapAction
 import io.github.brrenat.seekervault.request.v1.transferAction
@@ -171,6 +173,81 @@ class RequestProtocolFixturesTest {
 
     @Test
     fun swapPending() = check("ActionRequest/swap_pending", ActionRequest::parseFrom, SWAP_PENDING)
+
+    @Test
+    fun stakingUnstakePending() {
+        check(
+            "ActionRequest/staking_unstake_pending",
+            ActionRequest::parseFrom,
+            request(
+                STAKING_UNSTAKE_ID,
+                action {
+                    staking = stakingAction {
+                        wallet = WALLET
+                        network = Network.NETWORK_MAINNET
+                        operation = StakingOperation.STAKING_OPERATION_UNSTAKE
+                        // A whole-position unstake is asked for as "more than you have", so the
+                        // fixture pins that a u64 max survives the string field it travels in.
+                        amount = ULong.MAX_VALUE.toString()
+                    }
+                },
+                RequestState.REQUEST_STATE_PENDING,
+                created = "2026-09-24T09:00:00.002Z",
+                expires = "2026-09-24T09:30:00.002Z",
+                note = "Close the whole SKR position before the vesting review",
+                connectionId = STAKING_CONNECTION,
+            ),
+        )
+        val parsed = ActionRequest.parseFrom(bytes("ActionRequest/staking_unstake_pending"))
+        assertEquals(Action.KindCase.STAKING, parsed.action.kindCase)
+        assertEquals(ULong.MAX_VALUE, parsed.action.staking.amount.toULong())
+    }
+
+    @Test
+    fun stakingWithdrawConfirmed() {
+        check(
+            "ActionRequest/staking_withdraw_confirmed",
+            ActionRequest::parseFrom,
+            request(
+                STAKING_WITHDRAW_ID,
+                action {
+                    staking = stakingAction {
+                        wallet = WALLET
+                        network = Network.NETWORK_MAINNET
+                        operation = StakingOperation.STAKING_OPERATION_WITHDRAW
+                    }
+                },
+                RequestState.REQUEST_STATE_CONFIRMED,
+                created = "2026-09-24T09:00:00.003Z",
+                expires = "2026-09-24T09:30:00.003Z",
+                updated = "2026-09-24T09:02:11.003Z",
+                note = "The cooldown finished, so take the SKR back",
+                connectionId = STAKING_CONNECTION,
+                outcome =
+                    outcome {
+                        approval = approval {
+                            preparedVersion = 1
+                            contentHash = STAKING_CONTENT_HASH
+                        }
+                        signature = STAKING_SIGNATURE
+                        detail = "Withdrawn after the cooldown."
+                        confirmation = confirmation {
+                            level = ConfirmationLevel.CONFIRMATION_LEVEL_FINALIZED
+                            slot = 318_000_001L
+                            checkedAt = at("2026-09-24T09:02:11.003Z")
+                            checks = 2
+                            endpoint = "api.mainnet-beta.solana.com"
+                            matchesApproval = true
+                            detail = "Finalized on chain."
+                        }
+                    },
+            ),
+        )
+        // Withdrawing takes no amount at all: the program pays out what it recorded, and an empty
+        // field is how the wire says nobody chose a number (SEE-146).
+        val parsed = ActionRequest.parseFrom(bytes("ActionRequest/staking_withdraw_confirmed"))
+        assertEquals("", parsed.action.staking.amount)
+    }
 
     @Test
     fun emptyRequest() {
@@ -355,6 +432,9 @@ class RequestProtocolFixturesTest {
         const val SIGN_TEXT_ID = "c4b3a291-8f7e-4d6c-a5b4-c3d2e1f0a9b8"
         const val SIGN_DATA_ID = "d5c4b3a2-9180-4f7e-b6d5-c4b3a2918070"
         const val SWAP_ID = "e6d5c4b3-a291-4807-8f6e-d5c4b3a29180"
+        const val STAKING_CONNECTION = "7c1f2e3d-4a5b-4c6d-8e9f-0a1b2c3d4e5f"
+        const val STAKING_UNSTAKE_ID = "b3a29180-d5c4-4b3a-9180-e6d5c4b3a291"
+        const val STAKING_WITHDRAW_ID = "c4b3a291-80d5-4c4b-8a91-80e6d5c4b3a2"
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
         const val RECIPIENT = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
         const val USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
@@ -368,6 +448,8 @@ class RequestProtocolFixturesTest {
                 "ActionRequest/sign_message_text",
                 "ActionRequest/sign_message_data",
                 "ActionRequest/swap_pending",
+                "ActionRequest/staking_unstake_pending",
+                "ActionRequest/staking_withdraw_confirmed",
                 "ActionRequest/empty",
                 "PreparedTransaction/v2",
                 "PreparedTransaction/max_values",
@@ -379,6 +461,14 @@ class RequestProtocolFixturesTest {
                 "WalletBinding/mainnet",
                 "PublishWalletRequest/devnet",
                 "PublishWalletRequest/cleared",
+            )
+
+        /** A staking approval's hash and signature, as the cross-runtime fixture writes them. */
+        val STAKING_CONTENT_HASH: ByteString =
+            base64("F/////////////////////////////////////////8=")
+        val STAKING_SIGNATURE: ByteString =
+            base64(
+                "Ki8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLyovKi8qLw=="
             )
 
         val SIGNATURE: ByteString =
@@ -466,9 +556,10 @@ class RequestProtocolFixturesTest {
             expires: String,
             updated: String = created,
             note: String = "",
+            connectionId: String = CONNECTION_A,
             outcome: Outcome? = null,
         ): ActionRequest = actionRequest {
-            ref = refOf(requestId)
+            ref = refOf(requestId, connectionId)
             this.action = action
             agentNote = note
             this.state = state

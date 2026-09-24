@@ -33,6 +33,7 @@ import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.servers.manifestFrom
+import io.github.brrenat.seekervault.skr.staking
 import io.github.brrenat.seekervault.sync.ConnectionSyncState
 import io.github.brrenat.seekervault.sync.LocalRequestState
 import io.github.brrenat.seekervault.sync.SyncConnection
@@ -837,7 +838,10 @@ class ConnectionRepository(
      * a fresh preparation rather than carrying this decision over to another transaction. It
      * reaches no wallet itself.
      */
-    suspend fun approveTransfer(key: RequestKey, approved: ApprovedTransaction): ApprovalOutcome {
+    suspend fun approveTransaction(
+        key: RequestKey,
+        approved: ApprovedTransaction,
+    ): ApprovalOutcome {
         val mutex = sending.computeIfAbsent(key) { Mutex() }
         return try {
             mutex.withLock { commit(key, approved) }
@@ -864,7 +868,10 @@ class ConnectionRepository(
         val stored =
             locked {
                 val request = _inbox.value.pendingRequest(key) ?: return@locked null
-                if (request.transfer() == null) return@locked null
+                // A transfer or a staking action: both are transactions the owner's wallet signs
+                // and
+                // sends, and both are approved by naming the exact prepared version and its hash.
+                if (request.transfer() == null && request.staking() == null) return@locked null
                 LocalResult(
                         key.connectionId,
                         key.requestId,
@@ -1599,9 +1606,11 @@ class ConnectionRepository(
                 Answer.Reject ->
                     request.action.hasAck() ||
                         request.signMessage() != null ||
-                        request.transfer() != null
-                // A transfer is approved through approveTransfer, which binds the approval to the
-                // preparation the owner reviewed; there is nothing to approve without one.
+                        request.transfer() != null ||
+                        request.staking() != null
+                // A transfer and a staking action are both approved through approveTransaction,
+                // which binds the approval to the preparation the owner reviewed; there is nothing
+                // to approve without one.
                 Answer.Approve -> request.signMessage() != null
             }
 
@@ -1613,7 +1622,10 @@ class ConnectionRepository(
          */
         fun submissionFor(result: LocalResult): SubmitResultRequest? {
             val requestRef = result.request.ref
-            val transfer = result.request.transfer() != null
+            // Whether the wallet may have sent something. A message signature reaches this phone
+            // or does not; a transaction can have left for the network without an answer coming
+            // back, and a staking transaction is a transaction.
+            val transaction = result.request.transfer() != null || result.request.staking() != null
             return when (result.answer) {
                 Answer.Acknowledge ->
                     submitResultRequest {
@@ -1654,10 +1666,11 @@ class ConnectionRepository(
                             }
                         // For a message, nothing reached this phone, so nothing was signed and
                         // nothing is in doubt: the agent is told the request failed. For a
-                        // transfer, the wallet may have sent the transaction, and an outcome
-                        // nobody knows is reported as unknown rather than guessed at.
+                        // transaction, the wallet may have sent it, and an outcome nobody knows is
+                        // reported as unknown rather than guessed at — never as a failure an agent
+                        // could retry over the top of.
                         is SigningOutcome.Unresolved ->
-                            if (transfer)
+                            if (transaction)
                                 submitResultRequest {
                                     ref = requestRef
                                     unknownOutcome = unknownOutcome { detail = outcome.detail }

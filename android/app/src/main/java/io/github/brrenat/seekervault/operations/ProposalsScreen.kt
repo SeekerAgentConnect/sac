@@ -180,7 +180,7 @@ private fun ProposalRow(
                 // The operation at the protocol's own level. Which provider serves it is the
                 // plugin's business and is not a thing this screen knows (SEE-86).
                 Text(
-                    record.proposal.operation.value,
+                    record.proposal.action.value,
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(

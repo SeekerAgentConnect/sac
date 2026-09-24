@@ -1,8 +1,10 @@
-# Jupiter, as this app uses it (SEE-93, SEE-94, SEE-96)
+# Jupiter, as this app uses it (SEE-93, SEE-94, SEE-96, SEE-145)
 
-Two plugins get their execution data from Jupiter, directly from the owner's phone: `jupiter.swap` a route and a transaction, `jupiter.prediction` a market and an order. This page is what was verified about those APIs, what the app sends them, and what happens when they say no. What the plugins do with the answers is [wiki/jupiter-swap.md](../wiki/jupiter-swap.md) and [wiki/jupiter-prediction.md](../wiki/jupiter-prediction.md).
+One bundled execution provider gets its data from Jupiter, directly from the owner's phone: `jupiter`, serving two provider-neutral actions — `swap`, for which it fetches a route and a transaction, and `prediction.buy`, for which it fetches a market and an order. This page is what was verified about those APIs, what the app sends them, and what happens when they say no. What the app does with the answers is [wiki/jupiter-swap.md](../wiki/jupiter-swap.md) and [wiki/jupiter-prediction.md](../wiki/jupiter-prediction.md).
 
-One thing here is not the phone's: the Prediction publisher template reads the same provider's **listing**, from a server, to discover markets to publish (SEE-96). It is a different half of the same API — public information about which markets exist, rather than an order for somebody — and it is [its own section below](#prediction-discovery-see-96).
+**Everything on this page is behind the adapter.** Since SEE-145 the boundary in the app is a Solana execution-provider interface rather than a plugin named after this venue ([wiki/execution-providers.md](../wiki/execution-providers.md)): the endpoints, the request shapes, the program layouts, the error codes, the platform link, the stake tokens and the minimum order all live in [`jupiter/`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter) and nowhere else. The actions themselves, their payload schemas and the shared Solana machinery name no venue at all. Nothing on this page changed in SEE-145; where it is reached from did.
+
+One thing here is not the phone's: the Prediction publisher template reads the same API's **listing**, from a server, to discover markets to publish (SEE-96). It is a different half of the same API — public information about which markets exist, rather than an order for somebody — and it is [its own section below](#prediction-discovery-see-96).
 
 ## The endpoints, pinned
 
@@ -13,7 +15,7 @@ Two calls, on the keyless host:
 | `GET https://lite-api.jup.ag/swap/v1/quote` | `inputMint`, `outputMint`, `amount`, `slippageBps`, `swapMode=ExactIn`, `onlyDirectRoutes=true`, `asLegacyTransaction=true` | `inAmount`, `outAmount`, `otherAmountThreshold`, `swapMode`, `slippageBps`, `platformFee`, `routePlan` |
 | `POST https://lite-api.jup.ag/swap/v1/swap` | The quote back verbatim, `userPublicKey`, `asLegacyTransaction`, `wrapAndUnwrapSol`, `useSharedAccounts`, `dynamicComputeUnitLimit` — all true | `swapTransaction`, `simulationError`, `addressesByLookupTableAddress`, `lastValidBlockHeight` |
 
-The host is a constant in the plugin's own file and a parameter everywhere else, which is what lets a test point it at a local server and what keeps a hostname out of the rest of the app. `StageBoundaryTest` fails if it appears anywhere else.
+The host is a constant in the adapter's own file (`JupiterProvider.kt`) and a parameter everywhere else, which is what lets a test point it at a local server and what keeps a hostname out of the rest of the app. `StageBoundaryTest` fails if it appears anywhere else.
 
 **Why v1 and not v2.** `api.jup.ag/swap/v2/order` exists and answers keyless too, but it is a combined quote-and-build tied to a `requestId` and Jupiter's own `/execute`, and this app's wallet submits its own transactions. The two-step v1 flow is what the review needs — an offer to show the owner, then bytes built from exactly that offer — and it is what was verified. Both were probed on 2026-09-17: v1 answers on `lite-api.jup.ag` and on `api.jup.ag`; `/swap/v2/order` answers only on `api.jup.ag`, where keyless requests get a much smaller allowance.
 
@@ -27,11 +29,11 @@ Three calls, on the same keyless host, all verified on 2026-09-17:
 | `GET /prediction/v1/markets/{marketId}` | — | `marketId`, `eventId`, `provider`, `title`, `status`, `result`, `pricing.buyYesPriceUsd`, `pricing.buyNoPriceUsd`, `rulesPrimary`, `closeTime` |
 | `POST /prediction/v1/orders` | `ownerPubkey`, `marketId`, `isYes`, `isBuy` (always true), `depositAmount`, `depositMint` | `transaction`, `requiredSigners`, and `order.*`: the order and position accounts, the external order ID, the market hash, the contracts, the price ceiling, the cost, the payout, the fees, the slippage |
 
-**The transaction is versioned and uses address lookup tables, always.** `asLegacyTransaction`, `legacyTransaction`, `useLookupTables: false`, `asLegacy`, `transactionVersion: "legacy"` and `maxAccounts` were each tried and are all ignored — every answer comes back as version 0. That single fact is what makes this plugin read the chain; the reasoning is in [wiki/jupiter-prediction.md](../wiki/jupiter-prediction.md#why-the-phone-reads-the-chain).
+**The transaction is versioned and uses address lookup tables, always.** `asLegacyTransaction`, `legacyTransaction`, `useLookupTables: false`, `asLegacy`, `transactionVersion: "legacy"` and `maxAccounts` were each tried and are all ignored — every answer comes back as version 0. That single fact is what makes the prediction side read the chain; the reasoning is in [wiki/jupiter-prediction.md](../wiki/jupiter-prediction.md#why-the-phone-reads-the-chain).
 
 **It is partially signed.** Two signature slots arrive, and the protocol's own is already filled — so `requiredSigners` lists only the owner, and the review's rule is "the only signature still missing is theirs" rather than "nothing else signs".
 
-**The minimum order is five dollars** (`5000000` base units), which the plugin enforces before asking for anything.
+**The minimum order is five dollars** (`5000000` base units). Since SEE-145 it is declared rather than hidden in a reader: it is `ActionCapability.leastDeposit` on the venue's `prediction.buy` capability, beside the two mints it settles in (`ActionCapability.depositAssets` — Jupiter's own dollar token and USDC). Both are facts about this venue rather than rules of the action, so a publisher naming a token Jupiter will not take is refused when the signal is read, and an amount below the floor is refused before anything is asked of anybody.
 
 **The documentation says these endpoints take an `x-api-key`.** The keyless host serves them without one, which is what this build uses and what `JupiterLiveTest` re-checks: it reads a live market and then asks for an order for a wallet holding nothing, which the provider refuses as `INSUFFICIENT_FUNDS`. That proves the arrangement still works without placing anything.
 
@@ -72,14 +74,14 @@ A publisher's server is the other case, and it is not the same one. The Predicti
 
 ## Rate limits
 
-Jupiter's documented figures, in a 60-second sliding window, and they cover both plugins:
+Jupiter's documented figures, in a 60-second sliding window, and they cover both actions:
 
 | Tier | Requests per second | Per minute | API key |
 | --- | --- | --- | --- |
 | Keyless | 0.5 | 30 | No |
 | Free | 1 | 60 | Yes |
 
-That is ample for a person deciding about one signal — two calls to prepare a swap, three to prepare an order — and it is not ample for polling, so **nothing in either plugin polls**. `lite-api.jup.ag` returns no rate-limit headers, so the plugin treats HTTP 429 as the signal and reports it as itself: the owner is told to wait a moment and prepare again, and nothing retries in a loop.
+That is ample for a person deciding about one signal — two calls to prepare a swap, three to prepare an order — and it is not ample for polling, so **nothing in the adapter polls** — including the boundary's own status query, which this provider answers `Unsupported` and which nothing in the app calls. `lite-api.jup.ag` returns no rate-limit headers, so the adapter treats HTTP 429 as the signal and reports it as itself: the owner is told to wait a moment and prepare again, and nothing retries in a loop.
 
 The publisher template does poll, and the allowance is the reason its defaults look the way they do: at most one call every 2.1 seconds, at most 24 calls in a cycle, one cycle every five minutes — about five calls a minute at the busiest. The gap is enforced inside its provider client rather than in its callers, because the way to exceed an allowance is to have two places that each think they are the only one calling. A 429 there stops the walk and makes the cycle partial; nothing retries in a loop on this side either (SEE-96).
 
@@ -112,7 +114,7 @@ The simulation is worth calling out, because it is the one honest answer to "doe
 
 `asLegacyTransaction` is the one thing this integration depends on that could be taken away. Without it, every route transaction is a versioned message with address lookup tables, and a phone that reaches no chain cannot establish what such a message touches without believing the builder about it — which this app does not do for anybody.
 
-If that happens, the plugin **stops preparing**: the answer is refused as unusable, the owner is told nothing could be prepared, and no unreadable transaction is put in front of anyone. That is the safe direction and it is the only one available without either an RPC endpoint or a change of principle, both of which are decisions for a later stage rather than something to slip in.
+If that happens, the adapter **stops preparing**: the answer is refused as unusable, the owner is told nothing could be prepared, and no unreadable transaction is put in front of anyone. That is the safe direction and it is the only one available without either an RPC endpoint or a change of principle, both of which are decisions for a later stage rather than something to slip in.
 
 `JupiterLiveTest` is the early-warning test for exactly this. It is opt-in — a check that needs the internet is not a check — and it makes one real quote and one real build and asserts the review still verifies the result:
 

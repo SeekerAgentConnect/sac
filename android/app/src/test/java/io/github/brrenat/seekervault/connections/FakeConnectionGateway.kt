@@ -10,6 +10,7 @@ import io.github.brrenat.seekervault.request.v1.ConfirmationLevel
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.request.v1.StakingOperation
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.ackAction
@@ -20,6 +21,7 @@ import io.github.brrenat.seekervault.request.v1.confirmation
 import io.github.brrenat.seekervault.request.v1.preparedTransaction
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.signMessageAction
+import io.github.brrenat.seekervault.request.v1.stakingAction
 import io.github.brrenat.seekervault.request.v1.swapAction
 import io.github.brrenat.seekervault.request.v1.transferAction
 import io.github.brrenat.seekervault.server.v1.ServerManifest
@@ -133,6 +135,33 @@ class FakeConnectionGateway : ConnectionGateway {
                         else this.tokenMint = tokenMint
                     }
                     this.amount = amount
+                }
+            }
+            state = RequestState.REQUEST_STATE_PENDING
+            createdAt = timestamp { seconds = Instant.now().epochSecond }
+            expiresAt = timestamp { seconds = Instant.now().plusSeconds(86_400).epochSecond }
+        }
+            .also { pending.getOrPut(connectionId) { mutableListOf() } += it }
+
+        /** Stores a PENDING staking action, bound to a wallet and to a network (SEE-146). */
+        fun addPendingStaking(
+            connectionId: String,
+            wallet: String,
+            network: Network,
+            operation: StakingOperation,
+            amount: String = "",
+            requestId: String = UUID.randomUUID().toString(),
+        ): ActionRequest = actionRequest {
+            ref = requestRef {
+                this.connectionId = connectionId
+                this.requestId = requestId
+            }
+            action = action {
+                staking = stakingAction {
+                    this.wallet = wallet
+                    this.network = network
+                    this.operation = operation
+                    if (amount.isNotEmpty()) this.amount = amount
                 }
             }
             state = RequestState.REQUEST_STATE_PENDING
@@ -309,7 +338,10 @@ class FakeConnectionGateway : ConnectionGateway {
                             when {
                                 waiting.action.hasSignMessage() ->
                                     RequestState.REQUEST_STATE_PROCESSING
-                                waiting.action.hasTransfer() -> {
+                                // A transfer or a staking action: both are approved by naming the
+                                // exact preparation the owner reviewed, and a stale one is refused
+                                // here the way the real sidecar refuses it (SEE-146).
+                                waiting.action.hasTransfer() || waiting.action.hasStaking() -> {
                                     val latest = preparedVersions[requestId]
                                     if (submission.approval.preparedVersion != latest) {
                                         throw GatewayException(
@@ -472,7 +504,9 @@ class FakeConnectionGateway : ConnectionGateway {
         val request =
             server.pending[id]?.firstOrNull { it.ref.requestId == key.requestId }
                 ?: throw GatewayException(GatewayException.Kind.NotFound, "no such request")
-        if (!request.action.hasTransfer()) {
+        // A transfer or a staking action: the two kinds a server builds a transaction for
+        // (SEE-146). Everything else has nothing to prepare.
+        if (!request.action.hasTransfer() && !request.action.hasStaking()) {
             throw GatewayException(
                 GatewayException.Kind.Rejected,
                 "this request has nothing to prepare",

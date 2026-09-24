@@ -11,6 +11,8 @@ import io.github.brrenat.seekervault.MainActivity
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.isConnectionId
+import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
+import io.github.brrenat.seekervault.plugins.SWAP_ACTION
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.servers.ConnectionMode
 
@@ -153,19 +155,19 @@ class ProposalNotificationManager(
 }
 
 /** A provider-neutral label for the protocol operation, never its raw identifier. */
-private fun proposalNotificationCopy(
+internal fun proposalNotificationCopy(
     context: Context,
     record: ProposalRecord,
     source: String,
 ): ReviewNotificationCopy =
-    when (record.proposal.operation.value) {
-        "swap" ->
+    when (record.proposal.action) {
+        SWAP_ACTION ->
             ReviewNotificationCopy(
                 title = context.getString(R.string.notification_proposal_swap_title),
                 source = source,
                 summary = context.getString(R.string.notification_proposal_swap_summary),
             )
-        "prediction" ->
+        PREDICTION_BUY_ACTION ->
             ReviewNotificationCopy(
                 title = context.getString(R.string.notification_proposal_prediction_title),
                 source = source,

@@ -23,6 +23,7 @@ import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
 import java.io.File
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +33,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -105,6 +107,30 @@ class ConnectionsViewModelTest {
                     )
                 ),
         )
+
+    @Test
+    fun saysNothingIsKnownUntilTheFetchThatOpeningTheAppStartsHasSettled() {
+        // A phone that has been paired for a while, with a request waiting on the server. The
+        // stored connection carries none of it: the inbox is filled by the fetch, not by the read.
+        val connection = runBlocking { repository.pair(server.issue(URL)) }
+        server.addPending(connection.id)
+        val held = CompletableDeferred<Unit>()
+        gateway.afterList = { held.await() }
+
+        val viewModel = viewModel() // the app opens: the stored connections are read, then fetched
+
+        // The connections are known and the fetch is in flight. Anything reading an appearing
+        // request as an arrival must not take a baseline here — the inbox is still empty, and
+        // everything the server holds is about to look new.
+        assertTrue(viewModel.state.value.loaded)
+        assertFalse(viewModel.state.value.fetched)
+        assertTrue(repository.inbox.value.pending[connection.id].isNullOrEmpty())
+
+        held.complete(Unit)
+
+        assertTrue(viewModel.state.value.fetched)
+        assertEquals(1, repository.inbox.value.pending.getValue(connection.id).size)
+    }
 
     @Test
     fun fetchesAgainWhenTheAppComesBackToTheForegroundButNotOnARotation() {

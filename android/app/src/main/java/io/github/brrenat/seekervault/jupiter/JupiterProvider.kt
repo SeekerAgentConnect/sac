@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.jupiter
 
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import java.io.IOException
 import java.util.Base64
 import kotlinx.coroutines.CoroutineDispatcher
@@ -39,7 +40,7 @@ import org.json.JSONObject
  */
 interface JupiterProvider {
     /** What the market offers for exactly [amount] base units of [terms]'s input mint. */
-    suspend fun quote(terms: SwapTerms, amount: ULong, slippageBps: Int): JupiterQuote
+    suspend fun quote(terms: SwapPayload, amount: ULong, slippageBps: Int): JupiterQuote
 
     /** The transaction that would take [quote], built for [wallet] to sign. */
     suspend fun build(quote: JupiterQuote, wallet: String): JupiterSwap
@@ -136,7 +137,7 @@ class HttpJupiterProvider(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : JupiterProvider {
 
-    override suspend fun quote(terms: SwapTerms, amount: ULong, slippageBps: Int): JupiterQuote {
+    override suspend fun quote(terms: SwapPayload, amount: ULong, slippageBps: Int): JupiterQuote {
         val url =
             endpoint.trimEnd('/') +
                 "/swap/v1/quote" +
@@ -217,7 +218,7 @@ class HttpJupiterProvider(
 
     private fun readQuote(
         answer: JSONObject,
-        terms: SwapTerms,
+        terms: SwapPayload,
         amount: ULong,
         slippageBps: Int,
         raw: String,

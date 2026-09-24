@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.FeedReferenceProblem
 import io.github.brrenat.seekervault.servers.FeedReferenceResult
@@ -13,10 +13,12 @@ import io.github.brrenat.seekervault.servers.ManifestProblem
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.serverSupport
 import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 
 /** Everything the connection screens show. */
@@ -24,6 +26,15 @@ data class ConnectionsUiState(
     val connections: List<Connection> = emptyList(),
     /** False until the stored connections have been read. */
     val loaded: Boolean = false,
+    /**
+     * False until the fetch that follows that first read has settled for every usable connection.
+     *
+     * [loaded] says the connections are known; this says what they are holding is known too. The
+     * stored connections carry no pending requests with them — the inbox is filled by the fetch —
+     * so anything that reads an appearing request as an arrival must wait for this and not for
+     * [loaded], or a cold start replays the whole inbox as new (SEE-147).
+     */
+    val fetched: Boolean = false,
     /** Connections with a refresh in flight. */
     val refreshing: Set<String> = emptySet(),
     /** The code being typed. It stays in memory only, never in saved instance state. */
@@ -150,7 +161,7 @@ class ConnectionsViewModel(
     private val foregroundUpdates: StateFlow<ForegroundUpdatesState>? = null,
     private val foregroundFeeds: StateFlow<ForegroundFeedsState>? = null,
     /** The bundled client plugins this build carries, which is what a manifest is matched to. */
-    private val plugins: PluginRegistry = PluginRegistry.of(),
+    private val plugins: ProviderRegistry = ProviderRegistry.of(),
     /** A seam for the add flow's state tests; production always uses the repository method. */
     private val addFeed: suspend (FeedReference) -> FeedOutcome = repository::addFeed,
     private val cleartextPermitted: (host: String) -> Boolean,
@@ -187,8 +198,11 @@ class ConnectionsViewModel(
         viewModelScope.launch {
             repository.load()
             _state.update { it.copy(loaded = true) }
-            // The phone fetches when the app opens (docs/protocol.md).
-            refreshAll()
+            // The phone fetches when the app opens (docs/protocol.md). What that fetch brings back
+            // is the inbox as it stood when the app opened, not a stream of new arrivals, so the
+            // wait for it is part of opening.
+            refreshAll().joinAll()
+            _state.update { it.copy(fetched = true) }
         }
     }
 
@@ -320,10 +334,11 @@ class ConnectionsViewModel(
     /** Forgets the entered reference and any pairing token when the owner cancels or leaves. */
     fun resetAdding() = _state.update { it.copy(codeDraft = "", adding = AddConnectionState.Idle) }
 
-    fun refresh(id: String) {
-        if (id in _state.value.refreshing) return
+    /** Returns the fetch, or null when one for [id] is already running. */
+    fun refresh(id: String): Job? {
+        if (id in _state.value.refreshing) return null
         _state.update { it.copy(refreshing = it.refreshing + id) }
-        viewModelScope.launch {
+        return viewModelScope.launch {
             try {
                 repository.refresh(id)
             } finally {
@@ -409,8 +424,8 @@ class ConnectionsViewModel(
 
     private fun closeDialog() = _state.update { it.copy(disconnect = null) }
 
-    private fun refreshAll() =
-        repository.connections.value.filter { it.usable }.forEach { refresh(it.id) }
+    private fun refreshAll(): List<Job> =
+        repository.connections.value.filter { it.usable }.mapNotNull { refresh(it.id) }
 
     private fun confirmationFor(code: PairingCode, connections: List<Connection>) =
         Confirmation(

@@ -351,7 +351,11 @@ export class ConfirmationTracker {
  */
 function boundNetwork(request: ActionRequest): Network {
   const kind = request.action?.kind;
-  if (kind?.case === "transfer" || kind?.case === "swap")
+  if (
+    kind?.case === "transfer" ||
+    kind?.case === "swap" ||
+    kind?.case === "staking"
+  )
     return kind.value.network;
   return Network.UNSPECIFIED;
 }
@@ -368,13 +372,15 @@ function unchanged(request: ActionRequest): Omit<Finding, "detail"> {
 }
 
 /**
- * Whether a check has anything to say about this request: an unfinished transfer or swap. A
- * message has nothing on chain, and a finished request is finished. A SUBMITTED one has a
- * signature to look up; an UNKNOWN one hasn't, and is told so.
+ * Whether a check has anything to say about this request: an unfinished transaction. A message has
+ * nothing on chain, and a finished request is finished. A SUBMITTED one has a signature to look up;
+ * an UNKNOWN one hasn't, and is told so.
  */
 export function checkable(request: ActionRequest): boolean {
   const kind = request.action?.kind.case;
-  if (kind !== "transfer" && kind !== "swap") return false;
+  if (kind !== "transfer" && kind !== "swap" && kind !== "staking") {
+    return false;
+  }
   return request.state === SUBMITTED || request.state === UNKNOWN;
 }
 

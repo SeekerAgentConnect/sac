@@ -24,6 +24,7 @@
     <string name="activity_kind_ack">Acknowledgement</string>
     <string name="activity_kind_message">Message signature</string>
     <string name="activity_kind_transfer">Transfer</string>
+    <string name="activity_kind_staking">SKR staking</string>
     <!-- SEE-89: an operation carried out from a publisher's shared proposal. -->
     <string name="activity_kind_operation">Operation</string>
     <string name="activity_kind_other">Request</string>

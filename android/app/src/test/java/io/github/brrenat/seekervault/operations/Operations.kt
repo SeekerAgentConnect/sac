@@ -14,25 +14,25 @@ import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.jupiter.EVENT_ID
 import io.github.brrenat.seekervault.jupiter.FakePrediction
-import io.github.brrenat.seekervault.jupiter.JUPITER_PREDICTION
-import io.github.brrenat.seekervault.jupiter.JUPITER_SWAP
-import io.github.brrenat.seekervault.jupiter.JupiterPredictionPlugin
+import io.github.brrenat.seekervault.jupiter.JupiterExecutionProvider
 import io.github.brrenat.seekervault.jupiter.JupiterProvider
 import io.github.brrenat.seekervault.jupiter.JupiterQuote
 import io.github.brrenat.seekervault.jupiter.JupiterSwap
-import io.github.brrenat.seekervault.jupiter.JupiterSwapPlugin
 import io.github.brrenat.seekervault.jupiter.MARKET_ID
-import io.github.brrenat.seekervault.jupiter.PredictionTermNames
 import io.github.brrenat.seekervault.jupiter.SOL_MINT
-import io.github.brrenat.seekervault.jupiter.SwapTermNames
-import io.github.brrenat.seekervault.jupiter.SwapTerms
 import io.github.brrenat.seekervault.jupiter.USDC_MINT
 import io.github.brrenat.seekervault.jupiter.quoteFor
 import io.github.brrenat.seekervault.jupiter.swapTransaction
 import io.github.brrenat.seekervault.jupiter.tableFor
 import io.github.brrenat.seekervault.jupiter.usdcTerms
+import io.github.brrenat.seekervault.plugins.ExecutionProvider
+import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
+import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
+import io.github.brrenat.seekervault.plugins.actions.SwapPayload
+import io.github.brrenat.seekervault.plugins.actions.SwapTermNames
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
@@ -68,7 +68,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * provider would answer is the one thing a test has to be able to choose, and the one thing that
  * would otherwise need the internet.
  */
-class Phone(root: File, private val clock: () -> Instant) {
+class Phone(
+    root: File,
+    /**
+     * Providers registered beside the bundled one, for the tests that show a second provider
+     * driving the same core flow (SEE-145). Empty everywhere else, which is what the app ships.
+     */
+    alternates: List<ExecutionProvider> = emptyList(),
+    private val clock: () -> Instant,
+) {
     private val key: SecretKey = SecretKeySpec(ByteArray(32) { 3 }, "AES")
 
     val feed = FakeFeed()
@@ -77,13 +85,14 @@ class Phone(root: File, private val clock: () -> Instant) {
     val history = ActivityLog(ActivityStore(File(root, "activity")), clock)
     val policies = PolicyStore(File(root, "policies"))
     val evaluator = PolicyEvaluator(policies, records = { history.records.value })
-    val plugin = JupiterSwapPlugin(provider, clock)
-
-    /** The prediction provider, and the chain its orders are resolved through (SEE-94). */
+    /** The prediction API, and the chain its orders are resolved through (SEE-94). */
     val markets = FakePrediction()
     val chain = OrderChain()
-    val prediction = JupiterPredictionPlugin(markets, chain, clock)
-    val plugins: PluginRegistry = PluginRegistry.of(plugin, prediction)
+
+    /** The real bundled provider, with only the two APIs it reaches stood in for (SEE-145). */
+    val jupiter = JupiterExecutionProvider(provider, markets, chain, clock)
+    val plugins: ProviderRegistry =
+        ProviderRegistry.of(*(listOf(jupiter) + alternates).toTypedArray())
 
     var connection =
         Connection(
@@ -180,7 +189,7 @@ class Phone(root: File, private val clock: () -> Instant) {
             wallet = wallet,
             policies = evaluator,
             history = history,
-            plugins = plugins,
+            providers = plugins,
             now = clock,
             io = Dispatchers.Unconfined,
         )
@@ -223,11 +232,20 @@ fun swapProposal(
 /** The gateway's answers, and every question this phone asked it. */
 class FakeFeed : ProposalFeed {
     var answers: List<WireProposal> = emptyList()
+
+    /**
+     * What a particular channel answers, for the tests that hold two feeds at once.
+     *
+     * A proposal ID belongs to the publisher that minted it, so two feeds can hold the same one and
+     * mean two different documents. A channel is what tells them apart here, exactly as it does on
+     * the real gateway; anything not listed falls back to [answers].
+     */
+    var answersByChannel: Map<String, List<WireProposal>> = emptyMap()
     val asked = mutableListOf<Pair<FeedReference, Long>>()
 
     override suspend fun snapshot(reference: FeedReference, knownSequence: Long): FeedSnapshot {
         asked += reference to knownSequence
-        return FeedSnapshot.Read(1L, answers)
+        return FeedSnapshot.Read(1L, answersByChannel[reference.channel] ?: answers)
     }
 }
 
@@ -239,7 +257,7 @@ class FakeProvider : JupiterProvider {
     // Named apart from the two methods on purpose: a property called `quote` and a method called
     // `quote` are not the same thing, and calling one where the other was meant is a recursion
     // that looks like a hang.
-    var answersQuote: (SwapTerms, ULong, Int) -> JupiterQuote = { terms, amount, slippage ->
+    var answersQuote: (SwapPayload, ULong, Int) -> JupiterQuote = { terms, amount, slippage ->
         quoteFor(terms, amount, outAmount = amount * 10UL, slippageBps = slippage)
     }
     var answersBuild: (JupiterQuote, String) -> JupiterSwap = { quote, owner ->
@@ -253,7 +271,7 @@ class FakeProvider : JupiterProvider {
         )
     }
 
-    override suspend fun quote(terms: SwapTerms, amount: ULong, slippageBps: Int): JupiterQuote {
+    override suspend fun quote(terms: SwapPayload, amount: ULong, slippageBps: Int): JupiterQuote {
         asked += "quote ${terms.inputMint}->${terms.outputMint} $amount @$slippageBps"
         return answersQuote(terms, amount, slippageBps)
     }

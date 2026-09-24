@@ -41,6 +41,15 @@
     <string name="operation_not_prepared">Nothing was prepared</string>
     <string name="operation_not_prepared_unknown">The plugin could not prepare this operation.</string>
     <string name="operation_provider_said">The provider said: %1$s</string>
+    <string name="operation_provider_says">What the provider says now</string>
+    <string name="operation_unserved_no_provider">This build does not carry the execution provider this signal names, so nothing here can carry it out.</string>
+    <string name="operation_unserved_name_mismatch">This signal names a capability that was published for something other than what it asks for, so nothing here will carry it out.</string>
+    <string name="operation_unserved_contract">This build carries that execution provider, but at a version it cannot call.</string>
+    <string name="operation_unserved_action">That execution provider does not do what this signal asks for.</string>
+    <string name="operation_unserved_schema">This signal states a version of its action that this build does not read.</string>
+    <string name="operation_unserved_network">That execution provider does not serve the network your wallet is selected for.</string>
+    <string name="operation_unserved_environment">That execution provider does not serve this connection\'s environment.</string>
+    <string name="operation_unserved_asset">That execution provider does not take the asset this signal names.</string>
     <string name="operation_unsupported">This build has no plugin for what this server proposes, so it is shown in full and nothing here can carry it out.</string>
 
     <!-- What the phone read, as facts. -->
@@ -91,7 +100,11 @@
     <string name="operation_binding_not_reviewed">Nothing was reviewed here, so there is nothing to act on.</string>
     <string name="operation_binding_changed">The publisher changed these terms. Read the new ones and prepare again.</string>
     <string name="operation_binding_choice_changed">What was about to be signed is not what you reviewed. Prepare again.</string>
-    <string name="operation_binding_other_plugin">These bytes were prepared by a different plugin than this proposal was written for.</string>
+    <string name="operation_binding_other_provider">These bytes were prepared by a different execution provider than this proposal was written for.</string>
+    <string name="operation_binding_other_action">These bytes were prepared for a different action than this proposal is for.</string>
+    <string name="operation_binding_other_schema">These bytes were prepared for a different version of this action than this proposal states.</string>
+    <string name="operation_binding_other_instrument">These bytes were prepared for a different market than this proposal names.</string>
+    <string name="operation_binding_unreadable_terms">This proposal can no longer be read as the action it claims, so there is nothing to check these bytes against.</string>
     <string name="operation_binding_other_contract">These bytes were prepared against a plugin boundary this build does not use.</string>
     <string name="operation_binding_nothing_prepared">Nothing was prepared, so there is nothing to sign.</string>
     <string name="operation_binding_preparation_expired">The quote and the transaction have expired. Prepare again for a fresh one.</string>

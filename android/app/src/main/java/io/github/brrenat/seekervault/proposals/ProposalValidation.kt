@@ -2,10 +2,11 @@ package io.github.brrenat.seekervault.proposals
 
 import com.google.protobuf.Timestamp
 import io.github.brrenat.seekervault.connections.isConnectionId
-import io.github.brrenat.seekervault.plugins.OperationId
 import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.plugins.isOperationId
+import io.github.brrenat.seekervault.plugins.actionOf
+import io.github.brrenat.seekervault.plugins.isDottedName
 import io.github.brrenat.seekervault.plugins.isPluginId
+import io.github.brrenat.seekervault.plugins.providerOf
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
 import io.github.brrenat.seekervault.proposal.v1.ProposalValue as WireProposalValue
@@ -172,15 +173,21 @@ fun proposalFrom(message: WireRequest, expect: ProposalExpectation): ProposalRes
         return invalid(ProposalProblem.BadTimes)
     }
     val action = message.action
-    if (action.capabilityVersion <= 0 || !isOperationId(action.capabilityId)) {
-        return invalid(ProposalProblem.BadOperation)
-    }
+    // Both spellings of an action are read, and they mean the same thing: a publisher that says
+    // `prediction` and one that says `prediction.buy` are asking for the same order (SEE-145,
+    // [actionOf]). The version is the action's own schema version and is carried through rather
+    // than assumed, so a schema this build does not read is refused where providers are resolved
+    // rather than mistaken for one it does.
+    val capability =
+        actionOf(action.capabilityId)?.takeIf { action.capabilityVersion > 0 }
+            ?: return invalid(ProposalProblem.BadOperation)
     if (!isPluginId(action.pluginId)) return invalid(ProposalProblem.BadPlugin)
+    val plugin = PluginId(action.pluginId)
     if (action.parametersCount > MAX_PROPOSAL_VALUES) return invalid(ProposalProblem.TooManyValues)
     val values = mutableListOf<Pair<WireProposalValue, ProposalValueKind>>()
     val names = mutableSetOf<String>()
     for (parameter in action.parametersList) {
-        if (!isOperationId(parameter.key)) return invalid(ProposalProblem.BadValue)
+        if (!isDottedName(parameter.key)) return invalid(ProposalProblem.BadValue)
         if (!names.add(parameter.key)) return invalid(ProposalProblem.DuplicateValue)
         val (text, kind) =
             when (parameter.valueCase) {
@@ -216,7 +223,7 @@ fun proposalFrom(message: WireRequest, expect: ProposalExpectation): ProposalRes
                 else -> return invalid(ProposalProblem.BadOwnerInput)
             }
         if (
-            !isOperationId(input.key) ||
+            !isDottedName(input.key) ||
                 !inputNames.add(input.key) ||
                 input.label.isEmpty() ||
                 !printableText(input.label, MAX_PRESENTATION_TITLE_BYTES) ||
@@ -231,7 +238,7 @@ fun proposalFrom(message: WireRequest, expect: ProposalExpectation): ProposalRes
         val options =
             input.optionsList.map { option ->
                 if (
-                    !isOperationId(option.value) ||
+                    !isDottedName(option.value) ||
                         !optionNames.add(option.value) ||
                         option.label.isEmpty() ||
                         !printableText(option.label, MAX_PRESENTATION_TITLE_BYTES)
@@ -271,8 +278,13 @@ fun proposalFrom(message: WireRequest, expect: ProposalExpectation): ProposalRes
             contractVersion = message.contractVersion,
             capabilityVersion = action.capabilityVersion,
             title = presentation.title,
-            operation = OperationId(action.capabilityId),
-            plugin = PluginId(action.pluginId),
+            action = capability,
+            // Nothing on this wire names an execution provider directly yet, so the provider is
+            // the one that answers to the bundled-plugin name the document claims — looked up in
+            // one explicit table and never parsed out of the name
+            // (docs/wiki/execution-providers.md#compatibility).
+            provider = providerOf(named = null, plugin = plugin, action = capability),
+            plugin = plugin,
             status = status,
             createdAt = createdAt,
             updatedAt = updatedAt,
@@ -320,8 +332,10 @@ fun proposalFrom(message: WireProposal, expect: ProposalExpectation): ProposalRe
             // doesn't know what the publisher means, and it doesn't pick the permissive reading.
             else -> return invalid(ProposalProblem.NoStatus)
         }
-    if (!isOperationId(message.operation)) return invalid(ProposalProblem.BadOperation)
+    if (!isDottedName(message.operation)) return invalid(ProposalProblem.BadOperation)
+    val legacyAction = actionOf(message.operation) ?: return invalid(ProposalProblem.BadOperation)
     if (!isPluginId(message.pluginId)) return invalid(ProposalProblem.BadPlugin)
+    val legacyPlugin = PluginId(message.pluginId)
     if (!message.hasCreatedAt() || !message.hasUpdatedAt() || !message.hasExpiresAt()) {
         return invalid(ProposalProblem.NoTimes)
     }
@@ -336,7 +350,7 @@ fun proposalFrom(message: WireProposal, expect: ProposalExpectation): ProposalRe
     for (value in message.valuesList) {
         // A term's name is held to the same rule as an operation's and a parameter's: lowercase
         // segments, and nothing that could be a path, a URL, or anything loadable.
-        if (!isOperationId(value.key)) return invalid(ProposalProblem.BadValue)
+        if (!isDottedName(value.key)) return invalid(ProposalProblem.BadValue)
         if (!printableText(value.text, MAX_PROPOSAL_TEXT_BYTES)) {
             return invalid(ProposalProblem.BadValue)
         }
@@ -351,8 +365,9 @@ fun proposalFrom(message: WireProposal, expect: ProposalExpectation): ProposalRe
             key = key,
             revision = message.revision,
             title = message.operation,
-            operation = OperationId(message.operation),
-            plugin = PluginId(message.pluginId),
+            action = legacyAction,
+            provider = providerOf(named = null, plugin = legacyPlugin, action = legacyAction),
+            plugin = legacyPlugin,
             status = status,
             createdAt = createdAt,
             updatedAt = updatedAt,

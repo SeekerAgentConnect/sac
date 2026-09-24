@@ -721,8 +721,9 @@ function validateKnown(
 }
 
 function checkableBySync(request: ActionRequest): boolean {
+  const kind = request.action?.kind.case;
   return (
-    request.action?.kind.case === "transfer" &&
+    (kind === "transfer" || kind === "staking") &&
     (request.state === RequestState.SUBMITTED ||
       request.state === RequestState.UNKNOWN)
   );

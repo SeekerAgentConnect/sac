@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.jupiter
 
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import java.util.Base64
 import org.json.JSONObject
 
@@ -15,7 +16,7 @@ data class SwapFixture(
     val name: String,
     val description: String,
     val owner: String,
-    val terms: SwapTerms,
+    val terms: SwapPayload,
     val amount: ULong,
     val slippageBps: Int,
     val quote: JupiterQuote,
@@ -38,7 +39,7 @@ fun swapFixtures(): List<SwapFixture> {
         val one = cases.getJSONObject(index)
         val quoted = one.getJSONObject("quote")
         val terms =
-            SwapTerms(
+            SwapPayload(
                 inputMint = one.getString("inputMint"),
                 inputDecimals = one.getInt("inputDecimals"),
                 outputMint = one.getString("outputMint"),

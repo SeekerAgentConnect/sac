@@ -92,7 +92,7 @@ fun ProposalReviewScreen(
             ) {
                 Column(Modifier.weight(1f).padding(start = SeekerTheme.dimensions.dp8)) {
                     Text(
-                        proposal.operation.value,
+                        proposal.action.value,
                         style = MaterialTheme.typography.titleLarge,
                     )
                     Text(
@@ -199,6 +199,19 @@ fun ProposalReviewScreen(
                 }
                 review.form.problem?.let {
                     Banner(stringResource(it.message), OperationTags.FAILURE)
+                }
+                // What the execution provider says about this action right now, read when the
+                // review opened (SEE-145). It is the venue's own words about its own market, shown
+                // apart from anything this phone established for itself and evaluated by nothing.
+                if (review.details.isNotEmpty()) {
+                    Section(R.string.operation_provider_says) {
+                        Column(
+                            Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
+                        ) {
+                            review.details.forEach { Pair(stringResource(it.label), it.value) }
+                        }
+                    }
                 }
                 if (review.standing.executable && review.served && review.form.problem == null) {
                     Section(R.string.operation_your_part) {

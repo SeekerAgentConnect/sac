@@ -5,7 +5,7 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -330,7 +330,7 @@ class ConnectionManifestTest {
         )
         // Nothing this build could act on: the promise the owner kept is not one this server makes
         // any more, and that is said rather than resolved either way.
-        val support = serverSupport(after.server, PluginRegistry.of(), after.environment)
+        val support = serverSupport(after.server, ProviderRegistry.of(), after.environment)
         assertEquals(ServerSupport.EnvironmentUnsupported(PluginEnvironment.Sandbox), support)
         assertFalse(support.executable)
     }

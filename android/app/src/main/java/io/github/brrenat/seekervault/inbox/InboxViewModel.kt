@@ -21,9 +21,10 @@ import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.connections.toOutcome
 import io.github.brrenat.seekervault.plugins.ActionOwner
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginRegistry
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.SWAP_SCHEMA_VERSION
+import io.github.brrenat.seekervault.plugins.actionFacts
 import io.github.brrenat.seekervault.plugins.actionOwner
-import io.github.brrenat.seekervault.plugins.pluginFacts
 import io.github.brrenat.seekervault.policy.EffectivePolicy
 import io.github.brrenat.seekervault.policy.PolicyDecision
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
@@ -35,6 +36,11 @@ import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.servers.serverSupport
+import io.github.brrenat.seekervault.skr.StakingInspection
+import io.github.brrenat.seekervault.skr.inspectStaking
+import io.github.brrenat.seekervault.skr.readSkrPosition
+import io.github.brrenat.seekervault.skr.staking
+import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.transactions.TransferInspection
 import io.github.brrenat.seekervault.transactions.inspectTransfer
 import io.github.brrenat.seekervault.transactions.transfer
@@ -128,13 +134,34 @@ sealed interface Preparation {
     /** The sidecar is building one. */
     data object Running : Preparation
 
-    /** One arrived, and the phone read it. [inspection] is what the bytes say, not the sidecar. */
+    /**
+     * One arrived, and the phone read it. What is here is what the bytes say, never the sidecar.
+     *
+     * Exactly one of [inspection] and [staking] is present, because a request is one action and an
+     * action is read by the code that knows its program. Keeping them as separate fields rather
+     * than one interface keeps each review screen reading the facts it actually understands.
+     */
     data class Ready(
         val prepared: PreparedTransaction,
-        val inspection: TransferInspection,
+        val inspection: TransferInspection?,
         /** The wallet it was checked against; null when none was connected. */
         val wallet: SelectedWallet?,
-    ) : Preparation
+        val staking: StakingInspection? = null,
+    ) : Preparation {
+        /** Whether this may be put in front of the owner to approve. */
+        val approvable: Boolean
+            get() = inspection?.approvable == true || staking?.approvable == true
+
+        /**
+         * The transfer reading, for the screen that only ever shows a transfer.
+         *
+         * It throws rather than being nullable because which review a request gets is decided by
+         * its kind: a transfer review holding no transfer reading is a routing mistake, and a null
+         * here would draw an empty review instead of saying so.
+         */
+        val transferReading: TransferInspection
+            get() = checkNotNull(inspection) { "a transfer review needs a transfer inspection" }
+    }
 
     /** The sidecar couldn't be asked, or wouldn't build one. */
     data class Failed(val outcome: CheckOutcome, val detail: String? = null) : Preparation
@@ -250,7 +277,16 @@ class InboxViewModel(
      * doesn't carry out itself, and about nothing else: an acknowledgement, a message and a
      * transfer never reach it. Resolving is a lookup — it opens no wallet and sends nothing.
      */
-    private val plugins: PluginRegistry = PluginRegistry.of(),
+    private val plugins: ProviderRegistry = ProviderRegistry.of(),
+    /**
+     * This phone's own Solana endpoint, used to read a staking position for itself (SEE-146).
+     *
+     * Null when none is configured, and then a staking review says what it could not read rather
+     * than taking the server's word for a share price. An unstake or a withdrawal is refused in
+     * that state; a stake is still fully readable, because its amount and all of its accounts come
+     * from the bytes and from this app's own derivations.
+     */
+    private val chain: SolanaAccounts? = null,
     /**
      * How long the app waits for the wallet before it gives up on an approval. It is the owner's
      * own time in the wallet app, so it is generous; a wallet that never answers at all must still
@@ -532,12 +568,24 @@ class InboxViewModel(
         val prepared = activity.value.preparations[key] as? Preparation.Ready
         val network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED
         val owner = actionOwner(request)
-        if (owner is ActionOwner.Plugin) {
-            return pluginFacts(
+        if (owner is ActionOwner.Provider) {
+            return actionFacts(
                 connectionId = key.connectionId,
                 request = request,
                 network = network,
-                resolution = plugins.resolve(owner.operation, environmentOf(key.connectionId)),
+                // A private `ActionRequest` names no execution provider — the v1 action carries no
+                // field for one — so nothing resolves for it and nothing is established. That is
+                // the same answer this path has always given (this app has never prepared a swap
+                // from a private request), reached explicitly rather than by picking whichever
+                // provider happened to serve the action (SEE-145).
+                resolution =
+                    plugins.resolve(
+                        provider = null,
+                        action = owner.action,
+                        schemaVersion = SWAP_SCHEMA_VERSION,
+                        network = network,
+                        environment = environmentOf(key.connectionId),
+                    ),
             )
         }
         return policyFacts(
@@ -545,6 +593,7 @@ class InboxViewModel(
             request = request,
             network = network,
             inspection = prepared?.inspection,
+            staking = prepared?.staking,
         )
     }
 
@@ -669,7 +718,8 @@ class InboxViewModel(
         if (existing == Preparation.Running) return
         if (!force && existing != null) return
         val request = repository.inbox.value.pendingRequest(key) ?: return
-        if (request.transfer() == null) return
+        val staking = request.staking()
+        if (request.transfer() == null && staking == null) return
         // Preparing is the first step of executing, so it stops with everything else: a server
         // this build doesn't support gets no transaction built for it to sign (SEE-88).
         if (!support(key.connectionId).executable) {
@@ -679,13 +729,34 @@ class InboxViewModel(
         viewModelScope.launch {
             val outcome =
                 try {
+                    // The position is read before the preparation is asked for, so the reading is
+                    // never newer than the bytes it is used to judge: a share price fetched after
+                    // the server built the transaction could make an honest unstake look wrong.
+                    val position =
+                        if (staking == null) null
+                        else chain?.let { readSkrPosition(it, staking.wallet) }
                     val prepared = repository.prepare(key)
                     val selected = wallet.wallet.value
-                    Preparation.Ready(
-                        prepared,
-                        inspectTransfer(request, prepared, selected),
-                        selected,
-                    )
+                    if (staking == null) {
+                        Preparation.Ready(
+                            prepared,
+                            inspectTransfer(request, prepared, selected),
+                            selected,
+                        )
+                    } else {
+                        Preparation.Ready(
+                            prepared,
+                            null,
+                            selected,
+                            inspectStaking(
+                                request,
+                                prepared,
+                                selected,
+                                position,
+                                Instant.now().epochSecond,
+                            ),
+                        )
+                    }
                 } catch (e: GatewayException) {
                     Preparation.Failed(e.kind.toOutcome(), e.message)
                 }
@@ -703,11 +774,13 @@ class InboxViewModel(
      * saw. Then, in this order, the approval is stored, the sidecar accepts it, and only then is
      * the wallet asked — with the bytes from the stored approval, never with bytes fetched again.
      */
-    fun approveTransfer(key: RequestKey, reviewed: Preparation.Ready?) {
+    fun approveTransaction(key: RequestKey, reviewed: Preparation.Ready?) {
         val inbox = repository.inbox.value
         if (key in activity.value.sending || inbox.result(key) != null) return
         val request = inbox.pendingRequest(key) ?: return
-        val transfer = request.transfer() ?: return
+        // Whichever kind it is, the wallet it is bound to is the one thing this needs from it: the
+        // rest was established by the inspection the owner read.
+        val boundWallet = request.transfer()?.wallet ?: request.staking()?.wallet ?: return
         if (!support(key.connectionId).executable) {
             return problem(key, SigningProblem.ServerUnsupported)
         }
@@ -718,7 +791,7 @@ class InboxViewModel(
             reviewed == null ||
                 held !is Preparation.Ready ||
                 held.prepared != reviewed.prepared ||
-                !reviewed.inspection.approvable
+                !reviewed.approvable
         ) {
             return problem(key, SigningProblem.NotVerified)
         }
@@ -729,7 +802,7 @@ class InboxViewModel(
                 reviewed.wallet == null ||
                     selected.address != reviewed.wallet.address ||
                     selected.network != reviewed.wallet.network -> SigningProblem.Changed
-                transfer.wallet != selected.address -> SigningProblem.OtherWallet
+                boundWallet != selected.address -> SigningProblem.OtherWallet
                 else -> null
             }
         if (mismatch != null || selected == null) return problem(key, mismatch)
@@ -763,7 +836,7 @@ class InboxViewModel(
                         prepare(key, force = true)
                         return@withWallet
                     }
-                    when (val outcome = repository.approveTransfer(key, approved)) {
+                    when (val outcome = repository.approveTransaction(key, approved)) {
                         is ApprovalOutcome.Accepted -> {
                             // The last thing before the wallet, with the lock still held: the
                             // commit itself took time, and a transaction that can no longer land

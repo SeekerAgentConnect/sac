@@ -311,19 +311,20 @@ The split a follow-up would make, in this order:
 it, and the reusable half must need neither. Packaging and publishing an SDK is out of scope here
 (SEE-102); this is the boundary a later stage would cut along.
 
-## Client plugins (SEE-86)
+## Execution providers (SEE-86, SEE-145)
 
-The architecture page is [`docs/wiki/client-plugins.md`](../wiki/client-plugins.md); this is the Android-side summary.
+The architecture pages are [`docs/wiki/execution-providers.md`](../wiki/execution-providers.md) — the extension contract in full — and [`docs/wiki/client-plugins.md`](../wiki/client-plugins.md); this is the Android-side summary.
 
-`plugins/` is one boundary where a bundled client plugin can be registered, so the Stage 7.1 Jupiter plugins (SEE-93, SEE-94) can be written without changing `connections/`, `sync/`, `live/`, `push/`, `policy/`, `transactions/`, `wallet/`, or any storage package. It is data and pure functions: no coroutine scope, no store, no transport, no Compose.
+`plugins/` is one boundary where a bundled Solana execution provider can be registered, so the Stage 7.1 Jupiter adapter (SEE-93, SEE-94) can be written without changing `connections/`, `sync/`, `live/`, `push/`, `policy/`, `transactions/`, `wallet/`, or any storage package. It is data and pure functions: no coroutine scope, no store, no transport, no Compose.
 
-- **`ActionPlugin`** has three behaviours and no others. `parameters(subject)` describes the fields the operation leaves to the owner, as a typed form rather than a screen — the app owns its own presentation. `prepare(subject, choice)` fetches whatever the operation needs to be executable now and returns the exact bytes. `inspect(subject, choice, prepared)` reads those bytes and returns typed facts — it is given core's own copy of the owner's choice rather than trusting what it prepared against.
-- **`ActionSubject` is the complete list of what a plugin receives:** the connection ID, the operation, the environment, the structured request, and the owner's `SelectedWallet`. `SelectedWallet` is an address, a network, a label and a timestamp — the wallet's authorization token lives in `wallet/storage/WalletStore` and is not part of it (SEE-84). Nothing in the subject can reach a sidecar, approve anything, or sign.
-- **`SeekerVaultApplication.plugins` is the build-time selection**, and it is where SEE-93 and SEE-94 added their plugins: it composes `PluginRegistry.of(JupiterSwapPlugin(…), JupiterPredictionPlugin(…))`. Making it settable is how tests register a plugin; `MainActivity` passes the composed registry to `InboxViewModel` without naming the package.
-- **`InboxViewModel.factsFor` is the only place it is consulted.** `actionOwner(request)` separates the actions the app carries out itself — ack, sign_message, transfer — from an operation a plugin would serve. The first path is unchanged. The second resolves against the registry, and an unresolved operation produces `RequestFacts.unread`, so it can never be `ALLOWED`.
+- **`ExecutionProvider`** declares its `capabilities` and has six behaviours. `inputs(operation)` describes the fields the operation leaves to the owner, as a typed form rather than a screen — the app owns its own presentation — and it reaches nothing, so a review opens with its fields already on it. `resolve(operation)` is the one read before preparing: what the venue says *now*, which for Jupiter's prediction side is the market as the review opens. `prepare(operation, choice)` fetches whatever the operation needs to be executable now and returns the exact bytes. `inspect(operation, choice, prepared)` reads those bytes and returns typed facts — it is given core's own copy of the owner's choice rather than trusting what it prepared against. `destinations` is where the owner may carry on outside the app, and `status` is optional, defaulted to `Unsupported`, and called by nothing here.
+- **`ActionOperation` is the complete list of what a provider receives:** the connection ID, the action and the schema version its payload was read as, its own identity, the environment, the network, the typed payload core already validated, the structured request when there is one, and the owner's `SelectedWallet`. `SelectedWallet` is an address, a network, a label and a timestamp — the wallet's authorization token lives in `wallet/storage/WalletStore` and is not part of it (SEE-84). Nothing in it can reach a sidecar, approve anything, or sign.
+- **`plugins/actions/` is the action's own half**, and it is core's. `actionPayloadFrom` reads a publisher's terms against the action's schema once, before any provider is consulted, so two providers of one action cannot disagree about what the owner is looking at. `SwapInputs.kt` and `PredictionInputs.kt` fold the publisher's bounds together with the serving provider's.
+- **`SeekerVaultApplication.providers` is the build-time selection**, and it is where the Jupiter adapter is named: it composes `ProviderRegistry.of(JupiterExecutionProvider(…))`. Making it settable is how tests register a provider; `MainActivity` passes the composed registry to `InboxViewModel` without naming the package. `BundledProvidersTest` holds the shipped list to what is meant to ship.
+- **`InboxViewModel.factsFor` is the only place it is consulted.** `actionOwner(request)` separates the actions the app carries out itself — ack, sign_message, transfer — from an action a provider would serve. The first path is unchanged. The second resolves against the registry — by the provider the document **named**, with no routing and no fallback — and an unresolved action produces `RequestFacts.unread`, so it can never be `ALLOWED`.
 - **Two `StageBoundaryTest` checks hold the line.** One reads the package's imports against an exact list and fails if its code names a wallet interaction, a wallet token, a transport, an HTTP client, a store, or an approval. The other fails if a provider's name appears in core transport, policy, transaction or activity code, or if a file other than `SeekerVaultApplication.kt` and `InboxViewModel.kt` imports the package. Deliberately breaking either fails the named check.
 
-Writing a plugin, when a stage calls for one: implement `ActionPlugin`, add it to the registry `SeekerVaultApplication.plugins` composes, and put its strings in resources — a `ParameterField` carries a `@StringRes` label rather than English. Nothing else in the app should need to change; if it does, the boundary is in the wrong place.
+Writing a provider, when a stage calls for one: implement `ExecutionProvider`, declare a `ProviderCapabilities` that is true about the venue, add it to the registry `SeekerVaultApplication.providers` composes, and put its strings in resources — a `ParameterField` carries a `@StringRes` label rather than English. Nothing else in the app should need to change; if it does, the boundary is in the wrong place. The step-by-step is [`execution-providers.md`](../wiki/execution-providers.md#adding-a-bundled-provider).
 
 ## Server manifests and connection modes (SEE-88)
 
@@ -352,7 +353,7 @@ compiled into this build. It holds no state, opens nothing, and does not suspend
   publication and every approval path, so requiring the direct mode there keeps a feed out of all
   of them at once.
 - **Support is derived on every read, never stored.** `ConnectionsViewModel` computes it for each
-  connection from the process's one `PluginRegistry` and that connection's own environment, and
+  connection from the process's one `ProviderRegistry` and that connection's own environment, and
   `InboxViewModel.support(connectionId)` does the same for a request. A verdict on disk would
   outlive the build that reached it.
 - **`ConnectionRepository.resolveManifest` reads and caches it.** It runs after pairing and on every
@@ -409,35 +410,43 @@ version, and the parameters the owner chose. The outcomes are the transfer path'
 paid, and an answer nobody received is `Unknown`), its signature is a transaction's ID, and its
 record outlives the feed being removed.
 
-## The Jupiter swap plugin, and the path to a wallet (SEE-93)
+## The `swap` action, and the path to a wallet (SEE-93, SEE-145)
 
 The architecture pages are [`docs/wiki/jupiter-swap.md`](../wiki/jupiter-swap.md) and
-[`docs/integrations/jupiter.md`](../integrations/jupiter.md). Android-side, it is two packages.
+[`docs/integrations/jupiter.md`](../integrations/jupiter.md). Android-side, it is three packages:
+the action's own payload in `plugins/actions/`, Jupiter's half in `jupiter/`, and the path a person
+walks in `operations/`.
 
-**`jupiter/` is the plugin.** It implements the boundary and reaches one host of its own:
+**`plugins/actions/` is the action's half**, and it names no venue:
 
 | File | What is in it |
 | --- | --- |
-| `SwapTerms.kt` | The payload a publisher broadcasts, with one `SwapTermProblem` per rule. Mints, never tickers |
-| `SwapParameters.kt` | The half that is the owner's: the amount and the slippage, and the publisher's bounds on both |
-| `JupiterProvider.kt` | The two calls, over the app's shared OkHttp client and `org.json`. The only file in the app that names the provider's host |
+| `SwapAction.kt` | The payload a publisher broadcasts, with one `SwapPayloadProblem` per rule. Mints, never tickers. Read by core, once, before any provider is consulted |
+| `SwapInputs.kt` | The half that is the owner's: the amount and the slippage, with the publisher's bounds and the serving provider's folded together |
+
+**`jupiter/` is the adapter.** It implements the boundary and reaches one host of its own:
+
+| File | What is in it |
+| --- | --- |
+| `JupiterExecutionProvider.kt` | The provider: `JUPITER_CAPABILITIES`, the two `ActionCapability`s, the dispatch on the typed payload, and the venue's own facts — its two stake mints and its five-dollar minimum order |
+| `JupiterProvider.kt` | The two calls, over the app's shared OkHttp client and `org.json`. The only file in the app that names the API's host |
 | `SwapInstructions.kt` | The aggregator's two routing instructions, both account layouts, the trailing Borsh arguments, and the two token instructions the transfer path does not read |
 | `SwapInspection.kt` | `inspectSwap`: every check, one `SwapFinding` each, and the labelled values the owner is shown |
-| `JupiterSwapPlugin.kt` | The descriptor, `parameters`, `prepare`, `inspect`, and the offer it holds against the bytes it prepared |
+| `JupiterSwapAction.kt` | Jupiter's half of `swap`: the fields, `prepare`, `inspect`, and the offer it holds against the bytes it prepared |
 
 It calls `decodeTransaction` rather than having a decoder of its own — `StageBoundaryTest` fails if
 any file outside `transactions/` reads the message format itself — and it imports nothing that could
 sign, store or approve.
 
-**`operations/` is the path a person walks**, and it names no provider, so SEE-94's plugin is shown
+**`operations/` is the path a person walks**, and it names no venue, so `prediction.buy` is shown
 by the same screens:
 
 - `OperationViewModel` holds one review at a time and serializes preparing against approving. The
-  order is the whole of the safety: preparing writes the owner's choice down and asks the plugin;
+  order is the whole of the safety: preparing writes the owner's choice down and asks the provider;
   approving re-reads the rules and compares the verdict with the one they were shown, **then** takes
   the wallet lock, and only inside it binds the operation and writes it down — which is where expiry,
-  the revision, the choice, the plugin and the wallet are all checked at once (SAW-046's rule for a
-  transfer's window, applied here).
+  the revision, the choice, the provider, the action, its schema version, the instrument and the
+  wallet are all checked at once (SAW-046's rule for a transfer's window, applied here).
 - It takes the connection *list* rather than `ConnectionRepository`, because a feed has no
   server-facing half: no pairing, no credential, no outbox.
 - `ProposalsScreen` and `ProposalReviewScreen` are the shapes Pending requests and Request details
@@ -446,41 +455,50 @@ by the same screens:
 - Changing any parameter throws away what was prepared for the old one, and a revision that moved
   under an open review does the same.
 
-The plugin is selected where the app is composed (`SeekerVaultApplication.plugins`), because a real
-plugin needs an HTTP client and `plugins/` holds none.
+The provider is selected where the app is composed (`SeekerVaultApplication.providers`), because a
+real provider needs an HTTP client and `plugins/` holds none.
 
-## The Jupiter prediction plugin, and the chain read it needs (SEE-94)
+## The `prediction.buy` action, and the chain read it needs (SEE-94, SEE-145)
 
 The architecture page is [`docs/wiki/jupiter-prediction.md`](../wiki/jupiter-prediction.md).
-Android-side it adds one package and four files to another.
+Android-side it adds one package, two files to `plugins/actions/`, and four to `jupiter/`.
 
-**`solana/` is the shared component**, and it names no provider so both plugins may use it:
+**`solana/` is the shared component**, and it names no venue so any provider may use it:
 
 | File | What is in it |
 | --- | --- |
 | `SolanaAccounts.kt` | One read method, `getMultipleAccounts`, over the app's shared client. The app's first and only chain endpoint, configured by the build (`-Pseekervault.solanaRpc=…`) and **empty by default** |
 | `AddressLookupTables.kt` | Parsing and validating a table account, and rebuilding a versioned message's account list in the runtime's own order — static, then every table's writable indexes, then every table's readonly ones |
 
-**`jupiter/` gains the plugin**: `PredictionTerms.kt` (the market payload), `PredictionParameters.kt`
-(the side and the stake), `JupiterPrediction.kt` (the market and the order), `PredictionInstructions.kt`
-(the order instruction's Borsh layout, with the funding swap delegated to `SwapInstructions`), and
-`PredictionInspection.kt` with `JupiterPredictionPlugin.kt`.
+**`plugins/actions/` gains the action's half**: `PredictionAction.kt` (the market payload, whose
+`marketProvider` is the *market's* venue — Kalshi, Polymarket — and never the execution provider)
+and `PredictionInputs.kt` (the side and the stake, with the venue's minimum folded into the floor).
+**`jupiter/` gains the adapter's half**: `JupiterPrediction.kt` (the market and the order),
+`PredictionInstructions.kt` (the order instruction's Borsh layout, with the funding swap delegated
+to `SwapInstructions`), and `PredictionInspection.kt` with `JupiterPredictionAction.kt`. The two
+stake mints and the five-dollar minimum are declared as `PREDICTION_BUY_CAPABILITY` in
+`JupiterExecutionProvider.kt`, because they are facts about the venue rather than rules of the
+action.
 
-Three things about the shape of it are worth knowing before changing any of it:
+Four things about the shape of it are worth knowing before changing any of it:
 
-- **`inspect` is still not suspending.** Resolving reads the chain, so it happens in `prepare` — where
-  a plugin may reach a network — and `inspect` returns what that reading found, keyed by the exact
-  bytes it was made for. The boundary keeps its promise that an inspection reads bytes and not a
-  network, and the ViewModel calls the same two methods it calls for a swap.
+- **`resolve` reads the market when the review opens.** It is a read and nothing else — no order, no
+  binding — and a market that has already closed becomes a problem on the screen rather than a
+  preparation waiting to fail. `prepare` makes the same check again, and that one is the one that
+  guards the bytes.
+- **`inspect` is still not suspending.** Resolving accounts reads the chain, so it happens in
+  `prepare` — where a provider may reach a network — and `inspect` returns what that reading found,
+  keyed by the exact bytes it was made for. The boundary keeps its promise that an inspection reads
+  bytes and not a network, and the ViewModel calls the same methods it calls for a swap.
 - **A resolution failure is a preparation failure.** `inspectPrediction` lets `SolanaException` and
-  `LookupException` propagate, and the plugin turns each into a `PluginFailure` with its own reason.
+  `LookupException` propagate, and the adapter turns each into a `PluginFailure` with its own reason.
   There is deliberately no path that produces a review of an order whose accounts were never seen.
 - **The readers are account-list agnostic.** `transactions.readInstruction` and `jupiter.swapStep`
   take a program, a list of accounts and the data, so the same code reads a self-contained message
   and a resolved one. That is what lets an order's funding swap be read by exactly the code that
   reads a swap.
 
-The plugin also implements `destinations`, which is where the market link comes from, and returns
+The provider also implements `destinations`, which is where the market link comes from, and returns
 `references` from its inspection — the order and position accounts — which `operations/` copies into
 the Activity record through `ActivityLog.referenced`, the same channel the policy snapshot uses.
 
@@ -658,28 +676,35 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `ExplorerTest` | The cluster in the link for each network, no link for a message signature, and no link without a signature or without a cluster |
 | `ActivityViewModelTest` | Reading what is stored, a history that can't be read leaving the records on screen and saying so, recovery on the next read, a link nothing could open, and clearing |
 | `ActivityScreenTest`, `ActivityDetailsScreenTest` | Compose on Robolectric: the list and the empty state, the unreadable warning with the records still openable, Clear only after a confirmation, the record in full, the cluster named on every transfer, the explorer offered only for a sent transaction and on its own cluster, the words that say a message signature is not a payment, and the message when nothing can open a link |
-| `SwapTermsTest` | What a publisher has to say for a swap to be readable (SEE-93): mints rather than tickers, every rule and the term it broke on, absent told apart from unreadable, a term this plugin does not know changing nothing, and every way the owner's own choice can fall outside what was published |
+| `ProviderRegistryTest` | Registering a provider and resolving one action to exactly one of them (SEE-86, SEE-145): a duplicate ID and a duplicate legacy name each refused where the list is written, every one of the seven unsupported reasons asserted separately, a wallet-less `NETWORK_UNSPECIFIED` skipping only the cluster check, and a second provider registered beside the first and resolved by the same code with nothing provider-specific in it |
+| `ActionFactsTest` | What the owner's rules are applied to when a provider would carry out the action (SEE-86, SEE-145): the action mapping, the rule vocabulary an action is written in, and the rule the whole file is about — an action nothing serves, one whose bytes were never prepared, and one whose bytes couldn't be read are all a gap in the review, and a gap is never an allowance |
+| `CompatibilityTest` | The names published before SEE-145, and what they mean now: `jupiter.swap` **looked up rather than parsed**, both wire spellings of the prediction action meaning the same action, the legacy spelling re-emitted so an older reader is unaffected, and a name the table does not carry meaning nothing at all unless a registered provider answers to it |
+| `SwapActionTest` | What a publisher has to say for a swap to be readable (SEE-93, SEE-145), now the action's own payload rather than Jupiter's: mints rather than tickers, every rule and the term it broke on, absent told apart from unreadable, a term this reader does not know changing nothing, and every way the owner's own choice can fall outside what was published or outside what the venue accepts |
 | `SwapInstructionsTest` (in `SwapInspectionTest`), `JupiterFixturesTest` | The four transactions Jupiter really built, read by the phone's own reader, and the capture script's independent reader agreeing with it instruction for instruction. The accounts the route names are the owner's own derived addresses, the floor the chain will enforce is the one the quote stated, and the wrap and unwrap touch nothing but the owner's own account |
 | `SwapInspectionTest` | Everything the review refuses, one changed thing at a time: the amount, the slippage, the quoted output, the source, the destination, either mint, the authority, the payer, a second signer, a platform fee in either form, the number of hops, a second swap, bytes already signed, a transaction with no swap in it, an extra transfer, an `Approve`, an instruction from elsewhere, a routing instruction this plugin was not written for, a lookup table, wrapping into or closing to somebody else, an account created for somebody else, and no wallet or the wrong network |
-| `JupiterSwapPluginTest` | The plugin over a stood-in provider: what it declares, a signal it cannot read asking for nothing and saying which term, two owners getting two transactions, every preparation being a new thing to approve, the minute a preparation stands for, preparing not reading the environment at all — the same bytes, the same calls and the same inspection in sandbox as in production (SEE-97) — each provider failure reported as itself, and an offer this phone no longer holds being said rather than assumed |
+| `JupiterSwapActionTest` | Jupiter's `swap`, over an API that is stood in for and through the real `JupiterExecutionProvider`: what it declares, a signal it cannot read asking for nothing and saying which term, two owners getting two transactions, every preparation being a new thing to approve, the minute a preparation stands for, preparing not reading the environment at all — the same bytes, the same calls and the same inspection in sandbox as in production (SEE-97) — each provider failure reported as itself, and an offer this phone no longer holds being said rather than assumed |
 | `HttpJupiterProviderTest` | The wire, over a real HTTP endpoint: a quote that carries two mints and an amount and nothing about the owner, a build that carries the quote back whole and the account that will sign, every answer to a different question refused, a rate limit and a route failure reported as themselves, a status quoted and never a body, and one of the captured real answers going through the adapter unchanged |
 | `JupiterLiveTest` | Opt-in, one real quote and one real build against the live provider, asserting the review still verifies the result. It spends nothing. Run it with `-Dseekervault.jupiter=https://lite-api.jup.ag`; it skips otherwise |
-| `OperationViewModelTest` | The whole path with the real plugin: two owners acting on one signal with their own amounts, the fields the owner is asked for, a changed amount throwing away what was prepared, a stale quote prepared again rather than signed, the wallet asked once with exactly the reviewed bytes, a decline and an answer that never arrived recorded honestly, one execution per proposal ever, an operation the app closed on settled as unresolved, a provider that could not quote, bytes that do not do what was chosen never reaching the wallet, a devnet wallet refused before anything is asked, a dismissal a republication cannot undo, terms that moved under an open review, and (SEE-97) a sandbox feed rehearsing everything and opening no wallet — a real review, a `Simulated` record with no signature, and the promise kept in the record — plus a switch under an open review throwing the preparation away and a binding made under the other promise refused by the gate |
+| `OperationViewModelTest` | The whole path with the real provider: two owners acting on one signal with their own amounts, the fields the owner is asked for, a changed amount throwing away what was prepared, a stale quote prepared again rather than signed, the wallet asked once with exactly the reviewed bytes, a decline and an answer that never arrived recorded honestly, one execution per proposal ever, an operation the app closed on settled as unresolved, a provider that could not quote, bytes that do not do what was chosen never reaching the wallet, a devnet wallet refused before anything is asked, a dismissal a republication cannot undo, terms that moved under an open review, and (SEE-97) a sandbox feed rehearsing everything and opening no wallet — a real review, a `Simulated` record with no signature, and the promise kept in the record — plus a switch under an open review throwing the preparation away and a binding made under the other promise refused by the gate |
 | `OperationPrivacyTest` | The captured traffic (SEE-93's privacy acceptance): the whole path against two real HTTP servers, then every byte sent to each read back and searched. The gateway is told a channel and a sequence and none of the owner's numbers; the provider is told two mints, an amount and — for the build alone — the owner's address, and never the publisher, the proposal or the signature; and nothing goes anywhere after the wallet |
 | `ProposalScreensTest` | Compose on Robolectric: the list and its empty state, the publisher's words and terms shown as theirs, an amount typed in the asset's own units reaching the app in exact base units, too many decimal places refused rather than rounded, Approve offered only for bytes the phone accounted for whole, a finding shown and nothing to approve beside it, a provider quoted as itself, an unsupported server read in full, an expired proposal offering no preparation, and a sandbox review saying so before anything else and offering `Simulate` rather than `Approve` (SEE-97) |
 | `AddressLookupTablesTest` | Resolving a versioned message's accounts (SEE-94), and every way it must refuse to: a table missing, owned by the wrong program, deactivated, the wrong length, an index past its end, and a message reaching past the rebuilt list. The rebuild order has its own case, because getting it wrong would resolve every instruction to the wrong addresses silently |
 | `SolanaAccountsTest` | The chain read over a real HTTP endpoint: the one method it names, nothing about the owner in the request, a JSON-RPC error arriving with a 200, a partial answer, data that is not base64, a rate limit, a dead endpoint, and a build with no endpoint asking nobody anything |
-| `PredictionTermsTest` | What a publisher has to say for a market to be readable, the provider's minimum as a floor under the publisher's, a stake token the provider does not take, and every way the owner's own side and stake can fall outside what was published |
+| `PredictionActionTest` | What a publisher has to say for a market to be readable (SEE-94, SEE-145): the venue's minimum as a floor under the publisher's, a stake token the venue does not take, the market provider told apart from the execution provider, and every way the owner's own side and stake can fall outside what was published |
 | `PredictionFixturesTest` | A real order from the live API with the real contents of the tables it names: refused before resolution, resolved from the tables the message itself names, read field for field against the provider's own JSON, its funding swap read by SEE-93's reader unchanged, verified whole, and blocked outright when the chain cannot be read |
 | `PredictionInspectionTest` | Everything the order review refuses, one changed thing at a time: the side, the market, the order's identifier and accounts, the contracts, the ceiling, the cost, the slippage, whose order it is, who pays, buying against selling, two orders, the token, whose account funds it, where the funding lands, how much it takes, an account created for somebody else, a second missing signature, the owner's slot already filled, an extra transfer, a foreign program, another instruction of the prediction program, trailing bytes, and each way the tables can be unusable |
-| `JupiterPredictionPluginTest` | The order the plugin does things in: the market read before an order is asked for, a closed or settled market refusing without an order, a market in another event or from another source, an order wanting somebody else's signature, the chain failing with its own reason, preparing not reading the environment (SEE-97), a review that belongs to one side and one stake, and two owners backing two sides |
+| `JupiterPredictionActionTest` | The order Jupiter's `prediction.buy` does things in, over an API and a chain that are stood in for: the market read when the review opens and again before an order is asked for, the market read before an order is asked for, a closed or settled market refusing without an order, a market in another event or from another source, an order wanting somebody else's signature, the chain failing with its own reason, preparing not reading the environment (SEE-97), a review that belongs to one side and one stake, and two owners backing two sides |
 | `HttpJupiterPredictionTest` | The prediction wire over a real HTTP endpoint: what a market read and an order carry, nothing about the publisher in either, an answer about another market or side refused, and the two provider refusals worth telling apart |
+| `AlternateProviderTest` | The SEE-145 acceptance: a second execution provider registered beside Jupiter and driven through the real `OperationViewModel`, `bindingProblem`, `ProposalRepository`, wallet and record path — **without one line of core dispatch knowing it exists**. It lives in `src/test` with `TestExecutionProvider`, so it is compiled into no APK |
+| `BundledProvidersTest` | What this build actually ships: the list in `SeekerVaultApplication` held to Jupiter alone, so adding a provider to it has to be a deliberate edit that fails here first |
 | `PredictionOperationTest` | A market proposal from the feed to a signature and the links after it: the side and stake asked for and neither suggested, the market and chain read in order, the wallet asked once, the record keeping which order it was across a restart, a closed market, a chain that cannot be read, an order for the other side never reaching the wallet, a changed side throwing the order away, an answer that never arrived not repeated, and nothing about the side or stake reaching the gateway |
-| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, FCM's SAC default icon/accent, only the non-exported messaging service, `INTERNET`, optional camera, and `POST_NOTIFICATIONS`. Firebase imports stay under `push/`; the service has registration callbacks and only the fixed invalidation-to-`PushSyncScheduler` message path, with no repository, transport, coroutine, notification, or wallet dependency in the callback. Notification code is limited to channels, permission, post-Sync type/source presentation, immutable activity intents, and read-only routes; it has no wallet, approval, scheduler, action, custom remote view, or background component. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, notification actions, and wallet-key APIs remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. SEE-93 adds one check and extends four: the plugins reach their provider and nothing else of this app's, the provider's API host is written in one file and its platform link in one other, the build's plugin list is in the composition root, `operations/` names no provider, and the message format is still parsed in exactly one package. SEE-94 adds one more: the chain reader names one RPC method and it is a read, reaches nothing of the app but the decoder's types and base58, names no provider at all, takes its endpoint from the build through the composition root alone, and no storage package persists a URL. |
+| `StageBoundaryTest` | The stage boundary. The source manifest declares `MainActivity`, disabled-by-default Firebase auto-init, current installation-ID registration, FCM's SAC default icon/accent, only the non-exported messaging service, `INTERNET`, optional camera, and `POST_NOTIFICATIONS`. Firebase imports stay under `push/`; the service has registration callbacks and only the fixed invalidation-to-`PushSyncScheduler` message path, with no repository, transport, coroutine, notification, or wallet dependency in the callback. Notification code is limited to channels, permission, post-Sync type/source presentation, immutable activity intents, and read-only routes; it has no wallet, approval, scheduler, action, custom remote view, or background component. Storage and Keystore APIs stay in their named storage packages; WorkManager access stays under `sync/`; foreground services, other services, alarms, receivers, notification actions, and wallet-key APIs remain absent. Nothing is backed up. The Mobile Wallet Adapter client, WorkManager, and Firebase Messaging are on the classpath on purpose; Seed Vault's own SDK, AndroidX Security crypto, and legacy GCM are not. SEE-93 adds one check and extends four: the Jupiter adapter reaches its own API and nothing else of this app's, the API host is written in one file and the platform link in one other, the build's provider list is in the composition root, `operations/` names no venue, and the message format is still parsed in exactly one package. SEE-94 adds one more: the chain reader names one RPC method and it is a read, reaches nothing of the app but the decoder's types and base58, names no provider at all, takes its endpoint from the build through the composition root alone, and no storage package persists a URL. |
 
 Robolectric 4.16 runs the UI tests on SDK 36 (`src/test/resources/robolectric.properties`), its newest supported SDK. The app itself targets SDK 37.
 
 ### On a device or emulator
+
+For a headless emulator driven by an agent session against the deployed servers and demo feeds, see [emulator-e2e.md](emulator-e2e.md).
 
 The Stage 5.2 foreground/background run is physical-Seeker-only; an emulator does not count as PASS. Follow the [MacBook-to-Seeker live/background runbook](../guides/live-background-updates.md) and record every item in the [Stage 5.2 device checklist](../testing/stage-5-2.md#physical-seeker-checklist-saw-053) as PASS, FAIL, or NOT RUN.
 

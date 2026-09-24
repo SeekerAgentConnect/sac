@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
                     cleartextPermitted = app::isCleartextPermitted,
                     // The one registry for the process, so a server's requirements are matched
                     // against the same plugins here as when a request is reviewed (SEE-88).
-                    plugins = app.pluginRegistry,
+                    plugins = app.providerRegistry,
                 )
             }
         }
@@ -77,7 +77,8 @@ class MainActivity : ComponentActivity() {
                     app.walletRepository,
                     app.policyEvaluator,
                     app.activityLog,
-                    plugins = app.pluginRegistry,
+                    plugins = app.providerRegistry,
+                    chain = app.solanaAccounts(),
                     io = app.connectionIo,
                 )
             }
@@ -135,7 +136,7 @@ class MainActivity : ComponentActivity() {
                     // The one registry for the process, so the plugin that prepares an
                     // operation's bytes is the same one a server's requirements were matched
                     // against (SEE-86, SEE-88).
-                    plugins = app.pluginRegistry,
+                    providers = app.providerRegistry,
                     io = app.connectionIo,
                 )
             }

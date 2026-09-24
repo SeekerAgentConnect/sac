@@ -4,23 +4,29 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityOutcome
-import io.github.brrenat.seekervault.jupiter.JUPITER_SWAP
 import io.github.brrenat.seekervault.jupiter.JupiterException
 import io.github.brrenat.seekervault.jupiter.JupiterProblem
 import io.github.brrenat.seekervault.jupiter.JupiterSwap
 import io.github.brrenat.seekervault.jupiter.SOL_MINT
 import io.github.brrenat.seekervault.jupiter.SWAP_PREPARATION_LIFETIME
 import io.github.brrenat.seekervault.jupiter.SwapFinding
-import io.github.brrenat.seekervault.jupiter.SwapParameterNames
 import io.github.brrenat.seekervault.jupiter.USDC_MINT
 import io.github.brrenat.seekervault.jupiter.swapTransaction
 import io.github.brrenat.seekervault.jupiter.usdcTerms
+import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
+import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.SWAP_ACTION
+import io.github.brrenat.seekervault.plugins.UnsupportedReason
+import io.github.brrenat.seekervault.plugins.actions.SwapParameterNames
+import io.github.brrenat.seekervault.plugins.actions.SwapTermNames
 import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
+import io.github.brrenat.seekervault.proposals.instrumentOf
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SendResult
@@ -96,6 +102,34 @@ class OperationViewModelTest {
         slippage?.let {
             model.choose(SwapParameterNames.SLIPPAGE_BPS, ParameterValue.Count(it.toUInt()))
         }
+    }
+
+    @Test
+    fun saysNothingIsKnownUntilTheStoredProposalsHaveBeenRead() {
+        // An earlier run of the app: one signal read off the feed and kept on this phone.
+        val first = phone()
+        runBlocking {
+            first.feed.answers = listOf(swapProposal())
+            first.proposals.refresh(CONNECTION)
+        }
+        assertEquals(1, first.proposals.proposals.value.size)
+
+        // The app starts again over the same store. The read waits for the connections, because a
+        // proposal is only ever held under the feed it arrived on.
+        val restarted = phone()
+        restarted.loaded.value = false
+        val model = restarted.viewModel()
+
+        // An empty list here is "not read yet", not "this phone holds none". Anything reading an
+        // appearing signal as an arrival — the foreground banners (SEE-147) — would otherwise take
+        // its baseline here and then announce the whole stored feed as new.
+        assertFalse(model.state.value.loaded)
+        assertTrue(model.state.value.records.isEmpty())
+
+        restarted.loaded.value = true
+
+        assertTrue(model.state.value.loaded)
+        assertEquals(1, model.state.value.records.size)
     }
 
     @Test
@@ -239,7 +273,8 @@ class OperationViewModelTest {
         val record = checkNotNull(phone.proposals.proposal(CONNECTION, PROPOSAL))
         val execution = checkNotNull(record.execution)
         // And the record says what was bound, written before the wallet opened.
-        assertEquals(JUPITER_SWAP, execution.binding.plugin)
+        assertEquals(JUPITER_PROVIDER, execution.binding.provider)
+        assertEquals(SWAP_ACTION, execution.binding.action)
         assertEquals(
             4_000_000UL,
             (execution.binding.choice[SwapParameterNames.INPUT_AMOUNT] as ParameterValue.Amount)
@@ -331,8 +366,11 @@ class OperationViewModelTest {
                     choice = it.choice,
                     wallet = owner,
                     network = io.github.brrenat.seekervault.request.v1.Network.NETWORK_MAINNET,
-                    plugin = JUPITER_SWAP,
-                    contract = 1,
+                    provider = JUPITER_PROVIDER,
+                    action = SWAP_ACTION,
+                    schemaVersion = 1,
+                    instrument = instrumentOf(it.record.proposal),
+                    contract = PROVIDER_CONTRACT,
                     preparedVersion = prepared.version,
                     contentHash =
                         ByteString.copyFrom(
@@ -424,7 +462,12 @@ class OperationViewModelTest {
 
         model.prepare()
 
-        assertEquals("other_network", checkNotNull(model.review.value).failure?.code)
+        // Refused by the registry, before a provider was reached at all, and said as itself:
+        // "this venue does not serve your cluster" and not "you have no wallet" (SEE-145).
+        assertEquals(
+            UnsupportedReason.NetworkUnsupported.code,
+            checkNotNull(model.review.value).failure?.code,
+        )
         // The provider was never asked: a devnet wallet is not a devnet provider, and the app's
         // own devnet transfer tests are about something else entirely.
         assertEquals(emptyList<String>(), phone.provider.asked)
@@ -561,8 +604,11 @@ class OperationViewModelTest {
                 choice = checkNotNull(model.review.value).choice,
                 wallet = owner,
                 network = io.github.brrenat.seekervault.request.v1.Network.NETWORK_MAINNET,
-                plugin = JUPITER_SWAP,
-                contract = 1,
+                provider = JUPITER_PROVIDER,
+                action = SWAP_ACTION,
+                schemaVersion = 1,
+                instrument = instrumentOf(checkNotNull(model.review.value).record.proposal),
+                contract = PROVIDER_CONTRACT,
                 preparedVersion = prepared.version,
                 contentHash =
                     ByteString.copyFrom(
@@ -576,6 +622,96 @@ class OperationViewModelTest {
                 BindingProblem.OtherEnvironment
             ),
             phone.proposals.beginExecution(CONNECTION, PROPOSAL, stale, phone.wallet.wallet.value),
+        )
+    }
+
+    /**
+     * A revision that moved is prepared from its own terms, and never from the ones it replaced.
+     *
+     * The record, the review that is written down and the binding all follow the latest revision
+     * the moment it arrives. If the parsed terms did not follow with them, preparing again would
+     * validate and build against the *previous* revision's limits while everything else said the
+     * current one — which is a preparation that never has to answer to the terms it was made under.
+     */
+    @Test
+    fun aRevisionThatMovedIsPreparedFromItsOwnTermsRatherThanTheOnesItReplaced() = runBlocking {
+        val phone = phone()
+        val model =
+            opened(
+                phone,
+                proposal = swapProposal(extra = mapOf(SwapTermNames.MOST_INPUT to "10000000")),
+            )
+        choose(model, 5_000_000UL, slippage = 50)
+        model.prepare()
+        assertNotNull(checkNotNull(model.review.value).prepared)
+
+        // The publisher tightened the ceiling on the same pair while the owner was reading.
+        phone.feed.answers =
+            listOf(swapProposal(revision = 2, extra = mapOf(SwapTermNames.MOST_INPUT to "1000000")))
+        model.refresh(CONNECTION)
+
+        val moved = checkNotNull(model.review.value)
+        assertEquals(2L, moved.record.proposal.revision)
+        assertNull(moved.prepared)
+        // The form is the new terms' form, not the old one carried forward.
+        assertEquals(
+            1_000_000UL,
+            (moved.form.fields.single { it.key == SwapParameterNames.INPUT_AMOUNT }.kind
+                    as ParameterKind.Amount)
+                .most,
+        )
+        // And the answer they gave to the old terms is not applied to terms they never saw.
+        assertNull(moved.choice[SwapParameterNames.INPUT_AMOUNT])
+
+        // The amount the replaced revision allowed is refused against the one on screen, before
+        // any provider is asked for bytes.
+        choose(model, 5_000_000UL, slippage = 50)
+        model.prepare()
+        val after = checkNotNull(model.review.value)
+        assertNull(after.prepared)
+        assertEquals("too_much", after.failure?.code)
+        model.approve(phone.wallet.wallet.value)
+        assertEquals(
+            emptyList<Triple<ByteString, SelectedWallet, String>>(),
+            phone.adapter.sendings,
+        )
+    }
+
+    /**
+     * And when the revision repoints the proposal at another pair, the new pair is what is prepared
+     * — rather than the old instrument being rebuilt and then refused by the gate until the owner
+     * happens to close the review and open it again.
+     */
+    @Test
+    fun aRevisionThatRepointedThePairIsPreparedForThePairItNamesNow() = runBlocking {
+        val phone = phone()
+        phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        val model = opened(phone)
+        choose(model, 1_000_000UL)
+        model.prepare()
+        assertNotNull(checkNotNull(model.review.value).prepared)
+
+        phone.feed.answers =
+            listOf(swapProposal(revision = 2, inputMint = SOL_MINT, outputMint = USDC_MINT))
+        model.refresh(CONNECTION)
+
+        val moved = checkNotNull(model.review.value)
+        assertEquals(instrumentOf(moved.record.proposal), moved.payload?.instrument)
+
+        choose(model, 1_000_000UL, slippage = 50)
+        model.prepare()
+        val after = checkNotNull(model.review.value)
+        assertNotNull(after.prepared)
+        // The provider was asked about the pair the proposal names now.
+        assertTrue(phone.provider.asked.last { it.startsWith("quote") }.contains("$SOL_MINT->"))
+
+        // And the binding is for that pair, so the approval gets past the gate rather than being
+        // refused as another instrument.
+        model.approve(phone.wallet.wallet.value)
+        assertEquals(1, phone.adapter.sendings.size)
+        assertEquals(
+            checkNotNull(after.prepared).transaction,
+            phone.adapter.sendings.single().first,
         )
     }
 

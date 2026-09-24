@@ -313,6 +313,14 @@ export declare type Action = Message<"seekervault.request.v1.Action"> & {
      */
     value: SwapAction;
     case: "swap";
+  } | {
+    /**
+     * SEE-146: stake, unstake, cancel an unstake, or withdraw SKR.
+     *
+     * @generated from field: seekervault.request.v1.StakingAction staking = 5;
+     */
+    value: StakingAction;
+    case: "staking";
   } | { case: undefined; value?: undefined };
 };
 
@@ -489,6 +497,62 @@ export declare type SwapAction = Message<"seekervault.request.v1.SwapAction"> & 
  * Use `create(SwapActionSchema)` to create a new message.
  */
 export declare const SwapActionSchema: GenMessage<SwapAction>;
+
+/**
+ * StakingAction stakes SKR, starts unstaking it, cancels a pending unstake, or withdraws what a
+ * completed cooldown released. It succeeds as CONFIRMED.
+ *
+ * The action names no program, mint, pool, vault or stake account, and it never will. A client
+ * verifies a prepared transaction against the staking deployment it was built with, so a field
+ * here that could name another one would be a way for a server to have an owner approve a review
+ * of one program and sign a transaction for another. The client's own constants say which
+ * deployment this is; this message says only what to do and how much.
+ *
+ * @generated from message seekervault.request.v1.StakingAction
+ */
+export declare type StakingAction = Message<"seekervault.request.v1.StakingAction"> & {
+  /**
+   * The owner's wallet: the one that stakes, the one whose position changes, and the one that
+   * receives a withdrawal. Its base58 address.
+   *
+   * @generated from field: string wallet = 1;
+   */
+  wallet: string;
+
+  /**
+   * The network the position is on. The SKR staking program is deployed on mainnet only, so a
+   * server serving it rejects anything else rather than preparing for a cluster it cannot reach.
+   *
+   * @generated from field: seekervault.request.v1.Network network = 2;
+   */
+  network: Network;
+
+  /**
+   * @generated from field: seekervault.request.v1.StakingOperation operation = 3;
+   */
+  operation: StakingOperation;
+
+  /**
+   * The amount in SKR base units, formatted like TransferAction.amount.
+   *
+   * Required for STAKE and UNSTAKE, and empty for the other two: cancelling and withdrawing act on
+   * the whole pending unstake, and the program takes no amount for either. An amount on one of
+   * those would say the owner chose a size they were never offered.
+   *
+   * For UNSTAKE this is what the owner asked for in SKR. The program burns shares, so the exact
+   * share count is settled when the transaction is prepared, against the share price then; an
+   * amount at or above the position's current value unstakes the whole position.
+   *
+   * @generated from field: string amount = 4;
+   */
+  amount: string;
+};
+
+/**
+ * Describes the message seekervault.request.v1.StakingAction.
+ * Use `create(StakingActionSchema)` to create a new message.
+ */
+export declare const StakingActionSchema: GenMessage<StakingAction>;
 
 /**
  * Asset is native SOL or an SPL token. Exactly one kind is set.
@@ -865,6 +929,54 @@ export enum ConfirmationLevel {
  * Describes the enum seekervault.request.v1.ConfirmationLevel.
  */
 export declare const ConfirmationLevelSchema: GenEnum<ConfirmationLevel>;
+
+/**
+ * StakingOperation is which of the four staking actions is being asked for. They are four states of
+ * one position rather than four unrelated operations, and telling them apart is the point: starting
+ * an unstake and withdrawing what one released are the two that get confused, and only the second
+ * one moves tokens.
+ *
+ * @generated from enum seekervault.request.v1.StakingOperation
+ */
+export enum StakingOperation {
+  /**
+   * @generated from enum value: STAKING_OPERATION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Move SKR from the wallet into the stake vault, receiving shares at the current price.
+   *
+   * @generated from enum value: STAKING_OPERATION_STAKE = 1;
+   */
+  STAKE = 1,
+
+  /**
+   * Burn shares and start the cooldown. Nothing reaches the wallet yet, and rewards stop.
+   *
+   * @generated from enum value: STAKING_OPERATION_UNSTAKE = 2;
+   */
+  UNSTAKE = 2,
+
+  /**
+   * Put a pending unstake back to work before its cooldown completes, and clear the cooldown.
+   *
+   * @generated from enum value: STAKING_OPERATION_CANCEL_UNSTAKE = 3;
+   */
+  CANCEL_UNSTAKE = 3,
+
+  /**
+   * Move the amount a completed cooldown released out of the vault and into the wallet.
+   *
+   * @generated from enum value: STAKING_OPERATION_WITHDRAW = 4;
+   */
+  WITHDRAW = 4,
+}
+
+/**
+ * Describes the enum seekervault.request.v1.StakingOperation.
+ */
+export declare const StakingOperationSchema: GenEnum<StakingOperation>;
 
 /**
  * Network is the Solana network a financial action is bound to. The phone signs only with the

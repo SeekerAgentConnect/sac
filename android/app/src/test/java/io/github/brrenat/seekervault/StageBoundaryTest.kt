@@ -291,6 +291,11 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.request.v1.Action",
                 "io.github.brrenat.seekervault.request.v1.ActionRequest",
                 "io.github.brrenat.seekervault.request.v1.Network",
+                // SEE-146 adds two more reads, both of them facts somebody else established: the
+                // mint a staking action is denominated in, and what this phone read out of a
+                // staking transaction's own bytes. A rule is still decided here and nowhere else.
+                "io.github.brrenat.seekervault.skr.SKR_MINT",
+                "io.github.brrenat.seekervault.skr.StakingInspection",
                 "io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS",
                 "io.github.brrenat.seekervault.transactions.TransferInspection",
                 "io.github.brrenat.seekervault.transactions.formatBaseUnits",
@@ -466,6 +471,10 @@ class StageBoundaryTest {
             listOf(
                 "io.github.brrenat.seekervault",
                 "io.github.brrenat.seekervault.plugins",
+                // The provider-neutral action payloads SEE-145 moved out of this package: the
+                // `swap` and `prediction.buy` schemas belong to the actions rather than to
+                // whoever executes them, and the adapter is handed them already read.
+                "io.github.brrenat.seekervault.plugins.actions",
                 "io.github.brrenat.seekervault.request.v1",
                 "io.github.brrenat.seekervault.solana",
                 "io.github.brrenat.seekervault.transactions",
@@ -494,7 +503,7 @@ class StageBoundaryTest {
         fun named(host: Regex) =
             everywhere.filter { host.containsMatchIn(it.readText()) }.map { it.name }.sorted()
         assertEquals(
-            listOf("JupiterPredictionPlugin.kt", "JupiterProvider.kt"),
+            listOf("JupiterPredictionAction.kt", "JupiterProvider.kt"),
             named(Regex("""jup\.ag""")),
         )
         // The endpoint the plugins read from, in the one file that makes a request to it.
@@ -502,17 +511,17 @@ class StageBoundaryTest {
         // And the platform the owner is sent to afterwards, which this app never dials: it is a
         // link, built at the moment it is shown and never stored (SEE-94).
         assertEquals(
-            listOf("JupiterPredictionPlugin.kt"),
+            listOf("JupiterPredictionAction.kt"),
             named(Regex(""""https://jup\.ag"""")),
         )
-        // And the build actually carries both: the list is in the composition root, because a real
-        // plugin needs something built, and `plugins/` holds no client (SEE-86's `bundled()` could
-        // only ever list plugins that needed nothing).
+        // And the build actually carries it: the list is in the composition root, because a real
+        // provider needs something built, and `plugins/` holds no client (SEE-86's `bundled()`
+        // could only ever list providers that needed nothing). Since SEE-145 it is one provider
+        // serving two actions rather than two plugins.
         val composition = File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt")
-        assertTrue(composition.readText().contains("JupiterSwapPlugin(HttpJupiterProvider("))
-        assertTrue(
-            composition.readText().contains("JupiterPredictionPlugin(HttpJupiterPrediction(")
-        )
+        assertTrue(composition.readText().contains("JupiterExecutionProvider("))
+        assertTrue(composition.readText().contains("HttpJupiterProvider(httpClient)"))
+        assertTrue(composition.readText().contains("HttpJupiterPrediction(httpClient)"))
         assertEquals(
             emptyList<String>(),
             File(main, "java/io/github/brrenat/seekervault/plugins")
@@ -534,18 +543,23 @@ class StageBoundaryTest {
         val decoding = Regex("""decodeTransaction|findProgramAddress|\bisOnCurve\b""")
         val transactions = File(main, "java/io/github/brrenat/seekervault/transactions")
         val jupiter = File(main, "java/io/github/brrenat/seekervault/jupiter")
+        val skr = File(main, "java/io/github/brrenat/seekervault/skr")
         val outside =
             sources
                 .filterNot { it.startsWith(transactions) }
                 .filterNot { it.startsWith(jupiter) }
+                .filterNot { it.startsWith(skr) }
                 .filter { decoding.containsMatchIn(it.readText()) }
                 .map { it.name }
         assertEquals(emptyList<String>(), outside)
         // `jupiter/` is allowed to *call* the decoder, because a plugin has to read back the bytes
-        // it prepared and this is the one decoder there is (SEE-93). What it must not do is have a
-        // second one: the message format — the signature array, the header, the account list, the
-        // shortvec lengths — is read in exactly one place, and a plugin that parsed it again is a
-        // plugin that could disagree with the review about what a transaction even contains.
+        // it prepared and this is the one decoder there is (SEE-93). `skr/` calls it for the
+        // opposite reason and with the same rule: it reads bytes somebody else built, and it
+        // derives the staking program's addresses from their seeds rather than being told them
+        // (SEE-146). What neither may do is have a second decoder: the message format — the
+        // signature array, the header, the account list, the shortvec lengths — is read in exactly
+        // one place, and a reader that parsed it again is a reader that could disagree with the
+        // review about what a transaction even contains.
         val format = Regex("""compactU16|recentBlockhash =|addressTableLookups =""")
         assertEquals(
             emptyList<String>(),
@@ -627,6 +641,9 @@ class StageBoundaryTest {
                 .sorted()
         assertEquals(
             listOf(
+                // The string resources the actions' own words live in. Text stays in resources,
+                // which is the rule every other part of this app is held to (SEE-145).
+                "io.github.brrenat.seekervault.R",
                 // The vocabulary a rule names an action in. SEE-93 reads it because a broadcast
                 // proposal carries no `ActionRequest` to take the kind of action from, and the
                 // operation's own name is the same word a rule uses (`swap`).
@@ -639,6 +656,10 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.request.v1.Network",
                 "io.github.brrenat.seekervault.transactions.Verdict",
                 "io.github.brrenat.seekervault.wallet.SelectedWallet",
+                // A pure check that a string is a base58 32-byte address. It reads no wallet and
+                // reaches no store; it is where "an asset is a mint, never a ticker" already
+                // lives, and SEE-145 moved the action payloads that apply it into this package.
+                "io.github.brrenat.seekervault.wallet.isSolanaAddress",
             ),
             reaches,
         )
@@ -747,9 +768,19 @@ class StageBoundaryTest {
                 .sorted()
         assertEquals(
             listOf(
+                // The one that re-emits a proposal as the common envelope, which writes the
+                // action's legacy spelling so an older client reads what it always did (SEE-145).
+                "CommonEnvelope.kt",
                 "ConnectionStore.kt",
                 "ConnectionsViewModel.kt",
+                // The alert's words, chosen by the action's own identity rather than by a spelling
+                // of it: both wire spellings of the prediction action normalize to one constant,
+                // so matching the constant is the only way the copy cannot drift from what
+                // `actionOf` produces (SEE-145).
+                "FeedNotifications.kt",
                 "InboxViewModel.kt",
+                // The words for each of the six reasons nothing serves an action here.
+                "OperationText.kt",
                 "OperationViewModel.kt",
                 "ProposalRepository.kt",
                 "ProposalReviewScreen.kt",
@@ -787,16 +818,31 @@ class StageBoundaryTest {
         assertEquals(
             listOf(
                 "io.github.brrenat.seekervault.connections.isConnectionId",
-                "io.github.brrenat.seekervault.plugins.OperationId",
+                "io.github.brrenat.seekervault.plugins.ActionId",
+                // Who would execute it, and the one table that turns a name written before
+                // SEE-145 into one (`jupiter.swap` -> the provider `jupiter`, `prediction` -> the
+                // action `prediction.buy`). Reading a document decides nothing either way.
+                "io.github.brrenat.seekervault.plugins.ExecutionProviderId",
                 "io.github.brrenat.seekervault.plugins.ParameterChoice",
                 "io.github.brrenat.seekervault.plugins.PluginEnvironment",
                 "io.github.brrenat.seekervault.plugins.PluginId",
-                "io.github.brrenat.seekervault.plugins.PluginRegistry",
-                "io.github.brrenat.seekervault.plugins.PluginResolution",
-                "io.github.brrenat.seekervault.plugins.SUPPORTED_PLUGIN_CONTRACTS",
+                "io.github.brrenat.seekervault.plugins.ProviderRegistry",
+                "io.github.brrenat.seekervault.plugins.ProviderResolution",
+                "io.github.brrenat.seekervault.plugins.SUPPORTED_PROVIDER_CONTRACTS",
                 "io.github.brrenat.seekervault.plugins.UnsupportedReason",
-                "io.github.brrenat.seekervault.plugins.isOperationId",
+                "io.github.brrenat.seekervault.plugins.actionOf",
+                // The action's own payload, read before any provider is consulted, and exactly
+                // which market or pair it is about — which a binding pins (SEE-145).
+                "io.github.brrenat.seekervault.plugins.actions.ActionPayloadResult",
+                "io.github.brrenat.seekervault.plugins.actions.Instrument",
+                "io.github.brrenat.seekervault.plugins.actions.actionPayloadFrom",
+                "io.github.brrenat.seekervault.plugins.isDottedName",
                 "io.github.brrenat.seekervault.plugins.isPluginId",
+                // Which legacy names mean what, and — the same question asked the other way —
+                // which pairing of a legacy name and an action was never published at all
+                // (SEE-145). Both are lookups in one table; neither is a decision taken here.
+                "io.github.brrenat.seekervault.plugins.legacyNameContradicts",
+                "io.github.brrenat.seekervault.plugins.providerOf",
                 "io.github.brrenat.seekervault.proposal.v1.Proposal",
                 "io.github.brrenat.seekervault.proposal.v1.ProposalStatus",
                 "io.github.brrenat.seekervault.proposal.v1.ProposalValue",
@@ -996,8 +1042,11 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.connections.isConnectionId",
                 "io.github.brrenat.seekervault.plugins.PluginEnvironment",
                 "io.github.brrenat.seekervault.plugins.PluginId",
-                "io.github.brrenat.seekervault.plugins.PluginRegistry",
+                "io.github.brrenat.seekervault.plugins.ProviderRegistry",
                 "io.github.brrenat.seekervault.plugins.isPluginId",
+                // The published contract of the bundled-plugin name a manifest requires — looked
+                // up, never parsed out of the name (SEE-145).
+                "io.github.brrenat.seekervault.plugins.legacyCapabilityOf",
                 "io.github.brrenat.seekervault.server.v1.ConnectionMode",
                 "io.github.brrenat.seekervault.server.v1.ServerEnvironment",
                 "io.github.brrenat.seekervault.server.v1.ServerManifest",

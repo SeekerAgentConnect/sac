@@ -1,13 +1,18 @@
 package io.github.brrenat.seekervault.proposals
 
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.plugins.ActionId
+import io.github.brrenat.seekervault.plugins.ExecutionProviderId
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
-import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.plugins.PluginRegistry
-import io.github.brrenat.seekervault.plugins.PluginResolution
-import io.github.brrenat.seekervault.plugins.SUPPORTED_PLUGIN_CONTRACTS
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.ProviderResolution
+import io.github.brrenat.seekervault.plugins.SUPPORTED_PROVIDER_CONTRACTS
 import io.github.brrenat.seekervault.plugins.UnsupportedReason
+import io.github.brrenat.seekervault.plugins.actions.ActionPayloadResult
+import io.github.brrenat.seekervault.plugins.actions.Instrument
+import io.github.brrenat.seekervault.plugins.actions.actionPayloadFrom
+import io.github.brrenat.seekervault.plugins.legacyNameContradicts
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.wallet.SelectedWallet
@@ -45,9 +50,28 @@ data class ExecutionBinding(
     val wallet: String,
     /** The network the wallet was selected for, which is the chain this can happen on. */
     val network: Network,
-    /** The plugin that prepared the bytes, by the ID it declares. */
-    val plugin: PluginId,
-    /** That plugin's boundary contract version — the "plugin version" a binding pins (SEE-86). */
+    /**
+     * The execution provider that prepared the bytes, by the ID it declares (SEE-145).
+     *
+     * It is pinned for the same reason the wallet is. Two providers of the same action are two
+     * different venues with two different order books; a review made against one is not a review of
+     * the other, and there is no routing, substitution or fallback anywhere in this app that could
+     * quietly make it one.
+     */
+    val provider: ExecutionProviderId,
+    /** What was being done, provider-neutrally. */
+    val action: ActionId,
+    /** Which version of that action's payload schema the terms were read as. */
+    val schemaVersion: Int,
+    /**
+     * Exactly which market or pair this was about (SEE-145).
+     *
+     * The revision already pins the publisher's terms, so this is belt and braces — but it is the
+     * belt that is checked in the owner's own vocabulary. "The market moved under the review" and
+     * "the document changed" are the same event and the first is the one worth refusing by name.
+     */
+    val instrument: Instrument,
+    /** The provider's boundary contract version — the version a binding pins (SEE-86). */
     val contract: Int,
     /** Which preparation this is, as the plugin counted it. The first one is 1. */
     val preparedVersion: Int,
@@ -89,9 +113,17 @@ enum class BindingProblem(val code: String) {
     ProposalChanged("proposal_changed"),
     /** The parameters being bound aren't the ones the owner reviewed. */
     ChoiceChanged("choice_changed"),
-    /** The bytes were prepared by a plugin other than the one the proposal was written for. */
-    OtherPlugin("other_plugin"),
-    /** By a plugin written against a boundary version this build doesn't call. */
+    /** The bytes were prepared by an execution provider other than the one bound. */
+    OtherProvider("other_provider"),
+    /** They were prepared for a different action than the proposal is for. */
+    OtherAction("other_action"),
+    /** For a different version of that action's payload schema. */
+    OtherSchema("other_schema"),
+    /** For a different market or pair than the proposal names. */
+    OtherInstrument("other_instrument"),
+    /** The proposal's terms can no longer be read as its action, so nothing can be compared. */
+    UnreadableTerms("unreadable_terms"),
+    /** By a provider written against a boundary version this build doesn't call. */
     OtherContract("other_contract"),
     /** Nothing was prepared, or what was prepared has no content hash to bind to. */
     NothingPrepared("nothing_prepared"),
@@ -127,6 +159,16 @@ fun bindingProblem(
     support: ServerSupport,
     /** The promise the connection keeps *now*, which the binding's own must still be (SEE-97). */
     environment: PluginEnvironment,
+    /**
+     * The execution provider **this build** would serve the proposal with, or null when none would
+     * ([proposalProvider]).
+     *
+     * It is passed in rather than looked up, because this file holds no registry — and it is the
+     * right thing to compare against for two reasons at once: a binding made for a provider the
+     * document did not name is refused, and so is one made by a build that has since stopped
+     * carrying it (SEE-145).
+     */
+    serving: ExecutionProviderId?,
     now: Instant,
 ): BindingProblem? {
     // The standing is consulted rather than re-derived, so what the owner is shown and what the
@@ -150,11 +192,23 @@ fun bindingProblem(
         return BindingProblem.ProposalChanged
     }
     if (binding.choice != review.choice) return BindingProblem.ChoiceChanged
-    if (binding.plugin != record.proposal.plugin) return BindingProblem.OtherPlugin
-    if (record.proposal.capabilityVersion != SUPPORTED_CAPABILITY_VERSION) {
-        return BindingProblem.OtherContract
+    // Who, what, at which schema, about which instrument — each refused by name, because each of
+    // them changing means the owner is about to sign something other than what they reviewed
+    // (SEE-145).
+    if (serving == null || binding.provider != serving) return BindingProblem.OtherProvider
+    if (binding.action != record.proposal.action) return BindingProblem.OtherAction
+    if (binding.schemaVersion != record.proposal.capabilityVersion) {
+        return BindingProblem.OtherSchema
     }
-    if (binding.contract !in SUPPORTED_PLUGIN_CONTRACTS) return BindingProblem.OtherContract
+    val payload =
+        actionPayloadFrom(
+            record.proposal.action,
+            record.proposal.capabilityVersion,
+            record.proposal.terms(),
+        )
+    if (payload !is ActionPayloadResult.Valid) return BindingProblem.UnreadableTerms
+    if (binding.instrument != payload.payload.instrument) return BindingProblem.OtherInstrument
+    if (binding.contract !in SUPPORTED_PROVIDER_CONTRACTS) return BindingProblem.OtherContract
     if (binding.preparedVersion < 1 || binding.contentHash.size() != CONTENT_HASH_BYTES) {
         return BindingProblem.NothingPrepared
     }
@@ -171,45 +225,73 @@ fun bindingProblem(
 const val CONTENT_HASH_BYTES: Int = 32
 
 /**
- * Which plugin this build would use for [proposal], or why none would.
+ * Which execution provider this build would use for [proposal], or why none would (SEE-145).
  *
- * The publisher names the plugin it wrote the proposal for, and this checks that name against what
- * the build actually resolves for the operation. It never uses the name to choose: a document
- * cannot select code, and a build that resolves something else for the operation refuses the
- * proposal rather than handing the terms to whatever it happens to carry.
+ * The publisher names a provider — directly, or through the bundled-plugin name it was written for
+ * — and this asks the registry for exactly that one. It never treats the name as a hint: a document
+ * cannot select code, and a build that does not carry the named provider refuses the proposal
+ * rather than handing the terms to whatever else it happens to have for the action.
  *
- * It answers with an ID and not with a plugin, so nothing in this package ever holds something it
+ * It answers with an ID and not with a provider, so nothing in this package ever holds something it
  * could call.
  */
-sealed interface ProposalPlugin {
-    /** This build resolves exactly the plugin the publisher wrote it for. */
-    data class Serving(val id: PluginId) : ProposalPlugin
+sealed interface ProposalProvider {
+    /** This build carries exactly the provider the publisher named, for this action, here. */
+    data class Serving(val id: ExecutionProviderId) : ProposalProvider
 
-    /** It resolves a different plugin for the operation, which is not the same agreement. */
-    data class OtherPlugin(val resolved: PluginId) : ProposalPlugin
-
-    /** Nothing in this build serves the operation here, and why (SEE-86). */
-    data class Unserved(val reason: UnsupportedReason) : ProposalPlugin
+    /** Nothing in this build serves it here, and why (SEE-86, SEE-145). */
+    data class Unserved(val reason: UnsupportedReason) : ProposalProvider
 }
 
-fun proposalPlugin(
+/**
+ * The execution provider a document names, given what this build carries.
+ *
+ * The document's own field wins when it has one. Otherwise the bundled-plugin name it claims is
+ * matched against the providers registered in *this build* — so a provider added later answers to
+ * the names it declares without a line of core changing, and only the two names published before
+ * SEE-145 need a row in [io.github.brrenat.seekervault.plugins.LEGACY_CAPABILITIES] at all.
+ *
+ * Either way a published legacy name has to agree with the action the document asks for. Nothing is
+ * resolved for one that does not, because the whole of what such a name authorizes is the
+ * capability it was published for ([legacyNameContradicts]).
+ */
+fun namedProvider(proposal: Proposal, providers: ProviderRegistry): ExecutionProviderId? {
+    // A legacy name published for another action names nobody here, and the registry is not asked.
+    // It would answer, too — `jupiter.prediction` is a name Jupiter declares — which is exactly
+    // why the question is settled before it is put ([legacyNameContradicts]).
+    if (legacyNameContradicts(proposal.plugin, proposal.action)) return null
+    return proposal.provider ?: providers.byLegacyPlugin(proposal.plugin)?.capabilities?.id
+}
+
+fun proposalProvider(
     proposal: Proposal,
-    plugins: PluginRegistry,
+    providers: ProviderRegistry,
+    network: Network,
     environment: PluginEnvironment,
-): ProposalPlugin {
-    // A capability version this build does not interpret is the same kind of gap as a plugin
-    // written against another boundary: readable, and never a reason to sign bytes with a
-    // version-1 reader. The check is here rather than in validation so the document stays a
-    // proposal the owner can dismiss.
-    if (proposal.capabilityVersion != SUPPORTED_CAPABILITY_VERSION) {
-        return ProposalPlugin.Unserved(UnsupportedReason.ContractUnsupported)
+): ProposalProvider {
+    // Before the terms and before any provider: a document claiming a legacy name published for
+    // another action is refused as the contradiction it is, rather than resolved to the provider
+    // that name happens to belong to. The build before SEE-145 refused the same document, and it
+    // stays a proposal the owner can look at and dismiss (SEE-145).
+    if (legacyNameContradicts(proposal.plugin, proposal.action)) {
+        return ProposalProvider.Unserved(UnsupportedReason.NameMismatch)
     }
-    return when (val resolution = plugins.resolve(proposal.operation, environment)) {
-        is PluginResolution.Unsupported -> ProposalPlugin.Unserved(resolution.reason)
-        is PluginResolution.Supported -> {
-            val id = resolution.plugin.descriptor.id
-            if (id == proposal.plugin) ProposalPlugin.Serving(id)
-            else ProposalPlugin.OtherPlugin(id)
-        }
+    // The terms are read before anything is resolved, so a document that cannot be read as its own
+    // action is unserved for that reason rather than for a provider's. It stays a proposal the
+    // owner can look at and dismiss either way.
+    val payload = actionPayloadFrom(proposal.action, proposal.capabilityVersion, proposal.terms())
+    val resolution =
+        providers.resolve(
+            provider = namedProvider(proposal, providers),
+            action = proposal.action,
+            schemaVersion = proposal.capabilityVersion,
+            network = network,
+            environment = environment,
+            payload = (payload as? ActionPayloadResult.Valid)?.payload,
+        )
+    return when (resolution) {
+        is ProviderResolution.Unsupported -> ProposalProvider.Unserved(resolution.reason)
+        is ProviderResolution.Supported ->
+            ProposalProvider.Serving(resolution.provider.capabilities.id)
     }
 }

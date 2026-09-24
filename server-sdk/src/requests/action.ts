@@ -8,9 +8,11 @@ import { equals } from "@bufbuild/protobuf";
 import {
   AssetSchema,
   Network,
+  StakingOperation,
   type Action,
   type Asset,
   type SignMessageAction,
+  type StakingAction,
   type SwapAction,
   type TransferAction,
 } from "../gen/seekervault/request/v1/request_pb.js";
@@ -111,6 +113,8 @@ export function invalidActionReason(
       return invalidTransferReason(kind.value);
     case "swap":
       return invalidSwapReason(kind.value);
+    case "staking":
+      return invalidStakingReason(kind.value);
     default:
       return "action is missing";
   }
@@ -181,6 +185,49 @@ function invalidSwapReason(action: SwapAction): string | undefined {
 }
 
 /**
+ * The operations that name an amount, and the ones that cannot.
+ *
+ * Cancelling an unstake and withdrawing both act on the whole pending position — the program takes
+ * no argument for either — so an amount on one of them would describe a choice that does not exist.
+ * It is refused rather than ignored, because an ignored amount is one an agent could believe in.
+ */
+const STAKING_AMOUNTS: ReadonlyMap<StakingOperation, boolean> = new Map([
+  [StakingOperation.STAKE, true],
+  [StakingOperation.UNSTAKE, true],
+  [StakingOperation.CANCEL_UNSTAKE, false],
+  [StakingOperation.WITHDRAW, false],
+]);
+
+function invalidStakingReason(action: StakingAction): string | undefined {
+  const reason = invalidBindingReason(action.wallet, action.network);
+  if (reason !== undefined) return reason;
+  const wanted = STAKING_AMOUNTS.get(action.operation);
+  if (wanted === undefined) {
+    return "operation must be stake, unstake, cancel_unstake, or withdraw";
+  }
+  if (wanted) return invalidAmountReason("amount", action.amount);
+  return action.amount === ""
+    ? undefined
+    : `amount must be empty for ${stakingOperationName(action.operation)}, which acts on the whole pending unstake`;
+}
+
+/** The operation's name as agents and the protocol document write it. */
+export function stakingOperationName(operation: StakingOperation): string {
+  switch (operation) {
+    case StakingOperation.STAKE:
+      return "stake";
+    case StakingOperation.UNSTAKE:
+      return "unstake";
+    case StakingOperation.CANCEL_UNSTAKE:
+      return "cancel_unstake";
+    case StakingOperation.WITHDRAW:
+      return "withdraw";
+    default:
+      return "unspecified";
+  }
+}
+
+/**
  * The wallet and network a wallet action must be carried out with, or undefined for an action
  * that needs no wallet. sign_message names only a wallet: a signature over bytes doesn't depend
  * on a network.
@@ -192,6 +239,7 @@ export function actionBinding(action: Action): ActionBinding | undefined {
       return { wallet: kind.value.wallet };
     case "transfer":
     case "swap":
+    case "staking":
       return { wallet: kind.value.wallet, network: kind.value.network };
     default:
       return undefined;

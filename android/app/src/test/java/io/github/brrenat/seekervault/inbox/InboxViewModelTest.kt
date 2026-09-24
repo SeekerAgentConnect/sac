@@ -20,8 +20,9 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.plugins.PluginRegistry
-import io.github.brrenat.seekervault.plugins.TestPlugin
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.TestExecutionProvider
+import io.github.brrenat.seekervault.plugins.jupiterLike
 import io.github.brrenat.seekervault.policy.Allowlist
 import io.github.brrenat.seekervault.policy.AssetLimits
 import io.github.brrenat.seekervault.policy.ConnectionAssetLimits
@@ -38,9 +39,21 @@ import io.github.brrenat.seekervault.policy.RuleSource
 import io.github.brrenat.seekervault.policy.record as policyRecord
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.request.v1.StakingOperation
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.directManifest
+import io.github.brrenat.seekervault.skr.ADDRESSES
+import io.github.brrenat.seekervault.skr.FakeChain
+import io.github.brrenat.seekervault.skr.OWNER
+import io.github.brrenat.seekervault.skr.STRANGER
+import io.github.brrenat.seekervault.skr.StakingFinding
+import io.github.brrenat.seekervault.skr.guardianPoolAccount
+import io.github.brrenat.seekervault.skr.owned
+import io.github.brrenat.seekervault.skr.stakeConfigAccount
+import io.github.brrenat.seekervault.skr.stakingTransaction
+import io.github.brrenat.seekervault.skr.tokenAccount
+import io.github.brrenat.seekervault.skr.userStakeAccount
 import io.github.brrenat.seekervault.transactions.Finding
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
@@ -744,6 +757,166 @@ class InboxViewModelTest {
             .first { it.getString("name") == name }
     }
 
+    /**
+     * A staking request that reached this phone the way a direct one does, with the chain this
+     * phone would read it against (SEE-146).
+     */
+    private fun pendingStaking(
+        operation: StakingOperation,
+        amount: String = "25000000",
+        transaction: com.google.protobuf.ByteString = stakingTransaction(operation),
+        unstakingAmount: ULong = 0UL,
+        unstakeTimestamp: Long = 0L,
+    ): Pair<RequestKey, FakeChain> = runBlocking {
+        val connection = repository.pair(server.issue(URL))
+        adapter.answerConnected(OWNER)
+        wallet.connect(WalletNetwork.Mainnet)
+        val request =
+            server.addPendingStaking(
+                connection.id,
+                OWNER,
+                io.github.brrenat.seekervault.request.v1.Network.NETWORK_MAINNET,
+                operation,
+                amount =
+                    if (
+                        operation == StakingOperation.STAKING_OPERATION_STAKE ||
+                            operation == StakingOperation.STAKING_OPERATION_UNSTAKE
+                    ) {
+                        amount
+                    } else {
+                        ""
+                    },
+            )
+        repository.refresh(connection.id)
+        val key = RequestKey(connection.id, request.ref.requestId)
+        gateway.transactions[key] = transaction.toByteArray()
+        val chain =
+            FakeChain(
+                mapOf(
+                    ADDRESSES.stakeConfig to owned(stakeConfigAccount()),
+                    ADDRESSES.guardianPool to owned(guardianPoolAccount()),
+                    checkNotNull(ADDRESSES.userStake(OWNER)) to
+                        owned(
+                            userStakeAccount(
+                                unstakingAmount = unstakingAmount,
+                                unstakeTimestamp = unstakeTimestamp,
+                            )
+                        ),
+                    checkNotNull(
+                        io.github.brrenat.seekervault.transactions.associatedTokenAddress(
+                            OWNER,
+                            ADDRESSES.mint,
+                        )
+                    ) to
+                        owned(
+                            tokenAccount(),
+                            owner = io.github.brrenat.seekervault.transactions.TOKEN_PROGRAM,
+                        ),
+                )
+            )
+        key to chain
+    }
+
+    private fun stakingViewModel(chain: FakeChain) =
+        InboxViewModel(
+            repository,
+            wallet,
+            evaluator,
+            history,
+            chain = chain,
+            io = Dispatchers.Unconfined,
+        )
+
+    @Test
+    fun aDirectStakingRequestReachesPreparationAndIsInspectedHere() {
+        // The ticket's own warning: being in a registry is not the same as being on the path a
+        // direct request takes. This is that path, end to end — the request arrives, the
+        // preparation is fetched, and the bytes are read against the chain this phone read.
+        val (key, chain) = pendingStaking(StakingOperation.STAKING_OPERATION_STAKE)
+        val viewModel = stakingViewModel(chain)
+
+        viewModel.prepare(key)
+
+        val ready = viewModel.state.value.preparations[key] as Preparation.Ready
+        val inspection = checkNotNull(ready.staking)
+        assertEquals(emptyList<StakingFinding>(), inspection.findings)
+        assertEquals(Verdict.Verified, inspection.verdict)
+        assertTrue(ready.approvable)
+        // The amount came out of the bytes, not out of the request they were checked against.
+        assertEquals(25_000_000UL, inspection.facts?.amount)
+        // The position was read here rather than taken from the server.
+        assertTrue(chain.asked.isNotEmpty())
+        // Reading a transaction answers nothing: no result was ever sent.
+        assertEquals(emptyList<Any>(), gateway.submits)
+        assertNull(viewModel.state.value.inbox.result(key))
+    }
+
+    @Test
+    fun aStakingTransactionThatDisagreesWithTheRequestIsNotApprovable() {
+        val (key, chain) =
+            pendingStaking(
+                StakingOperation.STAKING_OPERATION_STAKE,
+                amount = "25000000",
+                transaction =
+                    stakingTransaction(
+                        StakingOperation.STAKING_OPERATION_STAKE,
+                        amount = 90_000_000UL,
+                    ),
+            )
+        val viewModel = stakingViewModel(chain)
+
+        viewModel.prepare(key)
+
+        val ready = viewModel.state.value.preparations[key] as Preparation.Ready
+        val inspection = checkNotNull(ready.staking)
+        assertTrue(StakingFinding.AmountMismatch in inspection.findings)
+        assertFalse(ready.approvable)
+
+        // And a preparation this phone could not account for has no approval to give.
+        viewModel.approveTransaction(key, ready)
+        assertTrue("no wallet was opened", adapter.sendings.isEmpty())
+        assertEquals(emptyList<Any>(), gateway.submits)
+    }
+
+    @Test
+    fun aStakingApprovalNamesTheVersionAndHashThatWereOnScreen() {
+        val (key, chain) = pendingStaking(StakingOperation.STAKING_OPERATION_STAKE)
+        val viewModel = stakingViewModel(chain)
+        viewModel.prepare(key)
+        val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 5 }))
+
+        viewModel.approveTransaction(key, reviewed)
+
+        val approval = gateway.submits.first().second
+        assertEquals(reviewed.prepared.version, approval.approval.preparedVersion)
+        assertEquals(reviewed.prepared.contentHash, approval.approval.contentHash)
+        // The wallet was handed the bytes that were approved, and nothing was built here.
+        assertEquals(reviewed.prepared.transaction, adapter.sendings.single().first)
+    }
+
+    @Test
+    fun aStakingRequestForAnotherWalletNeverReachesTheWallet() {
+        val (key, chain) =
+            pendingStaking(
+                StakingOperation.STAKING_OPERATION_STAKE,
+                transaction =
+                    stakingTransaction(
+                        StakingOperation.STAKING_OPERATION_STAKE,
+                        owner = STRANGER,
+                        payer = STRANGER,
+                    ),
+            )
+        val viewModel = stakingViewModel(chain)
+
+        viewModel.prepare(key)
+
+        val ready = viewModel.state.value.preparations[key] as Preparation.Ready
+        assertFalse(ready.approvable)
+        viewModel.approveTransaction(key, ready)
+        assertTrue(adapter.sendings.isEmpty())
+    }
+
     @Test
     fun openingATransferFetchesItsTransactionAndReadsItHere() {
         val (key, case) = pendingTransfer()
@@ -754,9 +927,9 @@ class InboxViewModelTest {
         val preparation = viewModel.state.value.preparations[key]
         assertTrue("$preparation", preparation is Preparation.Ready)
         val ready = preparation as Preparation.Ready
-        assertEquals(Verdict.Verified, ready.inspection.verdict)
+        assertEquals(Verdict.Verified, ready.transferReading.verdict)
         // The amount came out of the bytes, not out of the request it was checked against.
-        assertEquals(2_500_000_000UL, ready.inspection.facts?.amount)
+        assertEquals(2_500_000_000UL, ready.transferReading.facts?.amount)
         // Reading a transaction answers nothing: no result was ever sent.
         assertEquals(emptyList<Any>(), gateway.submits)
         assertNull(viewModel.state.value.inbox.result(key))
@@ -784,9 +957,9 @@ class InboxViewModelTest {
         viewModel.prepare(key)
 
         val ready = viewModel.state.value.preparations[key] as Preparation.Ready
-        assertEquals(Verdict.Invalid, ready.inspection.verdict)
-        assertTrue(Finding.RecipientMismatch in ready.inspection.findings)
-        assertFalse(ready.inspection.approvable)
+        assertEquals(Verdict.Invalid, ready.transferReading.verdict)
+        assertTrue(Finding.RecipientMismatch in ready.transferReading.findings)
+        assertFalse(ready.transferReading.approvable)
         assertEquals("changed_recipient", case.getString("name"))
     }
 
@@ -856,7 +1029,7 @@ class InboxViewModelTest {
         val holder = CoroutineScope(Dispatchers.Unconfined)
         val busy = holder.launch { wallet.withWallet { release.await() } }
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
         // While the approval waits for the lock, the blockhash window closes.
         clock = clock.plusSeconds(61)
         release.complete(Unit)
@@ -894,7 +1067,7 @@ class InboxViewModelTest {
         // The sidecar takes the approval, and the round trip outlasts the window.
         gateway.beforeSubmit = { clock = clock.plusSeconds(61) }
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertTrue("stale bytes never reach the wallet", adapter.sendings.isEmpty())
         assertEquals(
@@ -917,7 +1090,7 @@ class InboxViewModelTest {
         val (key, viewModel, reviewed) = reviewedTransfer()
         adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 7 }))
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         // The approval goes first and names the version and hash of what was on screen.
         val approval = gateway.submits.first().second
@@ -954,7 +1127,7 @@ class InboxViewModelTest {
             gateway.transactions[key] = "a different transaction".toByteArray()
         }
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(reviewed.prepared.transaction, adapter.sendings.single().first)
     }
@@ -966,16 +1139,16 @@ class InboxViewModelTest {
         adapter.beforeSending = { release.await() }
         adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 5 }))
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
         assertEquals(setOf(key), viewModel.state.value.sending)
-        viewModel.approveTransfer(key, reviewed)
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
         release.complete(Unit)
 
         assertEquals(1, adapter.sendings.size)
         assertEquals(1, gateway.submits.count { it.second.hasApproval() })
         // And once it is answered, tapping again does nothing at all.
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
         assertEquals(1, adapter.sendings.size)
     }
 
@@ -986,7 +1159,7 @@ class InboxViewModelTest {
         // approval of the old one names a version that is no longer the latest.
         runBlocking { repository.prepare(key) }
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         // Nothing reached the wallet, and nothing is stored as an approval.
         assertEquals(emptyList<Any>(), adapter.sendings)
@@ -1006,7 +1179,7 @@ class InboxViewModelTest {
         val (key, viewModel, reviewed) = reviewedTransfer()
         viewModel.prepare(key, force = true)
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(emptyList<Any>(), adapter.sendings)
         assertEquals(emptyList<Any>(), gateway.submits)
@@ -1016,9 +1189,9 @@ class InboxViewModelTest {
     @Test
     fun aTransactionThisPhoneCouldNotAccountForNeverReachesTheWallet() {
         val (key, viewModel, reviewed) = reviewedTransfer("changed_amount")
-        assertFalse(reviewed.inspection.approvable)
+        assertFalse(reviewed.transferReading.approvable)
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(emptyList<Any>(), adapter.sendings)
         assertEquals(emptyList<Any>(), gateway.submits)
@@ -1040,7 +1213,7 @@ class InboxViewModelTest {
                     )
             )
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(emptyList<Any>(), adapter.sendings)
         assertEquals(emptyList<Any>(), gateway.submits)
@@ -1055,7 +1228,7 @@ class InboxViewModelTest {
 
         // The sidecar cancelled it when the new binding was published, so there is nothing left to
         // approve, and the approval of what they reviewed goes nowhere.
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertNull(viewModel.state.value.inbox.pendingRequest(key))
         assertEquals(emptyList<Any>(), adapter.sendings)
@@ -1071,7 +1244,7 @@ class InboxViewModelTest {
         val (key, viewModel, reviewed) = reviewedTransfer()
         server.failure = GatewayException.Kind.CertificateRejected
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(emptyList<Any>(), adapter.sendings)
         // The call never left this phone, so nothing was approved: the transfer is the owner's to
@@ -1089,7 +1262,7 @@ class InboxViewModelTest {
         val (key, viewModel, reviewed) = reviewedTransfer()
         server.failure = GatewayException.Kind.Unreachable
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(emptyList<Any>(), adapter.sendings)
         assertEquals(SigningProblem.NotApproved, viewModel.state.value.problem)
@@ -1115,7 +1288,7 @@ class InboxViewModelTest {
         // The server commits the approval and the response is lost on the way back.
         server.loseNextResponse = true
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         // As far as this phone knows nothing was approved, so no wallet was opened.
         assertEquals(emptyList<Any>(), adapter.sendings)
@@ -1149,7 +1322,7 @@ class InboxViewModelTest {
         // The app goes away while the transaction is with the wallet: the answer never arrives.
         val never = CompletableDeferred<Unit>()
         adapter.beforeSending = { never.await() }
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
         assertEquals(1, adapter.sendings.size)
 
         // Coming back to the foreground with nothing in flight here settles it.
@@ -1178,7 +1351,7 @@ class InboxViewModelTest {
         val (key, viewModel, reviewed) = reviewedTransfer()
         adapter.answerSending(SendResult.Unknown("the session ended"))
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(
             listOf(
@@ -1198,7 +1371,7 @@ class InboxViewModelTest {
         val (key, viewModel, reviewed) = reviewedTransfer()
         adapter.answerSending(SendResult.Declined)
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(
             listOf(
@@ -1233,7 +1406,7 @@ class InboxViewModelTest {
         adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 8 }))
         adapter.beforeSending = { server.loseNextResponse = true }
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
         assertEquals(Delivery.Waiting, viewModel.state.value.inbox.result(key)?.delivery)
 
         viewModel.sendAgain(key)
@@ -1254,7 +1427,7 @@ class InboxViewModelTest {
     private fun sentTransfer(): Pair<RequestKey, InboxViewModel> {
         val (key, viewModel, reviewed) = reviewedTransfer()
         adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
         assertEquals(
             RequestState.REQUEST_STATE_SUBMITTED,
             server.stateOf(key.connectionId, key.requestId),
@@ -1431,7 +1604,7 @@ class InboxViewModelTest {
         val (key, viewModel, reviewed) = reviewedTransfer()
         // The wallet never answers, so the phone reports an unknown outcome (SAW-021).
         adapter.answerSending(SendResult.Unknown("the wallet never came back"))
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
         assertEquals(
             RequestState.REQUEST_STATE_UNKNOWN,
             server.stateOf(key.connectionId, key.requestId),
@@ -1523,7 +1696,7 @@ class InboxViewModelTest {
         val release = CompletableDeferred<Unit>()
         val holder = CoroutineScope(Dispatchers.Unconfined)
         val busy = holder.launch { wallet.withWallet { release.await() } }
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
         globalRules(recipients = Allowlist.of(OTHER_WALLET, THIRD_WALLET))
         release.complete(Unit)
         runBlocking { busy.join() }
@@ -1556,7 +1729,7 @@ class InboxViewModelTest {
         )
 
         policies.delete(key.connectionId)
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(SigningProblem.RulesChanged, viewModel.state.value.problem)
         assertTrue(checkNotNull(viewModel.state.value.assessments[key]).decision.warns)
@@ -1584,14 +1757,14 @@ class InboxViewModelTest {
                 policyRecord(
                     requestId = OTHER_ACTIVITY_REQUEST,
                     connectionId = OTHER_ACTIVITY_CONNECTION,
-                    wallet = checkNotNull(reviewed.inspection.facts).payer,
+                    wallet = checkNotNull(reviewed.transferReading.facts).payer,
                     network = io.github.brrenat.seekervault.request.v1.Network.NETWORK_DEVNET,
                     amount = "2000000000",
                     outcome = ActivityOutcome.Unknown,
                     answeredAt = Instant.now(),
                 )
             )
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(SigningProblem.RulesChanged, viewModel.state.value.problem)
         val daily =
@@ -1617,7 +1790,9 @@ class InboxViewModelTest {
         viewModel.prepare(key)
         val payer =
             checkNotNull(
-                    (viewModel.state.value.preparations[key] as Preparation.Ready).inspection.facts
+                    (viewModel.state.value.preparations[key] as Preparation.Ready)
+                        .transferReading
+                        .facts
                 )
                 .payer
         val unresolved =
@@ -1690,14 +1865,14 @@ class InboxViewModelTest {
         viewModel.prepare(key)
         val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
         assertEquals(SigningProblem.NotAcknowledged, viewModel.state.value.problem)
         assertEquals(emptyList<Any>(), gateway.submits)
         assertEquals(emptyList<Any>(), adapter.sendings)
 
         adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 6 }))
         viewModel.acknowledge(key, true)
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         val snapshot = checkNotNull(history.records.value.single().policy)
         assertEquals(listOf("global", "connection"), snapshot.dailyChecks.map { it.scope })
@@ -1778,7 +1953,7 @@ class InboxViewModelTest {
         val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
         adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         // Nothing was approved and no wallet was opened: the warning is theirs to overrule.
         assertEquals(SigningProblem.NotAcknowledged, viewModel.state.value.problem)
@@ -1786,7 +1961,7 @@ class InboxViewModelTest {
         assertEquals(emptyList<Any>(), adapter.sendings)
 
         viewModel.acknowledge(key, true)
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(reviewed.prepared.transaction, adapter.sendings.single().first)
         assertTrue(gateway.submits.first().second.hasApproval())
@@ -1809,7 +1984,7 @@ class InboxViewModelTest {
 
         // The owner edits the rules on another screen, and comes back to this one.
         rules(key.connectionId, recipients = Allowlist.of(OTHER_WALLET))
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(SigningProblem.RulesChanged, viewModel.state.value.problem)
         assertEquals(emptyList<Any>(), gateway.submits)
@@ -1889,10 +2064,10 @@ class InboxViewModelTest {
         val viewModel = viewModel()
         viewModel.prepare(key)
         val reviewed = viewModel.state.value.preparations[key] as Preparation.Ready
-        assertFalse(reviewed.inspection.approvable)
+        assertFalse(reviewed.transferReading.approvable)
         viewModel.acknowledge(key, true)
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         assertEquals(SigningProblem.NotVerified, viewModel.state.value.problem)
         assertEquals(emptyList<Any>(), gateway.submits)
@@ -1943,7 +2118,7 @@ class InboxViewModelTest {
         adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 4 }))
         viewModel.acknowledge(key, true)
 
-        viewModel.approveTransfer(key, reviewed)
+        viewModel.approveTransaction(key, reviewed)
 
         val stored =
             checkNotNull(history.records.value.single { it.requestId == key.requestId }.policy)
@@ -2020,7 +2195,7 @@ class InboxViewModelTest {
     fun aRegisteredPluginIsNeverAskedAboutAnActionTheAppCarriesOutItself() {
         // The app's own actions stay the app's: an acknowledgement, a message and a transfer are
         // read exactly as they were before this stage, and no plugin can change what they mean.
-        val plugin = TestPlugin()
+        val plugin = TestExecutionProvider()
         val (transfer, _) = pendingTransfer()
         val message = runBlocking {
             val request = server.addPendingMessage(transfer.connectionId, WALLET)
@@ -2038,7 +2213,7 @@ class InboxViewModelTest {
                 wallet,
                 evaluator,
                 history,
-                plugins = PluginRegistry.of(plugin),
+                plugins = ProviderRegistry.of(plugin),
                 io = Dispatchers.Unconfined,
             )
 
@@ -2048,7 +2223,7 @@ class InboxViewModelTest {
         assertEquals(emptyList<String>(), plugin.calls)
         // And the transfer is still read by this app's own parser, as it always has been.
         val reviewed = viewModel.state.value.preparations[transfer] as Preparation.Ready
-        assertEquals(Verdict.Verified, reviewed.inspection.verdict)
+        assertEquals(Verdict.Verified, reviewed.transferReading.verdict)
         assertTrue(checkNotNull(viewModel.state.value.assessments[transfer]).facts.fullyRead)
     }
 
@@ -2170,7 +2345,7 @@ class InboxViewModelTest {
                 wallet,
                 evaluator,
                 history,
-                plugins = PluginRegistry.of(TestPlugin(id = "jupiter.swap")),
+                plugins = ProviderRegistry.of(jupiterLike()),
                 io = Dispatchers.Unconfined,
             )
 

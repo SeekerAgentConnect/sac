@@ -335,3 +335,23 @@
   `for (event in channel) handle(event)` inside a `SupervisorJob` scope stops for good the first
   time `handle` throws, and looks exactly like a feature nobody configured. Put the best-effort
   guard around the *handler*, not only around the individual calls inside it.
+
+## Storage versions and compatibility tables
+
+- **An additive storage change must not bump the version number** (SEE-145). Adding keys beside
+  the ones an older reader knows is compatible in *both* directions; raising the version is not,
+  because the old decoder's first act is to refuse anything outside the range it knows, before it
+  looks at a single field it would have been able to read. The rows this build rewrites then
+  vanish on a downgrade — and with a proposal store, what vanishes is the record of the one
+  attempt, so a refreshed item looks unexecuted and becomes actionable again. Bump the number only
+  when a field an old reader *needs* changed meaning or left.
+- **Assert the gate, not the number.** The test that existed asserted `version == 4`, so it pinned
+  the bug in place instead of catching it. A compatibility test should assert the condition the
+  other side actually applies (`version in 1..3`), plus the consequence in plain terms.
+- **A legacy name is a whole description, not half of one** (SEE-145). When splitting one
+  identifier into two concepts (`jupiter.swap` → provider + action), mapping the old name to only
+  the first concept silently drops the pairing: the surviving check asks "does this provider serve
+  that action?", answers yes, and a document combining `jupiter.prediction` with `swap` gets
+  authorized where the old code refused it. Validate the **pair**, and do it on every path that
+  reads the old name — parse, stored-row decode, and the gate before signing. A registry lookup is
+  not a substitute: it will answer for any name the provider declares.

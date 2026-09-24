@@ -55,11 +55,13 @@
     <string name="policy_action_ack">Acknowledge text</string>
     <string name="policy_action_sign_message">Sign a message</string>
     <string name="policy_action_transfer">Transfer funds</string>
+    <string name="policy_action_staking">SKR staking</string>
     <string name="policy_action_swap">Swap</string>
     <string name="policy_action_prediction">Prediction order</string>
     <string name="policy_action_ack_short">acknowledgements</string>
     <string name="policy_action_sign_message_short">message signatures</string>
     <string name="policy_action_transfer_short">transfers</string>
+    <string name="policy_action_staking_short">staking actions</string>
     <string name="policy_action_swap_short">swaps</string>
     <string name="policy_action_prediction_short">prediction orders</string>
     <string name="policy_action_expected">Expected</string>

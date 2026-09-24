@@ -199,11 +199,19 @@ npm exec --yes --package @seeker-vault/mcp-server@0.1.0 -- \
 
 ## Phone pairing from an agent
 
-`vault_create_pairing_link` remains the console-free way to obtain a pairing code. Show
-`https_url` as **Connect your phone**. That HTTPS link opens a page on this same MCP server at
-`/pair`. The page's **Open Seeker Agent Connect** button opens the existing `seekervault://pair`
-deep link; this is not Android App Link configuration, and the app is not guaranteed to open in
-every embedded browser. `pairing_uri` is the copy/paste fallback for Add connection.
+`vault_create_pairing_link` remains the console-free way to obtain a pairing code. Show the
+tool's text, or a link labeled **Connect your phone** whose target is the complete `https_url`.
+That HTTPS link opens a page on this same MCP server at `/pair`. The page's **Open Seeker Agent
+Connect** button opens the existing `seekervault://pair` deep link; this is not Android App Link
+configuration, and the app is not guaranteed to open in every embedded browser. `pairing_uri` is
+the copy/paste fallback for Add connection.
+
+The visible label may be short. The link target and any copied value have to be the complete
+`https_url` and the complete `pairing_uri`. Do not omit part of either value, wrap it onto another
+line, or replace it with `...`. The page treats a shortened fragment as damaged and does not offer
+the app link. A chat client that abbreviates a long URL on its own does the same damage; paste the
+fenced address from the tool result when a preview looks shortened. That abbreviation is outside
+the pairing protocol.
 
 New HTTPS URLs are `https://<SIDECAR_PUBLIC_URL origin>/pair#<payload>`. The pairing token and
 other parameters live in the fragment, so the initial HTTP request has no credential in the path

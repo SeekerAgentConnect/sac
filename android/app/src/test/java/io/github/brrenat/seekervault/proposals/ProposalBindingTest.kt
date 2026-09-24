@@ -1,11 +1,18 @@
 package io.github.brrenat.seekervault.proposals
 
-import io.github.brrenat.seekervault.plugins.PLUGIN_CONTRACT
+import io.github.brrenat.seekervault.plugins.ExecutionProviderId
+import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
+import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
+import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
+import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
-import io.github.brrenat.seekervault.plugins.PluginRegistry
-import io.github.brrenat.seekervault.plugins.TestPlugin
+import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.plugins.TestExecutionProvider
 import io.github.brrenat.seekervault.plugins.UnsupportedReason
+import io.github.brrenat.seekervault.plugins.actions.Instrument
+import io.github.brrenat.seekervault.plugins.jupiterLike
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.SWAP_PLUGIN
@@ -135,14 +142,60 @@ class ProposalBindingTest {
     }
 
     @Test
-    fun bytesFromAnotherPluginOrAnotherContractAreRefused() {
+    fun bytesFromAnotherProviderActionSchemaOrContractAreRefused() {
+        // SEE-145: who prepared it, what they prepared, and at which version of the action, are
+        // each bound and each refused by name. A provider is a venue, not an implementation
+        // detail, so bytes from another one are not a smaller kind of the same operation.
         assertEquals(
-            BindingProblem.OtherPlugin,
-            problem(reviewed(), binding(proposal, chose, plugin = "other.swap")),
+            BindingProblem.OtherProvider,
+            problem(reviewed(), binding(proposal, chose, provider = ExecutionProviderId("other"))),
+        )
+        assertEquals(
+            BindingProblem.OtherAction,
+            problem(reviewed(), binding(proposal, chose, action = PREDICTION_BUY_ACTION)),
+        )
+        assertEquals(
+            BindingProblem.OtherSchema,
+            problem(reviewed(), binding(proposal, chose, schemaVersion = 2)),
         )
         assertEquals(
             BindingProblem.OtherContract,
-            problem(reviewed(), binding(proposal, chose, contract = PLUGIN_CONTRACT + 1)),
+            problem(reviewed(), binding(proposal, chose, contract = PROVIDER_CONTRACT + 1)),
+        )
+    }
+
+    @Test
+    fun aBuildThatNoLongerCarriesTheProviderRefusesWhatItOnceBound() {
+        // The provider is asked for at the moment of acting, not taken from the binding: an app
+        // updated between the review and the wallet is an app that must not sign for a venue it
+        // no longer carries (SEE-145).
+        assertEquals(
+            BindingProblem.OtherProvider,
+            problem(reviewed(), binding(proposal, chose), serving = null),
+        )
+    }
+
+    @Test
+    fun bytesPreparedForAnotherInstrumentAreRefused() {
+        // The pair, or the market, that was actually reviewed. A binding that names a different one
+        // is an owner about to buy something they did not look at (SEE-145).
+        assertEquals(
+            BindingProblem.OtherInstrument,
+            problem(
+                reviewed(),
+                binding(proposal, chose, instrument = Instrument("", "$TEST_SOL/$TEST_USDC")),
+            ),
+        )
+    }
+
+    @Test
+    fun termsThatCanNoLongerBeReadAsTheirActionBindToNothing() {
+        val unreadable =
+            proposal.copy(values = listOf(ProposalValue("published_price", "139420000")))
+
+        assertEquals(
+            BindingProblem.UnreadableTerms,
+            problem(reviewed().copy(proposal = unreadable), binding(proposal, chose)),
         )
     }
 
@@ -230,16 +283,61 @@ class ProposalBindingTest {
     }
 
     @Test
-    fun thisBuildUsesThePluginItResolvesAndChecksThePublishersName() {
-        // A document cannot select code. The publisher names the plugin it wrote for, and that name
-        // is checked against what this build actually resolves for the operation.
+    fun thisBuildUsesTheProviderTheDocumentNamesAndNoOther() {
+        // A document cannot select code. The publisher names an execution provider — here through
+        // the legacy plugin name it was written for — and that exact one is asked for (SEE-145).
         assertEquals(
-            ProposalPlugin.Serving(PluginId(SWAP_PLUGIN)),
-            proposalPlugin(proposal, registry(TestPlugin(id = SWAP_PLUGIN)), PRODUCTION),
+            ProposalProvider.Serving(JUPITER_PROVIDER),
+            proposalProvider(proposal, registry(jupiterLike()), MAINNET, PRODUCTION),
         )
+        // A build carrying a different provider for the same action serves nothing here: there is
+        // no routing and no substitution.
         assertEquals(
-            ProposalPlugin.OtherPlugin(PluginId("other.swap")),
-            proposalPlugin(proposal, registry(TestPlugin(id = "other.swap")), PRODUCTION),
+            ProposalProvider.Unserved(UnsupportedReason.NoProvider),
+            proposalProvider(
+                proposal,
+                registry(TestExecutionProvider(id = "other")),
+                MAINNET,
+                PRODUCTION,
+            ),
+        )
+    }
+
+    @Test
+    fun aLegacyNameCrossedWithAnotherActionIsRefusedBeforeAnythingIsPrepared() {
+        // The build this document was written for refused it: the operation resolved to
+        // `jupiter.swap`, that was not the plugin claimed, and it was another plugin's proposal.
+        // The refusal survives SEE-145. It is told apart from a missing provider on purpose —
+        // nothing is missing here. Jupiter is carried, it does swaps, and it answers to both
+        // names, exactly as the shipped provider does; what is wrong is the document (SEE-145).
+        val jupiter = jupiterLike(legacyPlugins = setOf(JUPITER_SWAP, JUPITER_PREDICTION))
+        val crossed = proposal(wireProposal(operation = SWAP, plugin = JUPITER_PREDICTION.value))
+
+        assertEquals(
+            ProposalProvider.Unserved(UnsupportedReason.NameMismatch),
+            proposalProvider(crossed, registry(jupiter), MAINNET, PRODUCTION),
+        )
+        // Nothing downstream is handed a provider for it either, so a binding cannot be made.
+        assertNull(namedProvider(crossed, registry(jupiter)))
+
+        // The other direction, where the action is one Jupiter also serves: still the document's
+        // contradiction and not the action's, so the same answer rather than an unsupported one.
+        val alsoCrossed =
+            proposal(wireProposal(operation = PREDICTION, plugin = JUPITER_SWAP.value))
+
+        assertEquals(
+            ProposalProvider.Unserved(UnsupportedReason.NameMismatch),
+            proposalProvider(alsoCrossed, registry(jupiter), MAINNET, PRODUCTION),
+        )
+
+        // And the pair as it was published is served, which is what keeps this a rule about
+        // crossed names rather than about prediction proposals.
+        val straight =
+            proposal(wireProposal(operation = PREDICTION, plugin = JUPITER_PREDICTION.value))
+
+        assertEquals(
+            ProposalProvider.Serving(JUPITER_PROVIDER),
+            proposalProvider(straight, registry(jupiter), MAINNET, PRODUCTION),
         )
     }
 
@@ -248,34 +346,44 @@ class ProposalBindingTest {
         val newer = proposal.copy(capabilityVersion = 2)
 
         assertEquals(
-            ProposalPlugin.Unserved(UnsupportedReason.ContractUnsupported),
-            proposalPlugin(newer, registry(TestPlugin(id = SWAP_PLUGIN)), PRODUCTION),
+            ProposalProvider.Unserved(UnsupportedReason.SchemaUnsupported),
+            proposalProvider(newer, registry(jupiterLike()), MAINNET, PRODUCTION),
         )
         assertEquals(
-            BindingProblem.OtherContract,
-            problem(reviewed().copy(proposal = newer), binding(newer, chose)),
+            BindingProblem.OtherSchema,
+            problem(reviewed().copy(proposal = newer), binding(newer, chose, schemaVersion = 1)),
+        )
+    }
+
+    @Test
+    fun aWalletOnAnotherClusterIsRefusedBeforeAnythingIsPrepared() {
+        // A provider serving mainnet only, and a wallet selected for devnet. It is its own reason,
+        // apart from the environment: a provider with no devnet is not a provider with no sandbox
+        // (SEE-145).
+        assertEquals(
+            ProposalProvider.Unserved(UnsupportedReason.NetworkUnsupported),
+            proposalProvider(proposal, registry(jupiterLike()), Network.NETWORK_DEVNET, PRODUCTION),
         )
     }
 
     @Test
     fun anOperationNothingInThisBuildServesIsReportedAsItself() {
         assertEquals(
-            ProposalPlugin.Unserved(UnsupportedReason.NoPlugin),
-            proposalPlugin(proposal, registry(), PRODUCTION),
+            ProposalProvider.Unserved(UnsupportedReason.NoProvider),
+            proposalProvider(proposal, registry(), MAINNET, PRODUCTION),
         )
         assertEquals(
-            ProposalPlugin.Unserved(UnsupportedReason.EnvironmentUnsupported),
-            proposalPlugin(
+            ProposalProvider.Unserved(UnsupportedReason.EnvironmentUnsupported),
+            proposalProvider(
                 proposal,
-                registry(
-                    TestPlugin(id = SWAP_PLUGIN, environments = setOf(PluginEnvironment.Sandbox))
-                ),
+                registry(jupiterLike(environments = setOf(PluginEnvironment.Sandbox))),
+                MAINNET,
                 PRODUCTION,
             ),
         )
     }
 
-    private fun registry(vararg plugins: TestPlugin) = PluginRegistry.of(*plugins)
+    private fun registry(vararg providers: TestExecutionProvider) = ProviderRegistry.of(*providers)
 
     private fun record(status: WireStatus = WireStatus.PROPOSAL_STATUS_OPEN) =
         ProposalRecord(
@@ -294,8 +402,9 @@ class ProposalBindingTest {
         wallet: SelectedWallet? = selected,
         support: ServerSupport = ServerSupport.Supported,
         environment: PluginEnvironment = PluginEnvironment.Production,
+        serving: ExecutionProviderId? = JUPITER_PROVIDER,
         at: Instant = NOW,
-    ) = bindingProblem(record, binding, wallet, support, environment, at)
+    ) = bindingProblem(record, binding, wallet, support, environment, serving, at)
 
     private val selected =
         SelectedWallet(address = WALLET, network = WalletNetwork.Mainnet, selectedAt = PUBLISHED)
@@ -305,5 +414,6 @@ class ProposalBindingTest {
         const val OTHER_WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
         val NOW: Instant = PUBLISHED.plusSeconds(60)
         val PRODUCTION = PluginEnvironment.Production
+        val MAINNET: Network = Network.NETWORK_MAINNET
     }
 }

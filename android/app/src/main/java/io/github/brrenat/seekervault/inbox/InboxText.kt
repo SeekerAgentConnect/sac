@@ -22,6 +22,9 @@ import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.PreparedTransaction
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.SignMessageAction
+import io.github.brrenat.seekervault.request.v1.StakingOperation
+import io.github.brrenat.seekervault.skr.StakingFinding
+import io.github.brrenat.seekervault.skr.staking
 import io.github.brrenat.seekervault.transactions.Finding
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.TransferFacts
@@ -60,6 +63,17 @@ object InboxTags {
     const val SERVER_UNSUPPORTED = "serverUnsupported"
     const val SEND_AGAIN = "sendAgain"
     const val SENDING = "sending"
+    const val STAKING_EFFECT = "stakingEffect"
+    const val STAKING_COOLDOWN_RESET = "stakingCooldownReset"
+    const val STAKING_AMOUNT = "stakingAmount"
+    const val STAKING_WALLET = "stakingWallet"
+    const val STAKING_NETWORK = "stakingNetwork"
+    const val STAKING_REMAINING = "stakingRemaining"
+    const val STAKING_COOLDOWN = "stakingCooldown"
+    const val STAKING_RENT = "stakingRent"
+    const val STAKING_ACCOUNT = "stakingAccount"
+    const val STAKING_FINDING = "stakingFinding"
+    const val STAKING_NOT_PREPARED = "stakingNotPrepared"
     const val GONE = "requestGone"
     const val NOTIFICATION_LOADING = "notificationRequestLoading"
     const val NOTIFICATION_STATE = "notificationRequestState"
@@ -262,6 +276,7 @@ fun actionText(request: ActionRequest): String =
             Action.KindCase.ACK -> R.string.action_ack
             Action.KindCase.SIGN_MESSAGE -> R.string.action_sign_message
             Action.KindCase.TRANSFER -> R.string.action_transfer
+            Action.KindCase.STAKING -> stakingActionText(request.action.staking.operation)
             Action.KindCase.SWAP -> R.string.action_swap
             else -> R.string.action_unknown
         }
@@ -303,7 +318,27 @@ fun problemText(problem: SigningProblem): Int =
 
 /** Whether this app can put [request] in front of the owner for an answer at all. */
 fun isAnswerable(request: ActionRequest): Boolean =
-    request.action.hasAck() || request.signMessage() != null || request.transfer() != null
+    request.action.hasAck() ||
+        request.signMessage() != null ||
+        request.transfer() != null ||
+        request.staking() != null
+
+/**
+ * Which of the four staking actions this is, in the owner's words.
+ *
+ * They get four names rather than one because two of them are the pair most worth telling apart:
+ * starting an unstake moves nothing and begins a wait, and withdrawing is what finally moves the
+ * SKR. A single "Staking" label would put both behind the same word.
+ */
+@StringRes
+fun stakingActionText(operation: StakingOperation): Int =
+    when (operation) {
+        StakingOperation.STAKING_OPERATION_STAKE -> R.string.action_staking_stake
+        StakingOperation.STAKING_OPERATION_UNSTAKE -> R.string.action_staking_unstake
+        StakingOperation.STAKING_OPERATION_CANCEL_UNSTAKE -> R.string.action_staking_cancel_unstake
+        StakingOperation.STAKING_OPERATION_WITHDRAW -> R.string.action_staking_withdraw
+        else -> R.string.action_unknown
+    }
 
 /** Whether the owner can still answer [request] on this phone. */
 fun canAnswer(request: ActionRequest, result: LocalResult?, now: Instant): Boolean =
@@ -519,3 +554,51 @@ fun estimateText(prepared: PreparedTransaction): String {
             formatBaseUnits(rent, LAMPORT_DECIMALS),
         )
 }
+
+/**
+ * Why a staking preparation was not what the request asked for, in the owner's words.
+ *
+ * Every finding gets its own sentence. A single "this does not match" would be true and useless:
+ * the owner's next step is different for a cooldown that has not finished, a program this app does
+ * not recognise, and an amount that disagrees with what they were told.
+ */
+@StringRes
+fun stakingFindingText(finding: StakingFinding): Int =
+    when (finding) {
+        StakingFinding.HashMismatch -> R.string.staking_finding_hash
+        StakingFinding.Malformed -> R.string.staking_finding_malformed
+        StakingFinding.UnsupportedVersion -> R.string.staking_finding_version
+        StakingFinding.AddressTableLookup -> R.string.staking_finding_lookup
+        StakingFinding.AlreadySigned -> R.string.staking_finding_already_signed
+        StakingFinding.NoWallet -> R.string.staking_finding_no_wallet
+        StakingFinding.OtherWallet -> R.string.staking_finding_other_wallet
+        StakingFinding.NetworkMismatch -> R.string.staking_finding_network
+        StakingFinding.FeePayerNotTheWallet -> R.string.staking_finding_fee_payer
+        StakingFinding.ExtraSigner -> R.string.staking_finding_extra_signer
+        StakingFinding.PositionNotRead -> R.string.staking_finding_position_not_read
+        StakingFinding.BalanceNotRead -> R.string.staking_finding_balance_not_read
+        StakingFinding.NoStakingInstruction -> R.string.staking_finding_no_instruction
+        StakingFinding.ExtraStakingInstruction -> R.string.staking_finding_extra_instruction
+        StakingFinding.OperationMismatch -> R.string.staking_finding_operation
+        StakingFinding.OtherDeployment -> R.string.staking_finding_other_deployment
+        StakingFinding.UnexpectedAccount -> R.string.staking_finding_unexpected_account
+        StakingFinding.OtherStakeAccount -> R.string.staking_finding_other_stake_account
+        StakingFinding.NotTheOwnersPosition -> R.string.staking_finding_other_position
+        StakingFinding.OtherGuardianPool -> R.string.staking_finding_other_pool
+        StakingFinding.GuardianPoolInactive -> R.string.staking_finding_pool_inactive
+        StakingFinding.OtherTokenAccount -> R.string.staking_finding_other_token_account
+        StakingFinding.AmountMismatch -> R.string.staking_finding_amount
+        StakingFinding.BelowMinimumStake -> R.string.staking_finding_below_minimum
+        StakingFinding.InsufficientBalance -> R.string.staking_finding_insufficient
+        StakingFinding.NothingStaked -> R.string.staking_finding_nothing_staked
+        StakingFinding.SharesExceedApprovedAmount -> R.string.staking_finding_shares_exceed
+        StakingFinding.NotTheWholePosition -> R.string.staking_finding_not_whole_position
+        StakingFinding.NothingPending -> R.string.staking_finding_nothing_pending
+        StakingFinding.CooldownNotFinished -> R.string.staking_finding_cooldown
+        StakingFinding.WithdrawFirst -> R.string.staking_finding_withdraw_first
+        StakingFinding.AccountCreationForSomeoneElse -> R.string.staking_finding_other_creation
+        StakingFinding.ExtraTransfer -> R.string.staking_finding_extra_transfer
+        StakingFinding.UnreadableStakingInstruction -> R.string.staking_finding_unreadable_staking
+        StakingFinding.UnreadableValueInstruction -> R.string.staking_finding_unreadable_value
+        StakingFinding.UnrecognizedInstruction -> R.string.staking_finding_unrecognized
+    }

@@ -6,8 +6,11 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import {
   ActionSchema,
   Network,
+  StakingOperation,
   type Action,
   type SignMessageActionSchema,
+  type StakingAction,
+  type StakingActionSchema,
   type SwapAction,
   type SwapActionSchema,
   type TransferAction,
@@ -16,12 +19,14 @@ import {
 import {
   MAX_BASE_UNITS,
   MAX_MESSAGE_BYTES,
+  actionBinding,
   decodeBase58,
   invalidActionReason,
   invalidNoteReason,
   isAddress,
   messageBytes,
   parseBaseUnits,
+  stakingOperationName,
 } from "./action.ts";
 
 const WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW";
@@ -35,6 +40,10 @@ type TransferInit = Exclude<
   TransferAction
 >;
 type SwapInit = Exclude<MessageInitShape<typeof SwapActionSchema>, SwapAction>;
+type StakingInit = Exclude<
+  MessageInitShape<typeof StakingActionSchema>,
+  StakingAction
+>;
 
 const TRANSFER: TransferInit = {
   wallet: WALLET,
@@ -53,6 +62,13 @@ const SWAP: SwapInit = {
   slippageBps: 50,
 };
 
+const STAKING: StakingInit = {
+  wallet: WALLET,
+  network: Network.MAINNET,
+  operation: StakingOperation.STAKE,
+  amount: "1000000",
+};
+
 function transfer(fields: TransferInit = {}): Action {
   return create(ActionSchema, {
     kind: { case: "transfer", value: { ...TRANSFER, ...fields } },
@@ -62,6 +78,12 @@ function transfer(fields: TransferInit = {}): Action {
 function swap(fields: SwapInit = {}): Action {
   return create(ActionSchema, {
     kind: { case: "swap", value: { ...SWAP, ...fields } },
+  });
+}
+
+function staking(fields: StakingInit = {}): Action {
+  return create(ActionSchema, {
+    kind: { case: "staking", value: { ...STAKING, ...fields } },
   });
 }
 
@@ -180,6 +202,7 @@ describe("invalidActionReason", () => {
       transfer(),
       transfer({ asset: { kind: { case: "tokenMint", value: USDC } } }),
       swap(),
+      staking(),
     ]) {
       assert.equal(invalidActionReason(action), undefined);
     }
@@ -317,6 +340,141 @@ describe("invalidActionReason", () => {
     assert.equal(
       invalidActionReason(signText("broken \ud83d text")),
       "message is not valid Unicode (it contains an unpaired surrogate)",
+    );
+  });
+});
+
+describe("a staking action", () => {
+  const DIGITS =
+    "amount must be a whole number of base units in decimal digits, with no sign, decimal point, exponent, or leading zeros";
+  const AMOUNTS: readonly StakingOperation[] = [
+    StakingOperation.STAKE,
+    StakingOperation.UNSTAKE,
+  ];
+  const WHOLE_POSITION: readonly StakingOperation[] = [
+    StakingOperation.CANCEL_UNSTAKE,
+    StakingOperation.WITHDRAW,
+  ];
+
+  it("accepts each of the four operations", () => {
+    for (const operation of AMOUNTS) {
+      assert.equal(invalidActionReason(staking({ operation })), undefined);
+    }
+    for (const operation of WHOLE_POSITION) {
+      assert.equal(
+        invalidActionReason(staking({ operation, amount: "" })),
+        undefined,
+      );
+    }
+  });
+
+  it("refuses an operation it doesn't know, an unspecified one included", () => {
+    for (const operation of [
+      StakingOperation.UNSPECIFIED,
+      99 as StakingOperation,
+    ]) {
+      assert.equal(
+        invalidActionReason(staking({ operation })),
+        "operation must be stake, unstake, cancel_unstake, or withdraw",
+        String(operation),
+      );
+    }
+  });
+
+  it("refuses a wallet or a network it can't act on, before the operation", () => {
+    const cases: ReadonlyArray<readonly [Action, string]> = [
+      [staking({ wallet: "" }), "wallet is missing"],
+      [
+        staking({ wallet: "not-an-address" }),
+        "wallet is not a base58 Solana address",
+      ],
+      [staking({ network: Network.UNSPECIFIED }), "network is missing"],
+      [
+        staking({ network: 99 as Network }),
+        "network must be mainnet, devnet, or testnet",
+      ],
+      // The binding comes first, so an unusable wallet is named even when nothing else fits.
+      [
+        staking({ wallet: "", operation: StakingOperation.UNSPECIFIED }),
+        "wallet is missing",
+      ],
+    ];
+    for (const [action, reason] of cases) {
+      assert.equal(invalidActionReason(action), reason);
+    }
+  });
+
+  it("holds a stake and an unstake to a whole number of base units", () => {
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ["", "amount is missing"],
+      ["0", "amount must be at least 1"],
+      ["01", DIGITS],
+      ["-1", DIGITS],
+      ["1.5", DIGITS],
+      [
+        "18446744073709551616",
+        "amount is larger than 18446744073709551615, the u64 maximum",
+      ],
+    ];
+    for (const operation of AMOUNTS) {
+      const name = stakingOperationName(operation);
+      for (const [amount, reason] of cases) {
+        assert.equal(
+          invalidActionReason(staking({ operation, amount })),
+          reason,
+          `${name} ${JSON.stringify(amount)}`,
+        );
+      }
+      for (const amount of ["1", "18446744073709551615"]) {
+        assert.equal(
+          invalidActionReason(staking({ operation, amount })),
+          undefined,
+          `${name} ${amount}`,
+        );
+      }
+    }
+  });
+
+  it("refuses an amount on a cancellation or a withdrawal, which act on the whole pending unstake", () => {
+    for (const operation of WHOLE_POSITION) {
+      const name = stakingOperationName(operation);
+      for (const amount of ["1", "0", "1.5"]) {
+        assert.equal(
+          invalidActionReason(staking({ operation, amount })),
+          `amount must be empty for ${name}, which acts on the whole pending unstake`,
+          `${name} ${amount}`,
+        );
+      }
+      assert.equal(
+        invalidActionReason(staking({ operation, amount: "" })),
+        undefined,
+        name,
+      );
+    }
+  });
+
+  it("is carried out with the owner's wallet on the network it names", () => {
+    assert.deepEqual(actionBinding(staking()), {
+      wallet: WALLET,
+      network: Network.MAINNET,
+    });
+    assert.deepEqual(actionBinding(staking({ network: Network.DEVNET })), {
+      wallet: WALLET,
+      network: Network.DEVNET,
+    });
+  });
+
+  it("names every operation the way the protocol document writes it", () => {
+    assert.equal(stakingOperationName(StakingOperation.STAKE), "stake");
+    assert.equal(stakingOperationName(StakingOperation.UNSTAKE), "unstake");
+    assert.equal(
+      stakingOperationName(StakingOperation.CANCEL_UNSTAKE),
+      "cancel_unstake",
+    );
+    assert.equal(stakingOperationName(StakingOperation.WITHDRAW), "withdraw");
+    assert.equal(
+      stakingOperationName(StakingOperation.UNSPECIFIED),
+      "unspecified",
     );
   });
 });

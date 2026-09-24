@@ -119,6 +119,17 @@ const presets = [
     environment: { MCP_TLS_DIR: "/tmp/seeker-direct-certificates" },
     services: ["mcp-server"],
   },
+  // New presets go on the end: the assertions below read this list by index.
+  {
+    name: "skr staking",
+    args: [
+      "--env-file",
+      "deploy/skr-staking/.env.example",
+      "-f",
+      "deploy/skr-staking/compose.yaml",
+    ],
+    services: ["skr-staking-server"],
+  },
 ];
 
 const yamlFiles = filesBelow(join(ROOT, "deploy")).filter((path) =>
@@ -193,6 +204,28 @@ const mcpPackageEnvironment = readFileSync(
 );
 assert.match(mcpPackageEnvironment, /^SIDECAR_HOST=127\.0\.0\.1$/m);
 assert.match(mcpPackageEnvironment, /^SIDECAR_PORT=8080$/m);
+
+// The staking server runs beside the general one, so every name it reads is its own and its
+// default port is a different one (SEE-146). Two servers that shared a name could not both be
+// configured out of one .env, which is exactly how they are meant to be deployed.
+const skrPackageEnvironment = readFileSync(
+  join(ROOT, "skr-staking-server/.env.example"),
+  "utf8",
+);
+assert.match(skrPackageEnvironment, /^SKR_STAKING_HOST=127\.0\.0\.1$/m);
+assert.match(skrPackageEnvironment, /^SKR_STAKING_PORT=8090$/m);
+for (const shared of [
+  "SIDECAR_PORT=",
+  "SIDECAR_HOST=",
+  "MCP_TOKEN=",
+  "PHONE_TOKEN=",
+]) {
+  assert.doesNotMatch(
+    skrPackageEnvironment,
+    new RegExp(`^${shared}`, "m"),
+    `skr-staking-server/.env.example does not reuse ${shared}`,
+  );
+}
 
 const androidSources = [
   ...filesBelow(join(ROOT, "android/app/src/main")),
@@ -272,6 +305,20 @@ assert.match(
   /CMD \["node", "mcp-server\/dist\/healthcheck\.js"\]/,
 );
 assert.doesNotMatch(mcpDockerfile, /fetch\(['"]http:\/\/127\.0\.0\.1/);
+
+const skrStaking = compose(presets[presets.length - 1].args);
+assert.match(skrStaking, /name: seeker-agent-connect-skr-staking_skr-data/);
+assert.match(skrStaking, /SKR_STAKING_PORT: "?8090"?/);
+
+const skrDockerfile = readFileSync(
+  join(ROOT, "skr-staking-server/Dockerfile"),
+  "utf8",
+);
+assert.match(
+  skrDockerfile,
+  /CMD \["node", "skr-staking-server\/dist\/healthcheck\.js"\]/,
+);
+assert.doesNotMatch(skrDockerfile, /fetch\(['"]http:\/\/127\.0\.0\.1/);
 
 const combinedFeedArgs = [
   "--env-file",

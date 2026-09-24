@@ -1,6 +1,7 @@
 import type {
   Asset,
   Network,
+  StakingAction,
   TransferAction,
 } from "./gen/seekervault/request/v1/request_pb.js";
 
@@ -37,6 +38,26 @@ export interface TransferProvider {
     action: TransferAction,
     nowMs: number,
   ): Promise<BuiltPreparation>;
+}
+
+/**
+ * Optional host-supplied staking behaviour, supplied by a host that serves staking actions and by
+ * no other (SEE-146). Like a transfer provider it cannot sign or submit anything; it reads the
+ * chain and returns unsigned bytes.
+ *
+ * It is a second interface rather than more methods on `TransferProvider` because the two are
+ * separate promises: a host that can send SPL tokens has said nothing about whether it knows a
+ * staking program, and a host that serves staking need not serve transfers at all. Which one a
+ * request needs follows from its action, so neither host can be asked for work it never offered.
+ */
+export interface StakingProvider {
+  /**
+   * Whether this host can act on the action at all, checked before a request is stored, so an
+   * agent hears about an unusable wallet, an unserved network or an impossible amount at once
+   * rather than when the owner opens the review. It reads the chain and stores nothing.
+   */
+  checkStaking(action: StakingAction): Promise<void>;
+  buildStaking(action: StakingAction, nowMs: number): Promise<BuiltPreparation>;
 }
 
 export type ConfirmationCommitment = "processed" | "confirmed" | "finalized";
