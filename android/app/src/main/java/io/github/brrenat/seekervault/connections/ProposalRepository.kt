@@ -159,6 +159,15 @@ class ProposalRepository(
     /** Every proposal this phone holds, for every feed it reads, oldest first. */
     val proposals: StateFlow<List<ProposalRecord>> = _proposals.asStateFlow()
 
+    private val _loaded = MutableStateFlow(false)
+
+    /**
+     * False until [load] has read what is stored. Before it, an empty [proposals] means "not read
+     * yet" rather than "this phone holds none", which is a different thing to anything deciding
+     * whether a signal is new.
+     */
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
     /**
      * Reads what is stored, drops what no feed owns any more, and settles any operation the app
      * closed on.
@@ -176,6 +185,7 @@ class ProposalRepository(
                 .forEach { settle(it, ProposalOutcome.Unresolved(APP_CLOSED)) }
             publish()
         }
+        _loaded.value = true
     }
 
     /**

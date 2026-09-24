@@ -527,7 +527,12 @@ fun SeekerVaultApp(
         // Above the content and above every sheet, and the last child so nothing can draw over it.
         // A touch on the banner is the banner's; a touch anywhere else is not intercepted at all.
         InAppNotifications(
-            loaded = state.loaded,
+            // Every list a banner reads, filled at least once, and not just the connections: the
+            // stored connections carry no pending requests and no proposals, so a baseline taken
+            // at `state.loaded` would be empty and the opening fetch and the stored proposals
+            // would arrive as banners for things the owner has had for days. A build without
+            // operations holds no proposals, so there is nothing there to wait for.
+            ready = state.fetched && (operations == null || operationsState.loaded),
             connections = state.connections,
             waiting = commonPending,
             reviewOpen = { identity ->

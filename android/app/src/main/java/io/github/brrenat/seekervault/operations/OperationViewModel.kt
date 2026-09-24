@@ -149,9 +149,13 @@ class OperationViewModel(
             proposals.load()
         }
         viewModelScope.launch {
-            combine(proposals.proposals, connections) { held, live ->
+            // `loaded` is the repository's own flag and not "this combine has emitted": the first
+            // emission happens before `load()` has read the store, and an empty list there means
+            // "not read yet". Anything that treats a new record as an arrival — the foreground
+            // banners (SEE-147) — would otherwise announce the whole stored feed on a cold start.
+            combine(proposals.proposals, proposals.loaded, connections) { held, loaded, live ->
                     OperationsUiState(
-                        loaded = true,
+                        loaded = loaded,
                         records = held,
                         feeds = live.filter { it.mode == ConnectionMode.GatewayFeed },
                     )
@@ -884,6 +888,7 @@ private class Prepared(
 
 /** Every proposal this phone holds, and the feeds behind them. */
 data class OperationsUiState(
+    /** False until the stored proposals have been read; before it, [records] is not an answer. */
     val loaded: Boolean = false,
     val records: List<ProposalRecord> = emptyList(),
     val feeds: List<Connection> = emptyList(),

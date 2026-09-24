@@ -66,6 +66,7 @@ class InAppNotificationHostTest {
     @get:Rule val compose = createComposeRule()
 
     private val owner = FakeLifecycleOwner()
+    private var ready by mutableStateOf(true)
     private var waiting by mutableStateOf(emptyList<PendingItem>())
     private var connections by mutableStateOf(listOf(DIRECT, FEED))
     private var reviewOpen by mutableStateOf(emptySet<ReviewIdentity>())
@@ -83,7 +84,7 @@ class InAppNotificationHostTest {
                             }
                         )
                         InAppNotifications(
-                            loaded = true,
+                            ready = ready,
                             connections = connections,
                             waiting = waiting,
                             reviewOpen = { it in reviewOpen },
@@ -245,6 +246,37 @@ class InAppNotificationHostTest {
             )
         compose.waitForIdle()
         compose.onNodeWithTag(InAppNotificationTag).assertExists()
+    }
+
+    @Test
+    fun `what the opening fetch and the stored proposals bring back is the baseline, not arrivals`() {
+        // A cold start: the stored connections have been read, but the fetch that follows them
+        // has not settled and the stored proposals have not been read, so nothing a banner reads
+        // is an answer yet.
+        ready = false
+        host()
+
+        // The fetch comes back with the inbox the owner has been carrying, and the proposal store
+        // is read. Neither is news; both belong to the baseline.
+        waiting = listOf(PendingItem.Private(TRANSFER), PendingItem.Signal(PREDICTION))
+        compose.waitForIdle()
+        compose.onNodeWithTag(InAppNotificationTag).assertDoesNotExist()
+
+        ready = true
+        compose.waitForIdle()
+        compose.onNodeWithTag(InAppNotificationTag).assertDoesNotExist()
+
+        // What arrives after the opening is a banner, as it always was.
+        waiting =
+            listOf(
+                PendingItem.Private(TRANSFER),
+                PendingItem.Signal(PREDICTION),
+                PendingItem.Private(SIGNATURE),
+            )
+        compose.waitForIdle()
+        compose
+            .onNodeWithTag(InAppNotificationTag)
+            .assertContentDescriptionEquals("Transfer requested, open request")
     }
 
     private class FakeLifecycleOwner : LifecycleOwner {
