@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
                     app.policyEvaluator,
                     app.activityLog,
                     plugins = app.providerRegistry,
+                    chain = app.solanaAccounts(),
                     io = app.connectionIo,
                 )
             }

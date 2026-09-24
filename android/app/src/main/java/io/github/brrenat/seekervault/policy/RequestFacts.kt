@@ -3,6 +3,8 @@ package io.github.brrenat.seekervault.policy
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.skr.SKR_MINT
+import io.github.brrenat.seekervault.skr.StakingInspection
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.TransferInspection
 
@@ -119,6 +121,7 @@ fun policyAction(request: ActionRequest): PolicyAction? =
         Action.KindCase.ACK -> PolicyAction.Acknowledgement
         Action.KindCase.SIGN_MESSAGE -> PolicyAction.MessageSignature
         Action.KindCase.TRANSFER -> PolicyAction.Transfer
+        Action.KindCase.STAKING -> PolicyAction.Staking
         Action.KindCase.SWAP -> PolicyAction.Swap
         else -> null
     }
@@ -136,6 +139,7 @@ fun policyFacts(
     request: ActionRequest,
     network: Network,
     inspection: TransferInspection? = null,
+    staking: StakingInspection? = null,
 ): RequestFacts {
     val action = policyAction(request)
     return when (action) {
@@ -150,6 +154,8 @@ fun policyFacts(
         PolicyAction.Prediction -> RequestFacts.unread(connectionId, action, request.ref.requestId)
         PolicyAction.Transfer ->
             transferFacts(connectionId, request.ref.requestId, action, network, inspection)
+        PolicyAction.Staking ->
+            stakingFacts(connectionId, request.ref.requestId, action, network, staking)
         // An action this build has no name for moves value as far as it knows.
         null -> RequestFacts.unread(connectionId, null, request.ref.requestId)
     }
@@ -174,6 +180,46 @@ private fun transferFacts(
         asset =
             if (network == Network.NETWORK_UNSPECIFIED) null else PolicyAsset(network, facts.mint),
         recipient = facts.recipient,
+        programs = facts.programs,
+        amount = facts.amount,
+        decimals = facts.decimals,
+        fullyRead = facts.recognizedInstructions == facts.instructionCount,
+        preparedVersion = inspection.version,
+    )
+}
+
+/**
+ * What a staking transaction establishes, per operation.
+ *
+ * The four are not one thing. Staking commits SKR the owner holds; unstaking and cancelling move
+ * nothing at all and only change a position and a clock; withdrawing brings SKR back. So
+ * [RequestFacts.movesValue] comes from the inspection rather than being set to true for all four,
+ * because a rule about spending has nothing to say about an unstake and saying it passed would be
+ * as wrong as saying it failed.
+ *
+ * The recipient of a stake or a withdrawal is the **owner's own wallet**, and that is established
+ * rather than assumed: the stake account is derived from their address, the vault belongs to the
+ * program, and the only instruction that pays out of the vault pays the account derived for that
+ * same owner. Nobody else can be reached by any of these four, which is exactly what a rule about
+ * recipients wants to know.
+ */
+private fun stakingFacts(
+    connectionId: String,
+    requestId: String,
+    action: PolicyAction,
+    network: Network,
+    inspection: StakingInspection?,
+): RequestFacts {
+    val facts = inspection?.facts ?: return RequestFacts.unread(connectionId, action, requestId)
+    return RequestFacts(
+        connectionId = connectionId,
+        requestId = requestId,
+        wallet = facts.wallet.takeIf(String::isNotEmpty),
+        action = action,
+        movesValue = facts.movesValue,
+        asset =
+            if (network == Network.NETWORK_UNSPECIFIED) null else PolicyAsset(network, SKR_MINT),
+        recipient = if (facts.movesValue) facts.wallet.takeIf(String::isNotEmpty) else null,
         programs = facts.programs,
         amount = facts.amount,
         decimals = facts.decimals,

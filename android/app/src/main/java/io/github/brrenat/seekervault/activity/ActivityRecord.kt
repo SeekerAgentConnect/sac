@@ -19,6 +19,14 @@ enum class ActivityKind {
     Transfer,
 
     /**
+     * One of the four SKR staking actions (SEE-146). Its bytes are a transaction the wallet signed
+     * and sent, so its signature is a transaction's ID on chain rather than a signature over a
+     * message. It is not a [Transfer]: three of the four move nothing, so counting them against a
+     * spending total would be counting something that did not happen.
+     */
+    Staking,
+
+    /**
      * An operation a bundled client plugin carried out from a publisher's shared proposal (SEE-89).
      * Its bytes are a transaction the wallet signed and sent, so its signature is a transaction's
      * ID on chain, like a transfer's and unlike a message's.

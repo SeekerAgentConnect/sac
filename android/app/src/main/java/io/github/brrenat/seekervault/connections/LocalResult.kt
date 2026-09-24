@@ -181,7 +181,7 @@ data class LocalResult(
         get() =
             delivery == Delivery.Accepted &&
                 request.hasAction() &&
-                request.action.hasTransfer() &&
+                (request.action.hasTransfer() || request.action.hasStaking()) &&
                 request.state !in SETTLED
 }
 

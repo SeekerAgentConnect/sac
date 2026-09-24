@@ -291,6 +291,11 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.request.v1.Action",
                 "io.github.brrenat.seekervault.request.v1.ActionRequest",
                 "io.github.brrenat.seekervault.request.v1.Network",
+                // SEE-146 adds two more reads, both of them facts somebody else established: the
+                // mint a staking action is denominated in, and what this phone read out of a
+                // staking transaction's own bytes. A rule is still decided here and nowhere else.
+                "io.github.brrenat.seekervault.skr.SKR_MINT",
+                "io.github.brrenat.seekervault.skr.StakingInspection",
                 "io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS",
                 "io.github.brrenat.seekervault.transactions.TransferInspection",
                 "io.github.brrenat.seekervault.transactions.formatBaseUnits",
@@ -538,18 +543,23 @@ class StageBoundaryTest {
         val decoding = Regex("""decodeTransaction|findProgramAddress|\bisOnCurve\b""")
         val transactions = File(main, "java/io/github/brrenat/seekervault/transactions")
         val jupiter = File(main, "java/io/github/brrenat/seekervault/jupiter")
+        val skr = File(main, "java/io/github/brrenat/seekervault/skr")
         val outside =
             sources
                 .filterNot { it.startsWith(transactions) }
                 .filterNot { it.startsWith(jupiter) }
+                .filterNot { it.startsWith(skr) }
                 .filter { decoding.containsMatchIn(it.readText()) }
                 .map { it.name }
         assertEquals(emptyList<String>(), outside)
         // `jupiter/` is allowed to *call* the decoder, because a plugin has to read back the bytes
-        // it prepared and this is the one decoder there is (SEE-93). What it must not do is have a
-        // second one: the message format — the signature array, the header, the account list, the
-        // shortvec lengths — is read in exactly one place, and a plugin that parsed it again is a
-        // plugin that could disagree with the review about what a transaction even contains.
+        // it prepared and this is the one decoder there is (SEE-93). `skr/` calls it for the
+        // opposite reason and with the same rule: it reads bytes somebody else built, and it
+        // derives the staking program's addresses from their seeds rather than being told them
+        // (SEE-146). What neither may do is have a second decoder: the message format — the
+        // signature array, the header, the account list, the shortvec lengths — is read in exactly
+        // one place, and a reader that parsed it again is a reader that could disagree with the
+        // review about what a transaction even contains.
         val format = Regex("""compactU16|recentBlockhash =|addressTableLookups =""")
         assertEquals(
             emptyList<String>(),

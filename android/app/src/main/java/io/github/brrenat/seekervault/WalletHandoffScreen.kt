@@ -11,6 +11,10 @@ import io.github.brrenat.seekervault.designsystem.WalletHandoffSheetState
 import io.github.brrenat.seekervault.policy.networkText
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
+import io.github.brrenat.seekervault.request.v1.StakingAction
+import io.github.brrenat.seekervault.request.v1.StakingOperation
+import io.github.brrenat.seekervault.skr.SKR_DECIMALS
+import io.github.brrenat.seekervault.skr.staking
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.transactions.transfer
@@ -53,6 +57,9 @@ internal fun walletHandoffSummary(request: ActionRequest): String {
     request.signMessage()?.let { message ->
         return "Sign this message with ${message.wallet.shortAddress()}"
     }
+    request.staking()?.let { staking ->
+        return stakingHandoffSummary(staking)
+    }
     val transfer = checkNotNull(request.transfer()) { "Wallet hand-off requires a wallet action" }
     val amount =
         transfer.amount.toULongOrNull()?.let {
@@ -63,6 +70,32 @@ internal fun walletHandoffSummary(request: ActionRequest): String {
             }
         } ?: "${transfer.amount} token units"
     return "Send $amount to ${transfer.recipient.shortAddress()} on ${networkText(transfer.network)}"
+}
+
+/**
+ * What the owner is about to do in the wallet, for each staking action.
+ *
+ * Unstaking and withdrawing get different sentences on purpose: one of them starts a wait and moves
+ * nothing, and the other is the one that finally moves the SKR. This is the last screen before the
+ * wallet opens, so it is the worst place to call both "unstake".
+ */
+@Composable
+private fun stakingHandoffSummary(staking: StakingAction): String {
+    val wallet = staking.wallet.shortAddress()
+    val network = networkText(staking.network)
+    val amount = staking.amount.toULongOrNull()?.let { "${formatBaseUnits(it, SKR_DECIMALS)} SKR" }
+    return when (staking.operation) {
+        StakingOperation.STAKING_OPERATION_STAKE ->
+            "Stake ${amount ?: staking.amount} from $wallet on $network"
+        StakingOperation.STAKING_OPERATION_UNSTAKE ->
+            "Start unstaking ${amount ?: staking.amount} from $wallet on $network. " +
+                "Nothing moves yet: a cooldown begins, and withdrawing is a separate step."
+        StakingOperation.STAKING_OPERATION_CANCEL_UNSTAKE ->
+            "Cancel the pending unstake for $wallet on $network, putting it back to work"
+        StakingOperation.STAKING_OPERATION_WITHDRAW ->
+            "Withdraw the unstaked SKR to $wallet on $network"
+        else -> "Act on the SKR staking position of $wallet on $network"
+    }
 }
 
 private fun String.shortAddress(): String = if (length <= 14) this else "${take(7)}…${takeLast(5)}"

@@ -101,6 +101,7 @@ fun actionText(action: PolicyAction): String =
             PolicyAction.Acknowledgement -> R.string.policy_action_ack
             PolicyAction.MessageSignature -> R.string.policy_action_sign_message
             PolicyAction.Transfer -> R.string.policy_action_transfer
+            PolicyAction.Staking -> R.string.policy_action_staking
             PolicyAction.Swap -> R.string.policy_action_swap
             PolicyAction.Prediction -> R.string.policy_action_prediction
         }
@@ -114,6 +115,7 @@ fun actionsText(action: PolicyAction): String =
             PolicyAction.Acknowledgement -> R.string.policy_action_ack_short
             PolicyAction.MessageSignature -> R.string.policy_action_sign_message_short
             PolicyAction.Transfer -> R.string.policy_action_transfer_short
+            PolicyAction.Staking -> R.string.policy_action_staking_short
             PolicyAction.Swap -> R.string.policy_action_swap_short
             PolicyAction.Prediction -> R.string.policy_action_prediction_short
         }

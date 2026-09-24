@@ -12,6 +12,7 @@ import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.skr.staking
 import io.github.brrenat.seekervault.transactions.mint
 import io.github.brrenat.seekervault.transactions.transfer
 import io.github.brrenat.seekervault.wallet.encodeBase58
@@ -247,6 +248,7 @@ class ActivityLog(
         fun kindOf(result: LocalResult): ActivityKind =
             when {
                 result.request.transfer() != null -> ActivityKind.Transfer
+                result.request.staking() != null -> ActivityKind.Staking
                 result.request.signMessage() != null -> ActivityKind.MessageSignature
                 result.request.action.kindCase == Action.KindCase.ACK ->
                     ActivityKind.Acknowledgement
