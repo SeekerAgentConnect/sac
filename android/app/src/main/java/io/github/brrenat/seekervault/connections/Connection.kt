@@ -70,6 +70,13 @@ data class Connection(
      * answer. A feed preserves the immutable environment promise in its manifest.
      */
     val environment: PluginEnvironment = PluginEnvironment.Production,
+    /**
+     * The colour this connection is marked with everywhere it appears (SEE-83). Chosen by the owner
+     * in the connection sheet, auto-assigned at pairing from the next unused palette entry, and
+     * purely local: cosmetic, so a record whose stored colour is missing or unreadable stays
+     * readable and simply gets an assignment again.
+     */
+    val colour: ServerColour? = null,
 ) {
     init {
         // A gateway connection exists only because a manifest was read for it: its gateway

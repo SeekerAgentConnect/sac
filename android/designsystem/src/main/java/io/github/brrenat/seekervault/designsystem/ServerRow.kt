@@ -37,6 +37,7 @@ data class ServerRowModel(
     val sourceName: String,
     val initials: String,
     val statusText: String,
+    val sourceColour: SourceColour? = null,
 )
 
 @Composable
@@ -70,7 +71,11 @@ fun ServerRow(
         horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xl),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SourceAvatar(sourceName = model.sourceName, initials = model.initials)
+        SourceAvatar(
+            sourceName = model.sourceName,
+            initials = model.initials,
+            colour = model.sourceColour,
+        )
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xxs),

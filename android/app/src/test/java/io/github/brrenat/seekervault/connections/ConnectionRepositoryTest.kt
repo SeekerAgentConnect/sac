@@ -406,6 +406,52 @@ class ConnectionRepositoryTest {
         }
     }
 
+    @Test
+    fun assignsColoursOnPairingAndKeepsAChangeAcrossARestart() = runBlocking {
+        val first = repository.pair(serverA.issue(URL_A))
+        clock = clock.plusSeconds(1)
+        val second = repository.pair(serverB.issue(URL_B))
+        assertEquals(ServerColour.Tangerine, first.colour)
+        assertEquals(ServerColour.Sky, second.colour)
+
+        repository.setColour(first.id, ServerColour.Violet)
+        assertEquals(ServerColour.Violet, connections().first { it.id == first.id }.colour)
+        assertEquals(ServerColour.Sky, connections().first { it.id == second.id }.colour)
+
+        val reopened = repository()
+        reopened.load()
+        assertEquals(ServerColour.Violet, reopened.connection(first.id)?.colour)
+        assertEquals(ServerColour.Sky, reopened.connection(second.id)?.colour)
+    }
+
+    @Test
+    fun removingAConnectionFreesItsColourForTheNextOne() = runBlocking {
+        val first = repository.pair(serverA.issue(URL_A))
+        assertEquals(ServerColour.Tangerine, first.colour)
+        repository.remove(first.id)
+        val second = repository.pair(serverB.issue(URL_B))
+        assertEquals(ServerColour.Tangerine, second.colour)
+        assertEquals(listOf(second.id), connections().map { it.id })
+    }
+
+    @Test
+    fun aStoredConnectionWithoutAColourReceivesOneOnLoad() = runBlocking {
+        val paired = repository.pair(serverA.issue(URL_A))
+        val file = File(folder.root, "files/connections/${paired.id}.json")
+        val json = JSONObject(file.readText())
+        json.remove("colour")
+        json.put("version", 5)
+        file.writeText(json.toString())
+
+        val reopened = repository()
+        reopened.load()
+        assertEquals(ServerColour.Tangerine, reopened.connection(paired.id)?.colour)
+        assertEquals(
+            "Tangerine",
+            JSONObject(file.readText()).getString("colour"),
+        )
+    }
+
     private companion object {
         const val URL_A = "https://a.example.com"
         const val URL_A_MOVED = "https://a-new.example.com"

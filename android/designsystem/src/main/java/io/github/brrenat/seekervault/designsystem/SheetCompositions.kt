@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
@@ -207,12 +208,14 @@ data class ConnectionDetailRules(
     val tag: String? = null,
 )
 
+@Immutable data class ConnectionColourOption(val colour: SourceColour, val usedBy: String? = null)
+
 @Immutable
 data class ConnectionDetailSheetState(
     val title: String,
     val initials: String,
-    val colourName: String,
-    val colourSupportingText: String,
+    val colour: SourceColour?,
+    val colourOptions: List<ConnectionColourOption>,
     val status: ConnectionDetailStatus,
     val facts: List<ConnectionDetailFact>,
     val rules: ConnectionDetailRules?,
@@ -234,6 +237,7 @@ data class ConnectionDetailSheetCallbacks(
     val onRename: () -> Unit,
     val onInbox: () -> Unit,
     val onDisconnect: () -> Unit,
+    val onColour: (SourceColour) -> Unit = {},
 )
 
 @Composable
@@ -254,8 +258,9 @@ fun ConnectionDetailSheet(
             ConnectionColourCard(
                 sourceName = state.title,
                 initials = state.initials,
-                colourName = state.colourName,
-                supportingText = state.colourSupportingText,
+                colour = state.colour,
+                options = state.colourOptions,
+                onColour = callbacks.onColour,
             )
             Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus)) {
                 state.facts.forEach { fact -> ConnectionFactCard(fact) }
@@ -342,8 +347,9 @@ private fun ConnectionStatusCard(status: ConnectionDetailStatus, onRefresh: () -
 private fun ConnectionColourCard(
     sourceName: String,
     initials: String,
-    colourName: String,
-    supportingText: String,
+    colour: SourceColour?,
+    options: List<ConnectionColourOption>,
+    onColour: (SourceColour) -> Unit,
 ) {
     Column(
         modifier =
@@ -360,25 +366,28 @@ private fun ConnectionColourCard(
             horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SourceAvatar(sourceName = sourceName, initials = initials)
+            SourceAvatar(sourceName = sourceName, initials = initials, colour = colour)
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = "Colour", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = "$colourName · $supportingText",
+                    text =
+                        if (colour == null) "marks this server everywhere"
+                        else "${colour.name} · marks this server everywhere",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().selectableGroup(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ConnectionColourSlots.forEach { slot ->
+            options.forEach { option ->
                 SourceColourChoice(
-                    slot = slot,
-                    selected = slot.name.equals(colourName, ignoreCase = true),
+                    option = option,
+                    selected = option.colour == colour,
+                    onSelect = { onColour(option.colour) },
                 )
             }
         }
@@ -386,46 +395,42 @@ private fun ConnectionColourCard(
 }
 
 @Composable
-private fun SourceColourChoice(slot: SourcePaletteSlot, selected: Boolean) {
-    val colors = sourcePaletteColors(slot)
+private fun SourceColourChoice(
+    option: ConnectionColourOption,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    val colors = sourcePaletteColors(option.colour)
+    val used = option.usedBy != null && !selected
+    val label = if (used) "${option.colour.name} · used by ${option.usedBy}" else option.colour.name
     Box(
         modifier =
             Modifier.size(SeekerTheme.sizes.iconButton.medium.box)
-                .alpha(if (selected || slot == SourcePaletteSlot.Sand) 1f else 0.4f)
+                .alpha(if (used) UsedColourOpacity else 1f)
                 .then(
                     if (selected) {
-                        Modifier.border(
-                            SeekerTheme.spacing.xs,
-                            colors.container,
-                            CircleShape,
-                        )
+                        Modifier.border(SeekerTheme.spacing.xs, colors.container, CircleShape)
                     } else {
                         Modifier
                     }
                 )
                 .padding(if (selected) SeekerTheme.spacing.xs else SeekerTheme.spacing.xxs)
-                .background(colors.container, CircleShape),
+                .background(colors.container, CircleShape)
+                .clickable(role = Role.Button, onClick = onSelect)
+                .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        if (slot != SourcePaletteSlot.Sand) {
+        if (selected || used) {
             Icon(
                 imageVector = if (selected) Icons.Outlined.CheckCircle else Icons.Outlined.Link,
-                contentDescription = if (selected) "Selected colour" else null,
+                contentDescription = null,
                 tint = colors.content,
             )
         }
     }
 }
 
-private val ConnectionColourSlots =
-    listOf(
-        SourcePaletteSlot.Tangerine,
-        SourcePaletteSlot.Blue,
-        SourcePaletteSlot.Violet,
-        SourcePaletteSlot.Teal,
-        SourcePaletteSlot.Pink,
-        SourcePaletteSlot.Sand,
-    )
+private const val UsedColourOpacity = 0.4f
 
 @Composable
 private fun ConnectionFactCard(fact: ConnectionDetailFact) {

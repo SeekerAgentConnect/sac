@@ -16,6 +16,29 @@ internal enum class SourcePaletteSlot {
     Blue,
 }
 
+/**
+ * A connection's chosen marker (SEE-83). Null at a call site keeps the name hash, which is how
+ * every captured specimen stays on the colour the guide drew for that source name.
+ */
+enum class SourceColour {
+    Tangerine,
+    Sky,
+    Violet,
+    Teal,
+    Rose,
+    Sand,
+}
+
+internal fun SourceColour.toSlot(): SourcePaletteSlot =
+    when (this) {
+        SourceColour.Tangerine -> SourcePaletteSlot.Tangerine
+        SourceColour.Sky -> SourcePaletteSlot.Blue
+        SourceColour.Violet -> SourcePaletteSlot.Violet
+        SourceColour.Teal -> SourcePaletteSlot.Teal
+        SourceColour.Rose -> SourcePaletteSlot.Pink
+        SourceColour.Sand -> SourcePaletteSlot.Sand
+    }
+
 @Immutable internal data class SourcePaletteColors(val container: Color, val content: Color)
 
 /**
@@ -36,6 +59,11 @@ internal fun sourcePaletteSlot(sourceName: String): SourcePaletteSlot {
 @Composable
 internal fun sourcePaletteColors(sourceName: String): SourcePaletteColors {
     return sourcePaletteColors(sourcePaletteSlot(sourceName))
+}
+
+@Composable
+internal fun sourcePaletteColors(colour: SourceColour): SourcePaletteColors {
+    return sourcePaletteColors(colour.toSlot())
 }
 
 @Composable

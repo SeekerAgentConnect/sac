@@ -371,6 +371,11 @@ class ConnectionsViewModel(
         viewModelScope.launch { repository.setEnvironment(id, environment) }
     }
 
+    /** Stores the marker colour. The connection list flow repaints every open screen. */
+    fun setColour(id: String, colour: ServerColour) {
+        viewModelScope.launch { repository.setColour(id, colour) }
+    }
+
     fun askToDisconnect(id: String) {
         val connection = repository.connection(id) ?: return
         val dialog =

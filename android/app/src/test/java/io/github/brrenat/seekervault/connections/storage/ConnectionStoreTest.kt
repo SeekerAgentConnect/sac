@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionRetirement
+import io.github.brrenat.seekervault.connections.ServerColour
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -176,7 +177,7 @@ class ConnectionStoreTest {
         assertEquals(ServerReference.Feed(GATEWAY, channelFor(SERVER_B)), known.manifest.reference)
         assertFalse(upgraded.hasCredential)
         store.put(upgraded)
-        assertEquals(5, JSONObject(File(dir, "${b.id}.json").readText()).getInt("version"))
+        assertEquals(6, JSONObject(File(dir, "${b.id}.json").readText()).getInt("version"))
         assertEquals(upgraded, ConnectionStore(dir).get(b.id))
     }
 
@@ -264,7 +265,7 @@ class ConnectionStoreTest {
         assertNull(migrated.lastCheck)
         assertEquals(ServerRecord.Unknown, migrated.server)
         val persisted = JSONObject(File(dir, "${a.id}.json").readText())
-        assertEquals(5, persisted.getInt("version"))
+        assertEquals(6, persisted.getInt("version"))
         assertFalse(persisted.has("mode"))
         assertEquals("gateway_private_removed", persisted.getString("retirement"))
         assertEquals(migrated, ConnectionStore(dir).migrateRetired().single())
@@ -303,7 +304,7 @@ class ConnectionStoreTest {
         file.writeText(
             file
                 .readText()
-                .replace("\"version\":5", "\"version\":2")
+                .replace("\"version\":6", "\"version\":2")
                 .replace(
                     ",\"environment\":\"sandbox\"",
                     "",
@@ -355,6 +356,23 @@ class ConnectionStoreTest {
         feedFile.writeText(feedFile.readText().replace("\"channel\"", "\"chanel\""))
 
         assertNull(store.get(b.id))
+    }
+
+    @Test
+    fun keepsAMarkerColourAcrossARestartAndDropsOneItCannotRead() {
+        store.put(a.copy(colour = ServerColour.Rose))
+
+        val restored = checkNotNull(ConnectionStore(dir).get(a.id))
+        assertEquals(ServerColour.Rose, restored.colour)
+        assertEquals(6, JSONObject(File(dir, "${a.id}.json").readText()).getInt("version"))
+
+        val file = File(dir, "${a.id}.json")
+        file.writeText(file.readText().replace("\"Rose\"", "\"chartreuse\""))
+        assertNull(store.get(a.id)?.colour)
+        assertEquals(a.id, store.get(a.id)?.id)
+
+        file.writeText(file.readText().replace("\"version\":6", "\"version\":5"))
+        assertNull(store.get(a.id)?.colour)
     }
 
     private companion object {
