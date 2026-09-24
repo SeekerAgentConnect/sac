@@ -20,6 +20,7 @@ import {
   ProviderUnavailable,
   UnsupportedPreparation,
   openDirectServer,
+  type ConfirmationProvider,
   type DirectServer,
   type StakingProvider,
 } from "@seeker-vault/server-sdk";
@@ -27,6 +28,7 @@ import { Network } from "@seeker-vault/server-sdk/protocol";
 import type { Config } from "./config.ts";
 import { UNUSED_LIVE_COMMAND_TIMEOUT_SECONDS } from "./config.ts";
 import { ChainUnavailable, SolanaRpc } from "./skr/chain.ts";
+import { isApprovedTransaction } from "./skr/confirmation.ts";
 import { SkrStakingProvider, UnsupportedStaking } from "./skr/provider.ts";
 import { mcpEndpoint, type McpEndpoint } from "./mcp-endpoint.ts";
 
@@ -95,6 +97,31 @@ export async function startStakingServer(
       providerCall(() => provider.build(action, at)),
   };
 
+  /**
+   * How a submitted staking transaction stops being submitted.
+   *
+   * Without this the SDK builds no `ConfirmationTracker`, and a request the wallet has sent stays
+   * SUBMITTED for good: the agent polls and reads the same unchanged request, and the owner's own
+   * `CheckStatus` on the phone is answered `CHAIN_UNAVAILABLE` because there is nothing to ask.
+   * For staking that is worse than an unfinished transfer — an unstake nobody can confirm is a
+   * 48-hour cooldown the owner cannot tell has started.
+   *
+   * It reads the same endpoint everything else here reads, and it can do nothing but read: there
+   * is no submit call in this interface, and a transaction that does not match the approved bytes
+   * settles nothing rather than being reported either way.
+   */
+  const confirmationProvider: ConfirmationProvider = {
+    endpointUrl: config.rpcUrl,
+    assertNetwork: (network) =>
+      providerCall(() => provider.assertNetwork(network)),
+    signatureStatus: (signature, searchHistory) =>
+      providerCall(() => chain.signatureStatus(signature, searchHistory)),
+    confirmedTransaction: (signature) =>
+      providerCall(() => chain.confirmedTransaction(signature)),
+    blockHeight: () => providerCall(() => chain.blockHeight()),
+    matchesApprovedTransaction: isApprovedTransaction,
+  };
+
   let listeningUrl: string | undefined;
   const direct = openDirectServer({
     databasePath: config.databasePath,
@@ -105,6 +132,7 @@ export async function startStakingServer(
     liveCommandTimeoutSeconds: UNUSED_LIVE_COMMAND_TIMEOUT_SECONDS,
     log,
     stakingProvider,
+    confirmationProvider,
   });
 
   let mcp: McpEndpoint | undefined;
