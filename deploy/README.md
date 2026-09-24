@@ -457,3 +457,11 @@ container health, h2 negotiation, MCP create/result/cancel, feed create/update/c
 poll, SAC subscription, and the restart checks above. Automated and local evidence for SEE-137 is
 kept in [`docs/testing/see-137.md`](../docs/testing/see-137.md); unavailable live checks remain
 **NOT RUN** with their concrete blocker.
+
+## 9. Usefull commands
+
+- `doctl apps update 28910149-9dfc-4683-87cf-e2223ec4c6af --spec deploy/seeker-skr-staking-mcp.yaml`
+- `doctl apps update 70848a26-9237-4e17-991d-845fb9f3665f --spec deploy/seeker-mcp.yaml`
+- `doctl apps update 326326e6-43c2-4aa1-893c-a3607b77e6ef --spec deploy/prediction-demo.yaml`
+- `doctl apps update a7aba189-c59f-4e0b-a0b0-0ccd8442036b --spec deploy/signals-demo.yam`
+- `doctl apps update accce337-aab1-42ed-9768-3fc6c1ddc412 --spec deploy/seeker-gateway.yaml`
