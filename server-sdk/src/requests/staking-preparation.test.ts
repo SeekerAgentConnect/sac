@@ -227,14 +227,16 @@ describe("TransactionPreparer: staking", () => {
     if (kind.case === "staking") await preparer.checkStaking(kind.value);
     assert.equal(checked.length, 1);
     assert.equal(checked[0]?.operation, StakingOperation.WITHDRAW);
-    // A host that serves no staking says so with the same error a preparation would give.
+    // A host that serves no staking refuses here too, and says what it cannot do *at this point*:
+    // nothing was asked to be prepared yet, so saying it could prepare nothing would describe a
+    // step the agent has not reached.
     await assert.rejects(
       new TransactionPreparer(s.store, { transfers: TRANSFERS }).checkStaking(
         checked[0],
       ),
       refused(
         RequestError.CHAIN_UNAVAILABLE,
-        "this sidecar has no staking provider configured, so it can prepare no staking action",
+        "this sidecar has no staking provider configured, so it can act on no staking position",
       ),
     );
   });
