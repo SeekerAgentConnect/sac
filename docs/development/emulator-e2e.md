@@ -40,6 +40,11 @@ and never print them:
 - **No KVM group.** The session user can't open `/dev/kvm` and has no sudo, but it is in the
   `docker` group. `start` therefore runs the emulator in a small Ubuntu container (`sac-emu`) with
   `--device /dev/kvm` and `--network host`, so the host's `adb` sees it as `emulator-5554`.
+  If `docker ps` answers `permission denied` even though `/etc/group` lists the user in `docker`,
+  the login session's supplementary groups are stale; run the script through the group instead:
+  `sg docker -c "scripts/emulator.sh start"`. Don't reach for `-accel off` as a fallback — Android's
+  watchdog kills `system_server` mid-boot under software emulation (`Blocked in handler on main
+  thread for 68s`) and the guest never finishes booting.
 - **No system JDK or SDK.** `setup` installs JDK 21 in `~/.local/jdk` and the SDK in
   `~/android-sdk`. Neither needs root.
 
@@ -142,15 +147,36 @@ doctl apps logs 70848a26-9237-4e17-991d-845fb9f3665f agent-connect --type run --
 doctl apps logs a7aba189-c59f-4e0b-a0b0-0ccd8442036b copytrading --type run --tail 50      # signals demo
 ```
 
-## Known issues (2026-09-24)
+## Known issues (last checked 2026-09-24 23:27 UTC, SEE-151)
 
-- **Live push doesn't stay up on DO.** seeker-mcp logs `update stream opened` and then `closed`
-  about 250 ms later, and the app doesn't reopen it. The CopyTrading feed also dropped from "Live
-  updates connected" to "Not checked yet". New requests and signals appear only when the app
-  syncs, for example when a connection's details are opened. A later ticket covers this. Until it
-  lands, open the connection (or its inbox) to pull, and don't report "no push" as a new bug.
-- Firebase isn't configured in this debug build (`FirebaseApp failed to initialize`), so there is
-  no background push either.
+The earlier note that live push never stays up no longer holds. On the build at `4b6797a` a direct
+MCP request appeared within about ten seconds of being stored, and the CopyTrading feed's sheet read
+"Live updates connected." throughout. What is true:
+
+- **A direct connection never recovers its stream after a network interruption** ([SEE-152]).
+  The row sticks at "Couldn't reach the server" while unary calls from the same phone still reach
+  that server; **Retry** and app restarts don't clear it, and only re-pairing does, which cancels
+  whatever requests the server was holding. Cycle airplane mode and you will reproduce it.
+- **An opened sheet's last action sits under the three-button navigation bar** ([SEE-153]).
+  Gesture navigation is fine.
+- **Removing a connection leaves its items in the Inbox and in Home's count** ([SEE-154]).
+- **Firebase isn't configured in this debug build** (`Default FirebaseApp failed to initialize`),
+  so there is no background push, no notification channel, and no `POST_NOTIFICATIONS` prompt.
+  Adding `android/app/google-services.json` (`docs/guides/firebase.md`) is the whole fix; the
+  gateway and seeker-mcp already hold their sending credentials.
+- **The deployed servers are behind the repository.** The gateway answers 404 to
+  `FeedService.GetFeedStatus`, and the staking server's startup log has no `live updates are …`
+  line, so SEE-150's feed presence and staking live updates can't be exercised until those images
+  are rebuilt from a commit that contains them.
+- **Every staking tool needs a wallet**, including the read-only `get_staking_status`; a wallet-less
+  phone gets `WALLET_NOT_CONNECTED`, so no staking item can be made to reach the app on the emulator.
+
+The full run behind these, with commands, a scenario matrix and screenshots, is in
+[`emulator-e2e-see151.md`](emulator-e2e-see151.md).
+
+[SEE-152]: https://linear.app/seekeragentwallet/issue/SEE-152
+[SEE-153]: https://linear.app/seekeragentwallet/issue/SEE-153
+[SEE-154]: https://linear.app/seekeragentwallet/issue/SEE-154
 
 ## A debug → fix → verify loop
 
