@@ -782,6 +782,11 @@ class StageBoundaryTest {
                 // The words for each of the six reasons nothing serves an action here.
                 "OperationText.kt",
                 "OperationViewModel.kt",
+                // The design's prediction review (SEE-158): it reads the owner's side and stake off
+                // the form the provider declared, and the terms off the parsed payload, to show
+                // them — it prepares nothing and resolves no provider.
+                "PredictionReview.kt",
+                "PredictionReviewScreen.kt",
                 "ProposalRepository.kt",
                 "ProposalReviewScreen.kt",
                 "ProposalStore.kt",

@@ -77,6 +77,12 @@ sealed interface AppSheet {
         val kind: WalletHandoffKind = WalletHandoffKind.Transfer,
     ) : AppSheet
 
+    /**
+     * The owner's own part of a signal — side and stake — edited in a sheet stacked over its
+     * review: `[review, params]` (design/navigation.md, SEE-158).
+     */
+    data class OwnerInput(val identity: ReviewIdentity) : AppSheet
+
     data class ConnectionDetail(val connectionId: String) : AppSheet {
         init {
             requireRouteId("connectionId", connectionId)
@@ -154,6 +160,9 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
     fun openConnectionRules(connectionId: String): Boolean =
         push(AppSheet.ConnectionRules(connectionId))
 
+    /** Choose or change the owner's part of a signal, over its own review. */
+    fun openOwnerInput(identity: ReviewIdentity): Boolean = push(AppSheet.OwnerInput(identity))
+
     fun openGlobalRules(): Boolean = push(AppSheet.GlobalRules)
 
     fun openAssetEditor(
@@ -225,9 +234,18 @@ private fun NavigationState.canPush(sheet: AppSheet): Boolean =
             sheets.size == 1 &&
                 (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity
         is AppSheet.ConnectionDetail -> sheets.isEmpty() && screen == AppScreen.Home
+        is AppSheet.OwnerInput ->
+            sheets.size == 1 &&
+                (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity
+        // Usually `[connection, rules]`; `[review, rules]` from a review verdict's Rules action,
+        // for the connection the request came from (design/navigation.md).
         is AppSheet.ConnectionRules ->
             sheets.size == 1 &&
-                (sheets.single() as? AppSheet.ConnectionDetail)?.connectionId == sheet.connectionId
+                when (val under = sheets.single()) {
+                    is AppSheet.ConnectionDetail -> under.connectionId == sheet.connectionId
+                    is AppSheet.RequestReview -> under.identity.connectionId == sheet.connectionId
+                    else -> false
+                }
         AppSheet.GlobalRules ->
             (sheets.isEmpty() && screen == AppScreen.Home) ||
                 (sheets.size == 2 && sheets.last() is AppSheet.ConnectionRules)
@@ -265,6 +283,10 @@ internal fun encodeNavigationState(state: NavigationState): List<String> = build
                 add(SHEET_HANDOFF)
                 addIdentity(sheet.identity)
                 add(sheet.kind.name)
+            }
+            is AppSheet.OwnerInput -> {
+                add(SHEET_OWNER_INPUT)
+                addIdentity(sheet.identity)
             }
             is AppSheet.ConnectionDetail -> {
                 add(SHEET_DETAIL)
@@ -304,6 +326,7 @@ internal fun decodeNavigationState(saved: List<String>): NavigationState? = runC
                         identity = cursor.nextIdentity(),
                         kind = enumValueOf(cursor.next()),
                     )
+                SHEET_OWNER_INPUT -> AppSheet.OwnerInput(cursor.nextIdentity())
                 SHEET_DETAIL -> AppSheet.ConnectionDetail(cursor.next())
                 SHEET_RULES -> AppSheet.ConnectionRules(cursor.next())
                 SHEET_GLOBAL_RULES -> AppSheet.GlobalRules
@@ -388,6 +411,7 @@ private const val SCREEN_ADD_CONNECTION = "add_connection"
 private const val SCREEN_LIVE_TEST = "live_test"
 private const val SHEET_REVIEW = "review"
 private const val SHEET_HANDOFF = "wallet_handoff"
+private const val SHEET_OWNER_INPUT = "owner_input"
 private const val SHEET_DETAIL = "connection_detail"
 private const val SHEET_RULES = "connection_rules"
 private const val SHEET_GLOBAL_RULES = "global_rules"

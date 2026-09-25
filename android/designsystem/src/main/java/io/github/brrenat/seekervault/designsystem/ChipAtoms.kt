@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +26,8 @@ import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 enum class VerdictPillVerdict {
     Ok,
     Warning,
+    /** Nothing failed, but there were no rules to check against: the review says so too. */
+    OutsideRules,
 }
 
 enum class VerdictPillContext {
@@ -48,7 +51,8 @@ fun VerdictPill(
                 } else {
                     colors.limeContainer to colors.onLimeContainer
                 }
-            VerdictPillVerdict.Warning -> colors.orangeContainer to colors.onOrangeContainer
+            VerdictPillVerdict.Warning,
+            VerdictPillVerdict.OutsideRules -> colors.orangeContainer to colors.onOrangeContainer
         }
     val text =
         when (verdict) {
@@ -57,6 +61,7 @@ fun VerdictPill(
                 val count = warningCount ?: 1
                 "$count ${if (count == 1) "warning" else "warnings"}"
             }
+            VerdictPillVerdict.OutsideRules -> "Outside rules"
         }
 
     Box(
@@ -242,17 +247,25 @@ fun NetworkChip(network: NetworkChipNetwork, modifier: Modifier = Modifier) {
             NetworkChipNetwork.Mainnet -> "Solana mainnet"
         }
 
+    // Only mainnet is the neutral chip. A test network is flagged in the same orange as sandbox,
+    // because both say "this is not your real money" (SEE-158).
+    val devnet = network == NetworkChipNetwork.Devnet
     Box(
         modifier =
             modifier
                 .height(SeekerTheme.spacing.xxxl)
-                .background(SeekerTheme.colors.surface3, MaterialTheme.shapes.small)
+                .background(
+                    if (devnet) SeekerTheme.colors.orangeContainer else SeekerTheme.colors.surface3,
+                    MaterialTheme.shapes.small,
+                )
                 .padding(horizontal = (SeekerTheme.spacing.md + SeekerTheme.spacing.mdPlus) / 2),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color =
+                if (devnet) SeekerTheme.colors.onOrangeContainer
+                else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             style = MaterialTheme.typography.labelMedium,
         )
@@ -303,8 +316,11 @@ fun ScopeChip(
         if (context == ScopeChipContext.OnVerdict) {
             Icon(
                 imageVector =
-                    if (source == ScopeChipSource.None) Icons.Outlined.Block
-                    else Icons.Outlined.Public,
+                    when (source) {
+                        ScopeChipSource.None -> Icons.Outlined.Block
+                        ScopeChipSource.Connection -> Icons.Outlined.Edit
+                        ScopeChipSource.Global -> Icons.Outlined.Public
+                    },
                 contentDescription = null,
                 modifier = Modifier.size(SeekerTheme.spacing.lg),
                 tint = contentColor,

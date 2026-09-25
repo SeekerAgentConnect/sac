@@ -60,6 +60,15 @@ data class PredictionPayload(
     val mostDeposit: ULong? = null,
 )
 
+/**
+ * The stake token's name as the owner reads it: the publisher's symbol, or, when it gave none, the
+ * mint itself shortened at the middle, so an amount is never shown without saying of what.
+ */
+fun PredictionPayload.depositUnit(): String = depositSymbol.ifBlank {
+    if (depositMint.length <= 17) depositMint
+    else depositMint.take(8) + "…" + depositMint.takeLast(8)
+}
+
 /** The term names — the payload's contract with every publisher, spelled here once. */
 object PredictionTermNames {
     const val MARKET_ID = "market_id"

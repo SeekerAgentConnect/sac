@@ -73,7 +73,7 @@ fun OwnerInputCard(
             SeekerButton(
                 label =
                     if (state == OwnerInputCardState.Chosen) {
-                        "Edit"
+                        "Change"
                     } else {
                         kind.chooseLabel()
                     },

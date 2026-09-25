@@ -27,6 +27,7 @@
 
     <!-- What the owner chose, when it cannot be acted on. -->
     <string name="action_choice_no_amount">Enter how much to swap.</string>
+    <string name="action_choice_no_stake">Enter how much to stake.</string>
     <string name="action_choice_too_little">That is below the smallest amount this signal is for.</string>
     <string name="action_choice_too_much">That is above the largest amount this signal is for.</string>
     <string name="action_choice_bad_slippage">Choose how far the price may move, within what this signal allows.</string>
