@@ -19,6 +19,11 @@ services:
       PUBLISHER_DATABASE_PATH: ${PUBLISHER_DATABASE_PATH:-/data/publisher.db}
       PUBLISHER_PUBLISH_TIMEOUT_SECONDS: ${PUBLISHER_PUBLISH_TIMEOUT_SECONDS:-}
       PUBLISHER_CREATE_LIMIT: ${PUBLISHER_CREATE_LIMIT:-}
+      # Restricted feed access (SEE-156): /access/v1 is served beside the API on 8092, and must be
+      # published at this origin, which the gateway's operator registered for this server.
+      PUBLISHER_AUTH_ORIGIN: ${PUBLISHER_AUTH_ORIGIN:?set PUBLISHER_AUTH_ORIGIN in deploy/copytrading/.env}
+      PUBLISHER_ACCESS_GRANT_HOURS: ${PUBLISHER_ACCESS_GRANT_HOURS:-}
+      PUBLISHER_ACCESS_INVITATION_MINUTES: ${PUBLISHER_ACCESS_INVITATION_MINUTES:-}
     ports:
       - "${PUBLISHER_BIND:-127.0.0.1}:${PUBLISHER_PORT:-8092}:8092"
     networks: [egress]

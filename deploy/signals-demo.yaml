@@ -50,6 +50,9 @@ services:
   - key: PUBLISHER_DATABASE_PATH
     scope: RUN_AND_BUILD_TIME
     value: /data/publisher.db
+  - key: PUBLISHER_AUTH_ORIGIN
+    scope: RUN_AND_BUILD_TIME
+    value: https://signals-demo-fzs2q.ondigitalocean.app
   health_check:
     failure_threshold: 9
     http_path: /healthz
