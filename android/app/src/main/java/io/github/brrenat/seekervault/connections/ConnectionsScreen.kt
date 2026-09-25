@@ -50,6 +50,8 @@ import io.github.brrenat.seekervault.inbox.key
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v2.Request
 import io.github.brrenat.seekervault.request.v2.Value
+import io.github.brrenat.seekervault.reviews.ReviewVerdict
+import io.github.brrenat.seekervault.reviews.reviewVerdict
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.executable
@@ -218,6 +220,8 @@ fun HomeRoute(
     requestAssessments: Map<RequestKey, RequestAssessment>,
     callbacks: HomeRouteCallbacks,
     modifier: Modifier = Modifier,
+    /** What the owner's rules make of each waiting signal, keyed by its feed and proposal. */
+    signalAssessments: Map<RequestKey, RequestAssessment> = emptyMap(),
 ) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -234,6 +238,7 @@ fun HomeRoute(
                     wallet = wallet,
                     pendingItems = pendingItems,
                     requestAssessments = requestAssessments,
+                    signalAssessments = signalAssessments,
                 ),
             callbacks =
                 HomeScreenCallbacks(
@@ -329,6 +334,7 @@ fun homeScreenState(
     pendingItems: List<PendingItem>,
     requestAssessments: Map<RequestKey, RequestAssessment>,
     formatTime: (Instant) -> String = ::homeShortTime,
+    signalAssessments: Map<RequestKey, RequestAssessment> = emptyMap(),
 ): HomeScreenState {
     val connections = connectionsState.connections.associateBy(Connection::id)
     val newestFirst =
@@ -352,7 +358,11 @@ fun homeScreenState(
                     sourceName = connections[item.connectionId]?.label,
                     sourceColour = connections[item.connectionId]?.colour?.sourceColour(),
                     assessment =
-                        (item as? PendingItem.Private)?.request?.key?.let(requestAssessments::get),
+                        when (item) {
+                            is PendingItem.Private -> requestAssessments[item.request.key]
+                            is PendingItem.Signal ->
+                                signalAssessments[RequestKey(item.connectionId, item.requestId)]
+                        },
                 )
             },
         serversLoaded = connectionsState.loaded,
@@ -381,7 +391,17 @@ private fun PendingItem.toHomeCarouselItem(
     val request = envelope
     val capability = request.action.capabilityId
     val source = sourceName ?: request.identity.sourceId
-    val warnings = assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1) ?: 0
+    // A signal's tile says what its review's verdict card says, read the same way: the warnings it
+    // lists, or "Outside rules" when no rules apply at all (SEE-158).
+    val signalVerdict =
+        if (this is PendingItem.Signal) assessment?.decision?.reviewVerdict() else null
+    val warnings =
+        when {
+            this is PendingItem.Signal ->
+                (signalVerdict as? ReviewVerdict.Warnings)?.warnings?.size ?: 0
+            else -> assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1) ?: 0
+        }
+    val outsideRules = signalVerdict == ReviewVerdict.NoRules
     val kind =
         when (capability) {
             HomeCapability.Acknowledgement -> RequestTileKind.Acknowledgement
@@ -408,10 +428,13 @@ private fun PendingItem.toHomeCarouselItem(
                     RequestTileModel(
                         title = request.presentation.title,
                         sourceName = source,
-                        supportingText = request.presentation.description,
+                        // Where it came from and what kind of thing it is. The publisher's own
+                        // description is theirs, and it is shown in the review as their note.
+                        supportingText = "$source · ${HomeCopy.Prediction}",
                         warningCount = warnings,
                         footerText = request.parameter("provider")?.providerName() ?: source,
                         sourceColour = sourceColour,
+                        outsideRules = outsideRules,
                     )
                 RequestTileKind.SwapSignal ->
                     RequestTileModel(
@@ -420,6 +443,7 @@ private fun PendingItem.toHomeCarouselItem(
                         supportingText = request.presentation.description,
                         warningCount = warnings,
                         sourceColour = sourceColour,
+                        outsideRules = outsideRules,
                     )
                 RequestTileKind.SignatureRequest ->
                     RequestTileModel(
@@ -613,6 +637,7 @@ private object HomeCapability {
 
 object HomeCopy {
     const val Title = "Seeker Agent Connect"
+    const val Prediction = "Prediction"
     const val Waiting = "Waiting for you"
     const val CarouselCaption =
         "Swipe to browse, tap to review. The carousel only browses — nothing is answered here."

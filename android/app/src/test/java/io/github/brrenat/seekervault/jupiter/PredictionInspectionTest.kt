@@ -351,10 +351,11 @@ class PredictionInspectionTest {
         val values = inspection.details.map { it.value }
         // Contracts, in contracts. 23700000 millionths is 23.7 of them.
         assertEquals("23.7", values[0])
-        // What it costs and what it pays out if the side wins, both in the deposit token's units.
-        assertEquals("4.996705", values[1])
-        assertEquals("23.7", values[2])
+        // What it costs and what it pays out if the side wins, both in the deposit token's units,
+        // and each says which token that is (SEE-158).
+        assertEquals("4.996705 USDC", values[1])
+        assertEquals("23.7 USDC", values[2])
         // And the most one contract may cost.
-        assertEquals("0.2", values[3])
+        assertEquals("0.2 USDC", values[3])
     }
 }

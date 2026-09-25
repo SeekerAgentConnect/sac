@@ -277,6 +277,45 @@ class ConnectionsScreenTest {
         assertEquals(SourceColour.Teal, after.pending.single().tile.sourceColour)
     }
 
+    @Test
+    fun aPredictionTileSaysWhereItCameFromAndTheSameVerdictAsItsReview() {
+        val home = HOME.copy(label = "CopyTrading")
+        val waiting = prediction(home, PROPOSAL_A, "Bitcoin Up or Down", "polymarket")
+        val state =
+            homeScreenState(
+                connectionsState = ConnectionsUiState(connections = listOf(home), loaded = true),
+                inboxSummary = null,
+                wallet = null,
+                pendingItems = listOf(waiting),
+                requestAssessments = emptyMap(),
+                signalAssessments =
+                    mapOf(
+                        RequestKey(home.id, waiting.requestId) to
+                            io.github.brrenat.seekervault.inbox.RequestAssessment(
+                                decision =
+                                    io.github.brrenat.seekervault.policy.noPolicy(
+                                        io.github.brrenat.seekervault.policy.PolicyReason
+                                            .NoPolicyConfigured
+                                    ),
+                                facts =
+                                    io.github.brrenat.seekervault.policy.RequestFacts.movesNothing(
+                                        home.id,
+                                        io.github.brrenat.seekervault.policy.PolicyAction
+                                            .MessageSignature,
+                                        waiting.requestId,
+                                    ),
+                                at = Instant.parse("2026-09-25T10:00:00Z"),
+                            )
+                    ),
+            )
+        val tile = state.pending.single().tile
+        // The source and the kind, not the publisher's note.
+        assertEquals("CopyTrading · Prediction", tile.supportingText)
+        // No rules at all: the review's card says "Outside rules", and so does the tile.
+        assertEquals(0, tile.warningCount)
+        assertEquals(true, tile.outsideRules)
+    }
+
     private fun prediction(
         feed: Connection,
         id: String,

@@ -53,6 +53,10 @@ fun VerdictCard(
     onRulesClick: () -> Unit,
     modifier: Modifier = Modifier,
     additionalContext: String? = null,
+    /**
+     * A heading that names the verdict more exactly than the count, e.g. why there are no rules.
+     */
+    heading: String? = null,
 ) {
     require(verdict == VerdictCardVerdict.Warning || warnings.isEmpty()) {
         "An OK verdict cannot contain warnings"
@@ -92,7 +96,7 @@ fun VerdictCard(
                 tint = colors.content,
             )
             Text(
-                text = verdict.heading(warnings.size),
+                text = heading ?: verdict.heading(warnings.size),
                 modifier = Modifier.weight(1f),
                 color = colors.content,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),

@@ -17,6 +17,13 @@ composes the atom, molecule, and organism APIs already in `:designsystem`. Its b
 natural-height and contains no internal scroll container, matching the five unrolled reference
 sheets. A bounded runtime host may provide viewport scrolling without changing this template.
 
+SEE-158 adds `ReviewSheetLayout.Pinned`, used by the app's prediction review: grabber and title
+stay at the top, the footer at the bottom, and only the body scrolls. `Unrolled` (the default) is
+still what previews capture. It also adds optional status blocks, a stale-quote card with a refresh
+action, a terms card, copy-on-tap fact rows, a verdict heading override, caller-owned confirmation
+state (`confirmationChecked` + `onConfirmedChange`), and the headline's 1.1 line height. See
+[prediction-review.md](prediction-review.md).
+
 Warnings always carry confirmation copy. The template owns that transient checkbox state and
 keeps the primary button disabled until it is selected. A caller's own `primaryAction.enabled`
 gate is applied as well, so an unchosen owner input, missing wallet, stale preparation, or other app

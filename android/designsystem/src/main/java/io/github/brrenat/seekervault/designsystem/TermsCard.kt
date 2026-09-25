@@ -21,7 +21,9 @@ import io.github.brrenat.seekervault.designsystem.preview.DesignRef
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 
 enum class TermsCardKind {
-    Swap
+    Swap,
+    /** The same card for a prediction order: stake, contracts, cost, payout (SEE-158). */
+    Prediction,
 }
 
 enum class TermsCardState {
@@ -69,10 +71,13 @@ fun TermsCard(
     kind: TermsCardKind = TermsCardKind.Swap,
     state: TermsCardState = TermsCardState.Quoted,
     modifier: Modifier = Modifier,
+    /** Shown in place of the rows while there is no quote yet. */
+    emptyText: String? = null,
 ) {
     val heading =
         when (kind) {
-            TermsCardKind.Swap ->
+            TermsCardKind.Swap,
+            TermsCardKind.Prediction ->
                 when (state) {
                     TermsCardState.Quoted -> "The whole operation, quoted here"
                 }
@@ -90,6 +95,13 @@ fun TermsCard(
             text = heading,
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
         )
+        if (rows.isEmpty() && emptyText != null) {
+            Text(
+                text = emptyText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         rows.forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),

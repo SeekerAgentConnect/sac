@@ -2,6 +2,8 @@ package io.github.brrenat.seekervault.designsystem
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +16,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -45,11 +49,22 @@ fun SeekerTextField(
     modifier: Modifier = Modifier,
 ) {
     val error = state == DesignTextFieldState.Error
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
     val labelColor =
-        if (error) SeekerTheme.colors.errorText else MaterialTheme.colorScheme.onSurfaceVariant
+        when {
+            error -> SeekerTheme.colors.errorText
+            focused -> SeekerTheme.colors.primaryText
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
     val lineColor =
-        if (error) SeekerTheme.colors.errorText else MaterialTheme.colorScheme.onSurfaceVariant
-    val lineWidth = if (error) SeekerTheme.spacing.xxs else SeekerTheme.spacing.xxs / 2
+        when {
+            error -> SeekerTheme.colors.errorText
+            focused -> SeekerTheme.colors.primaryText
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    // A focused or failing field draws its underline at 2dp; at rest it is a 1dp rule.
+    val lineWidth = if (error || focused) SeekerTheme.spacing.xxs else SeekerTheme.spacing.xxs / 2
     val fieldShape =
         RoundedCornerShape(
             topStart = SeekerTheme.radii.xs,
@@ -82,6 +97,7 @@ fun SeekerTextField(
                         .then(inputModifier),
                 singleLine = true,
                 keyboardOptions = keyboardOptions,
+                interactionSource = interactionSource,
                 textStyle =
                     MaterialTheme.typography.bodyLarge.copy(
                         color = MaterialTheme.colorScheme.onSurface

@@ -666,34 +666,7 @@ class OperationViewModel(
     private fun assess(): RequestAssessment? {
         val open = _review.value ?: return null
         val record = proposals.proposal(open.connectionId, open.proposalId) ?: return null
-        val network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED
-        val facts =
-            actionFacts(
-                connectionId = open.connectionId,
-                // A broadcast proposal carries no request, so the facts are built from what the
-                // provider read and from the action's own identity.
-                proposalId = open.proposalId,
-                action = record.proposal.action,
-                network = network,
-                resolution =
-                    providers.resolve(
-                        provider = namedProvider(record.proposal, providers),
-                        action = record.proposal.action,
-                        schemaVersion = record.proposal.capabilityVersion,
-                        network = network,
-                        environment = environmentOf(open.connectionId),
-                        payload = open.payload,
-                    ),
-                inspection = open.inspection,
-            )
-        val evaluated = policies.evaluateCurrent(facts)
-        val assessment =
-            RequestAssessment(
-                decision = evaluated.decision,
-                facts = facts,
-                at = now(),
-                applicablePolicy = evaluated.applicablePolicy,
-            )
+        val assessment = assessmentOf(record, open.payload, open.inspection)
         _review.update {
             if (it?.proposalId != open.proposalId) it
             else
@@ -705,6 +678,59 @@ class OperationViewModel(
                 )
         }
         return assessment
+    }
+
+    /**
+     * What the owner's rules make of a held proposal nobody has opened yet, for its tile (SEE-158).
+     *
+     * The same evaluation the review runs when it opens, from the same facts — the action's
+     * identity and what the provider would be asked — so a tile and the sheet it opens can never
+     * disagree about the verdict. It is a read: nothing is stored, and no review is touched.
+     */
+    fun assessment(connectionId: String, proposalId: String): RequestAssessment? {
+        _review.value
+            ?.takeIf { it.connectionId == connectionId && it.proposalId == proposalId }
+            ?.assessment
+            ?.let {
+                return it
+            }
+        val record = proposals.proposal(connectionId, proposalId) ?: return null
+        val payload = (payloadOf(record) as? ActionPayloadResult.Valid)?.payload
+        return assessmentOf(record, payload, inspection = null)
+    }
+
+    private fun assessmentOf(
+        record: ProposalRecord,
+        payload: ActionPayload?,
+        inspection: ActionInspection?,
+    ): RequestAssessment {
+        val network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED
+        val facts =
+            actionFacts(
+                connectionId = record.connectionId,
+                // A broadcast proposal carries no request, so the facts are built from what the
+                // provider read and from the action's own identity.
+                proposalId = record.proposal.key.proposalId,
+                action = record.proposal.action,
+                network = network,
+                resolution =
+                    providers.resolve(
+                        provider = namedProvider(record.proposal, providers),
+                        action = record.proposal.action,
+                        schemaVersion = record.proposal.capabilityVersion,
+                        network = network,
+                        environment = environmentOf(record.connectionId),
+                        payload = payload,
+                    ),
+                inspection = inspection,
+            )
+        val evaluated = policies.evaluateCurrent(facts)
+        return RequestAssessment(
+            decision = evaluated.decision,
+            facts = facts,
+            at = now(),
+            applicablePolicy = evaluated.applicablePolicy,
+        )
     }
 
     /** Re-reads the history from disk before an assessment, and never lets a failure look empty. */

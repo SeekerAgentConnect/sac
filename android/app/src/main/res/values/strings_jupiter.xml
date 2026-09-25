@@ -62,7 +62,7 @@
     <string name="jupiter_fact_payout">Paid out if this side wins</string>
     <string name="jupiter_fact_max_price">Most one contract may cost</string>
     <string name="jupiter_fact_provider_fee">Provider fee</string>
-    <string name="jupiter_fact_market_status">Market status now</string>
+    <string name="jupiter_fact_market_status">Market status</string>
     <string name="jupiter_fact_market_result">Settled as</string>
     <string name="jupiter_fact_instructions">Instructions in the transaction</string>
     <string name="jupiter_fact_resolved_accounts">Accounts read from lookup tables</string>

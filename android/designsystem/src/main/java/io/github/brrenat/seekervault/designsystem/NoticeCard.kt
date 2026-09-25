@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.designsystem
 import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -26,14 +27,23 @@ import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 enum class NoticeCardKind {
     Sandbox,
     StaleRules,
+    /** The quote the review was read against has run out; the action fetches a fresh one. */
+    StaleQuote,
 }
 
 @Composable
-fun NoticeCard(kind: NoticeCardKind, message: String, modifier: Modifier = Modifier) {
+fun NoticeCard(
+    kind: NoticeCardKind,
+    message: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: () -> Unit = {},
+) {
     val icon =
         when (kind) {
             NoticeCardKind.Sandbox -> Icons.Outlined.Science
-            NoticeCardKind.StaleRules -> Icons.Outlined.Sync
+            NoticeCardKind.StaleRules,
+            NoticeCardKind.StaleQuote -> Icons.Outlined.Sync
         }
 
     Row(
@@ -55,15 +65,27 @@ fun NoticeCard(kind: NoticeCardKind, message: String, modifier: Modifier = Modif
             modifier = Modifier.size(SeekerTheme.spacing.xxl),
             tint = SeekerTheme.colors.onOrangeContainer,
         )
-        Text(
-            text = message,
+        Column(
             modifier = Modifier.weight(1f),
-            color = SeekerTheme.colors.onOrangeContainer,
-            style =
-                MaterialTheme.typography.bodyMedium.copy(
-                    lineHeight = MaterialTheme.typography.bodyLarge.fontSize
-                ),
-        )
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
+        ) {
+            Text(
+                text = message,
+                color = SeekerTheme.colors.onOrangeContainer,
+                style =
+                    MaterialTheme.typography.bodyMedium.copy(
+                        lineHeight = MaterialTheme.typography.bodyLarge.fontSize
+                    ),
+            )
+            actionLabel?.let {
+                SeekerButton(
+                    label = it,
+                    onClick = onAction,
+                    variant = SeekerButtonVariant.OnVerdictWarn,
+                    size = SeekerButtonSize.Sm,
+                )
+            }
+        }
     }
 }
 
