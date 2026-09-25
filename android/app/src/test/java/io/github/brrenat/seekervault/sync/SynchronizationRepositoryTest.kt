@@ -269,6 +269,34 @@ class SynchronizationRepositoryTest {
     }
 
     @Test
+    fun aCallerWhoseCoalescedRunIsAbandonedTakesTheLeadRatherThanInheritingItsEnd() = runTest {
+        host.add(A)
+        val entered = CompletableDeferred<Unit>()
+        transport.beforeSync = {
+            entered.complete(Unit)
+            awaitCancellation()
+        }
+        val pending = request(A_REQUEST)
+        transport.pages[A] = ArrayDeque(listOf(snapshot(A, listOf(pending to 1))))
+        val repository = repository()
+        val abandoned = async { repository.synchronize(A) }
+        entered.await()
+        val joined = async { repository.synchronize(A) }
+        runCurrent()
+
+        // The run this call joined belonged to somebody else — a Retry whose screen closed, a
+        // worker whose job ended — and cancelling it must not cancel a caller that is still alive.
+        // The foreground owner is one such caller, and nothing starts another one while the
+        // connection stays paired, so inheriting this would stop it watching for good (SEE-152).
+        transport.beforeSync = {}
+        abandoned.cancel()
+
+        assertTrue(joined.await() is SynchronizeOutcome.Updated)
+        assertEquals(listOf(A_REQUEST), host.applied.getValue(A).pending.map { it.ref.requestId })
+        assertEquals(2, transport.syncCalls[A])
+    }
+
+    @Test
     fun boundedStreamOverflowImmediatelyRecoversWithAFullSnapshot() = runTest {
         host.add(A)
         val entered = CompletableDeferred<Unit>()

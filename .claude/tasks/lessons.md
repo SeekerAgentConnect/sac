@@ -408,3 +408,30 @@
   refresh — which worked, so nothing looked broken. When a client only acts on what it was told at
   handshake time, a test that the handler responds proves nothing; assert what the handshake
   *advertises*.
+
+## An owner that can end is an owner that will
+
+- **Something that owns a resource in a loop must not be endable by anything it could retry**
+  (SEE-152). `ForegroundUpdateManager` launches one owner per connection from inside the collector
+  on the connection *list*, so an owner that returns or throws while its connection stays paired is
+  never replaced: the row freezes on whatever it published last, and only pairing again — which
+  re-emits the list — brings it back. That is also why a second connection appeared to recover when
+  an unrelated one was re-paired, which read at first like shared state and was not.
+- **A `CancellationException` is not proof that the caller was cancelled.** `withTimeout` raises
+  one, and so does awaiting a `CompletableDeferred` that somebody else's cancellation completed.
+  The reflexive `catch (e: CancellationException) { throw e }` turns both into "we are shutting
+  down". The test is `currentCoroutineContext().ensureActive()`: rethrow only when *this* coroutine
+  is the one that was cancelled, and treat everything else as the failure it is. Prefer
+  `withTimeoutOrNull` plus a real exception wherever a bounded wait is an ordinary outage.
+- **Coalescing work between callers couples their lifetimes, and that has to be undone
+  deliberately.** A follower joined to a leader inherits the leader's cancellation, so a Retry whose
+  sheet closed could stop a process-scoped owner that was running perfectly. A follower whose run is
+  abandoned should take the lead itself.
+- **A status code is not a diagnosis.** The sidecar answers `FAILED_PRECONDITION` both for a
+  protocol it will not speak and for a snapshot the phone must replace; one is terminal and one is
+  a reconnect. The transport already classified it by the error detail, and the owner then threw
+  that classification away and re-derived a worse answer from the raw code. When a layer has
+  already decided, use its decision.
+- **Prove a regression test is one.** Each of the six new cases was run against the unfixed
+  sources first; all six failed, and the full module was run on both sides so the 39 failures this
+  host has without `pnpm install` could be shown to be identical rather than assumed to be.
